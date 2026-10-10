@@ -65,14 +65,6 @@
       "replacementRequired": true
     },
     {
-      "name": "config-snapshot-generations",
-      "file": "tests/architecture/app/config-snapshot-generations.test.ts",
-      "status": "active",
-      "owner": "docs/rebuild/reference/clock-config-secrets.md",
-      "invariant": "The durable config leaf set is SHA-256 pinned per generation: adding or tightening a required config leaf without registering it in CONFIG_SNAPSHOT_GENERATIONS and bumping CURRENT_CONFIG_SNAPSHOT_GENERATION fails here. D331 P38/M14 adds the permanent retired-leaves-are-a-closed-list arm: operator.timekeeperName is retired only in generation 5, pre-floor snapshots retain it, current snapshots reject it, and any other vanished or unregistered leaf still fails loud rather than being defaulted.",
-      "replacementRequired": true
-    },
-    {
       "name": "settings-catalog",
       "file": "tests/architecture/dashboard/settings-catalog.test.ts",
       "status": "active",
@@ -352,7 +344,7 @@
       "file": "tests/architecture/processing/provider-capability-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/task-contract.md; docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every capability maps exactly once to a strict immutable provider budget and reaches remote I/O only through the single durable admission kernel; whole-src and transitive task import scans confine raw network/vendor modules and adapters to src/backend/processing/providers, forbid hidden ProviderClient construction, prove exhaustion makes zero adapter calls/non-sleep requeue, and keep the adapter surface deliberate: src/backend/processing/providers holds the deterministic harness plus the reviewed production adapters (D161's gemini ocr.extract first), the run executor is the ONE production consumer (D162: per-invocation admitted clients over the run's retained config snapshot, ingredients composed by the worker root), and production pools stay absent until 2h-D. The same single-owner rule covers the frontend transport, ONE owner per browser bundle: src/dashboard/client/** for the operator bundle and the single file src/dashboard/phone/capture-client.ts for the phone bundle (2i-F/D175) \u2014 named as one file rather than a subtree, so a phone component that reached for fetch directly still fails. D184 adds the allowlist-hygiene half: every name in the three D162/D178 allowlists must resolve to a git-visible module (one dead entry, the admission module listed as its own importer, is deleted), and the D68 declared provider inventory is reconciled with the built adapter tree in both directions \u2014 every ProviderId has EITHER a reviewed adapter-module list that exists OR a reviewed declared-without-adapter reason, so the four key-only providers (groq/mistral/openrouter/sambanova) are a recorded state rather than a silent divergence.",
+      "invariant": "Every capability maps exactly once to strict current invocation timeout settings. Whole-source and transitive task import scans confine raw network/vendor modules and adapters to src/backend/processing/providers and provider-client construction to its owner and the run executor. Allowlist hygiene and adapter inventory checks reject missing or undeclared modules. The current adapters are Census and Nominatim; OCR remains explicitly disconnected. Nominatim uses one process-owned local channel with an in-memory queue and at least one second between actual fetch starts. Frontend transport remains owned by src/dashboard/client/**.",
       "replacementRequired": true
     },
     {

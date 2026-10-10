@@ -34,14 +34,7 @@ import {
   openAuthorityBackupSourceReadOnly,
 } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { SettingsCurrentRecordSchema } from "../../../../../../src/backend/storage/compatibility/d331-settings-current.js";
-import { SettingsRootAuthoritySchema } from "../../../../../../src/backend/storage/compatibility/d331-settings-root.js";
 import { readSettings } from "../../../../../../src/backend/runtime/settings/settings-runtime.js";
-import {
-  D350_HISTORICAL_SETTINGS_SCHEMA_HASH,
-  D350HistoricalSettingsFileRecordSchema,
-  D350HistoricalSettingsRootAuthoritySchema,
-} from "../../../../../../src/backend/storage/compatibility/d350-settings-v2-backup.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../../src/models/config/protected-settings.js";
 import {
   AuthorityBackupService,
   verifyBackupManifestAtPath,
@@ -262,97 +255,6 @@ function journalHistoricalOrdinarySettings(
     database.close();
   }
   return record;
-}
-
-function journalD350HistoricalOrdinarySettings(authorityPath: string) {
-  const patch = { "browser.headless": { set: false } } as const;
-  const patchFingerprint = deriveSettingsPatchFingerprint(patch);
-  const command = SettingsCommandRequestSchema.parse({
-    commandId: SETTINGS_COMMAND_ID,
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "settings-surface",
-    family: "settings",
-    type: "apply-settings",
-    target: { expectedRevision: 1 },
-    payload: { settingsSchemaHash: D350_HISTORICAL_SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
-  });
-  const commandFingerprint = deriveSettingsCommandFingerprint(command);
-  const settings = { browser: { headless: false } };
-  const historicalRecord = D350HistoricalSettingsFileRecordSchema.parse({
-    revision: 2,
-    settingsSchemaHash: D350_HISTORICAL_SETTINGS_SCHEMA_HASH,
-    settingsFingerprint: derivePersistedSettingsFingerprint(settings),
-    settings,
-    lastApplied: {
-      commandId: command.commandId,
-      commandFingerprint,
-      expectedRevision: 1,
-      settingsSchemaHash: D350_HISTORICAL_SETTINGS_SCHEMA_HASH,
-      patchFingerprint,
-    },
-  });
-  const target = { family: "settings" as const, revision: historicalRecord.revision };
-  const audit = CommandAuditRecordSchema.parse({
-    auditId: SETTINGS_AUDIT_ID,
-    request: command,
-    result: {
-      state: "applied",
-      commandId: command.commandId,
-      affectedTargets: [target],
-      restartRequired: true,
-      settingsRevision: historicalRecord.revision,
-      settingsFingerprint: historicalRecord.settingsFingerprint,
-    },
-    completedAt: NOW,
-    versionChanges: [{ target, before: 1, after: historicalRecord.revision }],
-    affectedDependencyIds: [],
-  });
-  const current = SettingsCurrentRecordSchema.parse({
-    revision: historicalRecord.revision,
-    settingsFingerprint: historicalRecord.settingsFingerprint,
-    commandId: command.commandId,
-    commandFingerprint,
-    auditId: SETTINGS_AUDIT_ID,
-    committedAt: NOW,
-  });
-  const database = new DatabaseSync(authorityPath);
-  try {
-    database.exec("BEGIN IMMEDIATE");
-    database.prepare("INSERT INTO commands (record_key,family,record_json,created_at) VALUES(?,?,?,?)")
-      .run(command.commandId, command.family, canonicalJsonStringify(command), command.requestedAt);
-    database.prepare("INSERT INTO command_audits (record_key,command_id,record_json,created_at) VALUES(?,?,?,?)")
-      .run(audit.auditId, command.commandId, canonicalJsonStringify(audit), audit.completedAt);
-    database.prepare(`
-      INSERT INTO settings_current
-        (record_key,revision,settings_fingerprint,command_id,command_fingerprint,audit_id,record_json,created_at)
-      VALUES ('current',?,?,?,?,?,?,?)
-    `).run(current.revision, current.settingsFingerprint, current.commandId, current.commandFingerprint,
-      current.auditId, canonicalJsonStringify(current), current.committedAt);
-    database.prepare("UPDATE authority_meta SET authority_generation=authority_generation+1,updated_at=? WHERE singleton_id=1")
-      .run(NOW);
-    database.exec("COMMIT");
-  } catch (error) {
-    if (database.isTransaction) database.exec("ROLLBACK");
-    throw error;
-  } finally {
-    database.close();
-  }
-  return historicalRecord;
-}
-
-function historicalD350RootAuthority() {
-  const tuple = {
-    schemaVersion: 1,
-    settingsSchemaHash: D350_HISTORICAL_SETTINGS_SCHEMA_HASH,
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    ordinary: "initialized" as const,
-    protected: "initialized" as const,
-  };
-  return D350HistoricalSettingsRootAuthoritySchema.parse({
-    ...tuple,
-    rootFingerprint: sha256(new TextEncoder().encode(canonicalJsonStringify(tuple))),
-  });
 }
 
 function fileIdentity(path: string) {
@@ -577,76 +479,6 @@ describe("DB-only authority backups", () => {
     );
   });
 
-  it("admits only the pinned earlier Settings shape in historical v2 backups", async () => {
-    const root = temporaryRoot("hrauto-d350-v2-backup-");
-    const stateRoot = join(root, ".tracker");
-    const directory = join(stateRoot, "backups", "authority");
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const backupName = "authority-v31-d350.sqlite";
-    const backupPath = join(directory, backupName);
-    createHistoricalAuthority(backupPath, 31);
-    initializeSyntheticSettingsBackupRoot(stateRoot);
-    const historicalRecord = journalD350HistoricalOrdinarySettings(backupPath);
-    const rootAuthority = historicalD350RootAuthority();
-    const ordinaryName = "authority-v31-d350.settings.json";
-    const rootAuthorityName = "authority-v31-d350.settings-authority.json";
-    writeFileSync(join(directory, ordinaryName), `${canonicalJsonStringify(historicalRecord)}\n`, { mode: 0o600 });
-    writeFileSync(join(directory, rootAuthorityName), `${canonicalJsonStringify(rootAuthority)}\n`, { mode: 0o600 });
-
-    assert.notEqual(SETTINGS_SCHEMA_HASH, D350_HISTORICAL_SETTINGS_SCHEMA_HASH);
-    assert.equal(SettingsFileRecordSchema.safeParse(historicalRecord).success, false,
-      "the live Settings record schema must not admit a historical hash");
-    assert.equal(SettingsRootAuthoritySchema.safeParse(rootAuthority).success, false,
-      "the live root authority schema must remain strict");
-    assert.equal(D350HistoricalSettingsFileRecordSchema.safeParse({
-      ...historicalRecord,
-      settings: { ...historicalRecord.settings, paths: { browserProfileRoot: "/tmp/not-an-old-setting" } },
-    }).success, false, "future editable runtime paths must not expand the frozen historical shape");
-    const incompleteHistoricalDates = {
-      ...historicalRecord,
-      settings: { ...historicalRecord.settings, annualDates: { FY2027: { jobEndDate: "6/30/2027" } } },
-    };
-    assert.equal(D350HistoricalSettingsFileRecordSchema.safeParse({
-      ...incompleteHistoricalDates,
-      settingsFingerprint: derivePersistedSettingsFingerprint(incompleteHistoricalDates.settings),
-    }).success, false, "the old v2 shape still requires both Kronos fields when a year exists");
-    const currentDateOnly = {
-      ...incompleteHistoricalDates,
-      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-      settingsFingerprint: derivePersistedSettingsFingerprint(incompleteHistoricalDates.settings),
-      lastApplied: { ...incompleteHistoricalDates.lastApplied, settingsSchemaHash: SETTINGS_SCHEMA_HASH },
-    };
-    assert.equal(SettingsFileRecordSchema.safeParse(currentDateOnly).success, true,
-      "the live shape permits current date-only entries");
-    assert.equal(D350HistoricalSettingsRootAuthoritySchema.safeParse({
-      ...rootAuthority,
-      rootFingerprint: "0".repeat(64),
-    }).success, false, "historical root compatibility must retain its exact tuple fingerprint");
-
-    const inspected = verificationFor(backupPath, 31);
-    const manifest = AuthorityBackupManifestSchema.parse({
-      kind: "hrauto-authority-backup",
-      manifestVersion: 2,
-      backupFileName: backupName,
-      sourceDatabaseIdentity: "c".repeat(64),
-      applicationId: inspected.inspection.applicationId,
-      schemaVersion: inspected.inspection.schemaVersion,
-      pageCount: inspected.inspection.pageCount,
-      authorityGeneration: inspected.inspection.authorityGeneration,
-      authorityContentFingerprint: inspected.inspection.authorityContentFingerprint,
-      createdAt: NOW,
-      ...fileIdentity(backupPath),
-      verification: inspected.verification,
-      files: [
-        { role: "authority-database", sourceFileName: "state.db", backupFileName: backupName, ...fileIdentity(backupPath) },
-        { role: "ordinary-settings", sourceFileName: "settings.json", backupFileName: ordinaryName, ...fileIdentity(join(directory, ordinaryName)) },
-        { role: "settings-root-authority", sourceFileName: "authority.json", backupFileName: rootAuthorityName, ...fileIdentity(join(directory, rootAuthorityName)) },
-      ],
-      protectedSettings: { revision: 1, entries: [] },
-    });
-    const manifestPath = writeManifest(directory, manifest, "authority-v31-d350.v2.manifest.json");
-    assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.manifestVersion, 2);
-  });
 
   it("reads and verifies a v55 DB-only backup with an unchanged pre-Paths marked command", async () => {
     const world = openCurrentWorld();

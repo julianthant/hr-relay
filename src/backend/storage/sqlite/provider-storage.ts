@@ -1,8 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
-import { z } from "zod";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { LegacyProviderRequestSchema, ProviderRequestStorageSchema, ProviderUsageStorageSchema, type ProviderRequestStorage, type ProviderUsageStorage } from "../../../rules/providers/provider-accounting.js";
-import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema } from "../../../rules/providers/provider-admission.js";
 export const PROVIDER_REQUEST_DDL = `CREATE TABLE provider_requests (
  record_key TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES workflow_runs(record_key) ON DELETE RESTRICT,
  capability TEXT NOT NULL, config_snapshot_id TEXT NOT NULL REFERENCES settings_snapshots(record_key) ON DELETE RESTRICT,
@@ -52,58 +47,3 @@ export const PROVIDER_STORAGE_CONSTRAINTS = [
  BEGIN SELECT RAISE(ABORT,'provider request identity is immutable'); END`,
  `CREATE TRIGGER provider_usage_never_deleted BEFORE DELETE ON provider_usage BEGIN SELECT RAISE(ABORT,'provider usage records are never deleted'); END`,
 ] as const;
-const RowSchema = z.strictObject({ record_json: z.string() });
-export function readProviderRequest(db: DatabaseSync, id: string): ProviderRequestStorage | undefined {
- const row = db.prepare("SELECT record_json FROM provider_requests WHERE record_key=?").get(id);
- return row === undefined ? undefined : ProviderRequestStorageSchema.parse(JSON.parse(RowSchema.parse(row).record_json));
-}
-export function readProviderUsage(db: DatabaseSync, id: string): ProviderUsageStorage | undefined {
- const row = db.prepare("SELECT record_json FROM provider_usage WHERE record_key=?").get(id);
- return row === undefined ? undefined : ProviderUsageStorageSchema.parse(JSON.parse(RowSchema.parse(row).record_json));
-}
-export function writeProviderRequest(db: DatabaseSync, input: ProviderRequestStorage, expectedVersion: number | null): void {
- const record = ProviderRequestStorageSchema.parse(input);
- const r = record.kind === "legacy-capability" ? record.record : record;
- const lifecycle = record.kind === "legacy-capability" ? record.record.lifecycle : undefined;
- const id = record.kind === "legacy-capability" ? record.record.admissionId : record.requestId;
- if(expectedVersion!==null && r.version!==expectedVersion+1)throw new Error("provider-request-version-conflict");
- const state = lifecycle?.state ?? (record.kind === "generic" ? record.state : "");
- const reserved = record.kind === "legacy-capability" ? record.record.reservation.maximumCostUsdMicros : null;
- const actual = lifecycle?.state === "settled" ? lifecycle.actualUsage.costUsdMicros : null;
- const lease = lifecycle?.state === "reserved" ? lifecycle.leaseExpiresAt : record.kind === "generic" ? record.leaseExpiresAt : null;
- const deadline = lifecycle?.state === "reserved" ? lifecycle.deadlineAt : record.kind === "generic" ? record.deadlineAt : null;
- const values = [r.execution.runId, r.capability, r.configSnapshotId, r.configFingerprint, r.requestFingerprint,
-   state, reserved, actual, lease, deadline, r.version, canonicalJsonStringify(record), r.createdAt];
- const changes = expectedVersion === null
-  ? db.prepare(`INSERT INTO provider_requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, ...values).changes
-  : db.prepare(`UPDATE provider_requests SET run_id=?,capability=?,config_snapshot_id=?,config_fingerprint=?,request_fingerprint=?,
-    state=?,reserved_cost_usd_micros=?,actual_cost_usd_micros=?,lease_expires_at=?,deadline_at=?,version=?,record_json=?,created_at=? WHERE record_key=? AND version=?`)
-    .run(...values,id,expectedVersion).changes;
- if (changes !== 1) throw new Error("provider-request-version-conflict");
-}
-export function writeProviderUsage(db: DatabaseSync, input: ProviderUsageStorage, expectedVersion: number | null): void {
- const record = ProviderUsageStorageSchema.parse(input); const r = record.kind === "legacy-capability" ? record.record : undefined;
- const version = r?.version ?? (record.kind === "generic" ? record.version : 0);
- if(record.kind==="generic"&&expectedVersion!==null&&version!==expectedVersion+1)throw new Error("provider-usage-version-conflict");
- const createdAt = r?.createdAt ?? (record.kind === "generic" ? record.createdAt : "");
- const id = r?.capability ?? (record.kind === "generic" ? record.usageId : "");
- const values = [r?.capability ?? null,r?.minuteWindowStartedAt ?? null,r?.minuteRequests ?? null,r?.dayWindowStartedAt ?? null,
-  r?.dayRequests ?? null,r?.dayReservedCostUsdMicros ?? null,r?.activeReservations ?? null,r?.blockedByAdmissionId ?? null,
-  version,canonicalJsonStringify(record),createdAt];
- const changes = expectedVersion === null ? db.prepare("INSERT INTO provider_usage VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(id,...values).changes
-  : db.prepare(`UPDATE provider_usage SET capability=?,minute_window_started_at=?,minute_requests=?,day_window_started_at=?,day_requests=?,
-    day_reserved_cost_usd_micros=?,active_reservations=?,blocked_by_admission_id=?,version=?,record_json=?,created_at=? WHERE record_key=? AND version=?`)
-    .run(...values,id,expectedVersion).changes;
- if (changes !== 1) throw new Error("provider-usage-version-conflict");
-}
-export function convertProviderStorage(db: DatabaseSync, now: string): void {
- const tracking = LegacyProviderRequestSchema.shape.tracking.parse({ startedAt: now, coverage: "historical-gaps", evidence: "legacy-reported" });
- for (const row of db.prepare("SELECT record_json FROM provider_budget_counters ORDER BY record_key").all()) {
-  const record = ProviderBudgetCounterSchema.parse(JSON.parse(RowSchema.parse(row).record_json));
-  writeProviderUsage(db,{ format: 1,kind: "legacy-capability",record,tracking,cumulative: { requests: 0,chargedUsdMicros: 0 } },null);
- }
- for (const row of db.prepare("SELECT record_json FROM provider_admissions ORDER BY record_key").all()) {
-  const record = ProviderAdmissionRecordSchema.parse(JSON.parse(RowSchema.parse(row).record_json));
-  writeProviderRequest(db,{ format: 1,kind: "legacy-capability",record,tracking,origin: "pre-tracking",attribution: { kind: "legacy-capability",capability: record.capability } },null);
- }
-}

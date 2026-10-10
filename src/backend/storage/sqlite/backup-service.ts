@@ -40,8 +40,8 @@ import {
   SettingsFileRecordSchema,
   type SettingsFileRecord,
 } from "../../../models/config/settings.js";
+import { SettingsRootAuthoritySchema } from "../compatibility/d331-settings-root.js";
 import { SettingsCurrentRecordSchema } from "../compatibility/d331-settings-current.js";
-import { D350HistoricalSettingsFileRecordSchema, D350HistoricalSettingsRootAuthoritySchema } from "../compatibility/d350-settings-v2-backup.js";
 import { ProtectedSettingsCurrentRecordSchema } from "../../../models/config/authority.js";
 import { inspectAuthorityBackupReadOnly } from "../compatibility/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
@@ -162,7 +162,7 @@ function readHistoricalCommandAudit(database: DatabaseSync, commandId: string) {
 }
 
 function authenticateHistoricalOrdinarySettings(
-  record: SettingsFileRecord | z.infer<typeof D350HistoricalSettingsFileRecordSchema>,
+  record: SettingsFileRecord,
   database: DatabaseSync,
 ): void {
   const current = readHistoricalRecord(
@@ -290,7 +290,7 @@ function authenticateHistoricalProtectedPresence(
 
 function authenticateHistoricalV2Bindings(
   backupPath: string,
-  ordinary: SettingsFileRecord | z.infer<typeof D350HistoricalSettingsFileRecordSchema>,
+  ordinary: SettingsFileRecord,
   protectedSettings: ProtectedSettingsBackupPresence,
 ): void {
   const database = new DatabaseSync(backupPath, {
@@ -383,11 +383,8 @@ export async function verifyBackupManifestAtPath(
       join(dirname(manifestPath), ordinary.backupFileName),
       "utf8",
     ));
-    const currentOrdinaryRecord = SettingsFileRecordSchema.safeParse(ordinaryBytes);
-    const ordinaryRecord = currentOrdinaryRecord.success
-      ? currentOrdinaryRecord.data
-      : D350HistoricalSettingsFileRecordSchema.parse(ordinaryBytes);
-    const settingsAuthority = D350HistoricalSettingsRootAuthoritySchema.parse(JSON.parse(readFileSync(
+    const ordinaryRecord = SettingsFileRecordSchema.parse(ordinaryBytes);
+    const settingsAuthority = SettingsRootAuthoritySchema.parse(JSON.parse(readFileSync(
       join(dirname(manifestPath), authority.backupFileName),
       "utf8",
     )));

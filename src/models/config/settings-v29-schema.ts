@@ -1,7 +1,6 @@
 // Immutable journal grammar remains readable; it never admits new settings writes.
 import { z } from "zod";
 import { LocalOperatorActorSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../rules/identity/ids.js";
-import { deepFreeze } from "../../rules/validation/immutability.js";
 
 const UrlSchema = z.url();
 export const AbsolutePathSchema = z.string().min(1).refine((value) => value.startsWith("/"), "path must be absolute");
@@ -67,33 +66,6 @@ export const AnnualDateEntrySchema = z.strictObject({
   kronosDefaultEndDate: UsDateSchema,
   kronosDefaultStartDate: UsDateSchema,
 });
-
-export const ProviderBudgetSchema = z.strictObject({
-  timeoutMs: z.number().int().positive(),
-  concurrency: z.number().int().positive(),
-  requestsPerMinute: z.number().int().positive(),
-  dailyRequestLimit: z.number().int().positive(),
-  costLimitUsdMicros: z.number().int().nonnegative(),
-});
-
-export const ProviderBudgetConfigSchema = z.strictObject({
-  ocrExtract: ProviderBudgetSchema,
-  geocodeCensus: ProviderBudgetSchema,
-  geocodeNominatim: ProviderBudgetSchema,
-  aiAdvisory: ProviderBudgetSchema,
-}).default({
-  ocrExtract: { timeoutMs: 120_000, concurrency: 4, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
-  geocodeCensus: { timeoutMs: 15_000, concurrency: 2, requestsPerMinute: 30, dailyRequestLimit: 5_000, costLimitUsdMicros: 0 },
-  geocodeNominatim: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 1, dailyRequestLimit: 1_000, costLimitUsdMicros: 0 },
-  aiAdvisory: { timeoutMs: 90_000, concurrency: 2, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
-});
-
-export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
-  "ocr.extract": "ocrExtract",
-  "geocode.census": "geocodeCensus",
-  "geocode.nominatim": "geocodeNominatim",
-  "ai.advisory": "aiAdvisory",
-} as const);
 
 /** The absolute filesystem locations the runtime reads and writes — pure contract with no default, because a browser has no working directory to resolve against. */
 export const ConfigPathsSchema = z.strictObject({
@@ -223,7 +195,7 @@ export const ConfigSchema = z.strictObject({
     .default({ idleMs: 900_000, idleRepollMs: 30_000 }),
   features: z.strictObject({ debugScreenshots: z.boolean(), duoWebAuthn: z.boolean() })
     .default({ debugScreenshots: false, duoWebAuthn: true }),
-  providers: ProviderBudgetConfigSchema,
+
 });
 
 function partialEndpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape>) {
@@ -255,7 +227,6 @@ export const SettingsOverrideSchema = z.strictObject({
   concurrency: ConfigSchema.shape.concurrency.unwrap().partial().optional(),
   daemon: ConfigSchema.shape.daemon.unwrap().partial().optional(),
   features: ConfigSchema.shape.features.unwrap().partial().optional(),
-  providers: ConfigSchema.shape.providers.unwrap().partial().optional(),
 });
 
 /** The closed set the dashboard settings command may persist, deliberately narrower than the resolver's input contract. */
@@ -281,7 +252,6 @@ export const EditableSettingsOverrideSchema = z.strictObject({
   }).partial().optional(),
   concurrency: ConfigSchema.shape.concurrency.unwrap().pick({ defaultWorkers: true }).partial().optional(),
   browser: ConfigSchema.shape.browser.unwrap().partial().optional(),
-  providers: ConfigSchema.shape.providers.unwrap().partial().optional(),
 });
 
 export const SettingsOverrideInputSchema = SettingsOverrideSchema.optional().default({});
@@ -291,4 +261,3 @@ export type ConfigPaths = z.output<typeof ConfigPathsSchema>;
 export type SettingsOverride = z.output<typeof SettingsOverrideSchema>;
 export type EditableSettingsOverride = z.output<typeof EditableSettingsOverrideSchema>;
 export type AnnualDateEntry = z.output<typeof AnnualDateEntrySchema>;
-export type ProviderBudget = z.output<typeof ProviderBudgetSchema>;

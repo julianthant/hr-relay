@@ -11,7 +11,6 @@ import { VersionChangeStorageSchema } from "../../../models/archive/change-recor
 import { ArchiveTransferIdentitySchema } from "./run-evidence-ownership.js";
 import { RunSummarySchema, SummaryPublicationSchema } from "../../../models/run/summary.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
-import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../../rules/providers/provider-accounting.js";
 import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../models/artifacts/generated-artifact.js";
 import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
 import { HistoricalOperationSourceSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
@@ -145,7 +144,7 @@ export const RetainedVersionChangeSchema = z.union([VersionChangeStorageSchema, 
   }
 });
 
-type AuthorityRecordTableName = Exclude<AuthorityTableName, "database_state">;
+type AuthorityRecordTableName = Exclude<AuthorityTableName, "database_state" | "provider_requests" | "provider_usage">;
 
 export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   explorer_overrides: ExplorerWorkflowOverrideSchema,
@@ -167,8 +166,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   dryrun_results: DryRunScenarioResultSchema,
   generated_artifacts: GeneratedArtifactSchema,
   timeline_operation_sources: HistoricalOperationSourceSchema,
-  provider_usage: ProviderUsageStorageSchema,
-  provider_requests: ProviderRequestStorageSchema,
   workflow_workers: WorkerLeaseRecordSchema,
   delegation_dependencies: DependencyRecordSchema,
   run_delegations: DelegationManifestSchema,

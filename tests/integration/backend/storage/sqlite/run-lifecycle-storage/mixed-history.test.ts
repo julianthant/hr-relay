@@ -1,6 +1,5 @@
 import { storageTree } from "../../../../../support/helpers/integration/storage-recovery-fixture.js";
 import { createRunLifecycleStorage, LifecycleSourceSnapshotSchema } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
-import { ProviderRequestStorageSchema } from "../../../../../../src/rules/providers/provider-accounting.js";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -19,7 +18,6 @@ import { ConfigSchema } from "../../../../../../src/models/config/schema.js";
 import { defaultRuntimePaths } from "../../../../../../src/backend/app/config/runtime-paths.js";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
-import { ProviderAdmissionRecordSchema,ProviderBudgetCounterSchema } from "../../../../../../src/rules/providers/provider-admission.js";
 import { admitOcrExtraction } from "../../../../../../src/models/ocr/extraction.js";
 import { KnowledgeRecordSchema,FixRecordSchema } from "../../../../../../src/models/trust/knowledge.js";
 import { OperatorXlsxExportEvidenceSchema,OPERATOR_XLSX_MEDIA_TYPE } from "../../../../../../src/models/dashboard/xlsx-export.js";
@@ -43,9 +41,6 @@ function fixture(){
  db.prepare("INSERT INTO intake_sessions VALUES(?,?,?,?,?,?,?)").run(id(1),"person-lookup",HASH,"enqueued",prepJson,NOW,NOW);db.prepare("INSERT INTO intake_manifests VALUES(?,?,?,?,?,?)").run(id(11),"person-lookup",HASH,HASH,submittedJson,NOW);
  const extraction=admitOcrExtraction({formType:"oath",source:{kind:"operator",actorId:"local-operator"},readAt:NOW,sourceSha256:HASH,sourcePage:1,pageKind:"oath",record:{answers:{printedName:{state:"absent",reason:"blank"},employeeId:{state:"absent",reason:"blank"},signatureDate:{state:"absent",reason:"blank"},employeeSigned:{state:"absent",reason:"blank"},officerSigned:{state:"absent",reason:"blank"}}}});assert.equal(extraction.admitted,true);if(!extraction.admitted)throw new Error("synthetic OCR refusal");const e=extraction.extraction;
  db.prepare("INSERT INTO ocr_extractions VALUES(?,?,?,?,?,?,?,?,?)").run(`${HASH}#1#oath`,e.formType,HASH,1,e.pageKind,e.pageFingerprint,e.source.kind,JSON.stringify(e),NOW);
- const request=ProviderAdmissionRecordSchema.parse({admissionId:id(60),execution:{runId:update().sourceRunId,attempt:1,nodeId:"searching",taskId:"ocr/extract-page"},capability:"ocr.extract",configSnapshotId:id(90),configFingerprint:fingerprint,requestFingerprint:HASH,budget:{timeoutMs:120000,concurrency:4,requestsPerMinute:10,dailyRequestLimit:250,costLimitUsdMicros:0},estimate:{maximumCostUsdMicros:10},reservation:{requestCount:1,maximumCostUsdMicros:10},lifecycle:{state:"settled",settledAt:NOW,adapterDisposition:"produced",actualUsage:{requestCount:1,costUsdMicros:7},evidence:{summary:"synthetic historical usage",capturedAt:NOW}},version:2,createdAt:NOW,updatedAt:NOW});
- db.prepare("INSERT INTO provider_admissions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(request.admissionId,request.execution.runId,request.capability,id(90),fingerprint,HASH,"settled",10,7,null,null,2,JSON.stringify(request),NOW);
- const counter=ProviderBudgetCounterSchema.parse({capability:"ocr.extract",minuteWindowStartedAt:NOW,minuteRequests:1,dayWindowStartedAt:"2026-09-09T00:00:00.000Z",dayRequests:1,dayReservedCostUsdMicros:7,activeReservations:0,version:2,createdAt:NOW,updatedAt:NOW});db.prepare("INSERT INTO provider_budget_counters VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(counter.capability,counter.capability,NOW,1,counter.dayWindowStartedAt,1,7,0,null,2,JSON.stringify(counter),NOW);
  const bytes=Buffer.from("exact retained synthetic workbook bytes");const digest=createHash("sha256").update(bytes).digest("hex");const selected=join(root,"generated-source");mkdirSync(selected);writeFileSync(join(selected,"retention.xlsx"),bytes);writeFileSync(join(selected,"generated-sinks.json"),JSON.stringify({format:1,sinks:[{sinkId:"xlsx-retention",filename:"retention.xlsx"}]}));
  const done={...update(30),state:"projected",projectedAt:NOW};const pending=update(31);for(const row of [done,pending])db.prepare("INSERT INTO artifact_outbox VALUES(?,?,?)").run(row.outboxId,JSON.stringify(row),NOW);
  const head={sinkId:"xlsx-retention",contentSha256:digest,generation:2,lastOutboxId:id(30),projectedAt:NOW};db.prepare("INSERT INTO artifact_sink_heads VALUES(?,?,?)").run(head.sinkId,JSON.stringify(head),NOW);
@@ -55,7 +50,7 @@ function fixture(){
  const fix=FixRecordSchema.parse({id:id(71),failureFingerprint:HASH,status:"verified",requestedBy:"claude",summary:"Historical fix",affected:["ucpath.smart-hr.save-submit"],files:["src/backend/systems/ucpath/driver/smart-hr.ts"],scenarios:["ucpath/submit-before-ready"],verification:[`artifact:${id(51)}`],commit:"a".repeat(40),createdAt:NOW});db.prepare("INSERT INTO fix_records VALUES(?,?,?,?,?)").run(fix.id,fix.status,fix.failureFingerprint ?? null,JSON.stringify(fix),NOW);
  db.exec(`PRAGMA application_id=${AUTHORITY_APPLICATION_ID};PRAGMA user_version=40`);db.close();
  const input={stateRoot,processLockRoot:join(stateRoot,"locks"),environmentFile:join(stateRoot,".env"),plan:false,generatedSourceDirectory:selected};
- return {root,path,stateRoot,selected,input,request,counter,prepJson,submittedJson,evidenceJson,evidence,bytes,digest,extraction:e,snapshot,dispose:()=>rmSync(root,{recursive:true,force:true})};
+ return {root,path,stateRoot,selected,input,prepJson,submittedJson,evidenceJson,evidence,bytes,digest,extraction:e,snapshot,dispose:()=>rmSync(root,{recursive:true,force:true})};
 }
 function supportedFixture(unavailable=false) {
  const f=fixture();
@@ -72,12 +67,11 @@ function supportedFixture(unavailable=false) {
  if(unavailable)rmSync(join(f.stateRoot,"artifacts",`${f.digest}.artifact`));
  for(const file of retained.generated.files)writeFileSync(join(f.stateRoot,"artifacts",`${file.ref.sha256}.artifact`),JSON.stringify(file));
  const {generatedSourceDirectory:_expired,...input}=f.input;
- const request=ProviderAdmissionRecordSchema.parse(z.object({record:z.unknown()}).parse(JSON.parse(String(retained.rows.provider_requests?.find(row=>row.record_key===id(60))?.record_json))).record);
  const snapshot=JSON.parse(String(retained.rows.settings_snapshots?.find(row=>row.record_key===id(90))?.record_json)) as typeof f.snapshot;
- return {...f,input,request,snapshot};
+ return {...f,input,snapshot};
 }
 describe("F populated mixed-domain stopped conversion",()=>{
- it("preserves imports, OCR, provider history, settings, outputs and protected retired history across faults and exact restore",async()=>{
+ it("preserves imports, OCR, settings, outputs and protected retired history across faults and exact restore",async()=>{
   const f=supportedFixture();try{
    const source=readFileSync(f.path);assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion,46);
    await assert.rejects(upgradeStorage(f.input,clock),/backup-required/u);assert.deepEqual(readFileSync(f.path),source);
@@ -86,13 +80,10 @@ describe("F populated mixed-domain stopped conversion",()=>{
    await assert.rejects(upgradeStorage({...f.input,hooks:{afterCommit:()=>{throw new Error("mixed-after-commit");}}},clock),/mixed-after-commit/u);
    assert.equal((await upgradeStorage(f.input,clock)).state,"converted");const settled=readFileSync(f.path);assert.equal((await upgradeStorage(f.input,clock)).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),settled);
    const db=AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"mixed-proof"});try{
-    const archived = createRunLifecycleStorage(db).readReport(f.request.execution.runId); assert.ok(archived);
+    const archived = createRunLifecycleStorage(db).readReport(update().sourceRunId); assert.ok(archived);
     const source = archived.content.sources.find(row => row.kind === "authority-snapshot"); assert.ok(source);
     const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
-    const requestRow = snapshot.records.find(group => group.table === "provider_requests")?.rows.find(row => row.key === id(60)); assert.ok(requestRow);
-    const retained = ProviderRequestStorageSchema.parse(JSON.parse(requestRow.json)); assert.equal(retained.kind, "legacy-capability");
-    if (retained.kind !== "legacy-capability") throw new Error("wrong retained provider kind"); assert.deepEqual(retained.record,f.request);
-    assert.equal(db.authority.providerAdmissions.get(id(60)), undefined);const usage=db.authority.providerAccounting.getUsage("ocr.extract");assert.equal(usage?.kind,"legacy-capability");if(usage?.kind!=="legacy-capability")throw new Error("missing history");assert.deepEqual(usage.record,f.counter);assert.deepEqual(usage.cumulative,{requests:0,chargedUsdMicros:0});assert.equal(usage.tracking.coverage,"historical-gaps");
+    assert.equal(snapshot.run.envelope.runId, update().sourceRunId);
     assert.deepEqual(db.authority.intakeManifests.get(id(11)),JSON.parse(f.submittedJson));assert.deepEqual(db.authority.operatorXlsxExports.get(id(50)),f.evidence);assert.equal(db.authority.generatedArtifacts.get("sink:xlsx-retention")?.historyCoverage,"historical-gaps");assert.deepEqual(db.authority.artifactOutbox.listPending().map(r=>r.outboxId),[id(31)]);assert.equal(db.authority.configSnapshots.get(id(90))?.fingerprint,f.snapshot.fingerprint);
     const raw=new DatabaseSync(f.path,{readOnly:true});try{const imported=z.object({record_json:z.string()}).parse(raw.prepare("SELECT record_json FROM imported_artifacts WHERE session_id=?").get(id(1)));assert.equal(z.object({preparationJson:z.string()}).parse(JSON.parse(imported.record_json)).preparationJson,f.prepJson);assert.equal(z.object({submittedJson:z.string()}).parse(JSON.parse(imported.record_json)).submittedJson,f.submittedJson);assert.equal(raw.prepare("SELECT count(*) n FROM extracted_artifacts").get()?.n,1);assert.equal(raw.prepare("SELECT count(*) n FROM sqlite_master WHERE type='table' AND name IN ('spans','gates','notes','ocr_approvals','knowledge_records','fix_records','intake_sessions','intake_manifests','artifact_outbox','artifact_sink_heads','operator_xlsx_exports','provider_admissions','provider_budget_counters','settings_current','runtime_config')").get()?.n,0);}finally{raw.close();}
    }finally{db.close();}

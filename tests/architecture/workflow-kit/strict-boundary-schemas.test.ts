@@ -21,7 +21,7 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { BulkRunCommandRequestSchema, COMMAND_FAMILY_REGISTRY, CommandAuditRecordSchema, CommandEnvelopeSchema, CommandFamilyRegistrySchema, CommandFamilySpecSchema, CommandRequestSchema, CommandResultSchema, CommandTargetReferenceSchema, GateCommandRequestSchema, IntakeCommandRequestSchema, NotificationCommandRequestSchema, RunCommandRequestSchema, SettingsCommandRequestSchema, StartCommandRequestSchema, VersionArchiveCommandRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { ResolvedConfigSchema, resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
-import { ConfigSchema, EditableSettingsOverrideSchema, ProviderBudgetConfigSchema, ProviderBudgetSchema, SettingsOverrideSchema } from "../../../src/models/config/schema.js";
+import { ConfigSchema, EditableSettingsOverrideSchema, ProviderInvocationSettingsSchema, ProviderInvocationConfigSchema, SettingsOverrideSchema } from "../../../src/models/config/schema.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
 import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../src/models/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
@@ -34,9 +34,7 @@ import { GateResultRecordSchema } from "../../../src/models/workflow/gates.js";
 import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
 import { AtomicOutboxPayloadSchema, AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
-import { ProviderAdmissionDenyRequestSchema, ProviderAdmissionInterruptRequestSchema, ProviderAdmissionLifecycleSchema, ProviderAdmissionMutationOutcomeSchema, ProviderAdmissionRecordSchema, ProviderAdmissionReserveOutcomeSchema, ProviderAdmissionReserveRequestSchema, ProviderAdmissionSettleRequestSchema, ProviderAdmissionSweepOutcomeSchema, ProviderAdmissionSweepRequestSchema, ProviderBudgetCounterSchema, ProviderBudgetReservationSchema, ProviderCostEstimateSchema, ProviderExecutionIdentitySchema, ProviderMeasuredUsageSchema, ProviderUnavailableReasonSchema, RedactedProviderEvidenceSchema } from "../../../src/rules/providers/provider-admission.js";
-import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../src/models/providers/providers.js";
-import { ProviderDenialDispositionSchema, ProviderDenialRunContextSchema } from "../../../src/backend/runs/start/provider-admission.js";
+import { ProviderAdapterOutcomeSchema, ProviderUnavailableReasonSchema, ProviderExecutionIdentitySchema, ProviderEvidenceSchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../src/models/providers/providers.js";
 import { buildPreflightReport, PreflightObservationSchema, PreflightReportSchema, PreflightResultSchema, requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { ClassifiedDiagnosticValueSchema, RedactionResultSchema } from "../../../src/rules/redaction/redaction.js";
 import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "../../../src/models/runtime/runtime-dependencies.js";
@@ -177,12 +175,9 @@ const PERSON_LOOKUP_PARSER = {
 const UUID_1 = "11111111-1111-4111-8111-111111111111";
 const UUID_2 = "22222222-2222-4222-8222-222222222222";
 const UUID_3 = "33333333-3333-4333-8333-333333333333";
-const UUID_4 = "44444444-4444-4444-8444-444444444444";
-const UUID_8 = "88888888-8888-4888-8888-888888888888";
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const NOW = "2026-07-31T17:00:00.000Z";
-const LATER = "2026-07-31T17:01:00.000Z";
 const CLOCK = manualClock(new Date("2026-07-31T10:00:00-07:00"));
 const UI_EVIDENCE = JSON.parse(readFileSync(
   join(REPO_ROOT, "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json"),
@@ -862,86 +857,14 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "LoginResult", schema: LoginResultSchema, fixtures: ["logged-in", "already-authenticated"] },
   { name: "IdleRefreshCadence", schema: IdleRefreshCadenceSchema, fixtures: [{ intervalMs: 30_000 }] },
   { name: "RetryPolicy", schema: RetryPolicySchema, fixtures: [{ attempts: 2, backoffMs: 500, retryOn: "transient" }] },
-  { name: "ProviderBudget", schema: ProviderBudgetSchema, fixtures: [{ timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 10, dailyRequestLimit: 100, costLimitUsdMicros: 0 }] },
-  { name: "ProviderBudgetConfig", schema: ProviderBudgetConfigSchema, fixtures: [ConfigSchema.parse({ paths: defaultRuntimePaths() }).providers] },
-  { name: "ProviderUnavailableReason", schema: ProviderUnavailableReasonSchema, fixtures: [
-    { code: "rate-exhausted", message: "fixed minute exhausted", retryAt: LATER },
-    { code: "aborted", message: "run aborted" },
-  ] },
-  { name: "ProviderCostEstimate", schema: ProviderCostEstimateSchema, fixtures: [{ maximumCostUsdMicros: 0 }] },
-  { name: "ProviderMeasuredUsage", schema: ProviderMeasuredUsageSchema, fixtures: [{ requestCount: 1, costUsdMicros: 0 }] },
-  { name: "RedactedProviderEvidence", schema: RedactedProviderEvidenceSchema, fixtures: [{ summary: "redacted fixture", capturedAt: NOW }] },
+  { name: "ProviderInvocationConfig", schema: ProviderInvocationConfigSchema, fixtures: [{ timeoutMs: 15_000 }] },
+  { name: "ProviderInvocationSettings", schema: ProviderInvocationSettingsSchema.unwrap(), fixtures: [{ geocodeCensus: { timeoutMs: 15_000 }, geocodeNominatim: { timeoutMs: 15_000 } }] },
+  { name: "ProviderUnavailableReason", schema: ProviderUnavailableReasonSchema, fixtures: [{ code: "aborted", message: "cancelled" }] },
   { name: "ProviderExecutionIdentity", schema: ProviderExecutionIdentitySchema, fixtures: [{ runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" }] },
-  { name: "ProviderBudgetReservation", schema: ProviderBudgetReservationSchema, fixtures: [{ requestCount: 1, maximumCostUsdMicros: 0 }] },
-  { name: "ProviderAdmissionLifecycle", schema: ProviderAdmissionLifecycleSchema, fixtures: [{ state: "reserved", reservedAt: NOW, leaseExpiresAt: LATER, deadlineAt: LATER }] },
-  { name: "ProviderAdmissionRecord", schema: ProviderAdmissionRecordSchema, fixtures: [{
-    admissionId: UUID_8,
-    execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "ocr.extract",
-    configSnapshotId: UUID_4,
-    configFingerprint: HASH_A,
-    requestFingerprint: HASH_B,
-    budget: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 10, dailyRequestLimit: 100, costLimitUsdMicros: 0 },
-    estimate: { maximumCostUsdMicros: 0 },
-    reservation: { requestCount: 1, maximumCostUsdMicros: 0 },
-    lifecycle: { state: "reserved", reservedAt: NOW, leaseExpiresAt: LATER, deadlineAt: LATER },
-    version: 1,
-    createdAt: NOW,
-    updatedAt: NOW,
-  }] },
-  { name: "ProviderBudgetCounter", schema: ProviderBudgetCounterSchema, fixtures: [{
-    capability: "ocr.extract", minuteWindowStartedAt: NOW, minuteRequests: 1,
-    dayWindowStartedAt: NOW, dayRequests: 1, dayReservedCostUsdMicros: 0,
-    activeReservations: 1, version: 1, createdAt: NOW, updatedAt: NOW,
-  }] },
-  { name: "ProviderAdmissionReserveRequest", schema: ProviderAdmissionReserveRequestSchema, fixtures: [{
-    admissionId: UUID_8,
-    execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "geocode.census", configSnapshotId: UUID_4, configFingerprint: HASH_A,
-    requestFingerprint: HASH_B, estimate: { maximumCostUsdMicros: 0 },
-    leaseExpiresAt: LATER, deadlineAt: LATER, now: NOW,
-  }] },
-  { name: "ProviderAdmissionDenyRequest", schema: ProviderAdmissionDenyRequestSchema, fixtures: [{
-    admissionId: UUID_8,
-    execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "geocode.census", configSnapshotId: UUID_4, configFingerprint: HASH_A,
-    requestFingerprint: HASH_B, estimate: { maximumCostUsdMicros: 0 },
-    reason: { code: "aborted", message: "run aborted" }, now: NOW,
-  }] },
-  { name: "ProviderAdmissionReserveOutcome", schema: ProviderAdmissionReserveOutcomeSchema, fixtures: [{
-    state: "existing",
-    admission: {
-      admissionId: UUID_8,
-      execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-      capability: "ocr.extract", configSnapshotId: UUID_4, configFingerprint: HASH_A,
-      requestFingerprint: HASH_B,
-      budget: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 10, dailyRequestLimit: 100, costLimitUsdMicros: 0 },
-      estimate: { maximumCostUsdMicros: 0 }, reservation: { requestCount: 1, maximumCostUsdMicros: 0 },
-      lifecycle: { state: "reserved", reservedAt: NOW, leaseExpiresAt: LATER, deadlineAt: LATER },
-      version: 1, createdAt: NOW, updatedAt: NOW,
-    },
-  }] },
-  { name: "ProviderAdmissionSettleRequest", schema: ProviderAdmissionSettleRequestSchema, fixtures: [{
-    admissionId: UUID_8, expectedVersion: 1, actualUsage: { requestCount: 1, costUsdMicros: 0 },
-    adapterDisposition: "produced", evidence: { summary: "redacted fixture", capturedAt: NOW }, now: NOW,
-  }] },
-  { name: "ProviderAdmissionInterruptRequest", schema: ProviderAdmissionInterruptRequestSchema, fixtures: [{ admissionId: UUID_8, expectedVersion: 1, code: "timeout", message: "deadline elapsed", now: NOW }] },
-  { name: "ProviderAdmissionMutationOutcome", schema: ProviderAdmissionMutationOutcomeSchema, fixtures: [] },
-  { name: "ProviderAdmissionSweepRequest", schema: ProviderAdmissionSweepRequestSchema, fixtures: [{ now: NOW }] },
-  { name: "ProviderAdmissionSweepOutcome", schema: ProviderAdmissionSweepOutcomeSchema, fixtures: [{ expired: [], counters: [] }] },
-  { name: "ProviderRequestEnvelope", schema: ProviderRequestEnvelopeSchema, fixtures: [{ capability: "ocr.extract", payload: { schemaHash: HASH_A, value: "redacted fixture" } }] },
-  { name: "ProviderResponseEnvelope", schema: ProviderResponseEnvelopeSchema, fixtures: [
-    { state: "produced", value: { schemaHash: HASH_A, value: "recognized fixture" } },
-    { state: "unavailable", reason: { code: "adapter-unavailable", message: "no configured provider" } },
-    { state: "invalid-response", reason: "response did not match the requested schema" },
-  ] },
-  { name: "ProviderAdapterOutcome", schema: ProviderAdapterOutcomeSchema, fixtures: [{
-    response: { state: "produced", value: { schemaHash: HASH_A, value: "recognized fixture" } },
-    usage: { requestCount: 1, costUsdMicros: 0 },
-    evidence: { summary: "redacted fixture", capturedAt: NOW },
-  }] },
-  { name: "ProviderDenialRunContext", schema: ProviderDenialRunContextSchema, fixtures: [{ runId: UUID_1, expectedVersion: 1, claim: { workerId: "worker-1", claimGeneration: 1 }, now: NOW }] },
-  { name: "ProviderDenialDisposition", schema: ProviderDenialDispositionSchema, fixtures: [{ state: "stop", code: "aborted" }] },
+  { name: "ProviderEvidence", schema: ProviderEvidenceSchema, fixtures: [{ summary: "synthetic", capturedAt: NOW }] },
+  { name: "ProviderRequestEnvelope", schema: ProviderRequestEnvelopeSchema, fixtures: [{ capability: "geocode.census", payload: { schemaHash: HASH_A, value: {} } }], openFixturePaths: ["payload.value"] },
+  { name: "ProviderResponseEnvelope", schema: ProviderResponseEnvelopeSchema, fixtures: [{ state: "unavailable", reason: { code: "adapter-unavailable", message: "not connected" } }] },
+  { name: "ProviderAdapterOutcome", schema: ProviderAdapterOutcomeSchema, fixtures: [{ response: { state: "unavailable", reason: { code: "adapter-unavailable", message: "not connected" } }, evidence: { summary: "synthetic", capturedAt: NOW } }] },
   { name: "CommandEnvelope", schema: CommandEnvelopeSchema, fixtures: [COMMAND_ENVELOPE] },
   { name: "StartCommandRequest", schema: StartCommandRequestSchema, fixtures: commandFixtures("start") },
   { name: "IntakeCommandRequest", schema: IntakeCommandRequestSchema, fixtures: commandFixtures("intake") },

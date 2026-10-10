@@ -53,7 +53,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-    "sha256": "3208f8998a3fd85ab1380bcea7dbdb9a9a6d95cfe026c8d69ea0a54c1bb94958",
+    "sha256": "f80b6b4d62e9e1571b73b5f229f7c1a3250b5c649b71bf97282eda4efefa7b3e",
     "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
   },
   {
@@ -78,7 +78,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/maintenance/relocation-inventory.ts",
-    "sha256": "279739ef891e91b39cf660757de46e7666b12430adcc810e637e48d005798bd5",
+    "sha256": "4b18a0ac577e37e16f874338deaac917823dd3646875702fcf2561f79cb004e8",
     "reason": "A failed binding rejects that candidate; absence of any verified matching backup throws an unbound preserved-copy error."
   },
   {

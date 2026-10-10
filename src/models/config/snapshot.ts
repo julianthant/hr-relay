@@ -1,9 +1,28 @@
 import { z } from "zod";
 import { ActorIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { ConfigLeafPathSchema } from "./provenance.js";
-import { StoredConfigSchema, configSnapshotAbsentLeaves } from "./snapshot-generations.js";
+import { ConfigSchema } from "./schema.js";
 
-/** The durable snapshot as it is READ; `config` is exactly the stored bytes, read forward and never rewritten. */
+/** Stored configuration requires every current leaf and applies no live defaults. */
+export const StoredConfigSchema = z.strictObject({
+  actor: ConfigSchema.shape.actor.unwrap(),
+  urls: ConfigSchema.shape.urls.unwrap(),
+  timeouts: ConfigSchema.shape.timeouts.unwrap(),
+  paths: ConfigSchema.shape.paths,
+  annualDates: ConfigSchema.shape.annualDates.unwrap(),
+  display: ConfigSchema.shape.display.unwrap(),
+  performance: ConfigSchema.shape.performance.unwrap(),
+  ocr: ConfigSchema.shape.ocr.unwrap(),
+  browserHealth: ConfigSchema.shape.browserHealth.unwrap(),
+  browser: ConfigSchema.shape.browser.unwrap(),
+  concurrency: ConfigSchema.shape.concurrency.unwrap(),
+  daemon: ConfigSchema.shape.daemon.unwrap(),
+  features: ConfigSchema.shape.features.unwrap(),
+  providers: ConfigSchema.shape.providers.unwrap(),
+});
+
+export type StoredConfig = z.infer<typeof StoredConfigSchema>;
+
 export const ConfigSnapshotRecordSchema = z.strictObject({
   configSnapshotId: ConfigSnapshotIdSchema,
   revision: PositiveIntSchema,
@@ -11,41 +30,8 @@ export const ConfigSnapshotRecordSchema = z.strictObject({
   capturedAt: IsoInstantSchema,
   capturedBy: ActorIdSchema,
   config: StoredConfigSchema,
-  // Read-forward only: immutable pre-floor evidence may retain environment provenance.
-  provenance: z.record(ConfigLeafPathSchema, z.enum(["env", "settings", "default"])),
+  provenance: z.record(ConfigLeafPathSchema, z.enum(["settings", "default"])),
 });
 
-/** The same record as it is WRITTEN: a new snapshot must carry every leaf of the current generation. */
-export const ConfigSnapshotWriteSchema = ConfigSnapshotRecordSchema.superRefine((record, context) => {
-  for (const [system, endpoints] of Object.entries(record.config.urls)) {
-    if (Object.hasOwn(endpoints, "test")) {
-      context.addIssue({ code: "custom", path: ["config", "urls", system, "test"], message: `new config snapshots cannot mint retired ${system} test routes` });
-    }
-  }
-  if (Object.hasOwn(record.config, "operator")) {
-    context.addIssue({ code: "custom", path: ["config", "operator"], message: "new config snapshots cannot mint retired operator.timekeeperName" });
-  }
-  if (Object.values(record.provenance).includes("env")) {
-    context.addIssue({ code: "custom", path: ["provenance"], message: "new config snapshots cannot mint retired environment provenance" });
-  }
-  if (Object.hasOwn(record.config, "capture")) {
-    context.addIssue({
-      code: "custom",
-      path: ["config", "capture"],
-      message: `config snapshot ${record.configSnapshotId} cannot mint retired phone-capture configuration`,
-    });
-  }
-  if (Object.keys(record.config.providers).some(key => !["geocodeCensus", "geocodeNominatim"].includes(key))) {
-    context.addIssue({ code: "custom", path: ["config", "providers"], message: "new config snapshots cannot mint retired AI provider configuration" });
-  }
-  const absent = configSnapshotAbsentLeaves(record.config);
-  if (absent.length > 0) {
-    context.addIssue({
-      code: "custom",
-      path: ["config"],
-      message: `config snapshot ${record.configSnapshotId} omits current config leaves ${absent.join(", ")}`,
-    });
-  }
-});
-
+export const ConfigSnapshotWriteSchema = ConfigSnapshotRecordSchema;
 export type ConfigSnapshotRecord = z.infer<typeof ConfigSnapshotRecordSchema>;

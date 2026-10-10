@@ -1,31 +1,11 @@
-import { PositiveIntSchema } from "../../../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { GenericProviderRequestSchema,GenericProviderUsageSchema } from "../../../../../../src/rules/providers/provider-accounting.js";
 import { ArtifactRefSchema } from "../../../../../../src/models/artifacts/artifacts.js";
 import { CommandResultSchema } from "../../../../../../src/rules/commands/commands.js";
 import { foundationFixture,failure,terminalizeFixtureFailure,update,NOW,HASH,id } from "../../../../../support/helpers/database-foundation/fixtures.js";
-function generic(f:ReturnType<typeof foundationFixture>){
- const scope={id:"synthetic-provider/model",kind:"provider-model"};
- const tracking={startedAt:NOW,coverage:"complete-since-start",evidence:"caller-supplied"};
- const request=GenericProviderRequestSchema.parse({format:1,kind:"generic",requestId:id(41),execution:{runId:f.run.envelope.runId,attempt:1,nodeId:"searching",taskId:"ocr/extract-page"},capability:"ocr.extract",configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint,requestFingerprint:HASH,attribution:{kind:"attributed",provider:"synthetic",credential:{kind:"generation",reference:"synthetic-generation/1"},model:"model"},allocations:[{scopeId:scope.id,meter:"requests",windowId:"day",windowStartedAt:NOW,windowEndsAt:null,upperBound:1,trackingOrigin:"tracked"}],state:"reserved",usage:[],leaseExpiresAt:"2026-09-09T12:01:00.000Z",deadlineAt:"2026-09-09T12:00:30.000Z",reason:null,version:1,createdAt:NOW,updatedAt:NOW});
- const usage=GenericProviderUsageSchema.parse({format:1,kind:"generic",usageId:"synthetic-usage",scope,meter:"requests",tracking,cumulative:{kind:"unknown",retainedUpperBound:null},windows:[{id:"day",startsAt:NOW,endsAt:null,settled:{kind:"measured",value:0},retainedUnknown:0,reserved:1,limit:{kind:"configured",value:10,provenance:"synthetic-policy"}}],version:1,createdAt:NOW,updatedAt:NOW});
- return {request,usage};
-}
 describe("F shared transactional storage contracts",()=>{
- it("round-trips honest synthetic attribution and rolls request + scopes + generation back together",()=>{
-  const f=foundationFixture();try{
-   const accounting=f.db.authority.providerAccounting;const {request,usage}=generic(f);const generation=f.db.getMeta().authorityGeneration;
-   assert.throws(()=>accounting.transaction(a=>{a.writeRequest(request,null);a.writeUsage(usage,null);throw new Error("scope-write-fault");}),/scope-write-fault/u);
-   assert.equal(accounting.getRequest(request.requestId),undefined);assert.equal(accounting.getUsage(usage.usageId),undefined);assert.equal(f.db.getMeta().authorityGeneration,generation);
-   accounting.transaction(a=>{a.writeRequest(request,null);a.writeUsage(usage,null);});assert.deepEqual(accounting.getRequest(request.requestId),request);assert.deepEqual(accounting.getUsage(usage.usageId),usage);
-   const other=AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"second-connection"});try{assert.deepEqual(other.authority.providerAccounting.getRequest(request.requestId),request);assert.throws(()=>other.authority.providerAccounting.writeRequest({...request,version:PositiveIntSchema.parse(2),attribution:{kind:"unattributed",reason:"not-supplied"}},1),/identity is immutable/u);}finally{other.close();}
-   const settled=GenericProviderRequestSchema.parse({...request,state:"interrupted",leaseExpiresAt:null,deadlineAt:null,usage:[{meter:"requests",quantity:{kind:"unknown",retainedUpperBound:1}}],reason:"transport outcome unknown",version:2});accounting.writeRequest(settled,1);assert.throws(()=>accounting.writeRequest(settled,1),/version-conflict/u);assert.deepEqual(accounting.getRequest(request.requestId),settled);
-   const raw=new DatabaseSync(f.path);try{assert.throws(()=>raw.exec("INSERT OR REPLACE INTO provider_requests SELECT * FROM provider_requests"),/insert conflicts/u);assert.throws(()=>raw.exec("INSERT OR REPLACE INTO provider_usage SELECT * FROM provider_usage"),/insert conflicts/u);assert.throws(()=>raw.prepare("DELETE FROM provider_usage WHERE record_key=?").run(usage.usageId),/never deleted/u);assert.throws(()=>raw.prepare("UPDATE provider_requests SET run_id=? WHERE record_key=?").run(id(99),request.requestId),/immutable/u);}finally{raw.close();}
-  }finally{f.dispose();}
- });
  it("orders distinct updates, fences stale heads across connections, retains later enqueues and rolls back partial acknowledgement",()=>{
   const f=foundationFixture();const second=AuthorityDatabase.open({path:f.path,busyTimeoutMs:250,migrationOwner:"second-connection"});try{
    const a=f.db.authority;const ref=ArtifactRefSchema.parse({id:id(42),sha256:HASH,bytes:100,mediaType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});

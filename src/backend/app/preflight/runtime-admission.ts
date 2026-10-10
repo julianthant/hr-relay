@@ -4,7 +4,7 @@ import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { selectActiveRunSettings, selectRunSettings } from "../../runs/settings/run-settings.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { configSnapshotAbsentLeaves, executionConfigFromStored } from "../../../models/config/snapshot-generations.js";
+import { StoredConfigSchema } from "../../../models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
@@ -29,10 +29,10 @@ export function composeRuntimePreflight(input: Readonly<{
   const stateRoot = runtimeAdmission.stateRoot;
   const readConfig = (scope: PreflightAdmissionScope) => {
     const snapshot = selectRunSettings(database.authority, scope);
-    if (sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint || configSnapshotAbsentLeaves(snapshot.config).length > 0) {
+    if (sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint) {
       throw new PreflightAdmissionRefusal("scope-mismatch", "Preflight retained configuration is unavailable.");
     }
-    return executionConfigFromStored(snapshot.config);
+    return StoredConfigSchema.parse(snapshot.config);
   };
   const admission = createPreflightAdmission({
     clock, scheduler: createTimeoutDeadlineScheduler(clock),

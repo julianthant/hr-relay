@@ -1,7 +1,6 @@
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { ProviderAccountingStorage } from "../../../workflow-kit/provider-accounting.js";
 import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds, projectGeneratedUpdates } from "../../logs/generated-artifact-projection.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { localDatePart } from "../../../rules/time/clock.js";
@@ -15,7 +14,7 @@ import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import { TaskError, wrapUnhandledTaskError } from "../../../workflow-kit/errors.js";
-import type { ProviderAdmissionRepository, ProviderClient } from "../../../workflow-kit/providers.js";
+import type { ProviderClient } from "../../../workflow-kit/providers.js";
 import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -53,7 +52,7 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
 import { RunClaimTokenSchema, type RunClaimToken } from "../../storage/sqlite/run-store-contracts.js";
 import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
-import { createAdmittedProviderClient, type ProviderAdapterRegistry, type ProviderAdmissionClientDependencies, type ProviderAdmissionIdFactory } from "../../runs/start/provider-admission.js";
+import { createProviderClient, type ProviderAdapterRegistry, type ProviderClientDependencies, type ProviderRequestIdFactory } from "../../processing/providers/provider-client.js";
 import { buildEntryValidationFailureRecord, buildNodeFailureRecord } from "./run-failure.js";
 import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-result.js";
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
@@ -154,11 +153,9 @@ export interface RunArtifactProjector {
 
 export interface RunProviderWiring {
   readonly adapters: ProviderAdapterRegistry;
-  readonly repository: ProviderAdmissionRepository;
-  readonly accounting?: ProviderAccountingStorage;
   /** `AuthorityRepositories["configSnapshots"]` satisfies this. */
   readonly configSnapshots: Readonly<{ get(snapshotId: string): unknown }>;
-  readonly idFactory: ProviderAdmissionIdFactory;
+  readonly idFactory: ProviderRequestIdFactory;
 }
 
 /** The per-node slice of `RunProviderWiring` plus the run's exact stored snapshot. */
@@ -176,12 +173,12 @@ type TaskCapabilityWiring = Readonly<{
 
 function admittedClientFor(
   capability: ProviderCapabilityId,
-  dependencies: ProviderAdmissionClientDependencies,
+  dependencies: ProviderClientDependencies,
 ): ProviderClient<ProviderCapabilityId> {
   switch (capability) {
-    case "ocr.extract": return createAdmittedProviderClient(capability, dependencies);
-    case "geocode.census": return createAdmittedProviderClient(capability, dependencies);
-    case "geocode.nominatim": return createAdmittedProviderClient(capability, dependencies);
+    case "ocr.extract": return createProviderClient(capability, dependencies);
+    case "geocode.census": return createProviderClient(capability, dependencies);
+    case "geocode.nominatim": return createProviderClient(capability, dependencies);
   }
 }
 
@@ -1118,8 +1115,7 @@ export async function executeClaimedRun(
             configSnapshot: provider.storedSnapshot,
             runSignal: controller.signal,
             adapters: provider.wiring.adapters,
-            repository: provider.wiring.repository,
-            ...(provider.wiring.accounting===undefined?{}:{accounting:provider.wiring.accounting}),
+            observe: event => taskLogger.debug("provider request", { ...event, nodeId: String(node.id), taskId: contract.id }),
             clock,
             idFactory: provider.wiring.idFactory,
             deadlineScheduler: deps.scheduler,

@@ -337,7 +337,7 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runs/start/dry-run-scenario-runner.ts",
       "src/backend/runs/provenance/evidence-receipt.ts",
       "src/backend/runs/lifecycle/failure-resolution.ts",
-      "src/backend/runs/start/provider-admission.ts",
+      "src/backend/processing/providers/provider-client.ts",
       "src/backend/runs/lifecycle/run-claim-admission.ts",
       "src/backend/runs/lifecycle/run-fan-out.ts",
       "src/backend/runs/lifecycle/run-record-service.ts",

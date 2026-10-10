@@ -11,16 +11,10 @@ import { backupStoppedAuthority } from "../../../../../support/helpers/synthetic
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { admission } from "../../../../../support/helpers/storage/provider-accounting-fixtures.js";
-import { createGenericProviderAccounting } from "../../../../../../src/backend/storage/sqlite/provider-accounting.js";
-import { GenericProviderUsageSchema } from "../../../../../../src/rules/providers/provider-accounting.js";
 
-it("freezes source and display before any report publication, survives shared updates, and releases temporary captures", () => {
+it("freezes source and display before report publication, survives reopen, and releases temporary captures", () => {
   const f = archiveFixture();
   try {
-    const accounting = createGenericProviderAccounting(f.database.authority.providerAccounting);
-    assert.equal(accounting.reserve(admission(f.base)).state, "reserved");
-    const usage = f.database.authority.providerAccounting.listUsage()[0]; assert.ok(usage);
     f.terminal(); const row = f.plan(), request = f.applyRequest(row);
     f.failAfter("readPendingReport");
     assert.throws(() => f.kernel.execute(request), /injected-readPendingReport/u);
@@ -28,7 +22,6 @@ it("freezes source and display before any report publication, survives shared up
     const frozen = ArchiveReportSchema.parse(JSON.parse(capture.reportJson));
     const archive = new ArchiveDatabase(join(f.base.root, "archive.sqlite"), {readOnly:true});
     try { assert.equal(archive.read(capture.runId), undefined); } finally { archive.close(); }
-    f.database.authority.providerAccounting.transaction(store => store.writeUsage(GenericProviderUsageSchema.parse({ ...usage, version:2, cumulative:{kind:"measured",value:1} }), 1));
     f.reopen();
     assert.equal(f.kernel.execute(request).state, "applied");
     assert.deepEqual(f.database.lifecycleArchive(true).readPublished(capture.runId), frozen);
@@ -147,17 +140,14 @@ it("retains shared attachment custody when another report is deleted before pend
 it("refuses unprovable older capture history by name while preserving its live recovery assets", () => {
   const f=archiveFixture();
   try {
-    const accounting=createGenericProviderAccounting(f.database.authority.providerAccounting);
-    assert.equal(accounting.reserve(admission(f.base)).state,"reserved");
-    const usage=f.database.authority.providerAccounting.listUsage()[0];assert.ok(usage);
+    attachFile(f.database,f.base.root,f.base.run.envelope.runId,89399);
     f.terminal(); const row=f.plan(),request=f.applyRequest(row);
     f.failAfter("readPendingReport");assert.throws(()=>f.kernel.execute(request),/injected-readPendingReport/u);
     f.database.close();
     const raw=new DatabaseSync(f.base.path);
-    try {raw.prepare("UPDATE version_changes SET record_json=json_remove(record_json,'$.pendingCaptures') WHERE record_key=?").run(row.changeId);} finally {raw.close();}
+    try {raw.prepare("UPDATE diagnostic_snapshots SET record_json=json_set(record_json,'$.redaction.warnings',json('[\"synthetic changed warning\"]'))").run();raw.prepare("UPDATE version_changes SET record_json=json_remove(record_json,'$.pendingCaptures') WHERE record_key=?").run(row.changeId);} finally {raw.close();}
     f.reopen();
     assert.throws(()=>attachFile(f.database,f.base.root,f.base.run.envelope.runId,89400),/archive-source-applying/u);
-    f.database.authority.providerAccounting.transaction(store=>store.writeUsage(GenericProviderUsageSchema.parse({...usage,version:2,cumulative:{kind:"measured",value:1}}),1));
     assert.throws(()=>f.kernel.execute(request),/archive-claim-source-unprovable/u);
     assert.ok(f.database.authority.runs.get(f.base.run.envelope.runId));
     assert.equal(f.database.readVersionChange(row.changeId)?.state,"applying");

@@ -35,7 +35,7 @@ export async function restoreHistoricalStorage(runtimeAdmission:RuntimeAdmission
   let started=false;
   try {
     const observation=observeRuntimeLockSnapshot({processLockRoot:options.processLockRoot,sourceDatabaseIdentity:identity},clock);
-    if(Object.values(observation.processLocks).some(lock=>lock.state==="active"))throw new Error("historical-restore-runtime-active");
+    if(Object.values(observation.processLocks).some(lock=>lock?.state==="active"))throw new Error("historical-restore-runtime-active");
     if(existsSync(marker)) {
       if(lstatSync(marker).isSymbolicLink()||!lstatSync(marker).isFile()||readFileSync(marker,"utf8")!==binding)throw new Error("historical-restore-resume-mismatch");
     } else {writeFileSync(marker,binding,{flag:"wx",mode:0o600,flush:true});syncDirectory(root);}

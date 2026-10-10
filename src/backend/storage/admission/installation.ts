@@ -597,7 +597,8 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   const lockSnapshot = observeRuntimeLockSnapshot({ processLockRoot,
     sourceDatabaseIdentity: "0".repeat(64) });
   if (lockSnapshot.processLocks.server.state !== "stopped"
-    || lockSnapshot.processLocks.workers.state !== "stopped") fail("runtime process lock may still be live");
+    || lockSnapshot.processLocks.workers.state !== "stopped"
+    || lockSnapshot.processLocks.geocode?.state === "active") fail("runtime process lock may still be live");
   assertRestoreHeld(workspace, restore);
   privateDirectory(mutexPath);
   function assertCustody(): void {

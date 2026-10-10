@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  readSync,
   existsSync,
   fsyncSync,
   linkSync,
@@ -30,13 +34,14 @@ import type { RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
 import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
 
 
-export const RuntimeProcessLockNameSchema = z.enum(["server", "workers", "live-smoke"]);
+export const RuntimeProcessLockNameSchema = z.enum(["server", "workers", "live-smoke", "geocode"]);
 export type RuntimeProcessLockName = z.infer<typeof RuntimeProcessLockNameSchema>;
 
 
 export const RUNTIME_PROCESS_LOCK_NAMES: readonly RuntimeProcessLockName[] = Object.freeze([
   "server",
   "workers",
+  "geocode",
 ]);
 
 const LegacyRuntimeProcessLockFileSchema = z.strictObject({
@@ -57,7 +62,7 @@ export type ProcessStartIdentity = z.infer<typeof ProcessStartIdentitySchema>;
 
 const CurrentRuntimeProcessLockFileSchema = z.strictObject({
   schemaVersion: z.literal(2),
-  name: z.enum(["server", "live-smoke"]),
+  name: z.enum(["server", "live-smoke", "geocode"]),
   pid: PositiveIntSchema,
   processIdentity: ProcessStartIdentitySchema,
   acquisitionId: z.uuid(),
@@ -123,7 +128,7 @@ export type RestoreAdmissionFile = z.infer<typeof RestoreAdmissionFileSchema>;
 
 const SingletonRuntimeProcessLockOptionsSchema = z.strictObject({
   processLockRoot: z.string().min(1),
-  name: z.enum(["server", "live-smoke"]),
+  name: z.enum(["server", "live-smoke", "geocode"]),
   pid: PositiveIntSchema,
 });
 
@@ -147,6 +152,7 @@ export const RuntimeLockObservationOptionsSchema = z.strictObject({
 export interface RuntimeProcessLockHandle {
   readonly name: RuntimeProcessLockName;
   readonly generation: number;
+  readonly acquisitionId?: string;
   /** Records the release. Calling it twice is a no-op, so a `finally` is safe. */
   release(): void;
 }
@@ -159,6 +165,8 @@ export interface RestoreAdmissionHandle {
 export interface RuntimeProcessLockAcquisitionHooks {
   /** Test-only race seam after the first admission check and before the process record write. */
   readonly afterInitialAdmissionCheck?: () => void;
+  /** Test-only interleaving seam before the immutable geocode generation claim. */
+  readonly afterGeocodeGenerationRead?: () => void;
   /** Test-only OS observation seam for deterministic PID-reuse cases. */
   readonly observeProcessIdentity?: ProcessIdentityObserver;
 }
@@ -352,11 +360,115 @@ function writeLockFile(root: string, record: RuntimeProcessLockFile): void {
   }
 }
 
-function singletonHistoryDirectory(root: string, name: "server" | "live-smoke"): string {
+const GEOCODE_DIRECTORY = "geocode-claims";
+const GeocodeReleaseSchema = z.strictObject({ generation: PositiveIntSchema, acquisitionId: z.uuid(), releasedAt: IsoInstantSchema });
+export interface GeocodeFileCustody { readonly dev: number; readonly ino: number; readonly size: number; readonly mtimeMs: number }
+
+function geocodeDirectory(root: string, create = false): string {
+  if (create) mkdirSync(root, { recursive: true, mode: 0o700 });
+  const parent = lstatSync(root);
+  if (!parent.isDirectory() || parent.isSymbolicLink() || (parent.mode & 0o077) !== 0 || (process.getuid !== undefined && parent.uid !== process.getuid())) throw new Error("geocode-root-unsafe");
+  const directory = join(root, GEOCODE_DIRECTORY);
+  if (create) mkdirSync(directory, { mode: 0o700, recursive: true });
+  const stat = lstatSync(directory);
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || (process.getuid !== undefined && stat.uid !== process.getuid())) throw new Error("geocode-directory-unsafe");
+  return directory;
+}
+function geocodeFilePath(root: string, name: string): string {
+  if (!/^[a-zA-Z0-9.-]+$/u.test(name) || name.startsWith(".")) throw new Error("geocode-file-name-invalid");
+  return join(geocodeDirectory(root), name);
+}
+function privateGeocodeFile(fd: number): GeocodeFileCustody {
+  const stat = fstatSync(fd);
+  if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o077) !== 0 || (stat.mode & 0o600) !== 0o600 || (process.getuid !== undefined && stat.uid !== process.getuid()) || stat.size > 65_536) throw new Error("geocode-file-unsafe");
+  return { dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs };
+}
+function custodyEquals(a: GeocodeFileCustody, b: GeocodeFileCustody): boolean { return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs; }
+
+/** Geocode lifetime metadata only; descriptor reads never follow endpoint links. */
+export function readGeocodeRuntimeFile(root: string, name: string): Readonly<{ text: string; custody: GeocodeFileCustody }> {
+  const fd = openSync(geocodeFilePath(root, name), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const custody = privateGeocodeFile(fd);
+    const bytes = Buffer.alloc(65_537); let length = 0;
+    for (;;) { const count = readSync(fd, bytes, length, bytes.length - length, null); length += count; if (length > 65_536) throw new Error("geocode-file-oversize"); if (count === 0) break; }
+    if (!custodyEquals(custody, privateGeocodeFile(fd)) || length !== custody.size) throw new Error("geocode-file-changed");
+    return { text: bytes.subarray(0, length).toString("utf8"), custody };
+  } finally { closeSync(fd); }
+}
+export function writeGeocodeRuntimeFileExclusive(root: string, name: string, text: string): GeocodeFileCustody {
+  geocodeDirectory(root, true);
+  const fd = openSync(geocodeFilePath(root, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try { writeFileSync(fd, text, "utf8"); fsyncSync(fd); return privateGeocodeFile(fd); }
+  finally { closeSync(fd); fsyncPath(geocodeDirectory(root)); }
+}
+export function removeOwnedGeocodeRuntimeFile(root: string, name: string, custody: GeocodeFileCustody): void {
+  const current = readGeocodeRuntimeFile(root, name);
+  if (!custodyEquals(current.custody, custody)) throw new Error("geocode-file-custody-lost");
+  unlinkSync(geocodeFilePath(root, name)); fsyncPath(geocodeDirectory(root));
+}
+function readGeocodeClaims(root: string): readonly z.output<typeof CurrentRuntimeProcessLockFileSchema>[] {
+  if (lstatSync(lockPath(root, "geocode"), { throwIfNoEntry: false }) !== undefined) throw new Error("geocode-mutable-lock-unsupported");
+  const parent = lstatSync(root, { throwIfNoEntry: false });
+  if (parent === undefined) return [];
+  if (!parent.isDirectory() || parent.isSymbolicLink() || (parent.mode & 0o077) !== 0 || (process.getuid !== undefined && parent.uid !== process.getuid())) throw new Error("geocode-root-unsafe");
+  if (lstatSync(join(root, GEOCODE_DIRECTORY), { throwIfNoEntry: false }) === undefined) return [];
+  const directory = geocodeDirectory(root);
+  {
+    const names = readdirSync(directory).filter(name => !name.startsWith("."));
+    const claims: z.output<typeof CurrentRuntimeProcessLockFileSchema>[] = [];
+    for (const name of names) {
+      if (/^\d+-[a-f0-9-]+\.(?:channel\.json|tmp)$/u.test(name)) continue;
+      if (/^\d+-[a-f0-9-]+\.release\.json$/u.test(name)) continue;
+      if (!/^\d+\.claim\.json$/u.test(name)) throw new Error("geocode-claim-entry-invalid");
+      const claim = CurrentRuntimeProcessLockFileSchema.parse(JSON.parse(readGeocodeRuntimeFile(root, name).text));
+      if (claim.name !== "geocode" || claim.releasedAt !== null || name !== `${claim.generation}.claim.json`) throw new Error("geocode-claim-identity-invalid");
+      const releaseName = `${claim.generation}-${claim.acquisitionId}.release.json`;
+      try {
+        const release = GeocodeReleaseSchema.parse(JSON.parse(readGeocodeRuntimeFile(root, releaseName).text));
+        if (release.generation !== claim.generation || release.acquisitionId !== claim.acquisitionId) throw new Error("geocode-release-identity-invalid");
+        claims.push({ ...claim, releasedAt: release.releasedAt });
+      } catch (error) { if (errnoOf(error) !== "ENOENT") throw error; claims.push(claim); }
+    }
+    for (const name of names.filter(name => name.endsWith(".release.json"))) if (!claims.some(claim => name === `${claim.generation}-${claim.acquisitionId}.release.json`)) throw new Error("geocode-release-unbound");
+    return claims.sort((a, b) => a.generation - b.generation);
+  }
+}
+function activeGeocodeClaims(root: string, observer: ProcessIdentityObserver) {
+  const claims = readGeocodeClaims(root);
+  return { claims, active: claims.filter(claim => claim.releasedAt === null && recordOwnerIsAlive(claim, observer)), generation: Math.max(1, ...claims.map(claim => claim.generation)) };
+}
+function acquireGeocodeClaim(root: string, pid: number, processIdentity: ProcessStartIdentity, clock: Clock, observer: ProcessIdentityObserver, hooks: RuntimeProcessLockAcquisitionHooks): RuntimeProcessLockHandle {
+  const initial = activeGeocodeClaims(root, observer);
+  if (initial.active.length > 0) throw new Error("geocode-owner-active");
+  const generation = initial.generation + 1;
+  hooks.afterGeocodeGenerationRead?.();
+  const claim = CurrentRuntimeProcessLockFileSchema.parse({ schemaVersion: 2, name: "geocode", pid, processIdentity, acquisitionId: randomUUID(), generation, acquiredAt: clock.now().toISOString(), releasedAt: null });
+  const temporary = `${generation}-${claim.acquisitionId}.tmp`;
+  writeGeocodeRuntimeFileExclusive(root, temporary, `${canonicalJsonStringify(claim)}\n`);
+  try { linkSync(geocodeFilePath(root, temporary), geocodeFilePath(root, `${generation}.claim.json`)); }
+  finally { unlinkSync(geocodeFilePath(root, temporary)); fsyncPath(geocodeDirectory(root)); }
+  let released = false;
+  const handle: RuntimeProcessLockHandle = Object.freeze({ name: "geocode", generation, acquisitionId: claim.acquisitionId, release() {
+    if (released) return;
+    const stored = CurrentRuntimeProcessLockFileSchema.parse(JSON.parse(readGeocodeRuntimeFile(root, `${generation}.claim.json`).text));
+    if (canonicalJsonStringify(stored) !== canonicalJsonStringify(claim)) throw new Error("geocode-claim-custody-lost");
+    writeGeocodeRuntimeFileExclusive(root, `${generation}-${claim.acquisitionId}.release.json`, `${canonicalJsonStringify({ generation, acquisitionId: claim.acquisitionId, releasedAt: clock.now().toISOString() })}\n`);
+    released = true;
+  } });
+  try {
+    const current = activeGeocodeClaims(root, observer);
+    if (current.active.some(owner => owner.acquisitionId !== claim.acquisitionId) || !current.active.some(owner => owner.acquisitionId === claim.acquisitionId)) throw new Error("geocode-owner-conflict");
+    assertRestoreAdmissionOpen(root, observer);
+  } catch (error) { handle.release(); throw error; }
+  return handle;
+}
+
+function singletonHistoryDirectory(root: string, name: "server" | "live-smoke" | "geocode"): string {
   return join(root, SINGLETON_HISTORY_DIRECTORY, name);
 }
 
-function readSingletonHistory(root: string, name: "server" | "live-smoke"): readonly RuntimeProcessLockFile[] {
+function readSingletonHistory(root: string, name: "server" | "live-smoke" | "geocode"): readonly RuntimeProcessLockFile[] {
   const directory = singletonHistoryDirectory(root, name);
   if (!existsSync(directory)) return [];
   return Object.freeze(readdirSync(directory, { withFileTypes: true })
@@ -396,7 +508,7 @@ function archiveSingletonLock(root: string, record: RuntimeProcessLockFile): voi
   fsyncPath(root);
 }
 
-function singletonGeneration(root: string, name: "server" | "live-smoke"): number {
+function singletonGeneration(root: string, name: "server" | "live-smoke" | "geocode"): number {
   return readSingletonHistory(root, name).reduce(
     (maximum, record) => Math.max(maximum, record.generation),
     0,
@@ -597,6 +709,11 @@ export function readRuntimeProcessLock(
   processLockRoot: string,
   name: RuntimeProcessLockName,
 ): RuntimeProcessLockFile | undefined {
+  if (name === "geocode") {
+    const state = activeGeocodeClaims(resolve(processLockRoot), observeProcessIdentity);
+    if (state.active.length > 1) throw new Error("geocode-owner-conflict");
+    return state.active[0] ?? state.claims.at(-1);
+  }
   const path = lockPath(resolve(processLockRoot), name);
   if (!existsSync(path)) return undefined;
   try {
@@ -622,6 +739,7 @@ export function acquireRuntimeProcessLock(
   const processIdentity = captureProcessIdentity(options.pid, observer);
   assertRestoreAdmissionOpen(root, observer);
   hooks.afterInitialAdmissionCheck?.();
+  if (options.name === "geocode") return acquireGeocodeClaim(root, options.pid, processIdentity, clock, observer, hooks);
   if (options.name === "workers") {
 
     const legacy = readRuntimeProcessLock(root, "workers");
@@ -748,6 +866,11 @@ export function observeRuntimeLockSnapshot(
   const processLocks: Record<string, unknown> = {};
   let runtimeGeneration = 0;
   for (const name of RUNTIME_PROCESS_LOCK_NAMES) {
+    if (name === "geocode") {
+      const state = activeGeocodeClaims(root, observer); const active = state.active[0];
+      processLocks.geocode = active === undefined ? { state: "stopped", generation: state.generation } : { state: "active", generation: state.generation, pid: active.pid };
+      runtimeGeneration += state.generation; continue;
+    }
     if (name === "workers") {
       const legacy = readRuntimeProcessLock(root, "workers");
       const records = readWorkerProcessLocks(root);
@@ -819,4 +942,10 @@ export function inspectRuntimeProcessOrphans(
     if (record.releasedAt === null && !recordOwnerIsAlive(record, observer)) staleWorkerRecords += 1;
   }
   return Object.freeze({ staleServerRecords, staleWorkerRecords });
+}
+
+export function runtimeProcessLockIsActive(processLockRoot: string, name: RuntimeProcessLockName): boolean {
+  if (name === "geocode") return activeGeocodeClaims(resolve(processLockRoot), observeProcessIdentity).active.length > 0;
+  const record = readRuntimeProcessLock(processLockRoot, name);
+  return record !== undefined && record.releasedAt === null && recordOwnerIsAlive(record, observeProcessIdentity);
 }

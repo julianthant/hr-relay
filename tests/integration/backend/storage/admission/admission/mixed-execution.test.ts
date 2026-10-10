@@ -54,15 +54,13 @@ it("actual browser launch and execution resources use each run's retained displa
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 } }).state, "applied");
   const next = f.create();
   const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/artifacts")) }); await artifacts.ready;
-  const factory = createRunResourcesFactory({ authority: f.database.authority, artifacts, clock: f.clock,
+  const factory = createRunResourcesFactory({ processLockRoot: join(f.root, "locks"), authority: f.database.authority, artifacts, clock: f.clock,
     ids: { uuid: randomUUID }, isolation: rebuildRuntimeIsolation, protectedSecrets: createCredentialStore({ stateRoot: f.root }),
     scheduler: { schedule: () => ({ cancel: () => {} }) }, environment: {} });
   const first = factory.forRun(old); const second = factory.forRun(next);
   assert.equal(first.taskDeadlineMs, 60_000); assert.equal(second.taskDeadlineMs, 90_000);
   assert.equal(first.sessionAcquireMs, 120_000); assert.equal(second.sessionAcquireMs, 180_000);
   assert.equal(first.defaultBrowserMode, "headless"); assert.equal(second.defaultBrowserMode, "headed");
-  assert.equal(first.providers?.accounting, second.providers?.accounting);
-  assert.equal(second.providers?.accounting, f.database.authority.providerAccounting);
   const launch = vi.spyOn(chromium, "launchPersistentContext").mockRejectedValue(new Error("synthetic launch boundary"));
   const open = (run: typeof old) => factory.forRun(run).sessionFactory.open({ workerId: WorkerIdSchema.parse("settings-worker"), workflowId: WorkflowIdSchema.parse("person-lookup"),
     system: "ucpath", instance: "prod", configFingerprint: run.envelope.configFingerprint, acceptDownloads: false, exclusive: false,

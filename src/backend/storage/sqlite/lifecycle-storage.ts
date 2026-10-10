@@ -180,7 +180,7 @@ export async function restoreLifecyclePair(runtimeAdmission:RuntimeAdmission,opt
   let createdJournal=false;
   try {
     const observation=observeRuntimeLockSnapshot({processLockRoot:options.processLockRoot,sourceDatabaseIdentity:verified.pair.sourceDatabaseIdentity},clock);
-    if(Object.values(observation.processLocks).some(lock=>lock.state === "active"))throw new Error("lifecycle-restore-runtime-active");
+    if(Object.values(observation.processLocks).some(lock=>lock?.state === "active"))throw new Error("lifecycle-restore-runtime-active");
     if(existsSync(journal)){if(safeBytes(journal).toString("utf8")!==identity)throw new Error("lifecycle-restore-resume-mismatch");}
     else {writeFileSync(journal,identity,{flag:"wx",mode:0o600,flush:true});durableDirectory(stateRoot);createdJournal=true;}
     const report=await new OfflineAuthorityRestoreService(runtimeAdmission,options,rebuild,clock,undefined,()=>({...admission,release(){}}))

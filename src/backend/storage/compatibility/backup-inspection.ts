@@ -11,7 +11,6 @@ import { ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from 
 import { OperatorXlsxExportEvidenceSchema } from "../../../models/dashboard/xlsx-export.js";
 import { SettingsCurrentRecordSchema } from "../../../models/config/settings-current.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
-import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema } from "../../../rules/providers/provider-admission.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
@@ -399,7 +398,7 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, 
     leases: count(database, schemaVersion < 35 ? "SELECT count(*) AS count FROM leases" : "SELECT count(*) AS count FROM workflow_workers"),
     ...(schemaVersion >= 40 ? {} : { durableOutbox: count(database, `SELECT count(*) AS count FROM ${outbox} WHERE json_extract(record_json, '$.projection.state') = 'pending'`) }),
     ...(schemaVersion <= 40 ? { runTerminalOutbox: countIfPresent("run_terminal_outbox", "SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'") } : {}),
-    providerReservations: schemaVersion >= 43 ? count(database, "SELECT count(*) AS count FROM provider_requests WHERE state='reserved'") : countIfPresent("provider_admissions", "SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
+    providerReservations: 0,
     artifactOutbox: count(database, schemaVersion >= 46 ? "SELECT count(*) AS count FROM generated_artifacts f,json_each(f.record_json,'$.updates') u WHERE json_extract(u.value,'$.record.state')='pending'" : "SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
   });
 }
@@ -411,7 +410,6 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
     archive_relaunches: ArchiveRelaunchStorageRecordSchema,
     knowledge_records: KnowledgeRecordSchema, fix_records: FixRecordSchema, ocr_approvals: OpaqueAuthorityRecordSchema,
     operator_xlsx_exports: OperatorXlsxExportEvidenceSchema, artifact_outbox: ArtifactOutboxStorageRecordSchema, artifact_sink_heads: ArtifactSinkHeadRecordSchema,
-    provider_admissions: ProviderAdmissionRecordSchema, provider_budget_counters: ProviderBudgetCounterSchema,
     settings_current: SettingsCurrentRecordSchema, runtime_config: ActiveRuntimeConfigRecordSchema,
     intake_sessions: IntakeSessionSchema, intake_manifests: IntakePlanManifestSchema, ocr_extractions: AdmittedExtractionSchema,
     authority_upgrades: AUTHORITY_RECORD_SCHEMA_REGISTRY.database_upgrades,

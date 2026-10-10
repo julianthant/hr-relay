@@ -503,6 +503,7 @@ export const RecoveryRuntimeLockSnapshotSchema = z.strictObject({
   processLocks: z.strictObject({
     server: RecoveryProcessLockStateSchema,
     workers: RecoveryProcessLockStateSchema,
+    geocode: RecoveryProcessLockStateSchema.optional(),
   }),
 });
 
@@ -518,6 +519,7 @@ export const StoppedSystemProofSchema = z.strictObject({
   processLockGenerations: z.strictObject({
     server: PositiveIntSchema,
     workers: PositiveIntSchema,
+    geocode: PositiveIntSchema.optional(),
   }),
 });
 

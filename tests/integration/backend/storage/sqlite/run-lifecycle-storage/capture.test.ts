@@ -1,4 +1,3 @@
-import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../../../../../src/rules/providers/provider-accounting.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { foundationFixture, NOW, id } from "../../../../../support/helpers/database-foundation/fixtures.js";
@@ -177,20 +176,5 @@ it("public display identity does not encode a changed protected value or its der
     assert.notEqual(first.digest, second.digest);
     assert.notEqual(first.content.sourceDigest, second.content.sourceDigest);
     assert.deepEqual(projectArchiveReport(first), projectArchiveReport(second));
-  } finally { f.dispose(); }
-});
-
-
-import { generic } from "../../../../../support/helpers/storage/provider-accounting-fixtures.js";
-it("captures generic provider requests and their allocated usage without unrelated shared accounting", () => {
-  const f = foundationFixture();
-  try {
-    const { request, usage } = generic(f);
-    f.db.authority.providerAccounting.transaction(store => { store.writeRequest(request, null); store.writeUsage(usage, null); store.writeUsage({ ...usage, usageId: "unrelated-usage", scope: { ...usage.scope, id: "unrelated.scope" } }, null); });
-    const snapshot = createRunLifecycleStorage(f.db).capture(f.run.envelope.runId);
-    const requests = snapshot.records.find(group => group.table === "provider_requests");
-    const usages = snapshot.records.find(group => group.table === "provider_usage");
-    assert.deepEqual(requests?.rows.map(row => ProviderRequestStorageSchema.parse(JSON.parse(row.json))), [request]);
-    assert.deepEqual(usages?.rows.map(row => ProviderUsageStorageSchema.parse(JSON.parse(row.json))), [usage]);
   } finally { f.dispose(); }
 });

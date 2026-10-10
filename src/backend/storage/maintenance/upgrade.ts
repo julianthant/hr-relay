@@ -178,7 +178,7 @@ export async function upgradeRelocationCapabilityV56(
 function requireStopped(input: StorageUpgradeInput, clock: Clock): void {
   const snapshot = observeRuntimeLockSnapshot({ processLockRoot: input.processLockRoot,
     sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(input.stateRoot, "state.db")) }, clock);
-  if (Object.values(snapshot.processLocks).some((lock) => lock.state === "active")) throw new Error("runtime-active: stop server and workers before storage upgrade");
+  if (Object.values(snapshot.processLocks).some((lock) => lock?.state === "active")) throw new Error("runtime-active: stop server and workers before storage upgrade");
 }
 
 function archiveNeedsIndexUpgrade(runtimeAdmission:RuntimeAdmission,stateRoot: string): boolean {

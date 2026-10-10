@@ -342,6 +342,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   );
   let database: AuthorityDatabase;
   let runtimeError: unknown;
+  const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
   try {
     admission.assertAuthorityDatabase(join(stateRoot, "state.db"));
@@ -446,7 +447,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const diagnostics = bindFailureCapture(createRunDiagnosticCapture({ service: diagnosticService }));
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
-  const resources = createRunResourcesFactory({preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  const resources = createRunResourcesFactory({processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
     ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
   const baselineResources = resources.baseline(resolved.config);
@@ -668,11 +669,11 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   } catch (error) {
     runtimeError = error;
   } finally {
+    try { await resources.stop(); } catch (error) { cleanupErrors.push(error); }
     if (externalStop !== undefined) externalStop.removeEventListener("abort", onExternalStop);
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
   }
-  const cleanupErrors: unknown[] = [];
   let databaseClosureProven = false;
   try {
     (input.closeDatabase ?? ((opened) => opened.close()))(database);

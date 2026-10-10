@@ -1,5 +1,5 @@
+import { createNominatimService } from "./nominatim-owner.js";
 // Census fromAddress/toAddress are block ranges, never street names.
-// Nominatim throttling belongs to the admission budget; a second throttle adds another scheduler.
 import { z } from "zod";
 import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -49,14 +49,10 @@ const NominatimResponseSchema = z.array(z.looseObject({
   }).optional(),
 }));
 
-function nextUtcMinute(clock: Clock): string {
-  return new Date((Math.floor(clock.nowMs() / 60_000) + 1) * 60_000).toISOString();
-}
-
 function unavailableOutcome(reason: unknown, clock: Clock): ProviderAdapterOutcome {
   return ProviderAdapterOutcomeSchema.parse({
     response: { state: "unavailable", reason },
-    usage: { requestCount: 1, costUsdMicros: 0 },
+
     evidence: { summary: "geocode request did not produce an answer", capturedAt: clock.now().toISOString() },
   });
 }
@@ -67,7 +63,7 @@ function producedOutcome(value: unknown, summary: string, clock: Clock): Provide
       state: "produced",
       value: { schemaHash: GEOCODE_OUTCOME_SCHEMA_HASH, value: GeocodeOutcomeSchema.parse(value) },
     },
-    usage: { requestCount: 1, costUsdMicros: 0 },
+
     evidence: { summary, capturedAt: clock.now().toISOString() },
   });
 }
@@ -84,9 +80,8 @@ async function fetchJson(
     return {
       ok: false,
       outcome: unavailableOutcome({
-        code: "rate-exhausted",
-        message: "geocoder answered HTTP 429; the next fixed UTC minute window applies",
-        retryAt: nextUtcMinute(clock),
+        code: "adapter-unavailable",
+        message: "Geocoder rate limit was reached; the request was not retried.",
       }, clock),
     };
   }
@@ -111,7 +106,7 @@ async function fetchJson(
           state: "invalid-response",
           reason: `the provider answered ${String(text.length)} chars that are not JSON`,
         },
-        usage: { requestCount: 1, costUsdMicros: 0 },
+
         evidence: { summary: "geocode response was not JSON", capturedAt: clock.now().toISOString() },
       }),
     };
@@ -124,7 +119,6 @@ export function createCensusGeocodeAdapter(
   const fetchFn = dependencies.fetchFn ?? fetch;
   return Object.freeze({
     capability: "geocode.census" as const,
-    estimate: () => ({ maximumCostUsdMicros: 0 }),
     async invoke(requestInput: ProviderRequestEnvelope, options: ProviderCallOptions) {
       const request = ProviderRequestEnvelopeSchema.parse(requestInput);
       const address = GeocodeRequestSchema.parse(request.payload.value);
@@ -175,13 +169,12 @@ export function createCensusGeocodeAdapter(
   });
 }
 
-export function createNominatimGeocodeAdapter(
+function createOwnedNominatimAdapter(
   dependencies: GeocodeAdapterDependencies,
 ): ProviderAdapter<"geocode.nominatim"> {
   const fetchFn = dependencies.fetchFn ?? fetch;
   return Object.freeze({
     capability: "geocode.nominatim" as const,
-    estimate: () => ({ maximumCostUsdMicros: 0 }),
     async invoke(requestInput: ProviderRequestEnvelope, options: ProviderCallOptions) {
       const request = ProviderRequestEnvelopeSchema.parse(requestInput);
       const address = GeocodeRequestSchema.parse(request.payload.value);
@@ -233,4 +226,14 @@ export function createNominatimGeocodeAdapter(
       }, "nominatim resolved the address", dependencies.clock);
     },
   });
+}
+
+export function createNominatimGeocodeAdapter(dependencies: GeocodeAdapterDependencies & Readonly<{ processLockRoot: string }>) {
+  const service = createNominatimService({
+    processLockRoot: dependencies.processLockRoot,
+    clock: dependencies.clock,
+    fetchFn: dependencies.fetchFn,
+    adapter: fetchFn => createOwnedNominatimAdapter({ clock: dependencies.clock, fetchFn }),
+  });
+  return Object.freeze({ capability: "geocode.nominatim" as const, invoke: service.invoke, stop: service.stop });
 }

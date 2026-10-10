@@ -231,16 +231,10 @@ for (const step of ["readPendingReport", "saveReport"] as const) it(`requires ar
   } finally { f.dispose(); }
 });
 
-import { admission } from "../../../../../support/helpers/storage/provider-accounting-fixtures.js";
-import { createGenericProviderAccounting } from "../../../../../../src/backend/storage/sqlite/provider-accounting.js";
-import { GenericProviderUsageSchema } from "../../../../../../src/rules/providers/provider-accounting.js";
 import { ArchiveDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
-it("preserves an applying report while shared provider accounting advances independently", () => {
+it("preserves an applying report across reopen", () => {
   const f = archiveFixture();
   try {
-    const accounting = createGenericProviderAccounting(f.database.authority.providerAccounting);
-    assert.equal(accounting.reserve(admission(f.base)).state, "reserved");
-    const usage = f.database.authority.providerAccounting.listUsage()[0]; assert.ok(usage);
     f.terminal(); const row = f.plan(), request = f.applyRequest(row);
     f.failAfter("saveReport");
     assert.throws(() => f.kernel.execute(request), /injected-saveReport/u);
@@ -248,8 +242,6 @@ it("preserves an applying report while shared provider accounting advances indep
     let captured;
     try { captured = archive.read(f.base.run.envelope.runId); assert.ok(captured); }
     finally { archive.close(); }
-    // This shared quota belongs to independent live requests as well as this run.
-    f.database.authority.providerAccounting.transaction(store => store.writeUsage(GenericProviderUsageSchema.parse({ ...usage, version: 2, cumulative: { kind: "measured", value: 1 } }), 1));
     f.reopen();
     assert.equal(f.kernel.execute(request).state, "applied");
     assert.deepEqual(createRunLifecycleStorage(f.database).readReport(f.base.run.envelope.runId), captured);

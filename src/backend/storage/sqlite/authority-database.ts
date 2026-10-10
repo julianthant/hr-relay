@@ -29,12 +29,10 @@ import type { VerifiedRelocationActivationIntent } from "../admission/installati
 import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { SummaryPublicationSchema } from "../../../models/run/summary.js";
-import type { ProviderAccountingStorage } from "../../../workflow-kit/provider-accounting.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { SqliteProviderAccounting, finalizeProviderRun, inspectGenericProviderAccounting } from "./provider-accounting.js";
 import { createImportedArtifactRepositories } from "./imported-artifacts.js";
 import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
 import { GeneratedArtifactSchema } from "../../../models/artifacts/generated-artifact.js";
@@ -72,7 +70,6 @@ import { dirname, resolve, join } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { assertWorkflowRunResultAuthorization, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import type { ProviderAdmissionRepository } from "../../../workflow-kit/providers.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityUpgradeRecordSchema, ProtectedSettingsCurrentRecordSchema, AuthorityTableNameSchema, ProjectionTableNameSchema, type AuthorityTableName, type TableName, type RunRecordRefusal } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -554,8 +551,6 @@ export type AuthorityRepositories = Readonly<{
   historicalOperationSources: { list(): readonly HistoricalOperationSource[] };
   archivedTransactionSources: { list(): readonly z.infer<typeof LifecycleSourceSnapshotSchema>[] };
   failureResolution: ReturnType<typeof createFailureResolutionRepository>;
-  providerAdmissions: ProviderAdmissionRepository;
-  providerAccounting: ProviderAccountingStorage;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
   workerControls: WorkerControlRepository;
@@ -813,18 +808,6 @@ const INVARIANT_QUERIES = Object.freeze([
     `,
   },
   {
-    name: "provider-counter-columns-match-record",
-    sql: "SELECT count(*) AS count FROM provider_usage WHERE json_extract(record_json, '$.kind') = 'legacy-capability' AND (record_key IS NOT capability OR capability IS NOT json_extract(record_json, '$.record.capability') OR minute_window_started_at IS NOT json_extract(record_json, '$.record.minuteWindowStartedAt') OR minute_requests IS NOT json_extract(record_json, '$.record.minuteRequests') OR day_window_started_at IS NOT json_extract(record_json, '$.record.dayWindowStartedAt') OR day_requests IS NOT json_extract(record_json, '$.record.dayRequests') OR day_reserved_cost_usd_micros IS NOT json_extract(record_json, '$.record.dayReservedCostUsdMicros') OR active_reservations IS NOT json_extract(record_json, '$.record.activeReservations') OR blocked_by_admission_id IS NOT json_extract(record_json, '$.record.blockedByAdmissionId') OR version IS NOT json_extract(record_json, '$.record.version'))",
-  },
-  {
-    name: "provider-admission-columns-match-record",
-    sql: "SELECT count(*) AS count FROM provider_requests WHERE json_extract(record_json, '$.kind') = 'legacy-capability' AND (record_key IS NOT json_extract(record_json, '$.record.admissionId') OR run_id IS NOT json_extract(record_json, '$.record.execution.runId') OR capability IS NOT json_extract(record_json, '$.record.capability') OR config_snapshot_id IS NOT json_extract(record_json, '$.record.configSnapshotId') OR config_fingerprint IS NOT json_extract(record_json, '$.record.configFingerprint') OR request_fingerprint IS NOT json_extract(record_json, '$.record.requestFingerprint') OR state IS NOT json_extract(record_json, '$.record.lifecycle.state') OR reserved_cost_usd_micros IS NOT json_extract(record_json, '$.record.reservation.maximumCostUsdMicros') OR actual_cost_usd_micros IS NOT json_extract(record_json, '$.record.lifecycle.actualUsage.costUsdMicros') OR lease_expires_at IS NOT json_extract(record_json, '$.record.lifecycle.leaseExpiresAt') OR deadline_at IS NOT json_extract(record_json, '$.record.lifecycle.deadlineAt') OR version IS NOT json_extract(record_json, '$.record.version'))",
-  },
-  {
-    name: "provider-active-reservations-match",
-    sql: "SELECT count(*) AS count FROM provider_usage AS counter WHERE json_extract(counter.record_json, '$.kind') = 'legacy-capability' AND counter.active_reservations <> (SELECT count(*) FROM provider_requests AS admission WHERE json_extract(admission.record_json, '$.kind') = 'legacy-capability' AND admission.capability = counter.capability AND admission.state = 'reserved')",
-  },
-  {
     name: "duo-ceremony-lease-columns-match-record",
     sql: "SELECT count(*) AS count FROM worker_auth WHERE record_key <> json_extract(record_json, '$.credentialKey') OR generation <> json_extract(record_json, '$.generation') OR holder_worker_id <> json_extract(record_json, '$.holder.workerId') OR holder_system <> json_extract(record_json, '$.holder.system') OR state <> json_extract(record_json, '$.state') OR expires_at <> json_extract(record_json, '$.expiresAt') OR version <> json_extract(record_json, '$.version')",
   },
@@ -957,7 +940,6 @@ const INVARIANT_QUERIES = Object.freeze([
 ] as const);
 
 function invariantViolations(database: DatabaseSync): readonly string[] {
-  inspectGenericProviderAccounting(database);
   const violations = INVARIANT_QUERIES.flatMap(({ name, sql }) => {
     const { count } = CountRowSchema.parse(database.prepare(sql).get());
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
@@ -1243,7 +1225,6 @@ const HISTORICAL_FOUNDATION_QUERIES = [
 const historicalInvariantQueries = new Map<number, readonly { name: string; sql: string }[]>();
 // Replay released backup DDL in memory; never validate it against operator state.
 export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, version: number): void {
-  if (version >= 43) inspectGenericProviderAccounting(database);
   let queries = historicalInvariantQueries.get(version);
   if (queries === undefined) {
     const reference = new DatabaseSync(":memory:");
@@ -1268,10 +1249,6 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
           sql = sql.replaceAll("delegation_dependencies", "dependencies").replaceAll("run_delegations", "delegation_manifests");
           if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
         }
-        if (version < 43 && entry.name === "provider-active-reservations-match") {
-          // Unwrapped rows need explicit invariant admission; kind aliases must not exclude them.
-          sql = "SELECT count(*) AS count FROM provider_budget_counters AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_admissions AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')";
-        } else if (version < 43) sql = sql.replace("json_extract(record_json, '$.kind') = 'legacy-capability' AND (", "(").replaceAll("provider_requests", "provider_admissions").replaceAll("provider_usage", "provider_budget_counters").replaceAll("'$.record.", "'$.");
         if (version < 41) sql = sql.replaceAll("run_failures", "failures");
         if (version < 39) {
           for (const [old, current] of Object.entries(DATABASE_TABLE_RENAMES)) sql = sql.replaceAll(current, old);
@@ -1673,7 +1650,7 @@ function pendingCounts(database: DatabaseSync) {
     pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE command.family <> 'bulk-parent' AND NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
     unresolvedWriteIntents: count("SELECT count(*) AS count FROM run_operations WHERE status NOT IN ('committed', 'observed-present')"),
     leases: count("SELECT count(*) AS count FROM workflow_workers"),
-    providerReservations: count("SELECT count(*) AS count FROM provider_requests WHERE state = 'reserved'"),
+    providerReservations: 0,
     artifactOutbox: count("SELECT count(*) AS count FROM generated_artifacts f,json_each(f.record_json,'$.updates') u WHERE json_extract(u.value,'$.record.state')='pending'"),
   };
 }
@@ -2804,7 +2781,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #removeLifecycleSources(run: RunRecord, now: string, transfer: boolean, evidence: ReturnType<typeof runDeletionEvidence>) {
+  #removeLifecycleSources(run: RunRecord, _now: string, transfer: boolean, evidence: ReturnType<typeof runDeletionEvidence>) {
     const runId = run.envelope.runId;
     const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
     const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: string[]): void => {
@@ -2831,8 +2808,6 @@ export class AuthorityDatabase implements Disposable {
           remove("diagnostic_snapshots", "DELETE FROM diagnostic_snapshots WHERE run_id = ?", runId);
           remove("run_receipts", "DELETE FROM run_receipts WHERE run_id = ?", runId);
           remove("dryrun_results", "DELETE FROM dryrun_results WHERE run_id = ?", runId);
-          finalizeProviderRun(this.#database, this.authority.providerAdmissions, runId, now);
-          remove("provider_requests", "DELETE FROM provider_requests WHERE run_id = ?", runId);
           remove("run_failures", "DELETE FROM run_failures WHERE run_id = ?", runId);
           // Terminal authority.
           remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
@@ -3455,8 +3430,6 @@ export class AuthorityDatabase implements Disposable {
       };
       collect("workflow_runs","SELECT record_key,record_json FROM workflow_runs WHERE record_key=?",runId);
       collect("run_results","SELECT record_key,record_json FROM run_results WHERE record_key=?",runId);
-      collect("provider_requests","SELECT record_key,record_json FROM provider_requests WHERE run_id=?",runId);
-      collect("provider_usage","SELECT record_key,record_json FROM provider_usage AS usage WHERE EXISTS (         SELECT 1 FROM provider_requests AS request WHERE request.run_id=? AND (           (json_extract(request.record_json,'$.kind')='legacy-capability' AND usage.capability=request.capability)           OR (json_extract(request.record_json,'$.kind')='generic' AND EXISTS (             SELECT 1 FROM json_each(request.record_json,'$.allocations') AS allocation             WHERE json_extract(allocation.value,'$.scopeId')=json_extract(usage.record_json,'$.scope.id')               AND json_extract(allocation.value,'$.meter')=json_extract(usage.record_json,'$.meter')           ))         ))",runId);
       collect("run_receipts","SELECT record_key,record_json FROM run_receipts WHERE run_id=?",runId);
       collect("run_failures","SELECT record_key,json_object('evidence',json(record_json),'resolution',json(resolution_json)) AS record_json FROM run_failures WHERE run_id=?",runId);
       collect("timeline_events","SELECT record_key,record_json FROM timeline_events WHERE run_id=?",runId);
@@ -4856,13 +4829,6 @@ export class AuthorityDatabase implements Disposable {
 
 
   #buildAuthorityRepositories(): AuthorityRepositories {
-    const provider = new SqliteProviderAccounting({ database: this.#database,
-        transaction: (work) => this.withAuthorityTransaction(work),
-        mutate: (table, work) => this.#authorityWrite(table, work),
-        readRecord: (table, key, schema) => this.#readRecord(table, key, schema),
-        readRun: (id) => this.#readRunRow(id),
-      });
-
     const settings = createSettingsActivationRepositories({ database: this.#database,
       mutate: (work) => this.#authorityWrite("app_settings", work),
       readRecord: (table,key,schema) => this.#readRecord(table,key,schema) });
@@ -5064,8 +5030,6 @@ export class AuthorityDatabase implements Disposable {
         ),
       }),
       failureResolution: createFailureResolutionRepository({ database: this.#database, mutate: (work) => this.#authorityWrite("run_failures", work) }),
-      providerAdmissions: provider.repository(),
-      providerAccounting: provider.accounting(),
       startPlans: this.#buildStartPlanRepository(),
       workerLeases: this.#buildWorkerLeaseRepository(),
       workerControls: createWorkerControlRepository({ database: this.#database, mutate: (table, work) => {
@@ -5392,8 +5356,6 @@ export class AuthorityDatabase implements Disposable {
       } }),
       configSnapshots: Object.freeze({
         insert: (input: unknown) => {
-          // The WRITE schema, not the read schema: an older generation is read
-          // forward, never minted (`src/domain/config/snapshot-generations.ts`).
           const record = ConfigSnapshotWriteSchema.parse(input);
           return this.#insertSimpleRecord("settings_snapshots", record.configSnapshotId, record, ConfigSnapshotRecordSchema, record.capturedAt);
         },

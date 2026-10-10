@@ -11,7 +11,6 @@ import { createDeterministicSessionProvider } from "../../../../../../src/workfl
 import {
   FingerprintSchema,
   IsoInstantSchema,
-  ProviderAdmissionIdSchema,
 } from "../../../../../../src/rules/identity/ids.js";
 import { createContentAddressedArtifactWriter } from "../../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import type { ArtifactWriteFaultStep } from "../../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -241,37 +240,31 @@ describe("task, store, session, provider, and artifact seams", () => {
     };
     const harness = createDeterministicProviderHarness("ocr.extract", [{
       kind: "return",
-      estimate: { maximumCostUsdMicros: 0 },
+
       outcome: {
         response,
-        usage: { requestCount: 1, costUsdMicros: 0 },
+
         evidence: { summary: "deterministic fixture", capturedAt: IsoInstantSchema.parse("2026-08-03T12:00:00.000Z") },
       },
     }]);
     const signal = new AbortController().signal;
     const request = { capability: "ocr.extract" as const, payload: { schemaHash: hash, value: { artifact: "fixture" } } };
-    assert.deepEqual(harness.adapter.estimate(request), { maximumCostUsdMicros: 0 });
     assert.deepEqual(
       await harness.adapter.invoke(request, {
         signal,
         deadlineMonotonicMs: 100,
-        admissionId: ProviderAdmissionIdSchema.parse("00000000-0000-4000-8000-000000000021"),
+        requestId: "00000000-0000-4000-8000-000000000021",
       }),
       {
         response,
-        usage: { requestCount: 1, costUsdMicros: 0 },
+
         evidence: { summary: "deterministic fixture", capturedAt: IsoInstantSchema.parse("2026-08-03T12:00:00.000Z") },
       },
     );
     assert.equal(harness.calls().length, 1);
-    assert.throws(() => harness.adapter.estimate(request), /no queued script/);
-    assert.throws(
-      () => harness.adapter.estimate({
-        capability: "geocode.nominatim",
-        payload: { schemaHash: hash, value: "fixture" },
-      }),
-      /cannot estimate capability geocode\.nominatim/,
-    );
+    await assert.rejects(harness.adapter.invoke(request, { signal, deadlineMonotonicMs: 100, requestId: "00000000-0000-4000-8000-000000000022" }), /no queued script/);
+    await assert.rejects(harness.adapter.invoke({ capability: "geocode.nominatim", payload: request.payload }, { signal, deadlineMonotonicMs: 100, requestId: "00000000-0000-4000-8000-000000000023" }), /cannot invoke capability/);
+
   })
 
   it("records deterministic session calls without manufacturing fallback results", async () => {

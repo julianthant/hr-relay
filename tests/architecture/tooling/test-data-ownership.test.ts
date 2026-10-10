@@ -19,7 +19,6 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/integration/operation-names-fixture.ts",
   "tests/support/helpers/integration/storage-recovery-fixture.ts",
   "tests/support/helpers/storage/historical-fixtures.ts",
-  "tests/support/helpers/storage/provider-accounting-fixtures.ts",
   "tests/support/helpers/storage/storage-relocation-fixture.ts",
 
   "tests/support/fixtures/preflight/corpus.ts",
@@ -66,7 +65,6 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/integration/operation-names-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/integration/storage-recovery-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/historical-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/storage/provider-accounting-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/admission-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
@@ -79,7 +77,6 @@ const DEFERRED_CAPABILITIES = [
 const PROCESS_ENTRYPOINTS = [
   { file: "worker-browser-control-cli.ts", consumers: ["tests/integration/backend/storage/events/timeline-emitter/worker-browser-control-process.test.ts", "tests/parity/helpers/session-runtime.ts"] },
   { file: "worker-stub-cli.ts", consumers: ["tests/integration/backend/runs/lifecycle/run-record-service/worker-pool-parallel-proof.test.ts"] },
-  { file: "provider-accounting-race.ts", consumers: ["tests/integration/backend/storage/sqlite/migrations/accounting.test.ts"] },
   { file: "run-record-race-worker.ts", consumers: ["tests/integration/backend/storage/sqlite/run-store-contracts/service.test.ts"] },
   { file: "runtime-lock-contender.ts", consumers: ["tests/integration/backend/storage/sqlite/migrations/storage-restore-drill.test.ts"] },
 ] as const;

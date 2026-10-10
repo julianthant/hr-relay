@@ -1,7 +1,6 @@
 import { storageTree } from "../../../../../support/helpers/integration/storage-recovery-fixture.js";
 import { createRunLifecycleStorage, LifecycleSourceSnapshotSchema } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
 import { convertImportedArtifacts } from "../../../../../../src/backend/storage/sqlite/imported-artifacts.js";
-import { convertProviderStorage } from "../../../../../../src/backend/storage/sqlite/provider-storage.js";
 import { convertAppSettings } from "../../../../../../src/backend/storage/sqlite/settings-storage.js";
 import { convertGeneratedArtifacts } from "../../../../../../src/backend/storage/sqlite/generated-conversion.js";
 import { assertFoundationRetirement } from "../../../../../../src/backend/storage/sqlite/foundation-retirement.js";
@@ -104,7 +103,6 @@ function conversion(path: string) {
     convertRunCompletions(raw);
     for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > 40 && version <= NORMAL_AUTHORITY_SCHEMA_VERSION)) for (const statement of migration.statements) {
       if (migration.version === 42 && statement === "DROP TABLE intake_sessions") convertImportedArtifacts(raw);
-      if (migration.version === 43 && statement === "DROP TABLE provider_admissions") convertProviderStorage(raw,clock.now().toISOString());
       if (migration.version === 44 && statement === "DROP TABLE runtime_config") convertAppSettings(raw);
       if (migration.version === 46 && statement === "DROP TABLE artifact_outbox") convertGeneratedArtifacts(raw,undefined);
       if (migration.version === 47 && statement === "DROP TABLE spans") assertFoundationRetirement(RuntimeAdmission.syntheticFixture(path, "authority"),raw,undefined);

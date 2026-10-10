@@ -1,5 +1,5 @@
 import { selectActiveRunSettings } from "../../runs/settings/run-settings.js";
-import { executionConfigFromStored } from "../../../models/config/snapshot-generations.js";
+import { StoredConfigSchema } from "../../../models/config/snapshot.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -148,5 +148,5 @@ export function activeSettingsRuntimeIdentity(repositories: AuthorityRepositorie
   configFingerprint: active.configFingerprint };
 }
 export function activeSettingsConfig(repositories: AuthorityRepositories) {
- return executionConfigFromStored(selectActiveRunSettings(repositories).config);
+ return StoredConfigSchema.parse(selectActiveRunSettings(repositories).config);
 }

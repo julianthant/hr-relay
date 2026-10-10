@@ -102,6 +102,7 @@ export class RecoveryStopProofStore {
       processLockGenerations: {
         server: state.processLocks.server.generation,
         workers: state.processLocks.workers.generation,
+        ...(state.processLocks.geocode === undefined ? {} : { geocode: state.processLocks.geocode.generation }),
       },
     });
     const pendingDirectory = join(this.#root, PENDING_DIRECTORY);
@@ -134,7 +135,8 @@ export class RecoveryStopProofStore {
     if (proof.runtimeNamespace !== live.runtimeNamespace
       || proof.runtimeGeneration !== live.runtimeGeneration
       || proof.processLockGenerations.server !== live.processLocks.server.generation
-      || proof.processLockGenerations.workers !== live.processLocks.workers.generation) {
+      || proof.processLockGenerations.workers !== live.processLocks.workers.generation
+      || proof.processLockGenerations.geocode !== live.processLocks.geocode?.generation) {
       throw new Error(
         `stopped-system proof ${proof.proofId} does not match current runtime and process-lock generations`,
       );
@@ -196,6 +198,7 @@ export class RecoveryStopProofStore {
       || proof.runtimeGeneration !== state.runtimeGeneration
       || proof.processLockGenerations.server !== state.processLocks.server.generation
       || proof.processLockGenerations.workers !== state.processLocks.workers.generation
+      || proof.processLockGenerations.geocode !== state.processLocks.geocode?.generation
       || proof.runtimeStateFingerprint !== stateFingerprint(state)) {
       throw new Error(`stopped-system proof ${proof.proofId} does not match current runtime and process-lock generations`);
     }

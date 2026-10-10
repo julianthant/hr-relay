@@ -707,38 +707,6 @@ function prepareRunning(database: AuthorityDatabase) {
   return running.run;
 }
 
-function prepareProviderRunning(database: AuthorityDatabase) {
-  database.authority.configSnapshots.insert({
-    ...CONFIG_SNAPSHOT,
-    configSnapshotId: UUID_4,
-    fingerprint: HASH_B,
-  });
-  const run = prepareRunning(database);
-  const updated = database.authority.runs.transition({
-    runId: RUN_ID,
-    expectedVersion: run.version,
-    claim: { workerId: WORKER_ID, claimGeneration: 1 },
-    lifecycle: { ...run.lifecycle, currentNodeId: "searching" },
-    now: NOW,
-  });
-  if (updated.state !== "applied") throw new Error("provider generation fixture did not select a node");
-}
-
-function reserveProvider(database: AuthorityDatabase) {
-  database.authority.providerAdmissions.reserve({
-    admissionId: UUID_8,
-    execution: { runId: RUN_ID, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "geocode.census",
-    configSnapshotId: UUID_4,
-    configFingerprint: HASH_B,
-    requestFingerprint: HASH_A,
-    estimate: { maximumCostUsdMicros: 0 },
-    deadlineAt: LATER,
-    leaseExpiresAt: LATER,
-    now: NOW,
-  });
-}
-
 /** Ref operator-trust's trust records hang off a real terminal run and its durable failure. */
 function terminalizeForTrust(database: AuthorityDatabase): void {
   const run = prepareRunning(database);
@@ -1626,7 +1594,6 @@ describe("native SQLite authority schema", () => {
     assert.equal(upgraded.inspectSchema().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
     assert.equal(upgraded.authority.runs.get(RUN_ID)?.completion, undefined);
-    assert.equal(upgraded.authority.providerAdmissions.get(UUID_8), undefined);
     upgraded.close();
 
     const migrated = new DatabaseSync(path, { readOnly: true });
@@ -1925,8 +1892,6 @@ describe("authority generation accounting", () => {
     { table: "summary_publication", mutate: db => { db.refreshRunSummaries(); } },
     { table: "imported_artifacts", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "extracted_artifacts", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
-    { table: "provider_usage", prepare: prepareProviderRunning, mutate: reserveProvider },
-    { table: "provider_requests", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "workflow_workers", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
     {
       table: "worker_auth",
@@ -2090,7 +2055,7 @@ describe("authority generation accounting", () => {
   it("accounts for every authority table and increments once per outer authority mutation", () => {
     assert.deepEqual([...cases.map(({ table }) => table), "runtime_version_adoptions"].sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
-        && !["database_state", "database_upgrades", "timeline_operation_sources"].includes(name))
+        && !["database_state", "database_upgrades", "timeline_operation_sources", "provider_requests", "provider_usage"].includes(name))
       .map(({ name }) => name)
       .sort());
     for (const mutation of cases) {
@@ -2161,7 +2126,7 @@ describe("authority generation accounting", () => {
     inventorySqlite.close();
     assert.deepEqual(triggers.map(({ name }) => name), expectedTriggerNames);
 
-    for (const trigger of triggers) {
+    for (const trigger of triggers.filter(({ tableName }) => tableName !== "provider_requests" && tableName !== "provider_usage")) {
       assert.match(trigger.tableName, /^[a-z0-9_]+$/u);
       const database = openDatabase();
       const path = databasePaths.get(database);

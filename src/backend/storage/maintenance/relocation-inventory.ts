@@ -16,7 +16,6 @@ import { ArchiveDatabase } from "../sqlite/archive-database.js";
 import { backupPendingCaptureFiles } from "../compatibility/backup-inspection.js";
 import { createCredentialStore } from "../configuration/credential-store.js";
 import { SettingsRootAuthoritySchema } from "../compatibility/d331-settings-root.js";
-import { D350HistoricalSettingsFileRecordSchema, D350HistoricalSettingsRootAuthoritySchema } from "../compatibility/d350-settings-v2-backup.js";
 import { SettingsFileRecordSchema } from "../../../models/config/settings.js";
 import { ProtectedStoreRecordSchema } from "../../../models/config/protected-settings.js";
 import { verifyLifecyclePair } from "../sqlite/lifecycle-storage.js";
@@ -135,9 +134,9 @@ export function verifyRelocationLiveReferences(input: Readonly<{ admission: Runt
   }
   const settingsRoot = join(input.source.stateRoot, "settings");
   for (const [name, schema] of [
-    ["settings.json", z.union([SettingsFileRecordSchema, D350HistoricalSettingsFileRecordSchema])],
+    ["settings.json", SettingsFileRecordSchema],
     ["protected.json", ProtectedStoreRecordSchema],
-    ["authority.json", z.union([SettingsRootAuthoritySchema, D350HistoricalSettingsRootAuthoritySchema])],
+    ["authority.json", SettingsRootAuthoritySchema],
   ] as const) {
     const path = join(settingsRoot, name);
     if (lstatSync(path, { throwIfNoEntry: false }) !== undefined) schema.parse(JSON.parse(safeBytes(path).toString("utf8")));

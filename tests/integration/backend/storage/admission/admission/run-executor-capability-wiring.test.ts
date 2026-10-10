@@ -16,8 +16,7 @@ import { executeClaimedRun, type RunExecutorDependencies, type RunProviderWiring
 import { defaultRuntimePaths } from "../../../../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../../../../src/models/config/schema.js";
 import { defineTaskContract } from "../../../../../../src/models/task/task-contract.js";
-import { FingerprintSchema, IsoInstantSchema, ProviderAdmissionIdSchema, ScenarioIdSchema, TraceIdSchema, taskId } from "../../../../../../src/rules/identity/ids.js";
-import { isRunNodeExecutionIdentity } from "../../../../../../src/rules/providers/provider-admission.js";
+import { FingerprintSchema, IsoInstantSchema, ScenarioIdSchema, TraceIdSchema, taskId } from "../../../../../../src/rules/identity/ids.js";
 import type { RunRecord } from "../../../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
 import { defineCanonicalInput } from "../../../../../../src/models/workflow/canonical-input.js";
@@ -266,7 +265,7 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
   return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration } };
 }
 
-/** The run's retained snapshot: `QUEUED_RUN`'s envelope ids, an ocr.extract budget. */
+/** The run's retained snapshot: `QUEUED_RUN`'s envelope ids, current provider timeout settings. */
 function seedSnapshot(database: AuthorityDatabase): void {
   const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths() });
   const config = ConfigSchema.parse({
@@ -275,10 +274,6 @@ function seedSnapshot(database: AuthorityDatabase): void {
       ...defaults.providers,
       geocodeCensus: {
         timeoutMs: 30_000,
-        concurrency: 2,
-        requestsPerMinute: 10,
-        dailyRequestLimit: 100,
-        costLimitUsdMicros: 1_000_000,
       },
     },
   });
@@ -298,7 +293,7 @@ function admissionIdFactory() {
   return Object.freeze({
     next: () => {
       next += 1;
-      return ProviderAdmissionIdSchema.parse(`00000000-0000-4000-8000-${String(next).padStart(12, "0")}`);
+      return `00000000-0000-4000-8000-${String(next).padStart(12, "0")}`;
     },
   });
 }
@@ -360,7 +355,7 @@ describe("executor capability wiring refusals", () => {
       ...harness.deps,
       providers: Object.freeze({
         adapters: { "geocode.census": adapter.adapter },
-        repository: database.authority.providerAdmissions,
+
         configSnapshots: database.authority.configSnapshots,
         idFactory: admissionIdFactory(),
       }),
@@ -378,17 +373,17 @@ describe("executor capability wiring refusals", () => {
 });
 
 describe("executor capability wiring, wired", () => {
-  it("mints admitted clients over the retained snapshot and injects the kernel writer", async () => {
+  it("mints current clients over the retained snapshot and injects request identity", async () => {
     observed = {};
     const adapter = createDeterministicProviderHarness("geocode.census", [{
       kind: "return",
-      estimate: { maximumCostUsdMicros: 0 },
+
       outcome: {
         response: {
           state: "produced",
           value: { schemaHash: FingerprintSchema.parse(HASH_A), value: { extracted: true } },
         },
-        usage: { requestCount: 1, costUsdMicros: 0 },
+
         evidence: { summary: "deterministic wiring fixture", capturedAt: IsoInstantSchema.parse(NOW) },
       },
     }]);
@@ -400,7 +395,7 @@ describe("executor capability wiring, wired", () => {
       ...harness.deps,
       providers: Object.freeze({
         adapters: { "geocode.census": adapter.adapter },
-        repository: database.authority.providerAdmissions,
+
         configSnapshots: database.authority.configSnapshots,
         idFactory: admissionIds,
       }),
@@ -426,15 +421,7 @@ describe("executor capability wiring, wired", () => {
     assert.deepEqual(calls[0]?.request, { capability: "geocode.census", payload: PAYLOAD });
 
 
-    const admission = database.authority.providerAdmissions.get(
-      ProviderAdmissionIdSchema.parse("00000000-0000-4000-8000-000000000001"),
-    );
-    assert.ok(admission !== undefined);
-    assert.equal(admission.lifecycle.state, "settled");
+    assert.equal(calls[0]?.options.requestId, "00000000-0000-4000-8000-000000000001");
 
-    assert.ok(isRunNodeExecutionIdentity(admission.execution));
-    assert.equal(admission.execution.taskId, "ocr/extract-form-page");
-    assert.equal(admission.execution.nodeId, "extract");
-    assert.equal(admission.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);
   });
 });
