@@ -1,19 +1,24 @@
+import { withAuthorityDatabaseReadOnly } from "../../../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { runRecordFromRow } from "../../../../../../src/backend/storage/sqlite/run-record-row.js";
+import { nativeOrdinaryRecordFromRow } from "../../../../../../src/backend/storage/sqlite/native-record-row.js";
+import { timelineEventFromRow } from "../../../../../../src/backend/storage/sqlite/timeline-repository.js";
+import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../../../src/rules/write-safety/write-safety.js";
+import { checkpointLookupKey } from "../../../../../../src/models/workflow/checkpoint.js";
 import { executeSequencedWriteCommit } from "../../../../../../src/backend/runtime/writes/write-sequencer.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../../../../src/models/dashboard/storage.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../../../../support/helpers/timeline-write-fixture.js";
-import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runQueuedSpanEvent } from "../../../../../../src/backend/runs/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, PositiveIntSchema } from "../../../../../../src/rules/identity/ids.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import { RunRecordService, workerRunLifecyclePort, sweepWorkerClaims } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { randomUUID } from "node:crypto";
-import { createSpanJsonlWriter } from "../../../../../../src/backend/storage/events/span-jsonl-writer.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { QUEUED_RUN } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 
 import assert from "node:assert/strict";
-import { truncateSync, copyFileSync, symlinkSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { truncateSync, copyFileSync, symlinkSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
@@ -21,16 +26,31 @@ import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../../../src/backend/app/config/runtime-isolation.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { composeStorageCommand } from "../../../../../support/helpers/synthetic-storage-admission.js";
+import { composeStorageCommand as syntheticComposeStorageCommand } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { createCredentialStore } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../../../../../src/backend/runtime/settings/settings-runtime.js";
+
+import { acquireEntrypointAdmission } from "../../../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { AuthorityDatabase as NativeAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
+import { composeStorageCommand as nativeComposeStorageCommand } from "../../../../../../src/backend/app/composition/storage-compose.js";
+import type { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
+
+const admissions = new Map<string, RuntimeAdmission>();
+function openAuthority(input: z.input<typeof AuthorityDatabaseOptionsSchema>, clock = CLOCK) {
+  const admission = [...admissions.values()].find(owner => input.path.startsWith(owner.stateRoot + "/"));
+  return admission === undefined ? AuthorityDatabase.open(input, clock) : NativeAuthorityDatabase.open(admission, input, clock);
+}
+function composeStorageCommand(isolation: Parameters<typeof nativeComposeStorageCommand>[0], args: readonly string[], clock = CLOCK, repoRoot: string) {
+  const admission = admissions.get(repoRoot);
+  return admission === undefined ? syntheticComposeStorageCommand(isolation, args, clock, repoRoot) : nativeComposeStorageCommand(isolation, args, clock, repoRoot, admission);
+}
 
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
 const ManifestGenerationSchema = z.object({ authorityGeneration: z.number().int().nonnegative() });
 const roots: string[] = [];
 
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) { admissions.get(root)?.release(); admissions.delete(root); rmSync(root, { recursive: true, force: true }); }
 });
 
 interface Paths {
@@ -41,7 +61,7 @@ interface Paths {
 }
 
 function paths(): Paths {
-  const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-storage-backup-"));
+  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-storage-backup-"));
   roots.push(repoRoot);
   const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "backup-command", version: "0.1.0" }));
@@ -54,12 +74,14 @@ function paths(): Paths {
 }
 
 function createAuthority(p: Paths): number {
-  mkdirSync(p.stateRoot, { recursive: true });
-  const database = AuthorityDatabase.open(
+  const admission = acquireEntrypointAdmission(p.repoRoot, "exclusive");
+  admissions.set(p.repoRoot, admission);
+  const database = openAuthority(
     { path: p.authorityPath, busyTimeoutMs: 250, migrationOwner: "backup-command-test" },
     CLOCK,
   );
   try {
+    database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     return database.getMeta().authorityGeneration;
   } finally {
     database.close();
@@ -72,24 +94,18 @@ describe("cli storage backup", () => {
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
-    const database = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "fenced-restore-proof" }, CLOCK);
+    const database = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "fenced-restore-proof" }, CLOCK);
     const e = QUEUED_RUN.envelope;
-    try { database.authority.runs.enqueue(QUEUED_RUN); } finally { database.close(); }
-    const emitter = createSpanJsonlWriter({ stateRoot: p.stateRoot, clock: CLOCK, pid: 4242 });
+    database.authority.runs.enqueue(QUEUED_RUN);
+    const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock: CLOCK, pid: 4242 });
     emitter.emit({ t: "run.queued", kind: "run", ts: CLOCK.now().toISOString(), workflow: e.workflow, runId: e.runId, attempt: e.attempt,
       traceId: e.traceId, spanPath: e.traceId, itemId: e.itemId, shape: e.shape, priority: e.priority, dryRun: false,
       actorId: "local-operator", title: "Synthetic missing-authority fixture", descriptorVersion: e.descriptorVersion, contractFingerprint: e.contractFingerprint,
       resolvedInstance: e.resolvedInstance, configFingerprint: e.configFingerprint, configSnapshotId: e.configSnapshotId });
     emitter.emit({ t: "transaction.fenced", ts: CLOCK.now().toISOString(), workflow: e.workflow, runId: e.runId, attempt: e.attempt,
       traceId: e.traceId, spanPath: `${e.traceId}/synthetic-write`, parentSpanPath: e.traceId, node: "synthetic-write", taskId: "ucpath/synthetic-write" });
-    const beforeRestore = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "timeline-restore-proof" }, CLOCK);
-    try {
-      const timeline = createTimelineEmitter({ repository: beforeRestore.authority.timelineEvents, clock: CLOCK, pid: 4242 });
-      for (const name of readdirSync(join(p.stateRoot, "spans"))) {
-        for (const line of readFileSync(join(p.stateRoot, "spans", name), "utf8").trimEnd().split("\n")) timeline.emit(JSON.parse(line));
-      }
-      assert.equal(beforeRestore.authority.timelineEvents.page({}).length, 2);
-    } finally { beforeRestore.close(); }
+    assert.equal(database.authority.timelineEvents.page({}).length, 2);
+    database.close();
     const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
     assert.equal(restore.exitCode, 0, restore.output);
     const restoreReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
@@ -101,20 +117,16 @@ describe("cli storage backup", () => {
       problems: z.array(z.object({ state: z.string(), runId: z.string(), possibleExternalWrite: z.boolean().optional() })) }) }).parse(JSON.parse(doctor.output));
     assert.ok(report.spanAuthority.problems.some((problem) => problem.state === "missing"
       && problem.runId === e.runId && problem.possibleExternalWrite === true));
-    const suspect = AuthorityDatabase.open({ path: join(p.stateRoot, "suspects", restoreReport.suspectFileName),
-      busyTimeoutMs: 500, migrationOwner: "preserved-timeline-read", openMode: "storage-doctor-read-only-no-migrate" }, CLOCK);
-    try {
-      assert.ok(suspect.authority.runs.get(e.runId));
-      assert.deepEqual(suspect.authority.timelineEvents.page({}).map((record) =>
-        record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), ["run.queued", "transaction.fenced"]);
-    } finally { suspect.close(); }
+    const preserved = NativeAuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, join(p.stateRoot, "backups", "suspects", restoreReport.suspectFileName), 500, true);
+    assert.ok(preserved.recoveryEvidence?.runs.some(run => run.runId === e.runId));
+    assert.deepEqual(preserved.records.map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), ["run.queued", "transaction.fenced"]);
     for (let count = 0; count < 2; count++) {
-      const reopened = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "missing-stays-absent" }, CLOCK);
+      const reopened = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "missing-stays-absent" }, CLOCK);
       try { assert.deepEqual(new RunRecordService({ database: reopened, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("read must never publish"); } }).read(e.runId), { state: "absent", runId: e.runId });
         assert.equal(reopened.authority.runs.get(e.runId), undefined); assert.equal(reopened.authority.deletedRuns.get(e.runId), undefined); }
       finally { reopened.close(); }
     }
-    const next = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "new-identity-after-restore" }, CLOCK);
+    const next = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "new-identity-after-restore" }, CLOCK);
     try {
       const nextId = randomUUID(); next.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...e, runId: nextId } });
       assert.equal(next.authority.runs.get(e.runId), undefined); assert.ok(next.authority.runs.get(nextId));
@@ -122,9 +134,9 @@ describe("cli storage backup", () => {
   });
   it("reports a lost write attempt even when the restored run still exists at the same version", async () => {
     const p = paths(); createAuthority(p);
-    const initial = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "retained-restore-owner" }, CLOCK);
+    const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "retained-restore-owner" }, CLOCK);
     try {
-      seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT);
+      seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT, p.authorityPath);
       const run = initial.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
       if (run === undefined) throw new Error("missing owner");
       createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
@@ -132,7 +144,7 @@ describe("cli storage backup", () => {
     } finally { initial.close(); }
     assert.equal((await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot)).exitCode, 0);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
-    const newer = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "newer-write" }, CLOCK);
+    const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "newer-write" }, CLOCK);
     try { newer.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); }
     finally { newer.close(); }
     const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
@@ -152,20 +164,20 @@ describe("cli storage backup", () => {
   it.each(["corrupt", "file-symlink", "directory-symlink", "changed-during-read"] as const)(
     "refuses %s preserved authority evidence without leaking supplied content", async (damage) => {
       const p = paths(); createAuthority(p);
-      const directory = join(p.stateRoot, "suspects");
+      const directory = join(p.stateRoot, "backups", "suspects");
       const name = "suspect-20260903120000000-87000000-0000-4000-8000-000000000008.sqlite";
       const source = join(directory, name);
       const privateText = "synthetic-preserved-private-value";
-      if (damage === "directory-symlink") symlinkSync(p.backupDirectory, directory);
+      if (damage === "directory-symlink") { mkdirSync(join(p.stateRoot, "backups"), { recursive: true }); symlinkSync(p.backupDirectory, directory); }
       else {
-        mkdirSync(directory);
+        mkdirSync(directory, { recursive: true });
         if (damage === "file-symlink") symlinkSync(p.authorityPath, source);
         else if (damage === "corrupt") writeFileSync(source, privateText);
         else copyFileSync(p.authorityPath, source);
       }
-      const original = AuthorityDatabase.inspectTimelineReadOnly.bind(AuthorityDatabase);
-      const spy = vi.spyOn(AuthorityDatabase, "inspectTimelineReadOnly").mockImplementation((path, timeout, recovery) => {
-        const result = original(path, timeout, recovery);
+      const original = NativeAuthorityDatabase.inspectTimelineReadOnly.bind(NativeAuthorityDatabase);
+      const spy = vi.spyOn(NativeAuthorityDatabase, "inspectTimelineReadOnly").mockImplementation((admission, path, timeout, recovery) => {
+        const result = original(admission, path, timeout, recovery);
         if (damage === "changed-during-read" && path === name) writeFileSync(path, privateText);
         return result;
       });
@@ -180,7 +192,7 @@ describe("cli storage backup", () => {
 
   it.each(["database count", "file count", "bytes"] as const)("bounds preserved authority %s", async (limit) => {
     const p = paths(); createAuthority(p);
-    const directory = join(p.stateRoot, "suspects"); mkdirSync(directory);
+    const directory = join(p.stateRoot, "backups", "suspects"); mkdirSync(directory, { recursive: true });
     const count = limit === "file count" ? 385 : limit === "database count" ? 129 : 1;
     for (let index = 0; index < count; index++) {
       const name = `suspect-20260903120000000-87000000-0000-4000-8000-${String(index).padStart(12, "0")}.sqlite`;
@@ -196,18 +208,22 @@ describe("cli storage backup", () => {
 
   it("accounts a preserved run after explicit deletion without reviving it", async () => {
     const p = paths(); createAuthority(p);
-    const initial = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "deleted-preserved-owner" }, CLOCK);
+    const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "deleted-preserved-owner" }, CLOCK);
     try {
       initial.authority.runs.enqueue(QUEUED_RUN);
       createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
         runQueuedSpanEvent({ run: RunRecordSchema.parse(QUEUED_RUN), actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Deleted restore owner" }));
-      initial.authority.runs.transition({ runId: QUEUED_RUN.envelope.runId, expectedVersion: QUEUED_RUN.version,
-        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: CLOCK.now().toISOString() }, now: CLOCK.now().toISOString() });
+      new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("fixture must not enqueue"); } }).transition({ commandId: randomUUID(), runId: QUEUED_RUN.envelope.runId, expectedVersion: QUEUED_RUN.version,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: CLOCK.now().toISOString() } });
     } finally { initial.close(); }
-    const directory = join(p.stateRoot, "suspects"); mkdirSync(directory);
+    const directory = join(p.stateRoot, "backups", "suspects"); mkdirSync(directory, { recursive: true });
     copyFileSync(p.authorityPath, join(directory, "suspect-20260903120000000-87000000-0000-4000-8000-000000000009.sqlite"));
-    const current = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "delete-preserved-owner" }, CLOCK);
-    try { current.authority.runs.delete({ runId: QUEUED_RUN.envelope.runId, origin: "queue", commandId: randomUUID(), now: CLOCK.now().toISOString() }); }
+    const current = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "delete-preserved-owner" }, CLOCK);
+    try {
+      const service = new RunRecordService({ database: current, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("fixture must not enqueue"); } });
+      const run = current.authority.runs.get(QUEUED_RUN.envelope.runId); assert.ok(run);
+      assert.equal(service.delete({ runId: run.envelope.runId, expectedVersion: run.version, commandId: randomUUID() }).state, "deleted");
+    }
     finally { current.close(); }
     const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
     assert.equal(doctor.exitCode, 0, doctor.output);
@@ -225,14 +241,13 @@ describe("cli storage backup", () => {
     const before = readdirSync(p.repoRoot);
     const plan = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--plan", "--json"], CLOCK, p.repoRoot);
     assert.equal(plan.exitCode, 0, plan.output);
-    const planned = z.object({ importedKeys: z.array(z.string()), envKeysToRemove: z.array(z.string()), credentials: z.literal("unchanged") }).parse(JSON.parse(plan.output));
-    assert.deepEqual(planned.importedKeys, []);
-    assert.deepEqual(planned.envKeysToRemove, []);
+    const planned = z.object({ credentials: z.literal("unchanged") }).parse(JSON.parse(plan.output));
+    assert.equal(planned.credentials, "unchanged");
     assert.deepEqual(readdirSync(p.repoRoot), before);
     const applied = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--json"], CLOCK, p.repoRoot);
     assert.equal(applied.exitCode, 0, applied.output);
-    assert.deepEqual(JSON.parse(applied.output), { ...JSON.parse(plan.output), state: "converted" });
-    const database = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "cleanup-only-proof" }, CLOCK);
+    assert.deepEqual(JSON.parse(applied.output), { ...JSON.parse(plan.output), state: "initialized" });
+    const database = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "cleanup-only-proof" }, CLOCK);
     try { assert.deepEqual(readSettings(database.authority).settings, {}); }
     finally { database.close(); }
     assert.equal(createCredentialStore({ stateRoot: p.stateRoot }).read().revision, 1);
@@ -258,7 +273,7 @@ describe("cli storage backup", () => {
     writeFileSync(join(p.repoRoot, ".env"), source, { mode: 0o600 });
     const result = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--plan", "--json"], CLOCK, p.repoRoot);
     assert.equal(result.exitCode, 0);
-    assert.deepEqual(z.object({state:z.literal("planned"),importedKeys:z.array(z.string()),credentials:z.literal("unchanged")}).parse(JSON.parse(result.output)),{state:"planned",importedKeys:[],credentials:"unchanged"});
+    assert.deepEqual(z.object({state:z.literal("planned"),credentials:z.literal("unchanged")}).parse(JSON.parse(result.output)),{state:"planned",credentials:"unchanged"});
     assert.equal(result.output.includes("synthetic-invalid-private-input"), false); assert.equal(existsSync(p.stateRoot), false);
     assert.equal(readFileSync(join(p.repoRoot, ".env"), "utf8"), source);
   });
@@ -332,7 +347,7 @@ describe("cli storage backup", () => {
     assert.equal(restored.output.includes("synthetic-malformed-credential-canary"), false);
     if (credentialState === "malformed") assert.equal(readFileSync(credentialPath, "utf8"), "synthetic-malformed-credential-canary");
     else assert.equal(existsSync(join(p.stateRoot, "credentials")), false);
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(p.authorityPath).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(NativeAuthorityDatabase.inspectExistingReadOnly(admissions.get(p.repoRoot)!, p.authorityPath).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   });
 
 });
@@ -342,38 +357,36 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   const p = paths(); createAuthority(p);
   const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
   const inspect = (path: string) => {
-    const db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "r1c-read",
-      openMode: "storage-doctor-read-only-no-migrate" }, CLOCK);
-    try {
-      const run = db.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId); assert.ok(run);
-      const attempt = db.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId); assert.ok(attempt);
+    return withAuthorityDatabaseReadOnly(admissions.get(p.repoRoot)!, path, db => {
+      const run = runRecordFromRow(db.prepare("SELECT * FROM runs WHERE id=?").get(WRITE_INTENT_ATTEMPTING.runId));
+      const attempt = WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts", db.prepare("SELECT * FROM write_attempts WHERE id=?").get(WRITE_ATTEMPT.writeAttemptId)));
+      const intent = WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", db.prepare("SELECT * FROM write_intents WHERE id=?").get(WRITE_INTENT_ATTEMPTING.writeIntentId)));
       return { runId: run.envelope.runId, version: run.version, lifecycle: run.lifecycle.state,
         claimedAt: "claimedAt" in run.lifecycle ? run.lifecycle.claimedAt : undefined, claimGeneration: run.claimGeneration,
-        attemptId: attempt.writeAttemptId, outcome: attempt.outcome.state,
-        operationStatus: db.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status,
-        checkpoint: db.authority.runCheckpoints.get(checkpoint.workflowId, checkpoint.itemId,
-          checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration) !== undefined,
-        events: db.authority.timelineEvents.page({}).map((record) => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind) };
-    } finally { db.close(); }
+        attemptId: attempt.writeAttemptId, outcome: attempt.outcome.state, operationStatus: intent.status,
+        checkpoint: db.prepare("SELECT 1 FROM run_checkpoints WHERE id=?").get(checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)) !== undefined,
+        events: db.prepare("SELECT * FROM timeline_events ORDER BY cursor").all().map(timelineEventFromRow).map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind) };
+    }, 500);
   };
-  const initial = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-seed" }, CLOCK);
+  let owningWorkerId: ReturnType<typeof WorkerIdSchema.parse>;
+  const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-seed" }, CLOCK);
   try {
-    seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT);
+    seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT, p.authorityPath);
     const queued = initial.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId); assert.ok(queued);
     createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
       runQueuedSpanEvent({ run: queued, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic restored commit" }));
-    const claim = initial.authority.runs.claimNext({ workflow: WRITE_INTENT_ATTEMPTING.workflowId,
-      workerId: "r1c-restore-worker", now: CLOCK.now().toISOString() });
-    assert.equal(claim.state, "claimed");
+    assert.equal(queued.lifecycle.state, "claimed");
+    if (queued.lifecycle.state !== "claimed") throw new Error("native fixture must retain claimed owner");
+    owningWorkerId = queued.lifecycle.workerId;
     const service = new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID },
       publishQueued: () => { throw new Error("test must not enqueue"); } });
     const validating = service.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId,
-      claim: { workerId: "r1c-restore-worker", claimGeneration: 1 }, lifecycle: { state: "validating",
-        workerId: "r1c-restore-worker", claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString() } });
+      claim: { workerId: owningWorkerId, claimGeneration: 1 }, lifecycle: { state: "validating",
+        workerId: owningWorkerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString() } });
     assert.equal(validating.state, "applied", JSON.stringify(validating));
     const running = service.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId,
-      claim: { workerId: "r1c-restore-worker", claimGeneration: 1 }, lifecycle: { state: "running",
-        workerId: "r1c-restore-worker", claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString(),
+      claim: { workerId: owningWorkerId, claimGeneration: 1 }, lifecycle: { state: "running",
+        workerId: owningWorkerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString(),
         currentNodeId: checkpoint.nodeId } });
     assert.equal(running.state, "applied");
     initial.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
@@ -384,11 +397,11 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   assert.equal(backup.exitCode, 0, backup.output);
   let manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
   CLOCK.setWall(new Date(ATOMIC_WRITE_COMMIT.confirmedAt));
-  const newer = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-commit" }, CLOCK);
+  const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "r1c-commit" }, CLOCK);
   try {
     const service = new RunRecordService({ database: newer, clock: CLOCK, ids: { uuid: randomUUID },
       publishQueued: () => { throw new Error("test must not enqueue"); } });
-    const claim = { workerId: WorkerIdSchema.parse("r1c-restore-worker"),
+    const claim = { workerId: owningWorkerId,
       claimGeneration: PositiveIntSchema.parse(before.claimGeneration) };
     executeSequencedWriteCommit(newer, { run: { runId: before.runId, expectedVersion: before.version, claim },
       commit: currentAtomicWriteFixture(ATOMIC_WRITE_COMMIT), checkpoint }, { kind: "advance-running", claim, claimedAt: before.claimedAt!,
@@ -410,16 +423,16 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   const restoredReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
   const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
   const current = inspect(p.authorityPath);
-  const preserved = inspect(join(p.stateRoot, "suspects", restoredReport.suspectFileName));
+  const preserved = inspect(join(p.stateRoot, "backups", "suspects", restoredReport.suspectFileName));
   assert.deepEqual(current, backupAfterCommit ? committed : before); assert.deepEqual(preserved, committed);
   assert.equal(doctor.exitCode, backupAfterCommit ? 0 : 1, doctor.output);
   if (backupAfterCommit) {
-    const healthy = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-control" }, CLOCK);
+    const healthy = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-control" }, CLOCK);
     try {
       const service = new RunRecordService({ database: healthy, clock: CLOCK, ids: { uuid: randomUUID },
         publishQueued: () => { throw new Error("test must not enqueue"); } });
       assert.equal(service.renewClaim({ commandId: randomUUID(), runId: current.runId,
-        claim: { workerId: "r1c-restore-worker", claimGeneration: current.claimGeneration } }).state, "applied");
+        claim: { workerId: owningWorkerId, claimGeneration: current.claimGeneration } }).state, "applied");
     } finally { healthy.close(); }
     const accounted = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
     assert.equal(accounted.exitCode, 0, accounted.output);
@@ -427,7 +440,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     return;
   }
   CLOCK.advanceWall(60 * 60 * 1000);
-  const mutationDb = AuthorityDatabase.open({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-sweep" }, CLOCK);
+  const mutationDb = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restore-sweep" }, CLOCK);
   try {
     const service = new RunRecordService({ database: mutationDb, clock: CLOCK, ids: { uuid: randomUUID },
       publishQueued: () => { throw new Error("test must not enqueue"); } });

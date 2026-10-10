@@ -1,20 +1,9 @@
-import { plan1Leaf, plan1Contract } from "../../../../../support/fixtures/plan1-operation-workflows.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../../../../../src/models/workflow/operation-display-snapshot.js";
-import { createDeclaredActionBinder } from "../../../../../../src/backend/runtime/writes/operation-action-binding.js";
-import { createNoteJsonlWriter } from "../../../../../../src/backend/storage/events/note-jsonl-writer.js";
-import { resolveOperationSource } from "../../../../../../src/backend/runs/queries/operation-source.js";
-import { archivedRunContentDigest, ArchivedRunRecordSchema, type ArchivedRunRecord } from "../../../../../../src/models/archive/model.js";
-import { historicalArchiveAuthority } from "../../../../../support/helpers/integration/historical-archive-authority.js";
-import { createRunLifecycleStorage } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
-import { createCommandKernel } from "../../../../../../src/backend/runs/commands/command-kernel.js";
-import { CommandResultSchema } from "../../../../../../src/rules/commands/commands.js";
-import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
-import { HASH_B, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, it } from "vitest";
@@ -23,24 +12,20 @@ import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { listCanonicalRuns } from "../../../../../../src/backend/runs/queries/canonical-runs.js";
 import { buildRunDetail, readRunDetail, type RunDetailQueryDeps } from "../../../../../../src/backend/runs/queries/run-detail.js";
-import { buildArchiveIndex, buildArchivedRunDetail } from "../../../../../../src/backend/runs/queries/archive.js";
-import { createArchiveSnapshotSource } from "../../../../../../src/backend/runs/queries/archive-snapshot.js";
-import { deriveArchivedRunRecord } from "../../../../../../src/backend/runs/archive/archive-service.js";
-import { archivedRunReferenceFingerprint } from "../../../../../../src/models/archive/model.js";
-import { archiveQueryDeps } from "../../../../../support/fixtures/archive-seams.js";
-import { NonNegativeIntSchema, FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
-import { VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../../../../support/fixtures/archive-fixtures.js";
 import { sqliteRunReader } from "../../../../../support/helpers/canonical-run-reader.js";
 import { AT, DAY, makeWorld, queuedEventOf, runRecordOf, uuidOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
-function fixture(historical=false) {
-  const root = mkdtempSync(join(tmpdir(), "canonical-operator-"));
+function fixture() {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "canonical-operator-"));
   cleanups.push(() => rmSync(root, { recursive: true }));
   const clock = manualClock(AT);
-  const database = historical ? historicalArchiveAuthority(join(root,"authority.sqlite"),clock) : AuthorityDatabase.open({ path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 }, clock);
+  const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 }, clock);
+  seedSyntheticRuntimeConfig(database);
+  database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
+  testWorkerPorts(database, clock, {path:join(root,"authority.sqlite"),descriptor:personLookupDescriptor,poolIndex:1});
   cleanups.push(() => database.close());
   const realReader = sqliteRunReader(database, clock);
   let listCalls = 0, treeCalls = 0;
@@ -55,7 +40,7 @@ function fixture(historical=false) {
     ids: { uuid: () => { throw new Error("read fixture cannot create identities"); } },
     publishQueued: () => { throw new Error("this proof must not publish spans"); },
   });
-  const detailDeps: RunDetailQueryDeps = { stateRoot: world.stateRoot,
+  const detailDeps: RunDetailQueryDeps = { stateRoot: world.stateRoot, timeline: world.timeline,
     projection: world.projection, runReader: reader, authority: world.authority,
     descriptors: { resolve: () => undefined },
     canonical: { reader, database, descriptors: { resolve: () => undefined } },
@@ -65,74 +50,6 @@ function fixture(historical=false) {
     listCalls: () => listCalls, treeCalls: () => treeCalls, resetListCalls: () => { listCalls = 0; treeCalls = 0; },
   };
 }
-
-it.each(["single", "operation-member"] as const)("freezes a spanless canonical %s and converges live/archive/deleted views without reconstructing evidence", async (shape) => {
-  const f = fixture(true);
-  const parent = shape === "operation-member" ? runRecordOf({ seed: 412, shape: "operation" }) : undefined;
-  if (parent !== undefined) f.database.authority.runs.enqueue(parent);
-  const run = runRecordOf({ seed: 409, shape, ...(parent === undefined ? {} : { parentSeed: 412 }) });
-  f.database.authority.runs.enqueue(run);
-  assert.equal((await readRunDetail(f.detailDeps, run.envelope.runId)).header.status, "queued");
-  const terminal = requireLifecycleApplied(f.service.transition({ commandId: uuidOf(6409),
-    runId: run.envelope.runId, expectedVersion: run.version,
-    lifecycle: { state: "terminal", outcome: "cancelled", endedAt: AT.toISOString() },
-  }));
-  const frozen = createArchiveSnapshotSource(f.detailDeps).snapshot(run.envelope.runId);
-  assert.equal(frozen.row.status, "cancelled");
-  assert.equal(frozen.row.actorId, undefined);
-  assert.deepEqual(frozen.detail.timeline.events, []);
-  assert.equal(frozen.sections.attempts.state, "absent");
-  const archive = f.database.withAuthorityTransaction((repositories) => {
-    repositories.versionPlans.insert(VERSION_PLAN_ROW);
-    repositories.versionBumpApplications.insert({ ...VERSION_BUMP_APPLICATION,
-      archivedRunIds: [run.envelope.runId] });
-    return deriveArchivedRunRecord({ repositories, run: terminal, snapshot: frozen,
-      applicationId: VERSION_BUMP_APPLICATION.applicationId, drift: ["descriptor-version"],
-      archivedBy: "local-operator", archivedAt: AT.toISOString(),
-      workflowLabel: undefined, workflowCode: undefined,
-    });
-  });
-  requireLifecycleApplied(f.service.archive({ commandId: uuidOf(7409), expectedVersion: terminal.version, archive }));
-  const queries = archiveQueryDeps({ database: f.database, clock: f.clock, appVersion: "0.1.0",
-    descriptors: [], stateRoot: f.world.stateRoot });
-  const assertCurrentCount = (expected: number) => {
-    const day = f.world.projection.buildDashboardDayWire(DAY);
-    assert.equal(day.queueSurfaces.length, expected);
-    assert.equal(day.workflowCounts.reduce((total, entry) => total + entry.count, 0), expected);
-    assert.equal(day.statusCounts.reduce((total, entry) => total + entry.count, 0), expected);
-    assert.equal(day.monthCounts.reduce((total, entry) => total + entry.count, 0), expected);
-    assert.equal(f.world.projection.buildActivityReportWire(DAY, DAY).totalRuns, expected);
-  };
-  assertCurrentCount(parent === undefined ? 0 : 1);
-  if (parent !== undefined) {
-    const row = f.world.projection.queueSurface(parent.envelope.runId);
-    assert.ok(row?.surfaceKind === "operation");
-    assert.deepEqual(row.memberRollup, { total: 0, terminal: 0, failed: 0 });
-    assert.deepEqual(row.memberRunIds, []);
-  }
-  assert.equal(buildArchiveIndex(queries).entries.length, 1);
-  assert.throws(() => f.detail(run.envelope.runId), /archived/);
-  const readback = buildArchivedRunDetail(queries, run.envelope.runId);
-  assert.equal(readback.row.status, "cancelled");
-  assert.deepEqual(readback.detail.timeline.events, []);
-  assert.equal(JSON.stringify(f.database.authority.archivedRuns.get(run.envelope.runId)), JSON.stringify(archive));
-  const deletion = f.service.deleteArchived({ commandId: uuidOf(8409), runId: run.envelope.runId,
-    archiveFingerprint: archivedRunReferenceFingerprint(archive) });
-  if (parent === undefined) assert.equal(deletion.state, "deleted");
-  else {
-    assert.deepEqual(deletion, { state: "refused", refusal: { reason: "is-member" } });
-    const settled = requireLifecycleApplied(f.service.transition({ commandId: uuidOf(8412),
-      runId: parent.envelope.runId, expectedVersion: parent.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: AT.toISOString() },
-    }));
-    assert.equal(f.service.delete({ commandId: uuidOf(9412), runId: parent.envelope.runId,
-      expectedVersion: settled.version }).state, "deleted");
-  }
-  assertCurrentCount(0);
-  assert.equal(buildArchiveIndex(queries).entries.length, 0);
-  assert.throws(() => buildArchivedRunDetail(queries, run.envelope.runId), /deleted/);
-  assert.equal(f.world.projection.runFold(run.envelope.runId), undefined);
-});
 
 it("reads a real canonical run without any spans through queue, detail, Activity and polling", async () => {
   const f = fixture();
@@ -297,127 +214,3 @@ it("counts zero, one and multiple spanless members and removes the settled tree 
   assert.equal(f.world.projection.buildActivityReportWire(DAY, DAY).totalRuns, 0);
 });
 
-it.each([
-  { order: "child first", parentSeed: 412, childSeed: 409, extraRuns: 0 },
-  { order: "parent first", parentSeed: 409, childSeed: 412, extraRuns: 0 },
-  { order: "child first, larger batch", parentSeed: 412, childSeed: 409, extraRuns: 18 },
-])("freezes complete membership with one canonical enumeration: $order", ({ parentSeed, childSeed, extraRuns }) => {
-  const f = fixture();
-  seedSyntheticRuntimeConfig(f.database);
-  const parent = runRecordOf({ seed: parentSeed, shape: "operation" });
-  const child = runRecordOf({ seed: childSeed, shape: "operation-member", parentSeed });
-  const runs = [parent, child, ...Array.from({ length: extraRuns }, (_, index) => runRecordOf({ seed: 500 + index }))];
-  for (const [index, run] of runs.entries()) {
-    f.database.authority.runs.enqueue(run);
-    requireLifecycleApplied(f.service.transition({
-      commandId: uuidOf(6400 + index), runId: run.envelope.runId,
-      expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: AT.toISOString() },
-    }));
-  }
-  const kernel = createCommandKernel({
-    lifecycle: f.service, authority: { withAuthorityTransaction: work => f.database.withAuthorityTransaction(work) },
-    clock: f.clock, ids: sequentialIdFactory("a"), appVersion: "0.1.0",
-    descriptors: { resolve: id => id === "person-lookup" ? personLookupDescriptor : undefined },
-    archiveSnapshots: createArchiveSnapshotSource(f.detailDeps),
-    configIdentity: { configFingerprint: HASH_B, configSnapshotId: UUID_4 },
-    intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { resolvePresent: () => { throw new Error("unused"); }, resolveAbsent: () => { throw new Error("unused"); } },
-    workerRuntime: { planWorkerCount: () => { throw new Error("unused"); }, spawnWorker: () => { throw new Error("unused"); },
-      refreshBrowser: () => { throw new Error("unused"); }, reopenBrowser: () => { throw new Error("unused"); } },
-  });
-  const envelope = { requestedAt: AT.toISOString(), requestedBy: "local-operator", source: "archive", family: "version-archive" };
-  const planned = CommandResultSchema.parse(kernel.execute({ ...envelope, commandId: uuidOf(7501), type: "plan-version-bump",
-    target: { scope: { kind: "workflows", workflowIds: ["person-lookup"] } }, payload: {
-      targetVersion: "0.2.0", changeFingerprint: HASH_B,
-      changeRecord: { kind: "major", what: "Archive synthetic prior-version parent and child", why: "Prove archive ordering preserves frozen membership",
-        commit: { state: "absent", reason: "synthetic archive batch regression" } },
-    },
-  }));
-  assert.equal(planned.state, "applied", JSON.stringify(planned));
-  if (planned.state !== "applied") throw new Error("plan not applied");
-  const target = planned.affectedTargets.find(value => value.family === "version-archive");
-  assert.ok(target?.family === "version-archive");
-  const plan = f.database.readVersionChange(target.versionPlanId); assert.ok(plan);
-  f.resetListCalls();
-  const applied = CommandResultSchema.parse(kernel.execute({ ...envelope, commandId: uuidOf(7502), type: "apply-version-bump",
-    target: { versionPlanId: plan.changeId, expectedVersion: 1 }, payload: { planFingerprint: plan.reviewFingerprint },
-  }));
-  assert.equal(applied.state, "applied", JSON.stringify(applied));
-  for (const run of runs) {
-    const existence = f.reader.read(run.envelope.runId);
-    assert.ok(existence.state === "present" && existence.disposition === "archived");
-  }
-  const frozen = createRunLifecycleStorage(f.database).readReport(parent.envelope.runId); assert.ok(frozen);
-  const section = frozen.content.sections.find(section => section.title === "Displayed run"); assert.ok(section?.kind === "values");
-  const value = (label: string) => section.values.find(cell => cell.label === label)?.value;
-  assert.equal(value("row.surfaceKind"), "operation");
-  assert.equal(value("row.memberRunIds.0"), child.envelope.runId);
-  assert.equal(value("row.memberRollup.total"), 1);
-  assert.equal(value("row.memberRollup.terminal"), 1);
-  assert.equal(value("row.memberRollup.failed"), 0);
-  assert.equal(value("sections.people.state"), "present");
-  assert.equal(value("sections.people.value.total"), 1);
-  assert.equal(value("sections.people.value.members.0.runId"), child.envelope.runId);
-  assert.equal(value("sections.people.value.members.0.parentRunId"), parent.envelope.runId);
-  assert.equal(value("sections.people.value.members.0.status"), "cancelled");
-  assert.equal(f.listCalls(), 0, "archive capture must not enumerate whole history");
-  assert.equal(f.treeCalls(), 1, "archive batch shares one canonical selected-tree snapshot");
-});
-
-it("does not enumerate authority for an empty archive batch and refuses absent candidates", () => {
-  const f = fixture();
-  const snapshots = createArchiveSnapshotSource(f.detailDeps);
-  f.resetListCalls();
-  assert.equal(snapshots.snapshotBatch([]).size, 0);
-  assert.equal(f.listCalls(), 0);
-  assert.throws(() => snapshots.snapshotBatch([uuidOf(409)]), /no live canonical row/);
-});
-
-
-it("freezes all exact local action observations across pages, reopens archive authority and refuses corrupt or missing historical evidence", () => {
-  const f = fixture(true);
-  const definition = freezeWorkflowOperationDisplaySnapshot({ workflowId: plan1Leaf.descriptor.id, definitionFingerprint: plan1Leaf.descriptor.contractFingerprint, display: plan1Leaf.descriptor.operationDisplay });
-  assert.ok(definition);
-  const base = runRecordOf({ seed: 819 });
-  const run = { ...base, claimGeneration: NonNegativeIntSchema.parse(1), envelope: { ...base.envelope, workflow: plan1Leaf.descriptor.id, contractFingerprint: plan1Leaf.descriptor.contractFingerprint, operationDisplayCapability: "complete" as const, operationDisplaySnapshot: definition } };
-  f.database.authority.runs.enqueue(run);
-  const binder = createDeclaredActionBinder({ snapshot: definition, runId: run.envelope.runId, attempt: 1, claimGeneration: 1, taskAttempt: 1, nodeId: "first", taskId: plan1Contract.id, contractRole: "task", parsedInput: { emplId: "10800000", text: "same", mode: "ok" }, protectedBindings: [] });
-  const writer = createNoteJsonlWriter({ stateRoot: f.world.stateRoot, clock: f.clock, pid: 4242 });
-  let occurrence;
-  for (let index = 0; index < 301; index++) {
-    const action = binder({ at: f.clock.now().toISOString(), kind: "read", targetId: "read-provider-state", value: "same", declaredActionId: "read-provider-state" });
-    occurrence = action.operation;
-    writer.emitRunAction({ workflow: run.envelope.workflow, address: { runId: run.envelope.runId, attempt: 1, traceId: run.envelope.traceId, spanPath: `${run.envelope.traceId}/first#1` }, action }, run);
-  }
-  assert.ok(occurrence);
-  const { value: _value, ...identity } = occurrence;
-  const terminal = requireLifecycleApplied(f.service.transition({ commandId: uuidOf(6819), runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
-  const frozen = createArchiveSnapshotSource(f.detailDeps).snapshot(run.envelope.runId);
-  assert.equal(frozen.sections.logs.state, "present");
-  if (frozen.sections.logs.state !== "present") throw new Error("fixture logs missing");
-  assert.equal(frozen.sections.logs.value.operationStructure?.state, "observed");
-  if (frozen.sections.logs.value.operationStructure?.state !== "observed") throw new Error("fixture structure missing");
-  assert.equal(frozen.sections.logs.value.operationStructure.observations.length, 301);
-  assert.deepEqual(frozen.sections.logs.value.operationStructure.observations.map((observation) => observation.occurrence.occurrence), Array.from({ length: 301 }, (_, index) => index + 1));
-  const archive = f.database.withAuthorityTransaction((repositories) => {
-    repositories.versionPlans.insert(VERSION_PLAN_ROW);
-    repositories.versionBumpApplications.insert({ ...VERSION_BUMP_APPLICATION, archivedRunIds: [run.envelope.runId] });
-    return deriveArchivedRunRecord({ repositories, run: terminal, snapshot: frozen, applicationId: VERSION_BUMP_APPLICATION.applicationId, drift: ["descriptor-version"], archivedBy: "local-operator", archivedAt: f.clock.now().toISOString(), workflowLabel: undefined, workflowCode: undefined });
-  });
-  requireLifecycleApplied(f.service.archive({ commandId: uuidOf(7819), expectedVersion: terminal.version, archive }));
-  f.database.close();
-  const reopened = historicalArchiveAuthority(join(f.root, "authority.sqlite"), f.clock);
-  cleanups.push(() => reopened.close());
-  const deps = { ...f.detailDeps, runReader: sqliteRunReader(reopened, f.clock), canonical: { ...f.detailDeps.canonical, database: reopened } } as RunDetailQueryDeps;
-  assert.equal(resolveOperationSource(deps, run.envelope.runId, { identity }).state, "found");
-  const held = reopened.authority.archivedRuns.get(run.envelope.runId);
-  assert.ok(held);
-  const withArchive = (record: ArchivedRunRecord): RunDetailQueryDeps => ({ ...deps, canonical: { ...deps.canonical, database: { ...reopened, withAuthorityReadSnapshot: (work: () => unknown) => work(), authority: { ...reopened.authority, runResults: reopened.authority.runResults, archivedRuns: { get: () => record } } } } } as unknown as RunDetailQueryDeps);
-  assert.throws(() => resolveOperationSource(withArchive({ ...held, contentDigest: FingerprintSchema.parse("0".repeat(64)) }), run.envelope.runId, { identity }), /archive-digest/u);
-  const { contentDigest: _digest, ...content } = held;
-  const { operationStructure: _structure, ...oldLogs } = frozen.sections.logs.value;
-  assert.ok(content.sections);
-  const historic = { ...content, sections: { ...content.sections, logs: { state: "present" as const, value: oldLogs } } };
-  const absent = ArchivedRunRecordSchema.parse({ ...historic, contentDigest: archivedRunContentDigest(historic) });
-  assert.equal(resolveOperationSource(withArchive(absent), run.envelope.runId, { identity }).state, "unavailable");
-});

@@ -61,6 +61,8 @@ function sessionFactory(options: Readonly<{
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
           configFingerprint: input.configFingerprint,
+          signInFingerprint: input.configFingerprint,
+          profileRevision: 1,
           ...(input.browserMode === undefined ? {} : { browserMode: input.browserMode }),
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
@@ -68,7 +70,7 @@ function sessionFactory(options: Readonly<{
           async screenshot() {
             screenshots += 1;
             if (options.screenshotFailure === true) throw new Error("injected screenshot persistence failure");
-            return { bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 };
+            return { state: "available" as const, sessionId, pageVersion: 1, observedAt: "2026-08-02T18:00:00.000Z", bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 };
           },
           authentication: {
             authenticate(system, authOptions) {
@@ -142,7 +144,7 @@ function manager(
     duoCeremony: fixtureDuoCeremonyGates(clock),
     onEvent: (event) => events.push(event),
     ...(options.browserScreenshotCapture === undefined
-      ? {}
+      ? { browserScreenshotCapture: { capture: async () => undefined } }
       : { browserScreenshotCapture: options.browserScreenshotCapture }),
   });
 
