@@ -13,7 +13,7 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
 async function setup() {
   const h = rerunValuesHarness(); const w = makeWorld(); disposers.push(h.dispose, () => w.dispose());
   const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "done"); const run = h.fresh(queued);
-  const deps = { stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
+  const deps = { stateRoot: w.stateRoot, timeline:w.timeline, projection: w.projection, authority: w.authority,
     descriptors: { resolve: () => undefined }, runReader: h.lifecycle,
     canonical: { reader: h.lifecycle, database: h.database, descriptors: { resolve: () => h.descriptor } } };
   const data = composeDataQueries(deps); const app: DashboardApp = new Hono();

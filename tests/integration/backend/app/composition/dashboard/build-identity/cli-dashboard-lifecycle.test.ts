@@ -73,7 +73,7 @@ function requirePrivateEnvironmentFile(root: string): void {
 }
 
 
-function createScratchRepoRoot(backendPort = rebuildRuntimeIsolation.backendPort): string {
+function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.backendPort): string {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "hr-dashboard-lifecycle-"));
   for (const file of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "tsconfig.json"]) {
     cpSync(join(REPO_ROOT, file), join(root, file));

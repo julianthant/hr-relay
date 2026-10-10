@@ -68,12 +68,12 @@ function harness() {
   const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: database, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
     preflight: preflight.admission, configIdentity: identity, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { resolvePresent: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { planWorkerCount: unexpected, spawnWorker: unexpected, refreshBrowser: unexpected, reopenBrowser: unexpected } };
+    workerRuntime: { pool: {planPoolWorkerCount:unexpected,spawnPoolWorker:unexpected,refreshPoolBrowser:unexpected,reopenPoolBrowser:unexpected,stopPoolWorker:unexpected,pausePoolWorker:unexpected,resumePoolWorker:unexpected} } };
   const kernel = createCommandKernel(kernelDependencies);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
   const command = (plan: ReturnType<typeof plans.plan>) => ({ commandId: "99999999-9999-4999-8999-999999999999", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
     target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
-  return { clock, database, identity, preflight, faults, probes, plans, kernel, lifecycle, kernelWith: (workerRuntime: CommandKernelDependencies["workerRuntime"]) => createCommandKernel({ ...kernelDependencies, workerRuntime }), ingress, command, get publications() { return publications; }, changeProtected() {
+  return { clock, database, stateRoot, repoRoot, identity, preflight, faults, probes, plans, kernel, lifecycle, kernelWith: (workerRuntime: CommandKernelDependencies["workerRuntime"]) => createCommandKernel({ ...kernelDependencies, workerRuntime }), ingress, command, get publications() { return publications; }, changeProtected() {
     protectedRecord = ProtectedStoreRecordSchema.parse({ ...protectedRecord, revision: 2,
       lastApplied: { commandId: "77777777-7777-4777-8777-777777777777", commandFingerprint: "7".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "88888888-8888-4888-8888-888888888888" } });
   }, missing() { supportMissing = true; } };
@@ -180,7 +180,7 @@ it("production worker process composition refuses preflight before spawn and adm
   });
   const slot = roster.selected[0]; assert.ok(slot);
   const workerId = slot.workerId;
-  const control = composeWorkerProcessControl({ database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
+  const control = composeWorkerProcessControl({ processLockRoot:join(h.stateRoot,"locks"),profileRoot:join(h.repoRoot,rebuildRuntimeIsolation.browserProfileRoot), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
     preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
     spawn: () => {
       spawns += 1;
