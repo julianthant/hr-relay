@@ -853,7 +853,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     : takeover === "archive" ? "Archive" : takeover === "activity" ? "Analytics" : takeover === "explore" ? "Explorer"
     : takeover === "intake" ? "Edit Data" : route.start ? route.view?.launchSource || route.view?.launchRerun ? "Rerun" : "Run" : railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview)?.label ?? "Unavailable workflow"
     : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
-  useEffect(() => { document.title = `${pageName} — HR GPT`; }, [pageName]);
+  useEffect(() => { document.title = `${pageName} — Relay`; }, [pageName]);
   const previewFlow = railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview) : undefined;
   const railRows = useMemo(() => mockRuns.filter(run => run.workflowId === railPreview), [mockRuns, railPreview]);
   const previewCounts = useMemo(() => mockWorkflowCounts(mockRuns), [mockRuns]);

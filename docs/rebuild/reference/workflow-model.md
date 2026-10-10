@@ -661,7 +661,7 @@ would be a descriptor read on the archived path, which is exactly what charter �
 
 
 ```
-src/workflows/person-lookup/       # rebuild repo (hr-automation-rebuild) — D93
+src/workflows/person-lookup/       # rebuild repo (hr-relay) — D93
 └── workflow.ts       # the ONE authored file: defineWorkflow(...), bundle-safe
                       # (zod + domain, incl. contracts). compileWorkflow derives the
                       # descriptor; composeWorkflowModule derives the server module

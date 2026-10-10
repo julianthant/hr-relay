@@ -2,7 +2,7 @@
 
 Status: **revised 2026-07-22 after the whole-plan/legacy-code review; amended 2026-07-26
 (Round 8, §5.1 — the mobile-capture durability trim, D79d) and 2026-07-31 (Round 11 — standalone
-rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild` repo at plain `src/`);
+rebuild repo, D93: the rebuild lives in its own `hr-relay` repo at plain `src/`);
 **verified against the code and re-ordered 2026-08-21 (docs-cohesion, plan
 `docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md` §3.5).**
 Intake now produces a durable, replayable admission manifest; every data boundary is strict;
