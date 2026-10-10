@@ -126,7 +126,7 @@ it("propagates non-EEXIST mutex mkdir failures without translating them to busy"
   const failure = Object.assign(new Error("injected mkdir access failure"), { code: "EACCES" });
   vi.mocked(filesystem.mkdirSync).mockImplementationOnce(() => { throw failure; });
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
-  assert.equal(String(vi.mocked(filesystem.mkdirSync).mock.calls.at(-1)?.[0]), mutex);
+  assert.match(String(vi.mocked(filesystem.mkdirSync).mock.calls.at(-1)?.[0]), /\/\.admission-mutex-tmp-[1-9]\d*-[0-9a-f]{64}-[0-9a-f-]{36}$/u);
   assert.equal(existsSync(mutex), false);
 });
 it("refuses symlink mutex custody and preserves an immediate exclusive lease conflict", () => {
