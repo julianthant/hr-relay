@@ -633,12 +633,18 @@ export function seedDashboardPerfFixture(): PerfFixture {
   const notes = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
   const context: SeedContext = { database, clock, spans, notes };
 
+  const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
+
   const tally: SeedTally = { all: [], doneRunIds: [], dayRunCount: 0, neighbouringRunCount: 0 };
+  let noteLines = 0;
   database.withAuthorityTransaction(() => {
     seedClaimedRuns(context, tally);
     seedQueuedRuns(context, tally);
+    noteLines = seedNotes(context, tally);
+    for (const runId of tally.doneRunIds.slice(0, PERF_FIXTURE_PROFILE.receiptRunCount)) {
+      trust.ensureReceipt(runId);
+    }
   });
-  const noteLines = seedNotes(context, tally);
   if (noteLines < PERF_FIXTURE_PROFILE.minimumNoteLines) {
     throw new Error(
       `the perf fixture seeded ${String(noteLines)} note lines, below its declared floor of `
@@ -677,12 +683,6 @@ export function seedDashboardPerfFixture(): PerfFixture {
   });
 
   projection.ingestFromTimeline();
-
-  const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
-
-  for (const runId of tally.doneRunIds.slice(0, PERF_FIXTURE_PROFILE.receiptRunCount)) {
-    trust.ensureReceipt(runId);
-  }
 
   const runDetail: RunDetailQueryDeps = { runReader: sqliteRunReader(database, clock),
     stateRoot,
