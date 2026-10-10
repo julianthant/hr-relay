@@ -110,7 +110,7 @@ export async function probeOwnedViteServer(input: Readonly<{
 
   const index = await fetchProbeText(`${origin}/`, signal, VITE_PROBE_INDEX_MAX_RESPONSE_BYTES);
   if (index.state === "unavailable") return { state: "not-owned", reason: index.reason };
-  if (!index.text.includes("<title>HR Automation — rebuild</title>")
+  if (!index.text.includes("<title>Relay</title>")
     || !index.text.includes('src="/app/main.tsx"')) {
     return { state: "not-owned", reason: "index-identity-invalid" };
   }

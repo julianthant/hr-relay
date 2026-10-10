@@ -17,7 +17,7 @@ the gaps by risk, and designs the top three. Ref data-intake-and-edit-data (data
 were planned-but-unwritten at the time. This file is evidence, not an implementation plan; current
 contracts live in `docs/rebuild/reference/`, with build order in the phase docs `docs/rebuild/00`–`05`
 and the plan tree at `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`. **Paths re-grounded 2026-07-31 (Round 11,
-D93):** the rebuild now lives in its own `hr-automation-rebuild` repo — rebuild code at plain `src/`,
+D93):** the rebuild now lives in its own `hr-relay` repo — rebuild code at plain `src/`,
 tests at `tests/`, config at `config/` — so every rebuild path below is repo-relative there. That is
 an address change only; this memo still owns nothing.
 

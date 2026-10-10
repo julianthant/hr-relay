@@ -44,7 +44,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-const OWNED_VITE_INDEX = '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>';
+const OWNED_VITE_INDEX = '<title>Relay</title><script type="module" src="/app/main.tsx"></script>';
 const OWNED_VITE_CLIENT = 'const name = "Vite"; export function createHotContext() {}';
 
 async function probeViteIdentity(fixture: Readonly<{
@@ -142,7 +142,7 @@ describe("dashboard preflight runner composition", () => {
       response.end(request.url === DASHBOARD_FRONTEND_OWNER_PATH
         ? OWNER_NONCE
         : request.url === "/"
-          ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+          ? '<title>Relay</title><script type="module" src="/app/main.tsx"></script>'
           : 'const name = "Vite"; export function createHotContext() {}');
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -336,7 +336,7 @@ describe("dashboard preflight runner composition", () => {
       response.end(request.url === DASHBOARD_FRONTEND_OWNER_PATH
         ? OWNER_NONCE
         : request.url === "/"
-          ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+          ? '<title>Relay</title><script type="module" src="/app/main.tsx"></script>'
           : `const name = "Vite"; export function createHotContext() {}${"x".repeat(2 * 1024 * 1024)}`);
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -383,7 +383,7 @@ describe("dashboard preflight runner composition", () => {
     const server = createServer((request, response) => {
       response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/javascript" });
       response.end(request.url === "/"
-        ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+        ? '<title>Relay</title><script type="module" src="/app/main.tsx"></script>'
         : 'const name = "Vite"; export function createHotContext() {}');
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -432,7 +432,7 @@ describe("dashboard preflight runner composition", () => {
       response.end(request.url === DASHBOARD_FRONTEND_OWNER_PATH
         ? FOREIGN_NONCE
         : request.url === "/"
-          ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+          ? '<title>Relay</title><script type="module" src="/app/main.tsx"></script>'
           : 'const name = "Vite"; export function createHotContext() {}');
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

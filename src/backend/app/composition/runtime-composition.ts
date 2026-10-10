@@ -166,7 +166,7 @@ const ACTIVE_ITEM = "3-workflow-migration";
 
 export function runtimeHelp(isolation: RuntimeIsolation): string {
   return [
-    `HR Automation rebuild foundation (complete through ${COMPLETED_THROUGH}; active ${ACTIVE_ITEM})`,
+    `Relay foundation (complete through ${COMPLETED_THROUGH}; active ${ACTIVE_ITEM})`,
     "Commands:",
     "  help       show this contract surface",
     "  phase      print the active isolated runtime resources",

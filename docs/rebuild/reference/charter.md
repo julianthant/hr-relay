@@ -3,7 +3,7 @@
 Started 2026-07-17. Reset 2026-07-21 after external review. Expanded 2026-07-22 after the
 whole-plan/legacy-code review. **Amended 2026-07-31 to carry the operator's isolated-coexistence,
 single-cutover, and testing ratifications (Round 10), and again on 2026-07-31 for D93 (Round 11):
-the rebuild leaves `temp_src/` for its own repository, `hr-automation-rebuild`.**
+the rebuild leaves `temp_src/` for its own repository, `hr-relay`.**
 
 **Status at HEAD (2026-08-21): Phases 0, 1 and 2 are COMPLETE and Phase 3 — the per-workflow
 migration loop — is active.** The runtime says so itself: `COMPLETED_THROUGH = "2j"` /
@@ -441,7 +441,7 @@ content) + ref operator-trust (receipt surface).
   D93).** The **legacy repo** (`hr-automation`) — its source, commands, and legacy tests — remains
   live, runnable, maintainable, and eligible for ordinary production fixes, and is the sole
   production authority. The replacement is built in a **standalone rebuild repo**
-  (`hr-automation-rebuild`, fresh history seeded from the `feature/rebuild-phase1b` tip): rebuild
+  (`hr-relay`, fresh history seeded from the `feature/rebuild-phase1b` tip): rebuild
   code at plain `src/`, tests at `tests/`, config at `config/`, plan docs still at `docs/rebuild/`,
   gated by that repo's plain gate family (`typecheck`/`lint`/`test:coverage` since **D191**).
   **Isolation is

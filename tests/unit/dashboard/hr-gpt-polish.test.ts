@@ -15,7 +15,7 @@ import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from '../../../src/models/d
 
 function bytes(value: Uint8Array): ArrayBuffer { return value.slice().buffer; }
 
-describe('HR GPT presentation models', () => {
+describe('Relay presentation models', () => {
   it('combines quick filters and returns to All after removing the last one', () => {
     assert.deepEqual(toggleQueueFilter(['all'], 'needsYou'), ['needsYou']);
     assert.deepEqual(toggleQueueFilter(['needsYou'], 'running'), ['needsYou', 'running']);

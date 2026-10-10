@@ -788,8 +788,8 @@ function FormsSection() {
     { id: "hrms", label: "Legacy HRMS", description: "Fallback connection", role: "Fallback" },
   ]);
   const [configuredModels, setConfiguredModels] = useState([
-    { id: "model-primary", value: "gemini-2.5-pro" },
-    { id: "model-fallback", value: "gemini-2.5-flash" },
+    { id: "model-primary", value: "specimen-model-primary" },
+    { id: "model-fallback", value: "specimen-model-fallback" },
   ]);
   const selectedKey = keys.find((key) => key.id === pendingKey);
 

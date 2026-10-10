@@ -45,7 +45,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
       if (open && event.key === "Escape" && !(event.target instanceof HTMLElement && event.target.closest('[role="dialog"], [role="menu"]'))) { event.preventDefault(); event.stopPropagation(); setOpen(false); bell.current?.focus(); }
     }}>
     <header className="workspace-rail-header">
-      <h2>HR GPT</h2>
+      <h2>Relay</h2>
       <div className="flex shrink-0 items-center gap-0.5">
         <ToggleButton ref={bell} isIconOnly size="sm" variant="ghost" isSelected={open} onChange={changeOpen} aria-controls={open ? "workspace-notifications" : undefined}
           aria-label={state.state === "loading" ? "Notifications loading" : state.state === "unavailable" ? "Notifications unavailable" : `Notifications, ${view.unread} unread`} className="rail-notification-toggle">
