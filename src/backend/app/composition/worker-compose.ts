@@ -1,4 +1,4 @@
-import { sanitizeDebugText } from "../../logs/debug-events.js";
+import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
 import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../logs/emergency-faults.js";
 import { admitDirectWorker, admitSupervisedWorker } from "../../storage/sqlite/worker-slots.js";

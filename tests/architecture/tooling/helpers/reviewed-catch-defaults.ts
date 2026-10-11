@@ -2,19 +2,9 @@
  * New code and direct negative controls remain unexcepted. */
 export const REVIEWED_CATCH_DEFAULTS = [
   {
-    "path": "src/backend/storage/sqlite/explorer-override-conversion.ts",
-    "sha256": "bb9d4706dd3430b8850a8859d94f2dc64f0fe61bd7da8d9aa2c8acbf1ae3b108",
-    "reason": "ENOENT alone denotes an absent optional legacy file; all other errors propagate."
-  },
-  {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "7fbeea1ad3ab57480f0e4aa01e4d186458782d6b60e748fb1f6f1572088b1334",
-    "reason": "ENOENT alone denotes no backup directory; failed inspection sets an explicit invalid health flag."
-  },
-  {
-    "path": "src/backend/storage/sqlite/storage-recovery-status.ts",
-    "sha256": "cec91793472773d8d9b8f5728511070983268d597d065b9d672d320967f6fa1b",
-    "reason": "ENOENT alone proves absent archive; all other errors propagate to unavailable custody."
+    "sha256": "49601acbb8a74282f8659ddfc6944cea015ebdd4a722fa7e97735e2be2639bcd",
+    "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
   },
   {
     "path": "src/backend/app/composition/dashboard/notification-health.ts",
@@ -33,8 +23,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/dashboard/app/navigation/archive-route-model.ts",
-    "sha256": "cd3023ebeb1800f3eb54b4cb6f7c68eb8161fbfbc9912b27cbf12dfb7b59a33e",
-    "reason": "Oversized or invalid user route JSON returns null; its caller marks the route invalid and blocks Archive exports instead of inventing a route."
+    "sha256": "b27840980d3f7fa2ae32172d4a10c2426395ed5e11399f94601d847e7fe1ca23",
+    "reason": "Oversized or malformed supplied route JSON returns null; the URL-state caller marks archiveBrowseInvalid instead of substituting a parsed route."
   },
   {
     "path": "src/dashboard/ds/primitives/primitives-date.tsx",
@@ -53,12 +43,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-    "sha256": "f80b6b4d62e9e1571b73b5f229f7c1a3250b5c649b71bf97282eda4efefa7b3e",
+    "sha256": "c06db824e19110a400cfc140ff9da4a6649b374bb1865b169c90ac6edda6aad3",
     "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
-    "sha256": "9a2eb879cd24377f39eeb5329e9184c9dbc3d17b0366d25455cbb61841b7c09b",
+    "sha256": "b432a6baa55c9f3c585213166cd4537698978f69f7eee1241bc107d6390a3f20",
     "reason": "Only an explicitly allowed missing directory with ENOENT returns false; safe parent validation follows, and other errors throw named refusal."
   },
   {
@@ -68,18 +58,13 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runs/queries/item-attempt-history.ts",
-    "sha256": "590f59c4e45c358dc90b3e69809adf30d496a7e90835b03f0df5679b2124a3fb",
+    "sha256": "cf5111910cf1a0277977c0a596f497b94a43d759a3d2359d8da092be4dce046b",
     "reason": "Malformed supplied cursors become explicit refusal before authority reads; omitted cursors remain distinct valid first-page requests."
   },
   {
     "path": "src/backend/runtime/workers/worker-supervisor.ts",
-    "sha256": "00de5cc194b2352f2a0ad268d068fa1c2e5ea62fc298ba0ab6c358ec2fb524d1",
+    "sha256": "7ab8d7fc0e7011711d23910f3361deaf6a1e8eadffb82a095957534bf46f9bf4",
     "reason": "The rejection observer does not replace the original drain promise; shutdown races that promise and throws aggregate failure."
-  },
-  {
-    "path": "src/backend/storage/maintenance/relocation-inventory.ts",
-    "sha256": "4b18a0ac577e37e16f874338deaac917823dd3646875702fcf2561f79cb004e8",
-    "reason": "A failed binding rejects that candidate; absence of any verified matching backup throws an unbound preserved-copy error."
   },
   {
     "path": "src/backend/logs/browser-action-drain.ts",
@@ -93,12 +78,32 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/transports/http/subscriptions/run-logs-stream.ts",
-    "sha256": "90b4c43520d132f76ab4acd257a2dff619f284f4a42fa78371f54385489483ee",
-    "reason": "Subscriber read failures reset only that subscriber with a named error; day or tail failures publish degraded or recovering health and reset the generation. Connections refuse unavailable stream ownership."
+    "sha256": "5af34a438e459eb337dea3b2037eee2fefff3b5b33f01e69ad5f879d39e4d004",
+    "reason": "Subscriber read failures record the error and require reset; day failures degrade health and rotate generation; native tail failures publish degraded health and refuse new connections until a successful source read recovers."
   },
   {
     "path": "src/dashboard/app/navigation/view-route-model.ts",
     "sha256": "8fade512cb492ec8e768b01768c3bac48147d40588712091dbdc51256504b7fb",
     "reason": "Oversized or invalid view-route JSON returns null; the caller treats the route as unreadable instead of rebuilding shell navigation from a default."
+  },
+  {
+    "path": "src/backend/storage/sqlite/authority-boot.ts",
+    "sha256": "a83c56f6def1c1caf87975733313b34dee23f91072c0064cb3030c875083495f",
+    "reason": "A failed open or inspection returns degraded-read-only with mutations blocked; only successful close clears the database handle, and uncertain close preserves the handle and aggregate cause."
+  },
+  {
+    "path": "src/backend/storage/sqlite/authority-database.ts",
+    "sha256": "230af37129c20fd40bef947074e9e2fbf16a445be9c4948918a9be72edee89f6",
+    "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states."
+  },
+  {
+    "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
+    "sha256": "71a9d87deedad9df9e19c2f756d627a34cb7e14f916a2ffb7dedf48bd1e080c2",
+    "reason": "Only ENOENT denotes an absent optional sidecar; a missing main database throws, unsafe or changed inputs throw, and failed construction disposes only its private snapshot before rethrowing."
+  },
+  {
+    "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
+    "sha256": "bd957e19f13c794f4e4b3273594221c053a40f8fc178ff3117c315d688d113ec",
+    "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures remain aggregate errors, uncertain resources keep their custody, and the original admission error always rejects."
   }
 ] as const;

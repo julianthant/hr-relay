@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -14,7 +14,7 @@ import { operatorMutationIngressGuard } from "../../../../../../src/backend/tran
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function paths() {
-  const root = mkdtempSync(join(tmpdir(), "native-path-picker-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "native-path-picker-"));
   roots.push(root);
   const folder = join(root, "Folder with spaces ");
   mkdirSync(folder);

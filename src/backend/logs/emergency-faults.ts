@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { TimelineAppendSchema, timelineAppendContent, type TimelineRepository } from "../../models/events/timeline.js";
-import { sanitizeDebugText } from "./debug-events.js";
+import { sanitizeDebugText } from "../../rules/redaction/redaction.js";
 import { localDatePart } from "../../rules/time/clock.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;

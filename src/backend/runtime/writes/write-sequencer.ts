@@ -1,4 +1,4 @@
-import { sanitizeDebugText } from "../../logs/debug-events.js";
+import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";

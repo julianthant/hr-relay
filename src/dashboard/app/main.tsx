@@ -14,14 +14,22 @@ if (container === null) {
 const client = createDashboardClient({ baseUrl: window.location.origin });
 
 const clientId = crypto.randomUUID();
+const deliveryFailures = new WeakSet<Error>();
 const report = (error: unknown) => {
   const failure = error instanceof Error ? error : new Error("Dashboard rejected a non-Error value");
   void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
     route: window.location.pathname, surface: "app", code: "DASHBOARD_UNHANDLED_ERROR",
     message: failure.message, ...(failure.stack === undefined ? {} : { stack: failure.stack }) })
-    .catch(() => { console.error("Dashboard error report was not recorded"); });
+    .catch(() => {
+      const failure = new Error("Dashboard error report was not recorded");
+      deliveryFailures.add(failure);
+      window.reportError(failure);
+    });
 };
-const onError = (event: ErrorEvent) => report(event.error ?? new Error(event.message));
+const onError = (event: ErrorEvent) => {
+  if (event.error instanceof Error && deliveryFailures.has(event.error)) return;
+  report(event.error ?? new Error(event.message));
+};
 const onRejection = (event: PromiseRejectionEvent) => report(event.reason);
 window.addEventListener("error", onError);
 window.addEventListener("unhandledrejection", onRejection);

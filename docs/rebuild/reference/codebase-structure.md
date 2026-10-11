@@ -148,3 +148,5 @@ artifact. `config/snapshot.ts` owns strictly current immutable snapshots: every 
 placeholder folder.
 
 Current native store tests cover baseline opening and version refusal (`storage/sqlite/migrations/native-baseline.test.ts`), maintenance custody (`storage/admission/admission/native-maintenance-capability.test.ts`), bounded transaction selection and retained deletion evidence (`storage/sqlite/transaction-history/`), and same-item retries (`runs/queries/item-attempt-history/`).
+
+`src/rules/redaction/redaction.ts` owns classified transforms and diagnostic text sanitization.

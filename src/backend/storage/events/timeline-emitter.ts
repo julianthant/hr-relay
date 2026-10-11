@@ -1,6 +1,6 @@
 import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { sanitizeDebugText } from "../../logs/debug-events.js";
+import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";

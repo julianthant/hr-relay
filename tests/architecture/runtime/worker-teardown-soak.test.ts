@@ -52,7 +52,7 @@ afterEach(() => {
 
 function sharedAuthority(): AuthorityHarness {
   const authority = openAuthorityHarness();
-  authority.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  assert.equal(authority.database.authority.runtimeConfig.get()?.configFingerprint, CONFIG_SNAPSHOT.fingerprint);
   disposers.push(authority.dispose);
   return authority;
 }
@@ -238,6 +238,7 @@ function teardownFactory(closeFailsFor: readonly string[] = []): TeardownFactory
         return {
           sessionId,
           profileRevision: 7,
+          signInFingerprint: input.configFingerprint,
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
           configFingerprint: input.configFingerprint,

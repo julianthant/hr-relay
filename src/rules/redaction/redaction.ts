@@ -190,3 +190,13 @@ export function redactDiagnosticFields(input: unknown): z.infer<typeof Redaction
   }
   return RedactionResultSchema.parse({ fields, warnings });
 }
+
+// Diagnostic text never carries authorization material or URL query values.
+export function sanitizeDebugText(text: string): string {
+  return text.replace(/https?:\/\/[^\s<>"']+/gu, raw => {
+    try { const url = new URL(raw); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); }
+    catch { return "[invalid-url]"; }
+  }).replace(/(?:bearer|basic)\s+[a-z0-9+/_.=-]+/giu, "[authorization removed]")
+    .replace(/((?:password|passwd|token|cookie|authorization|private[-_ ]?key|challenge|signature)\s*[=:]\s*)[^\s,;]+/giu, "$1[removed]")
+    .replace(/-----BEGIN[^-]*PRIVATE KEY-----[\s\S]*?-----END[^-]*PRIVATE KEY-----/gu, "[private key removed]");
+}

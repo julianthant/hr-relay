@@ -1,10 +1,9 @@
 import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 
-import { sanitizeDebugText } from "../../logs/debug-events.js";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
-import { ClassifiedDiagnosticValueSchema } from "../../../rules/redaction/redaction.js";
+import { ClassifiedDiagnosticValueSchema, sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../../models/events/types.js";
 import type { BrowserAction } from "../../systems/browser-shared/action-notes.js";
 import { DeclaredActionOccurrenceSchema } from "../../../rules/workflow/task-provenance.js";

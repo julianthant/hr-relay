@@ -1,4 +1,4 @@
-import { sanitizeDebugText } from "../../logs/debug-events.js";
+import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
 import { TaskError } from "../../../workflow-kit/errors.js";

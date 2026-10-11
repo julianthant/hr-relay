@@ -5,7 +5,8 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
-import { createDebugEventWriter, sanitizeDebugText } from "../../../../src/backend/logs/debug-events.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { sanitizeDebugText } from "../../../../src/rules/redaction/redaction.js";
 import { appendEmergencyFault, importEmergencyFaults, withEmergencyTimelineWriter } from "../../../../src/backend/logs/emergency-faults.js";
 import { TimelineEventRecordSchema, type TimelineRepository, type TimelineEventRecord } from "../../../../src/models/events/timeline.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";

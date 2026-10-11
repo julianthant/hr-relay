@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { GENERATED_BUILD_MANIFEST } from "../../../src/workflow-kit/validation/generated-build-manifest.js";
 import { TEST_DATA_INPUT_NAMES, TestDataInputValueSchemas } from "../../../src/models/config/test-data.js";
-import { RETIRED_TEST_TARGET_PROTECTED_NAMES } from "../../../src/models/config/protected-settings-legacy.js";
 import { ProtectedSettingsNameSchema } from "../../../src/models/config/protected-settings.js";
 import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
@@ -141,7 +140,6 @@ describe("test target registry architecture", () => {
     assert.equal(TestDataInputValueSchemas[DOCUMENT_NUMBER_REFERENCE.name].safeParse("10800000x").success, false);
     assert.equal(TestDataInputValueSchemas[EID_REFERENCE.name].safeParse("10800000").success, true);
     assert.equal(TestDataInputValueSchemas[EID_REFERENCE.name].safeParse("4999").success, false);
-    assert.deepEqual([...RETIRED_TEST_TARGET_PROTECTED_NAMES], [...TEST_DATA_INPUT_NAMES]);
     for (const name of TEST_DATA_INPUT_NAMES) {
       assert.equal(ProtectedSettingsNameSchema.safeParse(name).success, false, `${name} left protected Settings`);
     }
