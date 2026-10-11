@@ -147,7 +147,6 @@ describe("closed secret access", () => {
   });
 
   it("refuses a present number whose composed subject does not resolve ready", async () => {
-    // Secret presence alone is insufficient; the composed subject must resolve before readiness passes.
     for (const resolution of ["blocked", "defect"] as const) {
       const output: string[] = [];
       const exitCode = await runTestTargetDocumentNumberSmoke({
