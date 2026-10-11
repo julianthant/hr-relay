@@ -36,10 +36,6 @@ import {
   type WriteBindingRepositories,
   type WriteResolutionArm,
 } from "./write-resolution-binding.js";
-export {
-  findTransactionNodeByCommit,
-  rebuildCommitInput,
-} from "./write-resolution-binding.js";
 import {
   BUILD_MANIFEST,
   resolveTaskImplFingerprint,

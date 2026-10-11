@@ -109,20 +109,6 @@ export interface WriteResolutionBindingInput {
 
 /* ── node + commit-input reconstruction (shared with recovery) ───────────── */
 
-export function findTransactionNodeByCommit(
-  descriptor: AnyWorkflowDescriptor,
-  commitTaskId: string,
-): TransactionRuntimeNode {
-  const node = lookupTransactionNode(descriptor, commitTaskId);
-  if (node === undefined) {
-    throw new Error(
-      `${descriptor.id} v${String(descriptor.version)} declares no transaction node whose commit is `
-      + `${commitTaskId}; the stored intent is inconsistent with the descriptor`,
-    );
-  }
-  return node;
-}
-
 function lookupTransactionNode(
   descriptor: AnyWorkflowDescriptor,
   commitTaskId: string,

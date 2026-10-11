@@ -42,7 +42,6 @@ export interface RebuildRuntimeStart {
 }
 
 export const DashboardFrontendSchema = z.enum(["vite-dev", "built-bundle"]);
-export type DashboardFrontend = z.infer<typeof DashboardFrontendSchema>;
 export const DashboardCommandOptionsSchema = z.strictObject({ frontend: DashboardFrontendSchema });
 export type DashboardCommandOptions = z.infer<typeof DashboardCommandOptionsSchema>;
 type DashboardComposer = (isolation: RuntimeIsolation, options: DashboardCommandOptions) => Promise<RunningDashboard>;
