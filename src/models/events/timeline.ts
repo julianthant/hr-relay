@@ -19,10 +19,9 @@ export const TimelineCheckpointReferenceSchema = z.strictObject({
   writtenAt: IsoInstantSchema,
 });
 
-// Keep every historical ledger field except the proof already retained on the
-// exact immutable attempt. The reader must resolve and authenticate that proof.
-const { proof: _proof, ...historicalLedgerFields } = LedgerEntryPayloadSchema.shape;
-const ConfirmedOperationFactsSchema = z.strictObject(historicalLedgerFields);
+// Resolve the proof from its exact immutable attempt.
+const { proof: _proof, ...ledgerFields } = LedgerEntryPayloadSchema.shape;
+const ConfirmedOperationFactsSchema = z.strictObject(ledgerFields);
 
 export const DebugEventSchema = z.strictObject({
   category: z.enum(["session", "duo", "worker", "http", "sse", "client", "boot"]),

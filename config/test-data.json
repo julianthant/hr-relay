@@ -8,7 +8,7 @@
         "availability": {
           "state": "available",
           "lastObserved": "2026-09-08",
-          "reason": "The unchanged operator-selected private source was admitted on 2026-09-08. The complete headed Separations dry-run rehearsal met all eight T1b assertions, with fifteen fresh checkpoints and exact write-intent/write-attempt/durable-outbox deltas 0/0/0. The accepted result and all failed prior rehearsals are retained in the Task 1.6.7 owner. This available subject authorizes read-only verification only. Historical prior-selection result abe85e59-3e55-4ac0-99e8-ac1a1856ada1 and retained result 05ec70d9-1286-4582-acd6-2378b487e112 failed EMPLOYEE_NOT_FOUND with exact write-intent/attempt/durable-outbox deltas 0/0/0; neither establishes this replacement\u2019s outcome."
+          "reason": "The operator-selected private source is available for read-only verification. Complete input admission and a Separations dry run were observed without external writes."
         },
         "provenance": {
           "document": "994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
@@ -17,7 +17,7 @@
         "usagePolicy": "read-only",
         "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
         "owner": "HR automation operator",
-        "purpose": "The one active separations read-only test subject (D284), whose ONE Kuali document number is a private input in ignored config/test-data.local.json (D341; formerly protected Settings, D300): the composed chain rehearses from that number, reads the employee name and document EID from Kuali, resolves the UCPath subject through its identity gate, and carries its declared timekeeper constant to the preview terminal. This registry entry authorizes no write. Under D329, Phase 3.3 separately admits an independent disposable pending-sweep target and a real filing/finalization target against the frozen candidate. The standalone separations-kuali-finalization arm remains a blocked manifest witness and commits no facts from a prior document; its person leaves are never registry- or protected-settings-supplied.",
+        "purpose": "The read-only Separations subject uses one private Kuali document number from ignored config/test-data.local.json. The composed chain reads identity from Kuali, resolves the UCPath subject through its identity gate, and builds the preview. The standalone finalization arm has no admitted person or write authority.",
         "workflows": {
           "separations": {
             "kind": "full-chain-dry-run",
@@ -30,7 +30,7 @@
               },
               "reRead": {
                 "ordinal": 2,
-                "reason": "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained."
+                "reason": "Operator-requested second read-only rehearsal with repaired pending-set observation."
               }
             }
           },
@@ -38,7 +38,7 @@
             "kind": "ordinary",
             "publicInput": {},
             "pending": {
-              "transactionNumber": "not yet filed (UCPath filing \u2461 pending)",
+              "transactionNumber": "not yet filed (UCPath filing ② pending)",
               "timekeeperComments": "not authored (the composed chain's comments node composes it)",
               "terminationEffectiveDate": "not observed on the form; the chain's dates node derives it (separation date + 1)"
             }
@@ -50,7 +50,7 @@
         "availability": {
           "state": "available",
           "lastObserved": "2026-09-07",
-          "reason": "Operator-selected replacement applied to the D341 private source on 2026-09-07. Presence and complete production input admission were verified without exposing the value. Current live acceptance and preserved prior failures are recorded in the Task 1.6.7 owner; this availability entry authorizes read-only verification only."
+          "reason": "The operator-selected private source is available for read-only verification. Presence and complete input admission were observed without exposing the value."
         },
         "provenance": {
           "document": "994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
@@ -59,7 +59,7 @@
         "usagePolicy": "read-only",
         "cleanupObligation": "A live read changes nothing; the run reads UCPath Person Org and the CRM onboarding record and writes no external system.",
         "owner": "HR automation operator",
-        "purpose": "The person-lookup live-read canary (D318): ONE UCPath employee id held as a private input in ignored config/test-data.local.json (D341), searched by EID through the person-lookup start box. Its run proves the transaction-free T1b arm \u2014 zero transaction nodes at admission and exact zero deltas in run_operations, run_operation_attempts and operation_outbox \u2014 and records the ordinary workflow result, never a preview.",
+        "purpose": "The Person Lookup subject uses one private UCPath employee ID from ignored config/test-data.local.json. Searching by EID creates no external transaction and records the ordinary workflow result.",
         "workflows": {
           "person-lookup": {
             "kind": "search-by-eid",

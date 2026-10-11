@@ -15,16 +15,12 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/fixtures/integration/dry-run-admission-fixtures.ts",
   "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts",
   "tests/support/helpers/dashboard/settings-harness.tsx",
-  "tests/support/helpers/integration/historical-archive-authority.ts",
-  "tests/support/helpers/integration/operation-names-fixture.ts",
   "tests/support/helpers/integration/storage-recovery-fixture.ts",
-  "tests/support/helpers/storage/historical-fixtures.ts",
   "tests/support/helpers/storage/storage-relocation-fixture.ts",
 
   "tests/support/fixtures/preflight/corpus.ts",
   "tests/support/helpers/synthetic-storage-admission.ts",
   "tests/support/helpers/admission-fixture.ts",
-  "tests/support/helpers/storage/transaction-history-fixture.ts",
   "tests/support/helpers/backend/dashboard-harness.ts",
 ]);
 const SHARED_ROOTS = ["tests/support/fixtures", "tests/support/helpers"];
@@ -33,7 +29,6 @@ const CROSS_TIER_ROOTS = ["tests/architecture", "tests/integration", "tests/supp
 const FORBIDDEN_SHARED_IMPORTS: readonly RegExp[] = [
   /src\/control\/test-data\.js$/u,
   /src\/backend\/storage\/configuration\/credential-store\.js$/u,
-  /src\/backend\/storage\/configuration\/credential-test-data-migration\.js$/u,
   /secure-env-bootstrap/u,
   /^dotenv/u,
   /^playwright/u,
@@ -61,21 +56,16 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/fixtures/integration/dry-run-admission-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/dashboard/settings-harness.tsx", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
-  { importer: "tests/support/helpers/integration/historical-archive-authority.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/integration/operation-names-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/integration/storage-recovery-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/storage/historical-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/admission-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
-  { importer: "tests/support/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/configuration/credential-test-data-migration.js", symbol: "migrateTestDataFromCredentials" },
-  { importer: "tests/support/helpers/storage/transaction-history-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/backend/dashboard-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
 ] as const;
 const PROCESS_ENTRYPOINTS = [
-  { file: "worker-browser-control-cli.ts", consumers: ["tests/integration/backend/storage/events/timeline-emitter/worker-browser-control-process.test.ts", "tests/parity/helpers/session-runtime.ts"] },
+  { file: "worker-browser-control-cli.ts", consumers: ["tests/integration/backend/runtime/workers/worker-loop/native-profile-retirement.test.ts", "tests/integration/backend/storage/events/timeline-emitter/worker-browser-control-process.test.ts", "tests/parity/helpers/session-runtime.ts"] },
   { file: "worker-stub-cli.ts", consumers: ["tests/integration/backend/runs/lifecycle/run-record-service/worker-pool-parallel-proof.test.ts"] },
   { file: "run-record-race-worker.ts", consumers: ["tests/integration/backend/storage/sqlite/run-store-contracts/service.test.ts"] },
   { file: "runtime-lock-contender.ts", consumers: ["tests/integration/backend/storage/sqlite/migrations/storage-restore-drill.test.ts"] },

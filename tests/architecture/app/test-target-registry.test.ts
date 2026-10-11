@@ -64,12 +64,12 @@ describe("test target registry architecture", () => {
     assert.deepEqual(subject.workflows[FINALIZATION_WORKFLOW]?.publicInput, {});
   });
 
-  it("pins the sole subject's current availability and retained historical failed rehearsal", () => {
+  it("pins the sole subject's current availability and pending finalization leaves", () => {
     const canary = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === SOLE_SUBJECT_LABEL);
     assert.equal(canary?.availability.state, "available");
     assert.equal(canary?.availability.lastObserved, SOLE_SUBJECT_LAST_OBSERVED);
-    assert.match(String(canary?.availability.reason), /EMPLOYEE_NOT_FOUND/u);
-    assert.match(String(canary?.availability.reason), /0\/0\/0/u);
+    assert.equal(canary?.availability.reason,
+      "The operator-selected private source is available for read-only verification. Complete input admission and a Separations dry run were observed without external writes.");
 
     assert.deepEqual(canary?.workflows[FINALIZATION_WORKFLOW]?.publicInput, {});
     const pending = canary?.workflows[FINALIZATION_WORKFLOW]?.pending ?? {};
@@ -213,7 +213,7 @@ describe("test target registry architecture", () => {
       label: "finalization-canary",
       canonicalInput: {
         documentNumber: "4999",
-        reRead: { ordinal: 2, reason: "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained." },
+        reRead: { ordinal: 2, reason: "Operator-requested second read-only rehearsal with repaired pending-set observation." },
       },
       protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
         name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "00000000-0000-4000-8000-000000000010" }],
