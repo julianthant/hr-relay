@@ -155,7 +155,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   TZ: [
     "tests/backend/runs/projections/run-summary.derivation.integration.test.ts",
     "tests/perf/dashboard-fixture.integration.test.ts",
-    "tests/backend/storage/sqlite/offline-restore.integration.test.ts",
+    "tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts",
   ],
 } as const;
 
