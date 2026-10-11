@@ -3,9 +3,14 @@ import { resolve } from "node:path";
 import { availableParallelism } from "node:os";
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
-export const REBUILD_UNIT_TEST_INCLUDE = ["tests/unit/**/*.test.ts"] as const;
-export const REBUILD_UNIT_TEST_EXCLUDE = [] as const;
-export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/integration/**/*.test.ts"] as const;
+export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
+export const REBUILD_UNIT_TEST_EXCLUDE = [
+  "tests/**/*.integration.test.ts",
+  "tests/architecture/**",
+  "tests/parity/**",
+  "tests/perf/**",
+] as const;
+export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
 export const REBUILD_INTEGRATION_TEST_EXCLUDE = [] as const;
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/architecture/**/*.test.ts",

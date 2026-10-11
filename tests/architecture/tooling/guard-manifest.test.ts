@@ -122,14 +122,14 @@ export function architectureProjectViolations({
       `test:architecture must select only the named architecture project; expected '${exactCommand}'`,
     );
   }
-  if (JSON.stringify(unitInclude) !== JSON.stringify(["tests/unit/**/*.test.ts"])) {
-    violations.push("unit project include must remain tests/unit/**/*.test.ts");
+  if (JSON.stringify(unitInclude) !== JSON.stringify(["tests/**/*.test.ts"])) {
+    violations.push("unit project include must remain tests/**/*.test.ts");
   }
-  if (unitExclude.length !== 0) {
-    violations.push("unit project exclude must remain empty");
+  if (JSON.stringify(unitExclude) !== JSON.stringify(["tests/**/*.integration.test.ts", "tests/architecture/**", "tests/parity/**", "tests/perf/**"])) {
+    violations.push("unit project must exclude integration suffixes, architecture, parity, and perf");
   }
-  if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/integration/**/*.test.ts"])) {
-    violations.push("integration project must include every recursive tests/integration/**/*.test.ts file");
+  if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
+    violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
   }
   if (integrationExclude.length !== 0) violations.push("integration project exclude must remain empty");
   if (
@@ -263,18 +263,25 @@ describe("reviewed architecture guard manifest", () => {
 
     const root = join(tmpdir(), `hrauto-test-topology-${process.pid}-${Date.now()}`);
     try {
-      writeFixture(root, "tests/unit/owned.test.ts", "export {};\n");
+      writeFixture(root, "tests/models/owned.test.ts", "export {};\n");
       writeFixture(root, "tests/architecture/guard.test.ts", "export {};\n");
-      writeFixture(root, "tests/integration/real.test.ts", "export {};\n");
+      writeFixture(root, "tests/models/real.integration.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);
+      writeFixture(root, "tests/perf/shape.integration.test.ts", "export {};\n");
+      writeFixture(root, "tests/support/helpers/helper.test.ts", "export {};\n");
+      writeFixture(root, "tests/types/input.integration.test.ts", "export {};\n");
+      assert.deepEqual(testProjectTopologyViolations(root), []);
+      const narrowed = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
+        ? { ...project, include: ["tests/models/**/*.test.ts", "tests/support/**/*.test.ts"] }
+        : project);
       writeFixture(root, "tests/scenario/walk.test.ts", "export {};\n");
-      assert.match(testProjectTopologyViolations(root).join("\n"),
+      assert.match(testProjectTopologyViolations(root, narrowed).join("\n"),
         /walk\.test\.ts: expected exactly one Vitest project, found none/u);
       writeFixture(root, "tests/unknown/orphan.test.ts", "export {};\n");
-      assert.match(testProjectTopologyViolations(root).join("\n"), /orphan\.test\.ts: expected exactly one Vitest project, found none/u);
+      assert.match(testProjectTopologyViolations(root, narrowed).join("\n"), /orphan\.test\.ts: expected exactly one Vitest project, found none/u);
       writeFixture(root, "tests/scenario/combined/live.combined.test.ts", "export {};\n");
       assert.match(
-        testProjectTopologyViolations(root).join("\n"),
+        testProjectTopologyViolations(root, narrowed).join("\n"),
         /live\.combined\.test\.ts: expected exactly one Vitest project, found none/u,
       );
     } finally {
