@@ -8,7 +8,6 @@ export function createNotificationTargetQuery(deps: {
   get(id: string): NotificationRecord | undefined;
   read(id: string): RunExistence;
   failure(id: string): FailureRecord | undefined;
-  report(id: string): { runId: string; digest: string } | undefined;
 }) {
   return (id: string, actor: string): NotificationTarget => {
     const notificationId = NotificationIdSchema.parse(id), actorId = ActorIdSchema.parse(actor);
@@ -23,11 +22,6 @@ export function createNotificationTargetQuery(deps: {
       if (link.kind === "storage") return { kind: "storage" };
       const current = deps.read(link.runId);
       if (current.state !== "present") return refused("run-unavailable");
-      if (current.disposition === "archived") {
-        const report = deps.report(link.runId);
-        if (report === undefined || report.runId !== link.runId) return refused("archive-unavailable");
-        return NotificationTargetSchema.parse({ kind: "archive", runId: link.runId, reportDigest: report.digest });
-      }
       const day = localDatePart(new Date(current.run.envelope.enqueuedAt));
       if (link.kind === "failure") {
         const failure = deps.failure(link.failureId);
@@ -36,7 +30,7 @@ export function createNotificationTargetQuery(deps: {
       }
       return NotificationTargetSchema.parse({ kind: "run", runId: link.runId, day });
     } catch {
-      // Do not return private archive/parser exceptions in a notification response.
+      // Parser diagnostics can contain private row values.
       return refused("target-unavailable");
     }
   };

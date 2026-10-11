@@ -1,7 +1,7 @@
 
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { readEventStreamLines } from "../../../../../../src/backend/storage/events/jsonl-streams.js";
+import { readTimelineRecords } from "../../../../../../src/backend/storage/events/timeline-reader.js";
 import {
   assertDashboardPerformanceStructuralBounds,
   DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS,
@@ -39,7 +39,7 @@ describe("the §7.4 dashboard perf fixture", () => {
       "rowPatchDayWireParses",
       "logsSpanEventParses",
       "logsFilesInScope",
-      "archiveFreezeStatements",
+      "runSnapshotStatements",
       "memberPreviewDeltaStatements",
     ];
     for (const key of keys) {
@@ -88,7 +88,7 @@ describe("the §7.4 dashboard perf fixture", () => {
   });
 
   it("writes a note corpus above the declared floor, through the real writer", () => {
-    const lines = readEventStreamLines(fixture.stateRoot, "notes");
+    const lines = readTimelineRecords(fixture.database.authority.timelineEvents).records.filter(record => record.payload.kind === "note");
     assert.equal(lines.length, fixture.seeded.noteLines);
     assert.ok(
       lines.length >= PERF_FIXTURE_PROFILE.minimumNoteLines,

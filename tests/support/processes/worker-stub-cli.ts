@@ -1,14 +1,17 @@
 
+import { randomUUID } from "node:crypto";
+import { admitDirectWorker, admitSupervisedWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
+import { WorkerPoolMemberSchema } from "../../../src/models/run/worker-slot.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
-import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { dirname, join } from "node:path";
-import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { dirname, join, resolve } from "node:path";
+import { bindWorkerProcessAdmission } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
-const [dbPath, lockRoot, fixtureKind, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw] = process.argv.slice(2);
+const [dbPath, lockRoot, fixtureKind, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw, ...launchArgs] = process.argv.slice(2);
 if (
   dbPath === undefined
   || lockRoot === undefined
@@ -26,27 +29,42 @@ if (
 
 const workflowId = WorkflowIdSchema.parse(workflowRaw);
 const poolIndex = PositiveIntSchema.parse(Number(poolIndexRaw));
-// The same derivation `poolWorkerId` mints (`<workflowId>-worker-<n>`),
-// restated here so the stub's import closure stays at the domain layer.
-const workerId = WorkerIdSchema.parse(`${workflowId}-worker-${String(poolIndex)}`);
+const launch = launchArgs.length === 0 ? undefined : (() => {
+  const [workerIdFlag, workerId, ordinalFlag, ordinal, revisionFlag, revision, commandFlag, commandId] = launchArgs;
+  if (launchArgs.length !== 8 || workerIdFlag !== "--worker-id" || ordinalFlag !== "--ordinal"
+    || revisionFlag !== "--membership-revision" || commandFlag !== "--launch-command-id" || commandId === undefined) {
+    throw new Error("worker-stub-cli launch identity arguments are invalid");
+  }
+  return { member: WorkerPoolMemberSchema.parse({ workflowId, poolIndex, workerId,
+    ordinal: Number(ordinal), membershipRevision: Number(revision) }), commandId };
+})();
 
-const lock = acquireRuntimeProcessLock(
-  { processLockRoot: lockRoot, name: "workers", workerId, pid: process.pid },
-  systemClock,
-);
 const stateRoot = dirname(dbPath);
 const installed = fixtureKind === "installed";
+const repoRoot = resolve(stateRoot, ...rebuildRuntimeIsolation.stateRoot.split("/").map(() => ".."));
 const admission = installed
-  ? acquireEntrypointAdmission(dirname(stateRoot), "shared")
-  : RuntimeAdmission.syntheticFixture(dbPath, "authority");
-if (installed && (dbPath !== join(admission.stateRoot, "state.db") || lockRoot !== join(dirname(stateRoot), rebuildRuntimeIsolation.processLockRoot))) {
+  ? acquireEntrypointAdmission(repoRoot, "shared")
+  : RuntimeAdmission.syntheticFixture(dbPath);
+if (installed && (dbPath !== join(admission.stateRoot, "state.db") || lockRoot !== join(repoRoot, rebuildRuntimeIsolation.processLockRoot))) {
   admission.release();
   throw new Error("worker-stub-cli fixture storage pair mismatch");
 }
-const database = AuthorityDatabase.open(
-  admission, { path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "worker-stub-cli" },
-  systemClock,
-);
+const bound = bindWorkerProcessAdmission({
+  processLockRoot: lockRoot, authorityPath: dbPath, pid: process.pid, clock: systemClock,
+  ...(launch === undefined ? {} : { workerId: launch.member.workerId }),
+  open: () => AuthorityDatabase.open(admission, { path: dbPath, busyTimeoutMs: 5_000,
+    migrationOwner: "worker-stub-cli" }, systemClock),
+  close: database => database.close(),
+  admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
+    const now = systemClock.now().toISOString();
+    if (launch !== undefined) return admitSupervisedWorker(repositories, { ...launch, now });
+    return admitDirectWorker(repositories, { commandId: randomUUID(), workflow: workflowId, poolIndex,
+      expectedPoolVersion: repositories.workerPools.get(workflowId)?.version ?? 0,
+      processId: process.pid, processAcquisitionId: acquisitionId, authorityPath: dbPath,
+      processLockRoot: lockRoot, now }, randomUUID()).workerId;
+  }),
+});
+const { value: database, workerId, processLock: lock } = bound;
 
 const started = database.authority.workerLeases.start({
   workerId,

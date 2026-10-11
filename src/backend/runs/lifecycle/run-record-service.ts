@@ -1,12 +1,10 @@
-import { projectArchiveReport } from "../../storage/sqlite/archive-records.js";
-import { createRunLifecycleStorage } from "../../storage/sqlite/lifecycle-storage.js";
+import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
+import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "../settings/run-settings.js";
 import { runRuntimeMatches } from "./run-claim-admission.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { archivedRunReferenceFingerprint } from "../../../models/archive/model.js";
-import { RUNTIME_VERSION_SCHEMA_VERSION, runtimeVersionForNewRun } from "../../storage/sqlite/runtime-versions.js";
 import {
   RunExistenceSchema,
   type RunExistence,
@@ -27,25 +25,21 @@ import {
   CommandIdSchema,
   FingerprintSchema,
   RunIdSchema,
-  WorkflowIdSchema,
 } from "../../../rules/identity/ids.js";
 import { nextAttemptEnvelope } from "../../../models/run/envelope.js";
 import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import {
-  CanonicalArchiveRequestSchema,
   CanonicalCancellationTerminalizeRequestSchema,
   CanonicalWriteResolutionTransitionRequestSchema,
   RunClaimSweepRequestSchema,
   CanonicalClaimNextRequestSchema,
   CanonicalCreateRunRequestSchema,
-  CanonicalDeleteArchivedRequestSchema,
   CanonicalDeleteRequestSchema,
   CanonicalFailureTerminalizeRequestSchema,
   CanonicalListRunsRequestSchema,
   CanonicalPurgeRequestSchema,
-  CanonicalRelaunchRequestSchema,
   CanonicalRenewClaimRequestSchema,
   CanonicalRequeueRequestSchema,
   CanonicalRetrySourceRequestSchema,
@@ -169,39 +163,16 @@ export class RunRecordService {
     private readonly hooks?: Readonly<{ afterCreateReservation?: () => void }>,
   ) {}
 
-  lifecycleStorage() { return Object.freeze({ ...createRunLifecycleStorage(this.dependencies.database), deleteArchive: (input: unknown): RunDeletionOutcome => this.deleteArchived(input) }); }
-
-  private runtimeStamp(repositories: AuthorityRepositories, workflowId: string) {
-    if (this.dependencies.database.getMeta().schemaVersion < RUNTIME_VERSION_SCHEMA_VERSION) return undefined;
-    const registeredWorkflowId = WorkflowIdSchema.parse(workflowId);
-    let authority = repositories.runtimeVersions.get();
-    if (authority.claim?.workflowIds.includes(registeredWorkflowId)) return null;
-    if (!authority.state.workflows.some(row => row.workflowId === registeredWorkflowId)) {
-      if (authority.claim !== undefined) return null;
-      authority = this.dependencies.database.registerRuntimeVersionWorkflows([registeredWorkflowId]);
-    }
-    return runtimeVersionForNewRun(authority, registeredWorkflowId);
-  }
-
   read(input: string): RunExistence {
     const runId = RunIdSchema.parse(input);
     return this.dependencies.database.withAuthorityReadSnapshot(() => {
-      const { runs, deletedRuns, archivedRuns } = this.dependencies.database.authority;
+      const { runs, deletedRuns } = this.dependencies.database.authority;
       const tombstone = deletedRuns.get(runId);
       const run = runs.get(runId);
       if (tombstone !== undefined && run !== undefined) throw new Error(`run ${runId} has both lifecycle authority and a tombstone`);
       if (tombstone !== undefined) return RunExistenceSchema.parse({ state: "deleted", tombstone });
-      if (run === undefined) {
-        const transfer = this.dependencies.database.transferredRun(runId);
-        return RunExistenceSchema.parse(transfer === undefined ? {state:"absent",runId}
-          : {state:"present",run:transfer.run,disposition:"archived"});
-      }
-      const archived = archivedRuns.isArchived(runId);
-      if (archived && run.lifecycle.state !== "terminal") throw new Error(`archived run ${runId} is not terminal`);
-      return RunExistenceSchema.parse({
-        state: "present", run,
-        disposition: archived ? "archived" : "live",
-      });
+      if (run === undefined) return RunExistenceSchema.parse({ state: "absent", runId });
+      return RunExistenceSchema.parse({ state: "present", run, disposition: "live" });
     });
   }
 
@@ -235,13 +206,7 @@ export class RunRecordService {
       }
       const workflows = request.workflow === undefined
         ? database.authority.runs.listWorkflows() : [request.workflow];
-      const archivedIds = database.archivedRunIds();
-      const liveRows = workflows.flatMap((workflow) => database.authority.runs.listByWorkflow(workflow))
-        .filter((run) => (archivedIds.has(run.envelope.runId) && database.authority.archivedRuns.isArchived(run.envelope.runId))
-          === (request.disposition === "archived"))
-        .sort(compareRuns);
-      const rows = [...liveRows,...(request.disposition === "archived" ? database.listTransferredRuns()
-        .filter(run=>request.workflow===undefined || run.envelope.workflow===request.workflow) : [])].sort(compareRuns);
+      const rows = workflows.flatMap(workflow => database.authority.runs.listByWorkflow(workflow)).sort(compareRuns);
       const offset = cursor === undefined ? 0 : cursor.offset;
       const page = rows.slice(offset, offset + request.limit);
       return {
@@ -265,7 +230,7 @@ export class RunRecordService {
       if (!runSettingsAvailable(repositories, request)) return refused({ reason: "runtime-stale" });
       const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
-      if (repositories.runs.get(runId) !== undefined || this.dependencies.database.transferredRun(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
+      if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
       const itemId = deriveItemId(request.workflow, request.matchKey);
       if (request.parent !== undefined) {
         const parent = this.read(request.parent.runId);
@@ -285,8 +250,6 @@ export class RunRecordService {
         }
       }
       const now = this.dependencies.clock.now().toISOString();
-      const runtimeVersion = this.runtimeStamp(repositories, request.workflow);
-      if (runtimeVersion === null) return refused({ reason: "policy-refused" });
       const { commandId, code, matchKey, runtimeConfig, input: storedInput, sessionId, appVersion, ...envelope } = request;
       // These inputs govern admission/minting and are never copied into the envelope.
       void commandId; void matchKey; void runtimeConfig;
@@ -300,7 +263,6 @@ export class RunRecordService {
         runNumber: repositories.runs.nextWorkflowRunNumber(request.workflow),
         ...(sessionId === undefined ? {} : { sessionId }),
         ...(appVersion === undefined ? {} : { appVersion }),
-        ...(runtimeVersion === undefined ? {} : { runtimeVersion }),
         version: 1, createdAt: now, updatedAt: now,
       });
       this.hooks?.afterCreateReservation?.();
@@ -323,6 +285,9 @@ export class RunRecordService {
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
       if (!this.runtimeMatches(runtimeConfig)) return refused({ reason: "runtime-stale" });
+      if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(control => control.request.type === "plan-worker-count")) {
+        return refused({ reason: "none-eligible" });
+      }
       const held = repositories.runs.listByWorker(workerId).find((run) => runClaim(run) !== undefined);
       if (held !== undefined) return refused({ reason: "worker-busy", runId: held.envelope.runId });
       const outcome = repositories.runs.claimEligible({
@@ -351,7 +316,6 @@ export class RunRecordService {
       if (current.run.version !== request.expectedVersion) {
         return refused({ reason: "conflict", currentVersion: current.run.version });
       }
-      if (current.disposition === "archived") return refused({ reason: "already-archived" });
       if ("lifecycle" in request
         && request.lifecycle.state === "terminal"
         && request.lifecycle.outcome === "cancelled"
@@ -383,7 +347,8 @@ export class RunRecordService {
             }
             continue;
           }
-          const cancelled = repositories.runs.transition({
+          const cancelled = this.transition({
+            commandId: lifecycleCommandId("cascade-cancel-event", { commandId: journal.command.commandId, runId: member.envelope.runId }),
             runId: member.envelope.runId,
             expectedVersion: member.version,
             lifecycle: {
@@ -391,14 +356,10 @@ export class RunRecordService {
               outcome: "cancelled",
               endedAt: request.lifecycle.endedAt,
             },
-            now: this.dependencies.clock.now().toISOString(),
           });
           if (cancelled.state !== "applied") {
             throw new Error(`cancel tree lost member version fence for ${member.envelope.runId}`);
           }
-          this.recordLifecycleEvent(repositories, "transition",
-            lifecycleCommandId("cascade-cancel-event", { commandId: journal.command.commandId, runId: member.envelope.runId }),
-            cancelled.run);
         }
         const stillActive = members
           .map((member) => repositories.runs.get(member.envelope.runId))
@@ -453,6 +414,25 @@ export class RunRecordService {
       if (isWriteResolution && current.run.lifecycle.state !== "parked-write") {
         return refused({ reason: "illegal-transition", from: current.run.lifecycle.state,
           to: request.lifecycle.state, message: "only a parked-write run has a write to resolve" });
+      }
+      if (isWriteResolution && current.run.lifecycle.state === "parked-write") {
+        const resolution = request.writeResolution;
+        const identity = resolution.kind === "operator" ? resolution.binding : resolution;
+        const intent = repositories.writeIntents.get(identity.writeIntentId);
+        const attempt = repositories.writeAttempts.get(identity.writeAttemptId);
+        if (intent === undefined || attempt === undefined || (intent.status !== "committed" && intent.status !== "retryable")
+          || intent.runId !== request.runId || intent.generation !== identity.generation || intent.currentAttemptId !== identity.writeAttemptId
+          || intent.bindingProofDigest !== identity.bindingProofDigest || current.run.lifecycle.writeIntentId !== intent.writeIntentId
+          || current.run.lifecycle.intentGeneration !== intent.generation
+          || (identity.decision === "present" ? intent.status !== "committed" : intent.status !== "retryable")) throw new Error("write-resolution-continuation-settlement-mismatch");
+        if (resolution.kind === "operator") {
+          const command = repositories.commands.get(resolution.binding.commandId);
+          const audit = repositories.commandAudits.get(resolution.binding.auditId);
+          authenticateParkedWriteResolution(intent,attempt,command,audit);
+          if (resolution.binding.expectedRunVersion !== request.expectedVersion || resolution.binding.runId !== request.runId
+            || canonicalJsonStringify(intent.resolution) !== canonicalJsonStringify(resolution.binding)) throw new Error("write-resolution-continuation-binding-mismatch");
+        } else if (intent.resolution !== undefined || (intent.status === "committed" ? attempt.outcome.state !== "committed"
+          : attempt.outcome.state !== "safe-to-retry" || intent.settlement.state === "operator-confirmed-absent")) throw new Error("write-resolution-continuation-recovery-proof-mismatch");
       }
       if (!isWriteResolution && current.run.lifecycle.state === "parked-write"
         && request.lifecycle.state === "queued") {
@@ -710,7 +690,6 @@ export class RunRecordService {
       if (run.version !== request.expectedVersion) {
         return refused({ reason: "conflict", currentVersion: run.version });
       }
-      if (existence.disposition === "archived") return refused({ reason: "invalid-state" });
       const held = runClaim(run);
       if (held !== undefined) {
         if (request.claim !== undefined
@@ -794,18 +773,6 @@ export class RunRecordService {
     return this.retrySource(input, descriptor, true, publication);
   }
 
-  // Recorded relaunches remain replayable; creating new relaunches is refused.
-  relaunch(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
-    void descriptor; void publication;
-    const request = CanonicalRelaunchRequestSchema.parse(input);
-    return this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
-      const journal = this.inspectJournal(repositories, "relaunch", request, { kind: "none" });
-      if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
-      if (journal.state === "replay") return this.replayRun(journal.result);
-      return refused({ reason: "invalid-state" });
-    });
-  }
-
   private retrySource(input: unknown, descriptor: AnyWorkflowDescriptor, restart: boolean, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
     const request = CanonicalRetrySourceRequestSchema.parse(input);
     descriptorRuntimeNodes(descriptor);
@@ -833,10 +800,8 @@ export class RunRecordService {
       }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
       const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
-      if (repositories.runs.get(runId) !== undefined || this.dependencies.database.transferredRun(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
+      if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
       const now = this.dependencies.clock.now().toISOString();
-      const runtimeVersion = this.runtimeStamp(repositories, run.envelope.workflow);
-      if (runtimeVersion === null) return refused({ reason: "policy-refused" });
       const envelope = nextAttemptEnvelope(run.envelope, repositories.runs.nextItemAttempt({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }));
@@ -851,7 +816,6 @@ export class RunRecordService {
         runNumber: repositories.runs.nextWorkflowRunNumber(run.envelope.workflow),
         ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
         ...(request.appVersion === undefined ? {} : { appVersion: request.appVersion }),
-        ...(runtimeVersion === undefined ? {} : { runtimeVersion }),
         version: 1, createdAt: now, updatedAt: now,
       });
       this.dependencies.admitQueuedRun?.(next);
@@ -863,52 +827,14 @@ export class RunRecordService {
     return outcome;
   }
 
-  archive(input: unknown): RunMutationOutcome | RunExistence {
-    const request = CanonicalArchiveRequestSchema.parse(input);
-    return this.dependencies.database.withAuthorityTransaction((repositories) => {
-      const journal = this.inspectJournal(repositories, "archive", request, {
-        kind: "version",
-        expectedVersion: request.expectedVersion,
-      });
-      if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
-      if (journal.state === "replay") return this.replayRun(journal.result);
-      const current = this.read(request.archive.runId);
-      if (current.state !== "present") return current;
-      const existing = repositories.archivedRuns.get(request.archive.runId);
-      if (existing !== undefined) {
-        if (canonicalJsonStringify(existing) === canonicalJsonStringify(request.archive)) {
-          return { state: "applied-already" as const, run: current.run };
-        }
-        return refused({ reason: "already-archived" });
-      }
-      if (current.run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: current.run.version });
-      if (current.run.lifecycle.state !== "terminal") return refused({ reason: "not-terminal" });
-      if (repositories.archivedRuns.bindingMismatches(request.archive).length !== 0) {
-        return refused({ reason: "schema-mismatch", digest: archivedRunReferenceFingerprint(request.archive) });
-      }
-      repositories.archivedRuns.insert(request.archive);
-      const updated = repositories.runs.advanceRevision({ runId: request.archive.runId,
-        expectedVersion: request.expectedVersion, now: this.dependencies.clock.now().toISOString() });
-      if (updated.state !== "applied") throw new Error("archive lost its transaction-local version fence");
-      this.recordJournal(repositories, journal.command, journalRun(updated.run));
-      return { state: "applied" as const, run: updated.run };
-    });
-  }
-
-  delete(input: unknown) {
+  delete(input: unknown): RunDeletionOutcome {
     const request = CanonicalDeleteRequestSchema.parse(input);
-    return this.deleteTree({ ...request, origin: "queue" });
-  }
-
-  deleteArchived(input: unknown) {
-    const request = CanonicalDeleteArchivedRequestSchema.parse(input);
-    const outcome = this.deleteTree({ ...request, origin: "archive" });
-    if ((outcome.state === "deleted" || outcome.state === "applied-already") && "tombstones" in outcome) {
-      for (const receipt of outcome.tombstones) {
-        if (receipt.removed.some(entry=>entry.table === "archive_transfers")) this.dependencies.database.settleArchivedDeletion(receipt.runId);
-      }
+    try {
+      return this.deleteTree(request);
+    } catch (error) {
+      if (error instanceof RunDeletionRefusedError) return refused({ reason: error.reason });
+      throw error;
     }
-    return outcome;
   }
 
   purge(input: unknown): RunPurgeOutcome {
@@ -935,44 +861,17 @@ export class RunRecordService {
     });
   }
 
-  private deleteTree(request: Readonly<{ commandId: string; runId: string }> & (
-    | Readonly<{ origin: "queue"; expectedVersion: number }>
-    | Readonly<{ origin: "archive"; archiveFingerprint?: string; operatorRequest?: z.infer<typeof CanonicalDeleteArchivedRequestSchema>["operatorRequest"] }>
-  )): RunDeletionOutcome {
+  private deleteTree(request: z.infer<typeof CanonicalDeleteRequestSchema>): RunDeletionOutcome {
     return this.dependencies.database.withAuthorityTransaction((repositories): RunDeletionOutcome => {
-      if (request.origin === "archive" && request.operatorRequest !== undefined) {
-        if (request.operatorRequest.type !== "delete-archived-run" || request.operatorRequest.target.archivedRunId !== request.runId
-          || request.commandId !== lifecycleCommandId("operator-delete-archive", request.operatorRequest.commandId)) throw new Error("archive-operator-request-binding-mismatch");
-        repositories.commands.assertIdentity(request.operatorRequest);
-      }
-      const journal = this.inspectJournal(
-        repositories,
-        request.origin === "queue" ? "delete" : "delete-archived",
-        request,
-        request.origin === "queue"
-          ? { kind: "version", expectedVersion: request.expectedVersion }
-          : { kind: "none" },
-      );
+      const journal = this.inspectJournal(repositories, "delete", request,
+        { kind: "version", expectedVersion: request.expectedVersion });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayDeletion(repositories, journal.result);
-      if (request.origin === "archive" && request.archiveFingerprint === undefined) throw new Error("archive-delete-report-required");
       const existence = this.read(request.runId);
       if (existence.state === "deleted") return refused({ reason: "tombstoned" });
       if (existence.state === "absent") return existence;
       const { run } = existence;
-      if (request.origin === "queue") {
-        if (run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: run.version });
-        if (existence.disposition === "archived") return refused({ reason: "use-archive-door" });
-      } else {
-        if (request.operatorRequest !== undefined && request.operatorRequest.type === "delete-archived-run") {
-          const view = projectArchiveReport(this.lifecycleStorage().readReport(request.runId));
-          if (view.state !== "available" || view.archiveFingerprint !== request.operatorRequest.target.archiveFingerprint) return refused({ reason: "schema-mismatch", digest: request.operatorRequest.target.archiveFingerprint });
-        }
-        const archive = repositories.archivedRuns.get(request.runId);
-        if (archive === undefined ? this.dependencies.database.transferredRun(request.runId)?.reportDigest !== request.archiveFingerprint : archivedRunReferenceFingerprint(archive) !== request.archiveFingerprint) {
-          return refused({ reason: "schema-mismatch", digest: FingerprintSchema.parse(request.archiveFingerprint) });
-        }
-      }
+      if (run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: run.version });
       if (run.envelope.parent !== undefined) return refused({ reason: "is-member" });
       if (run.lifecycle.state !== "terminal") return refused({ reason: "not-terminal" });
       const leaves: RunRecord[] = [];
@@ -980,23 +879,20 @@ export class RunRecordService {
       const collect = (parent: RunRecord): void => {
         if (visited.has(parent.envelope.runId)) throw new Error(`cycle in run parent tree ${parent.envelope.runId}`);
         visited.add(parent.envelope.runId);
-        for (const child of [...repositories.runs.listChildren(parent.envelope.runId),...this.dependencies.database.listTransferredRuns().filter(run=>run.envelope.parent?.runId===parent.envelope.runId)]) collect(child);
+        for (const child of repositories.runs.listChildren(parent.envelope.runId)) collect(child);
         leaves.push(parent);
       };
       collect(run);
-      const active = leaves.find((member) => member.lifecycle.state !== "terminal");
+      const active = leaves.find(member => member.lifecycle.state !== "terminal");
       if (active !== undefined) return refused({ reason: "tree-non-terminal", runId: active.envelope.runId });
       const now = this.dependencies.clock.now().toISOString();
-      const tombstones = leaves.map((member) => {
-        const runId = member.envelope.runId;
-        return repositories.runs.delete({ runId, commandId: request.commandId, now,
-          origin: repositories.archivedRuns.isArchived(runId) || this.dependencies.database.transferredRun(runId) !== undefined ? "archive" : "queue" });
-      });
-      this.recordJournal(repositories, journal.command, {
-        kind: "deletion",
-        runIds: tombstones.map((tombstone) => tombstone.runId),
-      });
-      return { state: "deleted" as const, tombstones };
+      const requests = leaves.map(member => ({ runId: member.envelope.runId, commandId: request.commandId,
+        now, cascadeRunIds: leaves.map(member => member.envelope.runId), origin: "queue" as const }));
+      repositories.lifecycleJournal.insertCommand(journal.command);
+      for (const deletion of requests) repositories.runs.assertDeletionAllowed(deletion);
+      const tombstones = requests.map(deletion => repositories.runs.delete(deletion));
+      this.recordJournal(repositories, journal.command, { kind: "deletion", runIds: tombstones.map(tombstone => tombstone.runId) });
+      return { state: "deleted", tombstones };
     });
   }
 
@@ -1013,27 +909,11 @@ export class RunRecordService {
     const parsedFence = RunLifecycleCommandFenceSchema.parse(fence);
     const commandId = CommandIdSchema.parse((request as { commandId?: unknown }).commandId);
     let fingerprintInput = request;
-    let acceptedArchiveDeleteRequest: z.infer<typeof CanonicalDeleteArchivedRequestSchema>["operatorRequest"];
     if (operation === "create") {
       const create = CanonicalCreateRunRequestSchema.parse(request);
       fingerprintInput = valueFreeProtectedData(create, retainedRunProtectedBindings({
         envelope: { workflow: create.workflow }, input: create.input,
       }));
-    } else if (operation === "relaunch") {
-      const relaunch = CanonicalRelaunchRequestSchema.parse(request);
-      fingerprintInput = valueFreeProtectedData(relaunch, retainedRunProtectedBindings({
-        envelope: { workflow: relaunch.create.workflow }, input: relaunch.create.input,
-      }));
-    } else if (operation === "archive") {
-      const archive = CanonicalArchiveRequestSchema.parse(request);
-      fingerprintInput = { ...archive, archive: archivedRunReferenceFingerprint(archive.archive) };
-    }
-    if (operation === "delete-archived") {
-      const operator = CanonicalDeleteArchivedRequestSchema.safeExtend({ origin: z.literal("archive") }).parse(request).operatorRequest;
-      if (operator !== undefined) {
-        fingerprintInput = operator;
-        acceptedArchiveDeleteRequest = operator;
-      }
     }
     const requestFingerprint = FingerprintSchema.parse(sha256Hex(
       `hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(fingerprintInput)}`,
@@ -1049,15 +929,17 @@ export class RunRecordService {
           commandId,
           operation,
           requestFingerprint,
+          request: fingerprintInput,
           fence: parsedFence,
           recordedAt: this.dependencies.clock.now().toISOString(),
-          ...(acceptedArchiveDeleteRequest === undefined ? {} : { acceptedArchiveDeleteRequest }),
+
         }),
       };
     }
     if (!("kind" in existing) || existing.kind !== "run-lifecycle"
       || existing.operation !== operation
       || existing.requestFingerprint !== requestFingerprint
+      || canonicalJsonStringify(existing.request) !== canonicalJsonStringify(fingerprintInput)
       || canonicalJsonStringify(existing.fence) !== canonicalJsonStringify(parsedFence)) {
       return { state: "divergent" };
     }
@@ -1125,6 +1007,7 @@ export class RunRecordService {
       result,
       completedAt: this.dependencies.clock.now().toISOString(),
     });
+    if (result.kind === "run") this.dependencies.database.settleLifecycleTerminalEvidence(command.commandId);
   }
 
   private replayRun(
@@ -1138,6 +1021,10 @@ export class RunRecordService {
     if (existence.state === "absent") {
       throw new Error(`applied run lifecycle command names ${result.runId}, which is absent without a tombstone`);
     }
+    if (existence.run.lifecycle.state === "terminal" && existence.run.lifecycle.outcome !== "interrupted") {
+      const resultRecord = this.dependencies.database.authority.runResults.get(result.runId);
+      if (resultRecord === undefined) throw new Error("terminal-evidence-result-missing");
+    }
     return { state: "applied-already", run: existence.run };
   }
 
@@ -1150,7 +1037,7 @@ export class RunRecordService {
       throw new Error("terminalize replay does not carry a run result and terminal fence");
     }
     const existence = this.read(journal.result.runId);
-    if (existence.state !== "present" || existence.disposition === "archived") return this.replayRun(journal.result);
+    if (existence.state !== "present") return this.replayRun(journal.result);
     const { run } = existence;
     const authorization = run.completion;
     const failureCount = repositories.failures.listByRun(journal.result.runId).length;
@@ -1163,7 +1050,7 @@ export class RunRecordService {
       || authorization.expectedVersion !== journal.command.fence.expectedVersion
       || authorization.claim.workerId !== journal.command.fence.workerId
       || authorization.claim.claimGeneration !== journal.command.fence.claimGeneration
-      || (expectedKind === "failed" ? failureCount !== 1 || result !== undefined : failureCount !== 0 || result === undefined)) {
+      || (expectedKind === "failed" ? failureCount !== 1 || result === undefined : failureCount !== 0 || result === undefined)) {
       throw new Error(`terminalize replay for ${journal.result.runId} does not match its composite authority`);
     }
     return { state: "applied-already", run };
@@ -1203,7 +1090,11 @@ function refused(refusal: RunRecordRefusal): Readonly<{ state: "refused"; refusa
 }
 
 function journalRun(run: RunRecord) {
-  return { kind: "run" as const, runId: run.envelope.runId, appliedVersion: run.version };
+  const lifecycle = run.lifecycle;
+  return { kind: "run" as const, runId: run.envelope.runId, appliedVersion: run.version,
+    ...(lifecycle.state === "terminal" && (lifecycle.outcome === "cancelled" || lifecycle.outcome === "discarded" || lifecycle.outcome === "superseded")
+      ? { terminal: { outcome: lifecycle.outcome, endedAt: lifecycle.endedAt } } : {}),
+  };
 }
 
 function findNonTerminalTreeMember(

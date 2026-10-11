@@ -9,7 +9,7 @@ import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { workerPoolVersion } from "../../../../../../src/models/run/worker-pool.js";
 import { runSessionActorId, RunSessionRecordSchema } from "../../../../../../src/models/run/session.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { NOW, UUID_6, UUID_8 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, NOW, UUID_6, UUID_8 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, RUN_SESSION, RUN_SESSION_ID, WORKFLOW_ID } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
@@ -19,10 +19,12 @@ function databasePath(): string {
   return join(root, "authority.sqlite");
 }
 function open(path: string): AuthorityDatabase {
-  return AuthorityDatabase.open(
+  const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
+  if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  return database;
 }
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -109,12 +111,12 @@ describe("worker_pools — the CAS basis the spawn control needs (§11.5)", () =
     );
     database.close();
     const raw = new DatabaseSync(path);
-    assert.throws(() => raw.prepare("DELETE FROM worker_pools").run(), /never deleted/);
+    assert.throws(() => raw.prepare("DELETE FROM worker_pools").run(), /retained|never deleted/);
     raw.close();
   });
 });
 
-describe("workflow_run_batches — a durable group whose membership is the run table (§11.1)", () => {
+describe("run_batches — a durable group whose membership is the run table (§11.1)", () => {
   it("inserts immutably, and reads the actor off the origin", () => {
     const path = databasePath();
     const database = open(path);
@@ -132,8 +134,8 @@ describe("workflow_run_batches — a durable group whose membership is the run t
     database.close();
 
     const raw = new DatabaseSync(path);
-    assert.throws(() => raw.prepare("UPDATE workflow_run_batches SET workflow = 'x'").run(), /immutable/);
-    assert.throws(() => raw.prepare("DELETE FROM workflow_run_batches").run(), /never deleted/);
+    assert.throws(() => raw.prepare("UPDATE run_batches SET workflow = 'x'").run(), /run-batches-presentation/);
+    assert.throws(() => raw.prepare("DELETE FROM run_batches").run(), /retained|never deleted/);
     raw.close();
   });
 
@@ -174,13 +176,13 @@ describe("workflow_run_batches — a durable group whose membership is the run t
     );
   });
 
-  it("reads a pre-v17 run row — one whose record carries no sessionId — as no session", () => {
+  it("reads an admitted current ungrouped run as no session", () => {
     const path = databasePath();
     const database = open(path);
     database.authority.runs.enqueue(queuedRun(RUN_ID, {}));
     database.close();
     const raw = new DatabaseSync(path);
-    const row = raw.prepare("SELECT session_id FROM workflow_runs WHERE record_key = ?").get(RUN_ID) as { session_id: string | null };
+    const row = raw.prepare("SELECT batch_id AS session_id FROM runs WHERE id = ?").get(RUN_ID) as { session_id: string | null };
     assert.equal(row.session_id, null);
     raw.close();
     const reopened = open(path);

@@ -87,30 +87,7 @@ prompt hangs. A unix timestamp is monotonic across fresh browser profiles (a
 fixed bump like 1,000,000 would collide on the second headless session) and stays
 ahead of Duo's view. Verified end-to-end against a live UCPath login 2026-06-25.
 
-From the repo root:
-
-```bash
-playwright-cli install-browser chromium      # one-time: full Chromium (supports --load-extension)
-node duo-autopilot/launch-selector-browser.mjs <login-url> # opens session 'sel' headless with the extension loaded
-# …fill SSO username/password (e.g. from .env); the extension answers the Duo prompt itself…
-playwright-cli -s=sel snapshot               # map selectors on deep, auth-gated pages
-playwright-cli -s=sel close
-```
-
-`node duo-autopilot/launch-selector-browser.mjs <login-url>` generates a gitignored
-`.playwright/duo-autopilot.config.json` that loads this folder via
-`--load-extension`, then opens a persistent-context session (extensions require a
-persistent context). It uses Playwright's **full** bundled Chromium
-(`channel: chromium`, new headless) because Google Chrome stable disabled
-`--load-extension` in 2024 and the lightweight `headless-shell` can't run
-extensions. The extension only answers the **Duo MFA** step — you still fill the
-SSO username/password yourself.
-
-This launcher is a **live, read-only HR/Duo verification** command, not an
-offline test: it can log in to an auth-gated system to map selectors, but makes
-no HR transaction writes. It writes only local browser-profile/config artifacts
-(`.auth/<session>-profile` and `.playwright/duo-autopilot.config.json`), both
-gitignored. Always close the `sel` session when finished.
+The admitted transaction-free browser verification command is `npx tsx scripts/verify/browser-login.ts <system>`.
 
 > **Chromium install under Node 26:** `playwright-cli install-browser chromium`
 > hangs in Playwright's zip extractor right before the ~230MB framework. Workaround:
@@ -245,8 +222,6 @@ duo-autopilot/
     crypto.js            byte-exact WebAuthn helpers (assertion + registration + CBOR)
     options.html / .js   status, toggles, and the enrollment / import flow
   credentials/           GITIGNORED — your private key, never committed
-  launch-selector-browser.mjs  opens a headless playwright-cli session with the
-                         extension loaded (run with node from the repo root)
   test/crypto.test.mjs   offline self-test (run: npm --prefix duo-autopilot test from repo root)
   BUILD_PLAN.md          the full design spec
 ```

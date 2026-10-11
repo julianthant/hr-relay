@@ -10,19 +10,17 @@ export const PendingWireBindingSchema = z.strictObject({
   /** `<Schema>#<arm>` or `route:<METHOD> <path>`. */
   binding: z.string().min(1),
   direction: z.enum(["declared-unserved", "served-unconsumed"]),
-  decision: z.string().regex(/^D\d+[a-z]?$/, "decision must name a ref decisions decision id"),
   note: z.string().min(1),
 });
 
 export const PendingWireBindingsFileSchema = z.strictObject({
-  milestone: z.string().min(1),
   reason: z.string().min(1),
   bindings: z.array(PendingWireBindingSchema),
 });
 
 export type PendingWireBinding = z.infer<typeof PendingWireBindingSchema>;
 
-export const PENDING_WIRE_BINDINGS_PATH = "docs/rebuild/migrations/legacy/pending-wire-bindings.json";
+export const PENDING_WIRE_BINDINGS_PATH = "tests/architecture/dashboard/fixtures/pending-wire-bindings.json";
 
 export function readPendingWireBindings(
   path = join(REPO_ROOT, PENDING_WIRE_BINDINGS_PATH),

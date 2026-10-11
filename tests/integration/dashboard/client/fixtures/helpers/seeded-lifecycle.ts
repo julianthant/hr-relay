@@ -16,7 +16,7 @@ deriveIdempotencyKeyDigest,
 deriveWriteAuthorityReason,
 deriveWriteBindingProofDigest,
 } from "../../../../../../src/rules/write-safety/write-safety.js";
-import { createNoteJsonlWriter } from "../../../../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter } from "../../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/index.js";
 import { PersonLookupCanonicalInput } from "../../../../../../src/workflows/person-lookup/workflow.js";
@@ -54,7 +54,7 @@ interface SeedSpec {
 interface SeedWorld {
   readonly database: AuthorityDatabase;
   readonly spans: ReturnType<typeof createTimelineEmitter>;
-  readonly notes: ReturnType<typeof createNoteJsonlWriter>;
+  readonly notes: ReturnType<typeof createNoteTimelineWriter>;
 }
 
 

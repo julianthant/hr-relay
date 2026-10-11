@@ -42,7 +42,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
       const result = authority.runResults.get(runId);
       if (result === undefined) {
 
-        throw new Error(`run ${runId} is terminal done but authority holds no run result`);
+        throw new Error(`run ${runId} has no immutable terminal result or evidence owner`);
       }
       if (result.runId !== runId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: result for ${runId}`);
       return result;

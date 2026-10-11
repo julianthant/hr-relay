@@ -12,6 +12,7 @@ export const RunSearchDeclarationSchema = z.strictObject({
 export const RunSearchIndexRecordSchema = z.strictObject({
   runId: RunIdSchema,
   sourceVersion: PositiveIntSchema,
+  buildGeneration: NonNegativeIntSchema.optional(),
   metadata: SearchMetadataSchema,
 });
 export const RunSearchPublicationSchema = z.strictObject({

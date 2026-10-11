@@ -224,6 +224,7 @@ export function createGateSourceRuntime(input: Readonly<{
       }
       const now = input.clock.now().toISOString();
       const record = SourceGateResultRecordSchema.parse({
+        nodeId: candidate.id,
         runId: envelope.runId,
         gateId: envelope.gateId,
         expectedVersion: envelope.expectedVersion,

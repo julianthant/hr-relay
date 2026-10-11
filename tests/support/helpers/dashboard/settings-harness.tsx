@@ -14,7 +14,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { activeSettingsRuntimeIdentity, readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
+import { activeSettingsRuntimeIdentity } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { composeSettings } from "../../../../src/backend/app/composition/dashboard/settings.js";
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -34,11 +34,9 @@ export function syntheticSettingsAuthority() {
   const hostFacts = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" });
   const resolveConfigured = (settings: unknown) => resolveConfigWithProvenance(settings, hostFacts, clock);
   const resolved = resolveConfigured({});
-  database.withAuthorityTransaction(repositories => {
-    const record = readSettings(repositories); const configSnapshotId = randomUUID();
-    repositories.configSnapshots.insert({ configSnapshotId, revision: 1, fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
-    repositories.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint, configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: clock.now().toISOString() });
-  });
+  database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+    fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
+    capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const composition = composeSettings({ database, clock, hostFacts, active: activeSettingsRuntimeIdentity,
     environment: { HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" }, credentials });
   const execute = (request: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings: composition.executor }, request);

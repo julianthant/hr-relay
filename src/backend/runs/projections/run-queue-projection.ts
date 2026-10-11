@@ -51,7 +51,7 @@ import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
-import type { EventStreamLine } from "../../storage/events/jsonl-streams.js";
+import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
@@ -132,7 +132,7 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
-    /** 2i-B: the durable inbox rows the day wire serves. */
+    /** Durable inbox rows served by day. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
@@ -177,7 +177,7 @@ export interface RunQueueProjectionHealth {
 export type ProjectedRunLogEvent = Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>;
 
 export interface ProjectedRunLogEntry {
-  readonly line: EventStreamLine;
+  readonly line: TimelineLine;
   readonly event: ProjectedRunLogEvent;
   /** Append-fold revision within this projection generation. */
   readonly revision: number;
@@ -434,7 +434,7 @@ export class RunQueueProjection {
   }
 
 
-  #recordRunLog(event: SpanEventWire, line: EventStreamLine): void {
+  #recordRunLog(event: SpanEventWire, line: TimelineLine): void {
     if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
     const entries = this.#runLogs.get(event.runId) ?? [];
     if (!this.#runLogs.has(event.runId)) this.#runLogs.set(event.runId, entries);
@@ -864,7 +864,6 @@ export class RunQueueProjection {
   #warningVerdict(status: QueueSurfaceWire["status"], receipt: ReceiptView | undefined): WarningVerdict {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) return { kind: "not-terminal", status };
     if (receipt === undefined) return { kind: "unread" };
-    if (receipt.state === "withheld") return { kind: "withheld", reason: receipt.reason };
     const first = receipt.value.warnings[0];
     if (first === undefined) return { kind: "none" };
     return { kind: "present", count: receipt.value.warnings.length, first: first.summary };
@@ -1034,9 +1033,6 @@ export class RunQueueProjection {
         state: "absent",
         reason: "no evidence receipt has been derived for this run, so its outputs are unknown",
       };
-    }
-    if (receipt.state === "withheld") {
-      return { state: "absent", reason: receipt.reason };
     }
     if (receipt.value.output.length === 0) {
       return { state: "absent", reason: "this run's evidence receipt records no output fact" };

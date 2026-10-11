@@ -2,7 +2,7 @@ import { z } from "zod";
 import { BrowserSystemIdSchema, type BrowserSystemId } from "../../rules/identity/ids.js";
 import type { Config } from "./schema.js";
 
-/** Historical records can still name test; new run resolution refuses it. */
+/** Instance identity stays explicit; test targeting is refused. */
 export const RuntimeInstanceSchema = z.enum(["prod", "test"]);
 export const RequestedInstanceSchema = z.strictObject({
   ucpath: RuntimeInstanceSchema.optional(),
@@ -35,7 +35,7 @@ function entryUrl(config: Config, system: BrowserSystemId): string {
   }
 }
 
-/** Compatibility projection for the retired System hosts read. */
+/** Current system entry hosts and explicit test unavailability. */
 export function listSystemEntryHosts(config: Config) {
   return BrowserSystemIdSchema.options.map(system => Object.freeze({
     system,
@@ -44,7 +44,7 @@ export function listSystemEntryHosts(config: Config) {
   }));
 }
 
-/** Test targeting is rejected even when a historical request still parses. */
+/** Test targeting is rejected before URL resolution. */
 export function resolveSystemEntryUrl(
   config: Config,
   system: BrowserSystemId,

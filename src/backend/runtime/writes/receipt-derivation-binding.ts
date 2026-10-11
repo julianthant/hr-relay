@@ -8,7 +8,7 @@ import {
 } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import type { RunResultRecord } from "../../../models/run/result.js";
+import { terminalEvidenceResult, type RunResultRecord } from "../../../models/run/result.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -66,7 +66,7 @@ export type ReceiptDerivationBinding =
 export interface ReceiptDerivationBindingInput {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly run: RunRecord;
-  /** Present exactly when the run ended `done`. */
+  /** The immutable success result or truthful final evidence owner. */
   readonly result?: RunResultRecord;
   /** Every checkpoint row for the run's logical item, any attempt. */
   readonly checkpoints: readonly RunCheckpointRecord[];
@@ -187,10 +187,10 @@ export function evaluateReceiptDerivationBinding(
     )
     : moved("evidence-graph", `this build cannot interpret the run's durable evidence: ${graphGaps.join("; ")}`));
 
-  if (result === undefined) {
+  if (result === undefined || terminalEvidenceResult(result) !== undefined) {
     checks.push(skipped(
       "terminal-dependency-set",
-      "not evaluated: this run holds no terminal result, so authority retains no dependency set to compare",
+      "not evaluated: no workflow output was derived, so there is no terminal derivation dependency set",
     ));
   } else {
     // Preview terminal dependencies bind the preview boundary, not ordinary workflow success dependencies.

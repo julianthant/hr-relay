@@ -23,7 +23,7 @@ HR share a system and declaration, not routes, frames, or anchors; scope each gu
   Never guess a propagation window or retry an UNKNOWN commit.
 
 Before changing either surface, search [LESSONS.md](LESSONS.md) by the operation/decision and read
-matching entries. Before termination/sweep changes, read `docs/rebuild/migrations/separations.md` §9.39,
+matching entries. Before termination/sweep changes, read the workflow's task evidence §9.39,
 `docs/rebuild/reference/write-safety.md`, and the exact task/driver contracts. Use the generated
 `docs/rebuild/reference/stores.md` for task discovery; do not copy its inventory here.
 Requested lessons go in the ledger. Root rules apply.

@@ -1,4 +1,7 @@
+import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { ExplorerOverrideImportReceiptSchema, ExplorerOverrideImportSourceSchema } from "../../../src/models/dashboard/explorer-override.js";
+import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
+import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema } from "../../../src/models/run/result.js";
 import { RunCompletionSchema, completionFromAuthorization } from "../../../src/models/run/completion.js";
 import { currentAtomicWriteFixture } from "../../support/helpers/timeline-write-fixture.js";
 import { CredentialStoreApplyOutcomeSchema } from "../../../src/models/config/credential-store.js";
@@ -18,10 +21,10 @@ import { ArtifactPutMetadataSchema, ArtifactRefSchema } from "../../../src/model
 import { BoundaryFailureSchema } from "../../../src/models/failures/boundary-failure.js";
 import { TerminalDependencyEvidenceSchema } from "../../../src/backend/runs/lifecycle/run-result.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { BulkRunCommandRequestSchema, COMMAND_FAMILY_REGISTRY, CommandAuditRecordSchema, CommandEnvelopeSchema, CommandFamilyRegistrySchema, CommandFamilySpecSchema, CommandRequestSchema, CommandResultSchema, CommandTargetReferenceSchema, GateCommandRequestSchema, IntakeCommandRequestSchema, NotificationCommandRequestSchema, RunCommandRequestSchema, SettingsCommandRequestSchema, StartCommandRequestSchema, VersionArchiveCommandRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, COMMAND_FAMILY_REGISTRY, CommandAuditRecordSchema, CommandEnvelopeSchema, CommandFamilyRegistrySchema, CommandFamilySpecSchema, CommandRequestSchema, CommandResultSchema, CommandTargetReferenceSchema, GateCommandRequestSchema, IntakeCommandRequestSchema, NotificationCommandRequestSchema, RunCommandRequestSchema, SettingsCommandRequestSchema, StartCommandRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { ResolvedConfigSchema, resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
-import { ConfigSchema, EditableSettingsOverrideSchema, ProviderBudgetConfigSchema, ProviderBudgetSchema, SettingsOverrideSchema } from "../../../src/models/config/schema.js";
+import { ConfigSchema, EditableSettingsOverrideSchema, ProviderInvocationSettingsSchema, ProviderInvocationConfigSchema, SettingsOverrideSchema } from "../../../src/models/config/schema.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
 import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../src/models/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
@@ -34,9 +37,7 @@ import { GateResultRecordSchema } from "../../../src/models/workflow/gates.js";
 import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
 import { AtomicOutboxPayloadSchema, AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
-import { ProviderAdmissionDenyRequestSchema, ProviderAdmissionInterruptRequestSchema, ProviderAdmissionLifecycleSchema, ProviderAdmissionMutationOutcomeSchema, ProviderAdmissionRecordSchema, ProviderAdmissionReserveOutcomeSchema, ProviderAdmissionReserveRequestSchema, ProviderAdmissionSettleRequestSchema, ProviderAdmissionSweepOutcomeSchema, ProviderAdmissionSweepRequestSchema, ProviderBudgetCounterSchema, ProviderBudgetReservationSchema, ProviderCostEstimateSchema, ProviderExecutionIdentitySchema, ProviderMeasuredUsageSchema, ProviderUnavailableReasonSchema, RedactedProviderEvidenceSchema } from "../../../src/rules/providers/provider-admission.js";
-import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../src/models/providers/providers.js";
-import { ProviderDenialDispositionSchema, ProviderDenialRunContextSchema } from "../../../src/backend/runs/start/provider-admission.js";
+import { ProviderAdapterOutcomeSchema, ProviderUnavailableReasonSchema, ProviderExecutionIdentitySchema, ProviderEvidenceSchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../src/models/providers/providers.js";
 import { buildPreflightReport, PreflightObservationSchema, PreflightReportSchema, PreflightResultSchema, requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { ClassifiedDiagnosticValueSchema, RedactionResultSchema } from "../../../src/rules/redaction/redaction.js";
 import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "../../../src/models/runtime/runtime-dependencies.js";
@@ -44,7 +45,7 @@ import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "
 import { SchemaBoundCanonicalValueSchema } from "../../../src/models/validation/schema-bound-value.js";
 import { NotRunTerminalDependencySchema, ResolvedTerminalDependencySchema, RunResultRecordSchema, TerminalDependencyRecordSchema, TerminalNotRunReasonSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, deriveRunResultDigest, deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
 import { FailureTerminalAuthorizationRecordSchema, SuccessTerminalAuthorizationRecordSchema, TerminalAuthorizationRecordSchema, TerminalizationClaimSchema } from "../../../src/models/run/terminal-authorization.js";
-import { HistoricalTerminalOutboxRecordSchema } from "../../../src/models/run/completion-history.js";
+
 import { DataPointSchema, RecordedDataPointSchema, TaskExecutionIdentitySchema, TaskProvenanceResultSchema, TaskUpstreamCheckpointEvidenceSchema } from "../../../src/rules/workflow/task-provenance.js";
 import { GraphCoveragePointSchema, ScenarioCoverageClaimSchema } from "../../../src/workflow-kit/validation/scenario-coverage.js";
 import { ApproveContextSchema, ApprovedDocumentSchema, CompletionConsumptionSpecSchema, CompletionProgramSampleSchema, ExtractedFieldSchema, MemberPlanEntrySchema, PreviewRecordSchema } from "../../../src/models/workflow/completion.js";
@@ -60,26 +61,25 @@ import { UiVerificationEvidenceManifestSchema, UiVerificationScenarioSchema } fr
 import { CRM_ONBOARDING_DISPLAYED_EID, CrmOnboardingDatesReadSchema, CrmOnboardingRecordReadSchema, CrmSubjectBindingSchema } from "../../../src/models/ui/crm-onboarding.js";
 import { ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE, ActivityPersonPseudonymSecretReferenceSchema, SECRET_FILE_SPECS, SECRET_SPECS, ProtectedSecretSourceSchema, SecretFileSpecSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
 import { ActivityPersonPseudonymEvidenceSchema, ActivityPersonPseudonymGenerationBindingSchema } from "../../../src/models/trust/activity-person-pseudonym.js";
-import { ActivityPersonPseudonymBackfillOutcomeSchema, ActivityPersonPseudonymBackfillReportSchema, ActivityPersonPseudonymBackfillRequestSchema, CurrentSeparationsPseudonymSourceResultSchema } from "../../../src/models/trust/activity-person-pseudonym-backfill.js";
+
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { ActionEvidenceSchema, DecisionEvidenceSchema, EvidenceFactSchema, ReuseEvidenceSchema, RunEvidenceReceiptSchema, UncertaintyEvidenceSchema, VerificationEvidenceSchema } from "../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
-import { FixRecordSchema, KnowledgeRecordSchema } from "../../../src/models/trust/knowledge.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/models/trust/preflight-scenarios.js";
 import { ScenarioManifestSchema } from "../../../src/models/trust/scenario.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
 import { AbsentEvidenceSchema, IdempotencyKeySchema, NegativeSettlementDecisionSchema, NegativeSettlementEvaluationInputSchema, NegativeSettlementPolicySchema, PresentProofReferenceSchema, RecoveryProbeVerdictSchema, SubjectEvidenceSchema, SubjectProofSchema, TransactionOutcomeSchema, UNSCOPED_COMMIT_REASON_REGISTRY, UnscopedBindingProofSchema, UnscopedCommitReasonSpecSchema, WriteAttemptRecordSchema, WriteBindingProofSchema, WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
-import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthorityPendingCountsSchema, AuthoritySchemaInspectionSchema, BackupHealthSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, OpaqueAuthorityRecordSchema, ProjectionStorageRecordSchema, PermanentWriteResolutionSchema, RecoveryProcessLockStateSchema, RecoveryRuntimeLockSnapshotSchema, RecoveryStopProofStoreOptionsSchema, RestoreCandidateSchema, SqliteStorageRecordIdSchema, StoppedSystemProofSchema, StoppedSystemProofIssueRequestSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, StorageHealthCauseSchema, VersionPlanStorageRecordSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
+import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthorityPendingCountsSchema, AuthoritySchemaInspectionSchema, BackupHealthSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, PermanentWriteResolutionSchema, RecoveryProcessLockStateSchema, RecoveryRuntimeLockSnapshotSchema, RecoveryStopProofStoreOptionsSchema, RestoreCandidateSchema, StoppedSystemProofSchema, StoppedSystemProofIssueRequestSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, StorageHealthCauseSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { CRM_UI_REGISTRY } from "../../../src/backend/systems/crm/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/backend/systems/ucpath/driver/ui-registry.js";
 import { ABSENCE_1, ABSENCE_2, ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, COMMITTED_OUTCOME, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, GATE_RESULT, IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, LEDGER_OUTBOX_RECORD, LEDGER_OUTBOX_PAYLOAD, LEDGER_PAYLOAD, NOTIFICATION, SPAN_OUTBOX_PAYLOAD, SPAN_OUTBOX_RECORD, SUBJECT_EVIDENCE, SUBJECT_PROOF, UNSCOPED_PROOF, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { ARCHIVE_RELAUNCH, ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_BUMP_PLAN, VERSION_PLAN_ROW } from "../../support/fixtures/archive-fixtures.js";
-import { ArchivedRunRecordSchema, ArchiveRelaunchRecordSchema, VersionBumpApplicationSchema, VersionBumpPlanSchema } from "../../../src/models/archive/model.js";
+
+
 import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { CURRENT_SEPARATIONS_RESULT } from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
-import { ActivityPersonPseudonymBackfillCommandOutcomeSchema } from "../../../src/backend/app/composition/activity-person-pseudonym-backfill-compose.js";
+
 
 const STABLE_RECORD_ID = `${"c".repeat(64)}#oath-signature#1`;
 const PREVIEW_RECORD = {
@@ -122,6 +122,7 @@ const RESOLVED_TERMINAL_DEPENDENCY = {
     workflowId: RUN_CHECKPOINT.workflowId,
     itemId: RUN_CHECKPOINT.itemId,
     attempt: RUN_CHECKPOINT.attempt,
+    claimGeneration: RUN_CHECKPOINT.claimGeneration,
     runId: RUN_CHECKPOINT.runId,
   },
   outputSchemaHash: RUN_CHECKPOINT.output.schemaHash,
@@ -153,18 +154,7 @@ const RUN_RESULT = {
   dependencyDigest: deriveTerminalDependencyDigest(TERMINAL_DEPENDENCIES),
   createdAt: "2026-07-31T17:00:00.000Z",
 };
-const RUN_TERMINAL_OUTBOX = {
-  outboxId: "11111111-1111-4111-8111-111111111111",
-  payload: {
-    kind: "run-terminal-result",
-    runId: RUN_RESULT.runId,
-    workflowId: RUN_RESULT.workflowId,
-    attempt: RUN_RESULT.attempt,
-    resultDigest: RUN_RESULT.resultDigest,
-  },
-  projection: { state: "pending" },
-  createdAt: "2026-07-31T17:00:00.000Z",
-};
+
 const PERSON_LOOKUP_PARSER = {
   split: { kind: "delimited", delimiters: [";", "\n"] },
   rules: [
@@ -177,12 +167,9 @@ const PERSON_LOOKUP_PARSER = {
 const UUID_1 = "11111111-1111-4111-8111-111111111111";
 const UUID_2 = "22222222-2222-4222-8222-222222222222";
 const UUID_3 = "33333333-3333-4333-8333-333333333333";
-const UUID_4 = "44444444-4444-4444-8444-444444444444";
-const UUID_8 = "88888888-8888-4888-8888-888888888888";
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const NOW = "2026-07-31T17:00:00.000Z";
-const LATER = "2026-07-31T17:01:00.000Z";
 const CLOCK = manualClock(new Date("2026-07-31T10:00:00-07:00"));
 const UI_EVIDENCE = JSON.parse(readFileSync(
   join(REPO_ROOT, "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json"),
@@ -190,8 +177,8 @@ const UI_EVIDENCE = JSON.parse(readFileSync(
 )) as unknown;
 
 const FAILURE = {
-  failureId: UUID_1, fingerprint: HASH_B, runId: UUID_2, traceId: "on-120000-2222", attempt: 1,
-  workflowId: "onboarding", nodeId: "search-person", taskId: "ucpath/search-person",
+  failureId: UUID_1, fingerprint: HASH_B, runId: QUEUED_RUN.envelope.runId, traceId: QUEUED_RUN.envelope.traceId, attempt: QUEUED_RUN.envelope.attempt,
+  workflowId: QUEUED_RUN.envelope.workflow, nodeId: "search-person", taskId: "ucpath/search-person",
   code: "UNEXPECTED_PAGE_STATE", summary: "Expected state did not render", transient: false,
   writeState: "not-attempted",
   causeChain: [{ code: "UNEXPECTED_PAGE_STATE", summary: "Page mismatch", role: "primary", transient: false }],
@@ -202,8 +189,8 @@ const FAILURE_TERMINAL_AUTHORIZATION = {
   runId: FAILURE.runId,
   workflowId: FAILURE.workflowId,
   attempt: FAILURE.attempt,
-  descriptorVersion: 1,
-  contractFingerprint: HASH_A,
+  descriptorVersion: QUEUED_RUN.envelope.descriptorVersion,
+  contractFingerprint: QUEUED_RUN.envelope.contractFingerprint,
   expectedVersion: 1,
   claim: { workerId: "worker-1", claimGeneration: 1 },
   authorizedAt: NOW,
@@ -242,7 +229,9 @@ const DONE_RUN = {
   claimGeneration: 1,
   version: 2,
 };
+const FAILED_RESULT = createRunTerminalEvidenceResult(RunRecordSchema.parse(FAILED_RUN), { kind: "failed-evidence", authorization: FailureTerminalAuthorizationRecordSchema.parse(FAILURE_TERMINAL_AUTHORIZATION), failureDigest: deriveTerminalFailureDigest(FailureRecordSchema.parse(FAILURE)) });
 const RECEIPT = {
+  composition: 5,
   receiptId: UUID_1, runId: UUID_2, traceId: "on-120000-2222", workflowId: "onboarding", attempt: 1,
   generatedAt: NOW, descriptorFingerprint: HASH_A, configFingerprint: HASH_A,
   retryOf: { state: "absent" }, failure: { state: "absent" }, input: [], observations: [], decisions: [],
@@ -293,19 +282,6 @@ const UNCERTAINTY_EVIDENCE = {
   evidence: [],
 };
 
-const KNOWLEDGE = {
-  id: UUID_1, status: "active", scope: { system: "ucpath" }, title: "Search state", symptom: "Controls absent",
-  trigger: "Frame race", rootCause: "Incomplete state", invariant: "Ready state is complete", fix: "Add condition",
-  regressionScenarios: ["ucpath/person-search-frame-race"], evidence: [`observation:${UUID_2}`],
-  verifiedAt: NOW, sourceCommits: ["abcdef1"],
-};
-
-const FIX = {
-  id: UUID_3, failureFingerprint: HASH_B, status: "verified", requestedBy: "codex", summary: "Close race",
-  affected: ["ucpath/search-person"], files: ["src/backend/systems/ucpath/driver/person-search.ts"],
-  scenarios: ["ucpath/person-search-frame-race"], verification: [`observation:${UUID_2}`], commit: "abcdef1",
-  knowledge: [UUID_1], createdAt: NOW,
-};
 
 const BOOTSTRAP = {
   wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B, protectedSchemaHash: HASH_A,
@@ -419,13 +395,13 @@ const WRITE_INTENT_FIXTURES = [
   WRITE_INTENT_ATTEMPTING,
   { ...WRITE_INTENT_ATTEMPTING, status: "committed", completionProof: { schemaHash: HASH_A, value: "T123" }, confirmedAt: ABSENCE_1.observedAt },
   { ...WRITE_INTENT_ATTEMPTING, status: "retryable", settlement: SAFE_SETTLEMENT, resolvedAt: ABSENCE_2.observedAt },
-  { ...WRITE_INTENT_ATTEMPTING, status: "parked", parkedCode: "operator-required", message: "Manual confirmation required" },
+  { ...WRITE_INTENT_ATTEMPTING, status: "parked", parkedCode: "operator-required", message: "Manual confirmation required", authorityReason: deriveWriteAuthorityReason("manual-confirmation-required", "proof", "Synthetic verifier requires manual confirmation") },
 ];
 const WRITE_ATTEMPT_FIXTURES = [
   WRITE_ATTEMPT,
   { ...WRITE_ATTEMPT, outcome: { state: "committed", completionProof: { schemaHash: HASH_A, value: "T123" }, confirmedAt: ABSENCE_1.observedAt } },
   { ...WRITE_ATTEMPT, outcome: { state: "safe-to-retry", settlement: SAFE_SETTLEMENT } },
-  { ...WRITE_ATTEMPT, outcome: { state: "parked", code: "operator-required", message: "Manual confirmation required" } },
+  { ...WRITE_ATTEMPT, outcome: { state: "parked", code: "operator-required", message: "Manual confirmation required", authorityReason: deriveWriteAuthorityReason("manual-confirmation-required", "proof", "Synthetic verifier requires manual confirmation") } },
 ];
 const LEDGER_ENTRY = { outboxId: UUID_1, seq: 0, payload: LEDGER_PAYLOAD };
 const atomicOutbox = (payload: unknown) => ({
@@ -442,13 +418,9 @@ const SQLITE_SCHEMA_INSPECTION = {
   pragmas: { journalMode: "wal", foreignKeys: 1, synchronous: 2, busyTimeoutMs: 250 },
   tables: AUTHORITY_TABLE_REGISTRY.map(({ name, classification }) => ({ name, classification })),
 };
-const SQLITE_OPAQUE_RECORD = {
-  recordId: UUID_1,
-  payload: { schemaHash: HASH_A, value: { reserved: true } },
-  createdAt: NOW,
-};
 
-const SQLITE_VERSION_PLAN = VERSION_PLAN_ROW;
+
+
 const SQLITE_ARTIFACT_OUTBOX = {
   outboxId: UUID_1,
   artifactId: UUID_2,
@@ -462,11 +434,7 @@ const SQLITE_ARTIFACT_OUTBOX = {
   payload: { schemaHash: HASH_A, value: { artifact: UUID_2 } },
   createdAt: NOW,
 };
-const SQLITE_PROJECTION = {
-  projectionKey: HASH_A,
-  payload: { schemaHash: HASH_B, value: { status: "running" } },
-  updatedAt: NOW,
-};
+
 const AUTHORITY_PENDING_COUNTS = {
   pendingCommands: 1,
   unresolvedWriteIntents: 1,
@@ -537,7 +505,7 @@ const STOPPED_SYSTEM_PROOF = {
   runtimeNamespace: "hrauto-rebuild",
   runtimeGeneration: 7,
   runtimeStateFingerprint: HASH_A,
-  processLockGenerations: { server: 11, workers: 13 },
+  processLockGenerations: { server: 11, workers: 13, geocode: 17, "live-smoke": 19 },
 };
 const RECOVERY_RUNTIME_LOCK_SNAPSHOT = {
   schemaVersion: 1,
@@ -548,6 +516,8 @@ const RECOVERY_RUNTIME_LOCK_SNAPSHOT = {
   processLocks: {
     server: { state: "stopped", generation: 11 },
     workers: { state: "stopped", generation: 13 },
+    geocode: { state: "stopped", generation: 17 },
+    "live-smoke": { state: "stopped", generation: 19 },
   },
 };
 const STORAGE_DOCTOR_REPORT = {
@@ -633,47 +603,25 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
       derivation: "hmac-sha-256/activity-person-key-commitment/v1",
     }],
   },
-  { name: "ActivityPersonPseudonymBackfillRequest", schema: ActivityPersonPseudonymBackfillRequestSchema, fixtures: [
-    { scope: "current-separations" },
-    { scope: "selected-runs", runIds: [UUID_2] },
-  ] },
-  { name: "ActivityPersonPseudonymBackfillOutcome", schema: ActivityPersonPseudonymBackfillOutcomeSchema, fixtures: [
-    { runId: UUID_2, state: "inserted", keyGeneration: "activity-person-g1" },
-    { runId: UUID_3, state: "unavailable", reason: "canonical-subject-missing" },
-  ] },
-  { name: "ActivityPersonPseudonymBackfillReport", schema: ActivityPersonPseudonymBackfillReportSchema, fixtures: [{
-    scope: "current-separations",
-    keyGeneration: "activity-person-g1",
-    outcomes: [{ runId: UUID_2, state: "inserted", keyGeneration: "activity-person-g1" }],
-    counts: { examined: 1, inserted: 1, existing: 0, unavailable: 0 },
-  }] },
-  {
-    name: "CurrentSeparationsPseudonymSourceResult",
-    schema: CurrentSeparationsPseudonymSourceResultSchema,
-    fixtures: [CURRENT_SEPARATIONS_RESULT],
-  },
+  
+  
+  
+  
   { name: "ActivityPersonPseudonymSecretReference", schema: ActivityPersonPseudonymSecretReferenceSchema, fixtures: [
     ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
   ] },
-  { name: "ActivityPersonPseudonymBackfillCommandOutcome", schema: ActivityPersonPseudonymBackfillCommandOutcomeSchema, fixtures: [
-    { output: "backfill complete", exitCode: 0 },
-  ] },
+  
   { name: "ImmutableInsertDisposition", schema: ImmutableInsertDispositionSchema, fixtures: ["inserted", "existing"] },
-  { name: "SqliteStorageRecordId", schema: SqliteStorageRecordIdSchema, fixtures: [UUID_1] },
-  { name: "OpaqueAuthorityRecord", schema: OpaqueAuthorityRecordSchema, fixtures: [SQLITE_OPAQUE_RECORD], openFixturePaths: ["payload.value"] },
-  { name: "VersionPlanStorageRecord", schema: VersionPlanStorageRecordSchema, fixtures: [SQLITE_VERSION_PLAN] },
-  { name: "VersionBumpPlan", schema: VersionBumpPlanSchema, fixtures: [VERSION_BUMP_PLAN] },
-  { name: "VersionBumpApplication", schema: VersionBumpApplicationSchema, fixtures: [VERSION_BUMP_APPLICATION] },
+  
+  
+  
+  
+  
   // Raw submissions and canonical inputs are open JSON by contract, not unvalidated wire mirrors.
-  {
-    name: "ArchivedRunRecord",
-    schema: ArchivedRunRecordSchema,
-    fixtures: [ARCHIVED_RUN],
-    openFixturePaths: ["input.raw", "input.parsed.value"],
-  },
-  { name: "ArchiveRelaunchRecord", schema: ArchiveRelaunchRecordSchema, fixtures: [ARCHIVE_RELAUNCH] },
+  
+  
   { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
-  { name: "ProjectionStorageRecord", schema: ProjectionStorageRecordSchema, fixtures: [SQLITE_PROJECTION], openFixturePaths: ["payload.value"] },
+  
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },
   { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ stateRootTrustAnchor: "/tmp", stateRoot: "/tmp/state", authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
   { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks", stoppedProofMaxAgeMs: 60_000 }] },
@@ -714,7 +662,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "OfflineRestoreRequest", schema: OfflineRestoreRequestSchema, fixtures: [{ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: STOPPED_SYSTEM_PROOF }] },
   { name: "OfflineRestoreReport", schema: OfflineRestoreReportSchema, fixtures: [{ state: "restored", schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, restoredAt: NOW, manifestFileName: "authority-g4.sqlite.manifest.json", backupFileName: "authority-g4.sqlite", suspectFileName: "suspect-state.sqlite", sourceDatabaseIdentity: HASH_B, authorityGeneration: 4, projectionRebuilt: true, authorityPreservedAcrossProjectionRebuild: true }] },
   { name: "SchemaBoundCanonicalValue", schema: SchemaBoundCanonicalValueSchema, fixtures: [{ schemaHash: HASH_A, value: "approved" }] },
-  { name: "RebuildArtifactRoot", schema: RebuildArtifactRootSchema, fixtures: [".tracker/artifacts"] },
+  { name: "RebuildArtifactRoot", schema: RebuildArtifactRootSchema, fixtures: [".tracker/data/artifacts"] },
   { name: "ContentAddressedArtifactRef", schema: ArtifactRefSchema, fixtures: [{ id: UUID_1, sha256: HASH_A, bytes: 7, mediaType: "text/plain" }] },
   { name: "ArtifactPutMetadata", schema: ArtifactPutMetadataSchema, fixtures: [{ mediaType: "application/pdf" }] },
   { name: "SessionNeed", schema: SessionNeedSchema, fixtures: [
@@ -818,11 +766,9 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ResolvedTerminalDependency", schema: ResolvedTerminalDependencySchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY] },
   { name: "NotRunTerminalDependency", schema: NotRunTerminalDependencySchema, fixtures: [NOT_RUN_TERMINAL_DEPENDENCY] },
   { name: "TerminalDependencyRecord", schema: TerminalDependencyRecordSchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY, NOT_RUN_TERMINAL_DEPENDENCY] },
+  { name: "RunTerminalEvidenceResult", schema: RunTerminalEvidenceResultSchema, fixtures: [FAILED_RESULT.result.value, { kind: "lifecycle-evidence", outcome: "cancelled", commandId: UUID_1, auditId: UUID_1, requestFingerprint: HASH_A, appliedVersion: 2 }] },
   { name: "RunResultRecord", schema: RunResultRecordSchema, fixtures: [RUN_RESULT], openFixturePaths: ["result.value"] },
-  { name: "HistoricalTerminalOutboxRecord", schema: HistoricalTerminalOutboxRecordSchema, fixtures: [
-    RUN_TERMINAL_OUTBOX,
-    { ...RUN_TERMINAL_OUTBOX, projection: { state: "projected", projectedAt: NOW, projectionFingerprint: HASH_A } },
-  ] },
+  
   { name: "TerminalDependencyEvidence", schema: TerminalDependencyEvidenceSchema, fixtures: [
     { state: "resolved", nodeId: RUN_CHECKPOINT.nodeId, checkpoint: RUN_CHECKPOINT },
     NOT_RUN_TERMINAL_DEPENDENCY,
@@ -862,92 +808,20 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "LoginResult", schema: LoginResultSchema, fixtures: ["logged-in", "already-authenticated"] },
   { name: "IdleRefreshCadence", schema: IdleRefreshCadenceSchema, fixtures: [{ intervalMs: 30_000 }] },
   { name: "RetryPolicy", schema: RetryPolicySchema, fixtures: [{ attempts: 2, backoffMs: 500, retryOn: "transient" }] },
-  { name: "ProviderBudget", schema: ProviderBudgetSchema, fixtures: [{ timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 10, dailyRequestLimit: 100, costLimitUsdMicros: 0 }] },
-  { name: "ProviderBudgetConfig", schema: ProviderBudgetConfigSchema, fixtures: [ConfigSchema.parse({ paths: defaultRuntimePaths() }).providers] },
-  { name: "ProviderUnavailableReason", schema: ProviderUnavailableReasonSchema, fixtures: [
-    { code: "rate-exhausted", message: "fixed minute exhausted", retryAt: LATER },
-    { code: "aborted", message: "run aborted" },
-  ] },
-  { name: "ProviderCostEstimate", schema: ProviderCostEstimateSchema, fixtures: [{ maximumCostUsdMicros: 0 }] },
-  { name: "ProviderMeasuredUsage", schema: ProviderMeasuredUsageSchema, fixtures: [{ requestCount: 1, costUsdMicros: 0 }] },
-  { name: "RedactedProviderEvidence", schema: RedactedProviderEvidenceSchema, fixtures: [{ summary: "redacted fixture", capturedAt: NOW }] },
+  { name: "ProviderInvocationConfig", schema: ProviderInvocationConfigSchema, fixtures: [{ timeoutMs: 15_000 }] },
+  { name: "ProviderInvocationSettings", schema: ProviderInvocationSettingsSchema.unwrap(), fixtures: [{ geocodeCensus: { timeoutMs: 15_000 }, geocodeNominatim: { timeoutMs: 15_000 } }] },
+  { name: "ProviderUnavailableReason", schema: ProviderUnavailableReasonSchema, fixtures: [{ code: "aborted", message: "cancelled" }] },
   { name: "ProviderExecutionIdentity", schema: ProviderExecutionIdentitySchema, fixtures: [{ runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" }] },
-  { name: "ProviderBudgetReservation", schema: ProviderBudgetReservationSchema, fixtures: [{ requestCount: 1, maximumCostUsdMicros: 0 }] },
-  { name: "ProviderAdmissionLifecycle", schema: ProviderAdmissionLifecycleSchema, fixtures: [{ state: "reserved", reservedAt: NOW, leaseExpiresAt: LATER, deadlineAt: LATER }] },
-  { name: "ProviderAdmissionRecord", schema: ProviderAdmissionRecordSchema, fixtures: [{
-    admissionId: UUID_8,
-    execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "ocr.extract",
-    configSnapshotId: UUID_4,
-    configFingerprint: HASH_A,
-    requestFingerprint: HASH_B,
-    budget: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 10, dailyRequestLimit: 100, costLimitUsdMicros: 0 },
-    estimate: { maximumCostUsdMicros: 0 },
-    reservation: { requestCount: 1, maximumCostUsdMicros: 0 },
-    lifecycle: { state: "reserved", reservedAt: NOW, leaseExpiresAt: LATER, deadlineAt: LATER },
-    version: 1,
-    createdAt: NOW,
-    updatedAt: NOW,
-  }] },
-  { name: "ProviderBudgetCounter", schema: ProviderBudgetCounterSchema, fixtures: [{
-    capability: "ocr.extract", minuteWindowStartedAt: NOW, minuteRequests: 1,
-    dayWindowStartedAt: NOW, dayRequests: 1, dayReservedCostUsdMicros: 0,
-    activeReservations: 1, version: 1, createdAt: NOW, updatedAt: NOW,
-  }] },
-  { name: "ProviderAdmissionReserveRequest", schema: ProviderAdmissionReserveRequestSchema, fixtures: [{
-    admissionId: UUID_8,
-    execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "geocode.census", configSnapshotId: UUID_4, configFingerprint: HASH_A,
-    requestFingerprint: HASH_B, estimate: { maximumCostUsdMicros: 0 },
-    leaseExpiresAt: LATER, deadlineAt: LATER, now: NOW,
-  }] },
-  { name: "ProviderAdmissionDenyRequest", schema: ProviderAdmissionDenyRequestSchema, fixtures: [{
-    admissionId: UUID_8,
-    execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "geocode.census", configSnapshotId: UUID_4, configFingerprint: HASH_A,
-    requestFingerprint: HASH_B, estimate: { maximumCostUsdMicros: 0 },
-    reason: { code: "aborted", message: "run aborted" }, now: NOW,
-  }] },
-  { name: "ProviderAdmissionReserveOutcome", schema: ProviderAdmissionReserveOutcomeSchema, fixtures: [{
-    state: "existing",
-    admission: {
-      admissionId: UUID_8,
-      execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-      capability: "ocr.extract", configSnapshotId: UUID_4, configFingerprint: HASH_A,
-      requestFingerprint: HASH_B,
-      budget: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 10, dailyRequestLimit: 100, costLimitUsdMicros: 0 },
-      estimate: { maximumCostUsdMicros: 0 }, reservation: { requestCount: 1, maximumCostUsdMicros: 0 },
-      lifecycle: { state: "reserved", reservedAt: NOW, leaseExpiresAt: LATER, deadlineAt: LATER },
-      version: 1, createdAt: NOW, updatedAt: NOW,
-    },
-  }] },
-  { name: "ProviderAdmissionSettleRequest", schema: ProviderAdmissionSettleRequestSchema, fixtures: [{
-    admissionId: UUID_8, expectedVersion: 1, actualUsage: { requestCount: 1, costUsdMicros: 0 },
-    adapterDisposition: "produced", evidence: { summary: "redacted fixture", capturedAt: NOW }, now: NOW,
-  }] },
-  { name: "ProviderAdmissionInterruptRequest", schema: ProviderAdmissionInterruptRequestSchema, fixtures: [{ admissionId: UUID_8, expectedVersion: 1, code: "timeout", message: "deadline elapsed", now: NOW }] },
-  { name: "ProviderAdmissionMutationOutcome", schema: ProviderAdmissionMutationOutcomeSchema, fixtures: [] },
-  { name: "ProviderAdmissionSweepRequest", schema: ProviderAdmissionSweepRequestSchema, fixtures: [{ now: NOW }] },
-  { name: "ProviderAdmissionSweepOutcome", schema: ProviderAdmissionSweepOutcomeSchema, fixtures: [{ expired: [], counters: [] }] },
-  { name: "ProviderRequestEnvelope", schema: ProviderRequestEnvelopeSchema, fixtures: [{ capability: "ocr.extract", payload: { schemaHash: HASH_A, value: "redacted fixture" } }] },
-  { name: "ProviderResponseEnvelope", schema: ProviderResponseEnvelopeSchema, fixtures: [
-    { state: "produced", value: { schemaHash: HASH_A, value: "recognized fixture" } },
-    { state: "unavailable", reason: { code: "adapter-unavailable", message: "no configured provider" } },
-    { state: "invalid-response", reason: "response did not match the requested schema" },
-  ] },
-  { name: "ProviderAdapterOutcome", schema: ProviderAdapterOutcomeSchema, fixtures: [{
-    response: { state: "produced", value: { schemaHash: HASH_A, value: "recognized fixture" } },
-    usage: { requestCount: 1, costUsdMicros: 0 },
-    evidence: { summary: "redacted fixture", capturedAt: NOW },
-  }] },
-  { name: "ProviderDenialRunContext", schema: ProviderDenialRunContextSchema, fixtures: [{ runId: UUID_1, expectedVersion: 1, claim: { workerId: "worker-1", claimGeneration: 1 }, now: NOW }] },
-  { name: "ProviderDenialDisposition", schema: ProviderDenialDispositionSchema, fixtures: [{ state: "stop", code: "aborted" }] },
+  { name: "ProviderEvidence", schema: ProviderEvidenceSchema, fixtures: [{ summary: "synthetic", capturedAt: NOW }] },
+  { name: "ProviderRequestEnvelope", schema: ProviderRequestEnvelopeSchema, fixtures: [{ capability: "geocode.census", payload: { schemaHash: HASH_A, value: {} } }], openFixturePaths: ["payload.value"] },
+  { name: "ProviderResponseEnvelope", schema: ProviderResponseEnvelopeSchema, fixtures: [{ state: "unavailable", reason: { code: "adapter-unavailable", message: "not connected" } }] },
+  { name: "ProviderAdapterOutcome", schema: ProviderAdapterOutcomeSchema, fixtures: [{ response: { state: "unavailable", reason: { code: "adapter-unavailable", message: "not connected" } }, evidence: { summary: "synthetic", capturedAt: NOW } }] },
   { name: "CommandEnvelope", schema: CommandEnvelopeSchema, fixtures: [COMMAND_ENVELOPE] },
   { name: "StartCommandRequest", schema: StartCommandRequestSchema, fixtures: commandFixtures("start") },
   { name: "IntakeCommandRequest", schema: IntakeCommandRequestSchema, fixtures: commandFixtures("intake") },
   { name: "WorkerBrowserCommandRequest", schema: WorkerBrowserCommandRequestSchema, fixtures: commandFixtures("worker-browser") },
   { name: "SettingsCommandRequest", schema: SettingsCommandRequestSchema, fixtures: commandFixtures("settings") },
-  { name: "VersionArchiveCommandRequest", schema: VersionArchiveCommandRequestSchema, fixtures: commandFixtures("version-archive") },
+  
   { name: "RunCommandRequest", schema: RunCommandRequestSchema, fixtures: commandFixtures("run") },
   { name: "GateCommandRequest", schema: GateCommandRequestSchema, fixtures: commandFixtures("gate") },
   { name: "NotificationCommandRequest", schema: NotificationCommandRequestSchema, fixtures: commandFixtures("notification") },
@@ -957,7 +831,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { family: "intake", intakeSessionId: UUID_1 },
     { family: "worker-browser", workerId: "worker-1" },
     { family: "settings", revision: 1 },
-    { family: "version-archive", versionPlanId: UUID_1 },
     { family: "run", runId: UUID_1 },
     { family: "gate", runId: UUID_1, gateId: "identity-approval" },
     { family: "notification", notificationId: UUID_1 },
@@ -1061,8 +934,8 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     authorization: FAILURE_TERMINAL_AUTHORIZATION,
   }] },
   { name: "FailureTerminalizationReport", schema: FailureTerminalizationReportSchema, fixtures: [
-    { state: "applied", authorization: FAILURE_TERMINAL_AUTHORIZATION, failure: FAILURE, run: FAILED_RUN },
-    { state: "replayed", authorization: FAILURE_TERMINAL_AUTHORIZATION, failure: FAILURE, run: FAILED_RUN },
+    { state: "applied", authorization: FAILURE_TERMINAL_AUTHORIZATION, failure: FAILURE, run: FAILED_RUN, result: FAILED_RESULT },
+    { state: "replayed", authorization: FAILURE_TERMINAL_AUTHORIZATION, failure: FAILURE, run: FAILED_RUN, result: FAILED_RESULT },
   ], openFixturePaths: ["run.input.raw", "run.input.parsed.value"] },
   { name: "FailureTerminalizationStorageStep", schema: FailureTerminalizationStorageStepSchema, fixtures: FailureTerminalizationStorageStepSchema.options },
   { name: "SuccessTerminalizationRequest", schema: SuccessTerminalizationRequestSchema, fixtures: [{
@@ -1146,8 +1019,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ReuseEvidence", schema: ReuseEvidenceSchema, fixtures: [REUSE_EVIDENCE] },
   { name: "UncertaintyEvidence", schema: UncertaintyEvidenceSchema, fixtures: [UNCERTAINTY_EVIDENCE] },
   { name: "RunEvidenceReceipt", schema: RunEvidenceReceiptSchema, fixtures: [RECEIPT] },
-  { name: "KnowledgeRecord", schema: KnowledgeRecordSchema, fixtures: [KNOWLEDGE] },
-  { name: "FixRecord", schema: FixRecordSchema, fixtures: [FIX] },
   { name: "FrontendBootstrap", schema: FrontendBootstrapWireSchema, fixtures: [BOOTSTRAP] },
   { name: "DiagnosticBundleWire", schema: DiagnosticBundleWireSchema, fixtures: [{ bundleId: UUID_1, capturedAt: NOW, byteSize: 0, contentDigest: HASH_A, redaction: { fields: [], warnings: [] }, contents: [] }] },
   { name: "DashboardDay", schema: DashboardDayWireSchema, fixtures: [DAY] },
@@ -1367,8 +1238,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/workflow/completion.ts:SealedCompletionProgram",
   // Checkpoint load results are generic over the producing output schema.
   "src/models/workflow/checkpoint.ts:CheckpointLoad",
-  "src/models/workflow/checkpoint.ts:CheckpointMigration",
-  "src/models/workflow/checkpoint.ts:CanonicalInputSnapshotMigration",
   "src/models/workflow/checkpoint.ts:ReplayedCheckpoint",
   "src/models/workflow/checkpoint.ts:FreshnessWalkInput",
   // Canonical fields carry coercion functions and their own schema, so no static data schema describes them.
@@ -1463,10 +1332,15 @@ export function boundarySourceViolations(path: string, content: string): readonl
 describe("strict boundary schemas", () => {
   it("keeps the explicit top-level boundary catalog unique, valid, and recursively strict", () => {
     assert.equal(new Set(BOUNDARY_SCHEMA_CATALOG.map(({ name }) => name)).size, BOUNDARY_SCHEMA_CATALOG.length);
+    const invalid: unknown[] = [];
     for (const entry of BOUNDARY_SCHEMA_CATALOG) {
       assert.deepEqual(strictnessViolations(entry.schema), [], entry.name);
-      for (const fixture of entry.fixtures) assert.equal(entry.schema.safeParse(fixture).success, true, entry.name);
+      for (const [index, fixture] of entry.fixtures.entries()) {
+        const parsed = entry.schema.safeParse(fixture);
+        if (!parsed.success) invalid.push({ name: entry.name, index, issues: parsed.error.issues.map(({ path, message }) => ({ path, message })) });
+      }
     }
+    assert.deepEqual(invalid, []);
   });
 
   it("rejects an unknown key at every exercised nested object boundary", () => {

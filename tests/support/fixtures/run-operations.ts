@@ -9,7 +9,6 @@ import type { DashboardApp } from "../../../src/backend/transports/http/routes/a
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "./intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./archive-fixtures.js";
 import { populatedProtectedRecord } from "./preflight/runtime-fixture.js";
 import type { servedPreflightRuntime } from "./preflight/served-runtime.js";
 
@@ -27,10 +26,10 @@ export function installRunOperationsRoutes(app: DashboardApp, setup: Awaited<Ret
     ids: sequentialIdFactory("a"), planTtlMs: 600_000, ...identity, plannedBy: "local-operator", preflight: runtime.admission });
   const unexpected = (): never => { throw new Error("Unexpected external effect in run operations proof"); };
   const kernel = createCommandKernel({ lifecycle, authority: database, clock, ids, appVersion: "0.1.0", descriptors,
-    preflight: runtime.admission, configIdentity: identity, archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
+    preflight: runtime.admission, configIdentity: identity,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { resolvePresent: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { planWorkerCount: unexpected, spawnWorker: unexpected, refreshBrowser: unexpected, reopenBrowser: unexpected } });
+    workerRuntime: { pool: { planPoolWorkerCount: unexpected, spawnPoolWorker: unexpected, refreshPoolBrowser: unexpected, reopenPoolBrowser: unexpected, stopPoolWorker: unexpected, pausePoolWorker: unexpected, resumePoolWorker: unexpected } } });
   const queueApp: DashboardApp = new Hono();
   queueApp.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
   registerQueueRoutes(queueApp, { startPlans: plans, queue: { day: unexpected } });

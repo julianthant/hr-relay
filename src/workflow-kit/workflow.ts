@@ -1322,11 +1322,7 @@ export function defineWorkflowDescriptor<
             workflowId: checkpoint.workflowId,
             itemId: checkpoint.itemId,
             attempt: checkpoint.attempt,
-            // Cite the EXECUTION, not merely the attempt. Absent only
-            // when the cited row itself predates the component.
-            ...(checkpoint.claimGeneration === undefined
-              ? {}
-              : { claimGeneration: checkpoint.claimGeneration }),
+            claimGeneration: checkpoint.claimGeneration,
             runId: checkpoint.runId,
           },
           outputSchemaHash: checkpoint.output.schemaHash,

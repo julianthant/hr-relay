@@ -9,7 +9,7 @@ import { hostConfigFacts } from "../../../../../../src/models/config/host-displa
 import { initialProtectedStoreRecord } from "../../../../../../src/models/config/protected-settings.js";
 import { createProtectedSettingsRuntimeReader } from "../../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { buildSettingsEditor } from "../../../../../../src/backend/runs/queries/settings-editor.js";
-import { StoredConfigSchema } from "../../../../../../src/models/config/snapshot-generations.js";
+import { StoredConfigSchema } from "../../../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
 import { fixtureSettingsDocument } from "../../../../../support/fixtures/dashboard/fixture-settings.js";
@@ -44,23 +44,21 @@ describe("complete Settings catalog projection", () => {
     assert.equal(JSON.stringify(document).includes("synthetic-secret"), false);
     assert.throws(() => buildSettingsEditor({ ...deps, settings: { read: () => ({ ...snapshot, record: { ...snapshot.record, settings: { actor: { label: "changed without identity" } } } }) } }), /snapshot-mismatch/u);
   });
-  it("shows production Routes from a historical active snapshot while keeping its exact identity", () => {
+  it("shows production Routes from a retained active snapshot while keeping its exact identity", () => {
     const { deps, snapshot } = fixture();
     const current = resolveConfigWithProvenance({}, hostConfigFacts(deps.environment), deps.clock);
     const activeConfig = StoredConfigSchema.parse({ ...current.config,
-      urls: { ...current.config.urls, crm: { ...current.config.urls.crm,
-        test: { entry: "https://retired.example.test/hr" } } },
+      urls: { ...current.config.urls, crm: { ...current.config.urls.crm, prod: { ...current.config.urls.crm.prod, entry: "https://current.example.test/hr" } } },
     });
-    const historicalFingerprint = sha256Hex(canonicalJsonStringify(activeConfig));
+    const activeFingerprint = sha256Hex(canonicalJsonStringify(activeConfig));
     const document = buildSettingsEditor({ ...deps, settings: { read: () => ({
       ...snapshot, activeConfig, runtimeStatus: { state: "restart-required" as const,
-        active: settingsRuntimeIdentity(snapshot.record, historicalFingerprint),
+        active: settingsRuntimeIdentity(snapshot.record, activeFingerprint),
         persisted: settingsRuntimeIdentity(snapshot.record, current.fingerprint) },
     }) } });
     const crm = document.sections.find(section => section.id === "routes")?.leaves.find(leaf => leaf.path === "urls.crm.prod");
-    assert.equal(document.activeConfigFingerprint, historicalFingerprint);
-    assert.equal((crm?.activeValue as { entry?: string } | undefined)?.entry, current.config.urls.crm.prod.entry);
-    assert.equal(JSON.stringify(document).includes("retired.example.test"), false);
+    assert.equal(document.activeConfigFingerprint, activeFingerprint);
+    assert.equal((crm?.activeValue as { entry?: string } | undefined)?.entry, activeConfig.urls.crm.prod.entry);
   });
   for (const mutation of ["missing", "duplicate", "classification", "wrong-section", "wrong-type", "wrong-control", "wrong-current-year", "legacy-readback"] as const) {
     it(`rejects ${mutation} payloads`, () => {

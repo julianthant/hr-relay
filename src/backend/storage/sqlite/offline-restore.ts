@@ -1,3 +1,4 @@
+import type { AuthorityRestoreInput } from "../admission/installation.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
 import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -18,10 +19,10 @@ import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
-import { inspectAuthorityBackupReadOnly } from "../compatibility/backup-inspection.js";
+import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
-import { isNormalAuthoritySchemaVersion } from "./migrations.js";
+import { isCurrentAuthoritySchemaVersion } from "./migrations.js";
 import {
   verifyBackupBytesAtPath,
   verifyBackupManifestAtPath,
@@ -116,12 +117,8 @@ function rollbackDisplacedCompanions(
 ): readonly unknown[] {
   const failures: unknown[] = [];
   for (const companion of displaced.toReversed()) {
-    const rollbackTemporaryPath = `${companion.displacedPath}.rollback.tmp`;
     try {
-      copyAndSync(companion.displacedPath, rollbackTemporaryPath, fileOperations);
-      (fileOperations.renamePath ?? renameSync)(rollbackTemporaryPath, companion.livePath);
-      (fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
-      (fileOperations.removePath ?? rmSync)(companion.displacedPath);
+      (fileOperations.renamePath ?? renameSync)(companion.displacedPath, companion.livePath);
       (fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
     } catch (error) {
       failures.push(error);
@@ -139,13 +136,20 @@ function normalizeError(error: unknown, context: string): Error {
 }
 
 interface FileIdentity {
+  readonly dev: number;
+  readonly ino: number;
   readonly byteSize: number;
   readonly sha256: string;
 }
 
 function fileIdentity(path: string): FileIdentity {
+  const before = statSync(path);
   const bytes = readFileSync(path);
+  const after = statSync(path);
+  if (before.dev !== after.dev || before.ino !== after.ino || before.size !== bytes.length
+    || before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw new Error("restore-file-changed-during-observation");
   return Object.freeze({
+    dev: before.dev, ino: before.ino,
     byteSize: bytes.byteLength,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   });
@@ -291,6 +295,9 @@ export class OfflineAuthorityRestoreService {
         let stagedReport: OfflineRestoreReport | undefined;
         let stagedPrimaryError: Error | undefined;
         let stagedAdmission: RuntimeAdmission | undefined;
+        let restoreBinding: AuthorityRestoreInput | undefined;
+        let restoreJournalHeld = false;
+        let restoreJournalSettled = false;
         try {
           copyAndSync(verified.backupPath, stagedPath, this.#fileOperations);
           await verifyBackupBytesAtPath(
@@ -315,7 +322,7 @@ export class OfflineAuthorityRestoreService {
 
           let projectionRebuilt = false;
           let afterProjection = beforeProjection;
-          if (isNormalAuthoritySchemaVersion(verified.manifest.schemaVersion)) {
+          if (isCurrentAuthoritySchemaVersion(verified.manifest.schemaVersion)) {
             await this.#projectionRebuild(stagedPath);
             afterProjection = inspectAuthorityBackupReadOnly(
               stagedAdmission,
@@ -334,6 +341,18 @@ export class OfflineAuthorityRestoreService {
           (this.#fileOperations.syncPath ?? fsyncPath)(stagedPath);
           const liveIdentityBeforeReplace = fileIdentity(this.#authorityPath);
           const stagedIdentityBeforeReplace = fileIdentity(stagedPath);
+          restoreBinding = {
+            operationId: token, authorityPath: this.#authorityPath, stagedPath, suspectPath,
+            manifestPath: verified.manifestPath, manifestSha256: fileIdentity(verified.manifestPath).sha256,
+            backupPath: verified.backupPath, backupSha256: verified.manifest.sha256,
+            sourceDatabaseIdentity, authorityGeneration: afterProjection.authorityGeneration,
+            authorityContentFingerprint: afterProjection.authorityContentFingerprint,
+            live: liveIdentityBeforeReplace, staged: stagedIdentityBeforeReplace, suspect: fileIdentity(suspectPath),
+            companions: (["-wal", "-shm"] as const).filter(suffix => existsSync(`${this.#authorityPath}${suffix}`))
+              .map(suffix => ({ suffix, binding: fileIdentity(`${this.#authorityPath}${suffix}`), suspect: fileIdentity(`${suspectPath}${suffix}`) })),
+          };
+          this.#runtimeAdmission.beginAuthorityRestore(restoreBinding, restoreAdmission);
+          restoreJournalHeld = true;
           const displacedCompanions: DisplacedCompanion[] = [];
           let authorityReplaced = false;
           let replacementAttempted = false;
@@ -456,7 +475,23 @@ export class OfflineAuthorityRestoreService {
           stagedPrimaryError = normalizeError(error, "offline authority restore failed");
         }
         stagedAdmission?.release();
-        const cleanupFailures = cleanupStagedPaths(
+        if (restoreJournalHeld && restoreBinding !== undefined && (authorityState === "unchanged" || authorityState === "replaced")) {
+          try {
+            this.#runtimeAdmission.settleAuthorityRestore(restoreBinding, authorityState, () => {
+              const actual = inspectAuthorityBackupReadOnly(this.#runtimeAdmission, this.#authorityPath,
+                verified.manifest.schemaVersion, this.#busyTimeoutMs);
+              return { authorityGeneration: actual.authorityGeneration,
+                authorityContentFingerprint: actual.authorityContentFingerprint };
+            }, restoreAdmission);
+            restoreJournalSettled = true;
+          } catch (settlementError) {
+            stagedPrimaryError = new AggregateError(stagedPrimaryError === undefined ? [settlementError]
+              : [stagedPrimaryError, settlementError], "restore settlement is unproved; durable operation and staging evidence retained");
+          }
+        }
+        const preserveEvidence = restoreJournalHeld && !restoreJournalSettled
+          || authorityState === "authority-state-uncertain" || authorityState === "companion-state-uncertain";
+        const cleanupFailures = preserveEvidence ? [] : cleanupStagedPaths(
           [stagedPath, `${stagedPath}-wal`, `${stagedPath}-shm`],
           this.#fileOperations,
         );
@@ -516,4 +551,33 @@ export class OfflineAuthorityRestoreService {
     if (restoreReport === undefined) throw new Error("offline authority restore produced no report");
     return restoreReport;
   }
+}
+
+/** Recovery acknowledges an exact observed outcome; it never retries the replacement. */
+export async function settleInterruptedAuthorityRestore(input: Readonly<{
+  admission: RuntimeAdmission; operationId: string; manifestPath: string; outcome: "unchanged" | "replaced";
+  processLockRoot: string; stoppedSystemProof: z.input<typeof OfflineRestoreRequestSchema>["stoppedSystemProof"];
+  restoreAdmission: RestoreAdmissionHandle; clock?: Clock;
+}>): Promise<Readonly<{ state: "settled"; operationId: string; outcome: "unchanged" | "replaced" }>> {
+  const admission = requireRuntimeAdmission(input.admission);
+  admission.assertExclusive();
+  const binding = admission.readAuthorityRestore(input.operationId);
+  if (resolve(input.manifestPath) !== binding.manifestPath) throw new Error("restore-recovery-manifest-binding-mismatch");
+  const clock = input.clock ?? systemClock;
+  const snapshot = observeRuntimeLockSnapshot({ processLockRoot: input.processLockRoot,
+    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(binding.authorityPath) }, clock);
+  const proofs = new RecoveryStopProofStore({ processLockRoot: input.processLockRoot, maxProofAgeMs: 60_000 }, clock);
+  proofs.consumeAgainstLiveSnapshot(input.stoppedSystemProof, snapshot);
+  const verified = await verifyBackupManifestAtPath(admission, binding.manifestPath, binding.sourceDatabaseIdentity);
+  if (verified.backupPath !== binding.backupPath || verified.manifest.sha256 !== binding.backupSha256
+    || verified.manifest.authorityGeneration !== binding.authorityGeneration
+    || verified.manifest.authorityContentFingerprint !== binding.authorityContentFingerprint) {
+    throw new Error("restore-recovery-backup-authority-binding-mismatch");
+  }
+  validateStorageRelocationRestoreCandidate({ admission, activeAuthorityPath: binding.authorityPath, verifiedBackup: verified });
+  admission.settleAuthorityRestore(binding, input.outcome, () => {
+    const actual = inspectAuthorityBackupReadOnly(admission, binding.authorityPath, verified.manifest.schemaVersion);
+    return { authorityGeneration: actual.authorityGeneration, authorityContentFingerprint: actual.authorityContentFingerprint };
+  }, input.restoreAdmission);
+  return Object.freeze({ state: "settled", operationId: binding.operationId, outcome: input.outcome });
 }

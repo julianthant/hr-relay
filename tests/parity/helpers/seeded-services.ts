@@ -29,7 +29,6 @@ import { createDashboardApp } from "../../../src/backend/transports/http/routes/
 import { createDashboardStreamHub } from "../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/queries/item-attempt-history.js";
-import { archiveQueryDeps, archiveSnapshots } from "../../support/fixtures/archive-seams.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../support/fixtures/dashboard-stream-seams.js";
 import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../support/fixtures/intake-kernel-seams.js";
@@ -58,7 +57,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     );
   }
 
-  const runDetailDeps = { runReader,
+  const runDetailDeps = { runReader, timeline: database.authority.timelineEvents,
     itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }),
     stateRoot,
     projection,
@@ -90,7 +89,6 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
       spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
     } }),
     appVersion: SEEDED_APP_VERSION,
-    archiveSnapshots: archiveSnapshots(runDetailDeps),
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
@@ -107,12 +105,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
         throw new Error("write resolution is not wired in the parity seed");
       },
     },
-    workerRuntime: {
-      planWorkerCount: () => ({ state: "accepted", workerIds: ["person-lookup-worker-1"] }),
-      spawnWorker: () => ({ state: "accepted" }),
-      refreshBrowser: () => ({ state: "accepted" }),
-      reopenBrowser: () => ({ state: "accepted" }),
-    },
+    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("worker runtime is not wired in this fixture"); }, spawnPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, refreshPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, reopenPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, stopPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, pausePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, resumePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); } } },
   });
   const commands = createDashboardCommandService({ kernel, projection });
   const startPlans = createStartPlanService({
@@ -128,7 +121,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
 
-  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(stateRoot),
+  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(database.authority.timelineEvents),
     readRun: runId => {
       const existence = runReader.read(runId);
       return existence.state === "present" ? { disposition: existence.disposition, run: existence.run } : undefined;
@@ -177,12 +170,6 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     activity:composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)}),
     ...selectionServices,
     runDetail: runDetailDeps,
-    archive: archiveQueryDeps({
-      database,
-      clock,
-      appVersion: SEEDED_APP_VERSION,
-      descriptors: [personLookupDescriptor],
-    }),
     commands,
     startPlans,
     hub,

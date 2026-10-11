@@ -1,3 +1,4 @@
+import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
 import { TaskError } from "../../../workflow-kit/errors.js";
@@ -77,9 +78,10 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
   const nodeId = NodeIdSchema.parse(input.nodeId);
   const taskId = input.taskId === undefined ? undefined : TaskIdSchema.parse(input.taskId);
   const taskError: TaskError | undefined = input.error instanceof TaskError ? input.error : undefined;
-  const code = failureCodeFromTaskCode(taskError?.code ?? "unhandled");
+  const errorCode = input.error instanceof Error && "code" in input.error && typeof input.error.code === "string" ? input.error.code : undefined;
+  const code = failureCodeFromTaskCode(taskError?.code ?? errorCode ?? "unhandled");
   const summary = input.error instanceof Error
-    ? input.error.message
+    ? Buffer.from(sanitizeDebugText(input.error.message)).subarray(0, 32 * 1024).toString("utf8")
     : `node ${nodeId} threw a non-Error value`;
   const transient = taskError?.transient ?? false;
   const writeAuthorityReason = writeAuthorityReasonFrom(input.error);
@@ -104,8 +106,9 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
     ...(taskId === undefined ? {} : { taskId }),
     code,
     summary,
+    ...(input.error instanceof Error ? { debug: failureDebugDetails(input.error) } : {}),
     transient,
-    /** Phase-1 read/control nodes; transaction failures are the sequencer's. */
+    // Transaction failures are owned by the sequencer.
     writeState: "not-attempted",
     ...(taskError?.subject === undefined || hasProtectedTransactionInput(run)
       ? {}
@@ -163,4 +166,24 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
     }],
     occurredAt: IsoInstantSchema.parse(input.occurredAt),
   });
+}
+
+export function failureDebugDetails(error: Error) {
+  const texts = [error.stack ?? error.message];
+  const seen = new Set<unknown>([error]);
+  let cause: unknown = error.cause;
+  while (cause instanceof Error && !seen.has(cause) && texts.length < 13) {
+    seen.add(cause); texts.push(cause.stack ?? cause.message); cause = cause.cause;
+  }
+  const safe = texts.map(sanitizeDebugText);
+  const originalBytes = safe.reduce((total, text) => total + Buffer.byteLength(text), 0);
+  let remaining = 96 * 1024;
+  const bounded = safe.map(text => {
+    const bytes = Buffer.from(text);
+    const result = bytes.subarray(0, remaining).toString("utf8");
+    remaining = Math.max(0, remaining - bytes.byteLength);
+    return result;
+  });
+  return { stack: bounded[0] ?? "", causes: bounded.slice(1), originalBytes,
+    omittedBytes: Math.max(0, originalBytes - 96 * 1024) };
 }

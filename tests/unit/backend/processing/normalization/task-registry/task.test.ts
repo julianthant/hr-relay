@@ -27,7 +27,7 @@ const RESOLVED_CENSUS = {
 };
 const UNAVAILABLE = {
   state: "unavailable",
-  reason: { code: "rate-exhausted", message: "throttled", retryAt: "2026-08-08T12:01:00.000Z" },
+  reason: { code: "adapter-unavailable", message: "provider unavailable" },
 };
 const GeocodeProviderRequestSchema = z.strictObject({
   schemaHash: z.string().min(1),
@@ -180,7 +180,7 @@ describe("normalization task wrapper", () => {
     assert.deepEqual(recorded.find(({ field }) => field === "disposition")?.value, { kind: "complete" });
   });
 
-  it("keeps exhausted geocoder advice explicit instead of returning an empty success", async () => {
+  it("keeps unavailable geocoder advice explicit instead of returning an empty success", async () => {
     const result = await runAdvice({
       address1: "123 Fixture Rd",
       state: "CA",

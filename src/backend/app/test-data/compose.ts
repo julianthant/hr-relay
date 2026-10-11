@@ -31,10 +31,6 @@ import {
 } from "../../../models/config/test-data.js";
 import { realpathSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
-import {
-  migrateTestDataFromCredentials,
-  type CredentialTestDataMigrationReport,
-} from "../../storage/configuration/credential-test-data-migration.js";
 
 export interface TestDataCommandOutcome {
   readonly output: string;
@@ -70,17 +66,12 @@ interface ParsedCheck {
   readonly workflow?: string;
   readonly file?: string;
 }
-interface ParsedMigrate {
-  readonly command: "migrate";
-  readonly json: true;
-  readonly plan: boolean;
-}
 
 class TestDataUsageError extends Error {
   override readonly name = "TestDataUsageError";
 }
 
-function parseArguments(args: readonly string[]): ParsedCheck | ParsedMigrate {
+function parseArguments(args: readonly string[]): ParsedCheck {
   const [command, ...rest] = args;
   if (command === "check") {
     let json = false;
@@ -105,20 +96,6 @@ function parseArguments(args: readonly string[]): ParsedCheck | ParsedMigrate {
     if (workflow !== undefined && subject === undefined) throw new TestDataUsageError("--workflow requires --subject");
     return { command: "check", json: true, ...(subject === undefined ? {} : { subject }),
       ...(workflow === undefined ? {} : { workflow }), ...(file === undefined ? {} : { file }) };
-  }
-  if (command === "migrate") {
-    let json = false;
-    let plan = false;
-    let fromCredentials = false;
-    for (const token of rest) {
-      if (token === "--json") { json = true; continue; }
-      if (token === "--plan") { plan = true; continue; }
-      if (token === "--from-credentials") { fromCredentials = true; continue; }
-      throw new TestDataUsageError(`unknown test-data migrate option ${token}`);
-    }
-    if (!fromCredentials) throw new TestDataUsageError("test-data migrate requires --from-credentials");
-    if (!json) throw new TestDataUsageError("test-data migrate requires --json");
-    return { command: "migrate", json: true, plan };
   }
   throw new TestDataUsageError(`unknown test-data command ${String(command)}; usage:\n  ${TEST_DATA_USAGE.join("\n  ")}`);
 }
@@ -191,29 +168,18 @@ function fileReport(shared: TestDataShared, local: TestDataLocalReadOutcome, nam
 }
 
 export async function composeTestDataCommand(
-  admission: import("../../storage/admission/admission.js").RuntimeAdmission,
+  _admission: import("../../storage/admission/admission.js").RuntimeAdmission,
   _isolation: RuntimeIsolation,
   args: readonly string[],
   repoRoot: string,
   dependencies: TestDataComposeDependencies,
 ): Promise<TestDataCommandOutcome> {
-  let parsed: ParsedCheck | ParsedMigrate;
+  let parsed: ParsedCheck;
   try {
     parsed = parseArguments(args);
   } catch (error) {
     if (!(error instanceof TestDataUsageError)) throw error;
     return { output: `${JSON.stringify({ command: "test-data", status: "defect", reason: error.message }, null, 2)}\n`, exitCode: 2 };
-  }
-  if (parsed.command === "migrate") {
-    const report: CredentialTestDataMigrationReport = await migrateTestDataFromCredentials({
-      admission,
-      stateRoot: admission.stateRoot,
-      localPath: testDataLocalPath(repoRoot),
-      mode: parsed.plan ? "plan" : "apply",
-      ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
-    });
-    const exitCode = report.status === "defect" ? 2 : report.status === "refused" ? 1 : 0;
-    return { output: `${JSON.stringify({ command: "test-data migrate", ...report }, null, 2)}\n`, exitCode };
   }
 
   let shared: TestDataShared;

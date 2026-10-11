@@ -1,3 +1,4 @@
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createTrustRunReader } from "../../../../../../src/backend/runs/trust/canonical-reader.js";
 import { buildTrustSection } from "../../../../../../src/backend/runs/queries/run-trust.js";
 import { makeWorld } from "../../../../../support/helpers/backend/dashboard-harness.js";
@@ -9,7 +10,7 @@ import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../../..
 
 import { fixtureDuoCeremonyGates } from "../../../../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -44,8 +45,7 @@ import {
   writeFixtureSessions,
   type WriteFixtureWorld,
 } from "../../../../../support/fixtures/write-sequencer-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -60,18 +60,19 @@ interface RoundTrip {
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
   readonly kernel: CommandKernel;
-  readonly park: () => Promise<WorkerLoopReport>;
+  readonly park: (failCommit?: boolean) => Promise<WorkerLoopReport>;
 }
 
 // Operator resolution may use a newer build than the build retained by the parked run.
 function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): RoundTrip {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-parked-write-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-parked-write-"));
   roots.push(root);
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
+  const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   openDatabases.push(database);
 
   const world = createWriteFixtureWorld();
@@ -85,8 +86,7 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
+    configIdentity: { configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId },
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -107,30 +107,17 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
       ids,
       resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
     }),
-    workerRuntime: {
-      planWorkerCount: () => {
-        throw new Error("unused in this suite");
-      },
-      spawnWorker: () => {
-        throw new Error("unused in this suite");
-      },
-      refreshBrowser: () => {
-        throw new Error("unused in this suite");
-      },
-      reopenBrowser: () => {
-        throw new Error("unused in this suite");
-      },
-    },
+    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
   });
 
-  const park = async () => {
+  const park = async (failCommit = true) => {
     assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun()).state, "inserted");
     // The write lands nowhere provable: probe says absent, then the click
     // throws AFTER the fence — the canonical post-fence unknown.
     world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    world.commitThrows = new Error("browser crashed mid-click");
+    if (failCommit) world.commitThrows = new Error("browser crashed mid-click");
     return runWorkerLoop({
-      ...testWorkerPorts(database, clock),
+      ...testWorkerPorts(database, clock, { path: join(root, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 }),
       workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
       descriptor: writeFixtureDescriptor,
@@ -192,6 +179,9 @@ function resolutionCommand(
   }>,
   payload: Record<string, unknown>,
 ) {
+  const database = openDatabases.at(-1); assert.ok(database);
+  const intent = database.authority.writeIntents.get(target.writeIntentId); assert.ok(intent);
+  assert.equal(intent.status, "parked"); if (intent.status !== "parked") throw new Error("fixture requires parked intent");
   return {
     commandId: nextCommandId(),
     requestedAt: WRITE_FIXTURE_NOW,
@@ -199,8 +189,8 @@ function resolutionCommand(
     source: "dashboard",
     family: "run",
     type,
-    target,
-    payload,
+    target: { ...target, writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest },
+    payload: { ...payload, occurrenceKeyDigest: intent.idempotencyKeyDigest },
   };
 }
 
@@ -210,7 +200,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     const projection = makeWorld();
     try {
       const deps = { stateRoot: projection.stateRoot, projection: projection.projection,
-        runReader: createTrustRunReader(h.database, h.clock),
+        runReader: createTrustRunReader(h.database, h.clock), timeline: h.database.authority.timelineEvents,
         authority: { getRun: () => { throw new Error("raw lifecycle forbidden"); },
           latestCheckpoint: () => undefined,
           getWriteIntent: (id: string) => h.database.authority.writeIntents.get(id),
@@ -332,9 +322,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
       WRITE_FIXTURE_NODE_ID,
     );
     assert.ok(checkpoint);
-    const nestedId = lifecycleCommandId("write-resume-queued", { runId: WRITE_FIXTURE_RUN_ID,
-      expectedVersion: parked.version, writeIntentId: intent.writeIntentId, generation: intent.generation,
-      sourceCommandId: command.commandId });
+    const nestedId = lifecycleCommandId("operator-present", command.commandId);
     assert.notEqual(nestedId, command.commandId);
     assert.ok(harness.database.authority.commands.get(command.commandId));
     const nested = harness.database.authority.lifecycleJournal.getCommand(nestedId);
@@ -552,25 +540,22 @@ describe("cancel over an unresolved fenced write", () => {
 
   it("refuses it for an ATTEMPTING intent too — the state with no section at all", async () => {
     const harness = roundTrip();
-    await harness.park();
-    const parkedIntentRecord = parkedIntent(harness.database);
-
-    const attempting = harness.database.withAuthorityTransaction((repositories) =>
-      repositories.writeIntents.reopenParkedAttempt({
-        writeIntentId: parkedIntentRecord.writeIntentId,
-        generation: parkedIntentRecord.generation,
-        expectedVersion: parkedIntentRecord.version,
-        now: WRITE_FIXTURE_NOW,
-      }));
-    assert.equal(attempting.status, "attempting");
-    const run = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
-    assert.ok(run);
-
-    const result = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, run.version));
-    assert.ok(result.state === "rejected");
-    assert.equal(result.code, "invalid-state");
-    assert.ok(result.message.includes(attempting.writeIntentId));
-    assert.match(result.message, /attempting/);
+    let observed = false;
+    harness.world.onCommitClick = () => {
+      const attempting = parkedIntent(harness.database);
+      assert.equal(attempting.status, "attempting");
+      const run = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+      assert.ok(run);
+      const result = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, run.version));
+      assert.ok(result.state === "rejected");
+      assert.equal(result.code, "invalid-state");
+      assert.ok(result.message.includes(attempting.writeIntentId));
+      assert.match(result.message, /attempting/);
+      observed = true;
+      throw new Error("browser crashed after cancel refusal");
+    };
+    await harness.park(false);
+    assert.equal(observed, true);
     assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
   });
 

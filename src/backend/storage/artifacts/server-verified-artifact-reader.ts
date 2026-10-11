@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath, unlink, type FileHandle } from "node:fs/promises";
+import { lstat, mkdir, open, unlink, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
@@ -109,20 +109,13 @@ async function rejectSymlink(path: string, label: string): Promise<void> {
 async function initializeRoots(admission: RuntimeAdmission): Promise<ReaderRoots> {
   admission.assertWritable();
   const artifactPath = admission.artifactRoot;
-  const scratchPath = join(admission.stateRoot, "verified-byte-scratch");
+  const scratchPath = join(admission.stateRoot, "scratch");
   admission.assertArtifactRoot(artifactPath);
   admission.assertStateRoot(scratchPath);
   await rejectSymlink(artifactPath, "rebuild artifact root");
   admission.assertLive();
-  await mkdir(artifactPath, { recursive: true, mode: 0o700 });
   await rejectSymlink(scratchPath, "verified-byte scratch root");
   admission.assertLive();
-  await mkdir(scratchPath, { recursive: true, mode: 0o700 });
-  admission.assertLive();
-  await Promise.all([
-    realpath(artifactPath),
-    realpath(scratchPath),
-  ]);
   admission.assertLive();
   return Object.freeze({ artifactRoot: artifactPath, scratchRoot: scratchPath });
 }
@@ -132,6 +125,8 @@ async function createAnonymousScratch(
   kind: "snapshot" | "prepared",
   options: Pick<ServerVerifiedArtifactReaderOptions, "injectFault" | "observeHandleClosed">,
 ): Promise<FileHandle> {
+  await rejectSymlink(root, "verified-byte scratch root");
+  await mkdir(root, { recursive: true, mode: 0o700 });
   const path = join(root, `verified-byte.${String(process.pid)}.${randomUUID()}.tmp`);
   let handle: FileHandle;
   try {

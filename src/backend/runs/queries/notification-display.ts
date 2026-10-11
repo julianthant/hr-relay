@@ -12,7 +12,7 @@ export function notificationDisplayContext(record: NotificationRecord, deps: {
   const link = record.links[0];
   if (link === undefined || link.kind === "storage") return { state: "not-applicable" };
   const current = deps.read(link.runId);
-  if (current.state !== "present" || current.disposition === "archived") return { state: "unavailable" };
+  if (current.state !== "present") return { state: "unavailable" };
   const { workflow, itemId } = current.run.envelope;
   const descriptor = deps.descriptor(workflow);
   if (descriptor === undefined || descriptor.contractFingerprint !== current.run.envelope.contractFingerprint) return { state: "unavailable" };

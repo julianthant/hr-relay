@@ -13,7 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createTimelineEmitter } from "../../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { DiagnosticBundleSchema } from "../../../../../../../src/models/trust/diagnostic.js";
 import { RunRecordSchema } from "../../../../../../../src/models/run/record.js";
-import { testRunLifecycle, testRunService } from "../../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testRunService, testWorkerPorts } from "../../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
@@ -50,8 +50,8 @@ import type { RunDetailQueryDeps } from "../../../../../../../src/backend/runs/q
 import { ObservedOperationStructureWireSchema } from "../../../../../../../src/models/dashboard/operation-structure.js";
 import { AuthorityDatabase } from "../../../../../../../src/backend/storage/sqlite/index.js";
 import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../../../../../../support/helpers/synthetic-storage-admission.js";
-import { readEventStreamLines } from "../../../../../../../src/backend/storage/events/jsonl-streams.js";
-import { createNoteJsonlWriter } from "../../../../../../../src/backend/storage/events/note-jsonl-writer.js";
+import { readTimelineRecords } from "../../../../../../../src/backend/storage/events/timeline-reader.js";
+import { createNoteTimelineWriter } from "../../../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { recordBrowserAction, runDeclaredAction } from "../../../../../../../src/backend/systems/browser-shared/action-notes.js";
 import { NoteWireSchema } from "../../../../../../../src/models/events/types.js";
 import { ucpathStore } from "../../../../../../../src/backend/systems/ucpath/task-registry.js";
@@ -63,7 +63,7 @@ import { readOnboardingDatesTask } from "../../../../../../../src/backend/system
 import { taskStoreRegistry } from "../../../../../../../src/backend/app/registries/task-registry.js";
 import { PersonLookupResultSchema } from "../../../../../../../src/workflows/person-lookup/workflow.js";
 import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../../../../../../support/fixtures/phase1f-run-fixtures.js";
-import { HASH_B, UUID_4, UUID_5, UUID_6 } from "../../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_4, UUID_5, UUID_6 } from "../../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
   happySessionHarness,
   healthyCrmDriver,
@@ -80,6 +80,12 @@ import {
 } from "../../../../../../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../../../../../support/helpers/registered-workflows.js";
 import { fixtureBuildManifest } from "../../../../../../support/fixtures/workflow-definition-fixtures.js";
+
+function readPersistedNotes(database: AuthorityDatabase) {
+  return readTimelineRecords(database.authority.timelineEvents).records.flatMap(record => record.payload.kind === "note" ? [NoteWireSchema.parse(record.payload.note)] : []);
+}
+
+const authorityHarnesses = new WeakMap<AuthorityDatabase, AuthorityHarness>();
 
 const disposers: (() => void)[] = [];
 afterEach(async () => {
@@ -104,6 +110,7 @@ function executorHarness(options: Readonly<{
 }> = {}): ExecutorHarness {
   const authority = openAuthorityHarness();
   disposers.push(authority.dispose);
+  authorityHarnesses.set(authority.database, authority);
   const sessions = options.sessions ?? happySessionHarness();
   const manager = sessionManagerFor(sessions, authority.clock);
   const scheduler = new ManualScheduler(authority.clock, options.autoFireAtOrBelowMs ?? 0);
@@ -137,12 +144,19 @@ function enqueueAndClaim(
   now: string,
   workflow = WORKFLOW_ID,
 ): { run: RunRecord; claim: { workerId: string; claimGeneration: number } } {
+  const harness = authorityHarnesses.get(database);
+  if (harness === undefined) throw new Error("executor-authority-harness-missing");
+  const descriptor = [personLookupDescriptor, actionBindingCompiled.descriptor, plan1Parent.descriptor, ...plan1Workflows.map(compiled => compiled.descriptor)].find(candidate => candidate.id === workflow);
+  if (descriptor === undefined) throw new Error("executor-fixture-descriptor-missing");
+  testWorkerPorts(database, harness.clock, { path: harness.path, descriptor, poolIndex: 1 });
+  const slot = database.authority.workerSlots.list(workflow).find(slot => slot.poolIndex === 1 && slot.retiredAt === null);
+  if (slot === undefined) throw new Error("executor-fixture-worker-missing");
   database.authority.runs.enqueue(run);
-  const claimed = database.authority.runs.claimNext({ workflow, workerId: WORKER_ID, now });
+  const claimed = database.authority.runs.claimNext({ workflow, workerId: slot.workerId, now });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   return {
     run: claimed.run,
-    claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+    claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration },
   };
 }
 
@@ -227,15 +241,15 @@ function actionBindingQueuedRun(
       value: { emplId: "10873698" },
       ...(options.protectedValue !== false ? {
         protectedBindings: [{
-          kind: "legacy-protected-input" as const,
+          kind: "test-data-local" as const, sourceId: UUID_4,
           inputPath: "emplId" as const,
           name: "personLookupCanaryEid" as const,
         }],
-      } : {}),
+      } : { protectedBindings: [] }),
     },
     ingressSchemaHash: deriveSchemaHash(ActionBindingInput, "input"),
-    configFingerprint: HASH_B,
-    configSnapshotId: UUID_4,
+    configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
     resolvedInstance: { ucpath: "prod" },
     ...(options.parent === undefined ? {} : { parent: options.parent }),
     shape: options.parent === undefined ? "single" : "operation-member",
@@ -310,11 +324,11 @@ function actionBindingRetrySessions(): SessionFactoryHarness {
 }
 
 describe("complete operation display action binding", () => {
-  it("binds completed synthetic driver gestures in append order and redacts protected input before JSONL durability", async () => {
+  it("binds completed synthetic driver gestures in append order and redacts protected input before native durability", async () => {
     const sessions = actionBindingSessions({ clicks: 2 });
     const harness = executorHarness({ sessions, descriptor: actionBindingCompiled.descriptor });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const { database, clock, stateRoot: _stateRoot } = harness.authority;
+    const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(
       database,
       actionBindingQueuedRun(clock.now().toISOString()),
@@ -325,10 +339,10 @@ describe("complete operation display action binding", () => {
     const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
     assert.deepEqual(outcome, { state: "done", runId: UUID_5 });
 
-    const noteLines = readEventStreamLines(stateRoot, "notes");
-    const notes = noteLines.map(({ text }) => NoteWireSchema.parse(JSON.parse(text)));
+    const noteLines = readPersistedNotes(database);
+    const notes = noteLines.map((note) => NoteWireSchema.parse(note));
     const actions = notes.filter((note) => note.action !== undefined);
-    assert.deepEqual(noteLines.map(({ lineNumber }) => lineNumber), [1, 2, 3]);
+    assert.deepEqual(noteLines.map((note) => note.message), ["Typed into ucpath person org eid input", "Clicked ucpath person org search button", "Clicked ucpath person org search button"]);
     assert.equal(actions.length, 3);
     assert.deepEqual(actions.map((note) => note.action?.operation?.logicalActionId), ["fill-eid", "run-search", "run-search"]);
     assert.deepEqual(actions.map((note) => note.action?.operation?.occurrence), [1, 1, 2]);
@@ -340,7 +354,7 @@ describe("complete operation display action binding", () => {
       consumed: {
         state: "redacted",
         binding: {
-          kind: "legacy-protected-input",
+          kind: "test-data-local", sourceId: UUID_4,
           inputPath: "emplId",
           name: "personLookupCanaryEid",
         },
@@ -357,12 +371,13 @@ describe("complete operation display action binding", () => {
     assert.deepEqual(actions[0]?.action?.operation?.occurrencePath, ["search"]);
     assert.equal(actions[0]?.action?.operation?.logicalSessionId, "ucpath-worker");
     assert.equal(actions[0]?.action?.operation?.physicalSessionId, "00000000-0000-4000-8000-000000000001");
-    assert.equal(noteLines.some(({ text }) => text.includes("10873698")), false);
+    assert.equal(noteLines.some((note) => JSON.stringify(note).includes("10873698")), false);
 
     const terminal = database.authority.runs.get(UUID_5);
     assert.ok(terminal);
     const page = buildRunLogsSection({
-      stateRoot,
+      timeline: database.authority.timelineEvents,
+      stateRoot: _stateRoot,
       projection: { runLogSnapshot: () => ({ entries: [] }) },
       // Logs resolve the retained envelope snapshot for unregistered workflows.
       descriptors: { resolve: () => undefined },
@@ -417,15 +432,15 @@ describe("complete operation display action binding", () => {
 
   it("serves explicit executor lifecycle and safely classified values through the exact bounded source route", async () => {
     const harness = executorHarness({ sessions: actionBindingSessions({ lifecycle: true }), descriptor: actionBindingCompiled.descriptor });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const { database, clock, stateRoot: _stateRoot } = harness.authority;
+    const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(database, actionBindingQueuedRun(clock.now().toISOString(), { protectedValue: false }), clock.now().toISOString(), ACTION_BINDING_WORKFLOW_ID);
     for (let index = 0; index < 205; index += 1) writer.emitRunLog({ workflow: ACTION_BINDING_WORKFLOW_ID,
       address: { runId: UUID_5, attempt: 1, traceId: "fa-170000-5555", spanPath: "fixture" },
       level: "step", message: "Before the action" }, claimed.run);
     const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "done");
-    const notes = readEventStreamLines(stateRoot, "notes").map(({ text }) => NoteWireSchema.parse(JSON.parse(text)));
+    const notes = readPersistedNotes(database).map((note) => NoteWireSchema.parse(note));
     const actions = notes.flatMap((note) => note.action === undefined ? [] : [note.action]);
     assert.deepEqual(actions.map((action) => action.operation?.state), ["started", "completed", "started", "completed", "started", "completed"]);
     assert.deepEqual(actions.map((action) => action.operation?.occurrence), [1, 1, 1, 1, 1, 1]);
@@ -450,7 +465,7 @@ describe("complete operation display action binding", () => {
     const completed = actions[1]?.operation;
     assert.ok(completed);
     const { value: _value, ...identity } = completed;
-    const deps = { stateRoot, runReader: testRunService(database, clock), descriptors: { resolve: () => undefined },
+    const deps = { timeline: database.authority.timelineEvents, stateRoot: _stateRoot, runReader: testRunService(database, clock), descriptors: { resolve: () => undefined },
       projection: { runLogSnapshot: () => ({ entries: [] }) } } as unknown as RunDetailQueryDeps;
     const app: DashboardApp = new Hono();
     registerRunDetailRoutes(app, { runDetail: deps });
@@ -485,8 +500,8 @@ describe("complete operation display action binding", () => {
       descriptor: actionBindingCompiled.descriptor,
       autoFireAtOrBelowMs: 2_500,
     });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const { database, clock, stateRoot: _stateRoot } = harness.authority;
+    const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(
       database,
       actionBindingQueuedRun(clock.now().toISOString()),
@@ -496,9 +511,9 @@ describe("complete operation display action binding", () => {
 
     const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
     assert.deepEqual(outcome, { state: "done", runId: UUID_5 });
-    const lines = readEventStreamLines(stateRoot, "notes");
-    const actions = lines.map(({ text }) => NoteWireSchema.parse(JSON.parse(text))).filter((note) => note.action !== undefined);
-    assert.deepEqual(lines.map(({ lineNumber }) => lineNumber), [1, 2, 3, 4]);
+    const lines = readPersistedNotes(database);
+    const actions = lines.map((note) => NoteWireSchema.parse(note)).filter((note) => note.action !== undefined);
+    assert.equal(lines.length, 4);
     assert.deepEqual(actions.map((note) => note.action?.operation?.logicalActionId), [
       "fill-eid", "run-search", "fill-eid", "run-search",
     ]);
@@ -513,8 +528,9 @@ describe("complete operation display action binding", () => {
 
   it("binds child invocation identity from the immutable child envelope", async () => {
     const harness = executorHarness({ sessions: actionBindingSessions(), descriptor: actionBindingCompiled.descriptor });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const { database, clock, stateRoot: _stateRoot } = harness.authority;
+    const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+    database.authority.runs.enqueue(personLookupQueuedRun());
     const claimed = enqueueAndClaim(
       database,
       actionBindingQueuedRun(clock.now().toISOString(), {
@@ -532,8 +548,8 @@ describe("complete operation display action binding", () => {
       await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL }),
       { state: "done", runId: UUID_5 },
     );
-    const firstAction = readEventStreamLines(stateRoot, "notes")
-      .map(({ text }) => NoteWireSchema.parse(JSON.parse(text)))
+    const firstAction = readPersistedNotes(database)
+      .map((note) => NoteWireSchema.parse(note))
       .find((note) => note.action !== undefined);
     assert.deepEqual(firstAction?.action?.operation?.childInvocation, {
       parentRunId: "22222222-2222-4222-8222-222222222222",
@@ -546,8 +562,8 @@ describe("complete operation display action binding", () => {
       sessions: actionBindingSessions({ openedTarget: "ucpath.person-org.search" }),
       descriptor: actionBindingCompiled.descriptor,
     });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const { database, clock, stateRoot: _stateRoot } = harness.authority;
+    const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(
       database,
       actionBindingQueuedRun(clock.now().toISOString()),
@@ -559,8 +575,8 @@ describe("complete operation display action binding", () => {
       await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL }),
       { state: "done", runId: UUID_5 },
     );
-    const firstAction = readEventStreamLines(stateRoot, "notes")
-      .map(({ text }) => NoteWireSchema.parse(JSON.parse(text)))
+    const firstAction = readPersistedNotes(database)
+      .map((note) => NoteWireSchema.parse(note))
       .find((note) => note.action !== undefined);
     assert.equal(firstAction?.action?.operation?.logicalActionId, "open-search");
   });
@@ -570,8 +586,8 @@ describe("complete operation display action binding", () => {
       sessions: actionBindingSessions({ failBeforeGesture: true }),
       descriptor: actionBindingCompiled.descriptor,
     });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const { database, clock, stateRoot: _stateRoot } = harness.authority;
+    const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(
       database,
       actionBindingQueuedRun(clock.now().toISOString()),
@@ -581,7 +597,7 @@ describe("complete operation display action binding", () => {
 
     const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "failed");
-    assert.deepEqual(readEventStreamLines(stateRoot, "notes"), []);
+    assert.deepEqual(readPersistedNotes(database), []);
   });
 
   for (const refusal of [
@@ -675,6 +691,7 @@ describe("complete operation display action binding", () => {
     assert.throws(
       () => buildRunLogsSection({
         stateRoot: missingHarness.authority.stateRoot,
+        timeline: missingHarness.authority.database.authority.timelineEvents,
         projection: { runLogSnapshot: () => ({ entries: [] }) },
         descriptors: { resolve: () => undefined },
       } as unknown as RunDetailQueryDeps, UUID_5, undefined, {
@@ -715,12 +732,12 @@ describe("complete operation display action binding", () => {
 
     const raw = new DatabaseSync(path);
     try {
-      const stored = z.object({ record_json: z.string() }).parse(
-        raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?").get(UUID_5),
+      const stored = z.object({ envelope_json: z.string() }).parse(
+        raw.prepare("SELECT envelope_json FROM runs WHERE id = ?").get(UUID_5),
       );
-      const record = JSON.parse(stored.record_json) as { envelope: { operationDisplaySnapshot: { contentDigest: string } } };
-      record.envelope.operationDisplaySnapshot.contentDigest = "0".repeat(64);
-      raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?").run(JSON.stringify(record), UUID_5);
+      const record = JSON.parse(stored.envelope_json) as { operationDisplaySnapshot: { contentDigest: string } };
+      record.operationDisplaySnapshot.contentDigest = "0".repeat(64);
+      raw.prepare("UPDATE runs SET envelope_json = ? WHERE id = ?").run(JSON.stringify(record), UUID_5);
     } finally {
       raw.close();
     }
@@ -753,13 +770,13 @@ describe("person-lookup full walk", () => {
       crm: () => healthyCrmDriver(),
     });
     const harness = executorHarness({ sessions });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const { database, clock, stateRoot: _stateRoot } = harness.authority;
+    const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
     assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
-    const notes = readEventStreamLines(stateRoot, "notes")
-      .map(({ text }) => NoteWireSchema.parse(JSON.parse(text)));
+    const notes = readPersistedNotes(database)
+      .map((note) => NoteWireSchema.parse(note));
     const actions = notes.filter((note) => note.action !== undefined);
     assert.equal(actions.length, 258);
     assert.equal(actions.every((note) => note.message === "Clicked ucpath person org search button"), true);
@@ -791,8 +808,8 @@ describe("person-lookup full walk", () => {
       crm: () => healthyCrmDriver(),
     });
     const harness = executorHarness({ sessions, autoFireAtOrBelowMs: 2_500 });
-    const { database, clock, stateRoot } = harness.authority;
-    const logs = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const { database, clock, stateRoot: _stateRoot } = harness.authority;
+    const logs = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const stdout = recordingLogger();
     const searchWithLogs = defineTask(ucpathDriver, SearchPersonOrg, {
       sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
@@ -826,7 +843,7 @@ describe("person-lookup full walk", () => {
     );
     const claimed = enqueueAndClaim(database, personLookupQueuedRun({
       protectedBindings: [{
-        kind: "legacy-protected-input",
+        kind: "test-data-local", sourceId: UUID_4,
         inputPath: "emplId",
         name: "personLookupCanaryEid",
       }],
@@ -838,14 +855,14 @@ describe("person-lookup full walk", () => {
     assert.match(stdout.entries()[0] ?? "", /UNCLASSIFIED_MESSAGE_CANARY/u);
     assert.equal(stdout.entries()[0]?.includes("10873698"), true);
 
-    const noteLines = readEventStreamLines(stateRoot, "notes");
+    const noteLines = readPersistedNotes(database);
     assert.equal(noteLines.length, 262, "all task messages persist");
-    assert.equal(noteLines.some(({ text }) => text.includes("UNCLASSIFIED_MESSAGE_CANARY")), true);
-    assert.equal(noteLines.some(({ text }) => text.includes("10873698")), true);
-    assert.equal(noteLines.some(({ text }) => text.includes("UNCLASSIFIED_NOTE_CANARY")), true);
+    assert.equal(noteLines.some((note) => JSON.stringify(note).includes("UNCLASSIFIED_MESSAGE_CANARY")), true);
+    assert.equal(noteLines.some((note) => JSON.stringify(note).includes("10873698")), true);
+    assert.equal(noteLines.some((note) => JSON.stringify(note).includes("UNCLASSIFIED_NOTE_CANARY")), true);
     const firstLine = noteLines[0];
     assert.ok(firstLine);
-    const firstNote = NoteWireSchema.parse(JSON.parse(firstLine.text));
+    const firstNote = NoteWireSchema.parse(firstLine);
     assert.match(firstNote.message, /UNCLASSIFIED_MESSAGE_CANARY protected EID 10873698/u);
     assert.ok("runId" in firstNote);
     assert.equal(firstNote.runId, RUN_ID);
@@ -857,7 +874,7 @@ describe("person-lookup full walk", () => {
       1,
       claimed.claim.claimGeneration,
     ));
-    const retriedNote = NoteWireSchema.parse(JSON.parse(noteLines[2]?.text ?? "{}"));
+    const retriedNote = NoteWireSchema.parse(noteLines[2]);
     assert.ok("runId" in retriedNote);
     assert.equal(retriedNote.runId, RUN_ID);
     assert.equal(retriedNote.attempt, 1);
@@ -872,13 +889,14 @@ describe("person-lookup full walk", () => {
       { key: "unclassifiedEid", kind: "text", value: "10873698" },
       { key: "unclassifiedSecret", kind: "text", value: "UNCLASSIFIED_NOTE_CANARY" },
     ]);
-    const lastNote = NoteWireSchema.parse(JSON.parse(noteLines.at(-1)?.text ?? "{}"));
+    const lastNote = NoteWireSchema.parse(noteLines.at(-1));
     assert.equal(lastNote.message, "roster match completed");
 
     const terminal = database.authority.runs.get(RUN_ID);
     assert.ok(terminal);
     const queryDeps = {
-      stateRoot,
+      timeline: database.authority.timelineEvents,
+      stateRoot: _stateRoot,
       projection: { runLogSnapshot: () => ({ entries: [] }) },
       descriptors: { resolve: () => undefined },
     } as unknown as RunDetailQueryDeps;
@@ -1143,7 +1161,7 @@ describe("failure, retry, and resume", () => {
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const raw = new DatabaseSync(path);
     try {
-      raw.exec("CREATE TRIGGER injected_checkpoint_event BEFORE INSERT ON timeline_events WHEN json_extract(NEW.record_json, '$.payload.kind') = 'checkpoint-recorded' BEGIN SELECT RAISE(ABORT, 'injected checkpoint event'); END");
+      raw.exec("CREATE TRIGGER injected_checkpoint_event BEFORE INSERT ON timeline_events WHEN json_extract(NEW.payload_json, '$.payload.kind') = 'checkpoint-recorded' BEGIN SELECT RAISE(ABORT, 'injected checkpoint event'); END");
       const outcome = await executeClaimedRun(h.deps, { ...claimed, signal: SIGNAL });
       assert.equal(outcome.state, "failed");
       assert.equal(database.authority.runCheckpoints.latest(WORKFLOW_ID, claimed.run.envelope.itemId, "searching"), undefined);
@@ -1610,7 +1628,7 @@ describe("original claim at failure terminalization", () => {
     const { database, clock } = h.authority;
     const invalid = RunRecordSchema.parse(personLookupQueuedRun());
     const claimed = enqueueAndClaim(database, { ...invalid, input: {
-      ...invalid.input, parsed: { schemaHash: "a".repeat(64), value: {} },
+      ...invalid.input, parsed: { protectedBindings: [], schemaHash: "a".repeat(64), value: {} },
     } }, clock.now().toISOString());
     const lifecycle = h.deps.lifecycle;
     const deps: RunExecutorDependencies = { ...h.deps, diagnostics: {
@@ -1631,6 +1649,7 @@ describe("original claim at failure terminalization", () => {
         });
       },
       persist: () => { throw new Error("lost claimant must never persist the prepared bundle"); },
+      discard: () => {},
     } };
     const result = await executeClaimedRun(deps, { ...claimed, signal: SIGNAL });
     assert.equal(result.state, "abandoned");
@@ -1647,7 +1666,7 @@ describe("cancellation racing failure authorization", () => {
     const { database, clock } = h.authority;
     const input = RunRecordSchema.parse(personLookupQueuedRun());
     const claimed = enqueueAndClaim(database, { ...input, input: {
-      ...input.input, parsed: { schemaHash: "a".repeat(64), value: {} },
+      ...input.input, parsed: { protectedBindings: [], schemaHash: "a".repeat(64), value: {} },
     } }, clock.now().toISOString());
     let interleaved = false;
     let validatingReads = 0;
@@ -1709,7 +1728,7 @@ describe("cancellation racing terminal admission", () => {
     const settled = database.authority.runs.get(RUN_ID);
     assert.ok(settled?.lifecycle.state === "terminal");
     assert.equal(settled.lifecycle.outcome, "cancelled");
-    assert.equal(database.authority.runResults.get(RUN_ID), undefined);
+    assert.equal(z.object({ kind: z.literal("lifecycle-evidence"), outcome: z.literal("cancelled") }).parse(database.authority.runResults.get(RUN_ID)?.result.value).outcome, "cancelled");
     assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
     assert.deepEqual(h.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "run")
       .map((event) => event.outcome), ["cancelled"]);
@@ -1718,11 +1737,11 @@ describe("cancellation racing terminal admission", () => {
 
 it("executes two canonical children and a nested child, preserving every derived input through real terminal authority and source routes", async () => {
   const harness = executorHarness({ descriptor: plan1Parent.descriptor, stores: plan1Stores });
-  const { database, clock, stateRoot } = harness.authority;
+  const { database, clock, stateRoot: _stateRoot } = harness.authority;
   const config = { ...CONFIG_SNAPSHOT.config, actor: { ...CONFIG_SNAPSHOT.config.actor, label: "Different operator" } };
   const fingerprint = sha256Hex(canonicalJsonStringify(config));
   database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT, configSnapshotId: PLAN1_CONFIG_ID, config, fingerprint });
-  const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+  const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   const originalTerminalize = harness.deps.lifecycle.terminalize;
   const fixtureLifecycle = { ...harness.deps.lifecycle, terminalize: (...args: Parameters<typeof originalTerminalize>) => originalTerminalize(...args) };
   let number = 0;
@@ -1730,7 +1749,7 @@ it("executes two canonical children and a nested child, preserving every derived
     const sequence = ++number;
     return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
       itemId: itemId ?? `00000000-0000-4000-8001-${String(sequence).padStart(12, "0")}`, traceId: `fp-170000-${String(sequence).padStart(4, "0")}`,
-      rawInput: JsonValueSchema.parse(value), canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
+      rawInput: JsonValueSchema.parse(value), canonicalInput: { protectedBindings: [], schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
       configFingerprint: fingerprint, configSnapshotId: PLAN1_CONFIG_ID, resolvedInstance: {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: false,
       attempt: 1, runNumber: sequence, now: clock.now().toISOString(), ...(parent === undefined ? {} : { parent }) });
   };
@@ -1743,10 +1762,7 @@ it("executes two canonical children and a nested child, preserving every derived
     const childInput = createRun(compiled, value, { runId: context.run.envelope.runId, edgeId: node.edgeId, tracePrefix: context.run.envelope.traceId }, node.deriveChildItemId(Plan1Input.parse(value)));
     const protectedBindings = context.run.input.parsed.protectedBindings;
     const child = protectedBindings === undefined ? childInput : { ...childInput, input: { ...childInput.input, parsed: { ...childInput.input.parsed, protectedBindings } } };
-    database.authority.runs.enqueue(child);
-    const childClaim = database.authority.runs.claimNext({ workflow: compiled.descriptor.id, workerId: `worker-child-${number}`, now: clock.now().toISOString() });
-    if (childClaim.state !== "claimed") throw new Error("fixture-child-claim-refused");
-    const claimed = { run: childClaim.run, claim: { workerId: childClaim.run.lifecycle.state === "claimed" ? childClaim.run.lifecycle.workerId : "invalid", claimGeneration: childClaim.run.claimGeneration } };
+    const claimed = enqueueAndClaim(database, child, clock.now().toISOString(), compiled.descriptor.id);
     const outcome = await executeClaimedRun({ ...harness.deps, descriptor: compiled.descriptor, lifecycle: fixtureLifecycle, childRuns: childExecutor, taskNotes: writer }, { ...claimed, signal: SIGNAL });
     if (outcome.state !== "done") throw new Error(`fixture-child-did-not-complete:${JSON.stringify(outcome)}:${JSON.stringify(database.authority.runs.get(child.envelope.runId))}`);
     const result = database.authority.runResults.get(child.envelope.runId);
@@ -1760,13 +1776,13 @@ it("executes two canonical children and a nested child, preserving every derived
   const retained = database.authority.runResults.get(root.envelope.runId);
   assert.ok(retained);
   assert.deepEqual(retained.dependencies.map((dependency) => dependency.state), ["child-resolved", "child-resolved", "resolved"]);
-  const notes = readEventStreamLines(stateRoot, "notes").map(({ text }) => NoteWireSchema.parse(JSON.parse(text)));
+  const notes = readPersistedNotes(database).map((note) => NoteWireSchema.parse(note));
   const consumed = notes.find((note) => "runId" in note && note.runId === root.envelope.runId && note.action?.operation?.state === "completed" && note.action.operation.logicalActionId === "consume-text")?.action?.operation;
   assert.ok(consumed?.value?.producer.kind === "transformation");
   assert.deepEqual(consumed.value.producer.inputs?.map((input) => [input.inputId, input.state, input.identities.length]), [["left", "retained", 2], ["right", "retained", 1], ["label", "definition-source", 0]]);
   const identity = consumed.value.producer.inputs?.[0]?.identities[0];
   assert.ok(identity);
-  const deps = { stateRoot, runReader: testRunService(database, clock), canonical: { database }, descriptors: { resolve: () => undefined }, projection: { runLogSnapshot: () => ({ entries: [] }) } } as unknown as RunDetailQueryDeps;
+  const deps = { timeline: database.authority.timelineEvents, stateRoot: _stateRoot, runReader: testRunService(database, clock), canonical: { database }, descriptors: { resolve: () => undefined }, projection: { runLogSnapshot: () => ({ entries: [] }) } } as unknown as RunDetailQueryDeps;
   const found = resolveOperationSource(deps, root.envelope.runId, { identity });
   assert.equal(found.state, "found");
   assert.throws(() => resolveOperationSource(deps, identity.runId, { identity: (() => { const { value: _value, ...identity } = consumed; return identity; })() }), /child-not-authorized/u);
@@ -1774,20 +1790,20 @@ it("executes two canonical children and a nested child, preserving every derived
   assert.throws(() => resolveOperationSource(deps, root.envelope.runId, { identity: { ...identity, logicalActionId: "unknown-action" } }), /unknown-frozen-action/u);
   assert.throws(() => resolveOperationSource(deps, root.envelope.runId, { identity: { ...identity, invocationId: "unknown-invocation" } }), /unknown-frozen-invocation/u);
   const protectedParentBase = createRun(plan1Parent, { emplId: "10800000", text: "secret-derived", mode: "ok" });
-  const protectedParent = { ...protectedParentBase, input: { ...protectedParentBase.input, parsed: { ...protectedParentBase.input.parsed, protectedBindings: [{ kind: "legacy-protected-input" as const, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const }] } } };
+  const protectedParent = { ...protectedParentBase, input: { ...protectedParentBase.input, parsed: { ...protectedParentBase.input.parsed, protectedBindings: [{ kind: "test-data-local" as const, sourceId: UUID_4, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const }] } } };
   const protectedClaim = enqueueAndClaim(database, protectedParent, clock.now().toISOString(), plan1Parent.descriptor.id);
   assert.equal((await executeClaimedRun({ ...harness.deps, childRuns: childExecutor, taskNotes: writer }, { ...protectedClaim, signal: SIGNAL })).state, "done", database.authority.failures.listByRun(protectedParent.envelope.runId).map((failure) => failure.summary).join(";"));
-  const protectedNotes = readEventStreamLines(stateRoot, "notes").map(({ text }) => NoteWireSchema.parse(JSON.parse(text))).filter((note) => "runId" in note && note.runId === protectedParent.envelope.runId);
+  const protectedNotes = readPersistedNotes(database).map((note) => NoteWireSchema.parse(note)).filter((note) => "runId" in note && note.runId === protectedParent.envelope.runId);
   const protectedConsumed = protectedNotes.find((note) => note.action?.operation?.logicalActionId === "consume-text" && note.action.operation.state === "completed")?.action;
   assert.equal(protectedConsumed?.operation?.value?.consumed.state, "withheld");
   assert.equal(protectedConsumed?.value, undefined);
   for (const mode of ["fail", "repeat", "ok", "unprotected"] as const) {
     const fresh = createRun(plan1Workflows[0], { emplId: "10800000", text: "same", mode: mode === "unprotected" ? "ok" : mode });
-    const local = mode !== "ok" ? fresh : { ...fresh, input: { ...fresh.input, parsed: { ...fresh.input.parsed, protectedBindings: [{ kind: "legacy-protected-input" as const, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const }] } } };
+    const local = mode !== "ok" ? fresh : { ...fresh, input: { ...fresh.input, parsed: { ...fresh.input.parsed, protectedBindings: [{ kind: "test-data-local" as const, sourceId: UUID_4, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const }] } } };
     const localClaim = enqueueAndClaim(database, local, clock.now().toISOString(), plan1Workflows[0].descriptor.id);
     const localOutcome = await executeClaimedRun({ ...harness.deps, descriptor: plan1Workflows[0].descriptor, taskNotes: writer }, { ...localClaim, signal: SIGNAL });
     assert.equal(localOutcome.state, mode === "fail" ? "failed" : "done");
-    const localNotes = readEventStreamLines(stateRoot, "notes").map(({ text }) => NoteWireSchema.parse(JSON.parse(text))).filter((note) => "runId" in note && note.runId === local.envelope.runId);
+    const localNotes = readPersistedNotes(database).map((note) => NoteWireSchema.parse(note)).filter((note) => "runId" in note && note.runId === local.envelope.runId);
     assert.ok(localNotes.some((note) => note.action?.operation?.state === "not-run" && note.action.operation.reason === "condition-false"));
     if (mode === "fail") assert.ok(localNotes.some((note) => note.action?.operation?.state === "failed" && note.action.operation.reason === "callback-failed"));
     if (mode === "repeat") assert.equal(database.authority.runResults.get(local.envelope.runId)?.operationLineage?.[0]?.inputs[0]?.state, "unavailable");

@@ -258,7 +258,6 @@ describe("Queue consumes the served day boundary", () => {
         envelope: { ...f.run.envelope, runId: interactiveId, itemId: interactiveId, enqueuedAt: "2026-09-09T12:00:00.000Z", priority: "interactive" },
         lifecycle: { state: "queued" }, version: 1, claimGeneration: 0, createdAt: "2026-09-09T12:00:00.000Z", updatedAt: "2026-09-09T12:00:00.000Z",
       }));
-      f.db.refreshRunSummaries();
 
       const wire = f.projection.buildDashboardDayWire("2026-09-09");
       const prioritySorted = wire.queueSurfaces.filter((s) => s.runId === bulkId || s.runId === interactiveId);

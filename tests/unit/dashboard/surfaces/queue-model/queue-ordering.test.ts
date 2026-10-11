@@ -33,7 +33,7 @@ function surface(input: Record<string, unknown>) {
     dryRun: false,
     priority: "interactive",
     runNumber: { state: "present", value: 1 },
-    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
+    session: { state: "absent", reason: "This fixture has no run session." },
 
     containment: input.surfaceKind === "member" ? "member" : "root",
     linkedRuns: [],

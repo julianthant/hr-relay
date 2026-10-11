@@ -42,7 +42,7 @@ const TERMINAL_DONE = {
 } as const;
 
 function depsOf(w: DashboardWorld): RunDetailQueryDeps {
-  return { runReader: w.runReader,
+  return { runReader: w.runReader, timeline: w.timeline,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,
@@ -59,6 +59,7 @@ function putGateResult(
   w.authority.putGateResult({
     runId: RUN_ID,
     gateId: input.gateId ?? GATE,
+    nodeId: input.gateId ?? GATE,
     commandId: uuidOf(77),
     expectedVersion: 4,
     resolvedBy: input.resolvedBy ?? "local-operator",

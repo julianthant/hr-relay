@@ -1,10 +1,9 @@
-/** The workflow-run BATCH (historical API name: session) — a dashboard-started group of N runs whose membership is derived from authority, never stored. */
+/** A dashboard-started workflow batch whose membership is derived from authority. */
 import { z } from "zod";
 import {
   ActorIdSchema,
   IntakeManifestIdSchema,
   IsoInstantSchema,
-  RunIdSchema,
   RunSessionIdSchema,
   StartPlanIdSchema,
   WorkflowIdSchema,
@@ -14,7 +13,6 @@ import {
 export const RunSessionOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("start-plan"), startPlanId: StartPlanIdSchema, actorId: ActorIdSchema }),
   z.strictObject({ kind: z.literal("intake-manifest"), intakeManifestId: IntakeManifestIdSchema, actorId: ActorIdSchema }),
-  z.strictObject({ kind: z.literal("archive-relaunch"), archivedRunId: RunIdSchema, actorId: ActorIdSchema }),
 ]);
 export type RunSessionOrigin = z.infer<typeof RunSessionOriginSchema>;
 
@@ -44,7 +42,3 @@ export type RunSessionRecord = z.infer<typeof RunSessionRecordSchema>;
 export function runSessionActorId(record: RunSessionRecord): string {
   return record.origin.actorId;
 }
-
-/** Strict reader for retained pre-v33 batch records; validates the original date invariant too. */
-export const HistoricalRunSessionRecordSchema = z.strictObject(RunSessionRecordSchema.shape)
-  .omit({ groupInQueue: true, version: true }).transform((record) => RunSessionRecordSchema.parse(record));

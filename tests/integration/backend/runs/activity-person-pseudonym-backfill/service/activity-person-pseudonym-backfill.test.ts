@@ -1,37 +1,25 @@
-import { RunIdSchema } from "../../../../../../src/rules/identity/ids.js";
-import { ActivityPersonPseudonymKeyGenerationSchema } from "../../../../../../src/models/trust/activity-person-pseudonym.js";
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+
+
 import {deriveCanonicalPerson} from "../../../../../../src/rules/runs/summary-derivation.js";
 import {CURRENT_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN} from "../../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
-import { defineRuntimeIsolation } from "../../../../../../src/models/config/define-runtime-isolation.js";
+
 import { deriveRunResultDigest, deriveTerminalDependencyDigest, RunResultRecordSchema } from "../../../../../../src/models/run/result.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
-import { createActivityPersonPseudonymDomain } from "../../../../../../src/models/trust/activity-person-pseudonym.js";
-import { createActivityPersonPseudonymBackfillService } from "../../../../../../src/backend/runs/activity-person-pseudonym-backfill/service.js";
-import { composeActivityPersonPseudonymBackfillCommand } from "../../../../../../src/backend/app/composition/activity-person-pseudonym-backfill-compose.js";
+
+
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { SeparationsResultSchema } from "../../../../../../src/workflows/separations/workflow.js";
 import {
-  COMPOSITION_ACTION_ID,
-  COMPOSITION_DEPARTMENT_OPTION,
-  COMPOSITION_DOCUMENT,
-  COMPOSITION_EFFECTIVE_DATE,
-  COMPOSITION_EID,
-  COMPOSITION_FINALIZATION_FIELDS,
-  COMPOSITION_KUALI_LDW,
-  COMPOSITION_LAST_DAY_WORKED,
   COMPOSITION_NOW,
-  COMPOSITION_RECEIPT,
-  COMPOSITION_SCOPE_OUTPUTS,
-  COMPOSITION_SEPARATION_DATE,
-  COMPOSITION_UCPATH_NAME,
   compositionQueuedRun,
 } from "../../../../../support/helpers/separations-composition-fixtures.js";
 import {
@@ -40,65 +28,7 @@ import {
 } from "../../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import { separationsDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 
-const KEY_HEX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
-const TEST_PSEUDONYM_DOMAIN = createActivityPersonPseudonymDomain({
-  keyGeneration: "activity-person-g1",
-  keyHex: KEY_HEX,
-});
-
-
-
-const SEPARATIONS_RESULT = SeparationsResultSchema.parse({
-  documentNumber: COMPOSITION_DOCUMENT,
-  approved: COMPOSITION_SCOPE_OUTPUTS.approval.approved,
-  employment: {
-    emplRecord: COMPOSITION_SCOPE_OUTPUTS.employment.emplRecord,
-    payrollTitleCode: COMPOSITION_SCOPE_OUTPUTS.employment.payrollTitleCode,
-    payrollTitle: COMPOSITION_SCOPE_OUTPUTS.employment.payrollTitle,
-  },
-  department: {
-    option: COMPOSITION_DEPARTMENT_OPTION,
-    departmentCode: COMPOSITION_SCOPE_OUTPUTS["department-option"].departmentCode,
-  },
-  dates: {
-    kualiLastDayWorked: COMPOSITION_KUALI_LDW,
-    lastDayWorked: COMPOSITION_LAST_DAY_WORKED,
-    kualiSeparationDate: COMPOSITION_KUALI_LDW,
-    separationDate: COMPOSITION_SEPARATION_DATE,
-    terminationEffectiveDate: COMPOSITION_EFFECTIVE_DATE,
-    lastDayWorkedChanged: false,
-    separationDateChanged: true,
-  },
-  pendingSweep: {
-    disposition: "committed",
-    proof: {
-      kind: "ucpath-pending-terminations-clear",
-      emplId: COMPOSITION_EID,
-      scannedRowCount: 0,
-      observedAt: COMPOSITION_NOW,
-      source: "ss-smart-hr-detail-read",
-    },
-  },
-  termination: {
-    transactionNumber: COMPOSITION_RECEIPT,
-    approvalStatus: "Pending",
-    effectiveDate: COMPOSITION_EFFECTIVE_DATE,
-    emplId: COMPOSITION_EID,
-    displayedName: COMPOSITION_UCPATH_NAME,
-    disposition: "committed",
-  },
-  finalization: {
-    disposition: "committed",
-    proof: {
-      kind: "kuali-saved-finalization",
-      actionId: COMPOSITION_ACTION_ID,
-      documentNumber: COMPOSITION_DOCUMENT,
-      observedEid: COMPOSITION_EID,
-      fields: COMPOSITION_FINALIZATION_FIELDS,
-      source: "reload-read-back",
-    },
-  },
-});
+const SEPARATIONS_RESULT = CURRENT_SEPARATIONS_RESULT;
 
 const RESULT_SCHEMA_HASH = deriveSchemaHash(SeparationsResultSchema, "output");
 const TERMINAL_RUN = RunRecordSchema.parse({
@@ -137,86 +67,7 @@ function resultWith(value: unknown) {
   });
 }
 
-describe("reviewed activity person pseudonym backfill", () => {
-  it("writes one generation-bound row from the terminal Separations approved subject", () => {
-    const reviewed: unknown[] = [];
-    const service = createActivityPersonPseudonymBackfillService({
-      authority: {
-        runs: {
-          get: () => TERMINAL_RUN,
-          listCurrentByWorkflow: () => [TERMINAL_RUN],
-        },
-      },
-      writeCapability: {
-        keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
-        reviewAndInsert: (runIds: unknown) => {
-          reviewed.push(runIds);
-          return [{
-            runId: TERMINAL_RUN.envelope.runId,
-            state: "inserted",
-            keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
-          }];
-        },
-      },
-    });
-
-    const report = service.backfill({ scope: "current-separations" });
-
-    assert.deepEqual(report, {
-      scope: "current-separations",
-      keyGeneration: "activity-person-g1",
-      outcomes: [{
-        runId: TERMINAL_RUN.envelope.runId,
-        state: "inserted",
-        keyGeneration: "activity-person-g1",
-      }],
-      counts: { examined: 1, inserted: 1, existing: 0, unavailable: 0 },
-    });
-    assert.deepEqual(reviewed, [[TERMINAL_RUN.envelope.runId]]);
-  });
-
-  it("refuses a selected-run lookup that returns a different run identity", () => {
-    const foreignRun = RunRecordSchema.parse({
-      ...TERMINAL_RUN,
-      envelope: {
-        ...TERMINAL_RUN.envelope,
-        runId: "99999999-9999-4999-8999-999999999999",
-        traceId: "sp-200000-9999",
-      },
-    });
-    let reviewed = 0;
-    const service = createActivityPersonPseudonymBackfillService({
-      authority: {
-        runs: {
-          get: () => foreignRun,
-          listCurrentByWorkflow: () => [],
-        },
-      },
-      writeCapability: {
-        keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
-        reviewAndInsert: () => {
-          reviewed += 1;
-          return [{
-            runId: foreignRun.envelope.runId,
-            state: "inserted",
-            keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
-          }];
-        },
-      },
-    });
-
-    const report = service.backfill({
-      scope: "selected-runs",
-      runIds: [TERMINAL_RUN.envelope.runId],
-    });
-
-    assert.deepEqual(report.outcomes, [{
-      runId: TERMINAL_RUN.envelope.runId,
-      state: "unavailable",
-      reason: "run-identity-mismatch",
-    }]);
-    assert.equal(reviewed, 0);
-  });
+describe("canonical activity person", () => {
 
   it("preserves the complete unavailable binding matrix at the canonical-result reader",()=>{
     const queued = RunRecordSchema.parse(compositionQueuedRun());
@@ -274,15 +125,16 @@ describe("reviewed activity person pseudonym backfill", () => {
     }
   });
   it("returns unavailable for an absent canonical run without minting identity rows",()=>{
-    const root=mkdtempSync(join(tmpdir(),"canonical-person-")),path=join(root,"state.db");
+    const root=mkdtempSync(join(realpathSync(tmpdir()),"canonical-person-")),path=join(root,"state.db");
     const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"canonical-person"},manualClock(new Date(COMPOSITION_NOW)));
     try {const before=db.getMeta();assert.deepEqual(db.canonicalPerson(TERMINAL_RUN.envelope.runId),{state:"unavailable",reason:"canonical-live-run-unavailable"});assert.deepEqual(db.getMeta(),before);}
     finally{db.close();rmSync(root,{recursive:true,force:true});}
   });
   it("reads the exact approved subject repeatedly without a generation key or write",()=>{
-    const root=mkdtempSync(join(tmpdir(),"canonical-person-")),path=join(root,"state.db");
+    const root=mkdtempSync(join(realpathSync(tmpdir()),"canonical-person-")),path=join(root,"state.db");
     const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"canonical-person"},manualClock(new Date(COMPOSITION_NOW)));
     try {
+      db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
       seedTerminalSeparationsResult(db,path);const before=db.getMeta();
       for(let n=0;n<3;n++)assert.deepEqual(db.canonicalPerson(TERMINAL_SEPARATIONS_RUN.envelope.runId),{state:"available",identity:CURRENT_SEPARATIONS_RESULT.approved.emplId});
       assert.deepEqual(db.getMeta(),before);
@@ -294,20 +146,5 @@ describe("reviewed activity person pseudonym backfill", () => {
     const finalization=base.finalization;if(!("proof" in finalization))throw new Error("performed finalization required");
     const result=activityPersonPseudonymResultRecord(TERMINAL_SEPARATIONS_RUN,{...base,termination:{...base.termination,emplId:"10800001"},finalization:{...finalization,proof:{...finalization.proof,observedEid:"10800002"}}});
     assert.deepEqual(deriveCanonicalPerson(TERMINAL_SEPARATIONS_RUN,result),{state:"available",identity:base.approved.emplId});
-  });
-  it("refuses retired command composition without creating state or credential files",()=>{
-    const root=mkdtempSync(join(tmpdir(),"retired-backfill-cli-"));
-    try {
-      const isolation=defineRuntimeIsolation({stateRoot:".tracker",artifactRoot:".tracker/artifacts",archiveDatabaseFile:"archive.sqlite",backendPort:3938,frontendPort:5174,processLockRoot:".tracker/locks",browserProfileRoot:".auth",browserSessionNamespace:"hrauto-rebuild"});
-      const result=composeActivityPersonPseudonymBackfillCommand({isolation,args:["backfill","--run",TERMINAL_RUN.envelope.runId,"--json"],repoRoot:root});
-      assert.deepEqual(result,{exitCode:1,output:"activity-person-pseudonyms retired; Activity uses validated canonical results"});
-      assert.deepEqual(readdirSync(root),[]);
-    }finally{rmSync(root,{recursive:true,force:true});}
-  });
-  it("rejects foreign or incomplete batch replies before presenting plausible success",()=>{
-    for(const replies of [[],[{runId:RunIdSchema.parse("99999999-9999-4999-8999-999999999999"),state:"inserted" as const,keyGeneration:ActivityPersonPseudonymKeyGenerationSchema.parse("activity-person-g1")}]]) {
-      const service=createActivityPersonPseudonymBackfillService({authority:{runs:{get:()=>TERMINAL_RUN,listCurrentByWorkflow:()=>[TERMINAL_RUN]}},writeCapability:{keyGeneration:ActivityPersonPseudonymKeyGenerationSchema.parse("activity-person-g1"),reviewAndInsert:()=>replies}});
-      assert.throws(()=>service.backfill({scope:"current-separations"}),/batch returned/u);
-    }
   });
 });

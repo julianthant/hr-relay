@@ -59,6 +59,7 @@ export const DiagnosticBundleSchema = z.strictObject({
   descriptorFingerprint: FingerprintSchema,
   redaction: RedactionResultSchema,
   attachments: z.array(DiagnosticAttachmentSchema).max(20),
+  availability: z.strictObject({ state: z.literal("purged"), at: IsoInstantSchema, reason: z.literal("retention") }).optional(),
   retention: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("ordinary"), purgeAfter: IsoInstantSchema }),
     z.strictObject({ kind: z.literal("pinned"), reason: z.enum(["knowledge", "fix", "write-recovery"]) }),

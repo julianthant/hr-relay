@@ -11,10 +11,6 @@ export {
 export {
   AUTHORITY_RECORD_SCHEMA_REGISTRY,
   ArtifactOutboxStorageRecordSchema,
-  OpaqueAuthorityRecordSchema,
-  ProjectionStorageRecordSchema,
-  SqliteStorageRecordIdSchema,
-  VersionPlanStorageRecordSchema,
 } from "./storage-records.js";
 export {
   AuthorityBackupService,
@@ -100,7 +96,6 @@ export {
   WriteFenceInputSchema,
   WriteIntentParkCodeSchema,
   WriteIntentParkRequestSchema,
-  WriteIntentReopenRequestSchema,
   WriteIntentRetrySettlementRequestSchema,
   WriteRefenceInputSchema,
   type AtomicWriteCommitInput,
@@ -112,7 +107,6 @@ export {
   type WriteFenceInput,
   type WriteIntentParkCode,
   type WriteIntentParkRequest,
-  type WriteIntentReopenRequest,
   type WriteIntentRetrySettlementRequest,
   type WriteRefenceInput,
 } from "./write-commit-contracts.js";

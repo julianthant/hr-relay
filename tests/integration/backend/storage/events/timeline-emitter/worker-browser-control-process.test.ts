@@ -57,7 +57,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
       body:JSON.stringify({commandId:randomUUID(),family:"settings",type:"apply-settings",target:{expectedRevision:1},source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString(),
         payload:{settingsSchemaHash:SETTINGS_SCHEMA_HASH,patchFingerprint:deriveSettingsPatchFingerprint(patch),patch}}) });
     const settingsResult: unknown = await response.json(); assert.equal(CommandResultSchema.parse(settingsResult).state,"applied",JSON.stringify(settingsResult));
-    const db = AuthorityDatabase.open({path:join(stateRoot,"state.db"),busyTimeoutMs:5000,migrationOwner:"control-process-proof"},systemClock); database=db;
+    let db = AuthorityDatabase.open({path:join(stateRoot,"state.db"),busyTimeoutMs:5000,migrationOwner:"control-process-proof"},systemClock); database=db;
     const post = async (type: string, target: unknown, payload?: unknown, commandId = randomUUID()) => {
       const request = {commandId,family:"worker-browser",type,target,...(payload===undefined?{}:{payload}),source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString()};
       const send = async (body = request) => {
@@ -124,12 +124,13 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     for (const command of [refresh,reopen]) assert.equal(db.authority.commandAudits.findByCommand(command.request.commandId)?.result.state,"applied");
     const raw=new DatabaseSync(join(stateRoot,"state.db"),{readOnly:true});
     try {
-      for(const table of ["run_operations","run_operation_attempts"]) assert.equal(raw.prepare(`SELECT count(*) AS n FROM ${table}`).get()?.["n"],0);
+      for(const table of ["write_intents","write_attempts"]) assert.equal(raw.prepare(`SELECT count(*) AS n FROM ${table}`).get()?.["n"],0);
 
       assert.equal(raw.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE name='operation_outbox'").get()?.["n"],0);
     }finally{raw.close();}
     process.stdout.write(`[sessions-process-proof] ${JSON.stringify({ claims: claims.map(value => ({ runId:value?.envelope.runId, dryRun:value?.envelope.dryRun, lifecycle:value?.lifecycle })), controls:[refresh,reopen].map(value=>db.authority.workerControls.get(value.request.commandId)), original, replacement })}\n`);
     const oldGeneration = target(1);
+    db.close(); database=undefined;
     await runtime.stop(); runtime=undefined;
     await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
       "dashboard shutdown did not drain owned children", diagnostics);
@@ -140,6 +141,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
       assert.equal(groupPids(child.pid).length, 0);
     }
     runtime=await boot();
+    db=AuthorityDatabase.open({path:join(stateRoot,"state.db"),busyTimeoutMs:5000,migrationOwner:"control-process-proof-restarted"},systemClock); database=db;
     assert.equal((await reopen.send()).state,"already-applied");
     assert.equal((await post("pause-worker",target(1))).result.state,"rejected");
     assert.equal((await post("spawn-worker",{workflowId:"person-lookup",expectedVersion:1},{workerId:worker(1)})).result.state,"applied");

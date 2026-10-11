@@ -37,8 +37,7 @@ export const RunCheckpointRecordSchema = z.strictObject({
   itemId: ItemIdSchema,
   nodeId: NodeIdSchema,
   attempt: PositiveIntSchema,
-    // Absent generations preserve historical keys; current writers must supply the execution’s claim generation.
-  claimGeneration: PositiveIntSchema.optional(),
+  claimGeneration: PositiveIntSchema,
   runId: RunIdSchema,
   /** The schema-parsed node output, bound to the hash of the schema that parsed it. */
   output: SchemaBoundCanonicalValueSchema,
@@ -97,97 +96,26 @@ export type CheckpointLoad<Output> =
     provenance: readonly FactProvenance[];
     attempt: number;
     runId: string;
-    /** Set when a checked-in migration transformed the stored payload. */
-    migratedFrom?: Readonly<{ descriptorVersion: number; contractFingerprint: string }>;
   }>
   | Readonly<{ found: false; reason: CheckpointMissReason; detail: string }>;
-
-/* ── checkpoint migrations ───────────────────────────────────────────────── */
-
-/** A checked-in, version-to-version transform; nothing else may make an incompatible checkpoint replayable. */
-export interface CheckpointMigration {
-  readonly workflowId: string;
-  readonly nodeId: string;
-  readonly from: Readonly<{ descriptorVersion: number; contractFingerprint: string }>;
-  readonly to: Readonly<{ descriptorVersion: number; contractFingerprint: string }>;
-  readonly migrate: (stored: unknown) => unknown;
-}
-
-const FACTORY_SEALED_MIGRATIONS = new WeakSet<object>();
-
-export function defineCheckpointMigration(migration: CheckpointMigration): CheckpointMigration {
-  WorkflowIdSchema.parse(migration.workflowId);
-  NodeIdSchema.parse(migration.nodeId);
-  for (const side of [migration.from, migration.to] as const) {
-    PositiveIntSchema.parse(side.descriptorVersion);
-    FingerprintSchema.parse(side.contractFingerprint);
-  }
-  if (migration.from.descriptorVersion === migration.to.descriptorVersion
-    && migration.from.contractFingerprint === migration.to.contractFingerprint) {
-    throw new Error(
-      `checkpoint migration for ${migration.workflowId}/${migration.nodeId} does not change version or fingerprint`,
-    );
-  }
-  const sealed = Object.freeze({ ...migration });
-  FACTORY_SEALED_MIGRATIONS.add(sealed);
-  return sealed;
-}
-
-function findMigration(
-  migrations: readonly CheckpointMigration[],
-  record: RunCheckpointRecord,
-  expectation: CheckpointExpectation,
-): CheckpointMigration | undefined {
-  return migrations.find((migration) =>
-    migration.workflowId === record.workflowId
-    && migration.nodeId === record.nodeId
-    && migration.from.descriptorVersion === record.descriptorVersion
-    && migration.from.contractFingerprint === record.contractFingerprint
-    && migration.to.descriptorVersion === expectation.descriptorVersion
-    && migration.to.contractFingerprint === expectation.contractFingerprint);
-}
 
 /** Decide whether a stored checkpoint may be replayed; `stored` is `undefined` when no row exists. */
 export function loadCheckpoint<OutputSchema extends z.ZodType>(
   stored: RunCheckpointRecord | undefined,
   expectation: CheckpointExpectation,
   outputSchema: OutputSchema,
-  migrations: readonly CheckpointMigration[] = [],
 ): CheckpointLoad<z.output<OutputSchema>> {
   if (stored === undefined) {
     return { found: false, reason: "no-checkpoint", detail: "no checkpoint row exists for this node" };
   }
   const record = RunCheckpointRecordSchema.parse(stored);
-  const compatible = record.descriptorVersion === expectation.descriptorVersion
-    && record.contractFingerprint === expectation.contractFingerprint;
-  let payload: unknown = record.output.value;
-  let migratedFrom: Readonly<{ descriptorVersion: number; contractFingerprint: string }> | undefined;
-
-  if (!compatible) {
-    const migration = findMigration(migrations, record, expectation);
-    if (migration === undefined) {
-      const reason: CheckpointMissReason = record.descriptorVersion === expectation.descriptorVersion
-        ? "contract-fingerprint-mismatch"
-        : "descriptor-version-mismatch";
-      return {
-        found: false,
-        reason,
-        detail: `checkpoint ${record.nodeId} was written under descriptor v${String(record.descriptorVersion)} `
-          + `/ ${record.contractFingerprint} and no checked-in migration reaches `
-          + `v${String(expectation.descriptorVersion)} / ${expectation.contractFingerprint}`,
-      };
-    }
-    if (!FACTORY_SEALED_MIGRATIONS.has(migration)) {
-      throw new Error("checkpoint migrations must be the exact objects returned by defineCheckpointMigration");
-    }
-    payload = migration.migrate(payload);
-    migratedFrom = {
-      descriptorVersion: record.descriptorVersion,
-      contractFingerprint: record.contractFingerprint,
-    };
+  if (record.descriptorVersion !== expectation.descriptorVersion || record.contractFingerprint !== expectation.contractFingerprint) {
+    return { found: false,
+      reason: record.descriptorVersion === expectation.descriptorVersion ? "contract-fingerprint-mismatch" : "descriptor-version-mismatch",
+      detail: `checkpoint ${record.nodeId} is bound to descriptor v${String(record.descriptorVersion)} / ${record.contractFingerprint}; `
+        + `this build requires v${String(expectation.descriptorVersion)} / ${expectation.contractFingerprint}` };
   }
-
-  if (record.implFingerprint !== expectation.implFingerprint && migratedFrom === undefined) {
+  if (record.implFingerprint !== expectation.implFingerprint) {
     return {
       found: false,
       reason: "impl-fingerprint-mismatch",
@@ -195,7 +123,7 @@ export function loadCheckpoint<OutputSchema extends z.ZodType>(
         + `and this build binds ${expectation.implFingerprint}`,
     };
   }
-  if (record.output.schemaHash !== expectation.outputSchemaHash && migratedFrom === undefined) {
+  if (record.output.schemaHash !== expectation.outputSchemaHash) {
     return {
       found: false,
       reason: "output-schema-mismatch",
@@ -204,7 +132,7 @@ export function loadCheckpoint<OutputSchema extends z.ZodType>(
     };
   }
 
-  const parsed = outputSchema.safeParse(payload);
+  const parsed = outputSchema.safeParse(record.output.value);
   if (!parsed.success) {
     return {
       found: false,
@@ -219,7 +147,6 @@ export function loadCheckpoint<OutputSchema extends z.ZodType>(
     provenance: record.provenance,
     attempt: record.attempt,
     runId: record.runId,
-    ...(migratedFrom === undefined ? {} : { migratedFrom }),
   };
 }
 
@@ -388,81 +315,15 @@ export function assertCheckpointFreshness(input: FreshnessWalkInput): void {
   if (violations.length > 0) throw new Error(violations.join("\n\n"));
 }
 
-/* ── canonical-input snapshot migrations (ref workflow-model §2) ─────────────────────── */
-
-/** A changed canonical schema requires an explicit snapshot migration or a loud refusal, never a re-run of ingress parsing. */
-export interface CanonicalInputSnapshotMigration {
-  readonly workflowId: string;
-  readonly from: string;
-  readonly to: string;
-  readonly migrate: (stored: unknown) => unknown;
-}
-
-const FACTORY_SEALED_SNAPSHOT_MIGRATIONS = new WeakSet<object>();
-
-export function defineCanonicalInputSnapshotMigration(
-  migration: CanonicalInputSnapshotMigration,
-): CanonicalInputSnapshotMigration {
-  WorkflowIdSchema.parse(migration.workflowId);
-  FingerprintSchema.parse(migration.from);
-  FingerprintSchema.parse(migration.to);
-  if (migration.from === migration.to) {
-    throw new Error(`canonical input snapshot migration for ${migration.workflowId} does not change the schema hash`);
-  }
-  const sealed = Object.freeze({ ...migration });
-  FACTORY_SEALED_SNAPSHOT_MIGRATIONS.add(sealed);
-  return sealed;
-}
-
-/** Bring a stored snapshot to the current canonical schema, or refuse; the caller re-parses the result. */
-export function migrateCanonicalInputSnapshot(
-  stored: Readonly<{ schemaHash: string; value: unknown }>,
-  currentSchemaHash: string,
-  migrations: readonly CanonicalInputSnapshotMigration[],
-  workflowId: string,
-): unknown {
-  if (stored.schemaHash === currentSchemaHash) return stored.value;
-  const chain: unknown[] = [];
-  let value = stored.value;
-  let hash = stored.schemaHash;
-  const applied = new Set<string>([hash]);
-  for (;;) {
-    const migration = migrations.find((candidate) =>
-      candidate.workflowId === workflowId && candidate.from === hash);
-    if (migration === undefined) break;
-    if (!FACTORY_SEALED_SNAPSHOT_MIGRATIONS.has(migration)) {
-      throw new Error(
-        "canonical input snapshot migrations must be the exact objects returned by "
-        + "defineCanonicalInputSnapshotMigration",
-      );
-    }
-    if (applied.has(migration.to)) {
-      throw new Error(`canonical input snapshot migrations for ${workflowId} form a cycle at ${migration.to}`);
-    }
-    value = migration.migrate(value);
-    hash = migration.to;
-    applied.add(hash);
-    chain.push(hash);
-    if (hash === currentSchemaHash) return value;
-  }
-  throw new Error(
-    `stored canonical input snapshot for ${workflowId} is bound to schema ${stored.schemaHash} and this build `
-    + `parses ${currentSchemaHash}; no checked-in snapshot migration reaches it `
-    + `(reached ${chain.length === 0 ? "nothing" : chain.join(" → ")}). `
-    + `It will not be re-derived from ingress.`,
-  );
-}
-
-/** The durable key of a checkpoint row; the separator is NUL so two different tuples can never collide, and an absent claim generation appends nothing. */
+/** The durable key of a checkpoint row; the separator is NUL so two different tuples can never collide, including its immutable claim generation. */
 export function checkpointLookupKey(
   workflowId: string,
   itemId: string,
   nodeId: string,
   attempt: number,
-  claimGeneration?: number,
+  claimGeneration: number,
 ): string {
   const base = [workflowId, itemId, nodeId, String(attempt)];
-  if (claimGeneration === undefined) return base.join("\u0000");
   return [...base, String(PositiveIntSchema.parse(claimGeneration))].join("\u0000");
 }
 

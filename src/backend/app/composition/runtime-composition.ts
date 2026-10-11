@@ -35,7 +35,6 @@ export interface RebuildRuntimeStart {
   /** Explicit seam override for tests; production registers via `registerTestDataComposer`. */
   readonly testData?: TestDataComposer;
 
-  readonly activityPersonPseudonyms?: ActivityPersonPseudonymComposer;
   /** Explicit seam override for tests; production subscribes to the real process signals. */
   readonly signals?: RuntimeShutdownSignals;
   /** Publish readiness only after the dashboard owns shutdown. */
@@ -77,12 +76,6 @@ type TestDataComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }>;
-type ActivityPersonPseudonymComposer = (
-  isolation: RuntimeIsolation,
-  args: readonly string[],
-) => { readonly output: string; readonly exitCode: 0 | 1 | 2 };
-
-
 // Register separately to preserve the operational-isolation audit's exact runtime-start call.
 let registeredDashboardComposer: DashboardComposer | undefined;
 
@@ -147,19 +140,6 @@ export function registerTestDataComposer(composer: TestDataComposer): void {
   registeredTestDataComposer = composer;
 }
 
-let registeredActivityPersonPseudonymComposer: ActivityPersonPseudonymComposer | undefined;
-
-export function registerActivityPersonPseudonymComposer(
-  composer: ActivityPersonPseudonymComposer,
-): void {
-  if (registeredActivityPersonPseudonymComposer !== undefined) {
-    throw new Error(
-      "an activity person pseudonym composer is already registered; two compositions cannot own one runtime",
-    );
-  }
-  registeredActivityPersonPseudonymComposer = composer;
-}
-
 // completedThrough names the last completed ordered work item; active names the current admission stage.
 const COMPLETED_THROUGH = "2j";
 const ACTIVE_ITEM = "3-workflow-migration";
@@ -176,6 +156,8 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  worker <workflow-id> --pool-index <positive-int> [--drain]  run one indexed browser worker (ref execution-and-sessions §3/§11)",
     `  ${DRY_RUN_SCENARIO_USAGE}  execute one manifest case through the real dry-run runtime`,
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
+    "  explain diagnostics [--after <cursor>] [--through <cursor>] [--limit <1..1000>] [--run <runId>] [--json]  read one persisted debug page",
+    "  explain diagnostics --boot [--json]  inspect the stopped boot fault spool without opening the database",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page",
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
     "  storage backup [--json]  write ONE verified authority backup + manifest — the only backup writer",
@@ -314,9 +296,6 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     write(outcome.output);
     if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
-  }
-  if (command === "activity-person-pseudonyms") {
-    throw new Error("activity-person-pseudonyms-retired");
   }
   if (command === "worker") {
     const compose = input.worker ?? registeredWorkerComposer;

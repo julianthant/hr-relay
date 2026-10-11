@@ -91,7 +91,7 @@ export default defineConfig({
         "src/backend/runs/start/dry-run-scenario-runner.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/provenance/evidence-receipt.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/failure-resolution.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/start/provider-admission.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/processing/providers/provider-client.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/run-claim-admission.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/run-fan-out.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/run-record-service.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,

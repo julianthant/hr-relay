@@ -8,7 +8,6 @@ import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../..
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_BOOTSTRAP, FIXTURE_IDS, FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../../../support/fixtures/dashboard/fixture-day.js";
 import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../../../../support/fixtures/diagnostic-image-fixtures.js";
-import { FIXTURE_ARCHIVE_INDEX } from "../../../../support/fixtures/dashboard/fixture-archive.js";
 
 async function withRunCaptureHttp(scenario: "evidence" | undefined, check: (server: FixtureServer, distDir: string) => Promise<void>) {
   const distDir = mkdtempSync(join(tmpdir(), "dca4-generic-http-"));
@@ -152,7 +151,7 @@ it.each([
   });
 });
 
-it("keeps generic evidence opt-in and preserves original run, section and Archive facts", async () => {
+it("keeps generic evidence opt-in and preserves original run and section facts", async () => {
   await withRunCaptureHttp(undefined, async (server, distDir) => {
     const path = "/artifacts/v1/00000000-0000-4000-8000-00000000c102";
     staticProbe(distDir, path, "no scenario selected");
@@ -160,7 +159,6 @@ it("keeps generic evidence opt-in and preserves original run, section and Archiv
     assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}`)).json(), FIXTURE_RUN_DETAILS[FIXTURE_IDS.doneRun]);
     assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}/receipt`)).json(), FIXTURE_SECTIONS[FIXTURE_IDS.doneRun]?.receipt);
     assert.equal((await fetch(`${server.baseUrl}/api/v1/runs/${FIXTURE_IDS.doneRun}/captures`)).status, 404);
-    assert.deepEqual(await (await fetch(`${server.baseUrl}/api/v1/archive`)).json(), FIXTURE_ARCHIVE_INDEX);
   });
 });
 

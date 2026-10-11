@@ -1,11 +1,21 @@
+import { DatabaseSync } from "node:sqlite";
+import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
+import { StartPlanRecordSchema,derivePlannedInputFingerprint } from "../../../../../../src/models/run/start-plan.js";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
-import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
+import { createCommandKernel } from "../../../../../../src/backend/runs/commands/command-kernel.js";
+import { createStartPlanService } from "../../../../../../src/backend/runs/commands/start-plan-service.js";
+import { RunRecordService,requireLifecycleApplied } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { admitDirectWorker } from "../../../../../../src/backend/storage/sqlite/worker-slots.js";
+import { writeFixtureParallelDescriptor } from "../../../../../support/fixtures/write-sequencer-fixtures.js";
+import { fixtureDescriptor } from "../../../../../support/fixtures/descriptor-fixtures.js";
+import { seedInitialSettingsRuntimeConfig,appliedRunIds } from "../../../../../support/fixtures/operator-command-fixtures.js";
+import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
 import { SpanEventWireSchema } from "../../../../../../src/models/events/types.js";
 import { AuthorityDatabase, syntheticStateRoot } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
@@ -13,15 +23,12 @@ import { observeRuntimeLockSnapshot } from "../../../../../../src/backend/storag
 import { doctorAuthorityStorage } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { OfflineSpanRootRepairService } from "../../../../../../src/backend/runs/recovery/span-root-repair.js";
 import {
-  LATER,
   NOW,
   UUID_1,
 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
-  RUN_SESSION,
-  RUN_SESSION_ID,
-  START_PLAN,
+  sequentialIdFactory,
 } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
@@ -30,8 +37,9 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function fixture() {
-  const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-span-root-repair-"));
+function fixture(ambiguous=false) {
+  const descriptor=ambiguous?writeFixtureParallelDescriptor:fixtureDescriptor;
+  const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-span-root-repair-")));
   roots.push(repoRoot);
   const stateRoot = join(repoRoot, ".tracker");
   mkdirSync(stateRoot);
@@ -43,40 +51,46 @@ function fixture() {
     busyTimeoutMs: 500,
     migrationOwner: "span-root-repair-test",
   }, clock);
-  const run = RunRecordSchema.parse({ ...QUEUED_RUN, sessionId: RUN_SESSION_ID });
-  try {
-    database.authority.startPlans.create(START_PLAN);
-    const consumed = database.authority.startPlans.consume({
-      startPlanId: START_PLAN.startPlanId,
-      expectedVersion: START_PLAN.version,
-      commandId: UUID_1,
-      descriptorFingerprint: START_PLAN.descriptorFingerprint,
-      configFingerprint: START_PLAN.configFingerprint,
-      ingressSchemaHash: START_PLAN.ingressSchemaHash,
-      canonicalInputSchemaHash: START_PLAN.canonicalInputSchemaHash,
-      inputFingerprint: START_PLAN.inputFingerprint,
-      now: NOW,
-    });
-    assert.equal(consumed.state, "consumed");
-    database.authority.runSessions.insert(RUN_SESSION);
-    database.authority.runs.enqueue(run);
-  } catch (error) { database.close(); throw error; }
-  createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 }).emit({
-    t: "run.claimed",
-    ts: LATER,
-    workflow: run.envelope.workflow,
-    runId: run.envelope.runId,
-    attempt: run.envelope.attempt,
-    traceId: run.envelope.traceId,
-    spanPath: run.envelope.traceId,
-    workerId: "worker-1",
-  });
+  seedInitialSettingsRuntimeConfig(database,clock);
+  const ids=sequentialIdFactory("c"),active=database.authority.runtimeConfig.get();assert.ok(active);
+  const descriptors={resolve:(workflow:string)=>workflow===descriptor.id?descriptor:undefined};
+  const lifecycle=new RunRecordService({database,clock,ids:sequentialIdFactory("a"),publishQueued:()=>undefined});
+  const unused=()=>{throw new Error("unrequested runtime effect");};
+  const kernel=createCommandKernel({authority:database,lifecycle,clock,ids,appVersion:"0.1.0",descriptors,
+    writeResolution:{resolvePresent:unused,resolveAbsent:unused},configIdentity:UNSTORED_CONFIG_IDENTITY,intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
+    workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
+      stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}}});
+  const planner=createStartPlanService({authority:database,authorityRead:database,descriptors,clock,ids:sequentialIdFactory("b"),
+    planTtlMs:600000,configFingerprint:active.configFingerprint,configSnapshotId:active.configSnapshotId,plannedBy:"local-operator"});
+  let plan=planner.plan({workflowId:descriptor.id,submissions:ambiguous?[{eid:"10812345"}]:[{eid:"10812345",mode:"write"}],dryRun:true,selectedStepKeys:descriptor.timeline.map(step=>step.key)});
+  if(ambiguous) {
+    const original=database.authority.startPlans.get(plan.startPlanId);assert.ok(original && original.planned[0]);
+    const planned=[original.planned[0],original.planned[0]],inputFingerprint=derivePlannedInputFingerprint(planned,
+      original.ingressSchemaHash,original.canonicalInputSchemaHash,original.rerun,original.stepOmissions);
+    const admitted=StartPlanRecordSchema.parse({...original,startPlanId:ids.uuid(),planned,inputFingerprint});
+    assert.equal(database.authority.startPlans.create(admitted).state,"inserted");
+    plan={...plan,startPlanId:admitted.startPlanId,planned:[...plan.planned,...plan.planned],fingerprints:{...plan.fingerprints,inputFingerprint:FingerprintSchema.parse(inputFingerprint)}};
+  }
+  const result=kernel.execute({commandId:UUID_1,requestedAt:NOW,requestedBy:"local-operator",source:"dashboard",family:"start",type:"start-run",
+    target:{workflowId:descriptor.id,startPlanId:plan.startPlanId,expectedVersion:plan.expectedVersion},payload:plan.fingerprints});
+  const runIds=appliedRunIds(result);assert.equal(runIds.length,ambiguous?2:1);
+  const created=database.authority.runs.get(runIds[0]);assert.ok(created);
+  const slot=database.withAuthorityTransaction(repositories=>admitDirectWorker(repositories,{commandId:ids.uuid(),workflow:descriptor.id,
+    poolIndex:1,expectedPoolVersion:0,processId:process.pid,processAcquisitionId:ids.uuid(),authorityPath,processLockRoot,now:NOW},ids.uuid()));
+  assert.equal(database.authority.workerLeases.start({workerId:slot.workerId,workflow:descriptor.id,browserSystems:[],processId:process.pid,requestedBy:"local-operator",now:NOW}).state,"started");
+  const run=requireLifecycleApplied(lifecycle.claimNext({commandId:ids.uuid(),workflow:descriptor.id,workerId:slot.workerId,runtimeConfig:{
+    generation:active.generation,settingsRevision:active.settingsRevision,settingsFingerprint:active.settingsFingerprint,configFingerprint:active.configFingerprint}}));
   database.close();
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
   const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, clock);
   const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 300_000 }, clock);
   proofs.recordRuntimeState(snapshot);
-  const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
+  const issueProof=()=>{
+    const source=AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
+    proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:source},clock));
+    return proofs.issue({observedBy:"local-operator",sourceDatabaseIdentity:source});
+  };
+  const stoppedSystemProof = issueProof();
   const service = new OfflineSpanRootRepairService(syntheticStateRoot(stateRoot),{
     stateRoot,
     authorityPath,
@@ -84,7 +98,7 @@ function fixture() {
     stoppedProofMaxAgeMs: 300_000,
     busyTimeoutMs: 500,
   }, clock);
-  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, service, stoppedSystemProof };
+  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, plan, service, stoppedSystemProof,issueProof };
 }
 
 describe("offline missing run.queued recovery", () => {
@@ -108,7 +122,9 @@ describe("offline missing run.queued recovery", () => {
     }
     assert.equal(appended.pid, process.pid);
     assert.equal(appended.repair.priorCursor, before.at(-1)?.cursor);
-    assert.equal(appended.title, START_PLAN.planned[0]?.title);
+    assert.equal(appended.title, f.plan.planned[0]?.title);
+    const replay=f.service.repair({runId:f.run.envelope.runId,stoppedSystemProof:f.issueProof()});
+    assert.equal(replay.state,"already-repaired");assert.deepEqual(read(),after);
 
     const doctor = await doctorAuthorityStorage({
       stateRootTrustAnchor: f.repoRoot,
@@ -119,6 +135,27 @@ describe("offline missing run.queued recovery", () => {
       busyTimeoutMs: 500,
     }, f.clock);
     assert.equal(doctor.spanAuthority.state, "reconciled");
+  });
+
+  it("refuses multiple exact admitted candidates without publishing a root",()=>{
+    const f=fixture(true);
+    const database=AuthorityDatabase.open({path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
+    let before;try{before=database.authority.timelineEvents.page({});}finally{database.close();}
+    assert.throws(()=>f.service.repair({runId:f.run.envelope.runId,stoppedSystemProof:f.stoppedSystemProof}),/2 matching planned entries/u);
+    const reopened=AuthorityDatabase.open({path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
+    try{assert.deepEqual(reopened.authority.timelineEvents.page({}),before);}finally{reopened.close();}
+  });
+
+  it.each(["input-mismatch","audit-mismatch"])("refuses altered current %s without publishing a root",fault=>{
+    const f=fixture(),raw=new DatabaseSync(f.authorityPath);
+    const before=raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all();
+    try {
+      if(fault==="input-mismatch")raw.prepare("UPDATE runs SET lifecycle_json=json_set(lifecycle_json,'$.input.raw.eid',?,'$.input.parsed.value.eid',?) WHERE id=?").run("10812346","10812346",f.run.envelope.runId);
+      else raw.prepare("UPDATE commands SET request_digest=? WHERE id=?").run("a".repeat(64),UUID_1);
+    }finally{raw.close();}
+    assert.throws(()=>f.service.repair({runId:f.run.envelope.runId,stoppedSystemProof:f.issueProof()}),/0 matching planned entries|identity-mismatch/u);
+    const reopened=new DatabaseSync(f.authorityPath,{readOnly:true});
+    try{assert.deepEqual(reopened.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),before);}finally{reopened.close();}
   });
 
   it("refuses when a required start-plan authority binding is absent", () => {
@@ -135,6 +172,8 @@ describe("offline missing run.queued recovery", () => {
         ...QUEUED_RUN,
         envelope: {
           ...QUEUED_RUN.envelope,
+          configSnapshotId: f.run.envelope.configSnapshotId,
+          configFingerprint: f.run.envelope.configFingerprint,
           runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
           itemId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
           traceId: "pl-170001-aaaa",

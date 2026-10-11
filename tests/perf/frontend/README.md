@@ -16,8 +16,6 @@ and log search, copy, exact-step jump and latest-action navigation exercise thei
 `document.body.dataset.ready` records render-through-two-animation-frame time. The fixture's
 `disposeFixture` function unmounts the root for heap cleanup measurements.
 
-The October 5 readiness receipt retains the measurement script and raw samples under
-`/Users/julianhein/Projects/hr-automation-rebuild-evidence/frontend-readiness-20261005/`.
 Comparable baseline and candidate samples use identical fixture inputs, stable row handlers/view
 sets, a 1440×900 headless Chromium viewport and production builds. Each case has three or five
 repetitions. Report medians and the sample maximum; these small samples do not establish a population

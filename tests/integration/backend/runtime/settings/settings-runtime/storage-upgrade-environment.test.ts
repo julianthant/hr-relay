@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -37,7 +37,7 @@ const RETIRED_TEST_TARGET_ENV = {
   HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "12345678", HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID: "10123456",
 };
 function fixture(body: string) {
-  const root = mkdtempSync(join(tmpdir(), "upgrade-env-")); roots.push(root);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "upgrade-env-")); roots.push(root);
   const environmentFile = join(root, ".env"); writeFileSync(environmentFile, body, { mode: 0o600 });
   return { root, environmentFile, input: { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile, plan: false } };
 }
@@ -48,28 +48,30 @@ describe("expired environment import refuses before access", () => {
     const body = Object.entries({ ...bindings, ...retired, GEMINI_API_KEY: "synthetic-provider-never-imported" }).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
     const f = fixture(body); credentialTrap(f.root); const before = storageTree(f.root);
     const plan = await upgradeStorage({ ...f.input, plan: true }, clock);
-    assert.deepEqual(plan.envKeysToRemove, []); assert.deepEqual(plan.importedKeys, []);
+    assert.equal(plan.credentials, "unchanged");
     assert.deepEqual(storageTree(f.root), before);
     const applied = await upgradeStorage(f.input, clock);
-    assert.deepEqual(applied.importedKeys, []); assert.equal(applied.credentials, "unchanged");
+    assert.equal(applied.credentials, "unchanged");
     const database = AuthorityDatabase.open({ path: join(f.root, "state.db"), busyTimeoutMs: 500, migrationOwner: "expired-env-proof" }, clock);
     try { assert.deepEqual(readSettings(database.authority).settings, {}); } finally { database.close(); }
     assert.equal(readFileSync(f.environmentFile, "utf8"), body);
     for (const value of [...Object.values(retired), bindings.UCPATH_PASSWORD, bindings.UCPATH_USER_ID, "synthetic-provider-never-imported"])
       assert.equal(readFileSync(join(f.root, "state.db")).includes(Buffer.from(value)), false);
     const settled = storageTree(f.root); assert.equal((await upgradeStorage(f.input, clock)).state, "already-upgraded");
-    assert.deepEqual(storageTree(f.root), settled);
+    const after = storageTree(f.root);
+    for (const [path, bytes] of Object.entries(settled)) assert.equal(after[path], bytes);
+    assert.equal(Object.keys(after).filter(path => !(path in settled)).every(path => path.startsWith("locks/restore-admission-history/")), true);
   });
   it.each(Object.entries(RETIRED_TEST_TARGET_ENV))("does not read or adopt expired test-target key %s", async (key, value) => {
     const body = `${key}=${value}\n`; const f = fixture(body); credentialTrap(f.root);
     const report = await upgradeStorage(f.input, clock);
-    assert.deepEqual(report.importedKeys, []); assert.equal(JSON.stringify(report).includes(value), false);
+    assert.equal(report.credentials, "unchanged"); assert.equal(JSON.stringify(report).includes(value), false);
     assert.equal(readFileSync(f.environmentFile, "utf8"), body);
     assert.equal(readFileSync(join(f.root,"state.db")).includes(Buffer.from(value)), false);
   });
   it.each(["UNREGISTERED_SETTING=1", "I9_USER_ID_EXTRA=synthetic-private", "TELEGRAM_TOKEN=synthetic-private", "I9_USER_ID=one\nI9_USER_ID=two", "TELEGRAM_BOT_TOKEN=\"unterminated", "HRAUTO_DEFAULT_WORKERS=abc", "HRAUTO_KUALI_TEST_URL=not-a-url"])("does not parse expired environment bytes: %s", async body => {
     const f=fixture(body);credentialTrap(f.root);const before=storageTree(f.root);
     assert.equal((await upgradeStorage({...f.input,plan:true},clock)).state,"planned");assert.deepEqual(storageTree(f.root),before);
-    const result=await upgradeStorage(f.input,clock);assert.deepEqual(result.importedKeys,[]);assert.equal(readFileSync(f.environmentFile,"utf8"),body);
+    const result=await upgradeStorage(f.input,clock);assert.equal(result.credentials,"unchanged");assert.equal(readFileSync(f.environmentFile,"utf8"),body);
   });
 });

@@ -1,6 +1,6 @@
 import { composeWorkerProcessControl } from "../../../../../../../src/backend/app/composition/dashboard/compose.js";
-import { poolWorkerId } from "../../../../../../../src/backend/runtime/workers/worker-loop.js";
-import { PositiveIntSchema } from "../../../../../../../src/rules/identity/ids.js";
+import { admitWorkerPoolRoster } from "../../../../../../../src/backend/storage/sqlite/worker-slots.js";
+import { CommandRequestSchema } from "../../../../../../../src/rules/commands/commands.js";
 import { ManualScheduler } from "../../../../../../support/helpers/phase1f-executor-harness.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, it } from "vitest";
 import { manualClock } from "../../../../../../../src/rules/time/clock.js";
-import { initialSettingsFileRecord } from "../../../../../../../src/models/config/settings.js";
 import { resolveConfigWithProvenance } from "../../../../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../../../../../src/models/config/protected-settings.js";
@@ -27,7 +26,6 @@ import { PreflightAdmissionRefusal } from "../../../../../../../src/rules/prefli
 import { healthyRuntimePreflightRunners, createPreflightHarness } from "../../../../../../support/fixtures/preflight-seams.js";
 import { personLookupDescriptor } from "../../../../../../support/helpers/registered-workflows.js";
 import { sequentialIdFactory } from "../../../../../../support/fixtures/phase1f-run-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../../support/fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../../../../support/fixtures/intake-kernel-seams.js";
 import { RunRecordSchema } from "../../../../../../../src/models/run/record.js";
 import type { RuntimeCapability } from "../../../../../../../src/models/preflight/preflight-contract.js";
@@ -44,11 +42,9 @@ function harness() {
   const database = AuthorityDatabase.open({ path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "preflight-test" }, clock);
   cleanup.push(() => { database.close(); rmSync(repoRoot, { recursive: true, force: true }); });
   const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
-  const baseline = initialSettingsFileRecord();
   const identity = { configSnapshotId: "66666666-6666-4666-8666-666666666666", configFingerprint: resolved.fingerprint };
-  database.authority.configSnapshots.insert({ configSnapshotId: identity.configSnapshotId, fingerprint: resolved.fingerprint,
+  database.authority.runtimeConfig.initialize({ configSnapshotId: identity.configSnapshotId, fingerprint: resolved.fingerprint,
     config: resolved.config, provenance: resolved.provenance, revision: 1, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
-  database.authority.runtimeConfig.activate({ ...identity, settingsRevision: baseline.revision, settingsFingerprint: baseline.settingsFingerprint, activatedAt: clock.now().toISOString() });
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let protectedRecord = initialProtectedStoreRecord();
   const faults = new Set<string>(); const probes: string[] = []; let supportMissing = false;
@@ -70,14 +66,14 @@ function harness() {
     planTtlMs: 600_000, ...identity, plannedBy: "local-operator", preflight: preflight.admission });
   const unexpected = (): never => { throw new Error("Unexpected unrelated effect"); };
   const kernelDependencies: CommandKernelDependencies = { lifecycle, authority: database, clock, ids: sequentialIdFactory("c"), appVersion: "0.1.0", descriptors,
-    preflight: preflight.admission, configIdentity: identity, archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+    preflight: preflight.admission, configIdentity: identity, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { resolvePresent: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { planWorkerCount: unexpected, spawnWorker: unexpected, refreshBrowser: unexpected, reopenBrowser: unexpected } };
+    workerRuntime: { pool: {planPoolWorkerCount:unexpected,spawnPoolWorker:unexpected,refreshPoolBrowser:unexpected,reopenPoolBrowser:unexpected,stopPoolWorker:unexpected,pausePoolWorker:unexpected,resumePoolWorker:unexpected} } };
   const kernel = createCommandKernel(kernelDependencies);
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
   const command = (plan: ReturnType<typeof plans.plan>) => ({ commandId: "99999999-9999-4999-8999-999999999999", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
     target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
-  return { clock, database, identity, preflight, faults, probes, plans, kernel, lifecycle, kernelWith: (workerRuntime: CommandKernelDependencies["workerRuntime"]) => createCommandKernel({ ...kernelDependencies, workerRuntime }), ingress, command, get publications() { return publications; }, changeProtected() {
+  return { clock, database, stateRoot, repoRoot, identity, preflight, faults, probes, plans, kernel, lifecycle, kernelWith: (workerRuntime: CommandKernelDependencies["workerRuntime"]) => createCommandKernel({ ...kernelDependencies, workerRuntime }), ingress, command, get publications() { return publications; }, changeProtected() {
     protectedRecord = ProtectedStoreRecordSchema.parse({ ...protectedRecord, revision: 2,
       lastApplied: { commandId: "77777777-7777-4777-8777-777777777777", commandFingerprint: "7".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "88888888-8888-4888-8888-888888888888" } });
   }, missing() { supportMissing = true; } };
@@ -173,8 +169,18 @@ it("descriptor scope is derived from graph systems rather than a caller capabili
 
 it("production worker process composition refuses preflight before spawn and admits a healthy positive control", async () => {
   const h = harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
-  const workerId = poolWorkerId(personLookupDescriptor.id, PositiveIntSchema.parse(1));
-  const control = composeWorkerProcessControl({ database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
+  const plan = CommandRequestSchema.parse({ commandId: "33333333-3333-4333-8333-333333333333", requestedAt: h.clock.now().toISOString(),
+    requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
+    target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } });
+  assert.equal(plan.type, "plan-worker-count");
+  if (plan.type !== "plan-worker-count") assert.fail("fixture plan required");
+  const roster = h.database.withAuthorityTransaction(repositories => {
+    repositories.commands.insert(plan);
+    return admitWorkerPoolRoster(repositories, plan, h.clock.now().toISOString());
+  });
+  const slot = roster.selected[0]; assert.ok(slot);
+  const workerId = slot.workerId;
+  const control = composeWorkerProcessControl({ processLockRoot:join(h.stateRoot,"locks"),profileRoot:join(h.repoRoot,rebuildRuntimeIsolation.browserProfileRoot), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
     preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
     spawn: () => {
       spawns += 1;
@@ -184,7 +190,7 @@ it("production worker process composition refuses preflight before spawn and adm
     }, birth: { pollMs: 250, timeoutMs: 10_000 }, onFault: error => { throw error; } });
   const kernel = h.kernelWith(control.workerRuntime);
   const command = (id: string) => ({ commandId: id, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-    family: "worker-browser", type: "spawn-worker", target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { workerId } });
+    family: "worker-browser", type: "spawn-worker", target: { workflowId: personLookupDescriptor.id, expectedVersion: 1 }, payload: { workerId } });
   h.faults.add("browser.assets");
   assert.equal((await kernel.executeWorkerPool(command("11111111-1111-4111-8111-111111111111"))).state, "rejected");
   assert.equal(spawns, 0); assert.equal(h.database.authority.workerLeases.get(workerId), undefined);

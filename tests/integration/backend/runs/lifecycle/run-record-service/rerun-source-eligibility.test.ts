@@ -1,4 +1,3 @@
-import {archiveCurrentRun} from "../../../../../support/helpers/integration/archive-current-run.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { requireLifecycleApplied } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -22,24 +21,13 @@ function harness() {
 }
 
 
-async function sourceOf(h: Harness, kind: "archived" | "cancelled" | "discarded" | "superseded") {
-  const queued = h.start(h.proposal());
-  if (kind !== "archived") return requireLifecycleApplied(h.lifecycle.transition({
-    commandId: h.ids.uuid(), runId: queued.envelope.runId, expectedVersion: queued.version,
-    lifecycle: { state: "terminal", outcome: kind, endedAt: h.clock.now().toISOString() },
-  }));
-  assert.equal((await h.execute(queued)).state, "done");
-  const terminal = h.fresh(queued);
-  archiveCurrentRun(h.database,terminal,h.clock.now().toISOString(),h.ids.uuid());
-  const archived=terminal;
-  assert.equal(h.lifecycle.read(archived.envelope.runId).state,"present");
-  assert.equal(h.database.authority.archivedRuns.isArchived(archived.envelope.runId),true);
-  return archived;
+function sourceOf(h: Harness, kind: "cancelled" | "discarded" | "superseded") {
+  const queued=h.start(h.proposal());
+  return requireLifecycleApplied(h.lifecycle.transition({commandId:h.ids.uuid(),runId:queued.envelope.runId,
+    expectedVersion:queued.version,lifecycle:{state:"terminal",outcome:kind,endedAt:h.clock.now().toISOString()}}));
 }
 
-// A strict, persisted pre-fix plan is a compatibility input to consumption. Its
-// read-only descriptor has no transaction warnings, so all warning facts are known.
-function storedPreEligibilityPlan(h: Harness, source: RunRecord) {
+function storedIneligibleSourcePlan(h: Harness, source: RunRecord) {
   const ordinary = h.proposal();
   const template = h.database.authority.startPlans.get(ordinary.startPlanId); assert.ok(template);
   const selectedStepKeys = h.descriptor.timeline.map((step) => step.key);
@@ -58,24 +46,23 @@ function storedPreEligibilityPlan(h: Harness, source: RunRecord) {
 function snapshot(h: Harness, source: RunRecord) {
   return canonicalJsonStringify({ generation: h.database.getMeta().authorityGeneration,
     runs: h.database.authority.runs.listByWorkflow(h.descriptor.id),
-    archive: h.database.authority.archivedRuns.get(source.envelope.runId) ?? null,
     intents: h.database.authority.writeIntents.listByRun(source.envelope.runId),
     checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId),
     identities: h.lifecycleIds.minted(), queueRoots: h.queueRoots });
 }
 
 describe("Rerun source eligibility at planning and final consumption", () => {
-  for (const kind of ["archived", "cancelled", "discarded", "superseded"] as const) {
-    it(`refuses ${kind} source planning without persisting a plan or lifecycle effects`, async () => {
-      const h = harness(); const source = await sourceOf(h, kind);
+  for (const kind of ["cancelled", "discarded", "superseded"] as const) {
+    it(`refuses ${kind} source planning without persisting a plan or lifecycle effects`, () => {
+      const h = harness(); const source = sourceOf(h, kind);
       const before = snapshot(h, source); const planIdsBefore = h.planIds.minted().length;
       assert.throws(() => h.proposal(source), (error) => error instanceof RerunRefusedError && error.code === "invalid-state");
       assert.equal(snapshot(h, source), before);
       for (const id of h.planIds.minted().slice(planIdsBefore)) assert.equal(h.database.authority.startPlans.get(id), undefined);
     });
-    it(`refuses a persisted pre-fix ${kind} plan without consuming it or creating work`, async () => {
-      const h = harness(); const source = await sourceOf(h, kind);
-      const plan = storedPreEligibilityPlan(h, source); const command = h.command(plan);
+    it(`refuses a persisted ineligible ${kind} plan without consuming it or creating work`, () => {
+      const h = harness(); const source = sourceOf(h, kind);
+      const plan = storedIneligibleSourcePlan(h, source); const command = h.command(plan);
       const before = snapshot(h, source);
       const result = h.kernel.execute(command);
       assert.equal(result.state, "rejected");

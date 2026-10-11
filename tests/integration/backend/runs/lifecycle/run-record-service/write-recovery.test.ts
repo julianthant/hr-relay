@@ -1,3 +1,7 @@
+import { admitDirectWorker } from "../../../../../../src/backend/storage/sqlite/worker-slots.js";
+import { createCommandKernel } from "../../../../../../src/backend/runs/commands/command-kernel.js";
+import { RunRecordService, runContinuationPort } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { UNWIRED_INTAKE_PARSER, NO_INTAKE_PROJECTIONS } from "../../../../../support/fixtures/intake-kernel-seams.js";
 import { reconstructConfirmedOperation } from "../../../../../../src/models/events/confirmed-operation.js";
 import { lifecycleCommandId } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../../../../../src/backend/runtime/writes/write-sequencer.js";
@@ -5,10 +9,10 @@ import { PositiveIntSchema } from "../../../../../../src/rules/identity/ids.js";
 import { testRunContinuation } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import {
   createWriteRecoveryService,
   createWriteResolutionExecutor,
@@ -32,7 +36,7 @@ import {
   type SessionFactoryHarness,
 } from "../../../../../support/helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-import { UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
   absentProbeEvidence,
   ambiguousProbeVerdict,
@@ -54,11 +58,13 @@ import {
   WriteFixtureProofSchema,
   writeFixtureDescriptor,
   writeFixtureDescriptorAfterUnrelatedEdit,
+  writeFixtureDocumentDescriptor,
   writeFixtureDescriptorWithMovedKey,
   writeFixtureQueuedRun,
   writeFixtureSaveDescriptor,
   writeFixtureSessionManager,
   writeFixtureSessions,
+  WriteFixtureCommit,
   type WriteFixtureWorld,
 } from "../../../../../support/fixtures/write-sequencer-fixtures.js";
 
@@ -78,18 +84,27 @@ interface Harness {
   readonly recovery: WriteRecoveryService;
 
   readonly openedFingerprints: () => readonly string[];
+  readonly restart: () => void;
 }
 
 function harness(refuseContinuation = false): Harness {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-write-recovery-"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "write-recovery-test" },
-    clock,
-  );
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-write-recovery-"));
+  const open=()=>AuthorityDatabase.open({path:join(root,"authority.sqlite"),busyTimeoutMs:250,migrationOwner:"write-recovery-test"},clock);
+  let database=open();
   disposers.push(() => {
     database.close();
     rmSync(root, { recursive: true, force: true });
+  });
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  database.withAuthorityTransaction(repositories => {
+    const slot = admitDirectWorker(repositories, {commandId: "10000000-0000-4000-8000-000000000001",
+      workflow: WRITE_FIXTURE_WORKFLOW_ID, poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
+      processAcquisitionId: "10000000-0000-4000-8000-000000000002", authorityPath: join(root,"authority.sqlite"),
+      processLockRoot: join(root,"locks"), now: WRITE_FIXTURE_NOW}, "10000000-0000-4000-8000-000000000003");
+    assert.equal(slot.workerId, WRITE_FIXTURE_WORKER_ID);
+    assert.equal(repositories.workerLeases.start({workerId: slot.workerId,workflow: WRITE_FIXTURE_WORKFLOW_ID,
+      browserSystems: ["ucpath"],processId: process.pid,requestedBy:"local-operator",now: WRITE_FIXTURE_NOW}).state,"started");
   });
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
@@ -127,7 +142,8 @@ function harness(refuseContinuation = false): Harness {
     resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
   });
   return {
-    world, database, clock, manager, ids, recovery,
+    world, get database(){return database;}, clock, manager, ids, recovery,
+    restart:()=>{database.close();database=open();},
     openedFingerprints: () => Object.freeze([...opened]),
   };
 }
@@ -152,12 +168,12 @@ function ownBindingProof() {
 }
 
 
-function parkedAttemptingWrite(h: Harness, taskIdValue = "ucpath/submit-write-fixture"): {
+function parkedAttemptingWrite(h: Harness, taskIdValue = "ucpath/submit-write-fixture", queued: unknown = writeFixtureQueuedRun()): {
   run: RunRecord;
   writeIntentId: string;
 } {
   const now = h.clock.now().toISOString();
-  assert.equal(h.database.authority.runs.enqueue(writeFixtureQueuedRun()).state, "inserted");
+  assert.equal(h.database.authority.runs.enqueue(queued).state, "inserted");
   const claimed = h.database.authority.runs.claimNext({
     workflow: WRITE_FIXTURE_WORKFLOW_ID,
     workerId: WRITE_FIXTURE_WORKER_ID,
@@ -373,6 +389,66 @@ describe("ref write-safety §4 recovery matrix", () => {
     assert.ok(run && run.lifecycle.state === "queued");
   });
 
+  for (const failure of ["throwing probe", "invalid present proof"] as const) {
+    it(`parks a protected-input ${failure} without retaining secret exception detail or retrying`, async () => {
+      const h = harness();
+      const protectedValue = "PRIVATE_DOCUMENT_RECOVERY_CANARY";
+      const exceptionValue = "PRIVATE_EXCEPTION_RECOVERY_CANARY";
+      const { run, writeIntentId } = parkedAttemptingWrite(h, undefined, {
+        ...writeFixtureQueuedRun(),
+        input: {
+          raw: { eid: WRITE_FIXTURE_EID, documentNumber: protectedValue },
+          parsed: {
+            schemaHash: deriveSchemaHash(writeFixtureDocumentDescriptor.canonicalInput, "output"),
+            value: { eid: WRITE_FIXTURE_EID, documentNumber: protectedValue },
+            protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
+              name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: UUID_7 }],
+          },
+          ingressSchemaHash: deriveSchemaHash(writeFixtureDocumentDescriptor.input, "input"),
+        },
+      });
+      assert.equal(run.input.parsed.protectedBindings.length, 1);
+      const parseProof = WriteFixtureProofSchema.parse.bind(WriteFixtureProofSchema);
+      const proofConversion = failure === "invalid present proof"
+        ? vi.spyOn(WriteFixtureProofSchema, "parse")
+          .mockImplementation(() => parseProof({ transactionId: exceptionValue }))
+        : undefined;
+      h.world.probeResults.push(failure === "throwing probe" ? new Error(exceptionValue)
+        : { state: "present", proof: { transactionId: "T654321", documentNumber: protectedValue } });
+      try {
+        const decision = await h.recovery.recover({ descriptor: writeFixtureDocumentDescriptor, writeIntentId, signal: SIGNAL });
+        assert.equal(decision.state, "parked");
+        if (decision.state !== "parked") throw new Error("expected parked recovery");
+        assert.equal(decision.code, failure === "throwing probe" ? "unknown" : "present-proof-invalid");
+        const intent = intentByKey(h.database);
+        assert.ok(intent?.status === "parked");
+        assert.equal(intent.authorityReason?.code, failure === "throwing probe"
+          ? "recovery-probe-exception" : "recovery-present-proof-schema-failure");
+        assert.equal(intent.authorityReason?.evidence.kind, "exception");
+        assert.match(intent.authorityReason?.evidence.digest ?? "", /^[a-f0-9]{64}$/u);
+        const attempt = h.database.authority.writeAttempts.get(UUID_5);
+        assert.ok(attempt?.outcome.state === "parked");
+        assert.equal(attempt.outcome.code, decision.code);
+        assert.deepEqual(attempt.outcome.authorityReason, intent.authorityReason);
+        assert.deepEqual(attempt.bindingProof, ownBindingProof());
+        assert.equal(attempt.generation, 1);
+        const visibleEvidence = JSON.stringify({ decision, intent, attempt });
+        for (const secret of [protectedValue, exceptionValue, WRITE_FIXTURE_KEY, WRITE_FIXTURE_EID]) {
+          assert.equal(JSON.stringify(decision).includes(secret), false);
+          assert.equal(JSON.stringify(intent.authorityReason).includes(secret), false);
+        }
+        assert.equal(visibleEvidence.includes(exceptionValue), false);
+        assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+        assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID), undefined);
+        assert.deepEqual(h.world.events, ["probe"]);
+        await assert.rejects(h.recovery.recover({ descriptor: writeFixtureDocumentDescriptor, writeIntentId, signal: SIGNAL }), /typed operator resolutions/u);
+        assert.deepEqual(h.world.events, ["probe"], "UNKNOWN recovery never retries the probe or write");
+      } finally {
+        proofConversion?.mockRestore();
+      }
+    });
+  }
+
   it("parks ambiguous, unknown, and throwing probes — never absent, never retry", async () => {
     for (const [result, code, authorityCode] of [
       [ambiguousProbeVerdict(WRITE_FIXTURE_NOW), "ambiguous", "recovery-probe-ambiguous"],
@@ -398,7 +474,7 @@ describe("ref write-safety §4 recovery matrix", () => {
         assert.equal(persisted.message.includes(WRITE_FIXTURE_KEY), false);
         assert.equal(persisted.message.includes(WRITE_FIXTURE_EID), false);
         assert.equal(persisted.authorityReason?.code, authorityCode);
-        assert.equal(persisted.authorityReason?.evidence.kind, "probe");
+        assert.equal(persisted.authorityReason?.evidence.kind, result instanceof Error ? "exception" : "probe");
         assert.match(persisted.authorityReason?.evidence.digest ?? "", /^[a-f0-9]{64}$/u);
       }
     }
@@ -497,20 +573,33 @@ describe("ref write-safety §4 recovery matrix", () => {
 });
 
 describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", () => {
-  function resolutionHarness() {
+  function resolutionHarness(descriptor = writeFixtureDescriptor) {
     const h = harness();
     const executor = createWriteResolutionExecutor({
       continuation: testRunContinuation(h.database, h.clock),
       descriptors: {
         resolve: (workflowId) =>
-          [writeFixtureDescriptor, writeFixtureSaveDescriptor]
-            .find((descriptor) => String(descriptor.id) === workflowId && descriptor === writeFixtureDescriptor),
+          String(descriptor.id) === workflowId ? descriptor : undefined,
       },
       authority: h.database,
       ids: h.ids,
       resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
     });
-    return { h, executor };
+    const makeKernel=()=>{
+    const lifecycle = new RunRecordService({database:h.database,clock:h.clock,ids:h.ids,publishQueued:()=>{}});
+    const unused=():never=>{throw new Error("unused operator resolution port");};
+    const kernel=createCommandKernel({authority:h.database,lifecycle,clock:h.clock,ids:h.ids,appVersion:"1.0.0",
+      descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},
+      configIdentity:{configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},
+      intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
+      workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
+        stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
+      writeResolution:createWriteResolutionExecutor({authority:h.database,continuation:runContinuationPort(lifecycle),
+        descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids,
+        resolveImplFingerprint:()=>WRITE_FIXTURE_IMPL_FINGERPRINT})});
+    return kernel;
+    };
+    return { h, executor, kernel:makeKernel(),makeKernel };
   }
 
   function commandFor(type: "resolve-write-present" | "resolve-write-absent", run: RunRecord, payload: Record<string, unknown>) {
@@ -525,22 +614,23 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
         runId: run.envelope.runId,
         expectedVersion: run.version,
         writeIntentId: UUID_8,
-        intentGeneration: 1,
+        intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: deriveWriteBindingProofDigest(ownBindingProof()),
       },
-      payload,
+      payload: {...payload,occurrenceKeyDigest:WRITE_FIXTURE_KEY_DIGEST},
     });
   }
 
-  it("confirmed-present parses the exact proof schema, runs beat ⑦, and resumes the run", () => {
-    const { h, executor } = resolutionHarness();
+  it.each([writeFixtureDescriptor,writeFixtureDescriptorAfterUnrelatedEdit])("confirmed-present parses the exact proof schema and resumes under closure $contractFingerprint", descriptor => {
+    const { h, kernel,makeKernel } = resolutionHarness(descriptor);
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     // Park the intent the way recovery would have before the operator acts.
-    const parkedIntent = h.database.withAuthorityTransaction((repositories) =>
+    h.database.withAuthorityTransaction((repositories) =>
       repositories.writeIntents.parkAttempt({
         writeIntentId, generation: 1, expectedVersion: 1,
         code: "unknown", message: "clicked, cannot prove it landed", now: h.clock.now().toISOString(),
         authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "test operator park"),
       }));
+    const originalAttempt=h.database.authority.writeAttempts.get(UUID_5);
     const command = commandFor("resolve-write-present", run, {
       proof: {
         schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
@@ -549,14 +639,11 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
       evidenceNote: "Verified transaction T999999 in the target system",
     });
     if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
-    const context: WriteResolutionContext = Object.freeze({
-      command, run, intent: parkedIntent, now: h.clock.now().toISOString(),
-    });
-
-    const outcome = h.database.withAuthorityTransaction((repositories) =>
-      executor.resolvePresent(repositories, context)) as { run: RunRecord };
-    assert.equal(outcome.run.envelope.runId, run.envelope.runId);
-    assert.equal(outcome.run.lifecycle.state, "queued");
+    assert.equal(kernel.execute(command).state,"applied");
+    const resolved=h.database.authority.runs.get(run.envelope.runId);
+    assert.ok(resolved);
+    assert.equal(resolved.envelope.runId,run.envelope.runId);
+    assert.equal(resolved.lifecycle.state,"queued");
 
     const intent = intentByKey(h.database);
     assert.ok(intent && intent.status === "committed");
@@ -565,6 +652,33 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
       WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID);
     assert.ok(checkpoint);
     assert.equal((checkpoint.output.value as { proofSource: string }).proofSource, "operator-attestation");
+    assert.equal(checkpoint.contractFingerprint,descriptor.contractFingerprint);
+    assert.deepEqual(h.database.authority.writeAttempts.get(UUID_5),originalAttempt);
+    const audit=h.database.authority.commandAudits.findByCommand(command.commandId);
+    assert.ok(audit);
+    const generation=h.database.getMeta().authorityGeneration;
+    const timeline=h.database.authority.timelineEvents.page({runId:run.envelope.runId,limit:100});
+    assert.equal(timeline.filter(event=>event.payload.kind==="operation-confirmed").length,1);
+    const confirmed=timeline.find(event=>event.payload.kind==="operation-confirmed");
+    assert.ok(confirmed);
+    assert.deepEqual(reconstructConfirmedOperation(h.database.authority,confirmed).ledger.proof,command.payload.proof);
+    assert.equal(h.database.authority.writeIntents.getPublication(writeIntentId)?.checkpoint.contractFingerprint,descriptor.contractFingerprint);
+    assert.equal(kernel.execute(command).state,"already-applied");
+    assert.equal(h.database.getMeta().authorityGeneration,generation);
+    assert.deepEqual(h.database.authority.timelineEvents.page({runId:run.envelope.runId,limit:100}),timeline);
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId),audit);
+    assert.deepEqual(h.database.authority.writeAttempts.get(UUID_5),originalAttempt);
+    h.database.authority.runs.advanceRevision({runId:run.envelope.runId,expectedVersion:resolved.version,now:WRITE_FIXTURE_NOW});
+    h.restart();
+    const restartedKernel=makeKernel();
+    const reopenedGeneration=h.database.getMeta().authorityGeneration;
+    assert.equal(restartedKernel.execute(command).state,"already-applied");
+    assert.equal(h.database.getMeta().authorityGeneration,reopenedGeneration);
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(command.commandId),audit);
+    assert.deepEqual(h.database.authority.writeAttempts.get(UUID_5),originalAttempt);
+    assert.deepEqual(h.database.authority.timelineEvents.page({runId:run.envelope.runId,limit:100}),timeline);
+    assert.deepEqual(reconstructConfirmedOperation(h.database.authority,confirmed).ledger.proof,command.payload.proof);
+    assert.deepEqual(h.world.events,[],"operator attestation performs no external effects");
   });
 
   it("confirmed-present with a wrong proof schema hash changes nothing", () => {
@@ -582,7 +696,7 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
     });
     if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
     const context: WriteResolutionContext = Object.freeze({
-      command, run, intent: parkedIntent, now: h.clock.now().toISOString(),
+      auditId:UUID_6, command, run, intent: parkedIntent, now: h.clock.now().toISOString(),
     });
     assert.throws(
       () => h.database.withAuthorityTransaction((repositories) => executor.resolvePresent(repositories, context)),
@@ -593,21 +707,17 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
   });
 
   it("confirmed-absent records the typed operator settlement and resumes for a fresh generation", () => {
-    const { h, executor } = resolutionHarness();
+    const { h, kernel } = resolutionHarness();
     const { run, writeIntentId } = parkedAttemptingWrite(h);
-    const intent = h.database.authority.writeIntents.get(writeIntentId);
-    assert.ok(intent);
+    h.database.authority.writeIntents.parkAttempt({writeIntentId,generation:1,expectedVersion:1,code:"unknown",
+      message:"operator absence requires parked authority",now:h.clock.now().toISOString(),
+      authorityReason:deriveWriteAuthorityReason("recovery-probe-unknown","probe","test operator park")});
     const command = commandFor("resolve-write-absent", run, {
       evidenceNote: "Checked UCPath directly; the transaction is absent",
     });
     if (command.family !== "run" || command.type !== "resolve-write-absent") throw new Error("unreachable");
-    const context: WriteResolutionContext = Object.freeze({
-      command, run, intent, now: h.clock.now().toISOString(),
-    });
-
-    const outcome = h.database.withAuthorityTransaction((repositories) =>
-      executor.resolveAbsent(repositories, context)) as { run: RunRecord };
-    assert.equal(outcome.run.lifecycle.state, "queued");
+    assert.equal(kernel.execute(command).state,"applied");
+    assert.equal(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state,"queued");
     const settled = intentByKey(h.database);
     assert.ok(settled && settled.status === "retryable");
     assert.equal(settled.settlement.state, "operator-confirmed-absent");
@@ -630,7 +740,7 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
         const command = commandFor("resolve-write-absent", run, { evidenceNote: "stale operator tab" });
         if (command.family !== "run" || command.type !== "resolve-write-absent") throw new Error("unreachable");
         const context: WriteResolutionContext = Object.freeze({
-          command, run, intent: committed, now: h.clock.now().toISOString(),
+          auditId:UUID_6, command, run, intent: committed, now: h.clock.now().toISOString(),
         });
         assert.throws(
           () => h.database.withAuthorityTransaction((repositories) => executor.resolveAbsent(repositories, context)),
@@ -662,22 +772,31 @@ describe("positive recovery composite refusal", () => {
 
 
 describe("resume-queued helper replay", () => {
-  it("preserves continuation on exact replay and refuses a changed continuation", async () => {
+  it.each([writeFixtureDescriptor,writeFixtureDescriptorAfterUnrelatedEdit])("preserves continuation and exact recovery owner on replay under $contractFingerprint", async descriptor => {
     const h = harness();
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
-    await h.recovery.recover({ descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL });
+    await h.recovery.recover({ descriptor, writeIntentId, signal: SIGNAL });
     const intent = intentByKey(h.database);
     assert.ok(intent?.status === "committed");
     const checkpoint = h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID,
       WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID);
     assert.ok(checkpoint);
+    assert.equal(checkpoint.contractFingerprint,run.envelope.contractFingerprint);
+    assert.equal(checkpoint.descriptorVersion,run.envelope.descriptorVersion);
+    assert.equal(checkpoint.implFingerprint,WRITE_FIXTURE_IMPL_FINGERPRINT);
+    assert.equal(intent.completionProof.schemaHash,deriveSchemaHash(WriteFixtureProofSchema,"output"));
+    const outcome=checkpoint.output.value;
+    assert.ok(typeof outcome==="object" && outcome!==null && "output" in outcome);
+    assert.deepEqual(outcome.output,{schemaHash:deriveSchemaHash(WriteFixtureCommit.output,"output"),value:{transactionId:"T654321"}});
+
     const confirmation = h.database.authority.timelineEvents.page({}).find((event) => event.payload.kind === "operation-confirmed");
     assert.ok(confirmation);
     const { ledger: transaction, span: committedSpan } = reconstructConfirmedOperation(h.database.authority, confirmation);
     const input = { run: { runId: run.envelope.runId, expectedVersion: run.version }, checkpoint,
       commit: { writeIntentId, generation: intent.generation, completionProof: intent.completionProof,
         confirmedAt: intent.confirmedAt, outcome: checkpoint.output.value, transaction, committedSpan } };
+    h.restart();
     const transition = { kind: "resume-queued" as const, startAt: WRITE_FIXTURE_NODE_ID,
       port: testRunContinuation(h.database, h.clock),
       commandId: lifecycleCommandId("positive-recovery", { writeIntentId, generation: intent.generation }) };

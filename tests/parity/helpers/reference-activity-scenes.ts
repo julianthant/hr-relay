@@ -2,7 +2,7 @@ import { expect } from "@playwright/test";
 import {
 FIXTURE_ACTIVITY_RANGE,
 FIXTURE_ACTIVITY_UNAVAILABLE_RANGE
-} from "./fixture-archive.js";
+} from "../../support/fixtures/dashboard/fixture-activity.js";
 import { FIXTURE_DAY } from "./fixture-identity.js";
 import type { ReferenceScene,SceneAnchors } from "./reference-scenes.js";
 export const SCENES: readonly ReferenceScene[] = [

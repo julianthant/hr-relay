@@ -41,20 +41,11 @@ export const ItemAttemptHistoryRunSchema = z.discriminatedUnion("disposition", [
     partitionDay: DateOnlySchema,
   }),
   z.strictObject({
-    disposition: z.literal("archived"),
-    runId: RunIdSchema,
-    workflowId: WorkflowIdSchema,
-    itemId: ItemIdSchema,
-    attempt: PositiveIntSchema,
-    rowRevision: PositiveIntSchema,
-    partitionDay: DateOnlySchema,
-  }),
-  z.strictObject({
     disposition: z.literal("deleted"),
     runId: RunIdSchema,
     workflowId: WorkflowIdSchema,
     itemId: ItemIdSchema,
-    attempt: PositiveIntSchema.nullable(),
+    attempt: PositiveIntSchema,
     deletedAt: IsoInstantSchema,
   }),
 ]);
@@ -62,7 +53,7 @@ export const ItemAttemptHistoryRunSchema = z.discriminatedUnion("disposition", [
 export const ItemAttemptHistorySelectedSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("present"),
-    disposition: z.enum(["live", "archived"]),
+    disposition: z.literal("live"),
     runId: RunIdSchema,
     workflowId: WorkflowIdSchema,
     itemId: ItemIdSchema,
@@ -74,8 +65,8 @@ export const ItemAttemptHistorySelectedSchema = z.discriminatedUnion("state", [
     disposition: z.literal("deleted"),
     runId: RunIdSchema,
     workflowId: WorkflowIdSchema,
-    itemId: ItemIdSchema.nullable(),
-    attempt: PositiveIntSchema.nullable(),
+    itemId: ItemIdSchema,
+    attempt: PositiveIntSchema,
     deletedAt: IsoInstantSchema,
   }),
   z.strictObject({ state: z.literal("absent"), disposition: z.literal("absent"), runId: RunIdSchema }),

@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { openAuthorityHarness } from "../../../../../support/helpers/phase1f-executor-harness.js";
+import { admitWorkerPoolRoster } from "../../../../../../src/backend/storage/sqlite/worker-slots.js";
 
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
@@ -9,7 +12,6 @@ import { CommandRequestSchema } from "../../../../../../src/rules/commands/comma
 import {
   createWorkerPoolRuntimeExecutor,
   WorkerStopDirectiveContextSchema,
-  poolWorkerId,
   WORKER_GRACEFUL_STOP_TIMEOUT_MS,
   WORKER_SIGTERM_TIMEOUT_MS,
   WorkerPoolMemberSchema,
@@ -38,7 +40,7 @@ function member(poolIndex: number): WorkerPoolMember {
   return WorkerPoolMemberSchema.parse({
     workflowId: WORKFLOW,
     poolIndex: index,
-    workerId: poolWorkerId(WORKFLOW, index),
+    workerId: `${WORKFLOW}-worker-${index}`, ordinal: index, membershipRevision: 1,
   });
 }
 
@@ -174,6 +176,7 @@ function openHarness(overrides?: Readonly<{
       clock,
       scheduler,
       birth: { pollMs: 250, timeoutMs: 10_000 },
+      proveRetirement: member => { throw new Error(`fixture native profile retirement not available: ${member.workerId}`); },
       onFault: (error) => {
         faults.push(error);
       },
@@ -190,7 +193,7 @@ describe("spawn-worker", () => {
     const target = member(1);
 
     const acknowledgement = await harness.supervisor.execute({
-      command: "spawn-worker",
+      command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003",
       member: target,
     });
 
@@ -200,6 +203,7 @@ describe("spawn-worker", () => {
     expect(request?.args).toEqual([
       "--import", "tsx", "src/cli.ts",
       "worker", "person-lookup", "--pool-index", "1",
+      "--worker-id", "person-lookup-worker-1", "--ordinal", "1", "--membership-revision", "1", "--launch-command-id", "00000000-0000-4000-8000-000000000003",
     ]);
     expect(request?.cwd).toBe("/repo/worktree");
     expect(acknowledgement).toEqual({
@@ -219,7 +223,7 @@ describe("spawn-worker", () => {
   });
 
   it("derives the argv tail from the member alone", () => {
-    expect(workerCliArgv(member(3))).toEqual(["worker", "person-lookup", "--pool-index", "3"]);
+    expect(workerCliArgv(member(3), "00000000-0000-4000-8000-000000000003")).toEqual(["worker", "person-lookup", "--pool-index", "3", "--worker-id", "person-lookup-worker-3", "--ordinal", "3", "--membership-revision", "1", "--launch-command-id", "00000000-0000-4000-8000-000000000003"]);
   });
 
   it("refuses a relative launch command at construction — PATH lookup is an ambiguity", () => {
@@ -231,7 +235,7 @@ describe("spawn-worker", () => {
     const target = member(1);
     harness.leases.set(target.workerId, { processId: 999, startedAt: NOW });
 
-    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    await expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/externally started worker is never adopted/);
     expect(harness.spawnRequests).toHaveLength(0);
   });
@@ -239,10 +243,10 @@ describe("spawn-worker", () => {
   it("refuses a second spawn while it already owns a live child for the member", async () => {
     const harness = openHarness();
     const target = member(1);
-    await harness.supervisor.execute({ command: "spawn-worker", member: target });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target });
     harness.leases.delete(target.workerId);
 
-    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    await expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/already owns a running child/);
     expect(harness.spawnRequests).toHaveLength(1);
   });
@@ -250,7 +254,7 @@ describe("spawn-worker", () => {
   it("rejects with exit evidence when the child dies before proving birth", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/exited with code 1 signal null before proving its lease birth/);
     harness.children[0]?.emitExit(1, null);
     await expectation;
@@ -268,7 +272,7 @@ describe("spawn-worker", () => {
   it("rejects on a process error before birth", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/process errored before proving its lease birth: spawn ENOENT/);
     harness.children[0]?.emitError(new Error("spawn ENOENT"));
     await expectation;
@@ -277,7 +281,7 @@ describe("spawn-worker", () => {
   it("records crash evidence, kills the child, and frees the slot on a pre-birth process error", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/process errored before proving its lease birth: spawn EACCES/);
     harness.children[0]?.emitError(new Error("spawn EACCES"));
     await expectation;
@@ -300,7 +304,7 @@ describe("spawn-worker", () => {
       harness.leases.set(request.member.workerId, { processId: 4002, startedAt: NOW });
       return replacement;
     };
-    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    await expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .resolves.toMatchObject({ command: "spawn-worker", state: "acknowledged" });
     expect(harness.spawnRequests).toHaveLength(2);
   });
@@ -309,7 +313,7 @@ describe("spawn-worker", () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);
     harness.nextSpawn = (): FakeWorkerChild => new FakeWorkerChild(undefined);
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/process errored before proving its lease birth: spawn ENOENT/);
     harness.children[0]?.emitError(new Error("spawn ENOENT"));
     await expectation;
@@ -333,7 +337,7 @@ describe("spawn-worker", () => {
     const child = new FakeWorkerChild(4321);
     child.killResult = false;
     harness.nextSpawn = (): FakeWorkerChild => child;
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/process errored before proving its lease birth: spawn EPERM; the unproved child was NOT killed/);
     child.emitError(new Error("spawn EPERM"));
     await expectation;
@@ -349,7 +353,7 @@ describe("spawn-worker", () => {
       cause: "spawn EPERM",
     });
     // Respawn is BLOCKED until the child's real exit is observed.
-    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    await expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/a replacement cannot run beside a possibly-live orphan/);
     expect(harness.spawnRequests).toHaveLength(1);
     // So are stop, pause and plan coverage — each refuses by name.
@@ -373,14 +377,14 @@ describe("spawn-worker", () => {
       harness.leases.set(request.member.workerId, { processId: 4322, startedAt: NOW });
       return replacement;
     };
-    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    await expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .resolves.toMatchObject({ command: "spawn-worker", state: "acknowledged" });
   });
 
   it("forwards a post-birth process error to the fault sink instead of letting it vanish", async () => {
     const harness = openHarness();
     const target = member(1);
-    await harness.supervisor.execute({ command: "spawn-worker", member: target });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target });
 
     harness.children[0]?.emitError(new Error("kill EPERM"));
 
@@ -395,7 +399,7 @@ describe("spawn-worker", () => {
   it("kills the child and rejects when a birth probe throws on a scheduler tick", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/birth probe threw before proving its lease birth: lease store unreadable/);
 
     harness.observeLease = (): WorkerLeaseBirthFact | undefined => {
@@ -426,7 +430,7 @@ describe("spawn-worker", () => {
     const child = new FakeWorkerChild(4321);
     child.killResult = false;
     harness.nextSpawn = (): FakeWorkerChild => child;
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/proved no lease birth within 10000ms; the unproved child was NOT killed \(SIGKILL was not delivered\)/);
 
     harness.clock.advanceMonotonic(10_000);
@@ -446,7 +450,7 @@ describe("spawn-worker", () => {
       throw new Error("EAGAIN: process table full");
     };
 
-    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    await expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/EAGAIN/);
     expect(harness.supervisor.memberEvidence(target)).toBeUndefined();
   });
@@ -454,7 +458,7 @@ describe("spawn-worker", () => {
   it("kills the child and rejects when no lease birth is proved within the bound", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/proved no lease birth within 10000ms; the unproved child was killed/);
 
     harness.clock.advanceMonotonic(10_000);
@@ -468,7 +472,7 @@ describe("spawn-worker", () => {
   it("rejects rather than claiming a child that exited in the same tick it proved birth", async () => {
     const harness = openHarness();
     const target = member(1);
-    const pending = harness.supervisor.execute({ command: "spawn-worker", member: target });
+    const pending = harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target });
 
     harness.children[0]?.emitExit(1, null);
 
@@ -483,7 +487,7 @@ describe("spawn-worker", () => {
   it("kills the child and rejects when the lease is owned by a different pid", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/lease is owned by pid 777, not the spawned child/);
 
     harness.leases.set(target.workerId, { processId: 777, startedAt: NOW });
@@ -502,7 +506,7 @@ describe("a crashed child", () => {
   async function crashedHarness(): Promise<{ harness: Harness; target: WorkerPoolMember }> {
     const harness = openHarness();
     const target = member(1);
-    await harness.supervisor.execute({ command: "spawn-worker", member: target });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target });
     harness.clock.advanceWall(60_000);
     harness.children[0]?.emitExit(1, null);
     harness.leases.delete(target.workerId);
@@ -535,7 +539,7 @@ describe("a crashed child", () => {
   it("is replaced only by an explicit new spawn-worker command", async () => {
     const { harness, target } = await crashedHarness();
 
-    const acknowledgement = await harness.supervisor.execute({ command: "spawn-worker", member: target });
+    const acknowledgement = await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target });
 
     expect(acknowledgement).toMatchObject({ command: "spawn-worker", state: "acknowledged" });
     expect(harness.spawnRequests).toHaveLength(2);
@@ -579,7 +583,7 @@ function stopRequest(harness: Harness, target: WorkerPoolMember): {
 async function runningHarness(): Promise<{ harness: Harness; target: WorkerPoolMember }> {
   const harness = openHarness();
   const target = member(1);
-  await harness.supervisor.execute({ command: "spawn-worker", member: target });
+  await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target });
   return { harness, target };
 }
 
@@ -824,7 +828,7 @@ describe("stop-worker", () => {
   it("refuses to stop or pause a child still awaiting its lease birth — ownership is unproved", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);
-    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", member: target });
+    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target });
     const settled = expect(pendingSpawn).rejects.toThrow(/exited/);
 
     await expect(harness.supervisor.execute(stopRequest(harness, target)))
@@ -935,77 +939,48 @@ function planRequest(
 }
 
 describe("plan-worker-count", () => {
-  it("covers the full roster in order: running desired, initiating stop for a running excess member, honest unmet for a member with no process", async () => {
+  it("keeps count reduction pending until exit and refuses unavailable native profile closure", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
-    harness.clock.advanceWall(2_000);
-
-    const acknowledgement = await harness.supervisor.execute(
-      planRequest(1, [member(1)], [member(2), member(3)], harness.clock.now().toISOString()),
-    );
-
-    expect(acknowledgement).toEqual({
-      command: "plan-worker-count",
-      state: "acknowledged",
-      desiredWorkers: 1,
-      members: [
-        { member: member(1), stage: "running", ownership: "supervised" },
-        {
-          member: member(2),
-          stage: "graceful-stop-requested",
-          ownership: "supervised",
-          phase: "initiating",
-          escalation: stopPolicy(),
-          observed: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:02.000Z" }],
-        },
-        { member: member(3), stage: "unmet", reason: "not-started" },
-      ],
-    });
+    for (const index of [1, 2]) await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(index) });
+    const pending = harness.supervisor.execute(planRequest(1, [member(1)], [member(2)]));
+    const refused = expect(pending).rejects.toThrow(/fixture native profile retirement not available/);
+    await Promise.resolve(); await Promise.resolve();
     expect(harness.gracefulRequests).toEqual([member(2)]);
     expect(harness.supervisor.memberEvidence(member(2))).toMatchObject({ state: "stopping" });
-    // The excess member's SIGTERM bound is armed, exactly one deadline.
-    expect(harness.scheduler.pending()).toHaveLength(1);
+    harness.children[1]?.emitExit(0, null);
+    harness.leases.delete(member(2).workerId);
+    await refused;
+    expect(harness.supervisor.memberEvidence(member(2))).toMatchObject({ state: "exited", outcome: "stopped", observedStop: [{ stage: "graceful-stop-requested", at: NOW }] });
+    expect(harness.scheduler.pending()).toHaveLength(0);
   });
 
-  it("attests a stop already in flight as reconciling, reporting the escalation prefix that already occurred", async () => {
+  it("preserves escalation already observed while refusing unproved native profile retirement", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    for (const index of [1, 2]) await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(index) });
     await harness.supervisor.execute(stopRequest(harness, member(2)));
     harness.clock.advanceMonotonic(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
     harness.clock.advanceWall(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
     harness.scheduler.pending()[0]?.fire();
-
-    const acknowledgement = await harness.supervisor.execute(
-      planRequest(1, [member(1)], [member(2), member(3)]),
-    );
-
-    expect(acknowledgement.command).toBe("plan-worker-count");
-    if (acknowledgement.command !== "plan-worker-count") throw new Error("unreachable");
-    expect(acknowledgement.members[1]).toEqual({
-      member: member(2),
-      stage: "graceful-stop-requested",
-      ownership: "supervised",
-      phase: "reconciling",
-      escalation: stopPolicy(),
-      observed: [
-        { stage: "graceful-stop-requested", at: NOW },
-        { stage: "sigterm-sent", at: "2026-08-26T09:02:00.000Z" },
-      ],
-    });
+    const pending = harness.supervisor.execute(planRequest(1, [member(1)], [member(2)]));
+    const refused = expect(pending).rejects.toThrow(/fixture native profile retirement not available/);
+    await Promise.resolve(); await Promise.resolve();
+    expect(harness.children[1]?.signalsSent).toEqual(["SIGTERM"]);
+    harness.children[1]?.emitExit(0, null);
+    harness.leases.delete(member(2).workerId);
+    await refused;
+    expect(harness.supervisor.memberEvidence(member(2))).toMatchObject({ state: "exited", observedStop: [{ stage: "graceful-stop-requested", at: NOW }, { stage: "sigterm-sent", at: "2026-08-26T09:02:00.000Z" }] });
     expect(harness.gracefulRequests).toHaveLength(1);
   });
 
   it("reports a crashed member as unmet/crashed — evidence, not silently re-created capacity", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(2) });
     harness.children[0]?.emitExit(1, null);
     harness.leases.delete(member(1).workerId);
 
     const acknowledgement = await harness.supervisor.execute(
-      planRequest(2, [member(1), member(2)], [member(3)]),
+      planRequest(2, [member(1), member(2)], []),
     );
 
     expect(acknowledgement.command).toBe("plan-worker-count");
@@ -1019,12 +994,12 @@ describe("plan-worker-count", () => {
 
   it("reads a member whose stop completed as unmet/not-started, not crashed", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(1) });
     await harness.supervisor.execute(stopRequest(harness, member(1)));
     harness.children[0]?.emitExit(0, null);
     harness.leases.delete(member(1).workerId);
 
-    const acknowledgement = await harness.supervisor.execute(planRequest(1, [member(1)], [member(2), member(3)]));
+    const acknowledgement = await harness.supervisor.execute(planRequest(1, [member(1)], []));
 
     expect(acknowledgement.command).toBe("plan-worker-count");
     if (acknowledgement.command !== "plan-worker-count") throw new Error("unreachable");
@@ -1033,7 +1008,7 @@ describe("plan-worker-count", () => {
 
   it("refuses a member listed as both desired and excess before emitting any fact or initiating any stop", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(1) });
 
     await expect(harness.supervisor.execute(planRequest(1, [member(1)], [member(1)])))
       .rejects.toThrow(new RegExp(`plan-worker-count refused: worker ${member(1).workerId} appears more than once`));
@@ -1050,11 +1025,11 @@ describe("plan-worker-count", () => {
 
   it("pre-scans every refusal before initiating any stop — an unprovable roster leaves no dangling durable stop", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(2) });
     // member(3) is a spawn still awaiting birth: its lease never publishes.
     harness.nextSpawn = (): FakeWorkerChild => new FakeWorkerChild(5000);
-    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", member: member(3) });
+    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(3) });
     const settled = expect(pendingSpawn).rejects.toThrow(/exited/);
 
 
@@ -1070,15 +1045,15 @@ describe("plan-worker-count", () => {
 
   it("pre-scans a kill-undelivered excess member before initiating any stop for a RUNNING excess member ordered ahead of it", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(1) });
     // member(2) is the running excess member, ordered AHEAD of the
     // kill-undelivered member in the excess roster below.
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(2) });
     const target = member(3);
     const child = new FakeWorkerChild(9999);
     child.killResult = false;
     harness.nextSpawn = (): FakeWorkerChild => child;
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/process errored before proving its lease birth/);
     child.emitError(new Error("spawn EPERM"));
     await expectation;
@@ -1103,7 +1078,7 @@ describe("plan-worker-count", () => {
 
   it("refuses to plan over a child that has not proved birth yet", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
-    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(2) });
     const settled = expect(pendingSpawn).rejects.toThrow(/exited/);
 
     await expect(harness.supervisor.execute(planRequest(1, [member(1)], [member(2), member(3)])))
@@ -1119,7 +1094,7 @@ describe("plan-worker-count", () => {
 describe("through createWorkerPoolRuntimeExecutor", () => {
   function workerBrowserCommand(request: Readonly<Record<string, unknown>>) {
     const parsed = CommandRequestSchema.parse({
-      commandId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      commandId: randomUUID(),
       requestedBy: "local-operator",
       requestedAt: NOW,
       source: "dashboard",
@@ -1130,9 +1105,14 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
     return parsed;
   }
 
-  it("spawn, stop and reconciling plan acknowledgements pass pool validation end to end", async () => {
+  it("admits native slots for spawn and stop but refuses plan completion without native retirement proof", async () => {
     const harness = openHarness();
-    const executor = createWorkerPoolRuntimeExecutor(harness.supervisor);
+    const authority = openAuthorityHarness();
+    try {
+    const initial = workerBrowserCommand({ type: "plan-worker-count", target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 2 } });
+    if (initial.type !== "plan-worker-count") throw new Error("fixture plan required");
+    authority.database.withAuthorityTransaction(repositories => { repositories.commands.insert(initial); admitWorkerPoolRoster(repositories, initial, NOW); });
+    const executor = createWorkerPoolRuntimeExecutor(harness.supervisor, authority.database.authority.workerSlots);
 
     for (const poolIndex of [1, 2]) {
       await expect(executor.spawnPoolWorker({
@@ -1154,14 +1134,17 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
     })).resolves.toEqual({ state: "accepted", directiveLeaseVersions: DIRECTIVE_WRITE_VERSIONS });
 
 
-    await expect(executor.planPoolWorkerCount({
-      command: workerBrowserCommand({
-        type: "plan-worker-count",
-        target: { workflowId: WORKFLOW, expectedVersion: 1 },
-        payload: { desiredWorkers: 1 },
-      }),
-      now: NOW,
-    })).resolves.toEqual({ state: "accepted", workerIds: [member(1).workerId] });
+    const plan = workerBrowserCommand({ type: "plan-worker-count", target: { workflowId: WORKFLOW, expectedVersion: authority.database.authority.workerPools.get(WORKFLOW)!.version }, payload: { desiredWorkers: 1 } });
+    if (plan.type !== "plan-worker-count") throw new Error("fixture plan required");
+    const roster = authority.database.withAuthorityTransaction(repositories => { repositories.commands.insert(plan); return admitWorkerPoolRoster(repositories, plan, NOW); });
+    const pending = executor.planPoolWorkerCount({ command: plan, now: NOW, roster });
+    const refused = expect(pending).rejects.toThrow(/fixture native profile retirement not available/);
+    await Promise.resolve(); await Promise.resolve();
+    harness.children[1]?.emitExit(0, null);
+    harness.leases.delete(member(2).workerId);
+    await refused;
+    expect(harness.gracefulRequests).toHaveLength(1);
+    } finally { authority.dispose(); }
   });
 });
 
@@ -1234,8 +1217,8 @@ describe("drainOwnedChildren", () => {
 describe("close", () => {
   it("cancels every armed escalation timer and returns the still-live children's evidence", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(2) });
     await harness.supervisor.execute(stopRequest(harness, member(1)));
     expect(harness.scheduler.pending()).toHaveLength(1);
 
@@ -1264,7 +1247,7 @@ describe("close", () => {
   it("racing an in-flight stop: reports the stop-in-flight, and the directive landing after teardown arms NO escalation", async () => {
     const harness = openHarness();
     const target = member(1);
-    await harness.supervisor.execute({ command: "spawn-worker", member: target });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target });
     let land: ((ack: WorkerDurableStopReceipt) => void) | undefined;
     harness.nextGracefulStop = (): Promise<WorkerDurableStopReceipt> =>
       new Promise((resolve) => {
@@ -1302,7 +1285,7 @@ describe("close", () => {
 
   it("returns no evidence when every child already exited", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(1) });
     harness.children[0]?.emitExit(0, null);
 
     expect(harness.supervisor.close()).toEqual([]);
@@ -1314,7 +1297,7 @@ describe("close", () => {
     const child = new FakeWorkerChild(4321);
     child.killResult = false;
     harness.nextSpawn = (): FakeWorkerChild => child;
-    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: target }))
       .rejects.toThrow(/process errored before proving its lease birth/);
     child.emitError(new Error("spawn EPERM"));
     await expectation;
@@ -1332,10 +1315,10 @@ describe("close", () => {
 
   it("refuses every command after close — a closed supervisor acknowledges nothing", async () => {
     const harness = openHarness();
-    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(1) });
     harness.supervisor.close();
 
-    await expect(harness.supervisor.execute({ command: "spawn-worker", member: member(2) }))
+    await expect(harness.supervisor.execute({ command: "spawn-worker", commandId: "00000000-0000-4000-8000-000000000003", member: member(2) }))
       .rejects.toThrow(/supervisor is closed/);
     await expect(harness.supervisor.execute(stopRequest(harness, member(1))))
       .rejects.toThrow(/supervisor is closed/);

@@ -5,7 +5,7 @@ import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { resolveConfigWithProvenance, type ResolvedConfig } from "../../app/config/resolve.js";
 import { derivePersistedSettingsFingerprint, SettingsRuntimeStatusSchema } from "../../../models/config/settings.js";
-import type { StoredConfig } from "../../../models/config/snapshot-generations.js";
+import type { StoredConfig } from "../../../models/config/snapshot.js";
 import type { SettingsOverride } from "../../../models/config/schema.js";
 import { ProtectedSettingsNameSchema } from "../../../models/config/protected-settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../models/dashboard/settings-editor.js";

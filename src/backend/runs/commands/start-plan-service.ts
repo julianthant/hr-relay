@@ -107,7 +107,6 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           ...(rerunSource === undefined ? {} : {
             retainedInputs: [deps.authority.withAuthorityTransaction((repositories) => {
               if (repositories.deletedRuns.get(rerunSource.runId) !== undefined) throw new RerunRefusedError("target-deleted", "Rerun source was deleted");
-              if (repositories.archivedRuns.isArchived(rerunSource.runId)) throw new RerunRefusedError("invalid-state", "Archived sources cannot be rerun");
               const run = repositories.runs.get(rerunSource.runId);
               if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
               return run.input.parsed;

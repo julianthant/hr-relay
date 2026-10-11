@@ -17,7 +17,7 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
 - A workflow is wired across Run, Rerun, Queue rows, Logs, Explorer, OCR/Records where it has them,
   notifications and Analytics. It is done after a dry run and operator sign-off.
 - The production codebase (`/Users/julianhein/Projects/hr-automation`) holds each workflow's complete
-  behavior. Read it, and port by copying with the legacy commit and path recorded.
+  behavior. Read it, and port by copying with the legacy commit and path recorded in the task's evidence folder.
 - A workflow is coded only against its operator-approved walkthrough: steps, sub-steps, log-panel
   timeline, results and scenarios.
 - Each workflow switches from mock to served data through one static per-workflow switch. Never fall
@@ -26,6 +26,8 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
 ## Codebase
 
 One person builds and maintains this codebase. Keep it organized, clean and easy to follow.
+
+The repository holds only the current version. No compatibility readers, old migration steps, porting or change records, lesson files, history or backups of old code. A stored-data change ships as a forward migration that deletes the reader it replaces.
 
 - Each concept has one home. [docs/rebuild/reference/codebase-structure.md](docs/rebuild/reference/codebase-structure.md)
   is the map. Update it in the same commit as any move.
@@ -83,6 +85,7 @@ One person builds and maintains this codebase. Keep it organized, clean and easy
   checkout.
 - The operator launches every task and chooses every integration into `master`.
 - Evidence goes under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/<task-date>/`.
+  Remove a task's evidence folder once nothing needs it.
   Cleanup removes a worktree's registration and its folder, after its evidence and unknown files are
   saved.
 
@@ -104,7 +107,7 @@ One person builds and maintains this codebase. Keep it organized, clean and easy
   the caller checks. Allow a fallback only for a valid expected case with recorded verification.
 - Never log secret or canary values.
 - Never import, invoke, proxy or read production (`hr-automation`) state. Port by copying, record the
-  source commit and path, then verify live. Never delete production files. Prefix cross-repo paths
+  source commit and path in the task's evidence folder, then verify live. Never delete production files. Prefix cross-repo paths
   with `legacy:`.
 - `config/runtime-isolation.json` owns the rebuild's ports, browser session and state, artifact,
   lock and auth roots. Read the operating reference before changing authority or path resolution.

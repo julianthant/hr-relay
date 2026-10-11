@@ -77,8 +77,8 @@ function applyEnvelope(
   return day;
 }
 
-describe("Stream convergence: authoritative snapshots across create, delete, and archive", () => {
-  it("converges to authoritative snapshot on create, status transition, delete, and archive", async () => {
+describe("Stream convergence: authoritative snapshots across create, delete, and terminalization", () => {
+  it("converges to authoritative snapshot on create, status transition, delete, and terminalization", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
@@ -143,7 +143,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
       { ...freshAfterDelete, snapshotCursor: "pc:1" },
     );
 
-    // 4. Archiving run 1 -> terminalize first, then mark in authority.archived
+    // Current terminal rows remain visible.
     const run1Id = runRecordOf({ seed: 1 }).envelope.runId;
     w.authority.put(
       runRecordOf({
@@ -159,19 +159,10 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
     w.projection.refreshRun(run1Id);
     await take();
 
-    w.authority.archived.add(run1Id);
-    w.projection.refreshRun(run1Id);
-
-    const archiveEnvelopes = await take();
-    assert.ok(archiveEnvelopes.some((e) => e.type === "snapshot"));
-    assert.equal(local?.queueSurfaces.length, 0);
-    assert.equal(local?.statusCounts.length, 0);
-
-    const freshAfterArchive = w.projection.buildDashboardDayWire(DAY);
-    assert.deepEqual(
-      { ...local, snapshotCursor: "pc:1" },
-      { ...freshAfterArchive, snapshotCursor: "pc:1" },
-    );
+    assert.equal(local?.queueSurfaces.length, 1);
+    assert.equal(local?.queueSurfaces[0].status, "done");
+    const freshAfterTerminal = w.projection.buildDashboardDayWire(DAY);
+    assert.deepEqual({ ...local, snapshotCursor: "pc:1" }, { ...freshAfterTerminal, snapshotCursor: "pc:1" });
 
     connection.close();
   });

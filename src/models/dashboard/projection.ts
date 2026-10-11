@@ -119,7 +119,7 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("present"), value: PositiveIntSchema }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
-    /* The dashboard-started GROUP this run belongs to — read off `RunRecord.sessionId`, the ONE place membership lives; `workflow_run_batches` holds no member list to disagree with it. */
+    /* The dashboard-started GROUP this run belongs to — read off `RunRecord.sessionId`, the ONE place membership lives; `run_batches` holds no member list to disagree with it. */
     /* How this row is contained by its parent — `root`, `member` or `linked`; projected from the run's own shape and lineage, and served in its own right. */
   containment: ContainmentSchema,
     /* The runs this row DELEGATED TO and is waiting on; an EMPTY array is a real answer — this run spawned no child that keeps its own row. */

@@ -100,6 +100,7 @@ export interface RunDetailQueryDeps {
       resolve(workflowId: string): AnyWorkflowDescriptor | undefined;
     };
   };
+  readonly timeline: import("../../../models/events/timeline.js").TimelineRepository;
   readonly stateRoot: string;
   readonly projection: RunQueueProjection;
   readonly authority: {

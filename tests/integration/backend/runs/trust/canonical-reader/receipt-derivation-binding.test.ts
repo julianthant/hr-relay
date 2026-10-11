@@ -1,7 +1,8 @@
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createTrustRunReader } from "../../../../../../src/backend/runs/trust/canonical-reader.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -163,12 +164,13 @@ afterEach(() => {
 
 
 function seededStore(): Readonly<{ store: EvidenceReceiptStore; runId: string }> {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-binding-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-binding-"));
   roots.push(root);
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "receipt-binding-test" },
     manualClock(new Date("2026-08-04T00:11:13.500Z")),
   );
+  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   const seeded = seedPersonLookupExitRun(database);
   const { authority } = database;
@@ -259,35 +261,36 @@ describe("receipt derivation binding — the stored receipt survives a moved clo
     );
   });
 
-  it("keeps legacy receipt sentences out of the service and HTTP divergence error", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-binding-http-"));
+  it("keeps divergent receipt sentences out of the service and HTTP divergence error", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-binding-http-"));
     roots.push(root);
     const database = AuthorityDatabase.open(
       { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "receipt-binding-http-test" },
       manualClock(new Date("2026-08-04T00:11:13.500Z")),
     );
-    databases.push(database);
+    testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+  databases.push(database);
     const seeded = seedPersonLookupExitRun(database);
     const runId = String(seeded.run.envelope.runId);
     const authority = database.authority;
     const result = authority.runResults.get(runId);
     assert.ok(result);
-    const compositionTwo = buildRunEvidenceReceipt({
+    const currentReceipt = buildRunEvidenceReceipt({
       descriptor: personLookupDescriptor,
       run: seeded.run,
       result,
       checkpoints: seeded.checkpoints,
       writes: [],
       gateResults: authority.gateResults.listByRun(runId),
-    }, 2);
+    });
     const rawPermanentKey = "ucpath:termination|10812345|2026-08-29";
-    const legacy = storedVariant(compositionTwo, (draft) => {
+    const divergent = storedVariant(currentReceipt, (draft) => {
       const decisions = draft.decisions as Record<string, unknown>[];
       const first = decisions[0];
-      assert.ok(first !== undefined, "the composition-2 fixture must carry a decision sentence");
-      decisions[0] = { ...first, reason: `legacy permanent key ${rawPermanentKey}` };
+      assert.ok(first !== undefined, "the current fixture must carry a decision sentence");
+      decisions[0] = { ...first, reason: `divergent permanent key ${rawPermanentKey}` };
     });
-    authority.evidenceReceipts.insert(legacy);
+    authority.evidenceReceipts.insert(divergent);
 
     const service = createReceiptService({ database, runReader: createTrustRunReader(database), descriptors: [personLookupDescriptor] });
     let refusal: unknown;

@@ -1,6 +1,6 @@
 
 import { execFileSync } from "node:child_process";
-import { realpathSync, statSync, writeFileSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
 import { cpus, totalmem } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,15 +11,9 @@ import {
   type DashboardDayWire,
 } from "../../src/models/dashboard/projection.js";
 import type { DashboardDayPatchSchema } from "../../src/models/dashboard/subscription.js";
-import {
-  listEventStreamFiles,
-  readEventStreamLines,
-  readScopedEventStreamLines,
-  scopedEventStreamFiles,
-} from "../../src/backend/storage/events/jsonl-streams.js";
 import { SpanEventWireSchema } from "../../src/models/events/types.js";
 import { readTimelineRecords } from "../../src/backend/storage/events/timeline-reader.js";
-import { buildRunSection, runNotePartitionScope } from "../../src/backend/runs/queries/run-detail.js";
+import { buildRunDetail, buildRunSection } from "../../src/backend/runs/queries/run-detail.js";
 import { PERF_FIXTURE_PROFILE, seedDashboardPerfFixture, type PerfFixture } from "./dashboard-fixture.js";
 import { assertStatementCounterObserves, countSqliteStatements } from "./sqlite-statement-counter.js";
 
@@ -171,7 +165,7 @@ export interface DashboardPerformanceStructuralCounters {
   readonly rowPatchDayWireParses: number;
   readonly logsSpanEventParses: number;
   readonly logsFilesInScope: number;
-  readonly archiveFreezeStatements: number;
+  readonly runSnapshotStatements: number;
   readonly memberPreviewDeltaStatements: number;
 }
 
@@ -180,7 +174,7 @@ export const DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS = {
   rowPatchDayWireParses: 0,
   logsSpanEventParses: 0,
   logsFilesInScope: 2,
-  archiveFreezeStatements: 13,
+  runSnapshotStatements: 13,
   memberPreviewDeltaStatements: 6,
 } as const;
 
@@ -200,7 +194,7 @@ export function assertDashboardPerformanceStructuralBounds(
   const maximum: readonly (keyof DashboardPerformanceStructuralCounters)[] = [
     "dayWireStatements",
     "logsFilesInScope",
-    "archiveFreezeStatements",
+    "runSnapshotStatements",
     "memberPreviewDeltaStatements",
   ];
   for (const key of maximum) {
@@ -223,7 +217,7 @@ function structuralCounters(measurements: Report["measurements"]): DashboardPerf
     rowPatchDayWireParses: counter("row-patch", "dayWireSchemaParses"),
     logsSpanEventParses: counter("logs-section", "spanEventSchemaParses"),
     logsFilesInScope: counter("logs-section", "corpusFilesInScope"),
-    archiveFreezeStatements: counter("archive-freeze", "sqliteStatements"),
+    runSnapshotStatements: counter("run-snapshot", "sqliteStatements"),
     memberPreviewDeltaStatements: counter("member-preview", "previewDeltaStatements"),
   };
 }
@@ -239,39 +233,16 @@ function gitFacts(): { commit: string; trackedTreeClean: boolean } {
 }
 
 function noteCorpus(fixture: PerfFixture): { files: number; lines: number; bytes: number } {
-  const files = listEventStreamFiles(fixture.stateRoot, "notes");
-  return {
-    files: files.length,
-    lines: readEventStreamLines(fixture.stateRoot, "notes").length,
-    bytes: files.reduce((sum, file) => sum + statSync(file.path).size, 0),
-  };
+  const records = readTimelineRecords(fixture.database.authority.timelineEvents).records.filter(record => record.payload.kind === "note");
+  return { files: records.length === 0 ? 0 : 1, lines: records.length, bytes: records.reduce((sum, record) => sum + Buffer.byteLength(JSON.stringify(record)), 0) };
 }
-
-
 function noteScopeForMeasuredRun(fixture: PerfFixture, runId: string): { files: number; lines: number } {
-  const row = fixture.runDetail.projection.runFold(runId);
-  const authority = fixture.runDetail.authority.getRun(runId);
-  if (row === undefined || authority === undefined) {
-    throw new Error(
-      `run ${runId} has no fold or no authority record; the logs scope it bounds cannot be reported`,
-    );
-  }
-  const scope = runNotePartitionScope(runId, row, authority);
-  return {
-    files: scopedEventStreamFiles(fixture.stateRoot, "notes", scope).length,
-    lines: readScopedEventStreamLines(fixture.stateRoot, "notes", scope).length,
-  };
+  const records = readTimelineRecords(fixture.database.authority.timelineEvents, 0, runId).records.filter(record => record.payload.kind === "note");
+  return { files: records.length === 0 ? 0 : 1, lines: records.length };
 }
-
 function rejectedSpanScopeForMeasuredRun(fixture: PerfFixture, runId: string): { files: number; lines: number } {
-  const row = fixture.runDetail.projection.runFold(runId);
-  const authority = fixture.runDetail.authority.getRun(runId);
-  if (row === undefined || authority === undefined) throw new Error(`run ${runId} has no span scope authority`);
-  const scope = runNotePartitionScope(runId, row, authority);
-  return {
-    files: scopedEventStreamFiles(fixture.stateRoot, "spans", scope).length,
-    lines: readScopedEventStreamLines(fixture.stateRoot, "spans", scope).length,
-  };
+  const records = readTimelineRecords(fixture.database.authority.timelineEvents, 0, runId).records.filter(record => record.payload.kind === "span");
+  return { files: records.length === 0 ? 0 : 1, lines: records.length };
 }
 
 /* ── the self-check (finding 1) ──────────────────────────────────────────── */
@@ -368,10 +339,10 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
   /* D — the version-bump freeze, per run, over a five-run sample. */
   let sampleIndex = 0;
   const freezeTiming = timeIt(iterations * fixture.sampleRunIds.length, () => {
-    fixture.archiveSnapshots.snapshot(fixture.sampleRunIds[sampleIndex % fixture.sampleRunIds.length]);
+    buildRunDetail(fixture.runDetail, fixture.sampleRunIds[sampleIndex % fixture.sampleRunIds.length]);
     sampleIndex += 1;
   });
-  const freezeCount = countSqliteStatements(() => fixture.archiveSnapshots.snapshot(fixture.sampleRunIds[0]));
+  const freezeCount = countSqliteStatements(() => buildRunDetail(fixture.runDetail, fixture.sampleRunIds[0]));
 
   /* E — the member preview, as the delta between a group row and a single row. */
   const groupRow = countSqliteStatements(() => fixture.projection.queueSurface(operationRun));
@@ -431,15 +402,15 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
         + "the live-checked `spanEventSchemaParses` is the replacement query's measured parse count",
     },
     {
-      id: "archive-freeze",
-      label: "`archiveSnapshots.snapshot(run)` — the version-bump freeze, per run",
+      id: "run-snapshot",
+      label: "`buildRunDetail(run)` — the current native snapshot, per run",
       auditFinding: "P3",
       timing: freezeTiming,
       counters: {
         sqliteStatements: freezeCount.count.statements,
         projectedDayMs: round(freezeTiming.medianMs * PERF_FIXTURE_PROFILE.dayRunCount),
       },
-      note: `per RUN; a version bump over this day freezes ${String(PERF_FIXTURE_PROFILE.dayRunCount)} of `
+      note: `per RUN; reading every current run over this day snapshots ${String(PERF_FIXTURE_PROFILE.dayRunCount)} of `
         + "them, and `projectedDayMs` is that multiplication, not a measured total",
     },
     {

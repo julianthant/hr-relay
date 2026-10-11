@@ -3,7 +3,6 @@ import { describe, it } from "vitest";
 import { DiagnosticBundleSchema } from "../../../../../src/models/trust/diagnostic.js";
 import { RunEvidenceReceiptSchema } from "../../../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../../../src/models/trust/failure.js";
-import { FixRecordSchema, KnowledgeRecordSchema } from "../../../../../src/models/trust/knowledge.js";
 import { ScenarioManifestSchema } from "../../../../../src/models/trust/scenario.js";
 
 const UUID_1 = "11111111-1111-4111-8111-111111111111";
@@ -46,6 +45,7 @@ const SATISFIED_FACT = {
 };
 
 const RECEIPT = {
+  composition: 5,
   receiptId: UUID_1,
   runId: UUID_2,
   traceId: "on-120000-2222",
@@ -172,52 +172,6 @@ describe("strict trust records", () => {
     assert.equal(ScenarioManifestSchema.safeParse({
       ...SCENARIO,
       requiredAssertions: ["blocks-executor", "blocks-executor"],
-    }).success, false);
-  });
-
-  it("keeps active knowledge and verified fixes evidence-backed", () => {
-    const knowledge = {
-      id: UUID_1,
-      status: "active",
-      scope: { system: "ucpath", element: "ucpath.person-search.submit" },
-      title: "Person search state",
-      symptom: "Search appears loaded but controls are absent",
-      trigger: "Page transition races the content frame",
-      rootCause: "The ready state omitted the content-frame condition",
-      invariant: "Search actions require the registered ready state",
-      fix: "Include the content-frame condition in the page-state recipe",
-      regressionScenarios: ["ucpath/person-search-frame-race"],
-      evidence: [EVIDENCE_REF],
-      verifiedAt: INSTANT,
-      sourceCommits: ["abcdef1"],
-    };
-    assert.equal(KnowledgeRecordSchema.safeParse(knowledge).success, true);
-    assert.equal(KnowledgeRecordSchema.safeParse({ ...knowledge, verifiedAt: undefined }).success, false);
-    assert.equal(KnowledgeRecordSchema.safeParse({ ...knowledge, scope: { unexpected: "value" } }).success, false);
-
-    const verifiedFix = {
-      id: UUID_5,
-      failureFingerprint: FAILURE_FINGERPRINT,
-      status: "verified",
-      requestedBy: "codex",
-      summary: "Close the page-state race",
-      affected: ["ucpath/search-person", "ucpath.person-search.submit"],
-      files: ["src/backend/systems/ucpath/driver/person-search.ts"],
-      scenarios: ["ucpath/person-search-frame-race"],
-      verification: [EVIDENCE_REF],
-      commit: "abcdef1",
-      knowledge: [UUID_1],
-      createdAt: INSTANT,
-    };
-    assert.equal(FixRecordSchema.safeParse(verifiedFix).success, true);
-    assert.equal(FixRecordSchema.safeParse({ ...verifiedFix, commit: undefined }).success, false);
-    assert.equal(FixRecordSchema.safeParse({ ...verifiedFix, verification: [] }).success, false);
-    assert.equal(FixRecordSchema.safeParse({
-      ...verifiedFix,
-      status: "draft",
-      verification: [],
-      commit: undefined,
-      unexpected: true,
     }).success, false);
   });
 });

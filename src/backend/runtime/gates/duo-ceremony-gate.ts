@@ -1,5 +1,6 @@
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import type { DebugEvent } from "../../../models/events/timeline.js";
 import { z } from "zod";
 import type { DuoCeremonyGate, DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -108,6 +109,7 @@ export function createDuoCeremonyGateFactory(input: Readonly<{
   sessionAcquireMs: number;
   graceMs: number;
   pollIntervalMs: number;
+  onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned">>) => void;
 }>): DuoCeremonyGateFactory {
   const parsed = GateFactoryInputSchema.parse({
     credentialKey: input.credentialKey,
@@ -130,12 +132,16 @@ export function createDuoCeremonyGateFactory(input: Readonly<{
       envelopeDeadlineMonotonicMs: gateInput.envelopeDeadlineMonotonicMs,
       cancelCeremony: gateInput.cancelCeremony,
       signal: gateInput.signal,
+      correlationId: randomUUID(),
+      onDebug: event => input.onDebug?.(gateInput.workerId, event),
     }),
   };
   return Object.freeze(factory);
 }
 
 interface GateOptions {
+  readonly correlationId: string;
+  readonly onDebug: (event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned">>) => void;
   readonly leases: DuoCeremonyLeaseRepository;
   readonly clock: Clock;
   readonly scheduler: MonotonicDeadlineScheduler;
@@ -188,6 +194,7 @@ class Gate implements DuoCeremonyGateHandle {
     }
     const hold = this.#hold;
     const ttl = scheduler.schedule(hold.expiresAtMonotonicMs, () => {
+      this.#options.onDebug({ phase: "expired", correlationId: this.#options.correlationId, code: "duo-ceremony-lease-expired", pinned: true });
       cancelCeremony(new DuoCeremonyLeaseExpiredError(system, hold.token));
     });
 
@@ -204,6 +211,7 @@ class Gate implements DuoCeremonyGateHandle {
       // §10.5: the FIRST terminal refusal keeps the lease for the single
       // fresh-profile retry. A second one releases.
       this.#refusals = 1;
+      this.#options.onDebug({ phase: "failed", correlationId: this.#options.correlationId, code: "duo-terminal-refusal", pinned: true });
     } else {
       // A failing release must preserve the ceremony error it is unwinding.
       this.#release({ value: settled.error });
@@ -245,6 +253,7 @@ class Gate implements DuoCeremonyGateHandle {
         + "(ref execution-and-sessions §10.3)",
       );
     }
+    this.#options.onDebug({ phase: "released", correlationId: this.#options.correlationId });
   }
 
   async #acquire(): Promise<Hold> {
@@ -258,6 +267,7 @@ class Gate implements DuoCeremonyGateHandle {
         credentialKey, workerId, system, now: clock.now().toISOString(), ttlMs,
       });
       if (outcome.state === "acquired") {
+        this.#options.onDebug({ phase: "acquired", correlationId: this.#options.correlationId });
         return Object.freeze({ token: outcome.token, lease: outcome.lease, expiresAtMonotonicMs: now + ttlMs });
       }
       if (now >= budgetDeadline) {
@@ -303,6 +313,7 @@ export function composeDuoCeremonyGateFactory(input: Readonly<{
   leases: DuoCeremonyLeaseRepository;
   clock: Clock;
   scheduler: MonotonicDeadlineScheduler;
+  onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned">>) => void;
 }>): DuoCeremonyGateFactory {
   return createDuoCeremonyGateFactory({
     leases: input.leases,
@@ -312,5 +323,6 @@ export function composeDuoCeremonyGateFactory(input: Readonly<{
     sessionAcquireMs: input.config.timeouts.sessionAcquireMs,
     graceMs: input.config.timeouts.duoCeremonyLeaseGraceMs,
     pollIntervalMs: DUO_CEREMONY_LEASE_POLL_MS,
+    ...(input.onDebug === undefined ? {} : { onDebug: input.onDebug }),
   });
 }

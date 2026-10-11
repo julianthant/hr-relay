@@ -195,7 +195,8 @@ function parkedWriteActions(
   authority: RunRecord,
   intent: Extract<WriteIntentRecord, { status: "parked" }>,
 ): unknown[] {
-  const writeTarget = { writeIntentId: intent.writeIntentId, intentGeneration: intent.generation };
+  const writeTarget = { writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
+    writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest };
   return [
     {
       key: "resolve-write-present",

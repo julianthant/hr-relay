@@ -27,6 +27,7 @@ function runningRun(stepOmissions?: readonly { step: string; facts: Record<strin
     input: {
       ...QUEUED_RUN.input,
       parsed: {
+        protectedBindings: [],
         schemaHash: deriveSchemaHash(FixtureCanonicalInput, "output"),
         value: { eid: "10873698" },
       },
@@ -50,6 +51,7 @@ function checkpoint(nodeId: "read" | "fold" | "skip", value: unknown) {
     itemId: QUEUED_RUN.envelope.itemId,
     nodeId,
     attempt: 1,
+    claimGeneration: 1,
     runId: QUEUED_RUN.envelope.runId,
     output: { schemaHash: OUTPUT_HASH, value },
     descriptorVersion: 1,

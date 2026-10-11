@@ -3,7 +3,6 @@ import { canonicalJsonStringify } from "../../../../../../src/rules/validation/c
 import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { DatabaseSync } from "node:sqlite";
 import { summaryFixture } from "../../../../../support/helpers/backend/served-database-surfaces-fixtures.js";
 import { activityReportCsv } from "../../../../../../src/backend/runs/queries/activity-export.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
@@ -27,18 +26,8 @@ it("serves selected Queue rows and Activity without enumerating canonical histor
   } finally { f.dispose(); }
 });
 
-it("refuses stale summary generations for both served calculations without fallback", () => {
-  const f = summaryFixture();
-  try {
-    const raw = new DatabaseSync(f.path);
-    try { raw.exec("UPDATE summary_publication SET record_json=json_set(record_json,'$.sourceGeneration',0)"); }
-    finally { raw.close(); }
-    assert.throws(() => f.projection.buildDashboardDayWire("2026-09-09"), /generation-unavailable/);
-    assert.throws(() => f.projection.buildActivityReportWire("2026-09-09", "2026-09-09"), /generation-unavailable/);
-  } finally { f.dispose(); }
-});
-
-import { archiveFixture } from "../../../../../support/helpers/archive-transfer/fixtures.js";
+import { foundationFixture } from "../../../../../support/helpers/database-foundation/fixtures.js";
+import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { ledgerCommitFixture } from "../../../../../support/fixtures/ledger-projection-fixtures.js";
 import { atomicWriteCheckpoint } from "../../../../../support/helpers/timeline-write-fixture.js";
 import { createTransactionHistory } from "../../../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -46,42 +35,59 @@ import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/r
 import { createOperatorProjection } from "../../../../../../src/backend/app/composition/dashboard/operator.js";
 import { queryQueueSummaries, queryActivitySummaries } from "../../../../../../src/backend/runs/queries/run-summaries.js";
 import { composeOperatorXlsxWorkbook } from "../../../../../../src/backend/runs/exports/operator-xlsx-workbook.js";
-import { projectArchiveReport } from "../../../../../../src/backend/runs/queries/archive-reports.js";
-import { createRunLifecycleStorage } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
 import readXlsxFile from "read-excel-file/node";
+import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 
-it("keeps JSON, CSV and XLSX transaction totals through archive cleanup/restart and removes them only on explicit deletion", async () => {
-  const f = archiveFixture();
+it("keeps JSON, CSV and XLSX write evidence through restart and terminal run deletion", async () => {
+  const f = foundationFixture();
+  let database = f.db;
   try {
-    const run = f.base.run;
+    const run = f.run;
     const commit = ledgerCommitFixture(78, { runId: run.envelope.runId, workflowId: run.envelope.workflow,
       itemId: run.envelope.itemId, traceId: run.envelope.traceId, configFingerprint: run.envelope.configFingerprint, confirmedAt: NOW });
-    assert.equal(f.database.authority.writeIntents.fenceAttempt({ intent: commit.intent, attempt: commit.attempt }).state, "fenced");
-    f.database.commitWriteAttempt(commit.commit, atomicWriteCheckpoint(commit.commit));
+    assert.equal(database.authority.writeIntents.fenceAttempt({ intent: commit.intent, attempt: commit.attempt }).state, "fenced");
+    database.commitWriteAttempt(commit.commit, { ...atomicWriteCheckpoint(commit.commit),
+      descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint });
     const read = () => {
-      const db = f.database;
-      const reader = new RunRecordService({ database: db, clock: f.base.clock, ids: { uuid: () => id(8850) }, publishQueued: () => {} });
+      const db = database;
+      const reader = new RunRecordService({ database: db, clock: f.clock, ids: { uuid: () => id(8850) }, publishQueued: () => {} });
       const ledger = createTransactionHistory(db.authority);
       const descriptors = { resolve: () => undefined };
-      return createOperatorProjection({ database: db, stateRoot: f.base.root, clock: f.base.clock, appVersion: "0.1.0",
+      return createOperatorProjection({ database: db, stateRoot: f.root, clock: f.clock, appVersion: "0.1.0",
         descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger, descriptors,
         reader: { read: reader.read.bind(reader), list: reader.list.bind(reader),
           summaries: { withSnapshot: work => db.withAuthorityReadSnapshot(work), queue: query => queryQueueSummaries(db, query),
             activity: (from, to) => queryActivitySummaries(db, { from, to, generatedAt: NOW }, { ledger, descriptors }) } },
       }).buildActivityReportWire("2026-01-01", "2026-09-30");
     };
-    f.database.refreshRunSummaries();
+    
+    const reader = new RunRecordService({ database, clock: f.clock, ids: { uuid: () => id(8850) }, publishQueued: () => {} });
+    for (const terminal of [run]) {
+      const cancelled = reader.transition({ commandId: id(8851), runId: terminal.envelope.runId,
+        expectedVersion: terminal.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+      assert.equal(cancelled.state, "applied");
+      if (cancelled.state !== "applied" || cancelled.run.lifecycle.state !== "running") throw new Error("cancellation fixture did not retain its worker claim");
+      assert.equal(reader.terminalize({ commandId: id(8856), kind: "cancelled",
+        runId: terminal.envelope.runId, expectedVersion: cancelled.run.version,
+        claim: { workerId: cancelled.run.lifecycle.workerId, claimGeneration: cancelled.run.claimGeneration },
+        endedAt: NOW }, personLookupDescriptor).state, "applied");
+    }
     const before = read();
-    const beforeGeneration = f.database.getMeta().authorityGeneration;
+    const beforeGeneration = database.getMeta().authorityGeneration;
     assert.equal(before.totalRuns, 1);
     assert.equal(before.volume?.coveredRuns, before.totalRuns);
     assert.equal(before.volume?.buckets.reduce((total, bucket) => total + bucket.runs, 0), before.totalRuns);
     assert.equal(before.ledger.systems[0]?.entries, 1);
-    f.terminal();
-    assert.equal(f.kernel.execute(f.applyRequest(f.plan())).state, "applied");
-    f.reopen();
+    database.close();
+    database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "summary-export-reopen" }, f.clock);
+    const reopenedReader = new RunRecordService({ database, clock: f.clock, ids: { uuid: () => id(8852) }, publishQueued: () => {} });
+    const retained = database.authority.runs.get(run.envelope.runId);
+    assert.ok(retained);
+    assert.equal(read().totalRuns, 1);
+    assert.equal(reopenedReader.delete({ commandId: id(8853), runId: retained.envelope.runId,
+      expectedVersion: retained.version }).state, "deleted");
     const after = read();
-    const afterGeneration = f.database.getMeta().authorityGeneration;
+    const afterGeneration = database.getMeta().authorityGeneration;
     assert.equal(after.totalRuns, 0);
     assert.equal(after.volume?.coveredRuns, after.totalRuns);
     assert.equal(after.volume?.buckets.reduce((total, bucket) => total + bucket.runs, 0), after.totalRuns);
@@ -93,7 +99,7 @@ it("keeps JSON, CSV and XLSX transaction totals through archive cleanup/restart 
       const csv = activityReportCsv(report);
       const workbook = await composeOperatorXlsxWorkbook({ selection: { kind: "activity", snapshot: {
         from: report.from, to: report.to, generatedAt: report.generatedAt,
-        sourceIdentity: f.database.getSourceDatabaseIdentity(), totalRuns: report.totalRuns,
+        sourceIdentity: database.getSourceDatabaseIdentity(), totalRuns: report.totalRuns,
         authorityGeneration, reportDigest: sha256Hex(canonicalJsonStringify(report)),
       } }, report });
       const sheets = await readXlsxFile(workbook.bytes);
@@ -102,13 +108,12 @@ it("keeps JSON, CSV and XLSX transaction totals through archive cleanup/restart 
       const text = JSON.stringify({ report, csv, cells: sheets });
       for (const secret of [String(commit.intent.idempotencyKey), String(commit.intent.idempotencyKeyDigest)]) assert.equal(text.includes(secret), false);
     }
-    const report = projectArchiveReport(createRunLifecycleStorage(f.database).readReport(run.envelope.runId));
-    assert.equal(report.state, "available");
-    if (report.state !== "available") throw new Error("archive-report-missing");
-    assert.equal(f.kernel.execute({ commandId: id(8851), requestedAt: NOW, requestedBy: "local-operator", source: "archive", family: "version-archive",
-      type: "delete-archived-run", target: { archivedRunId: run.envelope.runId, archiveFingerprint: report.archiveFingerprint } }).state, "applied");
-    assert.deepEqual(read().ledger.systems, []);
-  } finally { f.dispose(); }
+    assert.deepEqual(read().ledger, before.ledger);
+    database.close();
+    database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "summary-delete-reopen" }, f.clock);
+    assert.equal(read().totalRuns, 0);
+    assert.deepEqual(read().ledger, before.ledger);
+  } finally { database.close(); f.dispose(); }
 });
 
 it("keeps deterministic cursor ties, day/status/workflow/system membership and canonical stale-action refusal", () => {

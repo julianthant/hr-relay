@@ -6,10 +6,6 @@ import { buildRunDetail } from "../../../../../../src/backend/runs/queries/run-d
 import type { RunDetailDescriptorView } from "../../../../../../src/backend/runs/queries/run-detail.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import {
-  ARCHIVED_NOT_RUN_NOTE,
-  archivedOmittedStepsNote,
-} from "../../../../../../src/dashboard/surfaces/archive/archive-model.js";
-import {
   claimEventOf,
   instantOffsetOf,
   makeWorld,
@@ -61,7 +57,7 @@ function omittedRun(w: DashboardWorld): void {
 
 function detailOf(w: DashboardWorld) {
   return buildRunDetail(
-    { runReader: w.runReader,
+    { runReader: w.runReader, timeline: w.timeline,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -210,19 +206,3 @@ describe("run detail wire refusals under step omission", () => {
   });
 });
 
-/* ── the archived page's own words ───────────────────────────────────────── */
-
-describe("archived run notes under step omission", () => {
-  it("says which of the two kinds of skip each step was", () => {
-    assert.match(ARCHIVED_NOT_RUN_NOTE["operator-asserted"], /the operator asserted its facts at start/u);
-    assert.match(ARCHIVED_NOT_RUN_NOTE["step-omitted"], /its step was omitted at start/u);
-    assert.notEqual(ARCHIVED_NOT_RUN_NOTE["operator-asserted"], ARCHIVED_NOT_RUN_NOTE["step-omitted"]);
-  });
-
-  it("names the omitted steps once and says nothing when a run omitted none", () => {
-    assert.equal(archivedOmittedStepsNote(undefined), undefined);
-    assert.equal(archivedOmittedStepsNote([]), undefined);
-    const note = archivedOmittedStepsNote([OMITTED_STEP, "ucpath-transaction"]);
-    assert.match(String(note), /^Omitted at start: kronos-timecard, ucpath-transaction\./u);
-  });
-});

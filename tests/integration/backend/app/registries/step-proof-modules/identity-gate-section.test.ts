@@ -195,7 +195,7 @@ function depsOf(
     },
   };
   return { runReader: w.runReader,
-    stateRoot: w.stateRoot,
+    stateRoot: w.stateRoot, timeline:w.timeline,
     projection: w.projection,
     authority: w.authority,
     ...(includeCanonical ? { canonical: canonical as never } : {}),

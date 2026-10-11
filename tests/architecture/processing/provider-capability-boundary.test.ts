@@ -5,7 +5,7 @@ import { dirname, relative, resolve } from "node:path";
 import { describe, it } from "vitest";
 import ts from "typescript";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
-import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, providerBudget } from "../../../src/models/config/schema.js";
+import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, providerInvocationConfig } from "../../../src/models/config/schema.js";
 import { ProviderCapabilityIdSchema } from "../../../src/rules/identity/ids.js";
 import { PROVIDER_ADAPTER_SPECS, ProviderIdSchema } from "../../../src/models/runtime/runtime-dependencies.js";
 import { createDeterministicProviderHarness } from "../../../src/backend/processing/providers/deterministic-provider.js";
@@ -42,17 +42,16 @@ function isProviderConsumer(path: string): boolean {
 
 const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/workflow-kit/providers.ts",
-  "src/backend/runs/start/provider-admission.ts",
+  "src/backend/processing/providers/provider-client.ts",
   "src/backend/runtime/execution/run-executor.ts",
 ]);
-const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
-  "src/backend/runs/start/provider-admission.ts",
+const PROVIDER_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
+  "src/backend/processing/providers/provider-client.ts",
   "src/backend/runtime/execution/run-executor.ts",
 ]);
 
-const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
+const PROVIDER_CLIENT_IMPORTERS: ReadonlySet<string> = new Set([
   "src/backend/runtime/execution/run-executor.ts",
-  "src/backend/app/composition/worker-compose.ts",
 ]);
 
 export function auditProviderCapabilityBoundary(root: string): readonly string[] {
@@ -90,17 +89,17 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
       if (((ts.isTypeReferenceNode(node) && node.typeName.getText(source) === "ProviderAdapter")
           || (ts.isExpressionWithTypeArguments(node) && node.expression.getText(source) === "ProviderAdapter"))
         && path !== "src/workflow-kit/providers.ts"
-        && path !== "src/backend/runs/start/provider-admission.ts"
+        && path !== "src/backend/processing/providers/provider-client.ts"
         && !path.startsWith("src/backend/processing/providers/")) {
         issues.push(`${path}: ProviderAdapter implementations are confined to backend/processing/providers`);
       }
       if (ts.isTypeReferenceNode(node) && node.typeName.getText(source) === "ProviderClient"
         && !PROVIDER_CLIENT_TYPE_OWNERS.has(path)) {
-        issues.push(`${path}: only the admission kernel and the run executor wiring type ProviderClient`);
+        issues.push(`${path}: only the provider client owner and the run executor wiring type ProviderClient`);
       }
-      if (ts.isCallExpression(node) && node.expression.getText(source) === "createAdmittedProviderClient"
-        && !ADMITTED_CLIENT_MINT_CALLERS.has(path)) {
-        issues.push(`${path}: admitted provider clients are minted only by the kernel and the run executor`);
+      if (ts.isCallExpression(node) && node.expression.getText(source) === "createProviderClient"
+        && !PROVIDER_CLIENT_MINT_CALLERS.has(path)) {
+        issues.push(`${path}: provider clients are minted only by the kernel and the run executor`);
       }
       ts.forEachChild(node, visit);
     }
@@ -118,9 +117,9 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
   }
   for (const [path, specifiers] of imports) {
     for (const specifier of specifiers) {
-      if (resolveLocal(path, specifier) === "src/backend/runs/start/provider-admission.ts"
-        && !ADMISSION_MODULE_IMPORTERS.has(path)) {
-        issues.push(`${path}: admission client imports are confined to the run executor and the worker composition root`);
+      if (resolveLocal(path, specifier) === "src/backend/processing/providers/provider-client.ts"
+        && !PROVIDER_CLIENT_IMPORTERS.has(path)) {
+        issues.push(`${path}: provider client imports are confined to the run executor`);
       }
     }
   }
@@ -158,10 +157,10 @@ describe("provider capability boundary", () => {
     assert.equal(new Set(Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS)).size, ProviderCapabilityIdSchema.options.length - 1);
     const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
     for (const capability of ProviderCapabilityIdSchema.options) {
-      if (capability !== "ocr.extract") assert.doesNotThrow(() => providerBudget(config, capability));
+      if (capability !== "ocr.extract") assert.doesNotThrow(() => providerInvocationConfig(config, capability));
       assert.equal(createDeterministicProviderHarness(capability, [{
         kind: "throw",
-        estimate: { maximumCostUsdMicros: 0 },
+
         message: "deterministic capability fixture",
       }]).adapter.capability, capability);
     }
@@ -170,6 +169,8 @@ describe("provider capability boundary", () => {
       [
         "src/backend/processing/providers/deterministic-provider.ts",
         "src/backend/processing/providers/geocode-adapters.ts",
+        "src/backend/processing/providers/nominatim-owner.ts",
+        "src/backend/processing/providers/provider-client.ts",
       ].sort(),
       "the deterministic harness and Census/Nominatim adapters are the complete provider modules",
     );
@@ -189,8 +190,8 @@ describe("provider capability boundary", () => {
     );
     for (const [name, allowlist] of Object.entries({
       PROVIDER_CLIENT_TYPE_OWNERS,
-      ADMITTED_CLIENT_MINT_CALLERS,
-      ADMISSION_MODULE_IMPORTERS,
+      PROVIDER_CLIENT_MINT_CALLERS,
+      PROVIDER_CLIENT_IMPORTERS,
     })) {
       for (const path of allowlist) {
         assert.ok(visible.has(path), `${name} names ${path}, which is not a git-visible module`);
@@ -260,7 +261,7 @@ describe("provider capability boundary", () => {
       writeFileSync(adapterPath, 'export const adapter = { capability: "ocr.extract" };\n');
       const issues = auditProviderCapabilityBoundary(root).join("\n");
       assert.match(issues, /task import graph reaches processing provider adapter/);
-      assert.match(issues, /only the admission kernel and the run executor wiring type ProviderClient/);
+      assert.match(issues, /only the provider client owner and the run executor wiring type ProviderClient/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -288,21 +289,21 @@ describe("provider capability boundary", () => {
   });
 
 
-  it("catches an aliased admission-client import hidden behind a helper", () => {
+  it("catches an aliased provider-client import hidden behind a helper", () => {
     const root = resolve(tmpdir(), `hrauto-provider-client-alias-${process.pid}-${Date.now()}`);
     const helperPath = resolve(root, "src/services/provider-helper.ts");
-    const kernelPath = resolve(root, "src/backend/runs/start/provider-admission.ts");
+    const kernelPath = resolve(root, "src/backend/processing/providers/provider-client.ts");
     try {
       mkdirSync(dirname(helperPath), { recursive: true });
       mkdirSync(dirname(kernelPath), { recursive: true });
-      writeFileSync(kernelPath, "export function createAdmittedProviderClient() { return {}; }\n");
+      writeFileSync(kernelPath, "export function createProviderClient() { return {}; }\n");
       writeFileSync(
         helperPath,
-        'import { createAdmittedProviderClient as hiddenFactory } from "../backend/runs/start/provider-admission.js";\nexport const hidden = hiddenFactory;\n',
+        'import { createProviderClient as hiddenFactory } from "../backend/processing/providers/provider-client.js";\nexport const hidden = hiddenFactory;\n',
       );
       assert.match(
         auditProviderCapabilityBoundary(root).join("\n"),
-        /admission client imports are confined to the run executor and the worker composition root/,
+        /provider client imports are confined to the run executor/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

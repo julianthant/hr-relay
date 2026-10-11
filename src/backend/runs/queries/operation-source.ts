@@ -7,15 +7,14 @@ import {
   type OperationSourceResponse,
 } from "../../../models/dashboard/operation-structure.js";
 import { NoteWireSchema } from "../../../models/events/types.js";
-import { readEventStreamSlice, scopedEventStreamFiles } from "../../storage/events/jsonl-streams.js";
-import { ArchivedRunRecordSchema, authenticArchivedRunContent } from "../../../models/archive/model.js";
-import { RunResultRecordSchema } from "../../../models/run/result.js";
+import { timelineNoteLocation } from "../../storage/events/timeline-reader.js";
+import { RunResultRecordSchema, terminalEvidenceResult } from "../../../models/run/result.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import { operationStructureForRun, runNotePartitionScope, type RunLogScanEntry } from "./run-logs.js";
+import { operationStructureForRun, type RunLogScanEntry } from "./run-logs.js";
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
 
 
-type HeldCursor = Readonly<{ ownerRunId: string; identity: string; date: string; bytesConsumed: number; linesConsumed: number }>;
+type HeldCursor = Readonly<{ ownerRunId: string; identity: string; after: number; through: number }>;
 const cursorCaches = new WeakMap<RunDetailQueryDeps, Map<string, HeldCursor>>();
 function cursorCache(deps: RunDetailQueryDeps): Map<string, HeldCursor> {
   const existing = cursorCaches.get(deps);
@@ -45,25 +44,30 @@ function resolveOperationSourceInSnapshot(
   if (request.cursor !== undefined && (cursor === undefined || cursor.ownerRunId !== ownerRunId || cursor.identity !== identityKey)) {
     throw new Error("operation-source-cursor-unavailable-or-identity-mismatch");
   }
-  const continuation = (position: Readonly<{ date: string; bytesConsumed: number; linesConsumed: number }>): OperationSourceResponse => {
+  const continuation = (position: Readonly<{ after: number; through: number }>): OperationSourceResponse => {
     const token = sha256Hex(randomUUID());
     cache.set(token, { ...position, ownerRunId, identity: identityKey });
     if (cache.size > 128) cache.delete(cache.keys().next().value!);
     return OperationSourceResponseSchema.parse({ state: "continue", cursor: token });
   };
-  const requireRun = (runId: string): Readonly<{ run: RunRecord; archived: boolean }> => {
+  const requireRun = (runId: string): Readonly<{ run: RunRecord }> => {
     if (deps.runReader === undefined) throw new Error("operation-source-run-reader-not-configured");
     const existence = deps.runReader.read(runId);
     if (existence.state !== "present" || existence.run.envelope.runId !== runId) throw new Error("operation-source-run-unavailable");
-    return { run: existence.run, archived: existence.disposition === "archived" };
+    return { run: existence.run };
   };
   const owner = requireRun(ownerRunId).run;
   const ownerResultInput = deps.canonical?.database.authority.runResults.get(owner.envelope.runId);
   const ownerResult = ownerResultInput === undefined ? undefined : RunResultRecordSchema.parse(ownerResultInput);
-  if (ownerResult !== undefined && (owner.lifecycle.state !== "terminal" || owner.lifecycle.outcome !== "done"
+  const evidence = ownerResult === undefined ? undefined : terminalEvidenceResult(ownerResult);
+  if (ownerResult !== undefined && (owner.lifecycle.state !== "terminal"
+    || (evidence === undefined ? owner.lifecycle.outcome !== "done"
+      : owner.lifecycle.outcome !== (evidence.kind === "failed-evidence" ? "failed" : evidence.outcome))
     || ownerResult.runId !== owner.envelope.runId || ownerResult.workflowId !== owner.envelope.workflow
-    || ownerResult.attempt !== owner.envelope.attempt || ownerResult.contractFingerprint !== owner.envelope.contractFingerprint)) throw new Error("operation-source-owner-result-identity-mismatch");
-  const retainedReferences = ownerResult === undefined ? [] : [
+    || ownerResult.attempt !== owner.envelope.attempt || ownerResult.contractFingerprint !== owner.envelope.contractFingerprint
+    || ownerResult.descriptorVersion !== owner.envelope.descriptorVersion
+    || ownerResult.configFingerprint !== owner.envelope.configFingerprint || ownerResult.configSnapshotId !== owner.envelope.configSnapshotId)) throw new Error("operation-source-owner-result-identity-mismatch");
+  const retainedReferences = ownerResult === undefined || evidence !== undefined ? [] : [
     ...(ownerResult.operationSources ?? []).map((source) => source.identity),
     ...ownerResult.dependencies.flatMap((dependency) => dependency.state === "resolved" || dependency.state === "child-resolved" ? (dependency.operationSources ?? []).map((source) => source.identity) : []),
     ...(ownerResult.operationLineage ?? []).flatMap((lineage) => lineage.inputs.flatMap((input) => input.identity === undefined ? input.identities ?? [] : [input.identity])),
@@ -93,37 +97,16 @@ function resolveOperationSourceInSnapshot(
   else return OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" });
   if (target.envelope.parent !== undefined && (request.identity.childInvocation?.parentRunId !== target.envelope.parent.runId
     || request.identity.childInvocation.edgeId !== target.envelope.parent.edgeId)) throw new Error("operation-source-child-identity-mismatch");
-  if (targetMembership.archived) {
-    if (deps.canonical === undefined) throw new Error("operation-source-archive-authority-not-configured");
-    return deps.canonical.database.withAuthorityReadSnapshot(() => {
-      const input = deps.canonical!.database.authority.archivedRuns.get(target.envelope.runId);
-      if (input === undefined) throw new Error("operation-source-archive-membership-mismatch");
-      const record = ArchivedRunRecordSchema.parse(input);
-      const { contentDigest, ...content } = record;
-      if (!authenticArchivedRunContent(content, contentDigest) || record.runId !== target.envelope.runId) throw new Error("operation-source-archive-digest-mismatch");
-      const logs = record.sections?.logs;
-      const structure = logs?.state === "present" ? logs.value.operationStructure : undefined;
-      if (structure?.state !== "observed") return OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" });
-      const observation = structure.observations.find((candidate) => {
-        const { value: _value, ...identity } = candidate.occurrence;
-        return canonicalJsonStringify(identity) === identityKey;
-      });
-      if (observation === undefined) return OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" });
-      if (structure.runId !== target.envelope.runId || structure.definition.definitionFingerprint !== target.envelope.contractFingerprint || structure.definition.contentDigest !== target.envelope.operationDisplaySnapshot?.contentDigest) throw new Error("operation-source-archive-definition-mismatch");
-      return OperationSourceResponseSchema.parse({ state: "found", structure: { ...structure, observations: [observation] } });
-    });
-  }
-  const files = scopedEventStreamFiles(deps.stateRoot, "notes", runNotePartitionScope(target.envelope.runId, undefined, target));
-  const index = cursor === undefined ? 0 : files.findIndex((file) => file.date === cursor.date);
-  if (index < 0) throw new Error("operation-source-cursor-partition-unavailable");
-  const file = files[index];
-  if (file === undefined) return OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" });
-  const slice = readEventStreamSlice(file, cursor ?? { bytesConsumed: 0, linesConsumed: 0 });
-  for (const line of slice.lines) {
+  const through = cursor?.through ?? deps.timeline.highWaterMark();
+  if (through > deps.timeline.highWaterMark()) throw new Error("operation-source-cursor-unavailable");
+  const records = deps.timeline.page({ runId: target.envelope.runId, after: cursor?.after ?? 0, through, limit: 200 });
+  for (const record of records) {
+    if (record.payload.kind !== "note") continue;
+    const line = timelineNoteLocation(record);
     signal?.throwIfAborted();
     let note;
     try { note = NoteWireSchema.parse(JSON.parse(line.text)); }
-    catch (cause) { throw new Error(`operation-source-corrupt-note:${file.date}:${line.lineNumber}`, { cause }); }
+    catch (cause) { throw new Error(`operation-source-corrupt-note:${record.eventId}`, { cause }); }
     const occurrence = note.action?.operation;
     if (occurrence === undefined) continue;
     const { value: _value, ...identity } = occurrence;
@@ -133,9 +116,8 @@ function resolveOperationSourceInSnapshot(
     const entry: RunLogScanEntry = { kind: "note", line, note: { ...note, runId: note.runId } };
     return OperationSourceResponseSchema.parse({ state: "found", structure: operationStructureForRun(target, target.envelope.runId, [entry]) });
   }
-  const nextPosition = slice.cursors.get(file.path)!;
-  if (slice.lines.length > 0) return continuation({ date: file.date, ...nextPosition });
-  const next = files[index + 1];
-  return next === undefined ? OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" })
-    : continuation({ date: next.date, bytesConsumed: 0, linesConsumed: 0 });
+  const last = records.at(-1);
+  return last === undefined || records.length < 200
+    ? OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" })
+    : continuation({ after: last.cursor, through });
 }

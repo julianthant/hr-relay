@@ -26,8 +26,6 @@ import {
   ProtectedSettingsApplyInputSchema,
   ProtectedSettingsLastAppliedSchema,
   ProtectedSettingsNameSchema,
-  ProtectedSettingsPatchSchema,
-  type ProtectedSettingsPatch,
   ProtectedStoreRecordSchema,
   initialProtectedStoreRecord,
   type ProtectedSettingsApplyInput,
@@ -38,21 +36,8 @@ import {
   type SettingsApplyRejectionCode,
 } from "../../../models/config/settings.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../../rules/identity/ids.js";
+import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { encodePrivate, privateEqual as privateEqualBounded } from "../../../rules/validation/private-equal.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
-import {
-  LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH,
-  LegacyProtectedSettingsApplyInputSchema,
-  LegacyProtectedSettingsNameSchema,
-  LegacyProtectedSettingsPatchSchema,
-  LegacyProtectedStoreRecordSchema,
-  RETIRED_TEST_TARGET_PROTECTED_NAMES,
-  RetiredTestTargetProtectedNameSchema,
-  initialLegacyProtectedStoreRecord,
-  type LegacyProtectedStoreRecord,
-  type RetiredTestTargetProtectedName,
-} from "../../../models/config/protected-settings-legacy.js";
 import {
   ProcessStartIdentitySchema,
   observeProcessIdentity,
@@ -86,117 +71,10 @@ const CredentialHistoryEntrySchema = z.strictObject({
   setValueIds: SetValueIdsSchema,
 });
 
-const CredentialUpgradeBindingSchema = z.strictObject({
-  upgradeId: z.string().regex(/^[a-f0-9]{64}$/u),
-  entries: ProtectedSettingsPatchSchema,
-});
-
-// Frozen seven-name protected documents are admitted only by explicit conversion readers.
-const LegacySetValueIdsSchema = z.strictObject({
-  ucpathUserId: z.uuid().optional(),
-  ucpathPassword: z.uuid().optional(),
-  timekeeperName: z.uuid().optional(),
-  sharepointOnboardingRosterUrl: z.uuid().optional(),
-  activityPersonPseudonym: z.uuid().optional(),
-  separationsKualiFinalizationCanaryDocumentNumber: z.uuid().optional(),
-  personLookupCanaryEid: z.uuid().optional(),
-});
-const LegacyCredentialHistoryEntrySchema = z.strictObject({
-  request: LegacyProtectedSettingsApplyInputSchema,
-  setValueIds: LegacySetValueIdsSchema,
-});
-const LegacyCredentialUpgradeBindingSchema = z.strictObject({
-  upgradeId: z.string().regex(/^[a-f0-9]{64}$/u),
-  entries: LegacyProtectedSettingsPatchSchema,
-});
-const LegacyCredentialDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  record: LegacyProtectedStoreRecordSchema,
-  history: z.array(LegacyCredentialHistoryEntrySchema),
-  upgradeBinding: LegacyCredentialUpgradeBindingSchema.optional(),
-});
-type LegacyCredentialHistoryEntry = z.infer<typeof LegacyCredentialHistoryEntrySchema>;
-type LegacyCredentialDocument = z.infer<typeof LegacyCredentialDocumentSchema>;
-
-// Value-free identities from the converted schema stay fenced against reuse.
-const CredentialRetiredIdentitiesSchema = z.strictObject({
-  commandIds: z.array(z.uuid()),
-  writeIds: z.array(z.uuid()),
-  valueIds: z.array(z.uuid()),
-  // Conversion carries configured test-target entries into the private test-data file.
-  entries: z.array(z.strictObject({ name: RetiredTestTargetProtectedNameSchema, valueId: z.uuid() })),
-  upgradeBinding: z.strictObject({
-    upgradeId: z.string().regex(/^[a-f0-9]{64}$/u),
-    entryNames: z.array(LegacyProtectedSettingsNameSchema),
-  }).optional(),
-}).superRefine((retired, context) => {
-  for (const [key, values] of Object.entries(retired)) {
-    if (Array.isArray(values) && new Set(values.map((value) => canonicalJsonStringify(value))).size !== values.length) {
-      context.addIssue({ code: "custom", path: [key], message: "retired identities must be unique" });
-    }
-  }
-});
-
-const TEST_DATA_MIGRATION_FINGERPRINT_DOMAIN = "hrauto:credential-test-data-migration:v1";
-const CredentialBaselineSourceSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  protectedSchemaHash: FingerprintSchema,
-  revision: PositiveIntSchema,
-  historyLength: z.number().int().nonnegative(),
-});
-
-/** The one value-free preimage of a baseline's command fingerprint; it never sees a value. */
-function migrationFingerprint(input: Readonly<{
-  migrationId: string;
-  migratedAt: string;
-  source: z.infer<typeof CredentialBaselineSourceSchema>;
-  retired: z.infer<typeof CredentialRetiredIdentitiesSchema>;
-}>): string {
-  return sha256Hex(`${TEST_DATA_MIGRATION_FINGERPRINT_DOMAIN}\n${canonicalJsonStringify({
-    migrationId: input.migrationId,
-    migratedAt: input.migratedAt,
-    source: input.source,
-    retired: input.retired,
-  })}`);
-}
-
-
-const CredentialBaselineSchema = z.strictObject({
-  migrationId: z.uuid(),
-  migratedAt: IsoInstantSchema,
-  source: CredentialBaselineSourceSchema,
-  record: ProtectedStoreRecordSchema,
-  retired: CredentialRetiredIdentitiesSchema,
-}).superRefine((baseline, context) => {
-  if (baseline.source.protectedSchemaHash !== LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH) {
-    context.addIssue({ code: "custom", path: ["source", "protectedSchemaHash"], message: "baseline source must be the legacy schema" });
-  }
-  const applied = baseline.record.lastApplied;
-  if (applied === undefined
-    || baseline.record.revision !== baseline.source.revision + 1
-    || applied.commandId !== baseline.migrationId
-    || applied.expectedRevision !== baseline.source.revision
-    || applied.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH
-    || applied.commandFingerprint !== migrationFingerprint(baseline)) {
-    context.addIssue({ code: "custom", path: ["record", "lastApplied"], message: "baseline record must bind its exact migration" });
-  }
-  if (baseline.retired.commandIds.includes(baseline.migrationId)) {
-    context.addIssue({ code: "custom", path: ["retired", "commandIds"], message: "the migration identity must be new" });
-  }
-  for (const entry of baseline.retired.entries) {
-    if (!baseline.retired.valueIds.includes(entry.valueId)) {
-      context.addIssue({ code: "custom", path: ["retired", "entries"], message: "retired entry identity must be fenced" });
-    }
-  }
-});
-type CredentialBaseline = z.infer<typeof CredentialBaselineSchema>;
-
 const CredentialDocumentSchema = z.strictObject({
   schemaVersion: z.literal(2),
-  baseline: CredentialBaselineSchema.optional(),
   record: ProtectedStoreRecordSchema,
   history: z.array(CredentialHistoryEntrySchema),
-  upgradeBinding: CredentialUpgradeBindingSchema.optional(),
 });
 
 const CredentialLockRecordSchema = z.strictObject({
@@ -231,14 +109,6 @@ export interface CredentialStoreOptions {
   readonly hooks?: CredentialStoreHooks;
 }
 
-// Only explicit credential-to-test-data conversion reads this frozen protected document.
-export class CredentialStoreMigrationRequiredError extends Error {
-  constructor() {
-    super("credential-store-migration-required: protected.json uses the seven-name schema; run cli test-data migrate --from-credentials");
-    this.name = "CredentialStoreMigrationRequiredError";
-  }
-}
-
 // A replaced protected document can still have unknown observed durable completion.
 export class CredentialStoreCommitUncertainError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -262,16 +132,6 @@ interface DirectoryIdentity {
 interface ReadDocument {
   readonly bytes: Uint8Array;
   readonly document: CredentialDocument;
-  readonly identity: DirectoryIdentity;
-}
-
-type StoredDocument =
-  | Readonly<{ version: 2; document: CredentialDocument }>
-  | Readonly<{ version: 1; document: LegacyCredentialDocument }>;
-
-interface ReadAnyDocument {
-  readonly bytes: Uint8Array;
-  readonly stored: StoredDocument;
   readonly identity: DirectoryIdentity;
 }
 
@@ -462,18 +322,11 @@ function lastApplied(request: ProtectedSettingsApplyInput) {
 
 function replayHistory(
   history: readonly CredentialHistoryEntry[],
-  baseline: CredentialBaseline | undefined,
 ): ProtectedStoreRecord {
-  let current: ProtectedStoreRecord = baseline?.record ?? initialProtectedStoreRecord();
-  const commandIds = new Set<string>(baseline?.retired.commandIds ?? []);
-  const writeIds = new Set<string>(baseline?.retired.writeIds ?? []);
-  const valueIds = new Set<string>(baseline?.retired.valueIds ?? []);
-  if (baseline !== undefined) {
-    commandIds.add(baseline.migrationId);
-    const applied = baseline.record.lastApplied;
-    if (applied !== undefined) writeIds.add(applied.writeId);
-    for (const entry of Object.values(baseline.record.entries)) valueIds.add(entry.valueId);
-  }
+  let current: ProtectedStoreRecord = initialProtectedStoreRecord();
+  const commandIds = new Set<string>();
+  const writeIds = new Set<string>();
+  const valueIds = new Set<string>();
 
   for (const entry of history) {
     const { request, setValueIds } = entry;
@@ -511,64 +364,12 @@ function replayHistory(
   return current;
 }
 
-// Conversion-only replay uses the frozen seven-name protected schema.
-function replayLegacyHistory(history: readonly LegacyCredentialHistoryEntry[]): Readonly<{
-  record: LegacyProtectedStoreRecord;
-  commandIds: readonly string[];
-  writeIds: readonly string[];
-  valueIds: readonly string[];
-}> {
-  let current = initialLegacyProtectedStoreRecord();
-  const commandIds = new Set<string>();
-  const writeIds = new Set<string>();
-  const valueIds = new Set<string>();
-  for (const entry of history) {
-    const { request, setValueIds } = entry;
-    if (request.expectedRevision !== current.revision
-      || commandIds.has(request.commandId)
-      || writeIds.has(request.writeId)) {
-      throw new Error("credential history has a divergent command identity");
-    }
-    commandIds.add(request.commandId);
-    writeIds.add(request.writeId);
-    const entries = new Map<string, unknown>(Object.entries(current.entries));
-    for (const name of LegacyProtectedSettingsNameSchema.options) {
-      const operation = request.entries[name];
-      const valueId = setValueIds[name];
-      if (operation === undefined || "clear" in operation) {
-        if (valueId !== undefined) throw new Error("credential history has an unexpected value identity");
-        if (operation !== undefined) entries.delete(name);
-        continue;
-      }
-      if (valueId === undefined || valueIds.has(valueId)) {
-        throw new Error("credential history has an invalid value identity");
-      }
-      valueIds.add(valueId);
-      entries.set(name, { valueId, value: operation.set, updatedAt: request.updatedAt });
-    }
-    current = LegacyProtectedStoreRecordSchema.parse({
-      schemaVersion: 1,
-      revision: current.revision + 1,
-      protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH,
-      entries: Object.fromEntries(entries),
-      lastApplied: {
-        commandId: request.commandId,
-        commandFingerprint: request.commandFingerprint,
-        expectedRevision: request.expectedRevision,
-        protectedSchemaHash: request.protectedSchemaHash,
-        writeId: request.writeId,
-      },
-    });
-  }
-  return { record: current, commandIds: [...commandIds], writeIds: [...writeIds], valueIds: [...valueIds] };
-}
-
 function authenticateDocument(input: unknown): CredentialDocument {
   const parsed = CredentialDocumentSchema.safeParse(input);
   if (!parsed.success) throw new Error("credential store protected.json is malformed");
   let replayed: ProtectedStoreRecord;
   try {
-    replayed = replayHistory(parsed.data.history, parsed.data.baseline);
+    replayed = replayHistory(parsed.data.history);
   } catch {
     throw new Error("credential store protected.json has malformed identity history");
   }
@@ -576,29 +377,6 @@ function authenticateDocument(input: unknown): CredentialDocument {
     throw new Error("credential store protected.json disagrees with its identity history");
   }
   return deepFreeze(parsed.data);
-}
-
-function authenticateLegacyDocument(input: unknown): LegacyCredentialDocument {
-  const parsed = LegacyCredentialDocumentSchema.safeParse(input);
-  if (!parsed.success) throw new Error("credential store protected.json is malformed");
-  let replayed: LegacyProtectedStoreRecord;
-  try {
-    replayed = replayLegacyHistory(parsed.data.history).record;
-  } catch {
-    throw new Error("credential store protected.json has malformed identity history");
-  }
-  if (!privateEqual(replayed, parsed.data.record)) {
-    throw new Error("credential store protected.json disagrees with its identity history");
-  }
-  return deepFreeze(parsed.data);
-}
-
-/** Dispatch on the declared version only; every other shape is malformed, never guessed. */
-function authenticateStoredDocument(decoded: unknown): StoredDocument {
-  const version: unknown = decoded !== null && typeof decoded === "object" ? Reflect.get(decoded, "schemaVersion") : undefined;
-  if (version === 1) return { version: 1, document: authenticateLegacyDocument(decoded) };
-  if (version === 2) return { version: 2, document: authenticateDocument(decoded) };
-  throw new Error("credential store protected.json is malformed");
 }
 
 function initialDocument(): CredentialDocument {
@@ -610,13 +388,6 @@ function initialDocument(): CredentialDocument {
 }
 
 function readPrivateDocument(path: string): ReadDocument | undefined {
-  const read = readPrivateDocumentAny(path);
-  if (read === undefined) return undefined;
-  if (read.stored.version === 1) throw new CredentialStoreMigrationRequiredError();
-  return { bytes: read.bytes, document: read.stored.document, identity: read.identity };
-}
-
-function readPrivateDocumentAny(path: string): ReadAnyDocument | undefined {
   let pathStatus;
   try {
     pathStatus = lstatSync(path, { throwIfNoEntry: false });
@@ -664,7 +435,7 @@ function readPrivateDocumentAny(path: string): ReadAnyDocument | undefined {
     }
     return {
       bytes,
-      stored: authenticateStoredDocument(decoded),
+      document: authenticateDocument(decoded),
       identity: { device: before.dev, inode: before.ino },
     };
   } finally {
@@ -782,125 +553,7 @@ function removeTemporary(path: string): void {
   }
 }
 
-
-/** Private migration binding; never served as a command or public readback. */
-export interface CredentialUpgradeStore extends CredentialStore {
-  bindUpgrade(upgradeId: string, entries: ProtectedSettingsPatch): void;
-  /** Pre-SQL preflight admits a first import, but authenticates any surviving binding. */
-  verifyUpgradePreflight(upgradeId: string, entries: ProtectedSettingsPatch): void;
-  verifyUpgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch): void;
-  // Conversion-only classification is read-only and publishes no values.
-  inspectTestDataMigration(): CredentialTestDataMigrationInspection;
-  // Convert under the writer lock after staging the destination.
-  convertTestDataMigration(input: CredentialTestDataConversionInput): CredentialTestDataConversionOutcome;
-}
-
-// Private conversion input retains the exact test-target entry.
-export interface RetiredTestTargetEntry {
-  readonly name: RetiredTestTargetProtectedName;
-  readonly valueId: string;
-  readonly value: string;
-  readonly updatedAt: string;
-}
-
-export type CredentialTestDataMigrationInspection =
-  | Readonly<{ state: "absent" }>
-  | Readonly<{ state: "current"; revision: number; retiredEntries: readonly Readonly<{ name: RetiredTestTargetProtectedName; valueId: string }>[] }>
-  | Readonly<{
-    state: "legacy";
-    revision: number;
-    historyLength: number;
-    retiredEntries: readonly RetiredTestTargetEntry[];
-    // Pending upgrade bindings must release converted test-target names before conversion.
-    pendingUpgradeRetiredNames: readonly RetiredTestTargetProtectedName[];
-  }>;
-
-export interface CredentialTestDataConversionInput {
-  readonly migrationId: string;
-  readonly migratedAt: string;
-  // Make the exact destination durable and verified before rewriting its source under the lock.
-  readonly stageDestination: (entries: readonly RetiredTestTargetEntry[]) => void;
-}
-
-export type CredentialTestDataConversionOutcome =
-  | Readonly<{ state: "nothing-to-migrate" }>
-  | Readonly<{ state: "already-converted"; revision: number }>
-  | Readonly<{ state: "refused"; reason: string }>
-  | Readonly<{ state: "converted"; sourceRevision: number; revision: number; retiredEntryNames: readonly RetiredTestTargetProtectedName[] }>;
-
-function retiredEntriesOf(document: LegacyCredentialDocument): readonly RetiredTestTargetEntry[] {
-  return RETIRED_TEST_TARGET_PROTECTED_NAMES.flatMap((name) => {
-    const entry = document.record.entries[name];
-    return entry === undefined ? [] : [{ name, valueId: entry.valueId, value: entry.value, updatedAt: entry.updatedAt }];
-  });
-}
-
-function pendingUpgradeRetiredNames(document: LegacyCredentialDocument): readonly RetiredTestTargetProtectedName[] {
-  const binding = document.upgradeBinding;
-  if (binding === undefined || document.record.revision !== 1) return [];
-  return RETIRED_TEST_TARGET_PROTECTED_NAMES.filter((name) => binding.entries[name] !== undefined);
-}
-
-
-function convertLegacyDocument(
-  legacy: LegacyCredentialDocument,
-  migrationId: string,
-  migratedAt: string,
-  writeId: string,
-): CredentialDocument {
-  const replayed = replayLegacyHistory(legacy.history);
-  if (legacy.record.revision === 1 && legacy.history.length === 0) {
-    const binding = legacy.upgradeBinding;
-    return authenticateDocument({
-      schemaVersion: 2,
-      record: initialProtectedStoreRecord(),
-      history: [],
-      ...(binding === undefined ? {} : { upgradeBinding: { upgradeId: binding.upgradeId, entries: ProtectedSettingsPatchSchema.parse(binding.entries) } }),
-    });
-  }
-  const liveEntries = Object.fromEntries(ProtectedSettingsNameSchema.options.flatMap((name) => {
-    const entry = legacy.record.entries[name];
-    return entry === undefined ? [] : [[name, entry]];
-  }));
-  const retired = CredentialRetiredIdentitiesSchema.parse({
-    commandIds: replayed.commandIds,
-    writeIds: replayed.writeIds,
-    valueIds: replayed.valueIds,
-    entries: retiredEntriesOf(legacy).map(({ name, valueId }) => ({ name, valueId })),
-    ...(legacy.upgradeBinding === undefined ? {} : { upgradeBinding: {
-      upgradeId: legacy.upgradeBinding.upgradeId,
-      entryNames: LegacyProtectedSettingsNameSchema.options.filter((name) => legacy.upgradeBinding?.entries[name] !== undefined),
-    } }),
-  });
-  const source = CredentialBaselineSourceSchema.parse({
-    schemaVersion: 1,
-    protectedSchemaHash: legacy.record.protectedSchemaHash,
-    revision: legacy.record.revision,
-    historyLength: legacy.history.length,
-  });
-  const baseline = CredentialBaselineSchema.parse({
-    migrationId,
-    migratedAt,
-    source,
-    retired,
-    record: {
-      schemaVersion: 1,
-      revision: legacy.record.revision + 1,
-      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      entries: liveEntries,
-      lastApplied: {
-        commandId: migrationId,
-        commandFingerprint: migrationFingerprint({ migrationId, migratedAt, source, retired }),
-        expectedRevision: legacy.record.revision,
-        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-        writeId,
-      },
-    },
-  });
-  return authenticateDocument({ schemaVersion: 2, baseline, record: baseline.record, history: [] });
-}
-
-export function createCredentialStore(options: CredentialStoreOptions): CredentialUpgradeStore {
+export function createCredentialStore(options: CredentialStoreOptions): CredentialStore {
   const admission = requireRuntimeAdmission(options.admission);
   const rawStateRoot = z.string().min(1).parse(options.stateRoot);
   if (rawStateRoot.split(/[/\\]+/u).includes("..")) throw new Error("directory-integrity: raw credential path contains a '..' component");
@@ -1151,47 +804,17 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     if (staged === undefined) {
       throw new Error("directory-integrity: dead credential writer staged document disappeared");
     }
-    const currentAny = readPrivateDocumentAny(protectedPath);
-    if (currentAny?.stored.version === 1) {
-
-      const legacy = currentAny.stored.document;
-      const baseline = staged.document.baseline;
-      const migration = staged.document.history.length === 0
-        && staged.document.upgradeBinding === undefined
-        && ((baseline !== undefined
-          && baseline.source.revision === legacy.record.revision
-          && baseline.source.historyLength === legacy.history.length)
-          || (baseline === undefined && legacy.record.revision === 1 && legacy.history.length === 0
-            && privateEqual(staged.document.record, initialProtectedStoreRecord())));
-      if (!migration) {
-        throw new Error("directory-integrity: dead credential writer staged document is not the next transition");
-      }
-      removeExactPath(
-        temporaryPath,
-        staged.identity,
-        false,
-        "directory-integrity: dead credential writer staged document changed before recovery",
-      );
-      fsyncPath(credentialDirectory);
-      return;
-    }
-    const current = currentAny === undefined ? undefined
-      : { bytes: currentAny.bytes, document: currentAny.stored.document, identity: currentAny.identity };
+    const current = readPrivateDocument(protectedPath);
     const prior = current?.document ?? initialDocument();
     const stagedPrefix = staged.document.history.slice(0, -1);
     const stagedRequest = staged.document.history.at(-1)?.request;
     const sameHistory = (left: readonly CredentialHistoryEntry[], right: readonly CredentialHistoryEntry[]) =>
       left.length === right.length && left.every((entry, index) => privateEqual(entry, right[index]));
-    const sameBinding = prior.upgradeBinding === undefined ? staged.document.upgradeBinding === undefined
-      : staged.document.upgradeBinding !== undefined && privateEqual(prior.upgradeBinding, staged.document.upgradeBinding);
     const application = staged.document.history.length === prior.history.length + 1
-      && sameHistory(stagedPrefix, prior.history) && sameBinding
+      && sameHistory(stagedPrefix, prior.history)
       && stagedRequest?.expectedRevision === prior.record.revision
       && staged.document.record.revision === prior.record.revision + 1;
-    const reservation = prior.upgradeBinding === undefined && staged.document.upgradeBinding !== undefined
-      && prior.record.revision === 1 && sameHistory(staged.document.history, prior.history)
-      && privateEqual(staged.document.record, prior.record);
-    if (!application && !reservation) {
+    if (!application) {
       throw new Error("directory-integrity: dead credential writer staged document is not the next transition");
     }
     removeExactPath(
@@ -1309,8 +932,8 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       } catch (error) {
         throw new Error("credential store replacement could not be staged", { cause: error });
       }
-      // Compare exact bytes under the lock across schema versions before converting the source.
-      const live = readPrivateDocumentAny(protectedPath);
+      // Compare exact bytes under the writer lock.
+      const live = readPrivateDocument(protectedPath);
       if (priorBytes === undefined ? live !== undefined : live === undefined || !sameBytes(live.bytes, priorBytes)) {
         throw new Error("credential store protected.json changed before replacement");
       }
@@ -1368,13 +991,6 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     const current = readPrivateDocument(protectedPath);
     if (current !== undefined) return current;
     return { bytes: undefined, document: initialDocument() };
-  }
-
-  /** Migration-only: the exact stored bytes and document of either format, under the writer lock. */
-  function readAnyUnderLock(): Readonly<{ bytes: Uint8Array; stored: StoredDocument }> | undefined {
-    assertDirectory();
-    const current = readPrivateDocumentAny(protectedPath);
-    return current === undefined ? undefined : { bytes: current.bytes, stored: current.stored };
   }
 
   function observeCurrent(): CurrentDocument {
@@ -1436,14 +1052,6 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     document: CredentialDocument,
     request: ProtectedSettingsApplyInput,
   ): boolean {
-    const baseline = document.baseline;
-    if (baseline !== undefined && (
-      baseline.migrationId === request.commandId
-      || baseline.retired.commandIds.includes(request.commandId)
-      || baseline.retired.writeIds.includes(request.writeId)
-      || baseline.record.lastApplied?.writeId === request.writeId)) {
-      return true;
-    }
     return document.history.some(({ request: historical }) => (
       historical.commandId === request.commandId || historical.writeId === request.writeId
     ));
@@ -1457,7 +1065,6 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     const setValueIds: Record<string, string> = {};
     const allocated = new Set([
       ...Object.values(document.record.entries).map(({ valueId }) => valueId),
-      ...(document.baseline?.retired.valueIds ?? []),
       ...document.history.flatMap(({ setValueIds: ids }) => Object.values(ids)),
     ]);
     for (const name of ProtectedSettingsNameSchema.options) {
@@ -1475,7 +1082,6 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     }
     return authenticateDocument({
       schemaVersion: 2,
-      ...(document.baseline === undefined ? {} : { baseline: document.baseline }),
       record: {
         schemaVersion: 1,
         revision: document.record.revision + 1,
@@ -1484,7 +1090,6 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         lastApplied: lastApplied(request),
       },
       history: [...document.history, { request, setValueIds }],
-      ...(document.upgradeBinding === undefined ? {} : { upgradeBinding: document.upgradeBinding }),
     });
   }
 
@@ -1525,113 +1130,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     }
   }
 
-  function upgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch) {
-    const parsed = CredentialUpgradeBindingSchema.safeParse({ upgradeId, entries });
-    if (!parsed.success || encodePrivate(parsed.data).byteLength > MAX_PRIVATE_REQUEST_BYTES) {
-      throw new Error("credential-import-refused: invalid private upgrade binding");
-    }
-    return parsed.data;
-  }
-
-  function requireUpgradeBinding(document: CredentialDocument, binding: z.infer<typeof CredentialUpgradeBindingSchema>): void {
-    if (document.upgradeBinding === undefined || !privateEqual(document.upgradeBinding, binding)) {
-      throw new Error("credential-import-refused: private upgrade source binding is missing or divergent");
-    }
-  }
-
-  function observeCurrentAny(): StoredDocument | undefined {
-    const missing = (): undefined => undefined;
-    if (!noSymlinkAncestry(stateRoot, ancestorIdentities)) return missing();
-    statDirectory(stateRoot, "state root");
-    if (!noSymlinkAncestry(credentialDirectory, ancestorIdentities)) return missing();
-    const first = readPrivateDocumentAny(protectedPath);
-    const second = readPrivateDocumentAny(protectedPath);
-    noSymlinkAncestry(credentialDirectory, ancestorIdentities);
-    if ((first === undefined) !== (second === undefined)
-      || (first !== undefined && second !== undefined && !sameBytes(first.bytes, second.bytes))) {
-      throw new Error("directory-integrity: credential authority moved during read-only observation");
-    }
-    return second?.stored;
-  }
-
   return Object.freeze({
-    inspectTestDataMigration(): CredentialTestDataMigrationInspection {
-      admission.assertLive();
-      const stored = observeCurrentAny();
-      if (stored === undefined) return deepFreeze({ state: "absent" as const });
-      if (stored.version === 2) {
-        return deepFreeze({
-          state: "current" as const,
-          revision: stored.document.record.revision,
-          retiredEntries: stored.document.baseline?.retired.entries ?? [],
-        });
-      }
-      return deepFreeze({
-        state: "legacy" as const,
-        revision: stored.document.record.revision,
-        historyLength: stored.document.history.length,
-        retiredEntries: retiredEntriesOf(stored.document),
-        pendingUpgradeRetiredNames: pendingUpgradeRetiredNames(stored.document),
-      });
-    },
-    convertTestDataMigration(input: CredentialTestDataConversionInput): CredentialTestDataConversionOutcome {
-      admission.assertWritable();
-      const migrationId = z.uuid().parse(input.migrationId);
-      const migratedAt = IsoInstantSchema.parse(input.migratedAt);
-      try {
-        return withLock((writer): LockedResult<CredentialTestDataConversionOutcome> => {
-          const current = readAnyUnderLock();
-          if (current === undefined) return { committed: false, result: deepFreeze({ state: "nothing-to-migrate" as const }) };
-          if (current.stored.version === 2) {
-            return { committed: false, result: deepFreeze({ state: "already-converted" as const, revision: current.stored.document.record.revision }) };
-          }
-          const legacy = current.stored.document;
-          const pending = pendingUpgradeRetiredNames(legacy);
-          if (pending.length > 0) {
-            return { committed: false, result: deepFreeze({ state: "refused" as const,
-              reason: `pending upgrade binding names retired test-target entries ${pending.join(", ")}; complete or discard that upgrade first` }) };
-          }
-          const entries = retiredEntriesOf(legacy);
-          const next = convertLegacyDocument(legacy, migrationId, migratedAt, z.uuid().parse(ids.randomUUID()));
-          // Verify destination durability before replacing source authority.
-          input.stageDestination(entries);
-          writeDocument(next, current.bytes, true, writer);
-          return { committed: true, result: deepFreeze({ state: "converted" as const,
-            sourceRevision: legacy.record.revision, revision: next.record.revision, retiredEntryNames: entries.map(({ name }) => name) }) };
-        });
-      } catch (error) {
-        if (error instanceof CredentialStoreLockUnavailableError) {
-          return deepFreeze({ state: "refused" as const, reason: "credential store lock is unavailable" });
-        }
-        throw error;
-      }
-    },
-    bindUpgrade(upgradeId: string, entries: ProtectedSettingsPatch): void {
-      admission.assertWritable();
-      const binding = upgradeBinding(upgradeId, entries);
-      withLock((writer) => {
-        const current = readCurrentUnderLock();
-        if (current.document.upgradeBinding !== undefined) {
-          requireUpgradeBinding(current.document, binding);
-          return { committed: false, result: undefined };
-        }
-        if (current.document.record.revision !== 1) throw new Error("credential-import-refused: private authority already has applied credentials");
-        const next = authenticateDocument({ ...current.document, upgradeBinding: binding });
-        writeDocument(next, current.bytes, false, writer);
-        return { committed: true, result: undefined };
-      });
-    },
-    verifyUpgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch): void {
-      admission.assertLive();
-      requireUpgradeBinding(observeCurrent().document, upgradeBinding(upgradeId, entries));
-    },
-    verifyUpgradePreflight(upgradeId: string, entries: ProtectedSettingsPatch): void {
-      admission.assertLive();
-      const document = observeCurrent().document;
-      if (document.upgradeBinding !== undefined) {
-        requireUpgradeBinding(document, upgradeBinding(upgradeId, entries));
-      }
-    },
     read(): ProtectedStoreRecord {
       admission.assertLive();
       return observeCurrent().document.record;
@@ -1640,9 +1139,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       admission.assertLive();
       const id = z.uuid().parse(commandId);
       const document = observeCurrent().document;
-      return document.history.some(({ request }) => request.commandId === id)
-        || document.baseline?.migrationId === id
-        || (document.baseline?.retired.commandIds.includes(id) ?? false);
+      return document.history.some(({ request }) => request.commandId === id);
     },
     acceptedAt(commandId: string): string | undefined {
       admission.assertLive();

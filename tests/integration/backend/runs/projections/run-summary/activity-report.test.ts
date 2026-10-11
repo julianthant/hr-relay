@@ -1,8 +1,11 @@
+import { join } from "node:path";
+import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../../../../../src/models/run/deleted-run.js";
+import { inMemoryRunReaderFake } from "../../../../../support/helpers/canonical-run-reader.js";
 import { RunIdSchema, FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
 import { deriveCanonicalPerson } from "../../../../../../src/backend/runs/projections/run-summary.js";
 import { activityPersonPseudonymResultRecord, CURRENT_SEPARATIONS_RESULT } from "../../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import type { RunResultRecord } from "../../../../../../src/models/run/result.js";
-import { RunRecordSchema, RunLifecycleSchema } from "../../../../../../src/models/run/record.js";
+import { RunRecordSchema, RunLifecycleSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
 
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -50,9 +53,13 @@ function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase
 
 const worlds: DashboardWorld[] = [];
 const canonicalResults = new WeakMap<DashboardWorld,Map<string,RunResultRecord>>();
+const deletedRuns = new WeakMap<DashboardWorld, Map<string, DeletedRunRecord>>();
 
 function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
+  const state = { records: new Map<string, RunRecord>(), deleted: new Map<string, DeletedRunRecord>(), generation: 0 };
+  const created = makeWorld({ ...args[0], reader: inMemoryRunReaderFake(state) });
+  state.records = created.authority.records;
+  deletedRuns.set(created, state.deleted);
   const results = new Map<string,RunResultRecord>();
   Object.assign(created.authority,{canonicalPerson:(runId:string)=> {
     const run=created.authority.records.get(runId);
@@ -123,6 +130,20 @@ function personResult(w: DashboardWorld, seed: number, identity: string) {
 }
 
 // The seeded days intentionally cross lifecycle and workflow categories.
+function deleteFixtureRun(w: DashboardWorld, seed: number): void {
+  const run = w.authority.getRun(uuidOf(seed));
+  assert.ok(run);
+  const deleted = deletedRuns.get(w);
+  assert.ok(deleted);
+  deleted.set(run.envelope.runId, DeletedRunRecordSchema.parse({
+    runId: run.envelope.runId, workflow: run.envelope.workflow, traceId: run.envelope.traceId,
+    itemId: run.envelope.itemId, attempt: run.envelope.attempt, runNumber: run.runNumber ?? null,
+    ordinalSource: "tombstone", origin: "queue", commandId: uuidOf(8000 + seed),
+    deletedAt: w.clock.now().toISOString(), tallyVersion: 3, removed: [],
+  }));
+  w.authority.records.delete(run.envelope.runId);
+}
+
 function seedActivityWorld(w: DashboardWorld): void {
   atDayOffset(w, 0);
   queuedEventOf(w, { seed: 1 });
@@ -175,15 +196,15 @@ function seedActivityWorld(w: DashboardWorld): void {
   }
 
   queuedEventOf(w, { seed: 6, workflow: kuali, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(1) } });
-  w.authority.archived.add(uuidOf(6));
+  deleteFixtureRun(w, 6);
 
   atDayOffset(w, 2);
   // An unregistered workflow still counts; its label and category remain unavailable.
-  queuedEventOf(w, { seed: 7, workflow: "retired-flow" });
+  queuedEventOf(w, { seed: 7, workflow: "unknown-flow" });
   w.authority.put(runRecordOf({
     seed: 7,
     enqueuedAt: instantOffsetOf(2),
-    workflow: "retired-flow",
+    workflow: "unknown-flow",
     lifecycle: { state: "terminal", outcome: "interrupted", endedAt: instantOffsetOf(2, 30_000) },
     version: 3,
   }));
@@ -341,22 +362,22 @@ describe("the Activity report", () => {
         failed: 1, cancelled: 0, partial: 0, open: 2,
       },
       {
-        workflowId: "retired-flow",
-        registration: {
-          state: "unregistered",
-          reason: "workflow retired-flow is no longer registered; its label and category are unavailable",
-        },
-        runs: 1,
-        completion: clean,
-        // Interrupted is terminal lifecycle but still requeueable, so status and open-work columns differ.
-        failed: 0, cancelled: 0, partial: 0, open: 1,
-      },
-      {
         workflowId: "separations-kuali-finalization",
         registration: { state: "registered", label: "Kuali Finalization", code: "sf", categoryId: "separation" },
         runs: 2,
         completion: clean,
         failed: 2, cancelled: 0, partial: 0, open: 0,
+      },
+      {
+        workflowId: "unknown-flow",
+        registration: {
+          state: "unregistered",
+          reason: "workflow unknown-flow is no longer registered; its label and category are unavailable",
+        },
+        runs: 1,
+        completion: clean,
+        // Interrupted is terminal lifecycle but still requeueable, so status and open-work columns differ.
+        failed: 0, cancelled: 0, partial: 0, open: 1,
       },
     ]);
     assert.deepEqual(report.completion, { readBack: 0, warnings: 0, warningsUnknown: 1 });
@@ -590,7 +611,7 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     }
   });
 
-  it("drops an archived run from the range at the same instant it leaves the day", () => {
+  it("drops a deleted run from the range at the same instant it leaves the day", () => {
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const before = w.projection.buildActivityReportWire(D0, D2);
@@ -598,7 +619,7 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     assert.equal(w.projection.buildDashboardDayWire(D0).queueSurfaces.length, 3);
 
 
-    w.authority.archived.add(uuidOf(1));
+    deleteFixtureRun(w, 1);
     const after = w.projection.buildActivityReportWire(D0, D2);
     assert.equal(after.totalRuns, 7);
     assert.equal(after.terminalRuns, 4);
@@ -681,7 +702,7 @@ describe("the Activity report's write-ledger block", () => {
     overrides: Readonly<{ system?: string; instance?: "prod" | "test"; confirmedAt: string }>,
   ): void {
     const f = ledgerCommitFixture(seq, { ...overrides, runId: fixtureUuid(`activity-history-${String(seq)}`), itemId: fixtureUuid(`activity-history-item-${String(seq)}`) });
-    seedAtomicWriteOwner(w.database, f.commit);
+    seedAtomicWriteOwner(w.database, f.commit, join(w.stateRoot, "authority.db"));
     w.database.authority.writeIntents.fenceAttempt({ intent: f.intent, attempt: f.attempt });
     w.database.commitWriteAttempt(f.commit, atomicWriteCheckpoint(f.commit));
   }

@@ -31,6 +31,7 @@ export function defineIntakeFixtureDescriptor(options: Readonly<{
 
   version?: number;
   canonicalDepartmentMaxLength?: number;
+  protectedTimekeeper?: boolean;
 }>): AnyWorkflowDescriptor {
   return defineWorkflowDescriptor({
     id: options.id,
@@ -49,6 +50,7 @@ export function defineIntakeFixtureDescriptor(options: Readonly<{
       }),
       [{ emplId: "10456712", effectiveDate: "2026-07-01" }],
     ),
+    ...(options.protectedTimekeeper === true ? {protectedInputs:[{inputPath:"timekeeperName",name:"timekeeperName"}]} : {}),
     inputSubject: "eid",
     surface: { shape: "single" },
     enqueue: options.enqueue,

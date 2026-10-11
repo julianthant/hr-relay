@@ -5,7 +5,7 @@ import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../../src
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -28,7 +28,6 @@ import {
 import { createIntakeParser } from "../../../../../../src/backend/processing/spreadsheet/intake-parser.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
   intakeFixtureDescriptor,
@@ -74,7 +73,7 @@ interface Surface {
 }
 
 function surface(): Surface {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-intake-surface-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-intake-surface-"));
   roots.push(root);
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
@@ -82,13 +81,11 @@ function surface(): Surface {
     clock,
   );
   openDatabases.push(database);
-  database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
-  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
-    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
 
 
   const artifacts = createContentAddressedArtifactWriter({
-    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
+    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
   });
   const parser = createIntakeParser({ artifacts });
   const projections = {
@@ -124,7 +121,6 @@ function surface(): Surface {
       spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
     } }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("d"),
@@ -134,12 +130,15 @@ function surface(): Surface {
       resolvePresent: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
-    workerRuntime: {
-      planWorkerCount: () => { throw new Error("unused"); },
-      spawnWorker: () => { throw new Error("unused"); },
-      refreshBrowser: () => { throw new Error("unused"); },
-      reopenBrowser: () => { throw new Error("unused"); },
-    },
+    workerRuntime: { pool: {
+      planPoolWorkerCount: async () => { throw new Error("unused worker plan"); },
+      spawnPoolWorker: async () => { throw new Error("unused worker spawn"); },
+      refreshPoolBrowser: async () => { throw new Error("unused browser refresh"); },
+      reopenPoolBrowser: async () => { throw new Error("unused browser reopen"); },
+      stopPoolWorker: async () => { throw new Error("unused worker stop"); },
+      pausePoolWorker: async () => { throw new Error("unused worker pause"); },
+      resumePoolWorker: async () => { throw new Error("unused worker resume"); },
+    } },
     intakeParser: parser,
     intakeProjections: projections,
   });
@@ -659,7 +658,7 @@ describe("2.6.1-2 retained intake evidence", () => {
   it("cold rereads preserve exact source bytes, manifest and database generation", async () => {
     const h = surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId);
-    const file = join(h.root, ".tracker/artifacts", `${before.artifact.sha256}.artifact`);
+    const file = join(h.root, ".tracker/data/artifacts", `${before.artifact.sha256}.artifact`);
     const bytes = readFileSync(file); const generation = h.database.getMeta().authorityGeneration;
     const session = h.database.authority.intakeSessions.get(sessionId);
     const fresh = await h.freshIntake().read(sessionId);
@@ -679,7 +678,7 @@ describe("2.6.1-2 retained intake evidence", () => {
   it("a cold read refuses removed artifact bytes without an empty or cached replacement", async () => {
     const h = surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId); const generation = h.database.getMeta().authorityGeneration;
-    rmSync(join(h.root, ".tracker/artifacts", `${before.artifact.sha256}.artifact`));
+    rmSync(join(h.root, ".tracker/data/artifacts", `${before.artifact.sha256}.artifact`));
     await assert.rejects(() => h.freshIntake().read(sessionId), /ENOENT/u);
     assert.equal(h.database.getMeta().authorityGeneration, generation);
     assert.equal(h.database.authority.intakeSessions.get(sessionId)?.artifact.sha256, before.artifact.sha256);

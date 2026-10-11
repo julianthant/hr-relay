@@ -21,7 +21,7 @@ function consumer(transaction = false) {
   const app: DashboardApp = new Hono();
   app.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
   const data = composeDataQueries({ stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
-    descriptors: { resolve: () => h.descriptor }, runReader: h.lifecycle, canonical: { ...rerunValuesDeps(h), reader: h.lifecycle } });
+    descriptors: { resolve: () => h.descriptor }, runReader: h.lifecycle, timeline: h.database.authority.timelineEvents, canonical: { ...rerunValuesDeps(h), reader: h.lifecycle } });
   registerDataRoutes(app, () => data);
   registerQueueRoutes(app, { queue: { day: () => { throw new Error("unrequested queue read"); } }, startPlans: h.planner });
   app.post("/api/v1/commands", async (c) => c.json(h.kernel.execute(await c.req.json())));
@@ -90,11 +90,9 @@ describe("independent Run/Rerun consumer of the released launch service", () => 
       rerunSource: { runId: unresolved.envelope.runId, expectedVersion: unresolved.version, intent: "rerun", selectedStepKeys } }), (error: unknown) => error instanceof StartPlanRefusalError && error.refusalCode === "invalid-state" && /uncertain writes/.test(error.message));
     assert.equal(h.queueRoots.length, count);
   });
-  it("preserves archived-source refusal and rejects malformed or substituted prefill evidence", async () => {
+  it("rejects malformed or substituted prefill evidence", async () => {
     const { h } = consumer(); const source = await completeSource(h);
     const request = { runId: source.envelope.runId, expectedVersion: source.version };
-    const archived = readRerunValues({ ...rerunValuesDeps(h), reader: { read: () => ({ state: "present", disposition: "archived", run: source }) } }, request);
-    assert.deepEqual(archived, { state: "refused", code: "source-archived" });
     const result = readRerunValues(rerunValuesDeps(h), request); assert.ok(result.state === "available");
     for (const body of [ { ...result, snapshot: { ...result.snapshot, source: { ...result.snapshot.source, version: source.version + 1 } } },
       { ...result, snapshot: { ...result.snapshot, values: [{ state: "available", value: "invented" }] } } ]) {

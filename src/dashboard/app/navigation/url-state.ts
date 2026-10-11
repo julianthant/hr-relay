@@ -2,7 +2,7 @@ import { parseViewRoute, ViewRouteSchema, type ViewRoute } from "./view-route-mo
 import { parseArchiveFolderRoute, parseArchiveBrowse, type ArchiveBrowseState } from "./archive-route-model.js";
 /** The app's visible state lives in the query string. */
 
-import type { ArchiveView } from "../../surfaces/archive/archive-model.js";
+export type ArchiveView = "runs" | "versions";
 import type { ShellViewSelection } from "../../surfaces/shell/top-bar-model.js";
 import { parseCatalogView, type CatalogView } from "../../surfaces/settings/catalog/row-catalog-model.js";
 import { SETTINGS_UI_CATALOG_SECTION_ID } from "../../surfaces/settings/settings-model.js";
@@ -232,7 +232,7 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
     case "explore": return "explorer";
     case "activity": return "activity";
     case "none": return "queue";
-    // The retired Archive route shows only its removal notice; the switcher has no segment for it.
+    // The Archive removal route shows only its removal notice; the switcher has no segment for it.
     case "archive":
     case "settings":
     case "intake": return "none";

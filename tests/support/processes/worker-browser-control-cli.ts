@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+import type { BrowserProfileAuthority } from "../../../src/backend/app/composition/worker/run-resources.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 /** Real worker loop and Chromium; every network request is fulfilled with synthetic HTML. */
@@ -20,10 +22,11 @@ import { protectedSecretSource } from "../helpers/protected-secret-source.js";
 
 const [root, marker, ...args] = process.argv.slice(2);
 if (root === undefined || marker !== "worker") throw new Error("fixture-worker-arguments");
-const base = resolveConfigWithProvenance({}, hostConfigFacts({}), systemClock).config;
-const config = ConfigSchema.parse({ ...base, browser: { ...base.browser, headless: true },
-  features: { ...base.features, duoWebAuthn: false }, paths: { ...base.paths,
-    browserProfileRoot: join(root,"profiles"), downloadsDir: join(root,"downloads") } });
+const admission = acquireEntrypointAdmission(root, "shared");
+const base = resolveConfigWithProvenance({}, hostConfigFacts({}), systemClock, admission).config;
+assert.equal(base.paths.browserProfileRoot, join(admission.stateRoot, "browsers"));
+const config = ConfigSchema.parse({ ...base, paths: { ...base.paths, browserProfileRoot: join(admission.stateRoot, "browsers") }, browser: { ...base.browser, headless: true },
+  features: { ...base.features, duoWebAuthn: false } });
 const contexts = new Set<BrowserContext>();
 const trace = (event: Record<string, unknown>) => appendFileSync(join(root,`browser-${String(process.pid)}.jsonl`),`${JSON.stringify(event)}\n`);
 const binding = (system: "crm" | "ucpath"): BrowserSystemBinding => ({
@@ -58,12 +61,13 @@ const binding = (system: "crm" | "ucpath"): BrowserSystemBinding => ({
       : { authenticated: false, reason: "fixture-neutral-state-missing" };
   },
 });
-const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: systemClock,
+const createSessionFactory = (profiles: BrowserProfileAuthority) => new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: systemClock,
   scheduler: createTimeoutDeadlineScheduler(systemClock), newSessionId: randomUUID,
+  ...profiles,
   protectedSecrets: protectedSecretSource({ ucpathUserId: "synthetic", ucpathPassword: "synthetic" }),
   bindings: { crm: binding("crm"), ucpath: binding("ucpath") },
   launcher: { launch: async input => {
-    const context = await chromium.launchPersistentContext(input.profileDirectory, { headless: true, viewport: input.viewport, acceptDownloads: input.acceptDownloads });
+    const context = await chromium.launchPersistentContext(input.profileDirectory, { channel: "chromium", headless: true, viewport: input.viewport, acceptDownloads: input.acceptDownloads });
     contexts.add(context); trace({ event: "open", profileDirectory: input.profileDirectory });
     context.on("close", () => { contexts.delete(context); trace({ event: "close", profileDirectory: input.profileDirectory }); });
     await context.route("**/*", async route => { trace({ event: "fixture-request", url: route.request().url() });
@@ -71,10 +75,9 @@ const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildR
     return context;
   } },
 });
-const admission = acquireEntrypointAdmission(root, "shared");
 try {
   const report = await composeWorkerRuntime({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
-    sessionFactory: factory, duoCeremony: fixtureDuoCeremonyGates(systemClock), heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
+    createSessionFactory, duoCeremony: fixtureDuoCeremonyGates(systemClock), heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
   writeFileSync(join(root,`report-${String(process.pid)}.json`),JSON.stringify(report));
 } finally {
   const results = await Promise.allSettled([...contexts].map(async context => { await context.close(); }));

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
@@ -13,17 +13,19 @@ import { createExplorerEditService } from "../../../src/backend/runs/commands/ex
 import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
 import { explorerQueryDeps } from "./explorer-seams.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "./intake-kernel-seams.js";
 
-export function explorerAuthorityFixture() {
-  const root = mkdtempSync(join(tmpdir(), "explorer-authority-"));
-  const path = join(root, "state.db");
+export function explorerAuthorityFixture(owned?: Readonly<{
+  root: string; path: string; open: () => AuthorityDatabase; dispose: () => void;
+}>) {
+  const root = owned?.root ?? mkdtempSync(join(realpathSync(tmpdir()), "explorer-authority-"));
+  const path = owned?.path ?? join(root, "state.db");
   const clock = manualClock(new Date("2026-09-13T10:00:00Z"));
   const query = explorerQueryDeps(clock, FingerprintSchema.parse("b".repeat(64)));
   const descriptor = query.modules.find(module => module.descriptor.id === "person-lookup")?.descriptor;
   assert.ok(descriptor);
-  let database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "explorer-proof" }, clock);
+  const open = () => owned?.open() ?? AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "explorer-proof" }, clock);
+  let database = open();
   let transactionCount = 0;
   let failAudit = false;
   let omitOverrideWrite = false;
@@ -43,10 +45,10 @@ export function explorerAuthorityFixture() {
       } },
       appVersion: "0.1.0", clock, ids,
       descriptors: { resolve: id => query.modules.find(module => module.descriptor.id === id)?.descriptor },
-      archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS, configIdentity: UNSTORED_CONFIG_IDENTITY,
+      configIdentity: UNSTORED_CONFIG_IDENTITY,
       intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       writeResolution: { resolvePresent: () => { throw new Error("Explorer must not resolve a write"); }, resolveAbsent: () => { throw new Error("Explorer must not resolve a write"); } },
-      workerRuntime: { planWorkerCount: () => { throw new Error("unexpected worker"); }, spawnWorker: () => { throw new Error("unexpected worker"); }, refreshBrowser: () => { throw new Error("unexpected worker"); }, reopenBrowser: () => { throw new Error("unexpected worker"); } },
+      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker"); }, spawnPoolWorker: () => { throw new Error("unexpected worker"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker"); }, stopPoolWorker: () => { throw new Error("unexpected worker"); }, pausePoolWorker: () => { throw new Error("unexpected worker"); }, resumePoolWorker: () => { throw new Error("unexpected worker"); } } },
       explorerEdits: { apply: (input, repositories: AuthorityRepositories) => {
         assert.equal(repositories.explorerOverrides, database.authority.explorerOverrides);
         if (omitOverrideWrite) {
@@ -80,7 +82,7 @@ export function explorerAuthorityFixture() {
         payload: { changes: [{ kind: "workflow-label", value: label }] } });
     },
     read() { return buildWorkflowExplorer({ ...query, overrides: database.authority.explorerOverrides }); },
-    restart() { database.close(); database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "explorer-restart-proof" }, clock); composed = compose(); },
-    dispose() { database.close(); rmSync(root, { recursive: true, force: true }); },
+    restart() { database.close(); database = open(); composed = compose(); },
+    dispose() { database.close(); if (owned === undefined) rmSync(root, { recursive: true, force: true }); else owned.dispose(); },
   };
 }

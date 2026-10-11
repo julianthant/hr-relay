@@ -16,7 +16,7 @@ import {
   type AuthorityWriteCommitHooks,
 } from "../../support/helpers/synthetic-storage-admission.js";
 import {
-  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
+  ATOMIC_WRITE_COMMIT,
   LEDGER_OUTBOX_RECORD,
   NOW,
   SUBJECT_EVIDENCE,
@@ -28,7 +28,6 @@ import {
 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
-const ATOMIC_WRITE_COMMIT = HISTORICAL_ATOMIC_WRITE_COMMIT;
 function commitHistory(database: AuthorityDatabase, input: unknown, checkpoint: unknown) {
   return database.commitWriteAttempt(currentAtomicWriteFixture(input), checkpoint);
 }
@@ -36,6 +35,7 @@ function commitHistory(database: AuthorityDatabase, input: unknown, checkpoint: 
 const CLOCK = manualClock(new Date(NOW));
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const paths = new WeakMap<AuthorityDatabase, string>();
 
 function databasePath(): string {
   const root = mkdtempSync(join(tmpdir(), "hrauto-atomic-write-"));
@@ -50,11 +50,14 @@ function open(path: string, hooks?: AuthorityWriteCommitHooks): AuthorityDatabas
     hooks,
   );
   databases.push(database);
+  paths.set(database, path);
   return database;
 }
 
 function fence(database: AuthorityDatabase): void {
-  seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+  const path = paths.get(database);
+  assert.ok(path);
+  seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
   const result = database.authority.writeIntents.fenceAttempt({
     intent: WRITE_INTENT_ATTEMPTING,
     attempt: WRITE_ATTEMPT,
@@ -142,15 +145,12 @@ describe("atomic write authority commit", () => {
     const generationBeforeCommit = database.getMeta().authorityGeneration;
     assert.throws(() => commitHistory(database, {
       ...ATOMIC_WRITE_COMMIT,
-      terminalSpanOutbox: {
-        ...SPAN_OUTBOX_RECORD,
-        payload: {
-          ...SPAN_OUTBOX_RECORD.payload,
+      committedSpan: {
+          ...ATOMIC_WRITE_COMMIT.committedSpan,
           outcome: {
             ...SPAN_OUTBOX_RECORD.payload.outcome,
             output: { schemaHash: "a".repeat(64), value: "different-output" },
           },
-        },
       },
     }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /atomic confirmation proof and outcome must agree/);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
@@ -164,13 +164,7 @@ describe("atomic write authority commit", () => {
     const generationBeforeCommit = database.getMeta().authorityGeneration;
     assert.throws(() => commitHistory(database, {
       ...ATOMIC_WRITE_COMMIT,
-      ledgerOutbox: {
-        ...LEDGER_OUTBOX_RECORD,
-        payload: {
-          ...LEDGER_OUTBOX_RECORD.payload,
-          entry: { ...LEDGER_OUTBOX_RECORD.payload.entry, traceId: "se-120001-2222" },
-        },
-      },
+      transaction: { ...ATOMIC_WRITE_COMMIT.transaction, traceId: "se-120001-2222" },
     }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /atomic confirmation traceId mismatch/);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
     assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
@@ -183,15 +177,9 @@ describe("atomic write authority commit", () => {
     const generationBeforeCommit = database.getMeta().authorityGeneration;
     assert.throws(() => commitHistory(database, {
       ...ATOMIC_WRITE_COMMIT,
-      ledgerOutbox: {
-        ...LEDGER_OUTBOX_RECORD,
-        payload: {
-          ...LEDGER_OUTBOX_RECORD.payload,
-          entry: {
-            ...LEDGER_OUTBOX_RECORD.payload.entry,
+      transaction: {
+            ...ATOMIC_WRITE_COMMIT.transaction,
             subject: { state: "present", value: { ...SUBJECT_EVIDENCE, bindingDigest: "b".repeat(64) } },
-          },
-        },
       },
     }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /ledger subject does not match the fenced binding proof/);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
@@ -219,34 +207,25 @@ describe("atomic write authority commit", () => {
       bindingProofDigest,
     };
     assert.equal(database.authority.writeIntents.fenceAttempt({ intent, attempt }).state, "fenced");
-    const ledgerOutbox = {
-      ...LEDGER_OUTBOX_RECORD,
-      payload: {
-        ...LEDGER_OUTBOX_RECORD.payload,
-        entry: {
-          ...LEDGER_OUTBOX_RECORD.payload.entry,
+    const transaction = {
+          ...ATOMIC_WRITE_COMMIT.transaction,
           system: "onbase",
           idempotencyKey,
           idempotencyKeyDigest,
           bindingProofDigest,
-        },
-      },
     };
-    const terminalSpanOutbox = {
-      ...SPAN_OUTBOX_RECORD,
-      payload: {
-        ...SPAN_OUTBOX_RECORD.payload,
+    const committedSpan = {
+        ...ATOMIC_WRITE_COMMIT.committedSpan,
         system: "onbase",
         idempotencyKey,
         idempotencyKeyDigest,
         bindingProofDigest,
-      },
     };
     const generationBeforeCommit = database.getMeta().authorityGeneration;
     assert.throws(() => commitHistory(database, {
       ...ATOMIC_WRITE_COMMIT,
-      ledgerOutbox,
-      terminalSpanOutbox,
+      transaction,
+      committedSpan,
     }, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)), /ledger subject must be absent for unscoped binding proof/);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeCommit);
     assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");

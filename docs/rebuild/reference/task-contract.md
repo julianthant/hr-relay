@@ -657,7 +657,7 @@ the toil was acceptable, because nobody measured it.
 §2.7 answers *how much a task owes*. This answers the neighbouring question the store libraries
 forced open at the order-8 separations migration: **how wide a read task's output should be.** The
 operator ratified the rich-extraction convention on 2026-08-12; the options it was chosen from, and
-the measured duplication that motivated it, are recorded in `docs/rebuild/migrations/separations.md` §2.6.
+the measured duplication that motivated it, are recorded in the workflow's task evidence §2.6.
 
 **The convention.** A read task's identity is **"I visited this page and read what it has"** — not
 "a caller asked me for these fields."
@@ -712,7 +712,7 @@ CRM **history** page is a second visit and stays its own task under this convent
 
 - [ ] BE the `new-kronos` store gains its pay-rule write family: a `commit` contract with `writeSafety`, a `CommitCapableSystemDriver` operation, and the `external-commit` element the registry audit refuses today — the capability is added deliberately by that slice and cannot be inherited (§2.9)
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified: `src/stores/new-kronos/` has read tasks only and its driver declares no commit operation; the rest of order 6 (the canonical-EID audit gate, work-study) is owned by 03c and ref data-intake-and-edit-data §1
-Separations chunk 1 (`docs/rebuild/migrations/separations.md` §3) is the first slice authored under the
+Separations chunk 1 (the workflow's task evidence §3) is the first slice authored under the
 rich-extraction convention and the first new browser store since the platform was built, so what it
 settled is normative for every store slice after it.
 
@@ -1095,7 +1095,7 @@ themselves, and one was never built:
   legacy moving on cannot invalidate the guard. `ui-registry.ts` assigns stable ref operator-trust
   `ElementId`s; tasks call the typed driver.
 - **Cross-repo change accounting is RETIRED (D150, 2026-08-05).** This section required D90
-  accounting — every legacy maintenance change booked in `docs/rebuild/migrations/legacy/legacy-change-accounting.json`
+  accounting — every legacy maintenance change booked in the workflow's task evidence
   against the affected rebuilt ids — and that is no longer true in either direction: nothing here
   reads legacy's working tree, and legacy work never blocks a rebuild gate. The file remains as a
   frozen historical record and is read by nothing. **What replaced it is stronger for the risk it
@@ -1469,7 +1469,7 @@ exist is worse than no promise, because a reviewer stops looking.
 | 7 | **Auth boilerplate re-accretes** — a workflow hand-rolls a login step | There is no login VERB, so a login task contract cannot be named; `task-driver-boundary` refuses a task or workflow module whose import graph reaches a system's `session.ts` or `src/backend/runtime/browser/**`; acquisition is the worker's (§6.1) |
 | 8 | **Retry as a fallback** — cranking attempts to paper over a broken selector | `attempts` is typed `2 \| 3`, `retryOn` has one value, retry is legal only on a read, and a business error is transient only if the throw site says so (§2.1) |
 | 9 | **Decoration forks** — copying a base task file to tweak it | **A gap, and a smaller one than it was.** One task per file plus duplicate-id refusal at registration is what exists; the >90 %-identical-`run`-body heuristic this row promised was never built. It also has nothing to fork yet — decoration itself is unbuilt (§4) |
-| 10 | **Verified legacy knowledge drifts after it is ported** | D93 made cross-runtime import structurally impossible (two repos, no shared module graph). D90 change accounting is RETIRED (D150) and `docs/rebuild/migrations/legacy/legacy-change-accounting.json` is a frozen record read by nothing; what carries the risk is mandatory **live re-verification at each workflow's migration** plus `legacy-selector-port-provenance`, which pins 406 keys to a FIXED legacy commit's blobs so legacy moving on cannot invalidate it (§3.3) |
+| 10 | **Verified legacy knowledge drifts after it is ported** | D93 made cross-runtime import structurally impossible (two repos, no shared module graph). D90 change accounting is RETIRED (D150) and the workflow's task evidence is a frozen record read by nothing; what carries the risk is mandatory **live re-verification at each workflow's migration** plus `legacy-selector-port-provenance`, which pins 406 keys to a FIXED legacy commit's blobs so legacy moving on cannot invalidate it (§3.3) |
 | 11 | **Contract/impl drift** — a contract edited without its impl, or a contract quietly importing server code | The impl's `run` is typed against the contract's schemas, so a schema edit fails `tsc` at the impl; `task-contract-sealing`'s AST + transitive import-graph audit protects every `src/**/contracts/**` module from runtime imports, forged seals, casts and dynamic-import bypasses; the example re-parses on every run of `descriptor-coverage` |
 | 12 | **Stale reads feeding writes** — a resumed run replays an old checkpoint into a commit | `freshness` + `provenance` are mandatory on every read and field-resolved against the exact output schema; derived outputs retain their oldest contributing observation; the enforcement walk is ref workflow-model's; graph dependencies are declared, never inferred by executing bind functions. The `Infinity`-justification ratchet does not exist (§3.2) |
 | 13 | **Undeclared error codes** — `ctx.fail` drifting to arbitrary strings | `const Codes` literal-tuple inference plus the checked-in type-level test `tests/types/task-contracts.typecheck.ts`, whose `@ts-expect-error` arms pin that an undeclared code, a service driver in a browser ctx, `readCtx.mutation`, a `z.any()` output and a cross-system driver binding each fail `tsc` |

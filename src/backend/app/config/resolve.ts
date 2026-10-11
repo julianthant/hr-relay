@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -136,7 +136,8 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   const hostFacts = HostConfigFactsSchema.parse(hostFactsInput);
   const admittedPair = runtimeStoragePair === undefined ? undefined : RuntimeStoragePairSchema.parse(runtimeStoragePair);
   const defaults = ConfigSchema.parse({
-    paths: { ...defaultRuntimePaths(), ...admittedPair }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
+    paths: { ...defaultRuntimePaths(), ...admittedPair,
+      ...(admittedPair === undefined ? {} : { browserProfileRoot: join(admittedPair.stateRoot, "browsers") }) }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
   });
   const config = mergeSettings(defaults, settings);
 

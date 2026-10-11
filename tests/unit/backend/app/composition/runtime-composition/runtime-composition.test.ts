@@ -54,16 +54,15 @@ function assertNoProcessSignalListeners(): void {
   );
 }
 
-describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
+describe("isolated runtime composition", () => {
   it("binds the exact rebuild-only resources", () => {
     assert.deepEqual(rebuildRuntimeIsolation, {
-      stateRoot: ".tracker",
-      archiveDatabaseFile: "archive.sqlite",
-      artifactRoot: ".tracker/artifacts",
+      stateRoot: ".tracker/data",
+      artifactRoot: ".tracker/data/artifacts",
       backendPort: 3938,
       frontendPort: 5174,
-      processLockRoot: ".tracker/locks",
-      browserProfileRoot: ".auth",
+      processLockRoot: ".tracker/data/locks",
+      browserProfileRoot: ".tracker/data/browsers",
       browserSessionNamespace: "hrauto-rebuild",
     });
     assert.match(runtimeHelp(rebuildRuntimeIsolation), /1g-spine/);
@@ -80,8 +79,8 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     assert.deepEqual(JSON.parse(output[0] ?? ""), {
       completedThrough: "2j",
       active: "3-workflow-migration",
-      stateRoot: ".tracker",
-      artifactRoot: ".tracker/artifacts",
+      stateRoot: ".tracker/data",
+      artifactRoot: ".tracker/data/artifacts",
       backendPort: 3938,
       frontendPort: 5174,
       browserSessionNamespace: "hrauto-rebuild",
@@ -106,7 +105,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       args: ["explain", "run", "pl-000619-4ebf", "--json"],
       write: (value) => output.push(value),
       explain: (isolation, args) => {
-        assert.equal(isolation.stateRoot, ".tracker");
+        assert.equal(isolation.stateRoot, ".tracker/data");
         seen.push([...args]);
         return "the explanation";
       },
@@ -131,7 +130,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       args: ["storage", "doctor", "--json"],
       write: (value) => output.push(value),
       storage: (isolation, args) => {
-        assert.equal(isolation.stateRoot, ".tracker");
+        assert.equal(isolation.stateRoot, ".tracker/data");
         seen.push([...args]);
         return Promise.resolve({ output: "the doctor report", exitCode: 0 });
       },
@@ -311,17 +310,6 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     } finally {
       vi.resetModules();
     }
-  });
-
-  it("refuses the retired activity-person-pseudonyms command before invoking its composition", async () => {
-    const output: string[] = [];
-    assert.doesNotMatch(runtimeHelp(rebuildRuntimeIsolation), /activity-person-pseudonyms backfill/u);
-    await assert.rejects(startRebuildRuntime({
-      isolation: rebuildRuntimeIsolation, args: ["activity-person-pseudonyms", "backfill", "--json"],
-      write: value => output.push(value),
-      activityPersonPseudonyms: () => { throw new Error("retired composer must not run"); },
-    }), /activity-person-pseudonyms-retired/u);
-    assert.deepEqual(output, []);
   });
 
   it("starts the dashboard through the injected 1g-spine composition seam", async () => {
@@ -589,8 +577,8 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     assert.deepEqual(JSON.parse(written[0] ?? ""), {
       completedThrough: "2j",
       active: "3-workflow-migration",
-      stateRoot: ".tracker",
-      artifactRoot: ".tracker/artifacts",
+      stateRoot: ".tracker/data",
+      artifactRoot: ".tracker/data/artifacts",
       backendPort: 3938,
       frontendPort: 5174,
       browserSessionNamespace: "hrauto-rebuild",

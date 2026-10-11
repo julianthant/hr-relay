@@ -8,24 +8,20 @@ import { spawnSync } from "node:child_process";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { TimelineAppendSchema } from "../../../../../../src/models/events/timeline.js";
-import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
-import { createTimelineRepository, TIMELINE_EVENT_INDEX_DDL, TIMELINE_EVENT_TABLE_DDL } from "../../../../../../src/backend/storage/sqlite/timeline-repository.js";
-import { inspectTimelineSources, preserveTimelineSources, readPreservedTimelineSources,
-  timelineImportRecords } from "../../../../../../src/backend/storage/events/timeline-import.js";
-import type { VerifiedBackup } from "../../../../../../src/backend/storage/sqlite/backup-service.js";
+import { createTimelineRepository } from "../../../../../../src/backend/storage/sqlite/timeline-repository.js";
 
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function root(): string {
-  const path = mkdtempSync(join(tmpdir(), "timeline-"));
+  const path = mkdtempSync(join(realpathSync(tmpdir()), "timeline-"));
   roots.push(path);
   return path;
 }
@@ -48,11 +44,9 @@ function repository(database: DatabaseSync) {
     } });
 }
 function initialize(path: string): DatabaseSync {
+  AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "timeline-baseline" }, manualClock(new Date(ts))).close();
   const database = new DatabaseSync(path);
-  database.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE workflow_runs(record_key TEXT PRIMARY KEY) STRICT");
-  database.exec("CREATE TABLE deleted_runs(record_key TEXT PRIMARY KEY) STRICT");
-  database.exec(TIMELINE_EVENT_TABLE_DDL);
-  for (const sql of TIMELINE_EVENT_INDEX_DDL) database.exec(sql);
+  database.exec("PRAGMA foreign_keys=ON");
   return database;
 }
 
@@ -121,10 +115,11 @@ describe("SQLite timeline delivery", () => {
   });
 
   it("replays retained checkpoint and confirmation identities after the owner advances attempts", () => {
-    const database = AuthorityDatabase.open({ path: join(root(), "replay.db"), busyTimeoutMs: 500,
+    const path = join(root(), "replay.db");
+    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500,
       migrationOwner: "timeline-replay-test" }, manualClock(new Date(ts)));
     try {
-      seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+      seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
       database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
       database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
       const records = database.authority.timelineEvents.page({});
@@ -141,7 +136,7 @@ describe("SQLite timeline delivery", () => {
         expect(() => database.authority.timelineEvents.append({ ...input, recordedAt: "2026-09-08T12:01:00.000Z" }))
           .toThrow("timeline-event-identity-conflict");
         expect(() => database.authority.timelineEvents.append({ ...input, eventId: randomUUID() }))
-          .toThrow(/timeline-checkpoint-reference-mismatch|confirmed-history-run-mismatch/u);
+          .toThrow(record.payload.kind === "checkpoint-recorded" ? "timeline-checkpoint-reference-mismatch" : "timeline-identity-conflict");
       }
       expect(database.getMeta()).toEqual(before);
       expect(database.authority.timelineEvents.page({})).toEqual(records);
@@ -151,10 +146,10 @@ describe("SQLite timeline delivery", () => {
   it("never reuses a cursor after every ordinary event was pruned", () => {
     using database = initialize(join(root(), "state.db"));
     const history = repository(database);
-    const first = history.append(event()).record;
+    const first = history.append({ ...event(), payload: { kind: "span", event: { t: "span.ended", kind: "worker", ts, workflow: "person-lookup", pid: 123, workerId: "test-worker", spanPath: "worker/person-lookup/test-worker", outcome: "done" } } }).record;
     expect(history.pruneBefore("2026-09-09")).toBe(1);
     expect(history.highWaterMark()).toBe(first.cursor);
-    expect(history.append(event()).record.cursor).toBe(first.cursor + 1);
+    expect(history.append({ ...event(), payload: { kind: "span", event: { t: "span.ended", kind: "worker", ts, workflow: "person-lookup", pid: 123, workerId: "test-worker", spanPath: "worker/person-lookup/test-worker", outcome: "done" } } }).record.cursor).toBe(first.cursor + 1);
   });
 
   it("pins a page horizon while a second connection appends", () => {
@@ -174,7 +169,7 @@ describe("SQLite timeline delivery", () => {
     const history = repository(database);
     expect(() => history.append({ ...event(), scope: { kind: "worker", workerId: "different-worker" } })).toThrow();
     history.append(event());
-    expect(() => database.exec("UPDATE timeline_events SET created_at='changed'")).toThrow("immutable");
+    expect(() => database.exec("UPDATE timeline_events SET recorded_at='changed'")).toThrow("immutable");
   });
 
   it("enforces retained run ownership in SQLite", () => {
@@ -190,96 +185,19 @@ describe("SQLite timeline delivery", () => {
   });
 });
 
-// The file-copy unit consumes only this already-verified backup binding. Full
-// upgrade tests exercise the real backup verifier and stopped admission.
-function backup(stateRoot: string): VerifiedBackup {
-  return { manifestPath: join(stateRoot, "backups", "source.manifest.json"), backupPath: join(stateRoot, "backups", "source.db"),
-    manifest: { sha256: "a".repeat(64), sourceDatabaseIdentity: "b".repeat(64), authorityGeneration: 4 } } as VerifiedBackup;
+function deleteRun(database: AuthorityDatabase, runId: string, commandId: string) {
+  const run = database.authority.runs.get(runId);
+  if (run === undefined) throw new Error("missing deletion owner");
+  const service = new RunRecordService({ database, clock: manualClock(new Date(ts)), ids: { uuid: randomUUID },
+    publishQueued: () => { throw new Error("deletion must not publish"); } });
+  return service.delete({ runId, commandId, expectedVersion: run.version });
 }
-function sources(bytes: string) {
-  const path = root();
-  mkdirSync(join(path, "spans"));
-  mkdirSync(join(path, "backups"));
-  writeFileSync(join(path, "spans", "person-lookup-2026-07-01.jsonl"), bytes);
-  return { path, evidence: backup(path) };
-}
-
-describe("verified timeline source copy", () => {
-  it("preserves exact bytes and original retention day with separate equal-timestamp events", () => {
-    const bytes = `${JSON.stringify(span())}\n${JSON.stringify(span())}\n`;
-    const { path, evidence } = sources(bytes);
-    const snapshot = inspectTimelineSources(path, evidence);
-    const directory = preserveTimelineSources(snapshot, evidence);
-    expect(readFileSync(join(directory, snapshot.files[0].relativePath), "utf8")).toBe(bytes);
-    const restored = readPreservedTimelineSources(directory, snapshot.digest, evidence);
-    const records = timelineImportRecords(restored, ts);
-    expect(records).toHaveLength(2);
-    expect(records[0].eventId).not.toBe(records[1].eventId);
-    expect(records.map((record) => record.retentionDate)).toEqual(["2026-07-01", "2026-07-01"]);
-    expect(timelineImportRecords(restored, ts)).toEqual(records);
-    expect(preserveTimelineSources(snapshot, evidence)).toBe(directory);
-  });
-
-  it.each(["{\"private\":\"DO-NOT-PRINT\"}\n", JSON.stringify(span()), "\n"])("refuses malformed/torn input without exposing payload: %s", (bytes) => {
-    const { path, evidence } = sources(bytes);
-    let message = "";
-    try { inspectTimelineSources(path, evidence); } catch (error) { message = (error as Error).message; }
-    expect(message).toContain("timeline-source-invalid");
-    expect(message).not.toContain("DO-NOT-PRINT");
-  });
-
-  it("refuses an invalid append date even for an empty source file", () => {
-    const { path, evidence } = sources("");
-    rmSync(join(path, "spans", "person-lookup-2026-07-01.jsonl"));
-    writeFileSync(join(path, "spans", "person-lookup-2026-13-01.jsonl"), "");
-    expect(() => inspectTimelineSources(path, evidence)).toThrow(/timeline-source-invalid/u);
-  });
-
-  it.each(["file", "directory"])("refuses a linked source %s and restores cwd", (kind) => {
-    const { path, evidence } = sources(`${JSON.stringify(span())}\n`);
-    const other = root();
-    const previous = process.cwd();
-    if (kind === "directory") {
-      rmSync(join(path, "spans"), { recursive: true });
-      symlinkSync(other, join(path, "spans"));
-    } else {
-      const name = "person-lookup-2026-07-01.jsonl";
-      writeFileSync(join(other, name), `${JSON.stringify(span())}\n`);
-      rmSync(join(path, "spans", name));
-      symlinkSync(join(other, name), join(path, "spans", name));
-    }
-    expect(() => inspectTimelineSources(path, evidence)).toThrow(/timeline-source/u);
-    expect(process.cwd()).toBe(previous);
-  });
-
-  it("refuses snapshot mutation before creating a recovery copy", () => {
-    const { path, evidence } = sources(`${JSON.stringify(span())}\n`);
-    const snapshot = inspectTimelineSources(path, evidence);
-    snapshot.files[0].bytes[0] = 0;
-    expect(() => preserveTimelineSources(snapshot, evidence)).toThrow(/snapshot-mismatch/u);
-  });
-
-  it("rejects altered recovery bytes and a backup binding mismatch", () => {
-    const { path, evidence } = sources(`${JSON.stringify(span())}\n`);
-    const snapshot = inspectTimelineSources(path, evidence);
-    const directory = preserveTimelineSources(snapshot, evidence);
-    const different = { ...evidence, manifest: { ...evidence.manifest, sha256: FingerprintSchema.parse("c".repeat(64)) } };
-    expect(() => readPreservedTimelineSources(directory, snapshot.digest, different)).toThrow("binding-mismatch");
-    // Deliberate fault injection: replace an otherwise read-only recovery file.
-    const file = join(directory, snapshot.files[0].relativePath);
-    rmSync(file);
-    writeFileSync(file, `${JSON.stringify({ ...span(), pid: 456 })}\n`);
-    expect(() => readPreservedTimelineSources(directory, snapshot.digest, evidence)).toThrow("content-mismatch");
-  });
-});
-
-
 describe("retained confirmed history and shared retry deletion", () => {
   function committed() {
     const path = join(root(), "confirmed.db");
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500,
       migrationOwner: "confirmed-retention-test" }, manualClock(new Date(ts)));
-    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
     database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
@@ -288,33 +206,34 @@ describe("retained confirmed history and shared retry deletion", () => {
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: ts }, now: ts });
     return { database, run, path };
   }
-  it("reconstructs every old ledger/span field and retains confirmation beyond ordinary pruning", () => {
+  it("reconstructs every current confirmation field and retains authenticated proof beyond pruning and deletion", () => {
     const { database, run } = committed();
     try {
-      expect(database.authority.timelineEvents.pruneBefore("2027-01-01")).toBe(1);
+      expect(database.authority.timelineEvents.pruneBefore("2027-01-01")).toBe(0);
       const rows = database.authority.timelineEvents.page({});
-      expect(rows.length).toBe(1);
-      expect(rows[0]?.payload.kind).toBe("operation-confirmed");
-      const record = rows[0]; if (record === undefined) throw new Error("missing confirmation");
+      expect(rows.map(row => row.payload.kind)).toEqual(["checkpoint-recorded", "operation-confirmed"]);
+      const record = rows[1]; if (record === undefined) throw new Error("missing confirmation");
       expect(reconstructConfirmedOperation(database.authority, record)).toEqual({ ledger: LEDGER_PAYLOAD, span: SPAN_OUTBOX_PAYLOAD });
-      database.authority.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId: UUID_5, now: ts });
+      deleteRun(database, run.envelope.runId, UUID_5);
       expect(database.authority.timelineEvents.page({})).toEqual([]);
-      expect(createTransactionHistory(database.authority).query({ from: "2000-01-01", to: "2100-01-01" }).rows).toEqual([]);
+      const history = createTransactionHistory(database.authority).query({ from: "2000-01-01", to: "2100-01-01" });
+      expect(history.rows).toHaveLength(1);
+      expect(history.rows[0]?.presentation.pointer).toEqual({ state: "unavailable", reason: "delivery cursor removed by authenticated run deletion" });
       const tombstone = database.authority.deletedRuns.get(run.envelope.runId);
       expect(tombstone?.tallyVersion).toBe(3);
-      expect(tombstone?.removed.find((entry) => entry.table === "timeline_events")?.rows).toBe(1);
+      expect(tombstone?.removed.find((entry) => entry.table === "timeline_events")?.rows).toBe(2);
     } finally { database.close(); }
   });
   it.each(["workflowId", "itemId"] as const)("refuses a run-owned operation with a contradictory %s", (field) => {
     const { database, run, path } = committed();
     try {
       const raw = new DatabaseSync(path);
-      try { raw.prepare("UPDATE run_operations SET record_json = json_set(record_json, ?, ?) WHERE record_key = ?")
+      try { raw.prepare("UPDATE write_intents SET payload_json = json_set(payload_json, ?, ?) WHERE id = ?")
         .run(`$.${field}`, field === "workflowId" ? "other-workflow" : randomUUID(), WRITE_INTENT_ATTEMPTING.writeIntentId); }
       finally { raw.close(); }
       const before = database.getMeta();
-      expect(() => database.authority.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId: UUID_5, now: ts }))
-        .toThrow("run-delete-operation-column-mismatch");
+      expect(() => deleteRun(database, run.envelope.runId, UUID_5))
+        .toThrow(/confirmed|write-intent/u);
       expect(database.getMeta()).toEqual(before);
       expect(database.authority.runs.get(run.envelope.runId)).toBeDefined();
       expect(database.authority.deletedRuns.get(run.envelope.runId)).toBeUndefined();
@@ -326,19 +245,27 @@ describe("retained confirmed history and shared retry deletion", () => {
     try {
       // Model damaged retained ownership without removing the confirmed event.
       const raw = new DatabaseSync(path);
-      try { raw.prepare("DELETE FROM run_operation_attempts WHERE record_key = ?").run(WRITE_ATTEMPT.writeAttemptId); }
-      finally { raw.close(); }
+      const trigger = String(raw.prepare("SELECT sql FROM sqlite_schema WHERE name='write_attempts_retained'").get()?.sql);
+      try {
+        raw.exec("DROP TRIGGER write_attempts_retained");
+        expect(raw.prepare("DELETE FROM write_attempts WHERE id = ?").run(WRITE_ATTEMPT.writeAttemptId).changes).toBe(1);
+      } finally { raw.exec(trigger); raw.close(); }
       const before = database.getMeta();
-      expect(() => database.authority.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId: UUID_5, now: ts }))
-        .toThrow(/run-delete-current-attempt-missing/u);
+      expect(() => deleteRun(database, run.envelope.runId, UUID_5))
+        .toThrow(/confirmed-history-attempt-mismatch/u);
       expect(database.getMeta()).toEqual(before);
       expect(database.authority.runs.get(run.envelope.runId)).toBeDefined();
       expect(database.authority.deletedRuns.get(run.envelope.runId)).toBeUndefined();
     } finally { database.close(); }
   });
 
-  it("preserves exact shared evidence after source deletion and collects it when the last retry is deleted", () => {
+  it("preserves permanent write proof through source and last retry deletion", () => {
     const { database, run } = committed();
+    const permanent = {
+      intent: database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
+      attempt: database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId),
+      publication: database.authority.writeIntents.getPublication(WRITE_INTENT_ATTEMPTING.writeIntentId),
+    };
     try {
       const retry = RunRecordSchema.parse({ ...run,
         envelope: { ...run.envelope, runId: UUID_6, traceId: "se-120000-6666", attempt: 2,
@@ -346,25 +273,36 @@ describe("retained confirmed history and shared retry deletion", () => {
         lifecycle: { state: "queued" }, version: 1, createdAt: ts, updatedAt: ts });
       database.authority.runs.enqueue(retry);
       database.authority.timelineEvents.pruneBefore("2027-01-01");
-      database.authority.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId: UUID_5, now: ts });
+      deleteRun(database, run.envelope.runId, UUID_5);
       expect(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status).toBe("committed");
       const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
       expect(database.authority.runCheckpoints.get(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId,
-        checkpoint.attempt, checkpoint.claimGeneration)).toEqual(checkpoint);
+        checkpoint.attempt, checkpoint.claimGeneration)).toBeUndefined();
       expect(database.authority.timelineEvents.page({})).toEqual([]);
-      expect(createTransactionHistory(database.authority).query({ from: "2000-01-01", to: "2100-01-01" }).rows).toEqual([]);
+      const history = createTransactionHistory(database.authority).query({ from: "2000-01-01", to: "2100-01-01" });
+      expect(history.rows).toHaveLength(1);
+      expect(history.rows[0]?.presentation.pointer).toEqual({ state: "unavailable", reason: "delivery cursor removed by authenticated run deletion" });
       database.authority.runs.transition({ runId: retry.envelope.runId, expectedVersion: retry.version,
         lifecycle: { state: "terminal", outcome: "cancelled", endedAt: ts }, now: ts });
-      database.authority.runs.delete({ runId: retry.envelope.runId, origin: "queue", commandId: UUID_6, now: ts });
-      expect(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)).toBeUndefined();
+      deleteRun(database, retry.envelope.runId, UUID_6);
+      expect(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status).toBe("committed");
+      expect(database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId)?.outcome.state).toBe("committed");
+      expect({ intent: database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
+        attempt: database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId),
+        publication: database.authority.writeIntents.getPublication(WRITE_INTENT_ATTEMPTING.writeIntentId) }).toEqual(permanent);
       expect(database.authority.runCheckpoints.get(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId,
         checkpoint.attempt, checkpoint.claimGeneration)).toBeUndefined();
       expect(database.authority.deletedRuns.get(run.envelope.runId)).toBeDefined();
-      expect(database.authority.deletedRuns.get(retry.envelope.runId)?.removed.find((entry) => entry.table === "run_checkpoints")?.rows).toBe(1);
+      expect(database.authority.deletedRuns.get(retry.envelope.runId)?.removed.find((entry) => entry.table === "run_checkpoints")).toBeUndefined();
     } finally { database.close(); }
   });
-  it("preserves ancestor evidence across deletion of an intermediate retry", () => {
+  it("preserves permanent ancestor proof across intermediate and descendant deletion", () => {
     const { database, run } = committed();
+    const permanent = {
+      intent: database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
+      attempt: database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId),
+      publication: database.authority.writeIntents.getPublication(WRITE_INTENT_ATTEMPTING.writeIntentId),
+    };
     const service = new RunRecordService({ database, clock: manualClock(new Date(ts)),
       ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("deletion must not publish"); } });
     const remove = (runId: string, commandId: string): void => {
@@ -391,14 +329,18 @@ describe("retained confirmed history and shared retry deletion", () => {
       remove(retry.envelope.runId, UUID_6);
       expect(database.authority.runs.get(descendant.envelope.runId)).toBeDefined();
       expect(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status).toBe("committed");
-      expect(readCheckpoint()).toEqual(checkpoint);
+      expect(readCheckpoint()).toBeUndefined();
       database.authority.runs.transition({ runId: descendant.envelope.runId, expectedVersion: descendant.version,
         lifecycle: { state: "terminal", outcome: "cancelled", endedAt: ts }, now: ts });
       remove(descendant.envelope.runId, "87000000-0000-4000-8000-000000000004");
-      expect(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)).toBeUndefined();
+      expect(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status).toBe("committed");
+      expect(database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId)?.outcome.state).toBe("committed");
+      expect({ intent: database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
+        attempt: database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId),
+        publication: database.authority.writeIntents.getPublication(WRITE_INTENT_ATTEMPTING.writeIntentId) }).toEqual(permanent);
       expect(readCheckpoint()).toBeUndefined();
       expect(database.authority.deletedRuns.get(descendant.envelope.runId)?.removed.find(
-        (entry) => entry.table === "run_checkpoints")?.rows).toBe(1);
+        (entry) => entry.table === "run_checkpoints")).toBeUndefined();
     } finally { database.close(); }
   });
 

@@ -69,26 +69,16 @@ export const AnnualDateEntrySchema = z.strictObject({
   kronosDefaultStartDate: UsDateSchema.optional(),
 });
 
-export const ProviderBudgetSchema = z.strictObject({
-  timeoutMs: z.number().int().positive(),
-  concurrency: z.number().int().positive(),
-  requestsPerMinute: z.number().int().positive(),
-  dailyRequestLimit: z.number().int().positive(),
-  costLimitUsdMicros: z.number().int().nonnegative(),
-});
-
-export const ProviderBudgetConfigSchema = z.strictObject({
-  geocodeCensus: ProviderBudgetSchema,
-  geocodeNominatim: ProviderBudgetSchema,
-}).default({
-  geocodeCensus: { timeoutMs: 15_000, concurrency: 2, requestsPerMinute: 30, dailyRequestLimit: 5_000, costLimitUsdMicros: 0 },
-  geocodeNominatim: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 1, dailyRequestLimit: 1_000, costLimitUsdMicros: 0 },
-});
+export const ProviderInvocationConfigSchema = z.strictObject({ timeoutMs: z.number().int().positive() });
+export const ProviderInvocationSettingsSchema = z.strictObject({
+  geocodeCensus: ProviderInvocationConfigSchema,
+  geocodeNominatim: ProviderInvocationConfigSchema,
+}).default({ geocodeCensus: { timeoutMs: 15_000 }, geocodeNominatim: { timeoutMs: 15_000 } });
 
 export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
   "geocode.census": "geocodeCensus",
   "geocode.nominatim": "geocodeNominatim",
-} as const satisfies Record<Exclude<ProviderCapabilityId, "ocr.extract">, keyof z.output<typeof ProviderBudgetConfigSchema>>);
+} as const satisfies Record<Exclude<ProviderCapabilityId, "ocr.extract">, keyof z.output<typeof ProviderInvocationSettingsSchema>>);
 
 /** The absolute filesystem locations the runtime reads and writes — pure contract with no default, because a browser has no working directory to resolve against. */
 export const ConfigPathsSchema = z.strictObject({
@@ -217,16 +207,16 @@ export const ConfigSchema = z.strictObject({
     .default({ idleMs: 900_000, idleRepollMs: 30_000 }),
   features: z.strictObject({ debugScreenshots: z.boolean(), duoWebAuthn: z.boolean() })
     .default({ debugScreenshots: false, duoWebAuthn: true }),
-  providers: ProviderBudgetConfigSchema,
+  providers: ProviderInvocationSettingsSchema,
 });
 
-/** Takes only the `providers` group, because a durable snapshot read forward is legitimately narrower than today's `Config`. */
-export function providerBudget(
-  config: { readonly providers: z.output<typeof ProviderBudgetConfigSchema> },
+/** Resolve the current timeout for one connected capability. */
+export function providerInvocationConfig(
+  config: { readonly providers: z.output<typeof ProviderInvocationSettingsSchema> },
   capability: Exclude<ProviderCapabilityId, "ocr.extract">,
-): z.output<typeof ProviderBudgetSchema> {
+): z.output<typeof ProviderInvocationConfigSchema> {
   const key = PROVIDER_CAPABILITY_CONFIG_KEYS[capability];
-  return ProviderBudgetSchema.parse(config.providers[key]);
+  return ProviderInvocationConfigSchema.parse(config.providers[key]);
 }
 
 function partialEndpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape>) {
@@ -271,4 +261,4 @@ export type ConfigPaths = z.output<typeof ConfigPathsSchema>;
 export type SettingsOverride = z.output<typeof SettingsOverrideSchema>;
 export type EditableSettingsOverride = z.output<typeof EditableSettingsOverrideSchema>;
 export type AnnualDateEntry = z.output<typeof AnnualDateEntrySchema>;
-export type ProviderBudget = z.output<typeof ProviderBudgetSchema>;
+export type ProviderInvocationConfig = z.output<typeof ProviderInvocationConfigSchema>;

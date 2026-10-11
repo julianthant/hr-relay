@@ -12,9 +12,23 @@ import { parseRelocationCommand } from "../../../../../../src/backend/app/compos
 
 const REPO_ROOT = fileURLToPath(new URL("../../../../../../", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
-const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:", "authority");
+const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:");
 
 describe("secure environment bootstrap", () => {
+  it("admits stopped boot diagnostics exclusively without provider environment or database bootstrap", async () => {
+    const original = [...process.argv]; const events: string[] = [];
+    try {
+      await runSecureEnvironmentBootstrap(["cli", "explain", "diagnostics", "--boot", "--json"], {
+        acquireAdmission: mode => { assert.equal(mode, "exclusive"); events.push("exclusive"); return syntheticAdmission(); },
+        assertEnvironment: () => { throw new Error("boot diagnostics must not read provider environment"); },
+        runCli: async () => { events.push("reader"); },
+      });
+      assert.deepEqual(events, ["exclusive", "reader"]);
+      await assert.rejects(runSecureEnvironmentBootstrap(["cli", "explain", "diagnostics", "--boot", "--after", "1"], {
+        acquireAdmission: () => { throw new Error("invalid boot flags must refuse before admission"); },
+      }), /diagnostic-boot-does-not-have-timeline-cursors/u);
+    } finally { process.argv.splice(0, process.argv.length, ...original); }
+  });
   it("parses only exact offline relocation selectors", () => {
     assert.deepEqual(parseRelocationCommand(["--status", "--json"]), { kind: "status", json: true });
     assert.throws(() => parseRelocationCommand(["--status", "extra"]), /storage-relocation-usage/u);

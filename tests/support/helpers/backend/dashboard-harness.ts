@@ -1,11 +1,13 @@
 import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { DatabaseSync } from "node:sqlite";
 import type { TimelineRepository } from "../../../../src/models/events/timeline.js";
-import { createTimelineRepository, TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
+import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
+import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js";
 import { inMemoryRunReaderFake, type CanonicalRunReader, type InMemoryRunReaderState } from "../canonical-run-reader.js";
 import { type RunSessionRecord } from "../../../../src/models/run/session.js";
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -29,7 +31,7 @@ import {
 import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/models/workflow/gates.js";
 import type { RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/rules/write-safety/write-safety.js";
-import type { RunQueuedWire, SpanOutcomeWire } from "../../../../src/models/events/types.js";
+import { SpanEventWireSchema, type RunQueuedWire, type SpanOutcomeWire } from "../../../../src/models/events/types.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 type TimelineEmitter = ReturnType<typeof createTimelineEmitter>;
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -38,7 +40,7 @@ import {
   RunQueueProjection,
   type RunQueueProjectionChange,
 } from "../../../../src/backend/runs/projections/run-queue-projection.js";
-import { HASH_A, HASH_B, NOW, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 
 export const DAY = "2026-08-03";
 export const AT = new Date("2026-08-03T10:00:00.000-07:00");
@@ -80,13 +82,11 @@ export interface AuthorityFake {
   put(record: RunRecord): void;
   putCheckpoint(record: RunCheckpointRecord): void;
   latestCheckpoint(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
-  /** 2i-B: the durable inbox rows the day wire serves, keyed by actor. */
+  /** Durable inbox rows keyed by actor. */
   readonly notifications: NotificationRecord[];
   listNotifications(actorId: string): readonly NotificationRecord[];
   listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
 
-  readonly archived: Set<string>;
-  isArchived(runId: string): boolean;
   readonly failures: Map<string, FailureRecord>;
   getFailure(failureId: string): FailureRecord | undefined;
 
@@ -120,7 +120,6 @@ export interface AuthorityFake {
 export function authorityFake(): AuthorityFake {
   const records = new Map<string, RunRecord>();
   const checkpoints = new Map<string, RunCheckpointRecord>();
-  const archived = new Set<string>();
   const failures = new Map<string, FailureRecord>();
   const receipts = new Map<string, RunEvidenceReceipt>();
   const activityPersonPseudonyms: ActivityPersonPseudonymEvidence[] = [];
@@ -143,8 +142,6 @@ export function authorityFake(): AuthorityFake {
     notifications,
     listNotifications: (actorId) => notifications.filter((record) => record.actorId === actorId),
     listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => [...checkpoints.values()].filter(row => row.workflowId === workflowId && row.itemId === itemId && row.nodeId === nodeId && row.attempt === attempt),
-    archived,
-    isArchived: (runId) => archived.has(runId),
     failures,
     getFailure: (failureId) => failures.get(failureId),
     receipts,
@@ -201,25 +198,58 @@ export function makeWorld(input?: Readonly<{
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 }>): DashboardWorld {
-  const stateRoot = mkdtempSync(join(tmpdir(), "hrauto-dashboard-"));
+  const stateRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-dashboard-"));
   const clock = manualClock(AT);
   const authority = authorityFake();
   const database = AuthorityDatabase.open({ path: join(stateRoot, "authority.db"), busyTimeoutMs: 500, migrationOwner: "history-dashboard-fixture" }, clock);
-  const eventDatabase = new DatabaseSync(join(stateRoot, "timeline.sqlite"));
-  eventDatabase.exec("PRAGMA foreign_keys=ON; CREATE TABLE workflow_runs(record_key TEXT PRIMARY KEY) STRICT; CREATE TABLE deleted_runs(record_key TEXT PRIMARY KEY) STRICT");
-  eventDatabase.exec(TIMELINE_EVENT_TABLE_DDL);
-  for (const sql of TIMELINE_EVENT_INDEX_DDL) eventDatabase.exec(sql);
-  const timeline = createTimelineRepository({ database: eventDatabase, read: (work) => work(),
-    assertOwner: (record) => {
-      if (record.scope.kind === "run" && authority.records.has(record.scope.runId)) {
-        eventDatabase.prepare("INSERT OR IGNORE INTO workflow_runs(record_key) VALUES (?)").run(record.scope.runId);
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  const synchronizeOwner = (runId: string, visiting = new Set<string>()): void => {
+    if(visiting.has(runId))throw new Error("fixture run ownership cycle");
+    const run = authority.records.get(runId);
+    if(run === undefined)throw new Error("fixture native timeline owner missing");
+    visiting.add(runId);
+    if(run.envelope.parent !== undefined)synchronizeOwner(run.envelope.parent.runId,visiting);
+    if (run.sessionId !== undefined) {
+      const batch = authority.batches.get(run.sessionId);
+      if (batch === undefined) throw new Error("fixture native batch owner missing");
+      const saved = database.authority.runSessions.get(run.sessionId);
+      if (saved === undefined) database.authority.runSessions.insert(batch);
+      else if (saved.workflow !== batch.workflow || saved.sessionId !== batch.sessionId || saved.startedAt !== batch.startedAt || JSON.stringify(saved.origin) !== JSON.stringify(batch.origin)) throw new Error("fixture native batch identity mismatch");
+    }
+    // The canonical fake varies independently; timeline storage owns a real queued envelope.
+    const owner = RunRecordSchema.parse({
+      envelope: run.envelope, input: run.input, lifecycle: { state: "queued" },
+      claimGeneration: 0, version: 1, createdAt: run.envelope.enqueuedAt, updatedAt: run.envelope.enqueuedAt,
+      ...(run.displayName === undefined ? {} : { displayName: run.displayName }),
+      ...(run.runNumber === undefined ? {} : { runNumber: run.runNumber }),
+      ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
+    });
+    const row = runRecordColumns(owner), columns = Object.keys(row), raw = new DatabaseSync(join(stateRoot,"authority.db"));
+    try {
+      const search = createRunSearchIndex(raw);
+      search.installTracking();
+      raw.exec("BEGIN IMMEDIATE");
+      if (raw.prepare("SELECT 1 FROM runs WHERE id=?").get(runId) === undefined) {
+        raw.prepare(`INSERT INTO runs(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`).run(...Object.values(row));
+      } else {
+        const updated = columns.filter(key => key !== "id");
+        raw.prepare(`UPDATE runs SET ${updated.map(key => `${key}=?`).join(",")} WHERE id=?`).run(...updated.map(key => row[key as keyof typeof row]), runId);
       }
-    }, mutate: (work) => {
-      eventDatabase.exec("BEGIN IMMEDIATE");
-      try { const result = work().result; eventDatabase.exec("COMMIT"); return result; }
-      catch (error) { eventDatabase.exec("ROLLBACK"); throw error; }
-    } });
-  const runReaderState = { records: authority.records, archived: authority.archived, deleted: new Map(), generation: 0 };
+      let publication = search.rebuild({ restart: true, limit: 500 }, database.getMeta().authorityGeneration, clock.now().toISOString());
+      while (publication.state === "building") publication = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, clock.now().toISOString());
+      raw.exec("COMMIT");
+    }
+    finally { raw.close(); }
+    visiting.delete(runId);
+  };
+  const timeline: TimelineRepository = Object.freeze({ ...database.authority.timelineEvents,
+    append(input: Parameters<TimelineRepository["append"]>[0]) {
+      const record = TimelineAppendSchema.parse(input);
+      if(record.scope.kind === "run")synchronizeOwner(record.scope.runId);
+      return database.authority.timelineEvents.append(record);
+    },
+  });
+  const runReaderState = { records: authority.records, deleted: new Map(), generation: 0 };
   const canonical = input?.reader ?? inMemoryRunReaderFake(runReaderState);
   // Keep the consumed port instrumentable for structural read-count proofs;
   // the underlying canonical reader retains its own frozen implementation.
@@ -246,7 +276,7 @@ export function makeWorld(input?: Readonly<{
   });
   const changes: RunQueueProjectionChange[] = [];
   projection.onChange((change) => changes.push(change));
-  const jsonlWriter = createTimelineEmitter({
+  const timelineWriter = createTimelineEmitter({
     repository: timeline,
     clock,
     pid: 4242,
@@ -254,7 +284,7 @@ export function makeWorld(input?: Readonly<{
 
   const writer: TimelineEmitter = Object.freeze({
     emit: (event: unknown): void => {
-      jsonlWriter.emit(event);
+      timelineWriter.emit(event);
       projection.ingestFromTimeline();
     },
   });
@@ -270,7 +300,7 @@ export function makeWorld(input?: Readonly<{
     writer,
     changes,
     scheduledRebuilds,
-    dispose: () => { database.close(); eventDatabase.close(); rmSync(stateRoot, { recursive: true, force: true }); },
+    dispose: () => { database.close(); rmSync(stateRoot, { recursive: true, force: true }); },
   };
 }
 
@@ -324,6 +354,7 @@ export function workerLeaseOf(input: Readonly<{
       requestedAt: startedAt,
       requestedBy: "local-operator",
     },
+    controlRevision: 1,
     version: input.version ?? 1,
     createdAt: startedAt,
     updatedAt: instantOffsetOf(0, 1_000),
@@ -350,8 +381,8 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       descriptorVersion: 1,
       contractFingerprint: HASH_A,
       resolvedInstance: { ucpath: "prod" },
-      configFingerprint: HASH_B,
-      configSnapshotId: UUID_4,
+      configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
       ...(input.parentSeed === undefined ? {} : {
         parent: {
           runId: uuidOf(input.parentSeed),
@@ -401,11 +432,13 @@ export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQu
     descriptorVersion: 1,
     contractFingerprint: HASH_A,
     resolvedInstance: { ucpath: "prod" },
-    configFingerprint: HASH_B,
-    configSnapshotId: UUID_4,
+    configFingerprint: record.envelope.configFingerprint,
+    configSnapshotId: record.envelope.configSnapshotId,
   } as const;
   world.writer.emit(event);
-  return event as unknown as RunQueuedWire;
+  const parsed = SpanEventWireSchema.parse({ ...event, pid: 4242 });
+  if(parsed.t!=="run.queued")throw new Error("fixture queued event kind changed");
+  return parsed;
 }
 
 
@@ -417,17 +450,19 @@ export function taskEventsOf(
 
   notRunReason?: "condition-false" | "branch-not-selected" | "operator-asserted" | "step-omitted",
 ): void {
+  const owner = world.authority.getRun(uuidOf(seed));
+  if (owner === undefined) throw new Error("fixture-task-run-owner-missing");
   const base = {
     ts: world.clock.now().toISOString(),
-    workflow: "person-lookup",
-    runId: uuidOf(seed),
-    attempt: 1,
-    traceId: traceOf(seed),
+    workflow: owner.envelope.workflow,
+    runId: owner.envelope.runId,
+    attempt: owner.envelope.attempt,
+    traceId: owner.envelope.traceId,
   };
-  world.writer.emit({ ...base, t: "span.started", kind: "task", spanPath: `${traceOf(seed)}/${node}#1`, parentSpanPath: traceOf(seed), name: node });
+  world.writer.emit({ ...base, t: "span.started", kind: "task", spanPath: `${owner.envelope.traceId}/${node}#${String(owner.envelope.attempt)}`, parentSpanPath: owner.envelope.traceId, name: node });
   if (outcome !== undefined) {
     world.writer.emit({
-      ...base, t: "span.ended", kind: "task", spanPath: `${traceOf(seed)}/${node}#1`, outcome,
+      ...base, t: "span.ended", kind: "task", spanPath: `${owner.envelope.traceId}/${node}#${String(owner.envelope.attempt)}`, outcome,
       ...(notRunReason === undefined ? {} : { notRunReason }),
     });
   }
@@ -487,7 +522,7 @@ export function receiptWithWarningsOf(input: Readonly<{
   workflow?: string;
 }>): RunEvidenceReceipt {
   return RunEvidenceReceiptSchema.parse({
-    composition: 4,
+    composition: 5,
     receiptId: uuidOf(input.seed + 7000),
     runId: uuidOf(input.seed),
     traceId: traceOf(input.seed),
@@ -576,14 +611,16 @@ export function notificationRecordOf(input: Readonly<{
 }
 
 export function claimEventOf(world: DashboardWorld, seed: number, workerId = "person-lookup-worker-1"): void {
+  const run = world.authority.getRun(uuidOf(seed));
+  if (run === undefined) throw new Error("claim fixture run is missing");
   world.writer.emit({
     t: "run.claimed",
     ts: world.clock.now().toISOString(),
-    workflow: "person-lookup",
-    runId: uuidOf(seed),
-    attempt: 1,
-    traceId: traceOf(seed),
-    spanPath: traceOf(seed),
+    workflow: run.envelope.workflow,
+    runId: run.envelope.runId,
+    attempt: run.envelope.attempt,
+    traceId: run.envelope.traceId,
+    spanPath: run.envelope.traceId,
     workerId,
   });
 }

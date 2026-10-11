@@ -1,9 +1,10 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { MAX_WORKERS_PER_POOL, poolWorkerId } from "../../../../../src/backend/runtime/workers/worker-loop.js";
+import { MAX_WORKERS_PER_POOL } from "../../../../../src/backend/runtime/workers/worker-loop.js";
+import { WorkerSlotRecordSchema, workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { CommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
-import { PositiveIntSchema, WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
+import { WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import {
   composePlanWorkerCountCommand,
@@ -91,7 +92,7 @@ describe("the panel's copy of the pool contract is pinned to the kernel's", () =
     for (let index = 1; index <= MAX_WORKERS_PER_POOL; index += 1) {
       assert.equal(
         poolMemberWorkerId(String(workflowId), index),
-        String(poolWorkerId(workflowId, PositiveIntSchema.parse(index))),
+        String(workerPoolMember(WorkerSlotRecordSchema.parse({ workflow: workflowId, workerId: `person-lookup-worker-${String(index)}`, ordinal: index, poolIndex: index, membershipRevision: 1, phase: "idle", retiredAt: null, retirementCommandId: null, reservationCommandId: null, createdAt: "2026-08-03T16:00:00.000Z", updatedAt: "2026-08-03T16:00:00.000Z" })).workerId),
       );
     }
   });

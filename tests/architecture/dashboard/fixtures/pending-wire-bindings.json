@@ -1,0 +1,25 @@
+{
+  "reason": "Every unserved schema arm and unconsumed route declares its current owner and missing consumer.",
+  "bindings": [
+    {
+      "binding": "RunDetailSectionResponseSchema#review",
+      "direction": "declared-unserved",
+      "note": "Ref frontend-backend-integration \u00a73.3's Review panel kind. `availableSections` cannot return it for any lifecycle: no registered descriptor declares a review panel, and the review record store is deferred. Closes with the first workflow that declares one."
+    },
+    {
+      "binding": "RunDetailSectionResponseSchema#people",
+      "direction": "declared-unserved",
+      "note": "The operation-member People page, same deferral as `review`; `sectionsCompatible` already refuses it beside `review` on one panel. Closes with the first multi-person operation workflow."
+    },
+    {
+      "binding": "RunDetailSectionResponseSchema#context-evidence",
+      "direction": "declared-unserved",
+      "note": "Ref dashboard-surfaces \u00a71.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the receipt section serves the trust content that exists today."
+    },
+    {
+      "binding": "route:GET /artifacts/v1/:artifactId",
+      "direction": "served-unconsumed",
+      "note": "The route is served, but no mounted dashboard consumer invokes it."
+    }
+  ]
+}

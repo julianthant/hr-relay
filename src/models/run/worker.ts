@@ -66,13 +66,11 @@ export const WorkerLeaseRecordSchema = z.strictObject({
   workerId: WorkerIdSchema,
   /** A worker claims only its own workflow's rows (ref execution-and-sessions §3.1). */
   workflow: WorkflowIdSchema,
-    /* Browser requirements from the exact descriptor this process loaded; optional only for durable leases written before this field existed. */
-  browserSystems: WorkerBrowserSystemsSchema.optional(),
+  browserSystems: WorkerBrowserSystemsSchema,
   processId: PositiveIntSchema,
   /** Bumped every time this worker id is (re)started; fences a zombie process. */
   leaseGeneration: PositiveIntSchema,
-  /** Missing only on historical leases; never synthesized into mutation authority. */
-  controlRevision: PositiveIntSchema.optional(),
+  controlRevision: PositiveIntSchema,
   controlCommandId: CommandIdSchema.optional(),
   lifecycle: WorkerLifecycleSchema,
   control: WorkerControlSchema,

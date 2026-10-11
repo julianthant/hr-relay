@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import fs, { Dir, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import fs, { Dir, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { inspectRuntimeProcessOrphans, WorkerProcessLockFileSchema } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { NOW, UUID_1 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { NOW } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-orphan-stream-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-orphan-stream-"));
   roots.push(root);
   mkdirSync(join(root, "workers"));
   return root;
@@ -23,11 +23,11 @@ function fixture() {
 
 function writeRecord(root: string, index: number, released: boolean, current = false) {
   const record = WorkerProcessLockFileSchema.parse({
-    schemaVersion: current ? 3 : 2, name: "workers", workerId: `fixture-worker-${String(index)}`,
-    pid: index, acquisitionId: UUID_1, acquiredAt: NOW, releasedAt: released ? NOW : null,
-    ...(current ? { processIdentity: { platform: "darwin", startToken: "original-owner" } } : {}),
+    schemaVersion: 3, name: "workers", workerId: `fixture-worker-${String(index)}`,
+    pid: index, acquisitionId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, acquiredAt: NOW, releasedAt: released ? NOW : null,
+    processIdentity: { platform: "darwin", startToken: current ? "original-owner" : "new-owner" },
   });
-  writeFileSync(join(root, "workers", `${String(index)}.lock.json`), JSON.stringify(record));
+  writeFileSync(join(root, "workers", `${record.acquisitionId}.lock.json`), JSON.stringify(record), { mode: 0o600 });
 }
 
 describe("streamed optional process-orphan inspection", () => {

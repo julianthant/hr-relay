@@ -29,7 +29,6 @@ export function settingsFixture(isolateBrowser = false) {
   const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
   const host = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" });
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 10, migrationOwner: "settings-proof" }, clock);
-  const initial = readSettings(database.authority);
   const resolveSettings = (value: unknown) => {
     const result = resolveConfigWithProvenance(value, host, clock);
     const configured = result;
@@ -44,9 +43,7 @@ export function settingsFixture(isolateBrowser = false) {
   const resolved = resolveSettings({});
   const snapshot = { ...resolved, configSnapshotId: randomUUID(), revision: 1,
     capturedAt: clock.now().toISOString(), capturedBy: "local-operator" };
-  database.authority.configSnapshots.insert(snapshot);
-  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: initial.settingsFingerprint,
-    configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, activatedAt: snapshot.capturedAt });
+  database.authority.runtimeConfig.initialize(snapshot);
   let resolutions = 0;
   const settings = createSettingsApplicationExecutor((value) => {
     resolutions += 1; return resolveSettings(value);

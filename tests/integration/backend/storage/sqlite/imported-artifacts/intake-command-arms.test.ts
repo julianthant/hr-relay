@@ -4,7 +4,7 @@ import { importedArtifact } from "../../../../../../src/models/intake/imported-a
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -28,7 +28,6 @@ import {
   UUID_7,
 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
   INTAKE_SERIAL_WORKFLOW_ID,
@@ -100,7 +99,7 @@ function commandId(): string {
 }
 
 function harness(sessionOverrides: Record<string, unknown> = {}, preReservation = false) {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-intake-arms-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-intake-arms-"));
   roots.push(root);
   const clock = manualClock(new Date(NOW));
   const path = join(root, "state.db");
@@ -110,9 +109,7 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
   );
   openDatabases.push(database);
   // The config identity an intake fan-out stamps must name a stored snapshot.
-  database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
-  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
-    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
 
 
   const session = IntakeSessionSchema.parse({
@@ -149,7 +146,6 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids: sequentialIdFactory("b"),
@@ -165,12 +161,15 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
       resolvePresent: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
-    workerRuntime: {
-      planWorkerCount: () => { throw new Error("unused"); },
-      spawnWorker: () => { throw new Error("unused"); },
-      refreshBrowser: () => { throw new Error("unused"); },
-      reopenBrowser: () => { throw new Error("unused"); },
-    },
+    workerRuntime: { pool: {
+      planPoolWorkerCount: async () => { throw new Error("unused worker plan"); },
+      spawnPoolWorker: async () => { throw new Error("unused worker spawn"); },
+      refreshPoolBrowser: async () => { throw new Error("unused browser refresh"); },
+      reopenPoolBrowser: async () => { throw new Error("unused browser reopen"); },
+      stopPoolWorker: async () => { throw new Error("unused worker stop"); },
+      pausePoolWorker: async () => { throw new Error("unused worker pause"); },
+      resumePoolWorker: async () => { throw new Error("unused worker resume"); },
+    } },
     intakeParser: fixtureParser,
     intakeProjections: {
       resolve: (workflowId) =>

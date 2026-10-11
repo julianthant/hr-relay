@@ -1,3 +1,5 @@
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -21,10 +23,15 @@ const roots: string[] = [];
 function openDatabase(): AuthorityDatabase {
   const root = mkdtempSync(join(tmpdir(), "hrauto-duo-lease-"));
   roots.push(root);
-  return AuthorityDatabase.open(
+  const clock = manualClock(new Date(T0));
+  const path = join(root, "authority.sqlite");
+  const database = AuthorityDatabase.open(
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    manualClock(new Date(T0)),
+    clock,
   );
+  for (const poolIndex of [1, 2]) testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex });
+  assert.deepEqual(database.authority.workerSlots.list().map(slot => slot.workerId), ["person-lookup-worker-1", "person-lookup-worker-2"]);
+  return database;
 }
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -38,12 +45,12 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
   it("acquires a free credential at generation 1 and mints the one token the helpers accept", () => {
     const database = openDatabase();
     const outcome = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-a", system: "ucpath", now: at(0), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
     assert.equal(outcome.state, "acquired");
     if (outcome.state !== "acquired") return;
     assert.equal(outcome.lease.generation, 1);
-    assert.equal(outcome.lease.holder.workerId, "worker-a");
+    assert.equal(outcome.lease.holder.workerId, "person-lookup-worker-1");
     assert.equal(outcome.lease.holder.system, "ucpath");
     assert.equal(outcome.lease.state, "held");
     assert.equal(outcome.lease.expiresAt, at(TTL_MS));
@@ -64,25 +71,25 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
   it("refuses a second acquirer while the lease is live, naming the holder", () => {
     const database = openDatabase();
     database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-a", system: "ucpath", now: at(0), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
     const second = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-b", system: "crm", now: at(1_000), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(1_000), ttlMs: TTL_MS,
     });
     assert.equal(second.state, "held");
     if (second.state !== "held") return;
-    assert.equal(second.holder.holder.workerId, "worker-a");
+    assert.equal(second.holder.holder.workerId, "person-lookup-worker-1");
     assert.equal(second.holder.holder.system, "ucpath");
     assert.equal(second.holder.expiresAt, at(TTL_MS));
     assert.equal(second.holder.generation, 1);
     // The SAME worker re-asking is also refused: a lease is per ceremony, not per worker.
     const again = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-a", system: "crm", now: at(2_000), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "crm", now: at(2_000), ttlMs: TTL_MS,
     });
     assert.equal(again.state, "held");
     // A DIFFERENT credential is a different lease.
     const other = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: OTHER_CREDENTIAL, workerId: "worker-b", system: "crm", now: at(2_000), ttlMs: TTL_MS,
+      credentialKey: OTHER_CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(2_000), ttlMs: TTL_MS,
     });
     assert.equal(other.state, "acquired");
     database.close();
@@ -91,7 +98,7 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
   it("releases under the held generation, retires the token, and lets the next acquirer in at generation 2", () => {
     const database = openDatabase();
     const first = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-a", system: "ucpath", now: at(0), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
     assert.equal(first.state, "acquired");
     if (first.state !== "acquired") return;
@@ -108,7 +115,7 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
       /retired/,
     );
     const second = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-b", system: "crm", now: at(22_000), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(22_000), ttlMs: TTL_MS,
     });
     assert.equal(second.state, "acquired");
     if (second.state !== "acquired") return;
@@ -121,28 +128,28 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
   it("takes over an EXPIRED lease at the next generation and records whom it took it from", () => {
     const database = openDatabase();
     const first = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-a", system: "ucpath", now: at(0), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
     assert.equal(first.state, "acquired");
     if (first.state !== "acquired") return;
     // One millisecond BEFORE expiry is still held.
     const early = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-b", system: "crm", now: at(TTL_MS - 1), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(TTL_MS - 1), ttlMs: TTL_MS,
     });
     assert.equal(early.state, "held");
     const takeover = database.authority.duoCeremonyLeases.acquire({
-      credentialKey: CREDENTIAL, workerId: "worker-b", system: "crm", now: at(TTL_MS), ttlMs: TTL_MS,
+      credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(TTL_MS), ttlMs: TTL_MS,
     });
     assert.equal(takeover.state, "acquired");
     if (takeover.state !== "acquired") return;
     assert.equal(takeover.lease.generation, 2);
-    assert.deepEqual(takeover.tookOver, { generation: 1, holder: { workerId: "worker-a", system: "ucpath" } });
+    assert.deepEqual(takeover.tookOver, { generation: 1, holder: { workerId: "person-lookup-worker-1", system: "ucpath" } });
 
     const stale = database.authority.duoCeremonyLeases.release({ token: first.token, now: at(TTL_MS + 5) });
     assert.equal(stale.state, "superseded");
     if (stale.state !== "superseded") return;
     assert.equal(stale.current.generation, 2);
-    assert.equal(stale.current.holder.workerId, "worker-b");
+    assert.equal(stale.current.holder.workerId, "person-lookup-worker-2");
     assert.throws(() => assertDuoCeremonyLeaseToken(first.token), /retired/);
     assert.deepEqual(database.authority.duoCeremonyLeases.get(CREDENTIAL), takeover.lease);
     database.close();
@@ -152,7 +159,7 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     const database = openDatabase();
     assert.throws(
       () => database.authority.duoCeremonyLeases.release({
-        token: { credentialKey: CREDENTIAL, generation: 1, holder: { workerId: "worker-a", system: "ucpath" }, expiresAt: at(1) },
+        token: { credentialKey: CREDENTIAL, generation: 1, holder: { workerId: "person-lookup-worker-1", system: "ucpath" }, expiresAt: at(1) },
         now: at(1),
       }),
       /not minted by the Duo ceremony lease store/,
@@ -160,12 +167,12 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.throws(() => assertDuoCeremonyLeaseToken(undefined), /not minted/);
     assert.throws(
       () => database.authority.duoCeremonyLeases.acquire({
-        credentialKey: "not-a-digest", workerId: "worker-a", system: "ucpath", now: at(0), ttlMs: TTL_MS,
+        credentialKey: "not-a-digest", workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
       }),
     );
     assert.throws(
       () => database.authority.duoCeremonyLeases.acquire({
-        credentialKey: CREDENTIAL, workerId: "worker-a", system: "ucpath", now: at(0), ttlMs: 0,
+        credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: 0,
       }),
     );
     database.close();

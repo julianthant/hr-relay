@@ -1,5 +1,6 @@
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
-import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { DatabaseSync } from "node:sqlite";
+import { testWorkerPorts, testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -13,11 +14,8 @@ import { defineServiceStore, defineTaskStoreRegistry } from "../../../../../../s
 import { defineTask } from "../../../../../../src/workflow-kit/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";
 import { executeClaimedRun, type RunExecutorDependencies, type RunProviderWiring } from "../../../../../../src/backend/runtime/execution/run-executor.js";
-import { defaultRuntimePaths } from "../../../../../../src/backend/app/config/runtime-paths.js";
-import { ConfigSchema } from "../../../../../../src/models/config/schema.js";
 import { defineTaskContract } from "../../../../../../src/models/task/task-contract.js";
-import { FingerprintSchema, IsoInstantSchema, ProviderAdmissionIdSchema, ScenarioIdSchema, TraceIdSchema, taskId } from "../../../../../../src/rules/identity/ids.js";
-import { isRunNodeExecutionIdentity } from "../../../../../../src/rules/providers/provider-admission.js";
+import { FingerprintSchema, IsoInstantSchema, ScenarioIdSchema, TraceIdSchema, taskId } from "../../../../../../src/rules/identity/ids.js";
 import type { RunRecord } from "../../../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
 import { defineCanonicalInput } from "../../../../../../src/models/workflow/canonical-input.js";
@@ -26,7 +24,7 @@ import { createContentAddressedArtifactWriter } from "../../../../../../src/back
 import { createDeterministicProviderHarness } from "../../../../../../src/backend/processing/providers/deterministic-provider.js";
 import type { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/index.js";
 import { HASH_A, NOW } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import { happySessionHarness, ManualScheduler, openAuthorityHarness, recordingEmitter, recordingLogger, sessionManagerFor } from "../../../../../support/helpers/phase1f-executor-harness.js";
 
 const disposers: (() => void)[] = [];
@@ -220,6 +218,7 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor) {
       parsed: {
         schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"),
         value: { name: "Battistessa, Johnnie" },
+        protectedBindings: [],
       },
       ingressSchemaHash: HASH_A,
     },
@@ -253,44 +252,17 @@ function wiringHarness(
   return { authority, emitter, deps };
 }
 
-function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): {
+function claim(authority: ReturnType<typeof openAuthorityHarness>, descriptor: AnyWorkflowDescriptor): {
   run: RunRecord;
   claim: { workerId: string; claimGeneration: number };
 } {
-  const claimed = database.authority.runs.claimNext({
-    workflow: descriptor.id,
-    workerId: WORKER_ID,
-    now: new Date("2026-08-03T09:00:00.000Z").toISOString(),
-  });
-  if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
-  return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration } };
-}
-
-/** The run's retained snapshot: `QUEUED_RUN`'s envelope ids, an ocr.extract budget. */
-function seedSnapshot(database: AuthorityDatabase): void {
-  const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths() });
-  const config = ConfigSchema.parse({
-    ...defaults,
-    providers: {
-      ...defaults.providers,
-      geocodeCensus: {
-        timeoutMs: 30_000,
-        concurrency: 2,
-        requestsPerMinute: 10,
-        dailyRequestLimit: 100,
-        costLimitUsdMicros: 1_000_000,
-      },
-    },
-  });
-  database.authority.configSnapshots.insert({
-    configSnapshotId: QUEUED_RUN.envelope.configSnapshotId,
-    revision: 1,
-    fingerprint: QUEUED_RUN.envelope.configFingerprint,
-    capturedAt: IsoInstantSchema.parse(NOW),
-    capturedBy: "local-operator",
-    config,
-    provenance: {},
-  });
+  const { database, clock, path } = authority;
+  const ports = testWorkerPorts(database, clock, { path, descriptor, poolIndex: 1 });
+  const slot = database.authority.workerSlots.list(descriptor.id).find(candidate => candidate.poolIndex === 1);
+  if (slot === undefined) throw new Error("fixture native worker slot absent");
+  const claimed = ports.claimNext({ commandId: sequentialIdFactory("c").uuid(), workflow: descriptor.id, workerId: slot.workerId });
+  if (claimed.state !== "applied") throw new Error(`claim outcome was ${claimed.state}`);
+  return { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration } };
 }
 
 function admissionIdFactory() {
@@ -298,7 +270,7 @@ function admissionIdFactory() {
   return Object.freeze({
     next: () => {
       next += 1;
-      return ProviderAdmissionIdSchema.parse(`00000000-0000-4000-8000-${String(next).padStart(12, "0")}`);
+      return `00000000-0000-4000-8000-${String(next).padStart(12, "0")}`;
     },
   });
 }
@@ -307,7 +279,7 @@ function tempArtifactWriter(): ContentAddressedArtifactWriter {
   const workspaceRoot = mkdtempSync(join(tmpdir(), "hrauto-wiring-artifacts-"));
   disposers.push(() => rmSync(workspaceRoot, { recursive: true, force: true }));
   return createContentAddressedArtifactWriter({
-    admission: RuntimeAdmission.syntheticRoots(join(workspaceRoot, ".tracker"), join(workspaceRoot, ".tracker/artifacts")),
+    admission: RuntimeAdmission.syntheticRoots(join(workspaceRoot, ".tracker"), join(workspaceRoot, ".tracker/data/artifacts")),
   });
 }
 
@@ -328,7 +300,7 @@ describe("executor capability wiring refusals", () => {
     const harness = wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(providersDescriptor));
-    const claimed = claim(database, providersDescriptor);
+    const claimed = claim(harness.authority, providersDescriptor);
 
     const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "failed");
@@ -341,7 +313,7 @@ describe("executor capability wiring refusals", () => {
     const harness = wiringHarness(artifactsDescriptor, registryFor(artifactsOnlyTask));
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(artifactsDescriptor));
-    const claimed = claim(database, artifactsDescriptor);
+    const claimed = claim(harness.authority, artifactsDescriptor);
 
     const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "failed");
@@ -353,42 +325,47 @@ describe("executor capability wiring refusals", () => {
   it("refuses provider admission when the run's retained config snapshot is absent", async () => {
     const adapter = createDeterministicProviderHarness("geocode.census", []);
     const harness = wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
-    // Fully wired against the REAL repositories; only the snapshot row is
-    // missing — the refusal must name the unreadable snapshot, not crash.
     const { database } = harness.authority;
     const deps: RunExecutorDependencies = {
       ...harness.deps,
       providers: Object.freeze({
         adapters: { "geocode.census": adapter.adapter },
-        repository: database.authority.providerAdmissions,
+
         configSnapshots: database.authority.configSnapshots,
         idFactory: admissionIdFactory(),
       }),
     };
     database.authority.runs.enqueue(queuedRunFor(providersDescriptor));
-    const claimed = claim(database, providersDescriptor);
+    const claimed = claim(harness.authority, providersDescriptor);
 
-    const outcome = await executeClaimedRun(deps, { ...claimed, signal: SIGNAL });
-    assert.equal(outcome.state, "failed");
-    const failure = terminalFailure(database);
-    assert.equal(failure.nodeId, "extract");
-    assert.match(failure.summary, /retained config snapshot .+ is absent from authority/u);
+    const raw = new DatabaseSync(harness.authority.path);
+    try {
+      const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name='settings_snapshots_retained'").get();
+      if (typeof trigger?.sql !== "string") throw new Error("fixture immutable snapshot trigger missing");
+      raw.exec("PRAGMA foreign_keys=OFF");
+      raw.exec("DROP TRIGGER settings_snapshots_retained");
+      try { raw.prepare("DELETE FROM settings_snapshots WHERE id=?").run(claimed.run.envelope.configSnapshotId); }
+      finally { raw.exec(trigger.sql); }
+    } finally { raw.close(); }
+    await assert.rejects(executeClaimedRun(deps, { ...claimed, signal: SIGNAL }), /settings-snapshot-missing/u);
+    const unchanged = new DatabaseSync(harness.authority.path, { readOnly: true });
+    try { assert.equal(unchanged.prepare("SELECT state FROM runs WHERE id=?").get(claimed.run.envelope.runId)?.state, "claimed"); } finally { unchanged.close(); }
     assert.equal(adapter.calls().length, 0);
   });
 });
 
 describe("executor capability wiring, wired", () => {
-  it("mints admitted clients over the retained snapshot and injects the kernel writer", async () => {
+  it("mints current clients over the retained snapshot and injects request identity", async () => {
     observed = {};
     const adapter = createDeterministicProviderHarness("geocode.census", [{
       kind: "return",
-      estimate: { maximumCostUsdMicros: 0 },
+
       outcome: {
         response: {
           state: "produced",
           value: { schemaHash: FingerprintSchema.parse(HASH_A), value: { extracted: true } },
         },
-        usage: { requestCount: 1, costUsdMicros: 0 },
+
         evidence: { summary: "deterministic wiring fixture", capturedAt: IsoInstantSchema.parse(NOW) },
       },
     }]);
@@ -400,15 +377,14 @@ describe("executor capability wiring, wired", () => {
       ...harness.deps,
       providers: Object.freeze({
         adapters: { "geocode.census": adapter.adapter },
-        repository: database.authority.providerAdmissions,
+
         configSnapshots: database.authority.configSnapshots,
         idFactory: admissionIds,
       }),
       artifacts,
     };
-    seedSnapshot(database);
     database.authority.runs.enqueue(queuedRunFor(wiredDescriptor));
-    const claimed = claim(database, wiredDescriptor);
+    const claimed = claim(harness.authority, wiredDescriptor);
 
     const outcome = await executeClaimedRun(deps, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "done");
@@ -426,15 +402,7 @@ describe("executor capability wiring, wired", () => {
     assert.deepEqual(calls[0]?.request, { capability: "geocode.census", payload: PAYLOAD });
 
 
-    const admission = database.authority.providerAdmissions.get(
-      ProviderAdmissionIdSchema.parse("00000000-0000-4000-8000-000000000001"),
-    );
-    assert.ok(admission !== undefined);
-    assert.equal(admission.lifecycle.state, "settled");
+    assert.equal(calls[0]?.options.requestId, "00000000-0000-4000-8000-000000000001");
 
-    assert.ok(isRunNodeExecutionIdentity(admission.execution));
-    assert.equal(admission.execution.taskId, "ocr/extract-form-page");
-    assert.equal(admission.execution.nodeId, "extract");
-    assert.equal(admission.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);
   });
 });

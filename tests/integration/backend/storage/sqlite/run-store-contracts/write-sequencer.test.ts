@@ -1,12 +1,13 @@
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { reconstructConfirmedOperation } from "../../../../../../src/models/events/confirmed-operation.js";
 import { descriptorRuntimeNodes } from "../../../../../../src/workflow-kit/workflow.js";
 import { personLookupDescriptor, separationsDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { RunClaimTokenSchema } from "../../../../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { lifecycleCommandId } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { testRunLifecycle, testRunService } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testRunService, testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -167,7 +168,7 @@ function harness(options: Readonly<{
   emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
 }> = {}): Harness {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-write-sequencer-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-write-sequencer-"));
   const database = AuthorityDatabase.open(
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "write-sequencer-test" },
     clock,
@@ -177,6 +178,8 @@ function harness(options: Readonly<{
     database.close();
     rmSync(root, { recursive: true, force: true });
   });
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
   const sessions = writeFixtureSessions(world);

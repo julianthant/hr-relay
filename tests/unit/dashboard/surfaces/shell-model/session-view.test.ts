@@ -23,7 +23,7 @@ function sessionDay(): DashboardDayWire {
         return { ...row, session: { state: "present", sessionId: SESSION_ID } };
       }
       if (String(row.runId) === uuidOf(4)) {
-        return { ...row, session: { state: "absent", reason: "this run predates D269 session grouping" } };
+        return { ...row, session: { state: "absent", reason: "This fixture has no run session." } };
       }
       return row;
     }),
@@ -71,7 +71,7 @@ describe("Session Panel authority joins", () => {
 
     assert.deepEqual(sessionMembershipForWorker(onAbsentRow, day.queueSurfaces), {
       state: "absent",
-      reason: "this run predates D269 session grouping",
+      reason: "This fixture has no run session.",
     });
   });
 

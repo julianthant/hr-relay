@@ -29,17 +29,13 @@ it("uses only the linked run's compatible declared subject checkpoint", () => {
   assert.deepEqual(notificationDisplayContext(row, deps([])), { state: "workflow-only", workflow: "Person lookup" });
 });
 
-it("does not reconstruct archived or absent run context", () => {
+it("does not reconstruct absent run context", () => {
   const regular = deps([checkpoint()]);
-  assert.deepEqual(notificationDisplayContext(row, { ...regular, read: () => ({ state: "present", disposition: "archived", run }) }), { state: "unavailable" });
   assert.deepEqual(notificationDisplayContext(row, { ...regular, read: () => ({ state: "absent", runId: run.envelope.runId }) }), { state: "unavailable" });
 });
 
-it("preserves absent historical generation while withholding a future execution's subject", () => {
-  const historical = checkpoint({ claimGeneration: undefined });
-  assert.equal(historical.claimGeneration, undefined);
-  assert.deepEqual(notificationDisplayContext(row, deps([historical])), { state: "available", workflow: "Person lookup", subject: "Alice" });
+it("withholds a future execution subject", () => {
   const future = checkpoint({ claimGeneration: run.claimGeneration + 1, output: { schemaHash: HASH_A, value: { person: { name: "Future" } } } });
-  assert.deepEqual(notificationDisplayContext(row, deps([historical, future])), { state: "available", workflow: "Person lookup", subject: "Alice" });
+  assert.deepEqual(notificationDisplayContext(row, deps([checkpoint(), future])), { state: "available", workflow: "Person lookup", subject: "Alice" });
   assert.deepEqual(notificationDisplayContext(row, deps([future])), { state: "workflow-only", workflow: "Person lookup" });
 });

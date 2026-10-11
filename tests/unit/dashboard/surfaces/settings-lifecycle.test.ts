@@ -95,9 +95,13 @@ describe("ordinary Settings authority admission", () => {
       commands: { ...base.commands, getSettingsHistory: () => command },
       commandAudits: { ...base.commandAudits, findSettingsHistory: () => audit },
     }) as unknown as AuthorityRepositories;
-    assert.throws(() => readSettings(repositories(TOKEN_A, undefined)), /full journaled command envelope/u);
-    assert.throws(() => readSettings(repositories(current.commandFingerprint, { request: command, result: { state: "rejected" },
-      versionChanges: [], affectedDependencyIds: [], auditId: WRITE_ID, completedAt: current.committedAt })), /mismatched durable audit/u);
+    const target = { family: "settings", revision: 2 };
+    const audit = CommandAuditRecordSchema.parse({ request: command, result: { state: "applied", commandId: ID, affectedTargets: [target],
+      restartRequired: false, settingsRevision: 2, settingsFingerprint: current.settingsFingerprint },
+      versionChanges: [{ target, before: 1, after: 2 }], affectedDependencyIds: [], auditId: WRITE_ID, completedAt: current.committedAt });
+    assert.equal(readSettings(repositories(current.commandFingerprint, audit)).revision, 2);
+    assert.throws(() => readSettings(repositories(TOKEN_A, audit)), /settings-current-command-audit-binding-mismatch/u);
+    assert.throws(() => readSettings(repositories(current.commandFingerprint, { ...audit, result: { ...audit.result, commandId: WRITE_ID } })), /settings-current-command-audit-binding-mismatch/u);
   });
 
   it("admits a retained ordinary revision only while its active runtime remains present", () => {

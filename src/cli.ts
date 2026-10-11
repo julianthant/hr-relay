@@ -24,13 +24,14 @@ import { composeExplainRuntime } from "./backend/app/composition/explain-compose
 import { composeOcrCommand } from "./backend/transports/cli/ocr.js";
 import { composeStorageCommand } from "./backend/app/composition/storage-compose.js";
 import { composeWorkerRuntime } from "./backend/app/composition/worker-compose.js";
+import type { RuntimeProcessLockHandle } from "./backend/storage/sqlite/runtime-process-locks.js";
 import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";
 
 /** Compose and start one admitted CLI invocation; secure bootstrap awaits it, so a shutdown failure reaches the entrypoint. */
 /** The checkout that owns this cli module, never the caller's CWD. */
 const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-export async function runCli(admission: RuntimeAdmission): Promise<void> {
+export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined): Promise<void> {
   admission.assertLive();
   if (process.argv[2] === "storage" && process.argv[3] === "transactions") {
     const command = parseTransactionExportArgs(process.argv.slice(4));
@@ -56,7 +57,7 @@ export async function runCli(admission: RuntimeAdmission): Promise<void> {
     loadManifests: async () => Promise.all(listDryRunScenarioWorkflows().map(async (workflow) =>
       parseDryRunScenarioManifest(await loadDryRunScenarioManifest(workflow)))),
   }));
-  registerWorkerComposer((runtimeIsolation, args) => composeWorkerRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, args }));
+  registerWorkerComposer((runtimeIsolation, args) => composeWorkerRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, args, ...(takeInitialCustody === undefined ? {} : { takeInitialCustody }) }));
   registerExplainComposer((runtimeIsolation, args) => composeExplainRuntime({ admission, isolation: runtimeIsolation, args }));
   registerOcrComposer((args) => composeOcrCommand({ args }));
   registerStorageComposer((runtimeIsolation, args) => composeStorageCommand(runtimeIsolation, args, undefined, REPOSITORY_ROOT, admission));

@@ -23,7 +23,7 @@ function leaseOf(overrides: Readonly<Record<string, unknown>> = {}): ReturnType<
     workflow: "person-lookup",
     browserSystems: ["ucpath"],
     processId: 1234,
-    leaseGeneration: 1,
+    leaseGeneration: 1, controlRevision: 1,
     lifecycle: { state: "idle", startedAt: STARTED, heartbeatAt: "2026-08-20T16:00:30.000Z" },
     control: { directive: "run", requestedAt: STARTED, requestedBy: "local-operator" },
     version: 5,
@@ -44,17 +44,8 @@ describe("the card the projector composes from a lease", () => {
     assert.equal(parsed.success, true);
   });
 
-  it("names launch-time requirements as unavailable for a historical lease", () => {
-    const card = workerCardOf({
-      lease: leaseOf({ browserSystems: undefined }),
-      fold: undefined,
-      resolveTrace: NO_TRACE,
-    });
-
-    assert.deepEqual(card.browserRequirements, {
-      state: "unavailable",
-      reason: "worker person-lookup-worker-1 lease predates launch-time browser requirements",
-    });
+  it("refuses a lease missing its required launch-time browser systems", () => {
+    assert.throws(() => leaseOf({ browserSystems: undefined }));
   });
 
   it("reads identity, phase, directive and the CAS basis off the lease", () => {

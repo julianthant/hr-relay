@@ -29,7 +29,7 @@ export function ucpathPendingSweepIdempotencyKey(
 }
 
 /** The immutable person-only key used before the exact-set contract. */
-export function legacyUcpathPendingSweepIdempotencyKey(
+export function ucpathPersonSweepIdempotencyKey(
   input: z.output<typeof UcpathPendingSweepTargetSchema>,
 ): string {
   return ["ucpath:pending-terminations-clear", input.emplId].join("|");
@@ -88,9 +88,9 @@ export const UcpathDeletePendingTerminations = defineTaskContract({
       probe: { taskId: TaskIdSchema.parse("ucpath/match-pending-terminations"), effect: "read" },
       key: ucpathPendingSweepIdempotencyKey,
       retiredKeys: [{
-        key: legacyUcpathPendingSweepIdempotencyKey,
+        key: ucpathPersonSweepIdempotencyKey,
         reason:
-          "the pre-D310 person-only sweep key did not identify a stable transaction set; its immutable "
+          "a person-only sweep key did not identify a stable transaction set; its immutable "
           + "intent cannot authorize or suppress an exact-set deletion",
       }],
       recoveryAbsence: {
@@ -98,7 +98,7 @@ export const UcpathDeletePendingTerminations = defineTaskContract({
         reason:
           "no propagation window has been measured for a UCPath in-progress-grid delete, and a guessed "
           + "`minSinceFenceMs` on a control that DELETES rows is worse than one on a control that adds "
-          + "them. A post-fence absence parks for a human (D128).",
+          + "them. A post-fence absence parks for a human.",
       },
     },
   },

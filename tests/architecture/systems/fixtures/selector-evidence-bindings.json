@@ -1,0 +1,856 @@
+{
+  "entries": [
+    {
+      "system": "crm",
+      "legacyKey": "search.resultRows()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.search-result-rows",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+      }
+    },
+    {
+      "system": "crm",
+      "legacyKey": "search.resultRowCells()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.search-result-row-cells",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+      }
+    },
+    {
+      "system": "crm",
+      "legacyKey": "search.resultRowNameLink()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.search-result-name-link",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+      }
+    },
+    {
+      "system": "crm",
+      "legacyKey": "record.thLabelFollowingTd()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.record-field-value",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+      }
+    },
+    {
+      "system": "crm",
+      "legacyKey": "onboardingHistory.historyRows()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "crm.onboarding.history-rows",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "actionList.docLink()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.action-list.document-link",
+      "evidence": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "actionList.searchInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.action-list.search-input",
+      "evidence": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "actionList.searchGoButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.action-list.search-go-button",
+      "evidence": {
+        "verifiedAt": "2026-08-20",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "separationForm.employeeName()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.employee-name-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "separationForm.eid()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.eid-field",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "separationForm.lastDayWorked()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.last-day-worked-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "separationForm.separationDate()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.separation-date-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "separationForm.terminationType()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.termination-type-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "separationForm.location()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.location-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "timekeeperTasks.requestAcknowledgedCheckbox()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.request-acknowledged-checkbox",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "timekeeperTasks.timekeeperName()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.timekeeper-field",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "timekeeperTasks.timekeeperComments()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.timekeeper-comments-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "finalTransactions.terminationEffDate()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.termination-effective-date-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "finalTransactions.department()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.department-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "finalTransactions.payrollTitleCode()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.payroll-title-code-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "finalTransactions.payrollTitle()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.payroll-title-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "transactionResults.submittedTemplateCheckbox()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.submitted-template-checkbox",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "transactionResults.transactionNumber()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.transaction-number-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "transactionResults.doesNotNeedFinalPayRadio()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.final-pay-student-radio",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+      }
+    },
+    {
+      "system": "kuali",
+      "legacyKey": "save.navbarSaveButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "kuali.rrss-document.save-button",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "navbar.employeeSearchButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.open-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "search.searchInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.query-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "search.searchSubmitButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.submit-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "search.noResultsText()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.no-results-text",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "search.firstResultCheckbox()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.result-select-checkbox",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "search.firstResultSlat()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.result-slat",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "search.closeButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.close-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "goToMenu.goToButtonOnPage()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.go-to-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "goToMenu.timecardItem()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.employee-search.go-to-timecard-option",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "timecard.loadedEmployeeId()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.employee-id",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "timecard.payPeriodTriggerButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.period-trigger-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "timecard.payPeriodLabel()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.period-label",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "timecard.selectRangeButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.select-range-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "timecard.startDateInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.range-start-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "timecard.endDateInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.range-end-field",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "new-kronos",
+      "legacyKey": "timecard.applyButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "new-kronos.timecard.range-apply-button",
+      "evidence": {
+        "verifiedAt": "2026-08-12",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "getContentFrame()",
+      "disposition": "driver-internal",
+      "semanticKind": "driver-internal"
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "smartHR.templateInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.template-input",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "smartHR.effectiveDateInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.transaction-date-input",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "smartHR.createTransactionButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.create-transaction-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "smartHR.reasonCodeSelect()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.reason-code-select",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "smartHR.continueButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.continue-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "smartHR.saveAndSubmitButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.save-and-submit-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "smartHR.deleteSelectedTransactionsButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.delete-selected-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "comments.commentsTextarea()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.initiator-comments-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "comments.initiatorCommentsTextarea()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.transaction-comments-field",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "termination.overrideLastDateWorkedCheckbox()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.override-ldw-checkbox",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "termination.lastDateWorkedInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.smart-hr.last-date-worked-input",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "hrTasks.personOrgSummaryLink()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.navigation-link",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.emplIdInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.eid-input",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.lastNameInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.last-name-input",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.nameInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.given-name-input",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.searchButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.search-button",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.personIdValue()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.eid-display",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.personNameValue()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.name-display",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.body()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.assignments-grid",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.noMatchingValuesText()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.no-results-status",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.viewAllLink()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalBindings": [
+        {
+          "context": "search-results-view-toggle",
+          "canonicalId": "ucpath.person-org.results-view-toggle"
+        },
+        {
+          "context": "employment-instances-view-toggle",
+          "canonicalId": "ucpath.person-org.employment-view-toggle"
+        }
+      ],
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.resultsTable()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.results-grid",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.drillInButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.result-drill-in",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "personOrgSummary.returnToSearchButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.person-org.return-to-search",
+      "evidence": {
+        "verifiedAt": "2026-08-02",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "ssSmartHRTransactions.emplIdInput()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalBindings": [
+        {
+          "context": "smart-hr-wizard-details",
+          "canonicalId": "ucpath.smart-hr.details-eid-input"
+        },
+        {
+          "context": "ss-smart-hr-search",
+          "canonicalId": "ucpath.ss-smart-hr.search-eid-input"
+        }
+      ],
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "ssSmartHRTransactions.approvalStatusSelect()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.ss-smart-hr.approval-status-display",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "ssSmartHRTransactions.searchButton()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.ss-smart-hr.search-button",
+      "evidence": {
+        "verifiedAt": "2026-08-14",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+      }
+    },
+    {
+      "system": "ucpath",
+      "legacyKey": "ssSmartHRTransactions.transactionResultRow()",
+      "disposition": "ported",
+      "semanticKind": "element",
+      "canonicalId": "ucpath.ss-smart-hr.receipt-display",
+      "evidence": {
+        "verifiedAt": "2026-08-04",
+        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json"
+      }
+    }
+  ]
+}

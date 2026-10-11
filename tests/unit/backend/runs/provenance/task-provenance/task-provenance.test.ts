@@ -235,6 +235,7 @@ function checkpointFrom(
     itemId: ITEM_ID,
     nodeId,
     attempt: 1,
+    claimGeneration: 1,
     runId: RUN_ID,
     output: {
       schemaHash: deriveSchemaHash(outputSchema, "output"),
@@ -348,7 +349,7 @@ describe("task provenance collector", () => {
     const gateNow = "2026-08-02T19:00:00.000Z";
     const gateResult = {
       runId: RUN_ID,
-      gateId: "identity-approval",
+      gateId: "identity-approval", nodeId: "approval",
       commandId: "cccccccc-0001-4000-8000-000100000000",
       expectedVersion: 3,
       resolvedBy: "local-operator",
@@ -463,7 +464,7 @@ describe("task provenance collector", () => {
 
     const gateResult = {
       runId: RUN_ID,
-      gateId: "identity-approval",
+      gateId: "identity-approval", nodeId: "approval",
       commandId: "cccccccc-0001-4000-8000-000100000000",
       expectedVersion: 3,
       resolvedBy: "local-operator",

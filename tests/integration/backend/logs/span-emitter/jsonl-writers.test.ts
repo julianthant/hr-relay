@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -10,20 +10,41 @@ import { RedactedFieldSchema } from "../../../../../src/rules/redaction/redactio
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { DeclaredActionOccurrenceSchema } from "../../../../../src/rules/workflow/task-provenance.js";
 import { NoteWireSchema, SpanEventWireSchema, projectNoteForOperator } from "../../../../../src/models/events/types.js";
-import {
-  appendEventStreamLine,
-  listEventStreamFiles,
-  pruneEventStreams,
-  readEventStreamLines,
-  readEventStreamLinesFrom,
-  readScopedEventStreamLines,
-  scopedEventStreamFiles,
-} from "../../../../../src/backend/storage/events/jsonl-streams.js";
-import { createNoteJsonlWriter } from "../../../../../src/backend/storage/events/note-jsonl-writer.js";
-import { createSpanJsonlWriter } from "../../../../../src/backend/storage/events/span-jsonl-writer.js";
+import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
+import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
+import { timelineNoteLocation, timelineSpanLocation, type TimelineLine } from "../../../../../src/backend/storage/events/timeline-reader.js";
+import { TimelineEventRecordSchema, timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../../../src/models/events/timeline.js";
+import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
 const roots: string[] = [];
+const repositories = new Map<string, TimelineRepository>();
+function repositoryOf(root: string): TimelineRepository {
+  let repository = repositories.get(root);
+  if (repository === undefined) {
+    const records: TimelineEventRecord[] = [];
+    repository = { withReadSnapshot: read => read(), get: id => records.find(record => record.eventId === id),
+      page: () => records, highWaterMark: () => records.length, pruneBefore: () => 0,
+      append(input) {
+        const record = TimelineEventRecordSchema.parse({ ...(input as object), cursor: records.length + 1 });
+        const previous = records.find(row => row.eventId === record.eventId);
+        if (previous !== undefined) {
+          if (timelineAppendContent(previous) !== timelineAppendContent(record)) throw new Error("timeline-event-identity-conflict");
+          return { state: "existing", record: previous };
+        }
+        canonicalJsonStringify(record); records.push(record); return { state: "inserted", record };
+      } };
+    repositories.set(root, repository);
+  }
+  return repository;
+}
+function nativeLines(root: string, kind: "spans" | "notes"): readonly TimelineLine[] {
+  return repositoryOf(root).page({}).flatMap(record => {
+    if (kind === "spans" && record.payload.kind === "span") return [timelineSpanLocation(record)];
+    if (kind === "notes" && record.payload.kind === "note") return [timelineNoteLocation(record)];
+    return [];
+  });
+}
 
 function stateRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "hrauto-events-"));
@@ -32,6 +53,7 @@ function stateRoot(): string {
 }
 
 afterEach(() => {
+  repositories.clear();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -107,17 +129,17 @@ function queuedEvent(clock: { now(): Date }): Record<string, unknown> {
   };
 }
 
-describe("span JSONL writer", () => {
+describe("native span writer", () => {
   it("appends one strict pid-stamped line per event and feeds NO projector — the fold reads disk", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 4242 });
+    const writer = createTimelineEmitter({ repository: repositoryOf(root), clock, pid: 4242 });
     writer.emit(queuedEvent(clock));
     writer.emit({
       t: "run.claimed", ts: clock.now().toISOString(), workflow: "person-lookup",
       runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: TRACE, workerId: "person-lookup-worker-1",
     });
-    const lines = readEventStreamLines(root, "spans");
+    const lines = nativeLines(root, "spans");
     assert.equal(lines.length, 2);
     assert.equal(lines[0].file.workflow, "person-lookup");
     assert.equal(lines[0].file.date, "2026-08-03");
@@ -125,23 +147,23 @@ describe("span JSONL writer", () => {
     assert.equal((first as { pid: number }).pid, 4242);
   });
 
-  it("partitions append-at-now: a midnight-crossing writer starts a new day file", () => {
+  it("records append-at-now retention dates across midnight", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const writer = createTimelineEmitter({ repository: repositoryOf(root), clock, pid: 1 });
     writer.emit(queuedEvent(clock));
     clock.advanceWall(24 * 60 * 60 * 1000);
     writer.emit({
       t: "run.claimed", ts: clock.now().toISOString(), workflow: "person-lookup",
       runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: TRACE, workerId: "person-lookup-worker-1",
     });
-    assert.deepEqual(listEventStreamFiles(root, "spans").map((file) => file.date), ["2026-08-03", "2026-08-04"]);
+    assert.deepEqual([...new Set(nativeLines(root, "spans").map(line => line.file.date))], ["2026-08-03", "2026-08-04"]);
   });
 
   it("throws on a second run.queued, a re-open, and a re-end for the same identity", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const writer = createTimelineEmitter({ repository: repositoryOf(root), clock, pid: 1 });
     writer.emit(queuedEvent(clock));
     assert.throws(() => writer.emit(queuedEvent(clock)), /write-once/);
     const task = {
@@ -167,7 +189,7 @@ describe("span JSONL writer", () => {
   it("refuses a span.patched event outright and writes nothing", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const writer = createTimelineEmitter({ repository: repositoryOf(root), clock, pid: 1 });
     writer.emit(queuedEvent(clock));
     const patch = (key: string): Record<string, unknown> => ({
       t: "span.patched", ts: clock.now().toISOString(), workflow: "person-lookup",
@@ -175,14 +197,14 @@ describe("span JSONL writer", () => {
     });
     assert.throws(() => writer.emit(patch("resolvedName")));
     assert.throws(() => writer.emit(patch("traceId")));
-    const patched = readEventStreamLines(root, "spans").filter((line) => line.text.includes("span.patched"));
+    const patched = nativeLines(root, "spans").filter((line) => line.text.includes("span.patched"));
     assert.equal(patched.length, 0);
   });
 
   it("writes classified observations and refuses unclassified leaf shapes", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const writer = createTimelineEmitter({ repository: repositoryOf(root), clock, pid: 1 });
     writer.emit(queuedEvent(clock));
     const observed = (values: readonly unknown[]): Record<string, unknown> => ({
       t: "data.observed", ts: clock.now().toISOString(), workflow: "person-lookup",
@@ -199,7 +221,7 @@ describe("span JSONL writer", () => {
     writer.emit(observed([
       { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "ambiguous" },
     ]));
-    const lines = readEventStreamLines(root, "spans").filter((line) => line.text.includes("data.observed"));
+    const lines = nativeLines(root, "spans").filter((line) => line.text.includes("data.observed"));
     assert.equal(lines.length, 2);
     assert.match(lines[0]?.text ?? "", /"pid":1/);
     assert.match(lines[0]?.text ?? "", /"6712"/);
@@ -209,14 +231,14 @@ describe("span JSONL writer", () => {
     // An unclassified value is refused BEFORE any byte reaches disk: the wire
     // leaf has no arm for a bare `{key, value}` without a classification.
     assert.throws(() => writer.emit(observed([{ key: "selection.eid", value: "10456712" }])));
-    const after = readEventStreamLines(root, "spans").filter((line) => line.text.includes("data.observed"));
+    const after = nativeLines(root, "spans").filter((line) => line.text.includes("data.observed"));
     assert.equal(after.length, 2);
   });
 
   it("refuses a raw EID disguised as a last4 value before appending it", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const writer = createTimelineEmitter({ repository: repositoryOf(root), clock, pid: 1 });
     const disguised = {
       t: "data.observed", ts: clock.now().toISOString(), workflow: "person-lookup",
       runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: `${TRACE}/searching#1.1`, parentSpanPath: TRACE,
@@ -231,13 +253,13 @@ describe("span JSONL writer", () => {
     };
 
     assert.throws(() => writer.emit(disguised));
-    assert.equal(readEventStreamLines(root, "spans").length, 0);
+    assert.equal(nativeLines(root, "spans").length, 0);
   });
 
   it("refuses a non-SHA-256 string disguised as a digest before appending it", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const writer = createTimelineEmitter({ repository: repositoryOf(root), clock, pid: 1 });
     const disguised = {
       t: "data.observed", ts: clock.now().toISOString(), workflow: "person-lookup",
       runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: `${TRACE}/searching#1.1`, parentSpanPath: TRACE,
@@ -252,7 +274,7 @@ describe("span JSONL writer", () => {
     };
 
     assert.throws(() => writer.emit(disguised));
-    assert.equal(readEventStreamLines(root, "spans").length, 0);
+    assert.equal(nativeLines(root, "spans").length, 0);
   });
 
   it("the durable redaction schema accepts exactly the canonical redaction pairs", () => {
@@ -280,10 +302,10 @@ describe("span JSONL writer", () => {
     }
   });
 
-  it("the JSONL writer refuses every forbidden redaction pair before append", () => {
+  it("the native writer refuses every forbidden redaction pair before append", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const writer = createTimelineEmitter({ repository: repositoryOf(root), clock, pid: 1 });
     let allowedCount = 0;
     let forbiddenCount = 0;
 
@@ -293,18 +315,18 @@ describe("span JSONL writer", () => {
       const expectedAllowed = EXPECTED_ALLOWED_TRANSFORMS[classification].has(transform);
       const event = observedPairEvent(value);
 
-      const before = readEventStreamLines(root, "spans").length;
+      const before = nativeLines(root, "spans").length;
       if (expectedAllowed) {
         assert.doesNotThrow(() => writer.emit(event), `${pair} writer`);
         allowedCount += 1;
       } else {
-        assert.throws(() => writer.emit(event), /forbidden/u, `${pair} writer`);
-        assert.equal(readEventStreamLines(root, "spans").length, before, `${pair} appended before refusal`);
+        assert.throws(() => writer.emit(event), /timeline-span-invalid/u, `${pair} writer`);
+        assert.equal(nativeLines(root, "spans").length, before, `${pair} appended before refusal`);
         forbiddenCount += 1;
       }
     }
 
-    const lines = readEventStreamLines(root, "spans");
+    const lines = nativeLines(root, "spans");
     assert.equal(allowedCount, 17);
     assert.equal(forbiddenCount, 13);
     assert.equal(lines.length, allowedCount);
@@ -312,9 +334,9 @@ describe("span JSONL writer", () => {
     for (const classification of CLASSIFICATIONS) {
       const expected = redactedPairValue(classification, "allow");
       const retained = lines.map(({ text }) => SpanEventWireSchema.parse(JSON.parse(text)))
-        .find(event => event.t === "data.observed" && event.points.some(point => point.values.some(value => value.classification === classification && value.transform === "allow")));
+        .find(event => event.t === "data.observed" && event.points.some(point => point.values.some(value => value.classification === classification && (classification === "secret" || classification === "credential-file" || value.transform === "allow"))));
       assert.ok(retained?.t === "data.observed", `${classification} complete allowed value missing`);
-      assert.deepEqual(retained.points[0]?.values, [expected]);
+      assert.deepEqual(retained.points[0]?.values, classification === "secret" || classification === "credential-file" ? [{key:"selection.value",state:"redacted",classification,transform:"drop"}] : [expected]);
     }
     for (const invalid of [
       { key: "selection.value", state: "allowed", classification: "unknown", transform: "allow", value: "complete" },
@@ -324,16 +346,16 @@ describe("span JSONL writer", () => {
       assert.equal(RedactedFieldSchema.safeParse(invalid).success, false);
       assert.equal(SpanEventWireSchema.safeParse({ ...observedPairEvent(invalid), pid: 1 }).success, false);
       assert.throws(() => writer.emit(observedPairEvent(invalid)));
-      assert.equal(readEventStreamLines(root, "spans").length, allowedCount);
+      assert.equal(nativeLines(root, "spans").length, allowedCount);
     }
   });
 });
 
-describe("note JSONL writer and classified fields", () => {
+describe("native note writer and classified fields", () => {
   it("retains classified values and counts invalid fields", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
     const canaryPassword = "hunter2-canary-password";
     const canarySsn = "951-57-1700";
     const note = writer.emitNote({
@@ -350,20 +372,19 @@ describe("note JSONL writer and classified fields", () => {
     });
     const fields = note.fields ?? [];
     assert.deepEqual(fields, [
-      { key: "password", kind: "text", value: canaryPassword },
       { key: "ssn", kind: "text", value: canarySsn },
       { key: "resultCount", kind: "text", value: "3" },
-      { key: "invalidFields", kind: "count", value: 1 },
+      { key: "invalidFields", kind: "count", value: 2 },
     ]);
-    const bytes = readFileSync(readEventStreamLines(root, "notes")[0].file.path, "utf8");
-    assert.equal(bytes.includes(canaryPassword), true);
+    const bytes = nativeLines(root, "notes")[0].text;
+    assert.equal(bytes.includes(canaryPassword), false);
     assert.equal(bytes.includes(canarySsn), true);
   });
 
   it("keeps generic note ingress append-at-now without authority scoping", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
-    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
     const emit = (message: string): void => {
       writer.emitNote({
         workflow: "person-lookup",
@@ -376,10 +397,10 @@ describe("note JSONL writer and classified fields", () => {
     clock.setWall(new Date(AT.getTime() + 3 * 24 * 60 * 60 * 1000));
     emit("three days later");
 
-    assert.deepEqual(listEventStreamFiles(root, "notes").map(({ date }) => date), ["2026-08-03", "2026-08-06"]);
+    assert.deepEqual([...new Set(nativeLines(root, "notes").map(line => line.file.date))], ["2026-08-03", "2026-08-06"]);
   });
 
-  it("uses one instant for run-scope validation, note timestamp, and append-day partition", () => {
+  it("uses one instant for run-scope validation, note timestamp, and append retention date", () => {
     const root = stateRoot();
     const run = RunRecordSchema.parse(personLookupQueuedRun());
     const noteAt = new Date(run.updatedAt);
@@ -393,7 +414,7 @@ describe("note JSONL writer and classified fields", () => {
         return calls === 1 ? noteAt : nextDay;
       },
     };
-    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
     const note = writer.emitRunNote({
       workflow: run.envelope.workflow,
       address: {
@@ -405,13 +426,13 @@ describe("note JSONL writer and classified fields", () => {
       kind: "roster-match-completed",
     }, run);
 
-    const files = listEventStreamFiles(root, "notes");
+    const files = nativeLines(root, "notes").map(line => line.file);
     assert.equal(calls, 1);
     assert.equal(files.length, 1);
     const noteFile = files[0];
     assert.ok(noteFile);
     assert.equal(noteFile.date, localDatePart(noteAt));
-    const stored = NoteWireSchema.parse(JSON.parse(readFileSync(noteFile.path, "utf8")));
+    const stored = NoteWireSchema.parse(JSON.parse(nativeLines(root, "notes")[0].text));
     assert.equal(note.ts, noteAt.toISOString());
     assert.equal(stored.ts, noteAt.toISOString());
     assert.equal(stored.message, "roster match completed");
@@ -421,7 +442,7 @@ describe("note JSONL writer and classified fields", () => {
     const root = stateRoot();
     const run = RunRecordSchema.parse(personLookupQueuedRun());
     const clock = manualClock(new Date(run.updatedAt));
-    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
     const note = writer.emitRunAction({
       workflow: run.envelope.workflow,
       address: {
@@ -434,7 +455,7 @@ describe("note JSONL writer and classified fields", () => {
     }, run);
     assert.equal(note.message, 'Typed "951-57-1700" into ucpath person org eid input');
     assert.equal(projectNoteForOperator(note, true).message, note.message);
-    const bytes = readFileSync(readEventStreamLines(root, "notes")[0].file.path, "utf8");
+    const bytes = nativeLines(root, "notes")[0].text;
     assert.equal(bytes.includes("951-57-1700"), true);
     assert.equal(bytes.includes("ucpath.person-org.eid-input"), true);
   });
@@ -443,7 +464,7 @@ describe("note JSONL writer and classified fields", () => {
     const root = stateRoot();
     const run = RunRecordSchema.parse(personLookupQueuedRun());
     const clock = manualClock(new Date(run.updatedAt));
-    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
     const rawProtectedValue = "RAW_PROTECTED_BROWSER_VALUE";
     const note = writer.emitRunAction({
       workflow: run.envelope.workflow,
@@ -480,9 +501,10 @@ describe("note JSONL writer and classified fields", () => {
             consumed: {
               state: "redacted",
               binding: {
-                kind: "legacy-protected-input",
+                kind: "test-data-local",
                 inputPath: "emplId",
                 name: "personLookupCanaryEid",
+                sourceId: "00000000-0000-4000-8000-000000000001",
               },
             },
           },
@@ -491,16 +513,16 @@ describe("note JSONL writer and classified fields", () => {
     }, run);
     assert.equal(note.action?.value, undefined);
     assert.doesNotMatch(note.message, /RAW_PROTECTED_BROWSER_VALUE/u);
-    const line = readEventStreamLines(root, "notes")[0];
+    const line = nativeLines(root, "notes")[0];
     assert.ok(line);
-    const bytes = readFileSync(line.file.path, "utf8");
+    const bytes = line.text;
     assert.equal(bytes.includes(rawProtectedValue), false);
   });
 
   it("refuses arbitrary run-task note text at the writer boundary", () => {
     const root = stateRoot();
     const run = RunRecordSchema.parse(personLookupQueuedRun());
-    const writer = createNoteJsonlWriter({ stateRoot: root, clock: manualClock(new Date(run.updatedAt)), pid: 7 });
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock: manualClock(new Date(run.updatedAt)), pid: 7 });
     assert.throws(() => writer.emitRunNote({
       workflow: run.envelope.workflow,
       address: {
@@ -512,11 +534,11 @@ describe("note JSONL writer and classified fields", () => {
       kind: "roster-match-completed",
       message: "UNCLASSIFIED_NOTE_CANARY",
     } as never, run));
-    assert.deepEqual(readEventStreamLines(root, "notes"), []);
+    assert.deepEqual(nativeLines(root, "notes"), []);
   });
 
   it("refuses a non-note ingress instead of writing a best guess", () => {
-    const writer = createNoteJsonlWriter({ stateRoot: stateRoot(), clock: manualClock(AT), pid: 7 });
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(stateRoot()), clock: manualClock(AT), pid: 7 });
     assert.throws(() => writer.emitNote({ workflow: "person-lookup", level: "step", message: "no address" }));
     assert.throws(() => writer.emitNote({
       workflow: "person-lookup",
@@ -527,191 +549,3 @@ describe("note JSONL writer and classified fields", () => {
   });
 });
 
-describe("cursor-based tail reader", () => {
-  it("reads only what landed since the cursors, and resumes without re-reading a line", () => {
-    const root = stateRoot();
-    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":1}`);
-    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":2}`);
-    const first = readEventStreamLinesFrom(root, "spans", new Map());
-    assert.deepEqual(first.lines.map(({ text, lineNumber }) => ({ text, lineNumber })), [
-      { text: `{"n":1}`, lineNumber: 1 },
-      { text: `{"n":2}`, lineNumber: 2 },
-    ]);
-
-    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":3}`);
-    // A new file (day roll / new workflow) is picked up from byte 0.
-    appendEventStreamLine(root, "spans", "aa-flow", "2026-08-04", `{"n":4}`);
-    const second = readEventStreamLinesFrom(root, "spans", first.cursors);
-    assert.deepEqual(second.lines.map(({ text, lineNumber }) => ({ text, lineNumber })), [
-      { text: `{"n":3}`, lineNumber: 3 },
-      { text: `{"n":4}`, lineNumber: 1 },
-    ]);
-
-    const third = readEventStreamLinesFrom(root, "spans", second.cursors);
-    assert.deepEqual(third.lines, []);
-  });
-
-  it("does not consume a torn trailing line until its newline lands", () => {
-    const root = stateRoot();
-    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":1}`);
-    const path = join(root, "spans", "person-lookup-2026-08-03.jsonl");
-    appendFileSync(path, `{"torn":`); // another process mid-append — no newline yet
-    const first = readEventStreamLinesFrom(root, "spans", new Map());
-    assert.deepEqual(first.lines.map(({ text }) => text), [`{"n":1}`]);
-
-    appendFileSync(path, `true}\n`);
-    const second = readEventStreamLinesFrom(root, "spans", first.cursors);
-    assert.deepEqual(second.lines.map(({ text, lineNumber }) => ({ text, lineNumber })), [
-      { text: `{"torn":true}`, lineNumber: 2 },
-    ]);
-  });
-
-  it("fails loud when an append-only file shrank below its cursor", () => {
-    const root = stateRoot();
-    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":1}`);
-    appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":2}`);
-    const { cursors } = readEventStreamLinesFrom(root, "spans", new Map());
-    truncateSync(join(root, "spans", "person-lookup-2026-08-03.jsonl"), 4);
-    assert.throws(() => readEventStreamLinesFrom(root, "spans", cursors), /shrank .* truncated/);
-  });
-});
-
-describe("stream file retention", () => {
-  it("prunes span/note files strictly older than 30 days and fails loud on a foreign file", () => {
-    const root = stateRoot();
-    const clock = manualClock(AT);
-    appendEventStreamLine(root, "spans", "person-lookup", "2026-07-01", "{}");
-    appendEventStreamLine(root, "spans", "person-lookup", "2026-07-05", "{}");
-    appendEventStreamLine(root, "notes", "person-lookup", "2026-06-30", "{}");
-    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-03", "{}");
-    const report = pruneEventStreams({ stateRoot: root, clock });
-    assert.equal(report.cutoffDate, "2026-07-04");
-    assert.equal(report.removed.length, 2);
-    assert.deepEqual(listEventStreamFiles(root, "spans").map((file) => file.date), ["2026-07-05"]);
-    assert.deepEqual(listEventStreamFiles(root, "notes").map((file) => file.date), ["2026-08-03"]);
-
-    mkdirSync(join(root, "spans"), { recursive: true });
-    writeFileSync(join(root, "spans", "not-a-stream.txt"), "stray");
-    assert.throws(() => listEventStreamFiles(root, "spans"), /not-a-stream\.txt/);
-    assert.throws(() => pruneEventStreams({ stateRoot: root, clock }), /not-a-stream\.txt/);
-  });
-
-  it("refuses a multi-line append", () => {
-    assert.throws(
-      () => appendEventStreamLine(stateRoot(), "spans", "person-lookup", "2026-08-03", "{}\n{}"),
-      /one line per event/,
-    );
-  });
-});
-
-describe("scoped reader covers one workflow and one date range", () => {
-  /** Four partitions across two workflows and three days, one line each. */
-  function corpus(): string {
-    const root = stateRoot();
-    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-10", `{"n":"pl-10"}`);
-    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-11", `{"n":"pl-11"}`);
-    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-12", `{"n":"pl-12"}`);
-    appendEventStreamLine(root, "notes", "separations", "2026-08-11", `{"n":"sep-11"}`);
-    return root;
-  }
-
-  it("opens only the partitions inside the scope", () => {
-    const root = corpus();
-    const files = scopedEventStreamFiles(root, "notes", {
-      workflow: "person-lookup",
-      fromDate: "2026-08-11",
-      toDate: "2026-08-12",
-    });
-    assert.deepEqual(files.map(({ workflow, date }) => `${workflow}-${date}`), [
-      "person-lookup-2026-08-11",
-      "person-lookup-2026-08-12",
-    ]);
-  });
-
-  it("serves a SUBSEQUENCE of the unscoped read, in the same order", () => {
-    const root = corpus();
-    const scoped = readScopedEventStreamLines(root, "notes", {
-      workflow: "person-lookup",
-      fromDate: "2026-08-10",
-      toDate: "2026-08-12",
-    });
-    const unscoped = readEventStreamLines(root, "notes")
-      .filter((line) => line.file.workflow === "person-lookup");
-    assert.deepEqual(
-      scoped.map(({ text, lineNumber, file }) => [file.path, lineNumber, text]),
-      unscoped.map(({ text, lineNumber, file }) => [file.path, lineNumber, text]),
-    );
-  });
-
-  it("includes both ends of the range", () => {
-    const root = corpus();
-    const lines = readScopedEventStreamLines(root, "notes", {
-      workflow: "person-lookup",
-      fromDate: "2026-08-10",
-      toDate: "2026-08-10",
-    });
-    assert.deepEqual(lines.map(({ text }) => text), [`{"n":"pl-10"}`]);
-  });
-
-  it("does not read a partition outside the scope — a corrupt one there cannot be observed", () => {
-    const root = corpus();
-
-    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-13", "{ this is not json");
-    const lines = readScopedEventStreamLines(root, "notes", {
-      workflow: "person-lookup",
-      fromDate: "2026-08-12",
-      toDate: "2026-08-12",
-    });
-    assert.deepEqual(lines.map(({ text }) => text), [`{"n":"pl-12"}`]);
-    // …and the same file INSIDE the scope is served verbatim for the caller to
-    // refuse, exactly as the unscoped reader always did.
-    const widened = readScopedEventStreamLines(root, "notes", {
-      workflow: "person-lookup",
-      fromDate: "2026-08-12",
-      toDate: "2026-08-13",
-    });
-    assert.deepEqual(widened.map(({ text }) => text), [`{"n":"pl-12"}`, "{ this is not json"]);
-  });
-
-  it("refuses an inverted range by name rather than selecting nothing", () => {
-    const root = corpus();
-    assert.throws(
-      () => scopedEventStreamFiles(root, "notes", {
-        workflow: "person-lookup",
-        fromDate: "2026-08-12",
-        toDate: "2026-08-11",
-      }),
-      /the range is inverted/,
-    );
-  });
-
-  it("refuses a workflow id no partition file could carry", () => {
-    const root = corpus();
-    assert.throws(
-      () => scopedEventStreamFiles(root, "notes", {
-        workflow: "Person_Lookup",
-        fromDate: "2026-08-10",
-        toDate: "2026-08-12",
-      }),
-      /no notes partition file can carry that id/,
-    );
-  });
-
-  it("refuses a date that is not a date", () => {
-    const root = corpus();
-    assert.throws(() => scopedEventStreamFiles(root, "notes", {
-      workflow: "person-lookup",
-      fromDate: "yesterday",
-      toDate: "2026-08-12",
-    }));
-  });
-
-  it("serves nothing, without throwing, for a workflow that has written no partition", () => {
-    const root = corpus();
-    assert.deepEqual(readScopedEventStreamLines(root, "notes", {
-      workflow: "kuali-timekeeper-annotation",
-      fromDate: "2026-08-10",
-      toDate: "2026-08-12",
-    }), []);
-  });
-});

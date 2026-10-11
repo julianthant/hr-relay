@@ -1,9 +1,10 @@
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { createTrustRunReader } from "../../../src/backend/runs/trust/canonical-reader.js";
 import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -31,7 +32,7 @@ function sequentialIds(lane = "0"): { uuid: () => string } {
 }
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-notify-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-notify-"));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "notification-durability" },
     manualClock(new Date(NOW)),
@@ -40,6 +41,7 @@ function openDatabase(): AuthorityDatabase {
     database.close();
     rmSync(root, { recursive: true, force: true });
   });
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_2 }));
   const separations = RunRecordSchema.parse(personLookupQueuedRun({ runId: UUID_4 }));
   database.authority.runs.enqueue(RunRecordSchema.parse({ ...separations,

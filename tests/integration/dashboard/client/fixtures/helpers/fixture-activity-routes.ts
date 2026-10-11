@@ -10,7 +10,7 @@ import {
 FIXTURE_ACTIVITY_REPORT,
 FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,
 FIXTURE_ACTIVITY_UNAVAILABLE_REPORT
-} from "../../../../../support/fixtures/dashboard/fixture-archive.js";
+} from "../../../../../support/fixtures/dashboard/fixture-activity.js";
 export function registerFixtureActivityRoutes({ app }: { app: Hono }): void {
 
   app.get("/api/v1/reports/activity", (c) => {

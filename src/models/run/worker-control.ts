@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkerPoolRosterAdmissionSchema, WorkerRetirementProofSchema } from "./worker-slot.js";
 import { CommandAuditRecordSchema, WorkerBrowserCommandRequestSchema } from "../../rules/commands/commands.js";
 import { BrowserSessionIdSchema, BrowserSystemIdSchema, CommandIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, WorkerIdSchema } from "../../rules/identity/ids.js";
 
@@ -11,7 +12,7 @@ export function workerControlScope(request: z.infer<typeof WorkerBrowserCommandR
 
 /** The observed result survives the BFF's acknowledgement/audit crash window. */
 export const WorkerEffectAcknowledgementSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("plan"), workerIds: z.array(WorkerIdSchema) }),
+  z.strictObject({ kind: z.literal("plan"), workerIds: z.array(WorkerIdSchema), retirements: z.array(WorkerRetirementProofSchema).max(3) }),
   z.strictObject({ kind: z.literal("stop"), directiveLeaseVersions: z.strictObject({ before: PositiveIntSchema, after: PositiveIntSchema }) }),
   z.strictObject({ kind: z.literal("control"), browserSessionId: BrowserSessionIdSchema.optional() }),
 ]);
@@ -33,8 +34,23 @@ export const WorkerControlRecordSchema = z.strictObject({
   expiresAt: IsoInstantSchema,
   basisVersion: z.number().int().nonnegative(),
   phase: WorkerControlPhaseSchema,
+  roster: WorkerPoolRosterAdmissionSchema.optional(),
   auditedAt: IsoInstantSchema.optional(),
 }).superRefine((record, context) => {
+  if (record.request.type === "plan-worker-count") {
+    const roster = record.roster;
+    const workflowId = record.request.target.workflowId;
+    if (roster === undefined || roster.selected.length !== record.request.payload.desiredWorkers
+      || roster.beforeVersion !== record.basisVersion
+      || [...roster.selected, ...roster.excess].some(slot => slot.workflow !== workflowId)) {
+      context.addIssue({ code: "custom", message: "worker-control-roster-required" });
+    }
+    if (roster !== undefined && record.phase.state === "succeeded"
+      && (record.phase.acknowledgement.kind !== "plan"
+        || JSON.stringify(record.phase.acknowledgement.workerIds) !== JSON.stringify(roster.selected.map(slot => slot.workerId)))) {
+      context.addIssue({ code: "custom", message: "worker-control-roster-acknowledgement-mismatch" });
+    }
+  } else if (record.roster !== undefined) context.addIssue({ code: "custom", message: "worker-control-unexpected-roster" });
   if (record.scope !== workerControlScope(record.request)) context.addIssue({ code: "custom", message: "worker-control-scope-mismatch" });
   if ("workerId" in record.request.target && record.request.target.controlBasis === undefined) context.addIssue({ code: "custom", message: "worker-control-basis-required" });
   if (Date.parse(record.expiresAt) < Date.parse(record.admittedAt)) context.addIssue({ code: "custom", message: "worker-control-expiry-before-admission" });
@@ -59,13 +75,15 @@ export const WorkerBrowserObservationSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   instance: z.string().min(1).optional(),
   configFingerprint: FingerprintSchema,
+  signInFingerprint: FingerprintSchema,
   browserMode: z.enum(["headed", "headless"]),
   profileDirectory: z.string().min(1).optional(),
   acceptDownloads: z.boolean(),
   exclusive: z.boolean(),
   health: z.enum(["authenticated", "unknown", "failed", "closed"]),
   observedAt: IsoInstantSchema,
-  openedAt: IsoInstantSchema.optional(),
+  openedAt: IsoInstantSchema,
+  profileRevision: PositiveIntSchema,
 });
 export type WorkerBrowserObservation = z.infer<typeof WorkerBrowserObservationSchema>;
 

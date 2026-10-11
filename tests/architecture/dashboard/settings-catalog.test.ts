@@ -83,7 +83,7 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
     { declaration: "createSettingsRuntimeReader", keys: settingsReadback },
     { declaration: "createProtectedSettingsRuntimeReader", keys: protectedReadback },
     { declaration: "defaultRuntimePaths", keys: rows.filter(({ defaultKind }) => defaultKind === "runtime-path").map(({ key }) => key) },
-    { declaration: "providerBudget", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
+    { declaration: "providerInvocationConfig", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
     { declaration: "optionalSecret", keys: SECRET_SPECS.map(({ name }) => name) },
     { declaration: "requireSecretFile", keys: SECRET_FILE_SPECS.flatMap(({ name, configPath }) => [name, configPath]) },
     { declaration: "RUNTIME_DEPENDENCY_REGISTRY", keys: dependencySecretNames },

@@ -167,7 +167,7 @@ function queuedRun() {
     },
     input: {
       raw: { emplId: EXECUTOR_EID },
-      parsed: {
+      parsed: { protectedBindings: [],
         schemaHash: deriveSchemaHash(GateCanonicalInput, "output"),
         value: { emplId: EXECUTOR_EID },
       },
@@ -188,7 +188,7 @@ function claim(database: AuthorityDatabase, now: string) {
 /** The command service's resolve-gate arm, reduced to the rows it writes. */
 function approve(database: AuthorityDatabase, version: number, now: string): void {
   const result = { schemaHash: deriveSchemaHash(ApprovalSchema, "output"), value: { approved: true } };
-  database.authority.gateResults.insert({
+  database.authority.gateResults.insert({ nodeId: "approval",
     runId: RUN_ID,
     gateId: "approval",
     commandId: UUID_7,

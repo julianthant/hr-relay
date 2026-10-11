@@ -17,8 +17,6 @@ import {
   CommandResultSchema,
   RunDisplayNameSchema,
 } from "../../../../../src/rules/commands/commands.js";
-import { HistoricalNotificationSnoozeAuditSchema, HistoricalNotificationSnoozeCommandSchema } from "../../../../../src/rules/commands/commands-history.js";
-import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../../../../src/backend/storage/sqlite/storage-records.js";
 import { COMMAND_FIXTURES, HASH_A, NOW, UUID_1, UUID_2, UUID_3 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
@@ -48,24 +46,9 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 ]);
 
 describe("authority classification and command families", () => {
-  it("retains strict historical Snooze journal and audit rows without admitting a live payload", () => {
-    const request = { commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "notification-bell",
-      family: "notification", type: "notification-snooze", target: { notificationId: UUID_2, actorId: "local-operator", expectedVersion: 1 },
-      payload: { until: "2026-08-03T18:00:00.000Z" } };
-    const audit = { auditId: UUID_3, request, completedAt: NOW,
-      result: { state: "applied", commandId: UUID_1, affectedTargets: [{ family: "notification", notificationId: UUID_2 }] },
-      versionChanges: [{ target: { family: "notification", notificationId: UUID_2 }, before: 1, after: 2 }], affectedDependencyIds: [] };
-    assert.equal(CommandRequestSchema.safeParse(request).success, false);
-    assert.equal(CommandAuditRecordSchema.safeParse(audit).success, false);
-    assert.deepEqual(HistoricalNotificationSnoozeCommandSchema.parse(request), request);
-    assert.deepEqual(HistoricalNotificationSnoozeAuditSchema.parse(audit), audit);
-    assert.deepEqual(AUTHORITY_RECORD_SCHEMA_REGISTRY.commands.parse(request), request);
-    assert.deepEqual(AUTHORITY_RECORD_SCHEMA_REGISTRY.command_audits.parse(audit), audit);
-    assert.equal(HistoricalNotificationSnoozeCommandSchema.safeParse({ ...request, payload: { until: NOW, extra: true } }).success, false);
-  });
   it("classifies every table exactly once and freezes the registry", () => {
     assert.deepEqual(auditAuthorityTableRegistry(AUTHORITY_TABLE_REGISTRY), []);
-    assert.equal(AUTHORITY_TABLE_REGISTRY.length, AuthorityTableNameSchema.options.filter(name => !["archived_runs", "version_plans", "version_bump_applications"].includes(name)).length + ProjectionTableNameSchema.options.length);
+    assert.equal(AUTHORITY_TABLE_REGISTRY.length, AuthorityTableNameSchema.options.length + ProjectionTableNameSchema.options.length);
     assert.equal(Object.isFrozen(AUTHORITY_TABLE_REGISTRY), true);
     assert.equal(Object.isFrozen(AUTHORITY_TABLE_REGISTRY[0]), true);
     assert.equal(AuthorityTableRegistrySchema.safeParse(AUTHORITY_TABLE_REGISTRY.slice(1)).success, false);
@@ -81,7 +64,7 @@ describe("authority classification and command families", () => {
     assert.deepEqual([...fixtureActions].sort(), [...CommandActionSchema.options].sort());
     assert.deepEqual(
       [...new Set(COMMAND_FAMILY_REGISTRY.flatMap(({ actions }) => actions))].sort(),
-      CommandActionSchema.options.filter(action => action !== "relaunch-archived-run").sort(),
+      [...CommandActionSchema.options].sort(),
     );
     assert.equal(Object.isFrozen(COMMAND_FAMILY_REGISTRY), true);
     assert.equal(CommandFamilyRegistrySchema.safeParse(COMMAND_FAMILY_REGISTRY.slice(1)).success, false);
@@ -90,15 +73,12 @@ describe("authority classification and command families", () => {
     ))).success, false);
   });
 
-  it("keeps priority bump, version bump, and rename structurally distinct", () => {
+  it("keeps priority bump and rename structurally distinct", () => {
     const priority = COMMAND_FIXTURES.find((fixture) => (fixture as { readonly type: string }).type === "bump");
-    const plan = COMMAND_FIXTURES.find((fixture) => (fixture as { readonly type: string }).type === "plan-version-bump");
     const rename = COMMAND_FIXTURES.find((fixture) => (fixture as { readonly type: string }).type === "rename");
     assert.notEqual(priority, undefined);
-    assert.notEqual(plan, undefined);
     assert.notEqual(rename, undefined);
     assert.equal(CommandRequestSchema.safeParse({ ...priority as object, family: "version-archive" }).success, false);
-    assert.equal(CommandRequestSchema.safeParse({ ...plan as object, family: "run" }).success, false);
     assert.equal(CommandRequestSchema.safeParse({ ...priority as object, payload: { targetVersion: "2.0.0" } }).success, false);
     assert.equal(CommandRequestSchema.safeParse({ ...rename as object, payload: { displayName: " Run name" } }).success, false);
     assert.equal(CommandRequestSchema.safeParse({ ...rename as object, payload: { displayName: "Run name", alias: "other" } }).success, false);

@@ -62,8 +62,6 @@ import {
 } from "../../../../models/ui/kuali-separation-finalization.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
-const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
-const KUALI_SELECTOR_BLOB = "1c55c7d307891e07951ca38a89548418bdc23f49";
 const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json";
 const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json";
 const IDENTITY_SCENARIO = "ui/kuali-rrss-document-identity";
@@ -93,16 +91,7 @@ const ACTION_LIST_DOC_LINK_PORT_KEY = "actionList.docLink()";
 const VERIFIED_AT = "2026-08-04";
 const READ_VERIFIED_AT = "2026-08-14";
 
-const GitBlobSchema = z.string().regex(/^[0-9a-f]{40}$/u);
-const LegacySelectorProvenanceSchema = z.strictObject({
-  commit: z.literal(LEGACY_COMMIT),
-  path: z.literal("src/systems/kuali/selectors.ts"),
-  key: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u),
-  sourceLine: z.number().int().positive(),
-  blob: GitBlobSchema,
-
-  narrowedFromLegacy: z.string().min(1).optional(),
-});
+const SelectorKeySchema = z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u);
 
 // Kuali DOM refs change on reload; exact accessible names avoid neighboring workflow-advancing controls.
 export const KualiLocatorRecipeSchema = z.discriminatedUnion("kind", [
@@ -183,7 +172,7 @@ const ElementDefinitionSchema = z.strictObject({
   locator: KualiLocatorRecipeSchema,
   requiredStates: z.array(PageStateIdSchema),
   verification: UiVerificationSchema,
-  provenance: LegacySelectorProvenanceSchema,
+  selectorKey: SelectorKeySchema,
   supersedes: z.array(ElementIdSchema),
 });
 
@@ -253,16 +242,7 @@ function verification(scenario: string, legacyKey: string) {
   };
 }
 
-function provenance(key: string, sourceLine: number, narrowedFromLegacy?: string) {
-  return {
-    commit: LEGACY_COMMIT,
-    path: "src/systems/kuali/selectors.ts" as const,
-    key,
-    sourceLine,
-    blob: KUALI_SELECTOR_BLOB,
-    ...(narrowedFromLegacy === undefined ? {} : { narrowedFromLegacy }),
-  };
-}
+
 
 
 function readVerification(legacyKey: string) {
@@ -306,8 +286,6 @@ function readElement(input: Readonly<{
   name: string;
   sensitivity: "public" | "hr" | "restricted";
   legacyKey: string;
-  sourceLine: number;
-  narrowedFromLegacy?: string;
 }>) {
   return {
     id: input.id,
@@ -321,7 +299,7 @@ function readElement(input: Readonly<{
     locator: { kind: "role-exact-name", role: input.role, name: input.name, exact: true },
     requiredStates: [KUALI_RRSS_SEPARATION_READY],
     verification: readVerification(input.legacyKey),
-    provenance: provenance(input.legacyKey, input.sourceLine, input.narrowedFromLegacy),
+    selectorKey: input.legacyKey,
     supersedes: [],
   };
 }
@@ -359,7 +337,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       locator: { kind: "role-exact-name", role: "textbox", name: "EID*", exact: true },
       requiredStates: [KUALI_RRSS_DOCUMENT_READY],
       verification: verification(IDENTITY_SCENARIO, EID_PORT_KEY),
-      provenance: provenance(EID_PORT_KEY, 96),
+      selectorKey: EID_PORT_KEY,
       supersedes: [],
     },
     {
@@ -374,7 +352,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       locator: { kind: "role-exact-name", role: "textbox", name: "Timekeeper Name:*", exact: true },
       requiredStates: [KUALI_RRSS_DOCUMENT_READY, KUALI_RRSS_FINALIZATION_STAGED],
       verification: verification(SHARED_FINALIZATION_CONTROLS_SCENARIO, TIMEKEEPER_PORT_KEY),
-      provenance: provenance(TIMEKEEPER_PORT_KEY, 138),
+      selectorKey: TIMEKEEPER_PORT_KEY,
       supersedes: [],
     },
     {
@@ -389,14 +367,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       locator: { kind: "role-exact-name", role: "button", name: "Save", exact: true },
       requiredStates: [KUALI_RRSS_FINALIZATION_STAGED],
       verification: verification(SHARED_FINALIZATION_CONTROLS_SCENARIO, SAVE_PORT_KEY),
-      provenance: provenance(
-        SAVE_PORT_KEY,
-        223,
-        "legacy chains [class*=\"action-bar\"] button:has-text(\"Save\") .or(nav button:has-text(\"Save\")) "
-        + ".or(role button Save exact); the rebuild keeps ONLY the exact role+name branch because the live "
-        + "2026-08-04 DOM has exactly one button \"Save\" adjacent to \"Send Back\" and \"Mark Complete\", "
-        + "and a has-text fallback around workflow-advancing buttons is an unacceptable write risk",
-      ),
+      selectorKey: SAVE_PORT_KEY,
       supersedes: [],
     },
 
@@ -412,16 +383,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       locator: { kind: "role-exact-name", role: "textbox", name: "Search", exact: true },
       requiredStates: [KUALI_ACTION_LIST_READY],
       verification: actionListVerification(ACTION_LIST_SEARCH_PORT_KEY),
-      provenance: provenance(
-        ACTION_LIST_SEARCH_PORT_KEY,
-        67,
-        "legacy scopes the recipe to `.kp-input-group:has(.kp-input-button-right)` because a SECOND "
-        + "textbox named \"Search\" (the global nav box) existed when it was written 2026-06-17; this "
-        + "registry has no CSS arm and the live 2026-08-20 Action List renders EXACTLY ONE "
-        + "`textbox \"Search\"` (the nav control is now `Search apps`), so the port keeps the role+name "
-        + "branch and lets `exactlyOne` refuse any other count — a refusal names the ambiguity, while a "
-        + "CSS scope would silently pick one of two boxes",
-      ),
+      selectorKey: ACTION_LIST_SEARCH_PORT_KEY,
       supersedes: [],
     },
     {
@@ -436,7 +398,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       locator: { kind: "role-exact-name", role: "button", name: "GO", exact: true },
       requiredStates: [KUALI_ACTION_LIST_READY],
       verification: actionListVerification(ACTION_LIST_GO_PORT_KEY),
-      provenance: provenance(ACTION_LIST_GO_PORT_KEY, 79),
+      selectorKey: ACTION_LIST_GO_PORT_KEY,
       supersedes: [],
     },
     {
@@ -451,15 +413,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       locator: { kind: "role-anchored-value-name", role: "link", valueKind: "document-number" },
       requiredStates: [KUALI_ACTION_LIST_READY],
       verification: actionListVerification(ACTION_LIST_DOC_LINK_PORT_KEY),
-      provenance: provenance(
-        ACTION_LIST_DOC_LINK_PORT_KEY,
-        33,
-        "legacy CLICKS this link to open the document and reads the resulting URL; the rebuild reads its "
-        + "`href` instead, which is the same fact one navigation cheaper and strictly read-only — "
-        + "live-verified 2026-08-20, doc 4502's two links both carrying "
-        + "`/build/space/5e47518b90adda9474c14adb/actions/6a766ae6f0549046f7f0dc06`. The anchored "
-        + "accessible-name match is ported verbatim and is the safety half",
-      ),
+      selectorKey: ACTION_LIST_DOC_LINK_PORT_KEY,
       supersedes: [],
     },
 
@@ -471,7 +425,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Employee Last Name, First Name*",
       sensitivity: "hr",
       legacyKey: "separationForm.employeeName()",
-      sourceLine: 90,
     }),
     readElement({
       id: KUALI_RRSS_LAST_DAY_WORKED_FIELD,
@@ -481,7 +434,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Last Day Worked*",
       sensitivity: "hr",
       legacyKey: "separationForm.lastDayWorked()",
-      sourceLine: 102,
     }),
     readElement({
       id: KUALI_RRSS_SEPARATION_DATE_FIELD,
@@ -491,11 +443,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Separation Date (Last day actively employed)*",
       sensitivity: "hr",
       legacyKey: "separationForm.separationDate()",
-      sourceLine: 108,
-      narrowedFromLegacy: "legacy matches the loose regex /Separation Date/; the live accessible name is "
-        + "the full literal \"Separation Date (Last day actively employed)*\", and this document also "
-        + "renders a helper paragraph containing the words \"separation date\" — so the regex is a "
-        + "substring match on a page that has more than one place to hit. The port uses the exact name",
+
     }),
     readElement({
       id: KUALI_RRSS_TERMINATION_TYPE_FIELD,
@@ -505,7 +453,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Type of Termination*",
       sensitivity: "hr",
       legacyKey: "separationForm.terminationType()",
-      sourceLine: 114,
     }),
     readElement({
       id: KUALI_RRSS_LOCATION_FIELD,
@@ -515,11 +462,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Location*",
       sensitivity: "public",
       legacyKey: "separationForm.location()",
-      sourceLine: 120,
-      narrowedFromLegacy: "legacy asks for the accessible name \"Location  *\" (a space before the "
-        + "asterisk) and the live name is \"Location*\" with none, so legacy's recipe matched ZERO nodes "
-        + "on every document — which its own catch turned into location=\"\" (S13). The corrected name "
-        + "resolves to exactly one node; S13 is a broken selector, not an optional field",
+
     }),
     readElement({
       id: KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX,
@@ -529,7 +472,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Request Acknowledged - In Progress",
       sensitivity: "public",
       legacyKey: "timekeeperTasks.requestAcknowledgedCheckbox()",
-      sourceLine: 131,
     }),
     readElement({
       id: KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD,
@@ -539,7 +481,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Timekeeper/Approver Comments:",
       sensitivity: "hr",
       legacyKey: "timekeeperTasks.timekeeperComments()",
-      sourceLine: 145,
     }),
     readElement({
       id: KUALI_RRSS_TERMINATION_EFF_DATE_FIELD,
@@ -549,7 +490,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Termination Effective Date*",
       sensitivity: "hr",
       legacyKey: "finalTransactions.terminationEffDate()",
-      sourceLine: 156,
     }),
     readElement({
       id: KUALI_RRSS_DEPARTMENT_FIELD,
@@ -559,7 +499,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Department*",
       sensitivity: "public",
       legacyKey: "finalTransactions.department()",
-      sourceLine: 163,
     }),
     readElement({
       id: KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD,
@@ -569,7 +508,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Payroll Title Code*",
       sensitivity: "public",
       legacyKey: "finalTransactions.payrollTitleCode()",
-      sourceLine: 170,
     }),
     readElement({
       id: KUALI_RRSS_PAYROLL_TITLE_FIELD,
@@ -579,7 +517,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Payroll Title*",
       sensitivity: "public",
       legacyKey: "finalTransactions.payrollTitle()",
-      sourceLine: 177,
     }),
     readElement({
       id: KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX,
@@ -589,7 +526,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Submitted Termination Template",
       sensitivity: "public",
       legacyKey: "transactionResults.submittedTemplateCheckbox()",
-      sourceLine: 188,
     }),
     readElement({
       id: KUALI_RRSS_TRANSACTION_NUMBER_FIELD,
@@ -599,7 +535,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Transaction Number:*",
       sensitivity: "restricted",
       legacyKey: "transactionResults.transactionNumber()",
-      sourceLine: 195,
     }),
     readElement({
       id: KUALI_RRSS_FINAL_PAY_STUDENT_RADIO,
@@ -609,7 +544,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       name: "Does not need Final Pay (student employee)",
       sensitivity: "public",
       legacyKey: "transactionResults.doesNotNeedFinalPayRadio()",
-      sourceLine: 202,
     }),
   ],
   states: [
@@ -1009,7 +943,7 @@ export function auditKualiUiEvidenceBindings(input: unknown): readonly string[] 
     }
   }
   for (const element of KUALI_UI_REGISTRY.elements) {
-    const binding = bindingsByRow.get(portRowKey({ system: "kuali", legacyKey: element.provenance.key }));
+    const binding = bindingsByRow.get(portRowKey({ system: "kuali", legacyKey: element.selectorKey }));
     if (binding === undefined || binding.canonicalId !== element.id) {
       issues.push(`${element.id} does not resolve to its exact Kuali ported row`);
       continue;

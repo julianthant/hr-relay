@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, describe, it } from "vitest";
 import { TaskError } from "../../../../../../src/workflow-kit/errors.js";
-import type { ContentAddressedArtifactWriter } from "../../../../../../src/workflow-kit/artifacts.js";
+import type { DiagnosticArtifactWriter } from "../../../../../../src/workflow-kit/artifacts.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../../../../src/backend/runtime/execution/run-executor.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { CrmReadOnboardingRecord } from "../../../../../../src/models/systems/crm/read-onboarding-record.js";
@@ -54,7 +54,7 @@ afterEach(() => {
 });
 
 /** A recording artifact writer: content-addressed by digest, like the real one. */
-function recordingArtifacts(): ContentAddressedArtifactWriter & { readonly puts: () => readonly string[] } {
+function recordingArtifacts(): DiagnosticArtifactWriter & { readonly puts: () => readonly string[] } {
   const puts: string[] = [];
   const stored = new Map<string, Uint8Array>();
   let sequence = 0;
@@ -71,6 +71,16 @@ function recordingArtifacts(): ContentAddressedArtifactWriter & { readonly puts:
         bytes: source.byteLength,
         mediaType: metadata.mediaType,
       }));
+    },
+    stageDiagnostic: (source: Uint8Array, metadata: { mediaType: string }) => {
+      sequence += 1;
+      const ref = ArtifactRefSchema.parse({ id: `0000000${sequence}-0000-4000-8000-000000000000`,
+        sha256: String(sequence).padStart(64, "0"), bytes: source.byteLength, mediaType: metadata.mediaType });
+      let published = false;
+      return Promise.resolve({ ref, get published() { return published; },
+        publish: () => { published = true; stored.set(ref.sha256, source); puts.push(metadata.mediaType); return ref; },
+        dispose: () => {},
+      });
     },
     open: () => Promise.resolve(Readable.from([new Uint8Array()])),
     puts: () => Object.freeze([...puts]),

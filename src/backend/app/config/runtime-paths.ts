@@ -19,10 +19,10 @@ export function defaultRuntimePaths(): ConfigPaths {
     downloadsDir: resolve("data/downloads"),
     onboardingDocsDir: resolve("data/onboarding"),
     i9CheckTrackerPath: resolve("data/reports/i9-check-tracker.xlsx"),
-    stateRoot: resolve(".tracker"),
-    artifactRoot: resolve(".tracker/artifacts"),
+    stateRoot: resolve(rebuildRuntimeIsolation.stateRoot),
+    artifactRoot: resolve(rebuildRuntimeIsolation.artifactRoot),
     browserProfileRoot: profileRoot,
-    duoCredential: join(profileRoot, "duo-webauthn.json"),
+    duoCredential: join(resolve(".tracker/credentials"), "duo-webauthn.json"),
     duoExtensionDir: resolve("duo-autopilot"),
   });
 }

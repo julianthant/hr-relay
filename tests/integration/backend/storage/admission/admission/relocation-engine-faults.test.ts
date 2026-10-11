@@ -22,14 +22,14 @@ it("replays only the exact interrupted native snapshot publication", () => {
   const admission = RuntimeAdmission.syntheticRoots(destinationRoot, join(destinationRoot, "artifacts"));
   try {
     writeFileSync(source, bytes, { mode: 0o600 });
-    assert.throws(() => copyNativeSnapshot(source, destination, sha256, operationId, admission, "authority",
+    assert.throws(() => copyNativeSnapshot(source, destination, sha256, operationId, admission,
       () => { throw new Error("simulated crash after native link"); }), /simulated crash after native link/u);
     assert.equal(lstatSync(destination).nlink, 2);
     assert.equal(lstatSync(candidate).ino, lstatSync(destination).ino);
-    copyNativeSnapshot(source, destination, sha256, operationId, admission, "authority");
+    copyNativeSnapshot(source, destination, sha256, operationId, admission);
     assert.equal(lstatSync(destination).nlink, 1);
     assert.equal(lstatSync(candidate, { throwIfNoEntry: false }), undefined);
     assert.deepEqual(readFileSync(destination), bytes);
-    copyNativeSnapshot(source, destination, sha256, operationId, admission, "authority");
+    copyNativeSnapshot(source, destination, sha256, operationId, admission);
   } finally { admission.release(); rmSync(workspace, { recursive: true, force: true }); }
 });

@@ -1,15 +1,14 @@
+import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../../src/models/config/runtime-generation.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
-import { ArchivedRunContentSchema, ArchivedRunRecordSchema, archivedRunContentDigest } from "../../../../src/models/archive/model.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
 import { type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { CONFIG_SNAPSHOT, HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
-import { ARCHIVED_RUN } from "../../fixtures/archive-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { personLookupQueuedRun } from "../phase1f-executor-harness.js";
 import { makeWorld, uuidOf } from "./dashboard-harness.js";
@@ -19,10 +18,13 @@ export function trustWorld() {
   const world = makeWorld();
   const database = AuthorityDatabase.open({ path: join(world.stateRoot, "trust.sqlite"),
     busyTimeoutMs: 250, migrationOwner: "trust-linkage-test" }, world.clock);
-  database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
-  const active = database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
-    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint,
-    activatedAt: world.clock.now().toISOString() });
+  testWorkerPorts(database, world.clock, { path: join(world.stateRoot, "trust.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+  const active = database.authority.runtimeConfig.get();
+  assert.ok(active);
+  const slots = database.authority.workerSlots.list(personLookupDescriptor.id).filter(slot => slot.retiredAt === null && slot.poolIndex === 1);
+  assert.equal(slots.length, 1);
+  const workerId = slots[0]?.workerId;
+  assert.ok(workerId);
   const runtimeConfig = RuntimeConfigClaimTokenSchema.parse({ generation: active.generation, settingsRevision: active.settingsRevision,
     settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint });
   let next = 900;
@@ -30,7 +32,7 @@ export function trustWorld() {
     ids: { uuid: () => uuidOf(next++) }, publishQueued: () => {} });
   const reader = createTrustRunReader(database, world.clock);
   const receipts = createReceiptService({ database, runReader: reader, descriptors: [personLookupDescriptor] });
-  const deps: RunDetailQueryDeps = { stateRoot: world.stateRoot, projection: world.projection, runReader: reader,
+  const deps: RunDetailQueryDeps = { timeline: database.authority.timelineEvents, stateRoot: world.stateRoot, projection: world.projection, runReader: reader,
     authority: { getRun: () => { throw new Error("RAW_RUN_READ_FORBIDDEN"); },
       latestCheckpoint: (workflow, item, node) => database.authority.runCheckpoints.latest(workflow, item, node),
       getWriteIntent: id => database.authority.writeIntents.get(id),
@@ -56,7 +58,7 @@ export function trustWorld() {
     return outcome.run;
   };
   const fail = (run: RunRecord, seed: number) => {
-    const now = world.clock.now().toISOString(); const workerId = "trust-failure-worker";
+    const now = world.clock.now().toISOString();
     const claimed = database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId, now });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("fixture claim failed");
     assert.equal(claimed.run.envelope.runId, run.envelope.runId);
@@ -81,74 +83,8 @@ export function trustWorld() {
     assert.equal(result.state, "present"); if (result.state !== "present") throw new Error("failed fixture run missing");
     return result.run;
   };
-  return { world, database, service, reader, receipts, deps, runtimeConfig, create, cancel, fail,
+  return { world, database, workerId, service, reader, receipts, deps, runtimeConfig, create, cancel, fail,
     dispose() { database.close(); world.dispose(); } };
-}
-
-export function trustArchiveRecord(run: RunRecord) {
-  if (run.lifecycle.state !== "terminal") throw new Error("archive fixture requires a terminal run");
-  const { contentDigest: _digest, ...template } = ARCHIVED_RUN;
-  const status = run.lifecycle.outcome === "interrupted" ? "blocked"
-    : run.lifecycle.outcome === "failed" ? "failed"
-      : run.lifecycle.outcome === "done" ? "done" : "cancelled";
-  const detailOutcome = run.lifecycle.outcome === "interrupted"
-    ? { state: "absent" as const, reason: "run interrupted; ref write-safety recovery will requeue or settle it" }
-    : {
-        state: "terminal" as const,
-        result: run.lifecycle.outcome === "done" ? run.envelope.dryRun ? "partial" as const : "verified-done" as const
-          : run.lifecycle.outcome === "failed" ? "failed" as const : "cancelled" as const,
-        completedAt: run.lifecycle.endedAt,
-        ...(run.lifecycle.outcome === "done" && run.envelope.dryRun ? { rehearsal: true as const } : {}),
-      };
-  const content = ArchivedRunContentSchema.parse({
-    ...template,
-    runId: run.envelope.runId,
-    workflowId: run.envelope.workflow,
-    traceId: run.envelope.traceId,
-    archivedIdentity: {
-      workflowId: run.envelope.workflow,
-      descriptorVersion: run.envelope.descriptorVersion,
-      contractFingerprint: run.envelope.contractFingerprint,
-    },
-    input: run.input,
-    row: {
-      ...template.row,
-      runId: run.envelope.runId,
-      itemId: run.envelope.itemId,
-      workflowId: run.envelope.workflow,
-      traceId: run.envelope.traceId,
-      attempt: run.envelope.attempt,
-      descriptorVersion: run.envelope.descriptorVersion,
-      descriptorHash: run.envelope.contractFingerprint,
-      configFingerprint: run.envelope.configFingerprint,
-      dryRun: run.envelope.dryRun,
-      priority: run.envelope.priority,
-      runNumber: run.runNumber === undefined
-        ? { state: "absent", reason: "historical run had no ordinal" }
-        : { state: "present", value: run.runNumber },
-      rowRevision: run.version,
-      status,
-      endedAt: { state: "present", value: run.lifecycle.endedAt },
-    },
-    detail: {
-      ...template.detail,
-      runId: run.envelope.runId,
-      rowRevision: run.version,
-      header: {
-        ...template.detail.header,
-        runId: run.envelope.runId,
-        traceId: run.envelope.traceId,
-        workflowId: run.envelope.workflow,
-        status,
-        attempt: run.envelope.attempt,
-      },
-      outcome: detailOutcome,
-    },
-  });
-  return ArchivedRunRecordSchema.parse({
-    ...content,
-    contentDigest: archivedRunContentDigest(content),
-  });
 }
 
 /** Real folded evidence deliberately contradicts the separate SQLite lifecycle oracle. */

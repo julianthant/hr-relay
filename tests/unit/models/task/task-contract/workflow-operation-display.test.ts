@@ -710,6 +710,7 @@ describe("workflow operation display declarations", () => {
       traceId: "fdo-170000-aaaa",
       rawInput: { firstEid: "10800000", secondEid: "10800001" },
       canonicalInput: {
+        protectedBindings: [],
         schemaHash: deriveSchemaHash(DisplayCanonicalInput, "output"),
         value: { firstEid: "10800000", secondEid: "10800001" },
       },

@@ -85,6 +85,7 @@ function depsOf(
   const reader = options.reader ?? sqliteRunReader(current.database, current.clock);
   return {
     runReader: reader,
+    timeline: current.timeline,
     stateRoot: current.stateRoot,
     projection: current.projection,
     authority: current.authority,
@@ -318,27 +319,6 @@ describe("read-only Context Data projection", () => {
     assert.equal(JSON.stringify(section).includes("CURRENT_RUN_VALUE"), false);
   });
 
-  it("marks a retained archived checkpoint read-only and keeps its validated value", () => {
-    const current = world();
-    const archived = sourceRun(current, { seed: 31, claimGeneration: 1, version: 2 });
-    storeCheckpoint(current, checkpointFor(archived));
-    const reader = sqliteRunReader(current.database, current.clock);
-    const archivedReader = {
-      ...reader,
-      read: (runId: string) => {
-        const result = reader.read(runId);
-        return result.state === "present" ? { ...result, disposition: "archived" as const } : result;
-      },
-    } as typeof reader;
-    const payload = contextData(current, archived.envelope.runId, { reader: archivedReader });
-    assert.equal(payload.state, "archived");
-    const invited = payload.entries.find((entry) => entry.label === "Invited on");
-    assert.ok(invited);
-    assert.equal(invited.valueRedacted, "2026-06-01");
-    assert.equal(invited.checkpoint.state, "present");
-    if (invited.checkpoint.state === "present") assert.equal(invited.checkpoint.runId, archived.envelope.runId);
-  });
-
   it("returns a deleted state with no openable checkpoint values", () => {
     const current = world();
     const deleted = sourceRun(current, { seed: 41 });
@@ -349,9 +329,12 @@ describe("read-only Context Data projection", () => {
       traceId: deleted.envelope.traceId,
       itemId: deleted.envelope.itemId,
       attempt: deleted.envelope.attempt,
+      runNumber: null,
+      ordinalSource: "tombstone",
       origin: "queue",
       commandId: uuidOf(4141),
       deletedAt: NOW,
+      tallyVersion: 3,
       removed: [],
     });
     const reader = {
@@ -375,11 +358,12 @@ describe("read-only Context Data projection", () => {
         ...base.input,
         parsed: {
           ...base.input.parsed,
-          value: { emplId: secret },
+          value: { emplId: secret, timekeeperName: secret },
           protectedBindings: [{
-            kind: "legacy-protected-input",
-            inputPath: "emplId",
-            name: "personLookupCanaryEid",
+            kind: "protected-store",
+            inputPath: "timekeeperName",
+            name: "timekeeperName",
+            valueId: uuidOf(5151),
           }],
         },
       },

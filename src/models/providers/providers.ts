@@ -1,11 +1,18 @@
 import { z } from "zod";
 import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
 import { ProviderCapabilityIdSchema } from "../../rules/identity/ids.js";
-import {
-  ProviderMeasuredUsageSchema,
-  ProviderUnavailableReasonSchema,
-  RedactedProviderEvidenceSchema,
-} from "../../rules/providers/provider-admission.js";
+import { IsoInstantSchema, RunIdSchema, PositiveIntSchema, NodeIdSchema, TaskIdSchema } from "../../rules/identity/ids.js";
+
+export const ProviderUnavailableReasonSchema = z.strictObject({
+  code: z.enum(["aborted", "timeout", "adapter-unavailable"]),
+  message: z.string().min(1),
+});
+export const ProviderExecutionIdentitySchema = z.strictObject({
+  runId: RunIdSchema, attempt: PositiveIntSchema, nodeId: NodeIdSchema, taskId: TaskIdSchema,
+});
+export const ProviderEvidenceSchema = z.strictObject({
+  summary: z.string().min(1), providerRequestId: z.string().min(1).max(256).optional(), capturedAt: IsoInstantSchema,
+});
 
 export const ProviderRequestEnvelopeSchema = z.strictObject({
   capability: ProviderCapabilityIdSchema,
@@ -29,8 +36,7 @@ export const ProviderResponseEnvelopeSchema = z.discriminatedUnion("state", [
 
 export const ProviderAdapterOutcomeSchema = z.strictObject({
   response: ProviderResponseEnvelopeSchema,
-  usage: ProviderMeasuredUsageSchema,
-  evidence: RedactedProviderEvidenceSchema,
+  evidence: ProviderEvidenceSchema,
 });
 
 export type ProviderRequestEnvelope = z.infer<typeof ProviderRequestEnvelopeSchema>;

@@ -1,80 +1,69 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, it } from "vitest";
-import { manualClock } from "../../../../../../src/rules/time/clock.js";
-import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { cleanReceiptOf, runRecordOf, uuidOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
+import { cleanReceiptOf, uuidOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
+import { foundationFixture, failure, terminalizeFixtureFailure } from "../../../../../support/helpers/database-foundation/fixtures.js";
+
+function insertReceipt(f: ReturnType<typeof foundationFixture>, seed: number) {
+  const run = f.createRun(uuidOf(seed));
+  const failed = {
+    ...failure(),
+    failureId: uuidOf(seed + 9000),
+    runId: run.envelope.runId,
+    traceId: run.envelope.traceId,
+    workflowId: run.envelope.workflow,
+    attempt: run.envelope.attempt,
+  };
+  assert.equal(terminalizeFixtureFailure(f, run, failed).state, "applied");
+  return f.db.authority.evidenceReceipts.insert({
+    ...cleanReceiptOf({ seed, workflow: run.envelope.workflow }),
+    traceId: run.envelope.traceId,
+    descriptorFingerprint: run.envelope.contractFingerprint,
+    configFingerprint: run.envelope.configFingerprint,
+    result: "failed",
+    confidence: "partial",
+    failure: { state: "present", value: failed.failureId },
+  });
+}
 
 describe("evidence receipt repository", () => {
   it("filters multiple real SQLite receipt rows by exact run with stable cardinality", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-evidence-receipt-"));
-    const database = AuthorityDatabase.open({
-      path: join(root, "authority.sqlite"),
-      busyTimeoutMs: 250,
-      migrationOwner: "evidence-receipt-test",
-    }, manualClock(new Date("2026-08-28T12:00:00.000Z")));
-
+    const f = foundationFixture();
     try {
       const seeds = [503, 501, 502] as const;
-      for (const seed of seeds) {
-        database.authority.runs.enqueue(runRecordOf({ seed, workflow: "separations" }));
-        database.authority.evidenceReceipts.insert(cleanReceiptOf({ seed, workflow: "separations" }));
-      }
-
-      const reads = seeds.map((seed) => database.authority.evidenceReceipts.listByRun(
-        runRecordOf({ seed, workflow: "separations" }).envelope.runId,
-      ));
+      const inserted = seeds.map(seed => insertReceipt(f, seed));
+      const reads = seeds.map(seed => f.db.authority.evidenceReceipts.listByRun(uuidOf(seed)));
 
       assert.deepEqual(reads.map((receipts) => receipts.length), [1, 1, 1]);
       assert.deepEqual(
         reads.map(([receipt]) => receipt?.receiptId),
-        seeds.map((seed) => cleanReceiptOf({ seed, workflow: "separations" }).receiptId),
+        inserted.map(receipt => receipt.record.receiptId),
       );
     } finally {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+      f.dispose();
     }
   });
 
   it("returns no receipt for a well-formed absent run in populated SQLite authority", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-evidence-receipt-"));
-    const database = AuthorityDatabase.open({
-      path: join(root, "authority.sqlite"),
-      busyTimeoutMs: 250,
-      migrationOwner: "evidence-receipt-test",
-    }, manualClock(new Date("2026-08-28T12:00:00.000Z")));
-
+    const f = foundationFixture();
     try {
-      database.authority.runs.enqueue(runRecordOf({ seed: 504, workflow: "separations" }));
-      database.authority.evidenceReceipts.insert(cleanReceiptOf({ seed: 504, workflow: "separations" }));
-
-      const receipts = database.authority.evidenceReceipts.listByRun(uuidOf(505));
+      insertReceipt(f, 504);
+      const receipts = f.db.authority.evidenceReceipts.listByRun(uuidOf(505));
 
       assert.deepEqual(receipts, []);
     } finally {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+      f.dispose();
     }
   });
 
   it("refuses a list read whose run id is not exact", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-evidence-receipt-"));
-    const database = AuthorityDatabase.open({
-      path: join(root, "authority.sqlite"),
-      busyTimeoutMs: 250,
-      migrationOwner: "evidence-receipt-test",
-    }, manualClock(new Date("2026-08-28T12:00:00.000Z")));
-
+    const f = foundationFixture();
     try {
       assert.throws(
-        () => database.authority.evidenceReceipts.listByRun("not-a-run-id"),
+        () => f.db.authority.evidenceReceipts.listByRun("not-a-run-id"),
         /run id must be a UUID/,
       );
     } finally {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+      f.dispose();
     }
   });
 });

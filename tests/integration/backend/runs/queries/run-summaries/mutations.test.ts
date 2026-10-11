@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { foundationFixture,id,NOW } from "../../../../../support/helpers/database-foundation/fixtures.js";
+import { foundationFixture,terminalizeFixtureFailure,failure,id,NOW } from "../../../../../support/helpers/database-foundation/fixtures.js";
 
-it("publishes creation and presentation atomically, excluding heartbeats and rolled-back notifications",()=>{
+it("reads current heartbeats and publishes creation and presentation atomically",()=>{
   const f=foundationFixture();try {
-    f.db.refreshRunSummaries();const before=f.db.readRunSummaries();
+    const before=f.db.readRunSummaries();
     if(f.run.lifecycle.state!=="running")throw new Error("fixture-state");
     const renewed=f.db.authority.runs.renewClaim({runId:f.run.envelope.runId,claim:{workerId:f.run.lifecycle.workerId,claimGeneration:f.run.claimGeneration},now:"2026-09-09T12:00:01.000Z"});
-    assert.equal(renewed.state,"renewed");assert.deepEqual(f.db.readRunSummaries(),before);
+    assert.equal(renewed.state,"renewed");assert.deepEqual(f.db.readRunSummaries(),before.map(row=>({...row,
+      sourceGeneration:row.sourceGeneration+1,updatedAt:"2026-09-09T12:00:01.000Z",
+      lifecycle:{...row.lifecycle,heartbeatAt:"2026-09-09T12:00:01.000Z"}})));
     f.db.withAuthorityTransaction(()=>{
       assert.throws(()=>f.db.withAuthorityTransaction(()=>{f.createRun(id(2001));throw new Error("nested");}),/nested/);
       f.createRun(id(2002));
@@ -31,7 +33,7 @@ it("maintains parent rollups and dependencies while batch grouping stays a bound
     const batch={...RUN_SESSION,sessionId:id(5000),workflow:"person-lookup"};
     f.db.authority.runSessions.insert(batch);
     const parent=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,runId:id(5001),itemId:id(5001),shape:"operation",enqueuedAt:NOW},sessionId:batch.sessionId,lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:NOW,updatedAt:NOW});
-    f.db.authority.runs.enqueue(parent);f.db.refreshRunSummaries();
+    f.db.authority.runs.enqueue(parent);
     const child=RunRecordSchema.parse({...parent,envelope:{...parent.envelope,runId:id(5002),itemId:id(5002),shape:"operation-member",parent:{runId:parent.envelope.runId,tracePrefix:parent.envelope.traceId,edgeId:"member"}}});
     f.db.authority.runs.enqueue(child);
     const row=()=>f.db.readRunSummaries().find(row=>row.runId===parent.envelope.runId);
@@ -55,7 +57,7 @@ it("maintains parent rollups and dependencies while batch grouping stays a bound
 
 it("consumes relevant timeline cursors transactionally and exact replay does not rewrite",()=>{
   const f=foundationFixture();try{
-    f.db.refreshRunSummaries();const run=f.run,envelope=run.envelope;
+    const run=f.run,envelope=run.envelope;
     const event={schemaVersion:1,eventId:id(5100),workflow:envelope.workflow,scope:{kind:"run",runId:envelope.runId},occurredAt:envelope.enqueuedAt,recordedAt:NOW,retentionDate:"2026-09-09",source:{kind:"native"},payload:{kind:"span",event:{t:"run.queued",kind:"run",pid:1,ts:envelope.enqueuedAt,workflow:envelope.workflow,runId:envelope.runId,attempt:envelope.attempt,traceId:envelope.traceId,spanPath:envelope.traceId,itemId:envelope.itemId,shape:envelope.shape,priority:envelope.priority,dryRun:envelope.dryRun,actorId:"local-operator",title:"Timeline title",descriptorVersion:envelope.descriptorVersion,contractFingerprint:envelope.contractFingerprint,resolvedInstance:envelope.resolvedInstance,configFingerprint:envelope.configFingerprint,configSnapshotId:envelope.configSnapshotId}}};
     f.db.authority.timelineEvents.append(event);
     const before=f.db.readRunSummaries();assert.equal(before[0].title,"Timeline title");assert.ok(before[0].sourceCursor>0);
@@ -69,12 +71,15 @@ it("consumes relevant timeline cursors transactionally and exact replay does not
 import { receiptWithWarningsOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
 it("updates receipt facts exactly once and cancellation filtering uses the same current snapshot",()=>{
   const f=foundationFixture();try{
-    f.db.refreshRunSummaries();const run=f.run;
-    const receipt={...receiptWithWarningsOf({seed:640,summaries:["Synthetic warning"]}),runId:run.envelope.runId,traceId:run.envelope.traceId,attempt:run.envelope.attempt,workflowId:run.envelope.workflow,descriptorFingerprint:run.envelope.contractFingerprint,configFingerprint:run.envelope.configFingerprint};
+    const run=f.run;
+    const failed = failure();
+    assert.equal(terminalizeFixtureFailure(f,run,failed).state,"applied");
+    const receipt={...receiptWithWarningsOf({seed:640,summaries:["Synthetic warning"]}),runId:run.envelope.runId,traceId:run.envelope.traceId,attempt:run.envelope.attempt,workflowId:run.envelope.workflow,descriptorFingerprint:run.envelope.contractFingerprint,configFingerprint:run.envelope.configFingerprint,result:"failed",failure:{state:"present",value:failed.failureId}};
     f.db.authority.evidenceReceipts.insert(receipt);
     assert.equal(f.db.readRunSummaries()[0].warningCount,1);
     const before=f.db.readRunSummaries();f.db.authority.evidenceReceipts.insert(receipt);assert.deepEqual(f.db.readRunSummaries(),before);
-    const changed=f.db.authority.runs.requestCancellation({runId:run.envelope.runId,expectedVersion:run.version,now:NOW});assert.equal(changed.state,"applied");
+    const active=f.createRun(id(641));
+    const changed=f.db.authority.runs.requestCancellation({runId:active.envelope.runId,expectedVersion:active.version,now:NOW});assert.equal(changed.state,"applied");
     assert.equal(queryQueueSummaries(f.db,{limit:10,status:"running"}).items.length,0);
     const cancelling=queryQueueSummaries(f.db,{limit:10,status:"cancelling"});assert.equal(cancelling.items.length,1);assert.equal(cancelling.items[0].status,"cancelling");
   }finally{f.dispose();}

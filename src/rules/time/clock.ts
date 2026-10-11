@@ -1,5 +1,10 @@
 import { IsoInstantSchema } from "../identity/ids.js";
 
+/** Backend IPC deadlines need one machine-wide monotonic basis across processes. */
+export function machineMonotonicMs(): number {
+  return Number(process.hrtime.bigint()) / 1_000_000;
+}
+
 export interface Clock {
   now(): Date;
   nowMs(): number;

@@ -206,7 +206,7 @@ describe("the committed test target registry", () => {
         sourceId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: {
         documentNumber: COMMITTED_DOCUMENT_NUMBER,
-        reRead: { ordinal: 2, reason: "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained." },
+        reRead: { ordinal: 2, reason: "Operator-requested second read-only rehearsal with repaired pending-set observation." },
       },
     });
     assert.deepEqual(read, ["separationsKualiFinalizationCanaryDocumentNumber"]);

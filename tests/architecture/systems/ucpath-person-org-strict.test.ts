@@ -15,19 +15,8 @@ import { UCPATH_UI_REGISTRY } from "../../../src/backend/systems/ucpath/driver/u
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const OPERATION_PATH = resolve(REPO_ROOT, "src/backend/systems/ucpath/driver/person-org-operation.ts");
 
-const REQUIRED_PROVENANCE = Object.freeze([
-  "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc",
-  "601d3a2407e9c6cd79f2383c240be8a9ca7261db",
-  "b29f57105699e4e1ca96e1186035783ba98a414d",
-  "454320b59d280ff8ccfa24b6b0235ad49a86ae2d",
-  "695d88fcc7a108f262b91b45eb1b9a276deaf427",
-]);
-
 export function auditStrictPersonOrgSource(source: string): readonly string[] {
   const issues: string[] = [];
-  for (const revision of REQUIRED_PROVENANCE) {
-    if (!source.includes(revision)) issues.push(`missing exact legacy provenance ${revision}`);
-  }
   const forbidden = [
     ["body-name scan", /querySelectorAll\s*\(\s*["'`]span,\s*div/u],
     ["observed-EID overwrite", /\{\s*\.\.\.[A-Za-z_$][\w$]*,\s*emplId\b/u],
@@ -62,8 +51,8 @@ export function auditStrictPersonOrgSource(source: string): readonly string[] {
   return issues;
 }
 
-describe("strict UCPath Person Org port", () => {
-  it("pins exact legacy provenance, fail-loud outcomes, and both subject checks", () => {
+describe("strict UCPath Person Org operation", () => {
+  it("preserves fail-loud outcomes and both subject checks", () => {
     assert.deepEqual(auditStrictPersonOrgSource(readFileSync(OPERATION_PATH, "utf8")), []);
   });
 

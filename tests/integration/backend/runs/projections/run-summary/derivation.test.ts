@@ -41,9 +41,8 @@ import { cleanReceiptOf,receiptWithWarningsOf } from "../../../../../support/hel
 it("serves retained receipt warnings and distinguishes clean from warned modern receipts",()=>{
   const run=TERMINAL_SEPARATIONS_RUN;
   const source={run,result:TERMINAL_SEPARATIONS_RESULT,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]};
-  const clean={...cleanReceiptOf({seed:620,workflow:"separations"}),composition:4 as const};
-  const warned={...receiptWithWarningsOf({seed:620,workflow:"separations",summaries:["Synthetic warning"]}),composition:4 as const};
+  const clean={...cleanReceiptOf({seed:620,workflow:"separations"}),composition:5 as const};
+  const warned={...receiptWithWarningsOf({seed:620,workflow:"separations",summaries:["Synthetic warning"]}),composition:5 as const};
   assert.equal(deriveRunSummary({...source,receipt:clean},1).warningCount,0);
   assert.ok((deriveRunSummary({...source,receipt:warned},1).warningCount??0)>0);
-  assert.equal(deriveRunSummary({...source,receipt:{...warned,composition:2}},1).warningCount,warned.warnings.length);
 });

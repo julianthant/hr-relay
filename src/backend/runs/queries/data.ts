@@ -13,7 +13,7 @@ import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { runDataObservationsForRun } from "./run-logs.js";
-import { TargetNotFoundError, SectionUnavailableError } from "../commands/refusals.js";
+import { TargetNotFoundError } from "../commands/refusals.js";
 import type { z } from "zod";
 
 type ContextDataPayload = z.infer<typeof ContextDataSectionSchema>;
@@ -32,7 +32,6 @@ function readDataRun(deps: RunDetailQueryDeps, runId: string) {
 function requireLiveDataRun(deps: RunDetailQueryDeps, runId: string): RunRecord {
   const existence = readDataRun(deps, runId);
   if (existence.state !== "present") throw new TargetNotFoundError("DATA_SOURCE_" + existence.state);
-  if (existence.disposition === "archived") throw new SectionUnavailableError("DATA_SOURCE_ARCHIVED");
   return existence.run;
 }
 
@@ -262,7 +261,7 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
     ));
   });
   return ContextDataSectionSchema.parse({
-    runId, state: existence.disposition === "archived" ? "archived" : "available", entries, observations,
+    runId, state: "available", entries, observations,
   });
 }
 

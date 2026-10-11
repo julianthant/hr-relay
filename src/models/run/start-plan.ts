@@ -1,4 +1,4 @@
-import { protectedInputBindings, valueFreeProtectedData, valueFreeProtectedInput, type ProtectedInputBinding } from "../write-safety/protected-input.js";
+import { valueFreeProtectedData, valueFreeProtectedInput, type ProtectedInputBinding } from "../write-safety/protected-input.js";
 import { StartSupersedeTargetsSchema } from "./start-supersede.js";
 /** The start plan — what a `start-run` command consumes: planning and starting are two steps, and refusals ride the plan as data. */
 import { RerunPlanSchema, type RerunPlan } from "./rerun.js";
@@ -13,9 +13,7 @@ import {
   IsoInstantSchema,
   ItemIdSchema,
   PositiveIntSchema,
-  RunIdSchema,
   StartPlanIdSchema,
-  TraceIdSchema,
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
@@ -32,10 +30,7 @@ export { StartRefusalCodeSchema, type StartRefusalCode } from "./start-refusal.j
 
 export const PlannedRunSchema = z.strictObject({
   supersedeTargets: StartSupersedeTargetsSchema.optional(),
-  /** Legacy reservations are readable only to require replanning. */
-  runId: RunIdSchema.optional(),
   itemId: ItemIdSchema,
-  traceId: TraceIdSchema.optional(),
   /** The exact title/subtitle the confirmation surface showed. */
   title: z.string().min(1),
   subtitle: z.string().min(1).optional(),
@@ -77,9 +72,7 @@ export const StartPlanRecordSchema = z.strictObject({
   shape: RunShapeSchema,
   priority: RunPrioritySchema,
   dryRun: z.boolean(),
-  /** Optional only so plans written before browser presentation was introduced remain readable. */
   browserMode: BrowserPresentationModeSchema.optional(),
-  /** Optional only so plans written before browser screenshots remain readable. */
   captureBrowserScreenshots: z.boolean().optional(),
     /** Omitted steps with their typed facts; copied unchanged onto every run this plan starts. */
   stepOmissions: StepOmissionsSchema.optional(),
@@ -105,10 +98,6 @@ export const StartPlanRecordSchema = z.strictObject({
   if (Date.parse(plan.expiresAt) <= Date.parse(plan.plannedAt)) {
     context.addIssue({ code: "custom", path: ["expiresAt"], message: "a start plan must expire after it was planned" });
   }
-  const runIds = plan.planned.flatMap(({ runId }) => runId === undefined ? [] : [runId]);
-  if (new Set(runIds).size !== runIds.length) {
-    context.addIssue({ code: "custom", path: ["planned"], message: "a start plan cannot propose one run id twice" });
-  }
   const entries = plan.refused.map(({ entry }) => entry);
   if (new Set(entries).size !== entries.length) {
     context.addIssue({ code: "custom", path: ["refused"], message: "a start plan cannot refuse one entry twice" });
@@ -121,9 +110,7 @@ export const StartPlanRecordSchema = z.strictObject({
         message: "a planned canonical input must use the start plan canonical-input schema hash",
       });
     }
-    if (planned.canonicalInputDigest !== deriveCanonicalInputDigest(planned.input.value, planned.input.protectedBindings)
-      && !(planned.input.protectedBindings === undefined && protectedInputBindings(planned.input.value).length > 0
-        && planned.canonicalInputDigest === legacyCanonicalInputDigest(planned.input.value))) {
+    if (planned.canonicalInputDigest !== deriveCanonicalInputDigest(planned.input.value, planned.input.protectedBindings)) {
       context.addIssue({
         code: "custom",
         path: ["planned", index, "canonicalInputDigest"],
@@ -137,10 +124,7 @@ export const StartPlanRecordSchema = z.strictObject({
     plan.canonicalInputSchemaHash,
     plan.rerun,
     plan.stepOmissions,
-  ) && !(plan.planned.some((run) => run.input.protectedBindings === undefined && protectedInputBindings(run.input.value).length > 0)
-    && plan.planned.every((run) => run.input.protectedBindings === undefined)
-    && plan.inputFingerprint === plannedInputFingerprint(plan.planned, plan.ingressSchemaHash,
-      plan.canonicalInputSchemaHash, plan.rerun, plan.stepOmissions, true))) {
+  )) {
     context.addIssue({
       code: "custom",
       path: ["inputFingerprint"],
@@ -157,12 +141,6 @@ export const StartPlanRecordSchema = z.strictObject({
 });
 export type StartPlanRecord = z.infer<typeof StartPlanRecordSchema>;
 
-/** Private read-forward authentication of legacy immutable input; never a served identity. */
-function legacyCanonicalInputDigest(value: unknown): string {
-  return createHash("sha256").update("hrauto:start-plan-canonical-input:v1\0")
-    .update(canonicalJsonStringify(value)).digest("hex");
-}
-
 export function deriveCanonicalInputDigest(value: unknown, bindings?: readonly ProtectedInputBinding[]): string {
   return FingerprintSchema.parse(createHash("sha256")
     .update("hrauto:start-plan-canonical-input:v1\0")
@@ -178,29 +156,19 @@ export function derivePlannedInputFingerprint(
   rerun?: RerunPlan,
   stepOmissions?: StepOmissions,
 ): string {
-  return plannedInputFingerprint(planned, ingressSchemaHash, canonicalInputSchemaHash, rerun, stepOmissions, false);
-}
-
-function plannedInputFingerprint(
-  planned: readonly PlannedRun[], ingressSchemaHash: string, canonicalInputSchemaHash: string,
-  rerun: RerunPlan | undefined, stepOmissions: StepOmissions | undefined, legacy: boolean,
-): string {
   return FingerprintSchema.parse(createHash("sha256")
-    .update(planned.some((run) => run.runId !== undefined)
-      ? "hrauto:start-plan-input:v2\0" : "hrauto:start-plan-input:v3\0")
+    .update("hrauto:start-plan-input:v3\0")
     .update(canonicalJsonStringify({
       ingressSchemaHash,
       canonicalInputSchemaHash,
-      ...(rerun === undefined ? {} : { rerun: legacy ? rerun : valueFreeProtectedData(rerun) }),
-      ...(planned.some((run) => run.runId !== undefined) || stepOmissions === undefined ? {} : { stepOmissions }),
+      ...(rerun === undefined ? {} : { rerun: valueFreeProtectedData(rerun) }),
+      ...(stepOmissions === undefined ? {} : { stepOmissions }),
       accepted: planned.map((run) => ({
         ...(run.supersedeTargets === undefined ? {} : { supersedeTargets: run.supersedeTargets }),
-        ...(run.runId === undefined ? {} : { runId: run.runId }),
         itemId: run.itemId,
-        ...(run.traceId === undefined ? {} : { traceId: run.traceId }),
         matchKey: run.matchKey,
-        rawInput: legacy ? run.rawInput : valueFreeProtectedData(run.rawInput, run.input.protectedBindings),
-        canonicalInput: legacy ? run.input : { ...run.input, value: valueFreeProtectedInput(run.input.value, run.input.protectedBindings) },
+        rawInput: valueFreeProtectedData(run.rawInput, run.input.protectedBindings),
+        canonicalInput: { ...run.input, value: valueFreeProtectedInput(run.input.value, run.input.protectedBindings) },
         canonicalInputDigest: run.canonicalInputDigest,
       })),
     }))

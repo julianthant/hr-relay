@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { GENERATED_BUILD_MANIFEST } from "../../../src/workflow-kit/validation/generated-build-manifest.js";
 import { TEST_DATA_INPUT_NAMES, TestDataInputValueSchemas } from "../../../src/models/config/test-data.js";
-import { RETIRED_TEST_TARGET_PROTECTED_NAMES } from "../../../src/models/config/protected-settings-legacy.js";
 import { ProtectedSettingsNameSchema } from "../../../src/models/config/protected-settings.js";
 import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
@@ -65,12 +64,12 @@ describe("test target registry architecture", () => {
     assert.deepEqual(subject.workflows[FINALIZATION_WORKFLOW]?.publicInput, {});
   });
 
-  it("pins the sole subject's current availability and retained historical failed rehearsal", () => {
+  it("pins the sole subject's current availability and pending finalization leaves", () => {
     const canary = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === SOLE_SUBJECT_LABEL);
     assert.equal(canary?.availability.state, "available");
     assert.equal(canary?.availability.lastObserved, SOLE_SUBJECT_LAST_OBSERVED);
-    assert.match(String(canary?.availability.reason), /EMPLOYEE_NOT_FOUND/u);
-    assert.match(String(canary?.availability.reason), /0\/0\/0/u);
+    assert.equal(canary?.availability.reason,
+      "The operator-selected private source is available for read-only verification. Complete input admission and a Separations dry run were observed without external writes.");
 
     assert.deepEqual(canary?.workflows[FINALIZATION_WORKFLOW]?.publicInput, {});
     const pending = canary?.workflows[FINALIZATION_WORKFLOW]?.pending ?? {};
@@ -141,7 +140,6 @@ describe("test target registry architecture", () => {
     assert.equal(TestDataInputValueSchemas[DOCUMENT_NUMBER_REFERENCE.name].safeParse("10800000x").success, false);
     assert.equal(TestDataInputValueSchemas[EID_REFERENCE.name].safeParse("10800000").success, true);
     assert.equal(TestDataInputValueSchemas[EID_REFERENCE.name].safeParse("4999").success, false);
-    assert.deepEqual([...RETIRED_TEST_TARGET_PROTECTED_NAMES], [...TEST_DATA_INPUT_NAMES]);
     for (const name of TEST_DATA_INPUT_NAMES) {
       assert.equal(ProtectedSettingsNameSchema.safeParse(name).success, false, `${name} left protected Settings`);
     }
@@ -215,7 +213,7 @@ describe("test target registry architecture", () => {
       label: "finalization-canary",
       canonicalInput: {
         documentNumber: "4999",
-        reRead: { ordinal: 2, reason: "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained." },
+        reRead: { ordinal: 2, reason: "Operator-requested second read-only rehearsal with repaired pending-set observation." },
       },
       protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
         name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "00000000-0000-4000-8000-000000000010" }],

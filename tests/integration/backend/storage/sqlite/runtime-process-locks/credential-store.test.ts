@@ -620,32 +620,6 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(f.path), committedBytes);
   });
 
-  it("recovers a SIGKILL during private upgrade binding without applying a credential", () => {
-    const f = fixture();
-    const upgradeId = "a".repeat(64);
-    const entries = { ucpathPassword: { set: PRIVATE_VALUE_1 } };
-    const moduleUrl = pathToFileURL(join(process.cwd(), "tests/support/helpers/synthetic-storage-admission.ts")).href;
-    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval",
-      `import { createCredentialStore } from ${JSON.stringify(moduleUrl)};
-       createCredentialStore({ stateRoot: ${JSON.stringify(f.tracker)},
-         hooks: { beforeRename: () => process.kill(process.pid, "SIGKILL") }
-       }).bindUpgrade(${JSON.stringify(upgradeId)}, ${JSON.stringify(entries)});`], { encoding: "utf8" });
-    assert.equal(child.signal, "SIGKILL", child.stderr);
-    assert.equal(readdirSync(f.directory).filter((name) => name.endsWith(".tmp")).length, 1);
-    assert.throws(() => f.store.read(), /unsettled entries/u);
-    f.store.bindUpgrade(upgradeId, entries);
-    assert.equal(f.store.read().revision, 1);
-    assert.deepEqual(f.store.read().entries, {});
-    const bytes = readFileSync(f.path);
-    const reopened = createCredentialStore({ stateRoot: f.tracker });
-    reopened.verifyUpgradeBinding(upgradeId, entries);
-    reopened.bindUpgrade(upgradeId, entries);
-    assert.deepEqual(readFileSync(f.path), bytes);
-    assert.throws(() => reopened.bindUpgrade(upgradeId, { ucpathPassword: { set: PRIVATE_VALUE_2 } }), /credential-import-refused/u);
-    assert.deepEqual(readFileSync(f.path), bytes);
-    assert.deepEqual(readdirSync(f.directory), ["protected.json"]);
-  });
-
   it("recovers only the authenticated next document left by its dead pre-rename writer", () => {
     const f = fixture();
     const first = request({

@@ -38,11 +38,10 @@ export const extractFormPageTask = defineTask(ExtractFormPage, {
         return ctx.fail("ocr-provider-not-connected", "OCR provider not connected");
       }
 
-      const { code, message, retryAt } = response.reason;
+      const { code, message } = response.reason;
       return ctx.fail(
         "provider-unavailable",
-        `the ocr.extract provider is unavailable (${code}): ${message}`
-          + (retryAt === undefined ? "" : ` — retry at ${retryAt}`),
+        `the ocr.extract provider is unavailable (${code}): ${message}`,
       );
     }
     if (response.state === "invalid-response") {

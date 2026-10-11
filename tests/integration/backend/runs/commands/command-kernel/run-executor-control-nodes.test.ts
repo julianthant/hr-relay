@@ -174,7 +174,7 @@ function controlQueuedRun(descriptor: AnyWorkflowDescriptor, route: "left" | "ri
     },
     input: {
       raw: { name: "Battistessa, Johnnie", route },
-      parsed: {
+      parsed: { protectedBindings: [],
         schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"),
         value: { name: "Battistessa, Johnnie", route },
       },
@@ -329,7 +329,7 @@ describe("conditional operator gates", () => {
       schemaHash: deriveSchemaHash(GateResultSchema, "output"),
       value: { approved: true },
     };
-    assert.equal(database.authority.gateResults.insert({
+    assert.equal(database.authority.gateResults.insert({ nodeId: "review",
       runId: RUN_ID,
       gateId: "review",
       commandId: UUID_7,
@@ -431,7 +431,7 @@ describe("registered source gate settlement", () => {
     database.authority.runs.enqueue(controlQueuedRun(sourceGateDescriptor, "left"));
     const operatorResult = { schemaHash: deriveSchemaHash(SOURCE_APPROVAL, "output"),
       value: { approved: true, note: "synthetic approval" } };
-    assert.equal(database.authority.gateResults.insert({
+    assert.equal(database.authority.gateResults.insert({ nodeId: "approval",
       runId: RUN_ID,
       gateId: "approval",
       commandId: UUID_7,
@@ -619,7 +619,7 @@ describe("branch + gate dispatch", () => {
       schemaHash: deriveSchemaHash(GateResultSchema, "output"),
       value: { approved: true },
     };
-    database.authority.gateResults.insert({
+    database.authority.gateResults.insert({ nodeId: "left-gate",
       runId: RUN_ID,
       gateId: "left-gate",
       commandId: UUID_7,

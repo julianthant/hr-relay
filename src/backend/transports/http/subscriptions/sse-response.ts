@@ -1,3 +1,4 @@
+import { systemClock } from "../../../../rules/time/clock.js";
 // Use a pull source so socket demand controls delivery; pushing would bypass backpressure.
 import type { DashboardStreamEnvelope } from "../../../../models/dashboard/subscription.js";
 import type { DashboardStreamConnection } from "./dashboard-stream.js";
@@ -11,16 +12,23 @@ export function sseSerialize(envelope: DashboardStreamEnvelope): string {
 }
 
 function streamBody<T>(connection: Readonly<{ initial: readonly T[]; next(): Promise<T | undefined>; close(): void }>,
-  serialize: (envelope: T, initial: boolean, finalInitial: boolean) => string): ReadableStream<Uint8Array> {
+  serialize: (envelope: T, initial: boolean, finalInitial: boolean) => string,
+  lifecycle?: (phase: "started" | "settled" | "failed" | "reset", durationMs: number) => void): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
-  const encode = (envelope: T, initial: boolean, finalInitial: boolean): Uint8Array =>
-    encoder.encode(serialize(envelope, initial, finalInitial));
+  const encode = (envelope: T, initial: boolean, finalInitial: boolean): Uint8Array => {
+    if ((envelope as { type?: string }).type === "reset-required") reset = true;
+    return encoder.encode(serialize(envelope, initial, finalInitial));
+  };
   let closed = false;
+  let reset = false;
+  const started = systemClock.monotonicMs();
+  lifecycle?.("started", 0);
   /** Closes the connection once; answers whether THIS call did it. */
-  const closeOnce = (): boolean => {
+  const closeOnce = (failed = false): boolean => {
     if (closed) return false;
     closed = true;
     connection.close();
+    lifecycle?.(failed ? "failed" : reset ? "reset" : "settled", systemClock.monotonicMs() - started);
     return true;
   };
   return new ReadableStream<Uint8Array>({
@@ -36,7 +44,7 @@ function streamBody<T>(connection: Readonly<{ initial: readonly T[]; next(): Pro
       } catch (error: unknown) {
         // An errored stream is never cancel()ed by the machinery, so the
         // connection must be released here or the subscriber leaks in the hub.
-        closeOnce();
+        closeOnce(true);
         controller.error(error);
         return;
       }
@@ -54,15 +62,15 @@ function streamBody<T>(connection: Readonly<{ initial: readonly T[]; next(): Pro
   });
 }
 
-export function dashboardEventStreamBody(connection: DashboardStreamConnection): ReadableStream<Uint8Array> {
-  return streamBody(connection, sseSerialize);
+export function dashboardEventStreamBody(connection: DashboardStreamConnection, lifecycle?: Parameters<typeof streamBody>[2]): ReadableStream<Uint8Array> {
+  return streamBody(connection, sseSerialize, lifecycle);
 }
 
-export function compositeEventStreamBody(connection: CompositeConnection): ReadableStream<Uint8Array> {
+export function compositeEventStreamBody(connection: CompositeConnection, lifecycle?: Parameters<typeof streamBody>[2]): ReadableStream<Uint8Array> {
   return streamBody(connection, (envelope: CompositeStreamEnvelope, initial, finalInitial) => {
     const resumeEligible = envelope.source === "control" && envelope.type === "reset-required" ? false
       : !initial || (finalInitial && envelope.source === "control"
         && envelope.type === "health" && envelope.state === "live");
     return `${resumeEligible ? `id: ${envelope.transportCursor}\n` : ""}data: ${JSON.stringify(envelope)}\n\n`;
-  });
+  }, lifecycle);
 }
