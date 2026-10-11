@@ -10,14 +10,14 @@ const FAMILIES = [
   ["architecture", "tests/architecture"],
 ] as const;
 
-export interface SuiteSize {
+interface SuiteSize {
   readonly family: string;
   readonly files: number;
   readonly lines: number;
   readonly state: "active" | "planned-absent";
 }
 
-export function measureSuiteSize(): SuiteSize[] {
+function measureSuiteSize(): SuiteSize[] {
   return FAMILIES.map(([family, path]) => {
     const root = resolve(ROOT, path);
     if (!existsSync(root)) {

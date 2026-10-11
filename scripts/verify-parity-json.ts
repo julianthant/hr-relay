@@ -19,10 +19,10 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { systemClock } from "../src/rules/time/clock.js";
 
-export const PARITY_JSON_REPORT = "tests/parity/.output/results.json";
-export const PARITY_REQUIRED_A11Y_ANNOTATION = "required-a11y-evidence";
+const PARITY_JSON_REPORT = "tests/parity/.output/results.json";
+const PARITY_REQUIRED_A11Y_ANNOTATION = "required-a11y-evidence";
 
-export const PARITY_REPORT_LIMITS = Object.freeze({
+const PARITY_REPORT_LIMITS = Object.freeze({
   reportBytes: 8 * 1024 * 1024,
   jsonDepth: 64,
   jsonNodes: 100_000,
@@ -137,15 +137,15 @@ const ParityReportSchema = z.object({
   }).strict(),
 }).strict();
 
-export type ParityMode = "assert" | "update";
+type ParityMode = "assert" | "update";
 
-export interface ParityReportIdentity {
+interface ParityReportIdentity {
   readonly sha256: string;
   readonly bytes: number;
   readonly modifiedAtMs: number;
 }
 
-export interface VerifyParityJsonOptions {
+interface VerifyParityJsonOptions {
   readonly cwd: string;
   readonly runStartedAtMs: number;
   readonly before: ParityReportIdentity | null;
@@ -153,7 +153,7 @@ export interface VerifyParityJsonOptions {
   readonly afterReportRead?: (path: string) => void;
 }
 
-export interface RunParityOptions {
+interface RunParityOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly args: readonly string[];
@@ -172,7 +172,7 @@ interface ChildResult {
   readonly detail: string;
 }
 
-export interface RunParityDependencies {
+interface RunParityDependencies {
   readonly runChild?: (
     command: string,
     args: readonly string[],
@@ -202,8 +202,8 @@ interface VerificationCounts {
   annotations: number;
 }
 
-export const PARITY_PLAYWRIGHT_COMMAND = process.execPath;
-export const PARITY_PLAYWRIGHT_ARGS = Object.freeze([
+const PARITY_PLAYWRIGHT_COMMAND = process.execPath;
+const PARITY_PLAYWRIGHT_ARGS = Object.freeze([
   fileURLToPath(new URL("../node_modules/playwright/cli.js", import.meta.url)),
   "test",
   "--config",
@@ -239,7 +239,7 @@ function parityReportPath(cwd: string): string {
   return reportPath;
 }
 
-export function parityCommandLockPath(cwd: string): string {
+function parityCommandLockPath(cwd: string): string {
   return resolve(canonicalCheckoutRoot(cwd), ".tracker/data/locks/parity-json-report.lock");
 }
 
@@ -334,17 +334,6 @@ function readParityReportOnce(
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
-}
-
-export function captureParityReportIdentity(cwd: string, expectedUid?: number): ParityReportIdentity | null {
-  const path = parityReportPath(cwd);
-  try {
-    lstatSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  }
-  return readParityReportOnce(cwd, currentUid(expectedUid)).identity;
 }
 
 function assertJsonValueBounds(root: unknown): void {
@@ -492,7 +481,7 @@ function parseParityReport(bytes: Buffer, path: string): z.infer<typeof ParityRe
   return result.data;
 }
 
-export function verifyParityJsonReport(options: VerifyParityJsonOptions): { readonly attachmentCount: number } {
+function verifyParityJsonReport(options: VerifyParityJsonOptions): { readonly attachmentCount: number } {
   const expectedUid = currentUid(options.expectedUid);
   const path = parityReportPath(options.cwd);
   const read = readParityReportOnce(options.cwd, expectedUid, options.afterReportRead);
@@ -583,7 +572,7 @@ function assertOwnedParentComponents(cwd: string, expectedUid: number): void {
   }
 }
 
-export function prepareParityReportLifecycle(cwd: string, expectedUid?: number): ParityReportIdentity {
+function prepareParityReportLifecycle(cwd: string, expectedUid?: number): ParityReportIdentity {
   const uid = currentUid(expectedUid);
   assertOwnedParentComponents(cwd, uid);
   const outputDirectory = reportOutputDirectory(cwd);
@@ -734,7 +723,7 @@ function childEnvironment(mode: ParityMode, env: NodeJS.ProcessEnv): NodeJS.Proc
   return childEnv;
 }
 
-export async function runParityAndVerify(
+async function runParityAndVerify(
   options: RunParityOptions,
   dependencies: RunParityDependencies = {},
 ): Promise<number> {
@@ -789,7 +778,7 @@ export async function runParityAndVerify(
   return 0;
 }
 
-export function assertParityJsonOutputIsFixed(
+function assertParityJsonOutputIsFixed(
   mode: ParityMode,
   env: NodeJS.ProcessEnv,
   args: readonly string[],
