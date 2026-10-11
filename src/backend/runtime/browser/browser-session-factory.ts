@@ -545,27 +545,24 @@ async function provisionDuo(context: BrowserContext, config: Config): Promise<vo
   } catch { throw new DuoProvisioningError(); }
 }
 
+interface ExtensionStorageArea {
+  get?: (key: string) => unknown;
+  set?: (items: Record<string, unknown>) => unknown;
+  setAccessLevel?: (options: { accessLevel: string }) => unknown;
+}
+
+// Playwright runs this from its source text inside the extension worker, so it declares no inner functions:
+// the runtime compiler wraps those in a module helper the worker does not have.
 async function provisionDuoSession(credentials: readonly z.infer<typeof DuoCredentialSchema>[]): Promise<void> {
-  const invoke = async (receiver: object, name: string, input: unknown): Promise<unknown> => {
-    const method: unknown = Reflect.get(receiver, name);
-    if (typeof method !== "function") throw new Error("duo-session-storage-unavailable");
-    const result: unknown = Reflect.apply(method, receiver, [input]);
-    return await result;
-  };
-  const chrome: unknown = Reflect.get(globalThis, "chrome");
-  if (chrome === null || typeof chrome !== "object" || !("storage" in chrome)) throw new Error("duo-session-storage-unavailable");
-  const storage = chrome.storage;
-  if (storage === null || typeof storage !== "object" || !("session" in storage) || !("local" in storage)) throw new Error("duo-session-storage-unavailable");
-  const session = storage.session, local = storage.local;
-  if (session === null || typeof session !== "object" || !("set" in session) || typeof session.set !== "function"
-    || !("get" in session) || typeof session.get !== "function"
-    || !("setAccessLevel" in session) || typeof session.setAccessLevel !== "function"
-    || local === null || typeof local !== "object" || !("get" in local) || typeof local.get !== "function") throw new Error("duo-session-storage-unavailable");
-  const persistent = await invoke(local, "get", "duoCredentials");
+  const storage = (globalThis as { chrome?: { storage?: { session?: ExtensionStorageArea; local?: ExtensionStorageArea } } }).chrome?.storage;
+  const session = storage?.session, local = storage?.local;
+  if (typeof session?.get !== "function" || typeof session.set !== "function" || typeof session.setAccessLevel !== "function"
+    || typeof local?.get !== "function") throw new Error("duo-session-storage-unavailable");
+  const persistent: unknown = await local.get("duoCredentials");
   if (persistent !== null && typeof persistent === "object" && "duoCredentials" in persistent) throw new Error("duo-persistent-credential-refused");
-  await invoke(session, "setAccessLevel", { accessLevel: "TRUSTED_CONTEXTS" });
-  await invoke(session, "set", { duoCredentials: credentials });
-  const stored = await invoke(session, "get", "duoCredentials");
+  await session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  await session.set({ duoCredentials: credentials });
+  const stored: unknown = await session.get("duoCredentials");
   if (stored === null || typeof stored !== "object" || !("duoCredentials" in stored)
     || JSON.stringify(stored.duoCredentials) !== JSON.stringify(credentials)) throw new Error("duo-session-provisioning-unverified");
 }
