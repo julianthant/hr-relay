@@ -1,344 +1,29 @@
+import { createAuthorityAccountingTestWorld } from "../../../support/helpers/backend/authority-accounting-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-
 import { afterEach, describe, it } from "vitest";
-import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-
 import { admitDirectWorker, admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { type AuthorityTableName } from "../../../../src/models/config/authority.js";
-import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../../src/models/dashboard/xlsx-export.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
-import { ReadActiveStatus } from "../../../../src/models/workflows/person-lookup/read-active-status.js";
-import { CommandRequestSchema, deriveBulkRunCommandFingerprint } from "../../../../src/rules/commands/commands.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
-import { deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
-import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
 import { explorerAuthorityFixture } from "../../../support/fixtures/explorer-authority.js";
-import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, GATE_RESULT, HASH_A, HASH_B, HASH_C, ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, LATER, NOTIFICATION, NOW, UUID_1, UUID_2, UUID_3, UUID_5, UUID_6, UUID_7, UUID_8, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, GATE_RESULT, HASH_A, HASH_B, LATER, NOTIFICATION, NOW, UUID_1, UUID_2, UUID_3, UUID_5, UUID_7, UUID_8, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, RUN_SESSION, START_PLAN, WORKER_START_REQUEST, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
-import { atomicWriteCheckpoint, currentAtomicWriteFixture, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+import { DatabaseSync } from "node:sqlite";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { IDEMPOTENCY_KEY, UUID_4, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
-const roots: string[] = [];
-const openDatabases: AuthorityDatabase[] = [];
-const databasePaths = new WeakMap<AuthorityDatabase, string>();
-const CLOCK = manualClock(new Date(NOW));
-const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
-const BULK_COMMAND_REQUEST = {
-  commandId: UUID_8,
-  requestedAt: NOW,
-  requestedBy: "local-operator",
-  source: "dashboard",
-  family: "run",
-  type: "cancel",
-  bulkCommandId: UUID_8,
-  targets: [{ runId: RUN_ID, expectedVersion: 1 }],
-  mode: "best-effort",
-} as const;
-const BULK_COMMAND_ACCEPTANCE = {
-  bulkCommandId: UUID_8,
-  requestFingerprint: deriveBulkRunCommandFingerprint(BULK_COMMAND_REQUEST),
-  request: BULK_COMMAND_REQUEST,
-};
-
-const OPERATOR_XLSX_EXPORT = {
-  exportId: UUID_7,
-  workbookVersion: 3 as const,
-  requestedBy: LOCAL_OPERATOR_ACTOR_ID,
-  createdAt: NOW,
-  selection: {
-    kind: "search" as const,
-    query: {
-      q: "separations",
-      scope: "workflow" as const,
-      facets: { day: "2026-07-31", dryRun: true as const },
-      limit: 20,
-    },
-    snapshot: {
-      generatedAt: NOW,
-      sourceIdentity: HASH_C,
-      authorityGeneration: 3,
-      order: "match-strength/enqueued-desc/run-id-asc:v2" as const,
-      totalMatches: 1,
-      coverage: { matched: 1, subjectUnavailable: 0, actorUnavailable: 0, candidateLimit: 10000 as const },
-    },
-  },
-  workbook: { sheetNames: ["Read Me", "Runs"] as const, rowCount: 1 },
-  artifact: {
-    id: UUID_8,
-    sha256: HASH_A,
-    bytes: 1_024,
-    mediaType: OPERATOR_XLSX_MEDIA_TYPE,
-  },
-  download: {
-    filename: "hr-run-search-2026-07-31-g3.xlsx",
-    mediaType: OPERATOR_XLSX_MEDIA_TYPE,
-    contentDisposition: "attachment; filename=\"hr-run-search-2026-07-31-g3.xlsx\"",
-    byteLength: 1_024,
-    sha256: HASH_A,
-  },
-};
-const ACTIVE_STATUS = {
-  state: "active" as const,
-  reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-  hdh: true,
-};
-const FAILURE_RECORD = {
-  failureId: UUID_6,
-  fingerprint: HASH_C,
-  runId: RUN_ID,
-  traceId: QUEUED_RUN.envelope.traceId,
-  attempt: 1,
-  workflowId: WORKFLOW_ID,
-  code: "UNEXPECTED_PAGE_STATE",
-  summary: "The current page state was not recognized",
-  transient: false,
-  writeState: "not-attempted",
-  causeChain: [{
-    code: "UNEXPECTED_PAGE_STATE",
-    summary: "The current page state was not recognized",
-    role: "primary",
-    transient: false,
-  }],
-  remediation: [{ kind: "code-change", message: "Map the verified page state" }],
-  occurredAt: LATER,
-};
-const DIAGNOSTIC_BUNDLE = {
-  bundleId: UUID_5,
-  runId: RUN_ID,
-  origin: { kind: "failure", failureId: FAILURE_RECORD.failureId },
-  createdAt: LATER,
-  contentDigest: HASH_A,
-  configFingerprint: HASH_B,
-  descriptorFingerprint: HASH_C,
-  redaction: {
-    fields: [{ state: "redacted", key: "input.ssn", classification: "sensitive-hr", transform: "drop" }],
-    warnings: [],
-  },
-  attachments: [{
-    kind: "accessibility-excerpt",
-    artifactId: UUID_7,
-    mediaType: "text/yaml",
-    byteLength: 128,
-    digest: HASH_B,
-    sensitivity: "redacted",
-  }],
-  retention: { kind: "pinned", reason: "write-recovery" },
-};
-const RUN_CHECKPOINT = {
-  workflowId: "person-lookup",
-  itemId: UUID_3,
-  nodeId: "searching",
-  attempt: 1,
-  claimGeneration: 1,
-  runId: UUID_1,
-  output: SCHEMA_BOUND_VALUE,
-  descriptorVersion: 1,
-  contractFingerprint: HASH_A,
-  implFingerprint: HASH_B,
-  provenance: [{ path: "verified", source: "live", observedAt: NOW, originalObservedAt: NOW }],
-  writtenAt: NOW,
-};
-const COMMAND_AUDIT = {
-  auditId: UUID_2,
-  request: COMMAND_FIXTURES[0],
-  result: {
-    state: "applied",
-    commandId: UUID_1,
-    affectedTargets: [{ family: "start", workflowId: "onboarding", startPlanId: UUID_3, expectedVersion: 1 }],
-  },
-  completedAt: NOW,
-  versionChanges: [],
-  affectedDependencyIds: [],
-};
-const OBSERVED_PRESENT_WRITE_INTENT = {
-  writeIntentId: UUID_7,
-  workflowId: "separation",
-  itemId: UUID_5,
-  taskId: "ucpath/terminate-person",
-  system: "ucpath",
-  idempotencyKey: "10001573|termination|2026-08-02",
-  idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", "10001573|termination|2026-08-02"),
-  generation: 1,
-  status: "observed-present",
-  observedProof: { schemaHash: HASH_A, value: "receipt-seen-during-recovery" },
-  observedAt: NOW,
-  version: 1,
-  createdAt: NOW,
-  updatedAt: NOW,
-};
-
-function databasePath(name = "authority.sqlite"): string {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-sqlite-"));
-  roots.push(root);
-  return join(root, name);
-}
-
-function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
-  const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
-  openDatabases.push(database);
-  databasePaths.set(database, path);
-  return database;
-}
-
-function claimedWorkerId(run: ReturnType<typeof prepareRunning>): string {
-  if (run.lifecycle.state !== "claimed" && run.lifecycle.state !== "validating" && run.lifecycle.state !== "running") {
-    throw new Error("fixture-run-not-held");
-  }
-  return run.lifecycle.workerId;
-}
-
-function prepareWorkerSlot(database: AuthorityDatabase) {
-  if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  const path = databasePaths.get(database);
-  if (path === undefined) throw new Error("fixture-authority-path-missing");
-  const slot = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-    commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1,
-    expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
-    processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: path,
-    processLockRoot: join(dirname(path), "locks"), now: NOW,
-  }, randomUUID()));
-  return slot;
-}
-
-function prepareRunning(database: AuthorityDatabase) {
-  const slot = prepareWorkerSlot(database);
-  assert.equal(database.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId }).state, "started");
-  database.authority.runs.enqueue({
-    ...QUEUED_RUN,
-    envelope: {
-      ...QUEUED_RUN.envelope,
-      contractFingerprint: personLookupDescriptor.contractFingerprint,
-    },
-    input: {
-      ...QUEUED_RUN.input,
-      parsed: {
-        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
-        protectedBindings: [],
-      },
-    },
-  });
-  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, now: NOW });
-  if (claimed.state !== "claimed") throw new Error("generation fixture did not claim a run");
-  const validating = database.authority.runs.transition({
-    runId: RUN_ID,
-    expectedVersion: claimed.run.version,
-    claim: { workerId: slot.workerId, claimGeneration: 1 },
-    lifecycle: { state: "validating", workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW },
-    now: NOW,
-  });
-  if (validating.state !== "applied") throw new Error("generation fixture did not validate");
-  const running = database.authority.runs.transition({
-    runId: RUN_ID,
-    expectedVersion: validating.run.version,
-    claim: { workerId: slot.workerId, claimGeneration: 1 },
-    lifecycle: { state: "running", workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW },
-    now: NOW,
-  });
-  if (running.state !== "applied") throw new Error("generation fixture did not run");
-  return running.run;
-}
-
-/** Ref operator-trust's trust records hang off a real terminal run and its durable failure. */
-function prepareDelegationOwners(database: AuthorityDatabase): void {
-  database.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
-    runId: DELEGATION_MANIFEST.parentRunId, itemId: UUID_6, traceId: "pl-120000-0003", shape: "operation" } });
-  database.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
-    runId: DEPENDENCY_RECORD.childRunId, itemId: DEPENDENCY_RECORD.childItemId, traceId: "pl-120000-0004",
-    parent: { runId: DELEGATION_MANIFEST.parentRunId, edgeId: DELEGATION_MANIFEST.edgeId, tracePrefix: "pl-120000-0003" } } });
-}
-
-function terminalizeForTrust(database: AuthorityDatabase): void {
-  const run = prepareRunning(database);
-  database.terminalizeFailure(personLookupDescriptor, terminalFailureRequest(run));
-}
-
-function terminalFailureRequest(run: ReturnType<typeof prepareRunning>) {
-  return {
-    failure: FAILURE_RECORD,
-    authorization: {
-      kind: "failed" as const,
-      runId: run.envelope.runId,
-      workflowId: run.envelope.workflow,
-      attempt: run.envelope.attempt,
-      descriptorVersion: run.envelope.descriptorVersion,
-      contractFingerprint: run.envelope.contractFingerprint,
-      expectedVersion: run.version,
-      claim: { workerId: claimedWorkerId(run), claimGeneration: 1 },
-      authorizedAt: LATER,
-      failureId: FAILURE_RECORD.failureId,
-    },
-  };
-}
-
-function terminalSuccessRequest(database: AuthorityDatabase, run: ReturnType<typeof prepareRunning>) {
-  const checkpoint = RunCheckpointRecordSchema.parse({
-    workflowId: run.envelope.workflow,
-    itemId: run.envelope.itemId,
-    nodeId: "active-status",
-    attempt: run.envelope.attempt,
-    claimGeneration: run.claimGeneration,
-    runId: run.envelope.runId,
-    output: {
-      schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"),
-      value: ACTIVE_STATUS,
-    },
-    descriptorVersion: run.envelope.descriptorVersion,
-    contractFingerprint: run.envelope.contractFingerprint,
-    implFingerprint: HASH_B,
-    provenance: [{ path: "state", source: "derived", observedAt: NOW, originalObservedAt: NOW }],
-    writtenAt: NOW,
-  });
-  if (database.authority.runCheckpoints.get(
-    checkpoint.workflowId,
-    checkpoint.itemId,
-    checkpoint.nodeId,
-    checkpoint.attempt,
-    checkpoint.claimGeneration,
-  ) === undefined) {
-    database.authority.runCheckpoints.insert(checkpoint);
-  }
-  const built = buildRunResult(personLookupDescriptor, run, [
-    { state: "resolved", nodeId: "active-status", checkpoint },
-    { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
-  ], CLOCK);
-  return {
-    request: {
-      result: built.record,
-      authorization: {
-        kind: "done" as const,
-        runId: built.record.runId,
-        workflowId: built.record.workflowId,
-        attempt: built.record.attempt,
-        descriptorVersion: built.record.descriptorVersion,
-        contractFingerprint: built.record.contractFingerprint,
-        expectedVersion: run.version,
-        claim: { workerId: claimedWorkerId(run), claimGeneration: 1 },
-        authorizedAt: LATER,
-        resultDigest: built.record.resultDigest,
-      },
-    },
-    factoryAuthorization: built.authorization,
-  };
-}
-
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+{
+const { ATOMIC_WRITE_COMMIT, roots, openDatabases, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT } = createAuthorityAccountingTestWorld();
 
 const INTAKE_SESSION = {
   intakeSessionId: "7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5e",
@@ -363,67 +48,13 @@ const INTAKE_SESSION = {
   createdAt: NOW,
   updatedAt: NOW,
 };
-const INTAKE_MANIFEST = {
-  version: 1,
-  manifestId: "9f8a1c2d-4b5e-4a6f-9c8d-0e1f2a3b4c5d",
-  workflow: "work-study",
-  source: {
-    artifactId: "11111111-2222-4333-8444-555555555555",
-    sha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
-    originalName: "WorkStudy_July.xlsx",
-  },
-  mappingFingerprint: "a".repeat(64),
-  mappingSnapshotHash: "b".repeat(64),
-  intakeProjectionFingerprint: "c".repeat(64),
-  workflowContractFingerprint: "d".repeat(64),
-  canonicalInputSchemaHash: "e".repeat(64),
-  createdAt: "2026-08-07T09:00:00.000Z",
-  totals: { sourceRows: 1, valid: 1, rejected: 0, rejectionEvents: 0, excluded: 0, corrected: 0 },
-  sourceRowDispositions: [{
-    sourceRow: 1,
-    disposition: "valid",
-    itemId: "22222222-3333-4444-8555-666666666666",
-    currentRejectIds: [],
-  }],
-  validRows: [{
-    sourceRow: 1,
-    itemId: "22222222-3333-4444-8555-666666666666",
-    inputHash: "f".repeat(64),
-    parsedInput: { emplId: "10456712" },
-  }],
-  rejectedRows: [],
-  corrections: [],
-  exclusions: [],
-};
-
-const OCR_EXTRACTION = {
-  formType: "oath",
-  source: { kind: "local-agent", agentId: "claude-code", invocation: "read page1.png" },
-  readAt: "2026-08-07T09:00:00.000Z",
-  sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
-  sourcePage: 1,
-  pageKind: "emergency-contact",
-  record: null,
-  pageFingerprint: "1".repeat(64),
-};
-const DRY_RUN_SCENARIO_RESULT = {
-  resultId: UUID_8,
-  scenarioId: "person-lookup/dry-run",
-  workflow: "person-lookup",
-  subjectLabel: "ordinary-canary",
-  manifestDigest: HASH_A,
-  verdict: "blocked",
-  assertions: [{
-    assertionId: "subject-available",
-    verdict: "blocked",
-    reason: "subject-unavailable",
-  }],
-  wallTimeMs: 0,
-  recordedAt: NOW,
-  execution: { state: "not-started", reason: "subject-unavailable" },
-};
 
 describe("authority generation accounting", () => {
+afterEach(() => {
+  for (const database of openDatabases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
   it("keeps one read snapshot while another connection commits without waiting", () => {
     const path = databasePath("concurrent-read-snapshot.sqlite");
     const reader = openDatabase(path, 10);
@@ -733,3 +364,262 @@ describe("authority generation accounting", () => {
     assert.equal(database.getMeta().authorityGeneration, 0);
   });
 });
+}
+
+{
+const { ATOMIC_WRITE_COMMIT, roots, openDatabases, databasePaths, OPERATOR_XLSX_EXPORT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase } = createAuthorityAccountingTestWorld();
+
+const OPERATOR_XLSX_EXPORT_ALTERNATE = {
+  ...OPERATOR_XLSX_EXPORT,
+  exportId: UUID_6,
+  requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+};
+
+function corruptXlsx(path: string, mutate: (database: DatabaseSync) => void): void {
+  const database = new DatabaseSync(path);
+  const triggers = ["artifacts_generated_evidence", "artifacts_identity"].map(name => {
+    const row = database.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?").get(name);
+    if (typeof row?.sql !== "string") throw new Error("fixture-generated-artifact-trigger-missing");
+    return { name, sql: row.sql };
+  });
+  try {
+    for (const trigger of triggers) database.exec(`DROP TRIGGER ${trigger.name}`);
+    database.exec("PRAGMA ignore_check_constraints=ON");
+    mutate(database);
+  } finally {
+    database.exec("PRAGMA ignore_check_constraints=OFF");
+    for (const trigger of triggers) database.exec(trigger.sql);
+    database.close();
+  }
+}
+
+describe("authority persistence invariants", () => {
+afterEach(() => {
+  for (const database of openDatabases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+
+  it.each([
+    {
+      label: "evidence fingerprint",
+      sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceFingerprint',?) WHERE export_id=?",
+      values: [HASH_B, UUID_6] as const,
+    },
+    {
+      label: "record JSON actor",
+      sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.requestedBy',?) || '') WHERE export_id=?",
+      values: ["other-operator", UUID_6] as const,
+    },
+  ])("refuses a current XLSX $label mismatch at read and boot", ({ label, sql, values }) => {
+    const path = databasePath(`operator-xlsx-${label.replaceAll(" ", "-")}.sqlite`);
+    const database = openDatabase(path);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_ALTERNATE);
+    corruptXlsx(path, corruptor => {
+      assert.equal(corruptor.prepare(sql).run(...values).changes, 1);
+    });
+
+    assert.throws(
+      () => database.authority.operatorXlsxExports.get(UUID_6),
+      /generated-artifact|generated export/,
+    );
+    database.close();
+    assert.throws(
+      () => openDatabase(path),
+      /generated|quick_check|current authority record invariants/,
+    );
+  });
+
+  it("refuses an XLSX artifact index that disagrees with its strict evidence record", () => {
+    const path = databasePath();
+    const database = openDatabase(path);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
+    corruptXlsx(path, corruptor => {
+      assert.equal(corruptor.prepare("UPDATE artifacts SET payload_json=json_set(payload_json,'$.versions[0].artifact.id',?) WHERE export_id=?")
+        .run(UUID_6, UUID_7).changes, 1);
+    });
+
+    assert.throws(
+      () => database.authority.operatorXlsxExports.listByArtifact(UUID_8),
+      /generated-artifact|generated export/,
+    );
+  });
+
+  it("reconciles every mirrored XLSX evidence column during boot inspection", () => {
+    const corruptions = [
+      { name: "record key", sql: "UPDATE artifacts SET id = ?", value: UUID_6 },
+      { name: "selection kind", sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.selection.kind',?) || '')", value: "activity" },
+      { name: "artifact id", sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.artifact.id',?) || '')", value: UUID_6 },
+      { name: "digest", sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.artifact.sha256',?) || '')", value: HASH_B },
+      { name: "byte length", sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.artifact.bytes',?) || '')", value: 2_048 },
+      { name: "media type", sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.artifact.mediaType',?) || '')", value: "application/pdf" },
+      {
+        name: "filename",
+        sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.download.filename',?) || '')",
+        value: "hr-run-search-2026-07-31-g4.xlsx",
+      },
+      { name: "created at", sql: "UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',json_set(json_extract(payload_json,'$.exportEvidenceJson'),'$.createdAt',?) || '')", value: LATER },
+    ] as const;
+
+    for (const corruption of corruptions) {
+      const path = databasePath(`${corruption.name.replaceAll(" ", "-")}.sqlite`);
+      const database = openDatabase(path);
+      database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
+      database.close();
+      corruptXlsx(path, corruptor => {
+        assert.equal(corruptor.prepare(corruption.sql).run(corruption.value).changes, 1);
+      });
+
+      assert.throws(
+        () => openDatabase(path),
+        /generated|quick_check|current authority record invariants/,
+        corruption.name,
+      );
+    }
+  });
+
+  it("makes command insertion idempotent but rejects command-id content reuse", () => {
+    const database = openDatabase();
+    assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "inserted");
+    assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "existing");
+    assert.throws(() => database.authority.commands.insert({
+      ...(COMMAND_FIXTURES[0] as Record<string, unknown>),
+      requestedBy: "different-operator",
+    }), /reused with different content/);
+    assert.equal(database.getMeta().authorityGeneration, 1);
+  });
+
+  it("keeps committed and observed-present idempotency keys permanent", () => {
+    const database = openDatabase();
+    database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, databasePaths.get(database) ?? (() => { throw new Error("missing fixture path"); })());
+    const generationBefore = database.getMeta().authorityGeneration;
+    assert.equal(database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }).state, "fenced");
+    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
+    const committedReplay = {
+      intent: { ...WRITE_INTENT_ATTEMPTING, writeIntentId: UUID_8, currentAttemptId: UUID_6 },
+      attempt: { ...WRITE_ATTEMPT, writeIntentId: UUID_8, writeAttemptId: UUID_6 },
+    };
+    assert.equal(database.authority.writeIntents.fenceAttempt(committedReplay).state, "existing");
+    assert.equal(database.authority.writeIntents.findByPermanentKey("ucpath", IDEMPOTENCY_KEY)?.writeIntentId, UUID_1);
+
+    assert.equal(database.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT).state, "recorded-observed-present");
+    const observedReplay = { ...OBSERVED_PRESENT_WRITE_INTENT, writeIntentId: UUID_6 };
+    assert.equal(database.authority.writeIntents.recordObservedPresent(observedReplay).state, "existing");
+    assert.equal(database.authority.writeIntents.findByPermanentKey("ucpath", OBSERVED_PRESENT_WRITE_INTENT.idempotencyKey)?.writeIntentId, UUID_7);
+    assert.equal(database.getMeta().authorityGeneration, generationBefore + 3);
+  });
+
+  it("enforces command, delegation, write-attempt, and outbox foreign keys", () => {
+    const database = openDatabase();
+    assert.throws(() => database.authority.commandAudits.insert(COMMAND_AUDIT), /FOREIGN KEY constraint failed/);
+    assert.throws(() => database.authority.dependencies.insert(DEPENDENCY_RECORD), /FOREIGN KEY constraint failed/);
+    assert.throws(
+      () => database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT)),
+      /write intent .* does not exist/,
+    );
+    assert.equal(database.getMeta().authorityGeneration, 0);
+  });
+
+  it("rejects authority mutation inside a projection transaction", () => {
+    const database = openDatabase();
+    assert.equal("withProjectionTransaction" in database, false);
+    assert.equal(database.getMeta().authorityGeneration, 0);
+  });
+});
+
+describe("run ordinals", () => {
+afterEach(() => {
+  for (const database of openDatabases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+  const RUN_ID_2 = "aaaaaaaa-0002-4000-8000-000200000000";
+  const RUN_ID_3 = "aaaaaaaa-0003-4000-8000-000300000000";
+
+  function queuedRunAt(
+    runId: string,
+    overrides: Readonly<{ workflow?: string; itemId?: string; traceId?: string; runNumber?: number }>,
+  ): Record<string, unknown> {
+    const { runNumber, ...envelopeOverrides } = overrides;
+    return {
+      ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, runId, ...envelopeOverrides },
+      ...(runNumber === undefined ? {} : { runNumber }),
+    };
+  }
+
+  it("hands out consecutive ordinals per workflow and refuses a spent one", () => {
+    const database = openDatabase();
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 1);
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID, { runNumber: 1 }));
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 2);
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID_2, {
+      itemId: UUID_6, traceId: "pl-170002-0002", runNumber: 2,
+    }));
+    assert.equal(database.authority.runs.get(RUN_ID)?.runNumber, 1);
+    assert.equal(database.authority.runs.get(RUN_ID_2)?.runNumber, 2);
+
+    // A stale reader that re-uses #2 is refused by NAME, not by an index error.
+    assert.throws(
+      () => database.authority.runs.enqueue(queuedRunAt(RUN_ID_3, {
+        itemId: UUID_8, traceId: "pl-170003-0003", runNumber: 2,
+      })),
+      /already spent \(its next unspent number is #3\)/,
+    );
+    // …and nothing landed, so the counter did not move either.
+    assert.equal(database.authority.runs.get(RUN_ID_3), undefined);
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 3);
+  });
+
+  it("counts each workflow separately and tolerates a gap", () => {
+    const database = openDatabase();
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID, { runNumber: 1 }));
+    // A different workflow starts at 1 again — the ordinal names a run WITHIN
+    // one workflow's history, and a global sequence would make `#1` unreadable.
+    assert.equal(database.authority.runs.nextWorkflowRunNumber("separations"), 1);
+    // A gap is legal: a refused fan-out entry leaves nothing behind, and the
+    // numbers around the gap still name the runs they always named.
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    database.authority.runs.enqueue(queuedRunAt(RUN_ID_2, {
+      itemId: UUID_6, traceId: "pl-170002-0002", runNumber: 7,
+    }));
+    assert.equal(database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID), 8);
+  });
+});
+
+describe("workflow batch presentation persistence", () => {
+afterEach(() => {
+  for (const database of openDatabases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+  it("persists genuine grouping, fences presentation edits and preserves batch identity across reopen", () => {
+    const path = databasePath("workflow-batches.sqlite");
+    const db = openDatabase(path);
+    db.authority.runSessions.insert(RUN_SESSION);
+    const migrated = db.authority.runSessions.get(RUN_SESSION.sessionId);
+    assert.equal(migrated?.groupInQueue, false);
+    assert.equal(migrated?.version, 1);
+    assert.equal(migrated?.sessionId, RUN_SESSION.sessionId);
+    const before = db.getMeta().authorityGeneration;
+    db.authority.runSessions.setGrouping(RUN_SESSION.sessionId, 1, true);
+    assert.equal(db.getMeta().authorityGeneration, before + 1);
+    assert.throws(() => db.authority.runSessions.setGrouping(RUN_SESSION.sessionId, 1, false), /version conflict/u);
+    assert.throws(() => db.authority.runSessions.setGrouping(UUID_4, 1, false), /does not exist/u);
+    db.close();
+    const reopened = openDatabase(path);
+    assert.equal(reopened.authority.runSessions.get(RUN_SESSION.sessionId)?.groupInQueue, true);
+    assert.equal(reopened.authority.runSessions.get(RUN_SESSION.sessionId)?.version, 2);
+    const sql = new DatabaseSync(path);
+    assert.equal(sql.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('tasks','run_sessions')").get(), undefined);
+    assert.deepEqual(sql.prepare("PRAGMA foreign_key_check").all(), []);
+    assert.throws(() => sql.exec("UPDATE run_batches SET workflow='other'"), /run-batches-presentation/u);
+    assert.throws(() => sql.exec("UPDATE run_batches SET group_in_queue=0"), /run-batches-presentation/u);
+    sql.close();
+  });
+});
+}

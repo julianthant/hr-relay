@@ -1,13 +1,13 @@
+import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe,it,vi } from "vitest";
+import { describe, it, vi } from "vitest";
 import { z } from "zod";
-import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
-import { RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
+import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../../../support/fixtures/cross-date-search-corpus.js";
@@ -531,17 +531,11 @@ describe("cross-date search service", () => {
       const second = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 42, enqueuedAt: "2026-08-27T15:00:00.000Z" });
       insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 43, enqueuedAt: "2026-08-26T15:00:00.000Z" });
       const signer = new Uint8Array(32).fill(0x41);
-      const service = createCrossDateSearchService({
+      const service = measuredSearchService(database, {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: signer,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
-        authority: {
-          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-            authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => database.authority.runs.search(input),
-          })),
-        },
       });
       const firstPage = service.search({ q: "separations", limit: 1 });
       if (firstPage.nextCursor.state !== "present") {
@@ -558,34 +552,22 @@ describe("cross-date search service", () => {
         /cursor signature.*different BFF process or was modified/,
       );
 
-      const restarted = createCrossDateSearchService({
+      const restarted = measuredSearchService(database, {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: new Uint8Array(32).fill(0x42),
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
-        authority: {
-          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-            authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => database.authority.runs.search(input),
-          })),
-        },
       });
       assert.throws(
         () => restarted.search({ q: "separations", limit: 1, cursor }),
         /cursor signature.*different BFF process or was modified/,
       );
 
-      const foreignAuthority = createCrossDateSearchService({
+      const foreignAuthority = measuredSearchService(database, {
         clock,
         sourceIdentity: "f".repeat(64),
         cursorSigningKey: signer,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
-        authority: {
-          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-            authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => database.authority.runs.search(input),
-          })),
-        },
       });
       assert.throws(
         () => foreignAuthority.search({ q: "separations", limit: 1, cursor }),
@@ -621,17 +603,11 @@ describe("cross-date search service", () => {
         database,
         { authorityPath: join(root, "authority.db"), seed: 31, enqueuedAt: "2026-11-01T01:15:00.000-08:00" },
       );
-      const search = createCrossDateSearchService({
+      const search = measuredSearchService(database, {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
-        authority: {
-          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-            authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => database.authority.runs.search(input),
-          })),
-        },
       });
 
       const first = search.search({
@@ -688,18 +664,12 @@ describe("cross-date search service", () => {
         runNumber: 7,
         enqueuedAt: "2026-08-28T15:00:00.000Z",
       });
-      const search = createCrossDateSearchService({
+      const search = measuredSearchService(database, {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: {
           resolve: (workflowId) => workflowId === separationsDescriptor.id ? separationsDescriptor : undefined,
-        },
-        authority: {
-          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-            authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => database.authority.runs.search(input),
-          })),
         },
       });
 

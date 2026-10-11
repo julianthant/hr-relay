@@ -1,66 +1,15 @@
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-
+import { createWorkerDirectiveTestWorld } from "../../../support/helpers/backend/worker-directive-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
-import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import {
-runWorkerLoop,
-type WorkerLoopDependencies
-} from "../../../../src/backend/runtime/workers/worker-loop.js";
-import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import { RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
-import {
-EXECUTOR_WORKER_ID,
-happySessionHarness,
-ManualScheduler,
-openAuthorityHarness,
-personLookupQueuedRun,
-recordingLogger,
-recordingTimelineEmitter,
-type SessionFactoryHarness
-} from "../../../support/helpers/phase1f-executor-harness.js";
-import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { afterEach, describe, it } from "vitest";
+import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
+import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const disposers: (() => void)[] = [];
+const { disposers, loopHarness } = createWorkerDirectiveTestWorld();
+
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
-
-function loopHarness(options: Readonly<{
-  sessions?: SessionFactoryHarness;
-  heartbeatIntervalMs?: number;
-  exitWhenIdle?: boolean;
-}> = {}) {
-  const authority = openAuthorityHarness();
-  disposers.push(authority.dispose);
-  const sessions = options.sessions ?? happySessionHarness();
-  const scheduler = new ManualScheduler(authority.clock, 0);
-  const emitter = recordingTimelineEmitter(authority.database, authority.clock);
-  const stop = new AbortController();
-  const deps: WorkerLoopDependencies = {
-    ...testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex: 1 }),
-    workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
-    workerId: EXECUTOR_WORKER_ID,
-    descriptor: personLookupDescriptor,
-    stores: taskStoreRegistry,
-    authority: authority.database,
-    sessionFactory: sessions.factory,
-    emitter: emitter.emitter,
-    clock: authority.clock,
-    ids: sequentialIdFactory("c"),
-    scheduler,
-    taskDeadlineMs: 60_000,
-    sessionAcquireMs: 20_000,
-    duoCeremony: fixtureDuoCeremonyGates(authority.clock),
-    heartbeatIntervalMs: options.heartbeatIntervalMs ?? 500,
-    idleRepollMs: 1_000,
-    log: recordingLogger().log,
-    stopSignal: stop.signal,
-    exitWhenIdle: options.exitWhenIdle ?? true,
-  };
-  return { authority, sessions, scheduler, emitter, stop, deps };
-}
 
 describe("durable worker directives (ref dashboard-surfaces §2.4), observed between items", () => {
   it("stops without claiming when the directive says stop", async () => {

@@ -1,27 +1,13 @@
-
+import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import type { RunDetailDescriptorView } from "../../../../src/backend/runs/queries/run-detail.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import {
-claimEventOf,
-instantOffsetOf,
-makeWorld,
-queuedEventOf,
-runRecordOf,
-taskEventsOf,
-uuidOf,
-type DashboardWorld,
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { claimEventOf, instantOffsetOf, queuedEventOf, runRecordOf, taskEventsOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const worlds: DashboardWorld[] = [];
+const { worlds, world } = createRunDetailTestWorld();
 
-function world(): DashboardWorld {
-  const created = makeWorld();
-  worlds.push(created);
-  return created;
-}
 
 afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();

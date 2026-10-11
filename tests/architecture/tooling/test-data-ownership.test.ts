@@ -26,6 +26,7 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/synthetic-storage-admission.ts",
   "tests/support/helpers/admission-fixture.ts",
   "tests/support/helpers/backend/dashboard-harness.ts",
+  "tests/support/helpers/backend/settings-authority-world.ts",
   "tests/support/helpers/backend/http-route-harness.ts",
   "tests/support/helpers/storage/native-authority/retained-database-fixture.ts",
 ]);
@@ -68,6 +69,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/admission-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/backend/dashboard-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/backend/settings-authority-world.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
   { importer: "tests/support/helpers/backend/http-route-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },

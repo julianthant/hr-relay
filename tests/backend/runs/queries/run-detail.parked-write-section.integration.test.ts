@@ -1,48 +1,20 @@
-
+import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
-import {
-availableSections,
-buildRunDetail,
-buildRunSection,
-type RunDetailQueryDeps,
-type RunDetailWriteContractView,
-} from "../../../../src/backend/runs/queries/run-detail.js";
+import { afterEach, describe, it } from "vitest";
+import { availableSections, buildRunDetail, buildRunSection, type RunDetailQueryDeps, type RunDetailWriteContractView } from "../../../../src/backend/runs/queries/run-detail.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
-import {
-WriteIntentRecordSchema,
-deriveWriteBindingProofDigest,
-type WriteIntentRecord,
-} from "../../../../src/rules/write-safety/write-safety.js";
+import { WriteIntentRecordSchema, deriveWriteBindingProofDigest, type WriteIntentRecord } from "../../../../src/rules/write-safety/write-safety.js";
 import { FIXTURE_PARKED_WRITE } from "../../../support/fixtures/dashboard/fixture-day.js";
 import { FIXTURE_PARKED_WRITE_INTENT } from "../../../support/fixtures/dashboard/run-detail/gates-park.js";
-import {
-IDEMPOTENCY_KEY,
-IDEMPOTENCY_KEY_DIGEST,
-NOW,
-SUBJECT_PROOF,
-UNSCOPED_PROOF,
-} from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-makeWorld,
-queuedEventOf,
-runRecordOf,
-uuidOf,
-type DashboardWorld,
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, NOW, SUBJECT_PROOF, UNSCOPED_PROOF } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { queuedEventOf, runRecordOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const worlds: DashboardWorld[] = [];
-function world(): DashboardWorld {
-  const created = makeWorld();
-  worlds.push(created);
-  return created;
-}
+const { worlds, world, RUN_ID } = createRunDetailTestWorld();
+
 afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
 });
-
-const RUN_ID = uuidOf(1);
 const ITEM_ID = uuidOf(5001);
 const INTENT_ID = uuidOf(11);
 const ATTEMPT_ID = uuidOf(12);

@@ -1,37 +1,17 @@
-import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-
+import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
-import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import type {
-AuthenticatedApplicationEvidence,
-SystemLoginContext,
-} from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { describe, it } from "vitest";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import {
-isAuthenticatedUcpathAppUrl,
-isUcpathPostSsoLanding,
-ucpathLoginRecipe,
-verifyUcpathAuthenticatedApplication,
-} from "../../../../src/backend/systems/ucpath/session.js";
-import type { BrowserSystemId } from "../../../../src/rules/identity/ids.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
-import {
-NEVER_SETTLES,
-fakeLoginPage,
-type FakeCookie,
-type FakePageScript,
-} from "../../../support/helpers/browser/fake-login-page.js";
-import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
+import { isAuthenticatedUcpathAppUrl, isUcpathPostSsoLanding, ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../../../src/backend/systems/ucpath/session.js";
+import { NEVER_SETTLES, type FakeCookie, type FakePageScript } from "../../../support/helpers/browser/fake-login-page.js";
 
-const CONFIG = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-08-03T09:00:00.000Z"))).config;
-const CREDENTIALS = Object.freeze({ userId: "fixture-user", password: "fixture-value" });
+const { CONFIG, CREDENTIALS, SSO, NO_SIGN_IN_FORMS, contextFor } = createSystemSessionTestWorld();
+
 const UCPATH_APP = "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/app";
 const UCPATH_ENTRY = CONFIG.urls.ucpath.prod.smartHr;
 const UCPATH_PORTAL = CONFIG.urls.ucpath.prod.login;
 /** The page that produced the false pass: public, unauthenticated, same host. */
 const UCPATH_PUBLIC_PORTAL = "https://ucpath.universityofcalifornia.edu/";
-const SSO = "https://a5.ucsd.edu/idp/profile/SAML2/Redirect/SSO";
 
 const DUO_PROMPT = "https://api-ce13a1a7.duosecurity.com/prompt/DA6QL3UFNF54WTIT1EQC";
 const DISCOVERY = "https://ucpath.universityofcalifornia.edu/ucpathdiscovery/disco?entity=ucsd";
@@ -42,42 +22,6 @@ const PS_TOKEN: FakeCookie = {
   domain: "ucphrprdpub.universityofcalifornia.edu",
   value: "opaque",
 };
-
-
-const NO_SIGN_IN_FORMS = {
-  "campus-link": { count: 0 },
-  "sso-submit": { count: 0 },
-  "peoplesoft-signon": { count: 0 },
-  "communities-login": { count: 0 },
-} as const;
-
-function contextFor(
-  script: FakePageScript,
-  signal = new AbortController().signal,
-  system: BrowserSystemId = "ucpath",
-): {
-  context: SystemLoginContext;
-  harness: ReturnType<typeof fakeLoginPage>;
-  evidence: () => readonly AuthenticatedApplicationEvidence[];
-} {
-  const harness = fakeLoginPage(script);
-  const recorded: AuthenticatedApplicationEvidence[] = [];
-  return {
-    harness,
-    evidence: () => Object.freeze([...recorded]),
-    context: {
-      page: harness.page,
-      config: CONFIG,
-      instance: "prod",
-      label: "worker person-lookup-worker-1 session",
-      signal,
-      credentials: CREDENTIALS,
-      recordEvidence: (evidence) => recorded.push(evidence),
-
-      duoCeremony: fixtureDuoCeremonyGate(system),
-    },
-  };
-}
 
 describe("ucpath landing verification", () => {
   it("requires a PeopleSoft application route, not just the UC host", () => {

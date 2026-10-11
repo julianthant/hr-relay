@@ -1,21 +1,10 @@
-
+import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
-import {
-DAY,
-instantOffsetOf,
-makeWorld,
-workerLeaseOf,
-type DashboardWorld
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { afterEach, describe, it } from "vitest";
+import { DAY, instantOffsetOf, workerLeaseOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const worlds: DashboardWorld[] = [];
+const { worlds, world } = createRunQueueProjectionTestWorld();
 
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
-  worlds.push(created);
-  return created;
-}
 
 afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();

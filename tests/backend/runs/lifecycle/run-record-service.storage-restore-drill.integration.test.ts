@@ -1,6 +1,7 @@
+import { createStorageRestoreTestWorld, type DrillPaths } from "../../../support/helpers/backend/storage-restore-world.js";
 import { randomUUID } from "node:crypto";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { RunRecordService,sweepWorkerClaims,workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService, sweepWorkerClaims, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
@@ -8,82 +9,27 @@ import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/s
 import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../../src/models/dashboard/storage.js";
-import { LOCAL_OPERATOR_ACTOR_ID,PositiveIntSchema,WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
-import { WriteAttemptRecordSchema,WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
+import { LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
+import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { atomicWriteCheckpoint,currentAtomicWriteFixture,seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
-
+import { atomicWriteCheckpoint, currentAtomicWriteFixture, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import {
-mkdirSync,
-mkdtempSync,
-readdirSync,
-realpathSync,
-rmSync,
-writeFileSync
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
-import {
-composeStorageCommand as composeNativeStorageCommand
-} from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import {
-NOW,
-WRITE_ATTEMPT,
-WRITE_INTENT_ATTEMPTING
-} from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const CLOCK = manualClock(new Date(NOW));
-const roots: string[] = [];
-const admissions = new Map<string,RuntimeAdmission>();
-async function composeStorageCommand(isolation:typeof rebuildRuntimeIsolation,args:readonly string[],clock:typeof CLOCK,repoRoot:string){const admission=admissions.get(repoRoot);assert.ok(admission);return composeNativeStorageCommand(isolation,args,clock,repoRoot,admission);}
+const { roots, admissions, composeStorageCommand, drillPaths, open } = createStorageRestoreTestWorld();
+
 
 afterEach(() => {
   for(const admission of admissions.values())admission.release();admissions.clear();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-
-interface DrillPaths {
-  readonly repoRoot: string;
-  readonly admission: RuntimeAdmission;
-  readonly stateRoot: string;
-  readonly authorityPath: string;
-  readonly backupDirectory: string;
-  readonly processLockRoot: string;
-}
-
-function drillPaths(): DrillPaths {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "native-restore-drill-"));
-  roots.push(repoRoot);
-  const admission=acquireEntrypointAdmission(repoRoot,"exclusive");admissions.set(repoRoot,admission);
-  const stateRoot = admission.stateRoot;
-  mkdirSync(stateRoot, { recursive: true });
-  // The command reads the running build's version out of its repo root, the
-  // same way the dashboard composition does; the drill's root is a repo root.
-  writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "drill", version: "0.1.0" }));
-  return {
-    repoRoot,
-    admission,
-    stateRoot,
-    authorityPath: join(stateRoot, "state.db"),
-    backupDirectory: join(stateRoot, "backups", "authority"),
-    processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-  };
-}
-
-function open(paths: DrillPaths): AuthorityDatabase {
-  return AuthorityDatabase.open(paths.admission,
-    { path: paths.authorityPath, busyTimeoutMs: 250, migrationOwner: "restore-drill" },
-    CLOCK,
-  );
-}
 
 describe("restore-loss warning after real worker recovery", () => {
   const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));

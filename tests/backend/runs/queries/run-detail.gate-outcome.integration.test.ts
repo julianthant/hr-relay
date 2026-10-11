@@ -1,33 +1,17 @@
-
+import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
-import {
-buildRunDetail,
-type RunDetailQueryDeps,
-} from "../../../../src/backend/runs/queries/run-detail.js";
+import { afterEach, describe, it } from "vitest";
+import { buildRunDetail, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { terminalOutcomeText } from "../../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
-import {
-makeWorld,
-queuedEventOf,
-runEndedEventOf,
-traceOf,
-uuidOf,
-type DashboardWorld,
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { queuedEventOf, runEndedEventOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const worlds: DashboardWorld[] = [];
-function world(): DashboardWorld {
-  const created = makeWorld();
-  worlds.push(created);
-  return created;
-}
+const { worlds, world, RUN_ID } = createRunDetailTestWorld();
+
 afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
 });
-
-const RUN_ID = uuidOf(1);
 const HASH = "a".repeat(64);
 const GATE_RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 const RESOLVED_AT = "2026-08-19T09:15:00.000Z";

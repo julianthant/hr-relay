@@ -1,12 +1,10 @@
+import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe,it } from "vitest";
-import {
-createCrossDateSearchService,
-type CrossDateSearchQueryService,
-} from "../../../../src/backend/runs/queries/search.js";
+import { describe, it } from "vitest";
+import { type CrossDateSearchQueryService } from "../../../../src/backend/runs/queries/search.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { insertMeasuredSearchRun } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -18,22 +16,16 @@ function searchService(
   signingByte: number,
   sourceIdentity = database.getSourceDatabaseIdentity(),
 ): CrossDateSearchQueryService {
-  return createCrossDateSearchService({
-    clock: CLOCK,
-    sourceIdentity,
-    cursorSigningKey: new Uint8Array(32).fill(signingByte),
-    descriptors: {
+  return measuredSearchService(database, {
+        clock: CLOCK,
+        sourceIdentity,
+        cursorSigningKey: new Uint8Array(32).fill(signingByte),
+        descriptors: {
       resolve: (workflowId) => workflowId === "separations"
         ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
         : undefined,
     },
-    authority: {
-      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-        authorityGeneration: database.getMeta().authorityGeneration,
-        searchRuns: (input) => database.authority.runs.search(input),
-      })),
-    },
-  });
+      });
 }
 
 describe("cross-date search snapshot token", () => {

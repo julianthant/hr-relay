@@ -1,26 +1,14 @@
+import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { SectionUnavailableError } from "../../../../src/backend/runs/commands/refusals.js";
-import {
-buildRunSection,
-readRunSection,
-type RunDetailQueryDeps,
-} from "../../../../src/backend/runs/queries/run-detail.js";
+import { buildRunSection, readRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
-import {
-makeWorld,
-queuedEventOf,
-uuidOf,
-type DashboardWorld,
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { queuedEventOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const worlds: DashboardWorld[] = [];
-function world(): DashboardWorld {
-  const created = makeWorld();
-  worlds.push(created);
-  return created;
-}
+const { worlds, world } = createRunDetailTestWorld();
+
 afterEach(() => {
   for (const current of worlds.splice(0)) current.dispose();
 });

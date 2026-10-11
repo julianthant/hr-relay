@@ -1,24 +1,12 @@
-import { mkdirSync,readdirSync,writeFileSync } from "node:fs";
+import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe,expect,it } from "vitest";
-import { createNotificationHealthObserver,readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
-import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { createNotificationInbox } from "../../../../../src/backend/runs/notifications/inbox.js";
-import { CONFIG_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
-import { testWorkerPorts } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
-import { storageRecoveryFixture } from "../../../../support/helpers/integration/storage-recovery-fixture.js";
-import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
-import { AuthorityBackupService,AuthorityDatabase,syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
-async function fixture() {
-  const f = storageRecoveryFixture(); await f.run();
-  const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "notification-producers" }, f.clock);
-  db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  testWorkerPorts(db, f.clock, { path: f.path, descriptor: personLookupDescriptor, poolIndex: 1 });
-  const reader = new RunRecordService({ database: db, clock: f.clock, ids: sequentialIdFactory("e"), publishQueued: () => {} });
-  const inbox = createNotificationInbox({ authority: db, clock: f.clock, ids: sequentialIdFactory("a"), actorId: "local-operator", runReader: reader });
-  return { ...f, db, reader, inbox, close: () => { db.close(); f.dispose(); } };
-}
+import { describe, expect, it } from "vitest";
+import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
+import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
+
+const { fixture } = createNotificationCompositionTestWorld();
+
 describe("canonical notification producers", () => {
   it("reads actual backup verification, accepts stale generations, and never creates a backup", async () => {
     const f = await fixture();

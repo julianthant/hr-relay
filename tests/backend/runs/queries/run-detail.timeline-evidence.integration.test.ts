@@ -1,6 +1,6 @@
-
+import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import type { RunDetailDescriptorView } from "../../../../src/backend/runs/queries/run-detail.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -8,32 +8,18 @@ import { defineTaskContract } from "../../../../src/models/task/task-contract.js
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import { ScenarioIdSchema,taskId } from "../../../../src/rules/identity/ids.js";
+import { ScenarioIdSchema, taskId } from "../../../../src/rules/identity/ids.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-claimEventOf,
-instantOffsetOf,
-makeWorld,
-queuedEventOf,
-runRecordOf,
-traceOf,
-uuidOf,
-type DashboardWorld,
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { claimEventOf, instantOffsetOf, queuedEventOf, runRecordOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { timelineEventDuration } from "../../../../src/models/dashboard/run-detail.js";
+import { DAY } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const worlds: DashboardWorld[] = [];
-
-function world(): DashboardWorld {
-  const created = makeWorld();
-  worlds.push(created);
-  return created;
-}
-
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+{
+const { worlds, world } = createRunDetailTestWorld();
 
 /* ── 1. the factory derives and REFUSES ──────────────────────────────────── */
 
@@ -110,6 +96,10 @@ function descriptorNamed<First extends string>(
 }
 
 describe("the descriptor's declared timeline", () => {
+afterEach(() => {
+  for (const w of worlds.splice(0)) w.dispose();
+});
+
   it("derives ONE category per node when a descriptor declares nothing", () => {
 
     assert.deepEqual(descriptorWith().timeline, [
@@ -255,6 +245,10 @@ function seedRun(w: DashboardWorld): void {
 }
 
 describe("the served categorical steps", () => {
+afterEach(() => {
+  for (const w of worlds.splice(0)) w.dispose();
+});
+
   it("serves ONE step per category, not one per node", () => {
     const w = world();
     seedRun(w);
@@ -399,6 +393,10 @@ function terminal(w: DashboardWorld, outcome: "done" | "failed"): void {
 }
 
 describe("a replayed node is not a node that never ran", () => {
+afterEach(() => {
+  for (const w of worlds.splice(0)) w.dispose();
+});
+
   it("renders a no-span node with an earlier run's checkpoint as REPLAYED", () => {
     const w = world();
     seedRun(w);
@@ -506,3 +504,252 @@ describe("a replayed node is not a node that never ran", () => {
     assert.deepEqual(identity?.members.map((member) => member.state), ["done", "done"]);
   });
 });
+}
+
+{
+const { worlds, world } = createRunDetailTestWorld();
+
+const SEED = 1;
+const NODE = "timecard-search";
+
+const SPAN_PATH = `${traceOf(SEED)}/${NODE}#1`;
+
+function deps(w: DashboardWorld) {
+  return { runReader: w.runReader, timeline: w.timeline,
+    stateRoot: w.stateRoot,
+    projection: w.projection,
+    authority: w.authority,
+    descriptors: { resolve: () => undefined },
+  };
+}
+
+// Distinct producers can emit the same span identity; each execution retains its own durable sequence.
+function executeOnce(w: DashboardWorld, pid: number, ms: number): void {
+  const writer = createTimelineEmitter({ repository: w.timeline, clock: w.clock, pid });
+  const base = {
+    workflow: "person-lookup" as const,
+    runId: uuidOf(SEED),
+    traceId: traceOf(SEED),
+    attempt: 1,
+    spanPath: SPAN_PATH,
+    parentSpanPath: traceOf(SEED),
+    kind: "task" as const,
+  };
+  writer.emit({ ...base, t: "span.started", ts: w.clock.now().toISOString(), name: NODE });
+  w.clock.advanceWall(ms);
+  writer.emit({ ...base, t: "span.ended", ts: w.clock.now().toISOString(), outcome: "done" });
+  w.clock.advanceWall(1_000);
+  w.projection.ingestFromTimeline();
+}
+
+/** The poisoned run, terminal exactly as the real one is. */
+function poisonedWorld(): DashboardWorld {
+  const w = world();
+  queuedEventOf(w, { seed: SEED });
+  claimEventOf(w, SEED);
+  executeOnce(w, 4242, 4_000);
+
+  executeOnce(w, 4243, 9_000);
+  const endedAt = instantOffsetOf(0, 60_000);
+  w.authority.put(RunRecordSchema.parse({ ...runRecordOf({ seed: SEED }),
+    lifecycle: { state: "terminal", outcome: "done", endedAt }, version: 2, claimGeneration: 1, updatedAt: endedAt,
+    completion: { schemaVersion: 1, kind: "done", expectedVersion: 1, claim: { workerId: "worker-1", claimGeneration: 1 }, authorizedAt: endedAt, resultDigest: "a".repeat(64) },
+  }));
+  return w;
+}
+
+describe("two executions sharing one span identity in a checkpoint without claim generation", () => {
+afterEach(() => {
+  for (const w of worlds.splice(0)) w.dispose();
+});
+
+  it("parses a timeline with repeated execution identities", () => {
+
+    const w = poisonedWorld();
+    const detail = buildRunDetail(deps(w), uuidOf(SEED));
+    assert.equal(detail.runId, uuidOf(SEED));
+  });
+
+  it("renders TWO executions, because that is what the stream records", () => {
+    const w = poisonedWorld();
+    const { events } = buildRunDetail(deps(w), uuidOf(SEED)).timeline;
+    assert.equal(events.length, 2);
+    assert.deepEqual(events.map((event) => event.label), [NODE, NODE]);
+
+    assert.deepEqual(
+      events.map((event) => event.durationMs),
+      [{ state: "present", ms: 4_000 }, { state: "present", ms: 9_000 }],
+    );
+  });
+
+  it("gives the two executions DISTINCT note ids", () => {
+    const w = poisonedWorld();
+    const ids = buildRunDetail(deps(w), uuidOf(SEED)).timeline.events.map((event) => event.noteId);
+    assert.equal(new Set(ids).size, 2);
+  });
+
+  it("leaves the FIRST execution's id byte-identical — the ordinal is read forward", () => {
+    // Ordinal 1 adds no suffix, preserving existing timeline identities.
+    const single = world();
+    queuedEventOf(single, { seed: SEED });
+    claimEventOf(single, SEED);
+    executeOnce(single, 4242, 4_000);
+    const before = buildRunDetail(deps(single), uuidOf(SEED)).timeline.events;
+
+    const w = poisonedWorld();
+    const after = buildRunDetail(deps(w), uuidOf(SEED)).timeline.events;
+    assert.equal(after[0]?.noteId, before[0]?.noteId);
+    assert.notEqual(after[1]?.noteId, before[0]?.noteId);
+  });
+
+});
+}
+
+{
+const { worlds, world } = createRunDetailTestWorld();
+
+/** A run the projection can render, with nothing on its timeline yet. */
+function seedRun(w: DashboardWorld, seed = 1): void {
+  queuedEventOf(w, { seed });
+  claimEventOf(w, seed);
+}
+
+function detailOf(w: DashboardWorld, seed = 1) {
+  return buildRunDetail(
+    { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
+    uuidOf(seed),
+  );
+}
+
+function spanBase(seed: number, node: string) {
+  return {
+    workflow: "person-lookup" as const,
+    runId: uuidOf(seed),
+    traceId: traceOf(seed),
+    spanPath: `${traceOf(seed)}/${node}#1`,
+    parentSpanPath: traceOf(seed),
+    attempt: 1,
+    kind: "task" as const,
+  };
+}
+
+describe("a timeline event's own measured duration", () => {
+afterEach(() => {
+  for (const w of worlds.splice(0)) w.dispose();
+});
+
+  it("measures the SPAN, not the gap to the next event", () => {
+    const w = world();
+    seedRun(w);
+    const ts = (): string => w.clock.now().toISOString();
+
+
+    w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.started", ts: ts(), name: "ucpath-person" });
+    w.clock.advanceWall(2_000);
+    w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.ended", ts: ts(), outcome: "done" });
+    w.clock.advanceWall(300_000);
+    w.writer.emit({ ...spanBase(1, "cross-verify"), t: "span.started", ts: ts(), name: "cross-verify" });
+    w.clock.advanceWall(3_000);
+    w.writer.emit({ ...spanBase(1, "cross-verify"), t: "span.ended", ts: ts(), outcome: "done" });
+
+    const events = detailOf(w).timeline.events;
+    const first = events.find((event) => event.label === "ucpath-person");
+    const second = events.find((event) => event.label === "cross-verify");
+    assert.deepEqual(timelineEventDuration({ durationMs: first?.durationMs }), { state: "present", ms: 2_000 });
+    assert.deepEqual(timelineEventDuration({ durationMs: second?.durationMs }), { state: "present", ms: 3_000 });
+    // And the gap between the two events — 302s — appears nowhere.
+    assert.equal(events.some((event) => event.durationMs?.state === "present" && event.durationMs.ms === 302_000), false);
+  });
+
+  it("reports a step still in flight as absent, naming the missing end", () => {
+    const w = world();
+    seedRun(w);
+    w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.started", ts: w.clock.now().toISOString(), name: "ucpath-person" });
+    w.clock.advanceWall(4_000);
+
+    const event = detailOf(w).timeline.events.find((candidate) => candidate.label === "ucpath-person");
+    const measured = timelineEventDuration({ durationMs: event?.durationMs });
+    assert.equal(measured.state, "absent");
+    // Unfinished steps have no measured duration; their running clock is a separate fact.
+    assert.match(measured.state === "absent" ? measured.reason : "", /has not ended/);
+  });
+
+  it("reports a span whose START never reached the fold as absent, not as zero", () => {
+    const w = world();
+    seedRun(w);
+    // A projection tail seeded mid-run sees the end and never the start. The
+    // run's own queue instant is a plausible substitute and a wrong one.
+    w.writer.emit({ ...spanBase(1, "cross-verify"), t: "span.ended", ts: w.clock.now().toISOString(), outcome: "done" });
+
+    const event = detailOf(w).timeline.events.find((candidate) => candidate.label === "cross-verify");
+    const measured = timelineEventDuration({ durationMs: event?.durationMs });
+    assert.equal(measured.state, "absent");
+    assert.match(measured.state === "absent" ? measured.reason : "", /no span\.started was folded/);
+  });
+
+  it("gives a zero-length step a real zero, which is not an absence", () => {
+    const w = world();
+    seedRun(w);
+    const ts = w.clock.now().toISOString();
+    w.writer.emit({ ...spanBase(1, "cross-verify"), t: "span.started", ts, name: "cross-verify" });
+    w.writer.emit({ ...spanBase(1, "cross-verify"), t: "span.ended", ts, outcome: "done" });
+
+    const event = detailOf(w).timeline.events.find((candidate) => candidate.label === "cross-verify");
+    // "It took less than a millisecond" and "we could not measure it" must not
+    // render as the same thing; the present arm admits zero for that reason.
+    assert.deepEqual(timelineEventDuration({ durationMs: event?.durationMs }), { state: "present", ms: 0 });
+  });
+
+  it("serves the leaf on EVERY event the live query builds", () => {
+    const w = world();
+    seedRun(w);
+    const ts = (): string => w.clock.now().toISOString();
+    w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.started", ts: ts(), name: "ucpath-person" });
+    w.clock.advanceWall(1_000);
+    w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.ended", ts: ts(), outcome: "done" });
+    w.writer.emit({ ...spanBase(1, "cross-verify"), t: "span.started", ts: ts(), name: "cross-verify" });
+
+    const events = detailOf(w).timeline.events;
+    assert.equal(events.length > 0, true);
+    // Optional duration fields admit archived bytes; live details must declare measured or unmeasured.
+    for (const event of events) {
+      assert.notEqual(event.durationMs, undefined, `${event.label} carries no duration leaf`);
+    }
+  });
+
+  it("refuses to put a gate's WAIT in the step column", () => {
+    const w = world();
+    seedRun(w);
+    w.writer.emit({
+      t: "gate.opened",
+      ts: w.clock.now().toISOString(),
+      workflow: "person-lookup",
+      runId: uuidOf(1),
+      attempt: 1,
+      traceId: traceOf(1),
+      spanPath: traceOf(1),
+      gate: "identity-approval",
+    });
+    w.clock.advanceWall(600_000);
+
+    const event = detailOf(w).timeline.events.find((candidate) => candidate.label === "gate:identity-approval");
+    const measured = timelineEventDuration({ durationMs: event?.durationMs });
+    assert.equal(measured.state, "absent");
+    // A park's ten minutes is a real fact about a HUMAN, and putting it under
+    // a node's name would report thinking time as execution time.
+    assert.match(measured.state === "absent" ? measured.reason : "", /a gate is not a task span/);
+  });
+});
+
+describe("the day the timeline is read from", () => {
+afterEach(() => {
+  for (const w of worlds.splice(0)) w.dispose();
+});
+
+  it("still renders a full day's wire beside the durations", () => {
+    const w = world();
+    seedRun(w);
+    assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces.length, 1);
+  });
+});
+}

@@ -1,9 +1,9 @@
+import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe,it } from "vitest";
-import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
+import { describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { insertMeasuredSearchRun } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -32,17 +32,11 @@ describe("cross-date search service", () => {
     try {
       const first = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const second = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 12, enqueuedAt: "2026-08-28T14:00:00.000Z" });
-      const search = createCrossDateSearchService({
+      const search = measuredSearchService(database, {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
-        authority: {
-          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-            authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => database.authority.runs.search(input),
-          })),
-        },
       });
 
       const baseQuery = {
@@ -134,17 +128,11 @@ describe("cross-date search service", () => {
         () => search.search({ ...baseQuery, cursor: "not-a-cursor" }),
         /cursor.*malformed/,
       );
-      const foreignAuthority = createCrossDateSearchService({
+      const foreignAuthority = measuredSearchService(database, {
         clock,
         sourceIdentity: "f".repeat(64),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
-        authority: {
-          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-            authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => database.authority.runs.search(input),
-          })),
-        },
       });
       assert.throws(
         () => foreignAuthority.search({ ...baseQuery, cursor: cursorValue }),

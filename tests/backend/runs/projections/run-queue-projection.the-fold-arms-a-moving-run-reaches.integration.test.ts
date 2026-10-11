@@ -1,60 +1,15 @@
-import { RunLifecycleSchema,RunRecordSchema } from "../../../../src/models/run/record.js";
-
+import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-atDayOffset,
-claimEventOf,
-DAY,
-dayOffsetOf,
-instantOffsetOf,
-makeWorld,
-notificationRecordOf,
-queuedEventOf as queuedEventBase,
-runEndedEventOf,
-runRecordOf as runRecordBase,
-traceOf,
-uuidOf,
-workerLeaseOf,
-type DashboardWorld
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { atDayOffset, claimEventOf, DAY, dayOffsetOf, instantOffsetOf, notificationRecordOf, runEndedEventOf, traceOf, uuidOf, workerLeaseOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-/** C completion contract: projection fixtures still carry a valid terminal settlement. */
-function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {
-  const lifecycle = RunLifecycleSchema.parse(input.lifecycle ?? {state:"queued"});
-  if (lifecycle.state !== "terminal" || !["done","failed"].includes(lifecycle.outcome)) return runRecordBase(input);
-  const base = runRecordBase({...input,lifecycle:{state:"queued"}});
-  const version = Math.max(2,base.version), claimGeneration = Math.max(1,base.claimGeneration);
-  return RunRecordSchema.parse({...base,lifecycle,version,claimGeneration,updatedAt:lifecycle.endedAt,completion:{
-    schemaVersion:1,kind:lifecycle.outcome,expectedVersion:version-1,
-    claim:{workerId:"queue-fixture-worker",claimGeneration},authorizedAt:lifecycle.endedAt,
-    ...(lifecycle.outcome === "done" ? {resultDigest:"a".repeat(64)} : {failureId:lifecycle.failureId}),
-  }});
-}
-function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase>[0]) {
-  const event = queuedEventBase(w,{...input,lifecycle:{state:"queued"}});
-  if (input.lifecycle !== undefined) w.authority.put(runRecordOf({...input,enqueuedAt:input.enqueuedAt ?? w.clock.now().toISOString()}));
-  return event;
-}
+const { worlds, world, runRecordOf, queuedEventOf, CLAIM } = createRunQueueProjectionTestWorld();
 
-const worlds: DashboardWorld[] = [];
-
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
-  worlds.push(created);
-  return created;
-}
 
 afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
 });
-
-const CLAIM = {
-  workerId: "person-lookup-worker-1",
-  claimedAt: "2026-08-03T17:00:05.000Z",
-  heartbeatAt: "2026-08-03T17:00:05.000Z",
-} as const;
 
 
 describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", () => {

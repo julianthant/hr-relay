@@ -128,7 +128,7 @@ Semantic registries keep current selector keys and verified fixture/live evidenc
 path and blob records belong in task evidence. Runtime environment inventories describe only current
 repository readers; production isolation remains in `config/runtime-isolation.json`.
 The retained field audit helper is `tests/architecture/models/helpers/canonical-field-registry-audit.ts`.
-Receipt composition tests live in `tests/backend/runs/provenance/evidence-receipt.evidence-receipt-composition.integration.test.ts`;
+Receipt composition tests live in `tests/backend//runs/provenance/evidence-receipt.live-workflow-composition.integration.test.ts`;
 step omission gate proofs live in `tests/backend/runtime/execution/run-executor.step-omission-gates.integration.test.ts`.
 Unused earlier receipt-composition snapshots are absent; current receipts derive from complete native evidence.
 The ignored `config/test-data.local.json` remains private local test input.

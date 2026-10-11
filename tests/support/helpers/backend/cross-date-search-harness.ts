@@ -1,3 +1,4 @@
+import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { separationsDescriptor } from "../registered-workflows.js";
@@ -70,4 +71,19 @@ export function insertMeasuredSearchRun(database: AuthorityDatabase, input: Seed
   });
   if (parked.state !== "applied") throw new Error("measured search fixture did not enter parked-gate");
   return parked.run;
+}
+
+export function measuredSearchService(
+  database: AuthorityDatabase,
+  dependencies: Omit<Parameters<typeof createCrossDateSearchService>[0], "authority">,
+) {
+  return createCrossDateSearchService({
+    ...dependencies,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (input) => database.authority.runs.search(input),
+      })),
+    },
+  });
 }

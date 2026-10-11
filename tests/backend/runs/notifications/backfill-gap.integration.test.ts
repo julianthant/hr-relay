@@ -1,16 +1,12 @@
-
+import { createNotificationBackfillTestWorld } from "../../../support/helpers/backend/notification-backfill-world.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { createBackfillGapNotifier } from "../../../../src/backend/runs/notifications/backfill-gap.js";
-import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+
+const { disposers, world } = createNotificationBackfillTestWorld();
+
 
 const GAP = {
   kind: "backfill-gap",
@@ -21,31 +17,9 @@ const GAP = {
   currentCursor: "pc:12",
   projectionGeneration: 3,
 } as const;
-
-const disposers: (() => void)[] = [];
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
-
-function world() {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-backfill-gap-"));
-  const clock = manualClock(new Date(NOW));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "backfill-gap-test" },
-    clock,
-  );
-  disposers.push(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
-  const inbox = createNotificationInbox({
-    authority: database,
-    clock,
-    ids: sequentialIdFactory("b"),
-    actorId: LOCAL_OPERATOR_ACTOR_ID,
-  });
-  return { database, inbox };
-}
 
 describe("backfill-gap notification", () => {
 

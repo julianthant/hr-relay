@@ -1,30 +1,14 @@
-
+import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
-import { deriveRunStatus,taskStateOf } from "../../../../src/backend/runs/lifecycle/run-status.js";
+import { afterEach, describe, it } from "vitest";
+import { deriveRunStatus, taskStateOf } from "../../../../src/backend/runs/lifecycle/run-status.js";
 import type { RunDetailDescriptorView } from "../../../../src/backend/runs/queries/run-detail.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import type { SpanOutcomeWire } from "../../../../src/models/events/types.js";
-import {
-claimEventOf,
-instantOffsetOf,
-makeWorld,
-queuedEventOf,
-runEndedEventOf,
-runRecordOf,
-taskEventsOf,
-traceOf,
-uuidOf,
-type DashboardWorld,
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { claimEventOf, instantOffsetOf, queuedEventOf, runEndedEventOf, runRecordOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const worlds: DashboardWorld[] = [];
+const { worlds, world } = createRunDetailTestWorld();
 
-function world(): DashboardWorld {
-  const created = makeWorld();
-  worlds.push(created);
-  return created;
-}
 
 afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
