@@ -1,11 +1,11 @@
 
 import assert from "node:assert/strict";
-import { afterAll,beforeAll,describe,it } from "vitest";
+import { afterAll, beforeAll, describe, it } from "vitest";
 import { readTimelineRecords } from "../../src/backend/storage/events/timeline-reader.js";
 import {
-PERF_FIXTURE_PROFILE,
-seedDashboardPerfFixture,
-type PerfFixture,
+  PERF_FIXTURE_PROFILE,
+  seedDashboardPerfFixture,
+  type PerfFixture,
 } from "./dashboard-fixture.js";
 
 // The fixture uses host-local dates; align its instants with the measurement timezone.
@@ -78,7 +78,7 @@ describe("the §7.4 dashboard perf fixture", () => {
     assert.equal(row?.status, "done");
     assert.ok(fixture.sampleRunIds.includes(fixture.runIds.measuredRun));
   });
-it("serves exactly the declared row count for the measured day", () => {
+  it("serves exactly the declared row count for the measured day", () => {
     const wire = fixture.projection.buildDashboardDayWire(PERF_FIXTURE_PROFILE.day);
     assert.equal(wire.queueSurfaces.length, PERF_FIXTURE_PROFILE.dayRunCount);
     assert.equal(fixture.seeded.dayRunCount, PERF_FIXTURE_PROFILE.dayRunCount);

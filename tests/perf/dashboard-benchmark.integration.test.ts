@@ -1,10 +1,10 @@
 
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import {
-assertDashboardPerformanceStructuralBounds,
-DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS,
-type DashboardPerformanceStructuralCounters,
+  assertDashboardPerformanceStructuralBounds,
+  DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS,
+  type DashboardPerformanceStructuralCounters,
 } from "./dashboard-benchmark.js";
 
 describe("the §7.4 dashboard perf fixture", () => {
