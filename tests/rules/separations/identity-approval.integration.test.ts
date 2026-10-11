@@ -1,73 +1,15 @@
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
-import { planStart } from "../../../src/backend/runs/start/plan.js";
+import { describe, it } from "vitest";
 import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
-import { IdentityApprovalResultSchema,verifyIdentityApproval } from "../../../src/rules/separations/identity-approval.js";
-import type { IdentityEvidencePacket } from "../../../src/rules/separations/identity-evidence.js";
-import {
-buildIdentityEvidencePacket,
-deriveIdentityEvidenceDigest
-} from "../../../src/rules/separations/identity-evidence.js";
+import { IdentityApprovalResultSchema, verifyIdentityApproval } from "../../../src/rules/separations/identity-approval.js";
+import { type IdentityEvidencePacket } from "../../../src/rules/separations/identity-evidence.js";
+import { buildIdentityEvidencePacket, deriveIdentityEvidenceDigest } from "../../../src/rules/separations/identity-evidence.js";
 import { SeparationWritePlanSchema } from "../../../src/rules/separations/write-plan.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import { HASH_A,NOW,UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
-import {
-uuidOf,
-type DashboardWorld
-} from "../../support/helpers/backend/dashboard-harness.js";
-import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
-import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-
-const CLOCK = manualClock(new Date(NOW));
+import { uuidOf } from "../../support/helpers/backend/dashboard-harness.js";
 const EID = "10873698";
 const GATE_NOW = "2026-08-14T18:00:00.000Z";
-
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
-const worlds: DashboardWorld[] = [];
-
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-  for (const world of worlds.splice(0)) world.dispose();
-});
-
-function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-separations-wire-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    CLOCK,
-  );
-  databases.push(database);
-  return database;
-}
-
-function _plan(submissions: readonly unknown[], dryRun = false) {
-  return planStart(
-    { protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }), authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000 },
-    {
-      descriptor: separationsDescriptor,
-      submissions,
-      dryRun,
-      priority: "bulk" as const,
-      shape: "single" as const,
-      configFingerprint: HASH_A,
-      configSnapshotId: UUID_4,
-      plannedBy: "local-operator",
-    },
-  );
-}
 
 function packetWithPlan(): IdentityEvidencePacket {
   const rows = [deriveJobRowFromCells([

@@ -1,11 +1,6 @@
-
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
-import {
-NotificationTriggerEventSchema,
-deriveNotificationDedupeFingerprint,
-projectNotificationTrigger,
-} from "../../../src/rules/notifications/notification-triggers.js";
+import { describe, it } from "vitest";
+import { NotificationTriggerEventSchema, deriveNotificationDedupeFingerprint, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 
 const GAP = {
   kind: "backfill-gap",
@@ -16,11 +11,6 @@ const GAP = {
   currentCursor: "pc:12",
   projectionGeneration: 3,
 } as const;
-
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
 
 describe("backfill-gap notification", () => {
   it("projects closed cursor evidence to one linkless pinned trigger", () => {

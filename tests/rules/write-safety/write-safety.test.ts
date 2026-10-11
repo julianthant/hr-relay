@@ -1,51 +1,15 @@
-
-import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
+import { default as assert_m0, default as assert_m1 } from "node:assert/strict";
 import { createHash as createHash_m1 } from "node:crypto";
-import { describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
-import {
-buildRunEvidenceReceipt as buildRunEvidenceReceipt_m0
-} from "../../../src/backend/runs/provenance/evidence-receipt.js";
-import { type RunEvidenceReceipt as RunEvidenceReceipt_m0 } from "../../../src/models/trust/evidence.js";
+import { describe as describe_m0, describe as describe_m1, it as it_m0, it as it_m1 } from "vitest";
+import { buildRunEvidenceReceipt as buildRunEvidenceReceipt_m0 } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { manualClock as manualClock_m1 } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify as canonicalJsonStringify_m1 } from "../../../src/rules/validation/canonical-json.js";
-import {
-deriveIdempotencyKeyDigest as deriveIdempotencyKeyDigest_m0,deriveIdempotencyKeyDigest as deriveIdempotencyKeyDigest_m1,
-deriveWriteBindingProofDigest as deriveWriteBindingProofDigest_m1,evaluateNegativeSettlement as evaluateNegativeSettlement_m1,NegativeSettlementEvaluationInputSchema as NegativeSettlementEvaluationInputSchema_m1,
-RecoveryProbeVerdictSchema as RecoveryProbeVerdictSchema_m1,
-SubjectProofSchema as SubjectProofSchema_m1,
-UnscopedBindingProofSchema as UnscopedBindingProofSchema_m1,
-WriteAttemptRecordSchema as WriteAttemptRecordSchema_m1,
-WriteBindingProofSchema as WriteBindingProofSchema_m1,
-WriteIntentRecordSchema as WriteIntentRecordSchema_m1
-} from "../../../src/rules/write-safety/write-safety.js";
-import {
-ABSENCE_1 as ABSENCE_1_m1,
-ABSENCE_2 as ABSENCE_2_m1,
-HASH_A as HASH_A_m1,
-HASH_B as HASH_B_m1,
-LATER as LATER_m1,
-NOW as NOW_m1,
-SUBJECT_PROOF as SUBJECT_PROOF_m1,
-UNSCOPED_PROOF as UNSCOPED_PROOF_m1,
-UUID_1 as UUID_1_m1,
-WRITE_ATTEMPT as WRITE_ATTEMPT_m1,
-WRITE_INTENT_ATTEMPTING as WRITE_INTENT_ATTEMPTING_m1
-} from "../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-KUALI_IDEMPOTENCY_KEY as KUALI_IDEMPOTENCY_KEY_m0,
-kualiReceiptEvidence as kualiReceiptEvidence_m0
-} from "../../support/fixtures/receipt-run-fixtures.js";
+import { deriveIdempotencyKeyDigest as deriveIdempotencyKeyDigest_m0, deriveIdempotencyKeyDigest as deriveIdempotencyKeyDigest_m1, deriveWriteBindingProofDigest as deriveWriteBindingProofDigest_m1, evaluateNegativeSettlement as evaluateNegativeSettlement_m1, NegativeSettlementEvaluationInputSchema as NegativeSettlementEvaluationInputSchema_m1, RecoveryProbeVerdictSchema as RecoveryProbeVerdictSchema_m1, SubjectProofSchema as SubjectProofSchema_m1, UnscopedBindingProofSchema as UnscopedBindingProofSchema_m1, WriteAttemptRecordSchema as WriteAttemptRecordSchema_m1, WriteBindingProofSchema as WriteBindingProofSchema_m1, WriteIntentRecordSchema as WriteIntentRecordSchema_m1 } from "../../../src/rules/write-safety/write-safety.js";
+import { ABSENCE_1 as ABSENCE_1_m1, ABSENCE_2 as ABSENCE_2_m1, HASH_A as HASH_A_m1, HASH_B as HASH_B_m1, LATER as LATER_m1, NOW as NOW_m1, SUBJECT_PROOF as SUBJECT_PROOF_m1, UNSCOPED_PROOF as UNSCOPED_PROOF_m1, UUID_1 as UUID_1_m1, WRITE_ATTEMPT as WRITE_ATTEMPT_m1, WRITE_INTENT_ATTEMPTING as WRITE_INTENT_ATTEMPTING_m1 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { KUALI_IDEMPOTENCY_KEY as KUALI_IDEMPOTENCY_KEY_m0, kualiReceiptEvidence as kualiReceiptEvidence_m0 } from "../../support/fixtures/receipt-run-fixtures.js";
 import { separationsKualiFinalizationDescriptor as separationsKualiFinalizationDescriptor_m0 } from "../../support/helpers/registered-workflows.js";
 
-
 {
-
-
-function commitActionOfReceipt(receipt: RunEvidenceReceipt_m0) {
-  const commit = receipt.actions.find((action) => action.kind === "commit");
-  assert_m0.ok(commit, "the kuali run derives exactly one commit action");
-  return commit;
-}
 
 describe_m0("current receipt — the commit action carries what proved the write", () => {
   const evidence = kualiReceiptEvidence_m0();
@@ -58,7 +22,9 @@ describe_m0("current receipt — the commit action carries what proved the write
   }, 5);
 
   it_m0("retains the current transaction digest and exact private fence identity", () => {
-    const proved = commitActionOfReceipt(receipt).proved;
+    const commit = receipt.actions.find((action) => action.kind === "commit");
+    assert_m0.ok(commit, "the kuali run derives exactly one commit action");
+    const proved = commit.proved;
     assert_m0.ok(proved, "the settled kuali commit must carry its proof");
     assert_m0.equal(proved.system, "kuali");
     assert_m0.equal(
@@ -75,7 +41,6 @@ describe_m0("current receipt — the commit action carries what proved the write
 }
 
 {
-
 
 const POLICY = {
   kind: "stabilized",
