@@ -1,4 +1,6 @@
 import { RunLifecycleSchema } from "../../../src/models/run/record.js";
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { composeCommandRequest } from "../../../src/dashboard/app/commands/command-dispatch.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
 // @vitest-environment jsdom
@@ -163,12 +165,13 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
   const database = AuthorityDatabase.open({ path: join(world.stateRoot, "wire-capture-authority.db"),
     busyTimeoutMs: 1000, migrationOwner: "wire-capture-census" }, world.clock);
   try {
+    database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const run = world.authority.getRun(uuidOf(1));
     assert.ok(run);
     database.authority.runs.enqueue(run);
     const bytes = Buffer.from("[]");
     const digest = createHash("sha256").update(bytes).digest("hex");
-    const deps = { runReader: sqliteRunReader(database, world.clock), stateRoot: world.stateRoot, projection: world.projection,
+    const deps = { timeline: database.authority.timelineEvents, runReader: sqliteRunReader(database, world.clock), stateRoot: world.stateRoot, projection: world.projection,
       authority: { ...world.authority, getRun: (id: string) => database.authority.runs.get(id) },
       descriptors: { resolve: () => undefined },
       captures: { authority: database.authority.diagnosticBundles, artifactReader: {
@@ -225,7 +228,7 @@ function projectedRowCommands(): ReadonlySet<string> {
 }
 
 // Retained commands remain kernel-readable without a dashboard action opportunity.
-const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry", "restart", "archive"]);
+const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry", "restart"]);
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "annotate-failure": "failure resolution targets an exact failure/version and uses the resolution command payload, not a generic run action descriptor",
@@ -252,13 +255,7 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-unread": "notification target, not a run row",
   "notification-snooze": "notification target, not a run row",
   "notification-unsnooze": "notification target, not a run row",
-  "plan-version-bump": "D179's archive planning surface targets the application/workflow scope",
-  "apply-version-bump": "archive scope target, not a run row",
-  "plan-runtime-version": "Archive runtime version planning targets selected workflows or the dashboard",
-  "apply-runtime-version": "Archive runtime version publication targets a reviewed change",
-  "relaunch-archived-run": "V retains historical request parsing; current HTTP and internal producers refuse creation",
-  "delete-archived-run": "D308 serves the delete from the ARCHIVED detail, which is not a live run row",
-  "apply-explorer-edit": "D283's reviewed Explorer draft targets a workflow override revision, not a run row",
+  "apply-explorer-edit": "The reviewed Explorer draft targets a workflow override revision, not a run row",
 };
 
 /* ── the tests ───────────────────────────────────────────────────────────── */
@@ -318,6 +315,13 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
 
     const problems: string[] = [];
     for (const key of actionKeys) {
+      if (key === "archive") {
+        assert.deepEqual(composeCommandRequest({ kind: "command", key: "archive", command: "archive", label: "Archive",
+          icon: "archive", intent: "primary", placement: ["menu"], expectedVersion: 1 }, { runId: uuidOf(1), expectedVersion: 1 },
+        { actorId: "local-operator", source: "queue", commandId: uuidOf(2), requestedAt: PARK_INSTANT }),
+        { state: "refused", reason: "Archive page removed" });
+        continue;
+      }
       if (!kernelTypes.includes(key)) {
         problems.push(
           `ActionCommandKeySchema names "${key}", which CommandRequestSchema does not accept — a served `
@@ -358,7 +362,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       parkedWrite:false,memberCount:0,isMember:false,named:false,workflowLabel:"Fixture",hasReviewPanel:false});
     assert.ok(navigation.some(action => action.kind === "navigation" && action.navigate.kind === "rerun"));
     for (const key of actionKeys) {
-      if (projected.has(key) || RETAINED_UNPROJECTED_ACTIONS.has(key)) continue;
+      if (key === "archive" || projected.has(key) || RETAINED_UNPROJECTED_ACTIONS.has(key)) continue;
       problems.push(
         `ActionCommandKeySchema names "${key}" and nothing projects it — not queueRowActions over any `
         + `status, and no descriptor literal in ${SECTION_DESCRIPTOR_PRODUCER}. A served key nothing `

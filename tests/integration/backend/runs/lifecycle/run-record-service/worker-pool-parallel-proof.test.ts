@@ -1,10 +1,12 @@
+import { workerPoolMember } from "../../../../../../src/models/run/worker-slot.js";
+import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../../support/helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../../../../support/fixtures/preflight-seams.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 
 import assert from "node:assert/strict";
 import { spawn as spawnChildProcess, type ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -16,11 +18,11 @@ import {
   type CommandKernelDependencies,
   type WorkerPoolRuntimeSeam,
 } from "../../../../../../src/backend/runs/commands/command-kernel.js";
-import { poolWorkerId, type WorkerPoolMember } from "../../../../../../src/backend/runtime/workers/worker-loop.js";
+import { type WorkerPoolMember } from "../../../../../../src/backend/runtime/workers/worker-loop.js";
 import { manualClock, systemClock, type Clock, type TestClock } from "../../../../../../src/rules/time/clock.js";
-import { PositiveIntSchema, WorkflowIdSchema } from "../../../../../../src/rules/identity/ids.js";
+import { WorkerIdSchema, PositiveIntSchema, WorkflowIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/admission-fixture.js";
-import { WorkerProcessLockFileSchema } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { readRuntimeProcessLock, WorkerProcessLockFileSchema } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { createTimeoutDeadlineScheduler } from "../../../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import {
   composeDashboardRuntime,
@@ -36,10 +38,8 @@ import { ManualScheduler } from "../../../../../support/helpers/phase1f-executor
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   NO_INTAKE_PROJECTIONS,
-  UNSTORED_CONFIG_IDENTITY,
   UNWIRED_INTAKE_PARSER,
 } from "../../../../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 
 function servedControlBasis(database: AuthorityDatabase, workerId: string) {
   const lease = database.authority.workerLeases.get(workerId);
@@ -52,16 +52,10 @@ const PL = WorkflowIdSchema.parse("person-lookup");
 const SEP = WorkflowIdSchema.parse("separations");
 const plMember = (index: number): WorkerPoolMember => {
   const poolIndex = PositiveIntSchema.parse(index);
-  return { workflowId: PL, poolIndex, workerId: poolWorkerId(PL, poolIndex) };
-};
-const sepMember = (index: number): WorkerPoolMember => {
-  const poolIndex = PositiveIntSchema.parse(index);
-  return { workflowId: SEP, poolIndex, workerId: poolWorkerId(SEP, poolIndex) };
+  return { workflowId: PL, poolIndex, ordinal: poolIndex, membershipRevision: PositiveIntSchema.parse(1), workerId: WorkerIdSchema.parse(`person-lookup-worker-${String(index)}`) };
 };
 const PL_1 = plMember(1);
 const PL_2 = plMember(2);
-const PL_3 = plMember(3);
-const SEP_1 = sepMember(1);
 
 const STUB_CLI_PATH = join(process.cwd(), "tests", "support", "processes", "worker-stub-cli.ts");
 const REPO_ROOT = process.cwd();
@@ -186,8 +180,7 @@ function kernelOver(
   const dependencies: CommandKernelDependencies = {
     lifecycle: new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
+    configIdentity: (() => { const active = database.authority.runtimeConfig.get(); assert.ok(active); return {configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId}; })(),
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -218,8 +211,9 @@ function assertJournaled(database: AuthorityDatabase, commandId: string): void {
     `command ${commandId} audit`,
   );
 }
-function assertUnjournaled(database: AuthorityDatabase, commandId: string): void {
-  assert.equal(database.authority.commands.get(commandId), undefined, `command ${commandId} must not journal`);
+function assertUnacknowledged(database: AuthorityDatabase, commandId: string): void {
+  assert.notEqual(database.authority.commands.get(commandId), undefined, `command ${commandId} retains admission`);
+  assert.equal(database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
   assert.equal(
     database.authority.commandAudits.findByCommand(commandId),
     undefined,
@@ -286,13 +280,14 @@ interface SoakHarnessOptions {
 }
 
 function openSoakHarness(options?: SoakHarnessOptions): SoakHarness {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-w5-soak-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-soak-"));
   roots.push(root);
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
+  seedSyntheticRuntimeConfig(database);
   openDatabases.push(database);
   const scheduler = new ManualScheduler(clock, 0);
   const children: FakeWorkerChild[] = [];
@@ -301,6 +296,7 @@ function openSoakHarness(options?: SoakHarnessOptions): SoakHarness {
   const events: PoolEffectEvent[] = [];
   let nextPid = 7000;
   const control = composeWorkerProcessControl({
+    profileRoot: join(root, "browsers"), processLockRoot: join(root, "locks"),
     database,
     clock,
     scheduler,
@@ -358,6 +354,19 @@ function proveBirth(harness: SoakHarness, member: WorkerPoolMember): void {
   fireBirthPoll(harness);
 }
 
+function currentMember(harness: SoakHarness, workflow: string, poolIndex: number) {
+  const slot = harness.database.authority.workerSlots.list(workflow).find(value => value.poolIndex === poolIndex && value.retiredAt === null);
+  return workerPoolMember(required(slot, "current admitted worker slot"));
+}
+
+async function planFixture(harness: SoakHarness, workflow: string, desiredWorkers = 1) {
+  const planned = await harness.kernel.executeWorkerPool({ ...envelope(harness.clock), type: "plan-worker-count",
+    target: { workflowId: workflow, expectedVersion: harness.database.authority.workerPools.get(workflow)?.version ?? 0 },
+    payload: { desiredWorkers } });
+  assert.equal(planned.state, "applied");
+  return currentMember(harness, workflow, 1);
+}
+
 describe("soak: overlapping command sequences over the composed pool door (deterministic)", () => {
   it(
     "serializes SAME-workflow commands, interleaves DIFFERENT workflows, and every acknowledgement is truthful",
@@ -382,6 +391,9 @@ describe("soak: overlapping command sequences over the composed pool door (deter
       const [planPlResult, planSepResult] = await Promise.all([planPl, planSep]);
       assert.equal(planPlResult.state, "applied");
       assert.equal(planSepResult.state, "applied");
+      const PL_1 = currentMember(harness, PL, 1);
+      const PL_2 = currentMember(harness, PL, 2);
+      const SEP_1 = currentMember(harness, SEP, 1);
       assert.equal(harness.database.authority.workerPools.get(PL)?.desiredWorkers, 2);
       assert.equal(harness.database.authority.workerPools.get(SEP)?.desiredWorkers, 1);
 
@@ -481,6 +493,14 @@ describe("soak: overlapping command sequences over the composed pool door (deter
         target: { workerId: SEP_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, SEP_1.workerId) },
         reason: "sep teardown",
       });
+      await settleMicrotasks();
+      const retiring = required(harness.database.authority.workerLeases.get(PL_2.workerId), "retiring PL-2 lease");
+      assert.equal(retiring.control.directive, "stop");
+      assert.equal(harness.database.authority.workerLeases.reportLifecycle({ workerId: PL_2.workerId,
+        leaseGeneration: retiring.leaseGeneration, lifecycle: { state: "stopped", startedAt: retiring.lifecycle.startedAt,
+          stoppedAt: scaleDownAt, reason: "operator" }, now: scaleDownAt }).state, "applied");
+      required(harness.children[2], "PL-2 child").emitExit(0, null);
+      await settleMicrotasks();
       const [shrinkResult, stopSepResult] = await Promise.all([shrinkPl, stopSep]);
       assert.equal(shrinkResult.state, "applied");
       assert.equal(stopSepResult.state, "applied");
@@ -491,7 +511,8 @@ describe("soak: overlapping command sequences over the composed pool door (deter
       assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.control.directive, "run");
       assert.equal(harness.database.authority.workerPools.get(PL)?.desiredWorkers, 1);
       assert.equal(harness.database.authority.workerPools.get(PL)?.version, 2);
-      assert.equal(harness.control.supervisor.memberEvidence(PL_2)?.state, "stopping");
+      assert.equal(harness.control.supervisor.memberEvidence(PL_2)?.state, "exited");
+      assert.notEqual(harness.database.authority.workerSlots.get(PL_2.workerId)?.retiredAt, null);
       assert.deepEqual(harness.database.authority.workerLeases.get(SEP_1.workerId)?.control, {
         directive: "stop", requestedAt: scaleDownAt, requestedBy: "local-operator", reason: "sep teardown",
       });
@@ -504,9 +525,15 @@ describe("soak: overlapping command sequences over the composed pool door (deter
         target: { workerId: PL_1.workerId, expectedVersion: 3, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
         reason: "pl teardown",
       })).state, "applied");
+      for (const member of [PL_1, SEP_1]) {
+        const lease = required(harness.database.authority.workerLeases.get(member.workerId), "stopping lease");
+        assert.equal(lease.control.directive, "stop");
+        assert.equal(harness.database.authority.workerLeases.reportLifecycle({ workerId: member.workerId,
+          leaseGeneration: lease.leaseGeneration, lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt,
+            stoppedAt: harness.clock.now().toISOString(), reason: "operator" }, now: harness.clock.now().toISOString() }).state, "applied");
+      }
       required(harness.children[0], "PL-1 child").emitExit(0, null);
       required(harness.children[1], "SEP-1 child").emitExit(0, null);
-      required(harness.children[2], "PL-2 child").emitExit(0, null);
       for (const member of [PL_1, PL_2, SEP_1]) {
         const evidence = harness.control.supervisor.memberEvidence(member);
         assert.equal(evidence?.state, "exited", member.workerId);
@@ -516,7 +543,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
       }
       assert.deepEqual(harness.control.supervisor.close(), []);
       const closedCommand = { ...envelope(harness.clock), type: "spawn-worker",
-        target: { workflowId: PL, expectedVersion: 2 }, payload: { workerId: PL_3.workerId } };
+        target: { workflowId: PL, expectedVersion: 2 }, payload: { workerId: PL_1.workerId } };
       const closed = await harness.kernel.executeWorkerPool(closedCommand);
       assert.equal(closed.state, "rejected");
       if (closed.state === "rejected") assert.match(closed.message, /this worker supervisor is closed; a shutting-down supervisor acknowledges nothing/);
@@ -534,13 +561,15 @@ describe("soak: overlapping command sequences over the composed pool door (deter
     },
   );
 
-  it("a spawn ENOENT surfaces typed and unjournaled while the sibling workflow's in-flight spawn still lands", async () => {
+  it("a spawn ENOENT surfaces typed with retained admission while the sibling workflow's in-flight spawn still lands", async () => {
     const harness = openSoakHarness();
+    const SEP_1 = await planFixture(harness, SEP);
+    const PL_1 = await planFixture(harness, PL);
     const spawnSepId = nextCommandId();
     const spawnSep = harness.kernel.executeWorkerPool({
       ...envelope(harness.clock, spawnSepId),
       type: "spawn-worker",
-      target: { workflowId: SEP, expectedVersion: 0 },
+      target: { workflowId: SEP, expectedVersion: 1 },
       payload: { workerId: SEP_1.workerId },
     });
     const spawnSepRejected = assert.rejects(spawnSep, /process errored before proving its lease birth: spawn ENOENT; the unproved child was killed/);
@@ -549,7 +578,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
     const spawnPl = harness.kernel.executeWorkerPool({
       ...envelope(harness.clock, spawnPlId),
       type: "spawn-worker",
-      target: { workflowId: PL, expectedVersion: 0 },
+      target: { workflowId: PL, expectedVersion: 1 },
       payload: { workerId: PL_1.workerId },
     });
     await settleMicrotasks();
@@ -558,7 +587,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
     await spawnSepRejected;
     proveBirth(harness, PL_1);
     assert.equal((await spawnPl).state, "applied");
-    assertUnjournaled(harness.database, spawnSepId);
+    assertUnacknowledged(harness.database, spawnSepId);
     assertJournaled(harness.database, spawnPlId);
     assert.equal(harness.database.authority.workerLeases.get(SEP_1.workerId), undefined);
     const sepEvidence = harness.control.supervisor.memberEvidence(SEP_1);
@@ -572,11 +601,12 @@ describe("soak: overlapping command sequences over the composed pool door (deter
     const harness = openSoakHarness({
       childFor: (_member, pid) => new FakeWorkerChild(pid, false),
     });
+    const PL_1 = await planFixture(harness, PL);
     const spawnId = nextCommandId();
     const spawn = harness.kernel.executeWorkerPool({
       ...envelope(harness.clock, spawnId),
       type: "spawn-worker",
-      target: { workflowId: PL, expectedVersion: 0 },
+      target: { workflowId: PL, expectedVersion: 1 },
       payload: { workerId: PL_1.workerId },
     });
     await settleMicrotasks();
@@ -629,11 +659,12 @@ describe("soak: overlapping command sequences over the composed pool door (deter
         },
       }),
     });
+    const PL_1 = await planFixture(harness, PL);
     const spawnId = nextCommandId();
     const spawn = harness.kernel.executeWorkerPool({
       ...envelope(harness.clock, spawnId),
       type: "spawn-worker",
-      target: { workflowId: PL, expectedVersion: 0 },
+      target: { workflowId: PL, expectedVersion: 1 },
       payload: { workerId: PL_1.workerId },
     });
     await settleMicrotasks();
@@ -744,6 +775,8 @@ function workerLockRecords(lockRoot: string): Map<string, { releasedAt: string |
     const parsed = WorkerProcessLockFileSchema.parse(
       JSON.parse(readFileSync(join(directory, name), "utf8")),
     );
+    assert.equal(parsed.name, "workers");
+    if (!("workerId" in parsed)) throw new Error("unbound-worker-process-lock");
     records.set(parsed.workerId, { releasedAt: parsed.releasedAt });
   }
   return records;
@@ -770,7 +803,7 @@ describe("real processes: two children supervised concurrently through the compo
   }
 
   function openRealHarness(launchCommandOverride?: string): RealHarness {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-w5-real-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-real-"));
     roots.push(root);
     const stateRoot = join(root, ".tracker");
     const dbPath = join(stateRoot, "state.db");
@@ -780,11 +813,13 @@ describe("real processes: two children supervised concurrently through the compo
       { path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "unit-test" },
       systemClock,
     );
-    openDatabases.push(database);
+    seedSyntheticRuntimeConfig(database);
+  openDatabases.push(database);
     const records: RealChildRecord[] = [];
     const faults: Error[] = [];
     const events: PoolEffectEvent[] = [];
     const control = composeWorkerProcessControl({
+      profileRoot: join(stateRoot, "browsers"), processLockRoot: lockRoot,
       database,
       clock: systemClock,
       scheduler: createTimeoutDeadlineScheduler(systemClock),
@@ -867,6 +902,8 @@ describe("real processes: two children supervised concurrently through the compo
         assert.deepEqual([...record.argv], [
           "--import", "tsx", STUB_CLI_PATH, harness.dbPath, harness.lockRoot, "synthetic",
           "worker", "person-lookup", "--pool-index", String(index),
+          "--worker-id", record.member.workerId, "--ordinal", String(record.member.ordinal),
+          "--membership-revision", String(record.member.membershipRevision), "--launch-command-id", index === 1 ? spawn1Id : spawn2Id,
         ]);
       }
       const pid1 = required(record1.pid, "child 1 pid");
@@ -971,22 +1008,24 @@ describe("real processes: two children supervised concurrently through the compo
   );
 
   it(
-    "a REAL spawn ENOENT rejects typed with no journal row and no fabricated pid",
+    "a REAL spawn ENOENT rejects typed with retained admission and no fabricated pid",
     async () => {
-      const root = mkdtempSync(join(tmpdir(), "hrauto-w5-enoent-"));
+      const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-enoent-"));
       roots.push(root);
       const harness = openRealHarness(join(root, "no-such-node-binary"));
+      assert.equal((await harness.kernel.executeWorkerPool({ ...envelope(systemClock), type: "plan-worker-count",
+        target: { workflowId: PL, expectedVersion: 0 }, payload: { desiredWorkers: 1 } })).state, "applied");
       const spawnId = nextCommandId();
       await assert.rejects(
         () => harness.kernel.executeWorkerPool({
           ...envelope(systemClock, spawnId),
           type: "spawn-worker",
-          target: { workflowId: PL, expectedVersion: 0 },
+          target: { workflowId: PL, expectedVersion: 1 },
           payload: { workerId: PL_1.workerId },
         }),
         /process errored before proving its lease birth: .*ENOENT.*; the child has no pid to kill/,
       );
-      assertUnjournaled(harness.database, spawnId);
+      assertUnacknowledged(harness.database, spawnId);
       assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId), undefined);
       const evidence = harness.control.supervisor.memberEvidence(PL_1);
       assert.equal(evidence?.state, "exited");
@@ -1003,14 +1042,14 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
     "two real children over the real ingress; graceful stop, shutdown with one live child, then PID-proved teardown",
     async () => {
       reportW5Phase("runtime-shutdown", "startup", "begin");
-      const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-w5-runtime-"));
+      const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-runtime-"));
       roots.push(repoRoot);
       copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
       copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
       const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
       const dbPath = join(stateRoot, "state.db");
       const lockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
-      const serverLockFile = join(lockRoot, "server.lock.json");
+      const serverLockRecord = () => required(readRuntimeProcessLock(lockRoot, "server"), "server process custody");
       const records: RealChildRecord[] = [];
       const faultLines: string[] = [];
       const childOutput = (): string => records.map((record) =>
@@ -1055,17 +1094,27 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       // Two REAL children, two workflows, spawned concurrently over the real
       // ingress; each proves its own birth by writing its durable lease.
       reportW5Phase("runtime-shutdown", "spawn-and-birth", "begin");
+      for (const workflowId of [PL, SEP]) {
+        assert.deepEqual(await post({ ...envelope(systemClock), type: "plan-worker-count",
+          target: { workflowId, expectedVersion: 0 }, payload: { desiredWorkers: 1 } }), { status: 200, state: "applied" });
+      }
+      const roster = AuthorityDatabase.open({ path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, systemClock);
+      let PL_1: WorkerPoolMember; let SEP_1: WorkerPoolMember;
+      try {
+        PL_1 = workerPoolMember(required(roster.authority.workerSlots.list(PL).find(slot => slot.retiredAt === null), "PL slot"));
+        SEP_1 = workerPoolMember(required(roster.authority.workerSlots.list(SEP).find(slot => slot.retiredAt === null), "SEP slot"));
+      } finally { roster.close(); }
       const [spawnPl, spawnSep] = await Promise.all([
         post({
           ...envelope(systemClock),
           type: "spawn-worker",
-          target: { workflowId: PL, expectedVersion: 0 },
+          target: { workflowId: PL, expectedVersion: 1 },
           payload: { workerId: PL_1.workerId },
         }),
         post({
           ...envelope(systemClock),
           type: "spawn-worker",
-          target: { workflowId: SEP, expectedVersion: 0 },
+          target: { workflowId: SEP, expectedVersion: 1 },
           payload: { workerId: SEP_1.workerId },
         }),
       ]);
@@ -1115,12 +1164,12 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       // completes child shutdown before releasing the server process record.
       reportW5Phase("runtime-shutdown", "shutdown", "begin");
       assert.equal(
-        (JSON.parse(readFileSync(serverLockFile, "utf8")) as { releasedAt: string | null }).releasedAt,
+        serverLockRecord().releasedAt,
         null,
       );
       for (const stop of stops.splice(0)) await stop();
       assert.notEqual(
-        (JSON.parse(readFileSync(serverLockFile, "utf8")) as { releasedAt: string | null }).releasedAt,
+        serverLockRecord().releasedAt,
         null,
       );
       assert.deepEqual(faultLines, [], "owned children drain without shutdown faults");

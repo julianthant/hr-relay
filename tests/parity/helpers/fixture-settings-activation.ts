@@ -24,7 +24,7 @@ export async function startSettingsActivationServer() {
     }
     mkdirSync(join(root, "dist")); cpSync(PARITY_DIST_DIR, join(root, "dist", "dashboard"), { recursive: true });
     admission = acquireEntrypointAdmission(root, "shared");
-    if (admission.stateRoot !== join(root, ".tracker") || admission.artifactRoot !== join(root, ".tracker", "artifacts")) throw new Error("SETTINGS_FIXTURE_ADMISSION_ROOT_MISMATCH");
+    if (admission.stateRoot !== join(root, ".tracker", "data") || admission.artifactRoot !== join(root, ".tracker", "data", "artifacts")) throw new Error("SETTINGS_FIXTURE_ADMISSION_ROOT_MISMATCH");
     const runtime = await composeDashboardRuntime({ admission, isolation: rebuildRuntimeIsolation, repoRoot: root,
       env: { HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" }, clock: manualClock(new Date("2026-09-09T12:00:00.000Z")),
       backendPortOverride: 0, frontendPortOverride: 0, frontend: "built-bundle", frontendBuildScript: PARITY_BUILD_COMMAND });

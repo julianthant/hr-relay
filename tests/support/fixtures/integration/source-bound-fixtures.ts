@@ -2,7 +2,8 @@ import { createTimelineEmitter } from "../../../../src/backend/storage/events/ti
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import type { TaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import type { WriteFixtureWorld } from "../write-sequencer-fixtures.js";
-import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { workflowProjections, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +22,6 @@ import { AuthorityDatabase } from "../../helpers/synthetic-database-admission.js
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../archive-fixtures.js";
 import { NOW } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../../helpers/phase1f-executor-harness.js";
@@ -40,6 +40,12 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   const ids = sequentialIdFactory("c");
   const planIds = sequentialIdFactory("b");
   const lifecycleIds = sequentialIdFactory("a");
+  const slot=database.withAuthorityTransaction(repositories=>admitDirectWorker(repositories,{commandId:ids.uuid(),workflow:descriptor.id,
+    poolIndex:1,expectedPoolVersion:0,processId:process.pid,processAcquisitionId:ids.uuid(),
+    authorityPath:join(root,"authority.sqlite"),processLockRoot:join(root,"locks"),now:clock.now().toISOString()},ids.uuid()));
+  const started=database.authority.workerLeases.start({workerId:slot.workerId,workflow:descriptor.id,
+    browserSystems:workflowProjections(descriptor).systems,processId:process.pid,requestedBy:"local-operator",now:clock.now().toISOString()});
+  assert.equal(started.state,"started");
   const timeline = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: lifecycleIds, publishQueued: (run, publication) => {
     assert.ok(database.authority.runs.get(run.envelope.runId), "publication sees the run inside its owning transaction");
@@ -50,9 +56,10 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
     authority: database, ids, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
   const unused = () => { throw new Error("unrequested runtime operation"); };
   const kernel = createCommandKernel({ lifecycle, appVersion: "0.1.0", authority: database, clock, ids, descriptors,
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS, configIdentity: UNSTORED_CONFIG_IDENTITY,
+    configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: resolution,
-    workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
+    workerRuntime: {pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
+      stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
   });
   const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock,
     ids: planIds, planTtlMs: 600_000, configFingerprint: activeConfig.configFingerprint, configSnapshotId: activeConfig.configSnapshotId, plannedBy: "local-operator" });
@@ -87,15 +94,15 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   async function execute(run: RunRecord) {
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: ids.uuid(), workflow: descriptor.id,
-      workerId: "repeat-worker", runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+      workerId: slot.workerId, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
     assert.equal(claimed.envelope.runId, run.envelope.runId);
     return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun({ ...common, descriptor, writeSequencer: sequencer }, {
-      run: claimed, claim: { workerId: WorkerIdSchema.parse("repeat-worker"), claimGeneration: claimed.claimGeneration }, signal: new AbortController().signal,
+      run: claimed, claim: { workerId: WorkerIdSchema.parse(slot.workerId), claimGeneration: claimed.claimGeneration }, signal: new AbortController().signal,
     }));
   }
   function fresh(run: RunRecord) { const value = database.authority.runs.get(run.envelope.runId); assert.ok(value); return value; }
-  return { database, descriptor, clock, ids, lifecycleIds, planIds, get queueRoots() {
+  return { authorityPath:join(root,"authority.sqlite"),database, descriptor, clock, ids, lifecycleIds, planIds, get queueRoots() {
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
   }, lifecycle, kernel, planner, world, stores, manager,

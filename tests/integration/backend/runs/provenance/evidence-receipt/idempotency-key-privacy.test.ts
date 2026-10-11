@@ -1,3 +1,4 @@
+import { deriveWriteAuthorityReason } from "../../../../../../src/rules/write-safety/write-authority-reason.js";
 
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -5,11 +6,10 @@ import { buildRunEvidenceReceipt } from "../../../../../../src/backend/runs/prov
 import {
   LedgerLinePointerSchema,
   resolveLedgerLine,
-} from "../../../../../../src/models/archive/ledger-resolution.js";
+} from "../../../../../../src/models/run/transaction-resolution.js";
 import { deriveWriteBindingProofDigest, WriteIntentRecordSchema } from "../../../../../../src/rules/write-safety/write-safety.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../../../src/models/workflow/checkpoint.js";
-import { RunEvidenceReceiptSchema } from "../../../../../../src/models/trust/evidence.js";
 import {
   buildExplainRunView,
   renderExplainRun,
@@ -23,7 +23,6 @@ import { separationsKualiFinalizationDescriptor } from "../../../../../support/h
 import {
   makeWorld,
   queuedEventOf,
-  runEndedEventOf,
   uuidOf,
   type DashboardWorld,
 } from "../../../../../support/helpers/backend/dashboard-harness.js";
@@ -35,7 +34,7 @@ afterEach(() => {
 });
 
 describe("idempotency-key privacy across operator projections", () => {
-  it("keeps one raw key and its EID out of parked messages, receipts, Archive, Explain, and dashboard wires", () => {
+  it("keeps one raw key out of parked messages, receipts, transactions, Explain, and dashboard wires", () => {
     const evidence = kualiReceiptEvidence();
     const committed = evidence.writes[0].intent;
     if (committed.status !== "committed") throw new Error("the canary fixture must start committed");
@@ -51,6 +50,7 @@ describe("idempotency-key privacy across operator projections", () => {
       status: "parked",
       parkedCode: "unknown",
       message: unsafeMessage,
+      authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", unsafeMessage),
     });
     if (parked.status !== "parked") throw new Error("the canary fixture must be parked");
     const run = RunRecordSchema.parse(evidence.run);
@@ -64,7 +64,7 @@ describe("idempotency-key privacy across operator projections", () => {
       writes: [{ intent: parked, attempts: [] }],
     });
 
-    const archive = resolveLedgerLine(
+    const transaction = resolveLedgerLine(
       LedgerLinePointerSchema.parse({ system: "kuali", date: "2026-08-14", sequence: 0 }),
       {
         system: parked.system,
@@ -75,6 +75,7 @@ describe("idempotency-key privacy across operator projections", () => {
         confirmedAt: run.updatedAt,
         proof: { schemaHash: "f".repeat(64), value: {} },
       },
+      "protected",
     );
 
     const explain = buildExplainRunView({
@@ -115,7 +116,7 @@ describe("idempotency-key privacy across operator projections", () => {
       bindingProof,
       bindingProofDigest: deriveWriteBindingProofDigest(bindingProof),
     }));
-    const dashboard = buildRunSection({ runReader: world.runReader,
+    const dashboard = buildRunSection({ runReader: world.runReader, timeline: world.timeline,
       stateRoot: world.stateRoot,
       projection: world.projection,
       authority: world.authority,
@@ -124,7 +125,7 @@ describe("idempotency-key privacy across operator projections", () => {
 
     const projectedBytes = JSON.stringify({
       receipt,
-      archive,
+      transaction,
       explain,
       explainText: renderExplainRun(explain),
       dashboard,
@@ -133,74 +134,6 @@ describe("idempotency-key privacy across operator projections", () => {
     assert.equal(projectedBytes.includes(KUALI_EID), true);
     assert.ok(projectedBytes.includes(digest.slice(0, 12)));
     assert.equal(parked.idempotencyKey, rawKey, "authority retains the byte-exact natural key");
-    assert.equal(parked.message, unsafeMessage, "historical authority evidence remains immutable");
-  });
-
-  it("serves a seeded legacy receipt locally without rewriting its retained payload", () => {
-    const world = makeWorld();
-    worlds.push(world);
-    const queued = queuedEventOf(world, {
-      seed: 2,
-      workflow: "separations-kuali-finalization",
-      lifecycle: {
-        state: "terminal",
-        outcome: "done",
-        endedAt: "2026-08-29T08:00:00.000Z",
-      },
-      version: 2,
-    });
-    runEndedEventOf(world, 2, "done");
-    const raw = "ucpath:termination|10812345|2026-08-29";
-    const evidence = kualiReceiptEvidence();
-    const current = buildRunEvidenceReceipt({
-      descriptor: separationsKualiFinalizationDescriptor,
-      run: evidence.run,
-      result: evidence.result,
-      checkpoints: evidence.checkpoints,
-      writes: evidence.writes,
-    });
-    const legacy = RunEvidenceReceiptSchema.parse({
-      ...current,
-      runId: queued.runId,
-      workflowId: queued.workflow,
-      traceId: queued.traceId,
-      attempt: queued.attempt,
-      composition: 2,
-      warnings: [{
-        id: "20000000-0000-4000-8000-000000000001",
-        code: "LEGACY_DIAGNOSTIC",
-        summary: raw,
-        loadBearing: false,
-        evidence: [],
-      }],
-      confidence: "partial",
-      result: "done-with-warnings",
-    });
-    const runDetail = buildRunSection({ runReader: world.runReader,
-      stateRoot: world.stateRoot,
-      projection: world.projection,
-      authority: world.authority,
-      descriptors: { resolve: () => undefined },
-      trust: {
-        ensureReceipt: () => legacy,
-        getFailure: () => undefined,
-        countFailuresByFingerprint: () => 1,
-      },
-    }, uuidOf(2), "receipt");
-    const run = world.authority.getRun(uuidOf(2));
-    if (run === undefined) throw new Error("the fixture run is missing");
-    const explain = buildExplainRunView({
-      run,
-      checkpoints: [],
-      writes: [],
-      receipt: legacy,
-      nodeIds: [],
-      dependencies: [],
-    });
-
-    const projected = JSON.stringify({ runDetail, explain, text: renderExplainRun(explain) });
-    assert.equal(projected.includes(raw), true);
-    assert.ok(projected.includes(JSON.stringify(legacy)));
-    assert.equal(JSON.stringify(legacy).includes(raw), true, "authority evidence remains unchanged");
+    assert.equal(parked.message, unsafeMessage, "authority evidence remains immutable");
   });
 });

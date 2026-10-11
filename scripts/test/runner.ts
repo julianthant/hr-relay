@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { constants, closeSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { constants, closeSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -69,13 +69,42 @@ function readOwner(root: string): z.infer<typeof Owner> {
   } finally { closeSync(fd); }
 }
 
-/** Explicit reclamation only: incomplete startup and live groups are retained. */
+function emptyOwnerlessRun(root: string): string[] | undefined {
+  privateDirectory(root);
+  const entries = readdirSync(root);
+  if (entries.length !== 0) {
+    if (entries.length !== 1 || entries[0] !== "tmp") return undefined;
+    const scratch = lstatSync(join(root, "tmp"));
+    if (!scratch.isDirectory() || scratch.isSymbolicLink() || scratch.uid !== process.getuid?.() || (scratch.mode & 0o777) !== 0o700) return undefined;
+    if (readdirSync(join(root, "tmp")).length !== 0) return undefined;
+  }
+  // shortcut: synchronous startup stalls only if frozen, revisit if startup becomes asynchronous.
+  if (systemClock.nowMs() - lstatSync(root).mtimeMs <= 10 * 60_000) return undefined;
+  return entries;
+}
+
+/** Explicit reclamation only: fresh startup and live groups are retained. */
 export function reapTestRuns(directory: string): { removed: string[]; retained: string[] } {
   const base = prepareDirectory(directory);
   const removed: string[] = [], retained: string[] = [];
   for (const name of readdirSync(base)) {
     if (!/^run-[A-Za-z0-9]+$/.test(name)) throw new Error(`Unknown entry in test-run directory: ${name}`);
-    const root = join(base, name), owner = readOwner(root);
+    const root = join(base, name);
+    let owner: z.infer<typeof Owner>;
+    try { owner = readOwner(root); }
+    catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+      const entries = emptyOwnerlessRun(root);
+      if (entries === undefined) { retained.push(root); continue; }
+      try {
+        for (const entry of entries) rmdirSync(join(root, entry));
+        rmdirSync(root);
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOTEMPTY")) throw error;
+        retained.push(root); continue;
+      }
+      removed.push(root); continue;
+    }
     if (owner.groupId === null || groupAlive(owner.groupId)) { retained.push(root); continue; }
     // No running owner can now create children. Refuse replacement of the owner before deletion.
     if (readOwner(root).id !== owner.id) throw new Error(`Test-run owner changed: ${root}`);

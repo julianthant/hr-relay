@@ -1,5 +1,3 @@
-// Port source commit 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc: legacy:src/systems/ucpath/person-org-summary.ts @ 601d3a2407e9c6cd79f2383c240be8a9ca7261db; legacy:src/workflows/person-lookup/lookup.ts @ b29f57105699e4e1ca96e1186035783ba98a414d
-// Source blobs: legacy:src/workflows/person-lookup/outcome.ts @ 454320b59d280ff8ccfa24b6b0235ad49a86ae2d; legacy:src/systems/ucpath/selectors.ts @ 695d88fcc7a108f262b91b45eb1b9a276deaf427
 
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";

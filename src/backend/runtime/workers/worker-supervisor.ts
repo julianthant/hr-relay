@@ -1,9 +1,11 @@
+import { WorkerRetirementProofSchema, type WorkerRetirementProof } from "../../../models/run/worker-slot.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 
 import { isAbsolute } from "node:path";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
-import { IsoInstantSchema } from "../../../rules/identity/ids.js";
+import { CommandIdSchema, IsoInstantSchema } from "../../../rules/identity/ids.js";
 import type { WorkerId } from "../../../rules/identity/ids.js";
 import type {
   MonotonicDeadlineHandle,
@@ -96,6 +98,7 @@ export interface DashboardWorkerSupervisorDependencies {
   /** Birth-proof polling: re-probe the lease every `pollMs`, give up at `timeoutMs`. */
   readonly birth: Readonly<{ pollMs: number; timeoutMs: number }>;
 
+  readonly proveRetirement: (member: WorkerPoolMember) => WorkerRetirementProof;
   readonly onFault: (error: Error) => void;
 }
 
@@ -107,12 +110,17 @@ export const WORKER_CLI_POOL_INDEX_FLAG = "--pool-index";
 export const WORKER_EXIT_OBSERVATION_TIMEOUT_MS = 5_000;
 
 /** The member-derived argv tail: `worker <workflow-id> --pool-index <n>`. */
-export function workerCliArgv(member: WorkerPoolMember): readonly string[] {
+export function workerCliArgv(member: WorkerPoolMember, commandId: string): readonly string[] {
+  const launchCommandId = CommandIdSchema.parse(commandId);
   return Object.freeze([
     WORKER_CLI_SUBCOMMAND,
     member.workflowId,
     WORKER_CLI_POOL_INDEX_FLAG,
     String(member.poolIndex),
+    "--worker-id", member.workerId,
+    "--ordinal", String(member.ordinal),
+    "--membership-revision", String(member.membershipRevision),
+    "--launch-command-id", launchCommandId,
   ]);
 }
 
@@ -250,7 +258,7 @@ export function createDashboardWorkerProcessSupervisor(
     return record.stopUncertain.cause;
   };
 
-  const spawnWorker = async (member: WorkerPoolMember): Promise<WorkerSupervisorAcknowledgement> => {
+  const spawnWorker = async (member: WorkerPoolMember, commandId: string): Promise<WorkerSupervisorAcknowledgement> => {
     const existing = records.get(member.workerId);
     if (existing !== undefined && existing.state !== "exited") {
       if (existing.state === "kill-undelivered") {
@@ -276,7 +284,7 @@ export function createDashboardWorkerProcessSupervisor(
     const child = deps.spawn(Object.freeze({
       environment: deps.launch.environment,
       command: deps.launch.command,
-      args: Object.freeze([...deps.launch.prefixArgs, ...workerCliArgv(member)]),
+      args: Object.freeze([...deps.launch.prefixArgs, ...workerCliArgv(member, commandId)]),
       cwd: deps.launch.cwd,
       member,
     }));
@@ -448,6 +456,7 @@ export function createDashboardWorkerProcessSupervisor(
         + "worker is never adopted or controlled",
       );
     }
+    if (canonicalJsonStringify(record.member) !== canonicalJsonStringify(member)) throw new WorkerControlRefusal("worker-control-owned-member-changed");
     if (record.state === "awaiting-birth") {
       throw new WorkerControlRefusal(
         `${command} refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved its `
@@ -747,6 +756,7 @@ export function createDashboardWorkerProcessSupervisor(
         if (deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal(`plan-worker-count refused: ${member.workerId} is externally owned; no worker was adopted`);
         continue;
       }
+      if (canonicalJsonStringify(record.member) !== canonicalJsonStringify(member)) throw new WorkerControlRefusal("worker-control-owned-member-changed");
       if (record.state === "running" || record.state === "stopping") requireLiveOwnedChild("plan-worker-count", member);
       if (record.state === "awaiting-birth") {
         throw new Error(
@@ -777,7 +787,21 @@ export function createDashboardWorkerProcessSupervisor(
     }
     const facts: z.input<typeof WorkerPoolMemberReconciliationFactSchema>[] = [];
     for (const member of desired) facts.push(await planMemberFact(member, false, directive));
-    for (const member of excess) facts.push(await planMemberFact(member, true, directive));
+    for (const member of excess) {
+      await planMemberFact(member, true, directive);
+      const record = records.get(member.workerId);
+      if (record !== undefined && record.state !== "exited") {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = deps.scheduler.schedule(deps.clock.monotonicMs()
+            + WORKER_GRACEFUL_STOP_TIMEOUT_MS + WORKER_SIGTERM_TIMEOUT_MS + WORKER_EXIT_OBSERVATION_TIMEOUT_MS,
+          () => reject(new Error("worker-retirement-exit-not-observed")));
+          void record.exitObserved.then(() => { timeout.cancel(); resolve(); });
+        });
+      }
+      const proof = WorkerRetirementProofSchema.parse(deps.proveRetirement(member));
+      if (proof.workerId !== member.workerId || proof.membershipRevision !== member.membershipRevision) throw new Error("worker-retirement-proof-identity-mismatch");
+      facts.push({ member, stage: "retired", proof });
+    }
     return WorkerSupervisorAcknowledgementSchema.parse({
       command: "plan-worker-count",
       state: "acknowledged",
@@ -901,7 +925,7 @@ export function createDashboardWorkerProcessSupervisor(
         case "plan-worker-count":
           return planWorkerCount(request);
         case "spawn-worker":
-          return spawnWorker(WorkerPoolMemberSchema.parse(request.member));
+          return spawnWorker(WorkerPoolMemberSchema.parse(request.member), CommandIdSchema.parse(request.commandId));
         case "stop-worker":
           return stopWorker(
             WorkerPoolMemberSchema.parse(request.member),

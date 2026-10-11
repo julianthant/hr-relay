@@ -57,7 +57,7 @@ describe("executable operation app authority", () => {
       let artifactWrites = 0;
       const capture = createDiagnosticCaptureService({ authority: browser.database.authority,
         clock: manualClock(new Date(target.at)), ids: sequentialIdFactory("d"),
-        artifacts: { put: async () => { artifactWrites += 1; throw new Error("unexpected artifact write"); }, open: async () => { throw new Error("unexpected artifact read"); } },
+        artifacts: { stageDiagnostic: async () => { artifactWrites += 1; throw new Error("unexpected artifact write"); }, put: async () => { artifactWrites += 1; throw new Error("unexpected artifact write"); }, open: async () => { throw new Error("unexpected artifact read"); } },
       });
       const request = { trigger: "operator-request" as const, requestedBy: "local-operator", runId: browser.runId, operation: identity,
         configFingerprint: run.envelope.configFingerprint, descriptorFingerprint: run.envelope.contractFingerprint, fields: [], attachments: [] };

@@ -12,11 +12,11 @@ export interface GeneratedArtifactPorts {
   database: DatabaseSync;
   mutate<T>(this: void, work: () => Readonly<{ result: T; changes: number }>): T;
 }
-const RowSchema = z.strictObject({ record_key:z.string(),sink_id:z.string().nullable(),export_id:z.string().nullable(),version:z.number().int(),record_json: z.string(),created_at:z.string() });
+const RowSchema = z.strictObject({ kind: z.literal("generated"), workflow: z.null(), source_sha256: z.null(), source_page: z.null(), form_type: z.null(), page_kind: z.null(), page_fingerprint: z.null(), source_kind: z.null(), session_id: z.null(), manifest_id: z.null(), id:z.string(),sink_id:z.string().nullable(),export_id:z.string().nullable(),version:z.number().int(),payload_json: z.string(),created_at:z.string() });
 export function generatedArtifactFromRow(row: unknown): GeneratedArtifact | undefined {
   if(row===undefined)return undefined;
-  const columns=RowSchema.parse(row);const record=GeneratedArtifactSchema.parse(JSON.parse(columns.record_json));
-  if(columns.record_key!==record.fileId||columns.sink_id!==record.sinkId||columns.export_id!==record.exportId||columns.version!==record.version||columns.created_at!==record.createdAt)throw new Error("generated artifact mirrored columns disagree with its strict record JSON");
+  const columns=RowSchema.parse(row);const record=GeneratedArtifactSchema.parse(JSON.parse(columns.payload_json));
+  if(columns.id!==record.fileId||columns.sink_id!==record.sinkId||columns.export_id!==record.exportId||columns.version!==record.version||columns.created_at!==record.createdAt)throw new Error("generated artifact mirrored columns disagree with its strict record JSON");
   return record;
 }
 function encode(record: GeneratedArtifact): string {
@@ -25,23 +25,23 @@ function encode(record: GeneratedArtifact): string {
   return json;
 }
 export function insertGeneratedArtifact(database: DatabaseSync, record: GeneratedArtifact): void {
-  database.prepare(`INSERT INTO generated_artifacts(record_key,sink_id,export_id,version,record_json,created_at) VALUES(?,?,?,?,?,?)`)
+  database.prepare(`INSERT INTO artifacts(id,kind,sink_id,export_id,version,payload_json,created_at) VALUES(?,'generated',?,?,?,?,?)`)
     .run(record.fileId, record.sinkId, record.exportId, record.version, encode(record), record.createdAt);
 }
 export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts) {
   const { database, mutate } = ports;
-  const get = (fileId: string) => generatedArtifactFromRow(database.prepare("SELECT * FROM generated_artifacts WHERE record_key=?").get(fileId));
-  const list = () => database.prepare("SELECT * FROM generated_artifacts ORDER BY created_at,record_key").all().map((raw) => {
+  const get = (fileId: string) => generatedArtifactFromRow(database.prepare("SELECT * FROM artifacts WHERE kind='generated' AND id=?").get(fileId));
+  const list = () => database.prepare("SELECT * FROM artifacts WHERE kind='generated' ORDER BY created_at,id").all().map((raw) => {
     const file = generatedArtifactFromRow(raw); if (file === undefined) throw new Error("generated-artifact-missing-row"); return file;
   });
   const save = (old: GeneratedArtifact, next: GeneratedArtifact) => {
     if (next.version !== old.version + 1) throw new Error("generated-artifact-version-conflict");
-    if (database.prepare("UPDATE generated_artifacts SET record_json=?,version=? WHERE record_key=? AND version=?")
+    if (database.prepare("UPDATE artifacts SET payload_json=?,version=? WHERE kind='generated' AND id=? AND version=?")
       .run(encode(next), next.version, old.fileId, old.version).changes !== 1) throw new Error("generated-artifact-version-conflict");
   };
   const locate = (updateId: string) => {
-    const files = database.prepare(`SELECT f.* FROM generated_artifacts f, json_each(f.record_json,'$.updates') u
-      WHERE json_extract(u.value,'$.record.outboxId')=?`).all(updateId);
+    const files = database.prepare(`SELECT f.* FROM artifacts f, json_each(f.payload_json,'$.updates') u
+      WHERE f.kind='generated' AND json_extract(u.value,'$.record.outboxId')=?`).all(updateId);
     if (files.length > 1) throw new Error("generated-artifact-update-identity-conflict");
     return generatedArtifactFromRow(files[0]);
   };

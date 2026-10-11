@@ -1,7 +1,8 @@
+import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -12,8 +13,7 @@ import { NotificationRecordSchema } from "../../../../../../src/models/notificat
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { HASH_A, LATER, NOW, UUID_2, UUID_7 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -45,18 +45,19 @@ function record(overrides: Record<string, unknown> = {}) {
 
 function harness(): { database: AuthorityDatabase; kernel: CommandKernel } {
   const clock = manualClock(new Date(LATER));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-inbox-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-inbox-"));
   disposers.push(() => rmSync(root, { recursive: true, force: true }));
   const database = AuthorityDatabase.open(
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "inbox-test" },
     clock,
   );
   disposers.push(() => database.close());
+  seedSyntheticRuntimeConfig(database);
+  const active = database.authority.runtimeConfig.get(); assert.ok(active);
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
+    configIdentity: { configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId },
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: {
@@ -71,12 +72,7 @@ function harness(): { database: AuthorityDatabase; kernel: CommandKernel } {
       resolvePresent: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
-    workerRuntime: {
-      planWorkerCount: () => { throw new Error("unused"); },
-      spawnWorker: () => { throw new Error("unused"); },
-      refreshBrowser: () => { throw new Error("unused"); },
-      reopenBrowser: () => { throw new Error("unused"); },
-    },
+    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
   });
   return { database, kernel };
 }
@@ -173,8 +169,7 @@ describe("notification lifecycle arms", () => {
     assert.deepEqual(row?.snooze, { state: "snoozed", until: "2026-07-31T18:01:00.000Z" });
 
     const before = database.getMeta().authorityGeneration;
-    const retired = kernel.execute(command("notification-snooze", 2, { payload: { until: NOW } }));
-    assert.equal(retired.state, "rejected");
+    assert.throws(() => kernel.execute(command("notification-snooze", 2, { payload: { until: NOW } })));
     assert.equal(database.getMeta().authorityGeneration, before);
     assert.equal(kernel.execute(command("notification-unsnooze", 2)).state, "applied");
     assert.deepEqual(database.authority.notifications.get(UUID_7)?.snooze, { state: "not-snoozed" });

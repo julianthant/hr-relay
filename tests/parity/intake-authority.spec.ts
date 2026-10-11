@@ -3,7 +3,7 @@ import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { PARITY_THEMES, installTheme } from "./helpers/capture.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { routeUrl, type AppRoute } from "./helpers/app-driver.js";
-import { startIntakeAuthorityServer, INTAKE_CSV } from "./helpers/fixture-intake-authority.js";
+import { startIntakeAuthorityServer, INTAKE_CSV } from "../support/fixtures/dashboard/fixture-intake-authority.js";
 import { defineIntakeFixtureDescriptor, INTAKE_FIXTURE_WORKFLOW_ID } from "../support/fixtures/intake-workflow-fixture.js";
 
 

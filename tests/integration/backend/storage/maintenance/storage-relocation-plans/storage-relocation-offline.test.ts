@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { ArtifactRefSchema } from "../../../../../../src/models/artifacts/artifacts.js";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
@@ -11,7 +10,6 @@ import { hostConfigFacts } from "../../../../../../src/models/config/host-displa
 import { resolveConfigWithProvenance } from "../../../../../../src/backend/app/config/resolve.js";
 import { ConfigSnapshotRecordSchema } from "../../../../../../src/models/config/snapshot.js";
 import { NotificationRecordSchema } from "../../../../../../src/models/notifications/notifications.js";
-import { ArchiveDatabase } from "../../../../../../src/backend/storage/sqlite/archive-database.js";
 import { createServerVerifiedArtifactReader } from "../../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../../../../src/backend/storage/sqlite/backup-service.js";
@@ -46,7 +44,7 @@ function assertActivation(before: ReturnType<typeof durableSnapshot>, after: Ret
   assert.deepEqual(snapshot.provenance, expected.provenance);
 }
 
-it("prepares a genuine offline relocation fixture with settings, protected data, archive and managed artifacts", async () => {
+it("prepares a genuine offline relocation fixture with settings, protected data and managed artifacts", async () => {
   const f = await installation();
   const request = plan(f.workspace, { stateRoot: join(f.root, "new-state"), artifactRoot: join(f.root, "new-artifacts") });
   const admission = acquireSharedRuntimeAdmission(f.workspace);
@@ -60,15 +58,6 @@ it("prepares a genuine offline relocation fixture with settings, protected data,
       assert.equal(ArtifactRefSchema.parse((JSON.parse(readFileSync(f.artifactFile, "utf8")) as { ref: unknown }).ref).sha256,
         f.artifact.sha256);
       assert.ok(readFileSync(f.credentialFile).byteLength > 0);
-      const archive = new ArchiveDatabase(admission, f.archivePath, { readOnly: true });
-      try {
-        const report = archive.readPublished(f.archivedRunId);
-        assert.ok(report);
-        assert.equal(report.content.files.length, 1);
-        const attachment = report.content.files[0];
-        assert.ok(attachment);
-        assert.equal(archive.readFile(attachment).toString("utf8"), "synthetic archived attachment");
-      } finally { archive.close(); }
     } finally { database.close(); }
   } finally { admission.release(); }
   const walNotificationId = leaveStoppedWal(f.workspace, f.authorityPath);
@@ -78,8 +67,8 @@ it("prepares a genuine offline relocation fixture with settings, protected data,
   assert.equal(notification.notificationId, walNotificationId);
   assert.equal(notification.title, WAL_NOTIFICATION_TITLE);
   assert.equal(before.appSettings.length, 1);
-  assert.equal(before.commands.length, 2);
-  assert.equal(before.audits.length, 2);
+  assert.equal(before.commands.length, 3);
+  assert.equal(before.audits.length, 3);
 });
 
 it("moves both roots with a stopped WAL-backed domain record and preserves managed bytes", async () => {
@@ -107,16 +96,6 @@ it("moves both roots with a stopped WAL-backed domain record and preserves manag
       busyTimeoutMs: 250, migrationOwner: "offline-relocation-boot-readback" }, clock);
     try {
       assert.equal(readSettings(boot.authority).revision, 2);
-      const archive = new ArchiveDatabase(reopened, join(destination.stateRoot, "archive.sqlite"), { readOnly: true });
-      try {
-        const report = archive.readPublished(f.archivedRunId);
-        assert.ok(report);
-        assert.equal(report.content.files.length, 1);
-        const attachment = report.content.files[0];
-        assert.ok(attachment);
-        assert.equal(archive.readFile(attachment).toString("utf8"), "synthetic archived attachment");
-      }
-      finally { archive.close(); }
     } finally { boot.close(); }
     const artifactReader = createServerVerifiedArtifactReader({ admission: reopened });
     await artifactReader.ready;
@@ -128,7 +107,7 @@ it("moves both roots with a stopped WAL-backed domain record and preserves manag
       .find(path => parseBackupManifestFile(path).sourceDatabaseIdentity === databaseIdentity);
     assert.ok(currentBackup, "final-path backup must bind destination database identity");
     await verifyBackupManifestAtPath(reopened, currentBackup, databaseIdentity);
-    assert.equal(existsSync(join(destination.stateRoot, "verified-byte-scratch")), true);
+    assert.equal(existsSync(join(destination.stateRoot, "scratch")), true);
   } finally { reopened.release(); }
 });
 
@@ -163,32 +142,11 @@ it("moves artifacts first, then state under the prior receipt without changing s
     assert.deepEqual(after.audits, before.audits);
     assert.equal(after.credentialDigest, before.credentialDigest);
     assert.equal(after.artifactDigest, before.artifactDigest);
-    assert.equal(existsSync(join(stateDestination, "verified-byte-scratch")), true);
+    const artifactReader = createServerVerifiedArtifactReader({ admission: afterState });
+    await artifactReader.ready;
+    await artifactReader.verify(f.artifact);
+    assert.equal(existsSync(join(stateDestination, "scratch")), true);
   } finally { afterState.release(); }
-});
-
-it("upgrades a released v55 source before moving both roots and retains the pre-upgrade backup", async () => {
-  const f = await installation(55);
-  const destination = { stateRoot: join(f.root, "v55-moved-state"), artifactRoot: join(f.root, "v55-moved-artifacts") };
-  const request = plan(f.workspace, destination);
-  const source = new DatabaseSync(f.authorityPath, { readOnly: true });
-  try { assert.equal(source.prepare("PRAGMA user_version").get()?.user_version, 55); }
-  finally { source.close(); }
-  const outcome = await relocate(f.workspace, request.commandId);
-  assert.equal(outcome.generation, 1);
-  const reopened = acquireSharedRuntimeAdmission(f.workspace);
-  try {
-    assert.equal(reopened.stateRoot, destination.stateRoot);
-    const database = AuthorityDatabase.open(reopened, { path: join(destination.stateRoot, "state.db"),
-      busyTimeoutMs: 250, migrationOwner: "offline-relocation-v55-readback" }, clock);
-    try { assert.equal(database.getMeta().schemaVersion, 56); }
-    finally { database.close(); }
-    const manifests = readdirSync(join(destination.stateRoot, "backups", "authority"))
-      .filter(name => name.endsWith(".manifest.json"))
-      .map(name => parseBackupManifestFile(join(destination.stateRoot, "backups", "authority", name)));
-    assert.ok(manifests.some(manifest => manifest.schemaVersion === 55));
-    assert.ok(manifests.some(manifest => manifest.schemaVersion === 56));
-  } finally { reopened.release(); }
 });
 
 it.each(["afterNativePublish", "afterActivationIntent", "beforeActivationTransaction", "afterActivationWrite",

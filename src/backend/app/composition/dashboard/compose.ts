@@ -1,3 +1,8 @@
+import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
+import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
+import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
+import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { deleteOwnedBrowserProfile, workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { composeRuntimePreflight, type RuntimePreflight } from "../../preflight/runtime-admission.js";
@@ -18,10 +23,9 @@ import { composeIntake } from "./intake.js";
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { composeFailureResolution } from "./failure-resolution.js";
 import { localDatePart, runtimeTimeZone } from "../../../../rules/time/clock.js";
-import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/archive/retention.js";
+import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
 import { createOperatorProjection } from "./queue.js";
 import { createOperatorRunDetail } from "./run-detail.js";
-import { createOperatorArchive } from "./archive.js";
 import { createTrustNotifications } from "./notifications.js";
 import { createTrustReadDependencies } from "./trust.js";
 import { composeDataQueries } from "./data.js";
@@ -38,14 +42,13 @@ import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
 import { DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../registries/workflow-registry.js";
-import { historicalStepProofDescriptorOf } from "../../registries/step-proof-modules.js";
+import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
 import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../runs/commands/command-kernel.js";
 import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
 import { isLiveWorker } from "../../../../models/run/worker.js";
 import { createDashboardWorkerProcessSupervisor, type DashboardWorkerProcessSupervisor, type WorkerCliLaunchSpec, type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
-import { createRuntimeVersionChanges } from "../../../runs/archive/archive-runtime-version-changes.js";
 import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -60,11 +63,10 @@ import { createPreflightAuthority } from "../../../../models/preflight/preflight
 import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
 import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../../storage/sqlite/runtime-process-locks.js";
-import { pruneEventStreams } from "../../../storage/events/jsonl-streams.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
-import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../../storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter, type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { createRunLogStreamStore } from "../../../logs/run-log-stream.js";
 import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
 import { createContentAddressedArtifactWriter } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
@@ -81,13 +83,12 @@ import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/re
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { startDashboardHttpServer, type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
-import { createArchiveSnapshotSource } from "../../../runs/queries/archive-snapshot.js";
 
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
 
 export interface DashboardRuntime {
   readonly port: number;
-  readonly noteWriter: NoteJsonlWriter;
+  readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
   stop(): Promise<void>;
 }
@@ -160,6 +161,8 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
 export interface WorkerProcessControlInput {
+  readonly profileRoot: string;
+  readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
   readonly clock: Clock;
   readonly scheduler: MonotonicDeadlineScheduler;
@@ -203,7 +206,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         const basis = record.request.target.controlBasis;
         if (lease === undefined || !isLiveWorker(lease) || basis === undefined || lease.leaseGeneration !== basis.leaseGeneration
           || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== record.commandId) throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
-      } else if ((repositories.workerPools.get(record.request.target.workflowId)?.version ?? 0) !== record.request.target.expectedVersion) throw new WorkerControlRefusal("worker-pool-version-changed-before-effect");
+      } else if ((repositories.workerPools.get(record.request.target.workflowId)?.version ?? 0) !== (record.roster?.admittedVersion ?? record.request.target.expectedVersion)) throw new WorkerControlRefusal("worker-pool-version-changed-before-effect");
     }),
     leases: {
       observe: (workerId) => {
@@ -262,11 +265,32 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
     clock: input.clock,
     scheduler: input.scheduler,
     birth: input.birth,
+    proveRetirement: member => {
+      assertWorkerProcessStopped(input.processLockRoot, member.workerId);
+      return input.database.withAuthorityTransaction(repositories => {
+        const slot = repositories.workerSlots.get(member.workerId);
+        const lease = repositories.workerLeases.get(member.workerId);
+        const pending = repositories.workerControls.pending(`worker-pool:${member.workflowId}`);
+        const reservation = pending.find(control => control.request.type === "plan-worker-count" && control.phase.state === "executing"
+          && control.roster?.excess.some(original => canonicalJsonStringify(original) === canonicalJsonStringify(slot)));
+        if (slot === undefined || slot.retiredAt !== null || slot.membershipRevision !== member.membershipRevision
+          || canonicalJsonStringify(workerPoolMember(slot)) !== canonicalJsonStringify(member) || reservation === undefined || pending.length !== 1
+          || lease !== undefined && isLiveWorker(lease)
+          || repositories.workerControls.browsers(member.workerId).some(browser => browser.health !== "closed")) throw new WorkerControlRefusal("worker-retirement-closure-not-proved");
+        const profileDirectory = join(input.profileRoot, `w${String(slot.ordinal)}`);
+        for (const browser of repositories.workerControls.browsers(member.workerId)) {
+          if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
+        }
+        deleteOwnedBrowserProfile(input.profileRoot, profileDirectory);
+        return WorkerRetirementProofSchema.parse({ workerId: member.workerId, membershipRevision: member.membershipRevision,
+          checkedAt: input.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true });
+      });
+    },
     onFault: input.onFault,
   });
   return Object.freeze({
     supervisor,
-    workerRuntime: Object.freeze({ pool: createWorkerPoolRuntimeExecutor(supervisor) }),
+    workerRuntime: Object.freeze({ pool: createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots) }),
   });
 }
 
@@ -299,8 +323,9 @@ function ensureOwnerOnlyDirectory(path: string, label: string): void {
   mkdirSync(path, { recursive: true, mode: 0o700 });
   const handle = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try {
-    if (!fstatSync(handle).isDirectory()) throw new Error(`${label} is not a directory`);
-    fchmodSync(handle, 0o700);
+    const directory = fstatSync(handle);
+    if (!directory.isDirectory()) throw new Error(`${label} is not a directory`);
+    if ((directory.mode & 0o7777) !== 0o700) fchmodSync(handle, 0o700);
     const permissions = fstatSync(handle).mode & 0o7777;
     if (permissions !== 0o700) {
       throw new Error(`${label} permissions are ${permissions.toString(8)}, expected 700`);
@@ -391,16 +416,21 @@ async function composeDashboardRuntimeStartup(
     }
     processLock.release();
   });
-  const database = AuthorityDatabase.open(
-    admission,
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
-    clock,
-  );
+  const database = (() => {
+    try { return AuthorityDatabase.open(admission,
+      { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" }, clock); }
+    catch (error) {
+      appendEmergencyFault({ stateRoot, build: appVersion, code: "DATABASE_ADMISSION_FAILED", error: error instanceof Error ? error : new Error("Database admission failed"), now: clock.now() });
+      throw error;
+    }
+  })();
   databaseClosed = false;
   startupCleanups.push(() => {
     database.close();
     databaseClosed = true;
   });
+  importEmergencyFaults(stateRoot, database.authority.timelineEvents);
+  database.sweepOrdinaryDiagnostics(clock.now().toISOString());
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
     return Object.freeze({
@@ -409,7 +439,6 @@ async function composeDashboardRuntimeStartup(
     });
   })();
   const { persistedSettings, resolved } = bootConfig;
-  database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
   const protectedSettingsAuthority = createCredentialStore({ admission, stateRoot });
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const storageRelocationPlans = createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot });
@@ -420,15 +449,20 @@ async function composeDashboardRuntimeStartup(
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
   database.withAuthorityTransaction((repositories) => {
-    repositories.configSnapshots.insert({
+    const snapshot = {
       configSnapshotId,
-      revision: 1,
+      revision: persistedSettings.revision,
       fingerprint: resolved.fingerprint,
       capturedAt: now,
       capturedBy: LOCAL_OPERATOR_ACTOR_ID,
       config: resolved.config,
       provenance: resolved.provenance,
-    });
+    };
+    if (repositories.runtimeConfig.get() === undefined) {
+      repositories.runtimeConfig.initialize(snapshot);
+      return;
+    }
+    repositories.configSnapshots.insert(snapshot);
     repositories.runtimeConfig.activate({
       settingsRevision: persistedSettings.revision,
       settingsFingerprint: persistedSettings.settingsFingerprint,
@@ -460,7 +494,8 @@ async function composeDashboardRuntimeStartup(
     );
   };
 
-  const spanWriter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
+  const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
+  const spanWriter = createTimelineEmitter({ repository: loggingRepository, clock });
   const descriptors = {
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
   };
@@ -524,11 +559,10 @@ async function composeDashboardRuntimeStartup(
   let ownsWorker: (lease: import("../../../../models/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
   const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: servedReader });
 
-  const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
+  const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
 
   // Ordinary timeline and notes retain their 30-day append-day window.
   // Confirmed operation events remain until explicit owner deletion.
-  pruneEventStreams({ stateRoot, clock, streams: ["notes"] });
   database.authority.timelineEvents.pruneBefore(localDatePart(new Date(
     clock.nowMs() - EVENT_STREAM_RETENTION_DAYS * 24 * 60 * 60 * 1000,
   )));
@@ -539,7 +573,7 @@ async function composeDashboardRuntimeStartup(
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
-  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(stateRoot),
+  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(database.authority.timelineEvents),
     readRun: runId => {
       const existence = lifecycle.read(runId);
       return existence.state === "present" ? { disposition: existence.disposition, run: existence.run } : undefined;
@@ -579,6 +613,8 @@ async function composeDashboardRuntimeStartup(
     }));
   };
   const workerControl = composeWorkerProcessControl({
+    profileRoot: resolved.config.paths.browserProfileRoot,
+    processLockRoot: join(repoRoot, input.isolation.processLockRoot),
     database,
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
@@ -618,14 +654,8 @@ async function composeDashboardRuntimeStartup(
     resolve: (workflowId: string) => INTAKE_PROJECTIONS[workflowId],
   };
 
-  // Archive capture and live routes share the same payload derivation.
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
-  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? historicalStepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
-
-  const archiveDeps = { ...createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle }), storage: lifecycle.lifecycleStorage() };
-  database.recoverManualArchivePublications();
-  const archiveSnapshots = createArchiveSnapshotSource(runDetailDeps);
-  const runtimeVersionChanges = createRuntimeVersionChanges({ database, clock, ids, archiveSnapshots });
+  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
   const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
@@ -647,8 +677,6 @@ async function composeDashboardRuntimeStartup(
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
     storageRelocationPlans,
-    archiveSnapshots,
-    runtimeVersionChanges,
     explorerEdits: explorerBoundary.executor,
   });
 
@@ -656,8 +684,6 @@ async function composeDashboardRuntimeStartup(
     kernel,
     projection,
     startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority }),
-    versionChanges: lifecycle.lifecycleStorage(),
-    archiveDeletionCommands: database.authority.lifecycleJournal,
   });
 
   const startPlans = createStartPlanService({
@@ -697,7 +723,7 @@ async function composeDashboardRuntimeStartup(
     );
   }
 
-  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get, report: id => { const report = lifecycle.lifecycleStorage().readReport(id); return report === undefined ? undefined : { runId: report.content.runId, digest: report.digest }; } });
+  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
   const app = createDashboardApp({
     notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
@@ -711,12 +737,9 @@ async function composeDashboardRuntimeStartup(
     runDetail: runDetailDeps,
     data: composeDataQueries(runDetailDeps),
     diagnosticBundles: trustReads.diagnosticBundles,
-    archive: archiveDeps,
     commands,
     commandJournal: database.authority.commands,
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
-    runtimeVersionAcceptedAt: (commandId) => database.readRuntimeVersionIndex().changes
-      .find(change => change.applicationCommandId === commandId)?.applicationRequest?.requestedAt,
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
         work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),

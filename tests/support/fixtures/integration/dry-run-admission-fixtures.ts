@@ -1,3 +1,4 @@
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 
@@ -15,7 +16,6 @@ import { readSettings } from "../../../../src/backend/runtime/settings/settings-
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../archive-fixtures.js";
 import { settingsSetOperations } from "../settings-operation-fixtures.js";
 
 export function selectedSettingsFixture(
@@ -27,6 +27,10 @@ export function selectedSettingsFixture(
   const path = join(root, rebuildRuntimeIsolation.stateRoot, "state.db");
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "dry-run-admission-test" }, clock);
   databases.push(database);
+  const initial=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts(env),clock,
+    {stateRoot:join(root,rebuildRuntimeIsolation.stateRoot),artifactRoot:join(root,rebuildRuntimeIsolation.artifactRoot)});
+  database.authority.runtimeConfig.initialize({configSnapshotId:sequentialIdFactory("f").uuid(),revision:1,fingerprint:initial.fingerprint,
+    capturedAt:clock.now().toISOString(),capturedBy:"local-operator",config:initial.config,provenance:initial.provenance});
   const file = { read: () => readSettings(database.authority) };
   const credentials = createCredentialStore({ stateRoot: join(root, rebuildRuntimeIsolation.stateRoot) });
   const ids = sequentialIdFactory("b");
@@ -37,11 +41,11 @@ export function selectedSettingsFixture(
     clock, ids, appVersion: "0.1.0",
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     descriptors: { resolve: unused },
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { resolvePresent: unused, resolveAbsent: unused },
-    workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
+    workerRuntime: { pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
+      stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused} },
     settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts(env), clock, { stateRoot: join(root, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(root, rebuildRuntimeIsolation.artifactRoot) }), credentials),
   });
   return {
@@ -85,7 +89,7 @@ export function startEffects(path: string) {
   try {
     // These repositories deliberately have no general list API. Compare complete
     // rows on a read-only test connection, in addition to public exact-id reads.
-    return ["workflow_run_requests", "workflow_runs", "workflow_run_batches", "commands", "command_audits", "settings_snapshots"]
+    return ["run_requests", "runs", "run_batches", "commands", "command_audits", "settings_snapshots"]
       .map((table) => ({ table, rows: raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all() }));
   } finally {
     raw.close();

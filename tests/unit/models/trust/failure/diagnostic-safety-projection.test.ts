@@ -48,7 +48,7 @@ function failure(diagnosticSafetyVersion?: 1) {
   });
 }
 
-describe("versioned diagnostic safety", () => {
+describe("diagnostic evidence projection", () => {
   it("keeps an arbitrary Error message in authority without stamping it safe for projection", () => {
     const authority = buildNodeFailureRecord({
       run: QUEUED_RUN,
@@ -77,6 +77,30 @@ describe("versioned diagnostic safety", () => {
     assert.equal(JSON.stringify(projectFailureForOperator(authority)).includes(RAW), true);
   });
 
+  it("sanitizes credentials and URL query values in Error stacks and nested causes", () => {
+    const nested = new Error("nested source read failed");
+    nested.stack = "Error: nested source read failed password=STACK_PASSWORD_CANARY https://example.test/read?subject=CAUSE_QUERY_CANARY";
+    const error = new Error("source read failed", { cause: nested });
+    error.stack = "Error: source read failed Authorization: Bearer STACK_TOKEN_CANARY https://example.test/read?token=STACK_QUERY_CANARY";
+    const authority = buildNodeFailureRecord({
+      run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007",
+      nodeId: NODE_ID,
+      taskId: TASK_ID,
+      error,
+      occurredAt: "2026-08-29T08:00:00.000Z",
+    });
+
+    assert.ok(authority.debug);
+    assert.match(authority.debug.stack, /source read failed/u);
+    assert.equal(authority.debug.causes.length, 1);
+    assert.match(authority.debug.causes[0], /nested source read failed/u);
+    const bytes = JSON.stringify(authority.debug);
+    for (const canary of ["STACK_PASSWORD_CANARY", "CAUSE_QUERY_CANARY", "STACK_TOKEN_CANARY", "STACK_QUERY_CANARY"]) {
+      assert.equal(bytes.includes(canary), false, "debug evidence must sanitize every untrusted secret leaf");
+    }
+  });
+
   it("stamps the closed non-Error fallback sentence because no thrown value is copied into it", () => {
     const authority = buildNodeFailureRecord({
       run: QUEUED_RUN,
@@ -92,7 +116,7 @@ describe("versioned diagnostic safety", () => {
     assert.deepEqual(projectFailureForOperator(authority, false), authority);
   });
 
-  it("serves historical failure text without rewriting authority", () => {
+  it("serves unstamped failure text without rewriting authority", () => {
     const authority = failure();
     const before = JSON.stringify(authority);
     const projected = projectFailureForOperator(authority);
@@ -105,7 +129,7 @@ describe("versioned diagnostic safety", () => {
     assert.deepEqual(projectFailureForOperator(authority, false), authority);
   });
 
-  it("serves protected and historical text from every source", () => {
+  it("serves protected and unstamped text from every source", () => {
     const authority = FailureRecordSchema.parse({ ...failure(CURRENT_DIAGNOSTIC_SAFETY_VERSION),
       summary: RAW, causeChain: [{ code: "UNHANDLED", summary: RAW, role: "primary", transient: false }],
       remediation: [{ kind: "operator-action", message: RAW }] });
@@ -138,8 +162,8 @@ describe("versioned diagnostic safety", () => {
     assert.equal(JSON.stringify(authority), before);
   });
 
-  it("serves historical and current note text", () => {
-    const legacy = NoteWireSchema.parse({
+  it("serves unstamped and stamped note text", () => {
+    const unstamped = NoteWireSchema.parse({
       ts: "2026-08-29T08:00:00.000Z",
       workflow: "person-lookup",
       pid: 123,
@@ -151,11 +175,11 @@ describe("versioned diagnostic safety", () => {
       spanPath: "pl-010101-1000/searching#1.1",
     });
     const current = NoteWireSchema.parse({
-      ...legacy,
+      ...unstamped,
       diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
       message: "registered source could not be read",
     });
-    assert.deepEqual(projectNoteForOperator(legacy), legacy);
+    assert.deepEqual(projectNoteForOperator(unstamped), unstamped);
     assert.deepEqual(projectNoteForOperator(current), current);
   });
 });

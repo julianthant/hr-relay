@@ -6,7 +6,6 @@ import { RunEvidenceReceiptSchema } from "../../../../models/trust/evidence.js";
 import type { NotificationObservation, NotificationSourceRead } from "../../../runs/notifications/observation.js";
 import { z } from "zod";
 import { NotificationTriggerEventSchema } from "../../../../rules/notifications/notification-triggers.js";
-import { FailureResolutionSchema } from "../../../../models/trust/failure-resolution.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { listCanonicalRuns } from "../../../runs/queries/canonical-runs.js";
@@ -18,7 +17,6 @@ function observation(event: z.input<typeof NotificationTriggerEventSchema>, iden
 export function readNotificationSources(database: AuthorityDatabase, reader: Pick<RunRecordService, "read" | "list">): NotificationSourceRead {
   return database.withAuthorityReadSnapshot(() => {
     const live = listCanonicalRuns(reader, "live");
-    const frozen = database.authority.archivedTransactionSources.list();
     const runs = new Map<string, RunRecord>(live.map(run => [run.envelope.runId, run]));
     const failures = new Map<string, FailureRecord>();
     const result: NotificationObservation[] = [];
@@ -43,18 +41,6 @@ export function readNotificationSources(database: AuthorityDatabase, reader: Pic
       const state = run.lifecycle;
       if (state.state === "parked-gate") result.push(observation({ kind: "gate-opened", runId: run.envelope.runId, workflowId: run.envelope.workflow, gateId: state.gateId }, `${run.envelope.runId}:${state.gateId}:${state.parkedAt}`, state.parkedAt));
       if (state.state === "parked-write") result.push(observation({ kind: "write-parked", runId: run.envelope.runId, workflowId: run.envelope.workflow, writeIntentId: state.writeIntentId }, `${state.writeIntentId}:${String(state.intentGeneration)}:${state.parkedAt}`, state.parkedAt));
-    }
-    for (const snapshot of frozen) {
-      const run = snapshot.run;
-      const existence = reader.read(run.envelope.runId);
-      if (existence.state !== "present" || existence.disposition !== "archived") throw new Error("NOTIFICATION_ARCHIVE_MEMBERSHIP_CHANGED");
-      if (canonicalJsonStringify(existence.run) !== canonicalJsonStringify(run)) throw new Error("NOTIFICATION_ARCHIVE_RUN_MISMATCH");
-      runs.set(run.envelope.runId, run);
-      if (!run.envelope.dryRun && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done" && !snapshot.records.some(group => group.table === "run_receipts" && group.rows.length > 0)) diagnostics.push("NOTIFICATION_RECEIPT_MISSING");
-      for (const group of snapshot.records) {
-        if (group.table === "run_failures") for (const row of group.rows) consumeFailure(z.strictObject({ evidence: FailureRecordSchema, resolution: FailureResolutionSchema }).parse(JSON.parse(row.json)).evidence, run);
-        if (group.table === "run_receipts") for (const row of group.rows) consumeReceipt(JSON.parse(row.json), run);
-      }
     }
     const groups = new Map<string, number>();
     for (const failure of [...failures.values()].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.failureId.localeCompare(b.failureId))) {

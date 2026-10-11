@@ -353,13 +353,13 @@ describe("dashboard HTTP request ownership", () => {
     const releaseCancel = Promise.withResolvers<void>();
     try {
       const artifacts = createContentAddressedArtifactWriter({
-        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker/data"), join(workspace, ".tracker/data/artifacts")),
       });
       const ref = await artifacts.put(Buffer.alloc(2 * 1024 * 1024, 0x4b), {
         mediaType: "application/octet-stream",
       });
       const reader = createServerVerifiedArtifactReader({
-        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker/data"), join(workspace, ".tracker/data/artifacts")),
         observeLeaseClosed() {
           leaseClosed = true;
         },
@@ -538,13 +538,13 @@ describe("dashboard HTTP request ownership", () => {
     let routedRequest: Request | undefined;
     try {
       const artifacts = createContentAddressedArtifactWriter({
-        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker/data"), join(workspace, ".tracker/data/artifacts")),
       });
       const ref = await artifacts.put(Buffer.alloc(2 * 1024 * 1024, 0x5a), {
         mediaType: "application/octet-stream",
       });
       const reader = createServerVerifiedArtifactReader({
-        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker/data"), join(workspace, ".tracker/data/artifacts")),
         observeLeaseClosed: leaseClosed.resolve,
       });
       const app = new Hono<TestDashboardEnv>();

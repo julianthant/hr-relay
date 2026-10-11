@@ -1,7 +1,12 @@
-import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
+import { ProtectedStoreRecordSchema } from "../../../src/models/config/protected-settings.js";
+import { ProtectedInputBindingSchema } from "../../../src/models/write-safety/protected-input.js";
+import { protectedSecretSource } from "./protected-secret-source.js";
+import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
+import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
@@ -57,7 +62,6 @@ import { separationsKualiFinalizationDescriptor } from "./registered-workflows.j
 import {
   UUID_2,
   UUID_3,
-  UUID_4,
 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
@@ -77,16 +81,14 @@ export const FINALIZATION_TRANSACTION_NUMBER = "T009000001";
 export const FINALIZATION_WORKFLOW_ID = "separations-kuali-finalization";
 export const FINALIZATION_NODE = "finalize-kuali";
 export const FINALIZATION_DEPARTMENT_NODE = "department-option";
-export const FINALIZATION_WORKER_ID = "kuali-finalization-worker-1";
+export const FINALIZATION_WORKER_ID = `${FINALIZATION_WORKFLOW_ID}-worker-1`;
 export const FINALIZATION_RUN_ID = UUID_2;
 export const FINALIZATION_ITEM_ID = UUID_3;
 export const FINALIZATION_NOW = "2026-08-14T10:00:00.000Z";
 export const FINALIZATION_IMPL_FINGERPRINT = FingerprintSchema.parse(
   "f".repeat(64),
 );
-export const FINALIZATION_CONFIG_FINGERPRINT = FingerprintSchema.parse(
-  "b".repeat(64),
-);
+export const FINALIZATION_CONFIG_FINGERPRINT = FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint);
 
 /** The department the fold resolved — the option text the fake's control offers. */
 export const FINALIZATION_DEPARTMENT_OPTION =
@@ -297,6 +299,14 @@ export function finalizationNode(): Extract<
 export function finalizationQueuedRun(
   options: Readonly<{ dryRun?: boolean; startAt?: string }> = {},
 ): Record<string, unknown> {
+  const source = protectedSecretSource({ timekeeperName: FINALIZATION_VARIABLES.timekeeperName });
+  const signer = ProtectedStoreRecordSchema.parse(source.read()).entries.timekeeperName;
+  if (signer === undefined) throw new Error("fixture protected signer missing");
+  const binding = ProtectedInputBindingSchema.parse({ kind: "protected-store", inputPath: "timekeeperName",
+    name: "timekeeperName", valueId: signer.valueId });
+  const admitted = admitProtectedInput(separationsKualiFinalizationDescriptor, [FINALIZATION_RUN_INPUT],
+    source, undefined, [binding])[0];
+  if (admitted === undefined) throw new Error("fixture protected input admission missing");
   return {
     envelope: {
       runId: FINALIZATION_RUN_ID,
@@ -308,7 +318,7 @@ export function finalizationQueuedRun(
         separationsKualiFinalizationDescriptor.contractFingerprint,
       resolvedInstance: { kuali: "prod", ucpath: "prod" },
       configFingerprint: FINALIZATION_CONFIG_FINGERPRINT,
-      configSnapshotId: UUID_4,
+      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
       shape: "single",
       priority: "bulk",
       dryRun: options.dryRun ?? false,
@@ -317,13 +327,14 @@ export function finalizationQueuedRun(
       enqueuedAt: FINALIZATION_NOW,
     },
     input: {
-      raw: { ...FINALIZATION_RUN_INPUT },
+      raw: admitted.raw,
       parsed: {
         schemaHash: deriveSchemaHash(
           SeparationsKualiFinalizationCanonicalInput,
           "output",
         ),
-        value: { ...FINALIZATION_RUN_INPUT },
+        value: admitted.admitted,
+        protectedBindings: admitted.bindings,
       },
       ingressSchemaHash: deriveSchemaHash(
         SeparationsKualiFinalizationInput,
@@ -365,7 +376,7 @@ export function finalizationHarness(
   }> = {},
 ): FinalizationHarness {
   const clock = manualClock(new Date(FINALIZATION_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-kuali-finalization-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-kuali-finalization-"));
   const database = AuthorityDatabase.open(
     {
       path: join(root, "authority.sqlite"),
@@ -374,6 +385,7 @@ export function finalizationHarness(
     },
     clock,
   );
+  testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: separationsKualiFinalizationDescriptor, poolIndex: 1 });
   const world = createKualiFakeWorld({
     actionId: FINALIZATION_ACTION_ID,
     documentNumber: FINALIZATION_DOCUMENT,

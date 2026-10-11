@@ -159,9 +159,10 @@ export function composeCommandRequest(
     case "retry":
     case "restart":
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
+    case "archive":
+      return { state: "refused", reason: "Archive page removed" };
     case "cancel":
     case "bump":
-    case "archive":
     case "delete":
       /* Rename requires a value; target-only destructive commands use the served confirmation. */
       return {

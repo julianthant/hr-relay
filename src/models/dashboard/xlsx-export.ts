@@ -1,7 +1,6 @@
 import { ActivitySnapshotTokenSchema } from "./activity-selection.js";
 /** Operator XLSX export: a strict complete selection document; full run, trace and retry ids prove the authority selection and are retained. */
 import { z } from "zod";
-import { HistoricalOperatorXlsxExportEvidenceSchema } from "./xlsx-export-history.js";
 import { ArtifactRefSchema } from "../artifacts/artifacts.js";
 import {
   ActorIdSchema,
@@ -310,7 +309,6 @@ const OperatorXlsxActivityExportEvidenceV3Schema = z.strictObject({
 }).superRefine(validateOperatorXlsxActivityEvidence);
 
 export const OperatorXlsxExportEvidenceSchema = z.union([
-  HistoricalOperatorXlsxExportEvidenceSchema,
   OperatorXlsxSearchExportEvidenceV3Schema,
   OperatorXlsxActivityExportEvidenceV3Schema,
 ]);

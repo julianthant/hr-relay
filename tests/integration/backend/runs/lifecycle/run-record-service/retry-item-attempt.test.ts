@@ -1,4 +1,3 @@
-import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -22,7 +21,6 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../../../../src/models/workflow
 import type { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/index.js";
 import { taskStoreRegistry } from "../../../../../../src/backend/app/registries/task-registry.js";
 import { HASH_A, NOW } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 import {
   NO_INTAKE_PROJECTIONS,
   UNSTORED_CONFIG_IDENTITY,
@@ -129,7 +127,6 @@ function harness(): Readonly<{
   kernel: ReturnType<typeof createCommandKernel>;
 }> {
   const authority = openAuthorityHarness();
-  seedSyntheticRuntimeConfig(authority.database);
   disposers.push(authority.dispose);
   const sessions = sessionFactoryHarness({
     ucpath: () => healthyUcpathDriver(),
@@ -158,7 +155,6 @@ function harness(): Readonly<{
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: authority.database, clock: authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
@@ -176,12 +172,7 @@ function harness(): Readonly<{
       resolvePresent: unreachable("resolve-write-present"),
       resolveAbsent: unreachable("resolve-write-absent"),
     },
-    workerRuntime: {
-      planWorkerCount: unreachable("plan-worker-count"),
-      spawnWorker: unreachable("spawn-worker"),
-      refreshBrowser: unreachable("refresh-browser"),
-      reopenBrowser: unreachable("reopen-browser"),
-    },
+    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
   });
   return {
     database: authority.database,
@@ -206,7 +197,7 @@ function queuedRun() {
     },
     input: {
       raw: { emplId: EXECUTOR_EID },
-      parsed: {
+      parsed: { protectedBindings: [],
         schemaHash: deriveSchemaHash(RetryCanonicalInput, "output"),
         value: { emplId: EXECUTOR_EID },
       },

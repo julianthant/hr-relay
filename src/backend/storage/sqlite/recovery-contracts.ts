@@ -18,22 +18,11 @@ import {
   RunPrioritySchema,
   RunShapeSchema,
 } from "../../../models/run/envelope.js";
-import {
-  ProtectedSettingsNameSchema,
-} from "../../../models/config/protected-settings.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, NORMAL_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-const HistoricalBackupSchemaVersionSchema = z.number().int().refine(
-  (value) => value >= 1 && value <= 18 || value >= 27 && value <= NORMAL_AUTHORITY_SCHEMA_VERSION,
-  "schema version is not an admitted historical authority layout",
-);
-const BackupSchemaVersionSchema = z.number().int().refine(
-  (value) => HistoricalBackupSchemaVersionSchema.safeParse(value).success
-    || value === CURRENT_AUTHORITY_SCHEMA_VERSION,
-  "schema version is not admitted for authority backup",
-);
+const BackupSchemaVersionSchema = z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION);
 
 export const AuthorityPendingCountsSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
@@ -50,7 +39,7 @@ export const AuthorityInvariantResultSchema = z.strictObject({
 
 export const AuthorityCopyInspectionSchema = z.strictObject({
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
-  schemaVersion: z.union([z.literal(NORMAL_AUTHORITY_SCHEMA_VERSION), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   pageCount: PositiveIntSchema,
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
@@ -105,101 +94,12 @@ function requireObservedBackupIdentity(
   }
 }
 
-export const AuthorityBackupManifestV1Schema = AuthorityBackupManifestBaseSchema.extend({
-  manifestVersion: z.literal(1),
-}).superRefine((manifest, context) => {
-  requireObservedBackupIdentity(manifest, context);
-  if (!HistoricalBackupSchemaVersionSchema.safeParse(manifest.schemaVersion).success || manifest.schemaVersion > 32) {
-    context.addIssue({
-      code: "custom",
-      path: ["schemaVersion"],
-      message: "manifest v1 is readable only for admitted schema versions 1-18 and 27-32",
-    });
-  }
-});
-
-const BackupFileIdentitySchema = z.strictObject({
-  backupFileName: SafeFileNameSchema,
-  byteSize: PositiveIntSchema,
-  sha256: FingerprintSchema,
-});
-
-export const AuthorityDatabaseBackupFileSchema = BackupFileIdentitySchema.extend({
-  role: z.literal("authority-database"),
-  sourceFileName: z.literal("state.db"),
-});
-
-export const OrdinarySettingsBackupFileSchema = BackupFileIdentitySchema.extend({
-  role: z.literal("ordinary-settings"),
-  sourceFileName: z.literal("settings.json"),
-});
-
-export const SettingsRootAuthorityBackupFileSchema = BackupFileIdentitySchema.extend({
-  role: z.literal("settings-root-authority"),
-  sourceFileName: z.literal("authority.json"),
-});
-
-export const ProtectedSettingsBackupPresenceSchema = z.strictObject({
-  revision: PositiveIntSchema,
-  entries: z.array(z.strictObject({
-    name: ProtectedSettingsNameSchema,
-    valueId: z.uuid(),
-    updatedAt: IsoInstantSchema,
-  })),
-}).superRefine((metadata, context) => {
-  const names = metadata.entries.map(({ name }) => name);
-  if (new Set(names).size !== names.length) {
-    context.addIssue({ code: "custom", path: ["entries"], message: "protected presence names must be unique" });
-  }
-  if (names.join("\0") !== names.toSorted().join("\0")) {
-    context.addIssue({ code: "custom", path: ["entries"], message: "protected presence names must be sorted" });
-  }
-});
-
-export const AuthorityBackupManifestV2Schema = AuthorityBackupManifestBaseSchema.extend({
-  manifestVersion: z.literal(2),
-  files: z.tuple([
-    AuthorityDatabaseBackupFileSchema,
-    OrdinarySettingsBackupFileSchema,
-    SettingsRootAuthorityBackupFileSchema,
-  ]),
-  protectedSettings: ProtectedSettingsBackupPresenceSchema,
-}).superRefine((manifest, context) => {
-  requireObservedBackupIdentity(manifest, context);
-  const database = manifest.files[0];
-  for (const field of ["backupFileName", "byteSize", "sha256"] as const) {
-    if (manifest[field] !== database[field]) {
-      context.addIssue({
-        code: "custom",
-        path: ["files", 0, field],
-        message: `${field} must equal the primary authority-database identity`,
-      });
-    }
-  }
-  const names = manifest.files.map(({ backupFileName }) => backupFileName);
-  if (new Set(names).size !== names.length) {
-    context.addIssue({ code: "custom", path: ["files"], message: "backup file names must be unique" });
-  }
-  if (manifest.schemaVersion !== 30 && manifest.schemaVersion !== 31) {
-    context.addIssue({
-      code: "custom",
-      path: ["schemaVersion"],
-      message: "manifest v2 was released only for schema versions 30 and 31",
-    });
-  }
-});
-
 /** DB-only current writer shape. Credentials have no backup representation. */
 export const AuthorityBackupManifestV3Schema = AuthorityBackupManifestBaseSchema.extend({
   manifestVersion: z.literal(3),
 }).superRefine(requireObservedBackupIdentity);
 
-// Frozen v1/v2 backup readers remain distinct from the database-only v3 shape.
-export const AuthorityBackupManifestSchema = z.discriminatedUnion("manifestVersion", [
-  AuthorityBackupManifestV1Schema,
-  AuthorityBackupManifestV2Schema,
-  AuthorityBackupManifestV3Schema,
-]);
+export const AuthorityBackupManifestSchema = AuthorityBackupManifestV3Schema;
 
 export const AuthorityBackupRequestSchema = z.strictObject({
   trigger: z.enum(["interval", "schema-migration", "external-write", "graceful-drain", "operator"]),
@@ -284,7 +184,7 @@ const MissingSpanAuthorityRunSchema = z.strictObject({ state: z.literal("missing
 const MalformedSpanAuthorityRunSchema = z.strictObject({
   state: z.literal("malformed"),
   runId: RunIdSchema,
-  table: z.enum(["span_stream", "workflow_runs", "archived_runs", "deleted_runs"]),
+  table: z.enum(["span_stream", "runs", "archived_runs", "deleted_runs"]),
   summary: z.string().min(1),
 });
 
@@ -377,7 +277,7 @@ export const AuthorityBootReportSchema = z.discriminatedUnion("state", [
 ]);
 
 const RecoveryFindingSchema = z.strictObject({
-  marker: z.enum(["lifecycle-restore", "archive-conversion", "archive-restore"]),
+  marker: z.enum(["authority-restore", "unowned-recovery-entry"]),
   state: z.enum(["interrupted", "unavailable"]),
 });
 export const StorageRecoveryInspectionSchema = z.discriminatedUnion("state", [
@@ -387,7 +287,6 @@ export const StorageRecoveryInspectionSchema = z.discriminatedUnion("state", [
 ]);
 const RestoreEligibilitySchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("eligible") }),
-  z.strictObject({ state: z.literal("requires-upgrade") }),
   z.strictObject({ state: z.literal("unsupported"), reason: z.string().min(1) }),
   z.strictObject({ state: z.literal("incomplete"), reason: z.string().min(1) }),
   z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
@@ -396,7 +295,7 @@ const RestoreEligibilitySchema = z.discriminatedUnion("state", [
 export const RestoreCandidateSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("verified-compatible"),
-    selection: z.enum(["single-database", "lifecycle-pair"]),
+    selection: z.literal("single-database"),
     schemaVersion: z.number().int().positive(),
     restoreEligibility: RestoreEligibilitySchema,
     manifestFileName: SafeFileNameSchema,
@@ -417,7 +316,7 @@ export const RestoreCandidateSchema = z.discriminatedUnion("state", [
 ]);
 
 export const PreviousLocationBackupSchema = z.strictObject({
-  selection: z.enum(["single-database", "lifecycle-pair"]),
+  selection: z.literal("single-database"),
   schemaVersion: z.number().int().positive(),
   manifestFileName: SafeFileNameSchema,
   backupFileName: SafeFileNameSchema,
@@ -503,6 +402,8 @@ export const RecoveryRuntimeLockSnapshotSchema = z.strictObject({
   processLocks: z.strictObject({
     server: RecoveryProcessLockStateSchema,
     workers: RecoveryProcessLockStateSchema,
+    geocode: RecoveryProcessLockStateSchema,
+    "live-smoke": RecoveryProcessLockStateSchema,
   }),
 });
 
@@ -518,6 +419,8 @@ export const StoppedSystemProofSchema = z.strictObject({
   processLockGenerations: z.strictObject({
     server: PositiveIntSchema,
     workers: PositiveIntSchema,
+    geocode: PositiveIntSchema,
+    "live-smoke": PositiveIntSchema,
   }),
 });
 
@@ -542,10 +445,7 @@ export const OfflineRestoreReportSchema = z.strictObject({
 export type AuthorityPendingCounts = z.infer<typeof AuthorityPendingCountsSchema>;
 export type AuthorityCopyInspection = z.infer<typeof AuthorityCopyInspectionSchema>;
 export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSchema>;
-export type AuthorityBackupManifestV1 = z.infer<typeof AuthorityBackupManifestV1Schema>;
-export type AuthorityBackupManifestV2 = z.infer<typeof AuthorityBackupManifestV2Schema>;
 export type AuthorityBackupManifestV3 = z.infer<typeof AuthorityBackupManifestV3Schema>;
-export type ProtectedSettingsBackupPresence = z.infer<typeof ProtectedSettingsBackupPresenceSchema>;
 export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
 export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;

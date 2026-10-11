@@ -3,7 +3,7 @@ import { z } from "zod";
 import { IsoInstantSchema, ProviderCapabilityIdSchema, taskId } from "../../../rules/identity/ids.js";
 import { CanonicalRelationshipSchema, ContactFieldIdSchema, NormalizationRuleIdSchema } from "../../../rules/normalization/contact-rules.js";
 import { GeocodeConfidenceSchema } from "../../../rules/normalization/geocode.js";
-import { ProviderUnavailableReasonSchema } from "../../../rules/providers/provider-admission.js";
+import { ProviderUnavailableReasonSchema } from "../../providers/providers.js";
 import { DataClassificationSchema } from "../../../rules/redaction/redaction.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 

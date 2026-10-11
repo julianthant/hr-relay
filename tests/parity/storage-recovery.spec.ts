@@ -7,7 +7,7 @@ import { dismissWorkflowWindow, failOnPageErrors } from "./helpers/reference-har
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { ensureParityBundle } from "./helpers/bundle.js";
 import { StorageDoctorWireSchema } from "../../src/models/dashboard/storage.js";
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 
@@ -33,7 +33,7 @@ test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String
       expect(wire.authority.state).toBe("healthy");
       expect(wire.recovery.state).toBe("interrupted");
       expect(wire.protectedSettings.state).toBe("available");
-      expect(wire.restoreCandidates.some(row => row.state === "verified-compatible" && row.selection === "lifecycle-pair" && row.restoreEligibility.state === "eligible")).toBe(true);
+      expect(wire.restoreCandidates.some(row => row.state === "verified-compatible" && row.selection === "single-database" && row.restoreEligibility.state === "eligible")).toBe(true);
       const interruption = page.locator(".diagnostic-check-entry").filter({hasText: "Recovery"});
       await expect(interruption).toContainText("Interrupted");
       const ucpathPassword = page.locator(".diagnostic-check-entry").filter({hasText: "UCPath password"});
@@ -79,7 +79,8 @@ test("real doctor serves corrupt authority and invalid recovery evidence togethe
     const authorityPath = join(target.root, "state.db");
     const original = readFileSync(authorityPath);
     writeFileSync(authorityPath, "synthetic corrupt authority");
-    writeFileSync(join(target.root, ".lifecycle-restore.json"), "{invalid synthetic marker");
+    writeFileSync(target.stagedPath, "invalid synthetic staging evidence");
+    chmodSync(target.stagedPath, 0o666);
     await target.start();
     await gotoAppState(page, target.baseUrl, {day: FIXTURE_DAY, settings: "storage"});
     await dismissWorkflowWindow(page);

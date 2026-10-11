@@ -1,4 +1,4 @@
-import { deriveRunResultDigest } from "../../../../../../src/models/run/result.js";
+import { deriveRunResultDigest, deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema } from "../../../../../../src/models/run/result.js";
 import { testRunLifecycle, testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "../../../../../support/helpers/duo-ceremony-fixtures.js";
@@ -87,11 +87,12 @@ function harness(): Harness {
 
   const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
     const dryRun = options.dryRun ?? true;
+    const workerPorts = testWorkerPorts(database, clock, { path: join(root, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
     assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
 
     world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
     await runWorkerLoop({
-      ...testWorkerPorts(database, clock),
+      ...workerPorts,
       workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
       descriptor: writeFixtureDescriptor,
@@ -406,7 +407,13 @@ describe("a dry run previews its transaction node and ends there", () => {
     assert.match(diagnostic, /is indeterminate; the real run would refuse/u);
     assert.doesNotMatch(diagnostic, /grid never rendered/u);
     assert.deepEqual(h.world.events, ["probe"], "nothing was staged behind an unanswerable probe");
-    assert.equal(h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID), undefined);
+    const terminal = h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(terminal);
+    const retainedFailure = RunTerminalEvidenceResultSchema.parse(terminal.result.value);
+    assert.equal(retainedFailure.kind, "failed-evidence");
+    if (retainedFailure.kind !== "failed-evidence") throw new Error("terminal failure evidence missing");
+    assert.equal(retainedFailure.authorization.failureId, failureId);
+    assert.equal(retainedFailure.failureDigest, deriveTerminalFailureDigest(failure));
     assert.equal(
       h.database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY),
       undefined,

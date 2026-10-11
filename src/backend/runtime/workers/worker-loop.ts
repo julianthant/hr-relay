@@ -1,3 +1,5 @@
+import { WorkerPoolMemberSchema, WorkerRetirementProofSchema, workerPoolMember, type WorkerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
+export { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import type { WorkerBrowserObservation } from "../../../models/run/worker-control.js";
 import type { RunRecord } from "../../../models/run/record.js";
 
@@ -17,23 +19,18 @@ import {
   WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../../rules/identity/ids.js";
-import type { BrowserSessionId, PositiveInt, WorkerId, WorkflowId } from "../../../rules/identity/ids.js";
+import type { BrowserSessionId, WorkerId, WorkflowId } from "../../../rules/identity/ids.js";
 import type { BrowserPresentationMode } from "../../../models/run/envelope.js";
 import { WorkerDirectiveSchema, type WorkerDirective } from "../../../models/run/worker.js";
-import type {
-  CanonicalInputSnapshotMigration,
-  CheckpointMigration,
-} from "../../../models/workflow/checkpoint.js";
 import type {
   WorkerPlanAcknowledgementSchema,
   WorkerRuntimeAcknowledgementSchema,
   WorkerRuntimeContext,
-  WorkerRuntimeExecutor,
 } from "../../runs/commands/command-kernel.js";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
-import type { NoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
+import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 import { createConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
 import type { ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
@@ -106,15 +103,13 @@ export interface WorkerLoopDependencies {
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
   /** Run messages and browser actions; transaction callbacks stay outside this sink. */
-  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
+  readonly taskNotes?: Pick<NoteTimelineWriter, "emitRunLog" | "emitRunAction">;
   // Worker-local publication handoff; persistent transport is supplied separately.
   readonly confirmedActionAppend?: (event: ConfirmedActionEvent) => void;
   /** Stop claiming and shut the worker down; the active run finishes first. */
   readonly stopSignal: AbortSignal;
   // drainOnce returns at the first idle poll; otherwise the loop runs until stopSignal.
   readonly exitWhenIdle: boolean;
-  readonly checkpointMigrations?: readonly CheckpointMigration[];
-  readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
 
   readonly writeSequencerFor?: (sessions: WorkerSessionManager, taskDeadlineMs:number) => WriteSequencer;
@@ -214,8 +209,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     ? undefined
     : FingerprintSchema.parse(deps.configFingerprint);
   const { emitter, clock } = deps;
+  const streamId = deps.ids.uuid();
   const confirmedActionPublisher = createConfirmedActionPublisher({
-    workerId, streamId: deps.ids.uuid(), clock, capacity: 256,
+    workerId, streamId, clock, capacity: 256,
     append: deps.confirmedActionAppend,
     onHealth: health => {
       if (health.state !== "healthy") deps.log.warn("confirmed action publication unhealthy", {
@@ -223,7 +219,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       });
     },
   });
-  const workerPath = workerSpanPath(workflowId, workerId);
+  const workerPath = `${workerSpanPath(workflowId, workerId)}#${streamId}`;
   const instant = (): string => clock.now().toISOString();
   const emit = (event: Readonly<Record<string, unknown>>): void => {
     emitter.emit(ExecutorSpanEventSchema.parse({ ts: instant(), workflow: workflowId, ...event }));
@@ -371,10 +367,6 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             log: deps.log,
             confirmedActionPublisher,
             ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),
-            ...(deps.checkpointMigrations === undefined ? {} : { checkpointMigrations: deps.checkpointMigrations }),
-            ...(deps.canonicalInputMigrations === undefined
-              ? {}
-              : { canonicalInputMigrations: deps.canonicalInputMigrations }),
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
             ...(deps.gateSources === undefined ? {} : { gateSources: deps.gateSources }),
@@ -413,46 +405,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 /* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions §0) ──── */
 
 
-export interface WorkerProcessSupervisor {
-  /** Start the explicit Phase-1 pool member and return evidence that it started. */
-  spawnWorker(input: WorkerPoolMember): unknown;
-  refreshBrowser?(input: Readonly<{ member: WorkerPoolMember; browserSessionId: BrowserSessionId }>): unknown;
-  reopenBrowser?(input: Readonly<{ member: WorkerPoolMember; browserSessionId: BrowserSessionId }>): unknown;
-}
-
-export function poolWorkerId(workflowId: WorkflowId, poolIndex: PositiveInt): WorkerId {
-  return WorkerIdSchema.parse(`${workflowId}-worker-${String(poolIndex)}`);
-}
-
-export function phase1WorkerId(workflowId: WorkflowId): WorkerId {
-  return poolWorkerId(workflowId, PositiveIntSchema.parse(1));
-}
-
 export const MAX_WORKERS_PER_POOL = 3;
 export const WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000;
 export const WORKER_SIGTERM_TIMEOUT_MS = 30_000;
-
-const PoolSizeSchema = PositiveIntSchema.refine(
-  (value) => value <= MAX_WORKERS_PER_POOL,
-  `worker pool size must not exceed ${String(MAX_WORKERS_PER_POOL)}`,
-);
-
-export const WorkerPoolMemberSchema = z.strictObject({
-  workflowId: WorkflowIdSchema,
-  poolIndex: PoolSizeSchema,
-  workerId: WorkerIdSchema,
-}).superRefine((member, context) => {
-  const expectedWorkerId = `${member.workflowId}-worker-${String(member.poolIndex)}`;
-  if (member.workerId !== expectedWorkerId) {
-    context.addIssue({
-      code: "custom",
-      message: `pool member index ${String(member.poolIndex)} for ${member.workflowId} requires worker id ${expectedWorkerId}`,
-      path: ["workerId"],
-    });
-  }
-});
-export type WorkerPoolMember = z.infer<typeof WorkerPoolMemberSchema>;
-
 
 export const WORKER_STOP_ESCALATION_STAGES = Object.freeze(
   ["graceful-stop-requested", "sigterm-sent", "sigkill-sent"] as const,
@@ -515,6 +470,7 @@ export const WorkerPoolOwnershipSchema = z.enum(["supervised", "external"]);
 export type WorkerPoolOwnership = z.infer<typeof WorkerPoolOwnershipSchema>;
 
 export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("stage", [
+  z.strictObject({ member: WorkerPoolMemberSchema, stage: z.literal("retired"), proof: WorkerRetirementProofSchema }),
   z.strictObject({
     member: WorkerPoolMemberSchema,
     stage: z.literal("running"),
@@ -541,8 +497,8 @@ export type WorkerPoolMemberReconciliationFact = z.infer<typeof WorkerPoolMember
 export const WorkerPoolReconciliationAcknowledgementSchema = z.strictObject({
   command: z.literal("plan-worker-count"),
   state: z.literal("acknowledged"),
-  desiredWorkers: PoolSizeSchema,
-  members: z.array(WorkerPoolMemberReconciliationFactSchema).min(1).max(MAX_WORKERS_PER_POOL),
+  desiredWorkers: z.number().int().min(0).max(MAX_WORKERS_PER_POOL),
+  members: z.array(WorkerPoolMemberReconciliationFactSchema).max(MAX_WORKERS_PER_POOL),
 });
 export type WorkerPoolReconciliationAcknowledgement = z.infer<
   typeof WorkerPoolReconciliationAcknowledgementSchema
@@ -642,8 +598,7 @@ export interface WorkerPoolPlanRequest {
   readonly commandId?: string;
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
-  readonly desiredWorkers: PositiveInt;
-  /** The desired roster: canonical members at indices 1..desiredWorkers. */
+  readonly desiredWorkers: number;
   readonly members: readonly WorkerPoolMember[];
 
   readonly excessMembers: readonly WorkerPoolMember[];
@@ -715,38 +670,6 @@ export interface WorkerPoolRuntimeExecutor {
   stopPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
   pausePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
   resumePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
-}
-
-// Freeze submitted members before invoking the supervisor; acknowledgements must bind the original scalars.
-function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember {
-  const parsedIndex = PoolSizeSchema.parse(poolIndex);
-  return Object.freeze(WorkerPoolMemberSchema.parse({
-    workflowId,
-    poolIndex: parsedIndex,
-    workerId: poolWorkerId(workflowId, parsedIndex),
-  }));
-}
-
-function poolMemberFromIdentity(workerId: WorkerId): WorkerPoolMember {
-  const match = /^(?<workflowId>.+)-worker-(?<poolIndex>[1-9]\d*)$/.exec(workerId);
-  if (match?.groups === undefined) {
-    throw new Error(`worker ${workerId} must carry an explicit positive pool index`);
-  }
-  const workflowId = WorkflowIdSchema.parse(match.groups.workflowId);
-  const rawIndex = match.groups.poolIndex;
-  const member = poolMember(workflowId, Number(rawIndex));
-  if (member.workerId !== workerId) {
-    throw new Error(`worker ${workerId} is not the canonical identity for pool index ${rawIndex}`);
-  }
-  return member;
-}
-
-function poolMemberFromWorkerId(workflowId: WorkflowId, workerId: WorkerId): WorkerPoolMember {
-  const member = poolMemberFromIdentity(workerId);
-  if (member.workflowId !== workflowId) {
-    throw new Error(`worker ${workerId} is not a pool member of workflow ${workflowId}`);
-  }
-  return member;
 }
 
 function workerStopEscalation(): WorkerStopEscalationPolicy {
@@ -849,45 +772,31 @@ function requireObservedNotAfterNow(
   }
 }
 
-function requireSupervisorAcknowledgement(command: WorkerSupervisorRequest["command"], value: unknown): unknown {
-  if (value === undefined) {
-    throw new Error(`${command} supervisor acknowledgement is required; refusing to accept an unproved effect`);
-  }
-  if (
-    typeof value === "object"
-    && value !== null
-    && "then" in value
-    && typeof value.then === "function"
-  ) {
-    // A synchronous authority transaction cannot await a process effect; refuse a pending result.
-    throw new Error(
-      `${command} supervisor returned a pending promise; the synchronous phase-1 seam cannot prove the effect `
-      + "before acknowledging it — use the pool contract's awaitable execute seam",
-    );
-  }
-  return value;
-}
-
-
 export function createWorkerPoolRuntimeExecutor(
   supervisor: WorkerPoolProcessSupervisor,
+  slots: Readonly<{ get(workerId: string): WorkerSlotRecord | undefined }>,
 ): WorkerPoolRuntimeExecutor {
+  const poolMemberFromIdentity = (workerId: WorkerId): WorkerPoolMember => {
+    const slot = slots.get(workerId);
+    if (slot === undefined) throw new Error("worker-slot-not-admitted");
+    return Object.freeze(workerPoolMember(slot));
+  };
+  const poolMemberFromWorkerId = (workflowId: WorkflowId, workerId: WorkerId): WorkerPoolMember => {
+    const member = poolMemberFromIdentity(workerId);
+    if (member.workflowId !== workflowId) throw new Error("worker-slot-workflow-mismatch");
+    return member;
+  };
   return Object.freeze({
     async planPoolWorkerCount(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerPlanAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "plan-worker-count") {
         throw new Error(`planPoolWorkerCount received a ${command.type} command`);
       }
-      const desiredWorkers = PoolSizeSchema.parse(command.payload.desiredWorkers);
-      const members = Object.freeze(Array.from(
-        { length: desiredWorkers },
-        (_, offset) => poolMember(command.target.workflowId, offset + 1),
-      ));
-
-      const excessMembers = Object.freeze(Array.from(
-        { length: MAX_WORKERS_PER_POOL - desiredWorkers },
-        (_, offset) => poolMember(command.target.workflowId, desiredWorkers + offset + 1),
-      ));
+      const desiredWorkers = command.payload.desiredWorkers;
+      const admitted = context.roster;
+      if (admitted === undefined || admitted.selected.length !== desiredWorkers) throw new Error("worker-roster-not-admitted");
+      const members = Object.freeze(admitted.selected.map(slot => Object.freeze(workerPoolMember(slot))));
+      const excessMembers = Object.freeze(admitted.excess.map(slot => Object.freeze(workerPoolMember(slot))));
       const roster = Object.freeze([...members, ...excessMembers]);
 
       const plannedWorkerIds = Object.freeze(members.map(({ workerId }) => workerId));
@@ -918,10 +827,10 @@ export function createWorkerPoolRuntimeExecutor(
           );
         }
         requireSameMember("plan-worker-count", expected, fact.member);
-        if (fact.stage !== "unmet") {
+        if (fact.stage !== "unmet" && fact.stage !== "retired") {
           requireDurableOwnership("plan-worker-count", fact.member, fact.ownership);
         }
-        if (offset < desiredWorkers && fact.stage === "graceful-stop-requested") {
+        if (offset < desiredWorkers && (fact.stage === "graceful-stop-requested" || fact.stage === "retired")) {
           throw new Error(
             `plan-worker-count cannot stop desired member ${fact.member.workerId} at index ${String(offset + 1)}`,
           );
@@ -940,7 +849,14 @@ export function createWorkerPoolRuntimeExecutor(
           );
         }
       }
-      return { state: "accepted", workerIds: [...plannedWorkerIds] };
+      const retirements = excessMembers.map(member => {
+        const fact = acknowledgement.members.find(value => value.member.workerId === member.workerId);
+        if (fact?.stage !== "retired" || fact.proof.workerId !== member.workerId
+          || fact.proof.membershipRevision !== member.membershipRevision) throw new Error("worker-retirement-not-proved");
+        return fact.proof;
+      });
+      if (acknowledgement.members.length !== roster.length) throw new Error("worker-roster-acknowledgement-size-mismatch");
+      return { state: "accepted", workerIds: [...plannedWorkerIds], retirements };
     },
     async spawnPoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
@@ -1048,97 +964,6 @@ export function createWorkerPoolRuntimeExecutor(
         member,
         browserSessionId: command.target.browserSessionId,
       })));
-      requireSameMember("reopen-browser", member, acknowledgement.member);
-      requireDurableOwnership("reopen-browser", acknowledgement.member, acknowledgement.ownership);
-      if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
-        throw new Error(
-          `reopen-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
-          + acknowledgement.browserSessionId,
-        );
-      }
-      return { state: "accepted" };
-    },
-  });
-}
-
-
-export function createPhase1WorkerRuntimeExecutor(
-  supervisor: WorkerProcessSupervisor,
-): WorkerRuntimeExecutor {
-  return Object.freeze({
-    planWorkerCount(context: WorkerRuntimeContext): z.input<typeof WorkerPlanAcknowledgementSchema> {
-      const { command } = context;
-      if (command.type !== "plan-worker-count") {
-        throw new Error(`planWorkerCount received a ${command.type} command`);
-      }
-      if (command.payload.desiredWorkers !== 1) {
-        throw new Error(
-          `This runtime runs exactly one worker per workflow; a plan for `
-          + `${String(command.payload.desiredWorkers)} workers is not reconcilable yet`,
-        );
-      }
-      return { state: "accepted", workerIds: [phase1WorkerId(command.target.workflowId)] };
-    },
-    spawnWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
-      const { command } = context;
-      if (command.type !== "spawn-worker") {
-        throw new Error(`spawnWorker received a ${command.type} command`);
-      }
-      const member = poolMemberFromWorkerId(command.target.workflowId, command.payload.workerId);
-      const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(requireSupervisorAcknowledgement(
-        "spawn-worker",
-        supervisor.spawnWorker(member),
-      ));
-      requireSameMember("spawn-worker", member, acknowledgement.member);
-      requireDurableOwnership("spawn-worker", acknowledgement.member, acknowledgement.ownership);
-      return { state: "accepted" };
-    },
-    refreshBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
-      const { command } = context;
-      if (command.type !== "refresh-browser") {
-        throw new Error(`refreshBrowser received a ${command.type} command`);
-      }
-      if (supervisor.refreshBrowser === undefined) {
-        throw new Error(
-          "refresh-browser requires the 1g browser supervisor; refusing to acknowledge an effect that did not happen",
-        );
-      }
-      const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(requireSupervisorAcknowledgement(
-        "refresh-browser",
-        supervisor.refreshBrowser(Object.freeze({
-          member,
-          browserSessionId: command.target.browserSessionId,
-        })),
-      ));
-      requireSameMember("refresh-browser", member, acknowledgement.member);
-      requireDurableOwnership("refresh-browser", acknowledgement.member, acknowledgement.ownership);
-      if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
-        throw new Error(
-          `refresh-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
-          + acknowledgement.browserSessionId,
-        );
-      }
-      return { state: "accepted" };
-    },
-    reopenBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
-      const { command } = context;
-      if (command.type !== "reopen-browser") {
-        throw new Error(`reopenBrowser received a ${command.type} command`);
-      }
-      if (supervisor.reopenBrowser === undefined) {
-        throw new Error(
-          "reopen-browser requires the 1g browser supervisor; refusing to acknowledge an effect that did not happen",
-        );
-      }
-      const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerReopenAcknowledgementSchema.parse(requireSupervisorAcknowledgement(
-        "reopen-browser",
-        supervisor.reopenBrowser(Object.freeze({
-          member,
-          browserSessionId: command.target.browserSessionId,
-        })),
-      ));
       requireSameMember("reopen-browser", member, acknowledgement.member);
       requireDurableOwnership("reopen-browser", acknowledgement.member, acknowledgement.ownership);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {

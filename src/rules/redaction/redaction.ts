@@ -160,9 +160,6 @@ export function redactValue(
   }
 }
 
-/** Reproduce immutable receipt compositions 1–4. */
-export const redactHistoricalValue = redactValue;
-
 /** Retain a complete classified value in local evidence, never provider payloads. */
 export function retainLocalEvidenceValue(
   classification: z.infer<typeof DataClassificationSchema>,
@@ -192,4 +189,51 @@ export function redactDiagnosticFields(input: unknown): z.infer<typeof Redaction
     fields.push(redact(parsed.data));
   }
   return RedactionResultSchema.parse({ fields, warnings });
+}
+
+// Diagnostic text never carries authorization material or URL query values.
+export function sanitizeDebugText(text: string): string {
+  const credentialKey = /password|passwd|token|cookie|authorization|private[-_ ]?key|challenge|signature/iu;
+  const keys = /("(?:\\(?:["\\/bfnrt]|u[0-9a-f]{4})|[\x20-\x21\x23-\x5b\x5d-\u{10ffff}])*")\s*:\s*/giu;
+  let redacted = "";
+  let retainedFrom = 0;
+  for (const match of text.matchAll(keys)) {
+    if (match.index < retainedFrom) continue;
+    const key: unknown = JSON.parse(match[1]);
+    if (typeof key !== "string" || !credentialKey.test(key)) continue;
+    const start = match.index + match[0].length;
+    let end = start;
+    if (text[start] === '"' || text[start] === "{" || text[start] === "[") {
+      let depth = 0;
+      let quoted = false;
+      let escaped = false;
+      for (; end < text.length; end++) {
+        const character = text[end];
+        if (quoted) {
+          if (escaped) escaped = false;
+          else if (character === "\\") escaped = true;
+          else if (character === '"') {
+            quoted = false;
+            if (depth === 0) { end++; break; }
+          }
+        } else if (character === '"') quoted = true;
+        else if (character === "{" || character === "[") depth++;
+        else if (character === "}" || character === "]") {
+          depth--;
+          if (depth === 0) { end++; break; }
+        }
+      }
+    } else {
+      while (end < text.length && !/[,}\]]/u.test(text[end])) end++;
+    }
+    redacted += text.slice(retainedFrom, start) + '"[removed]"';
+    retainedFrom = end;
+  }
+  text = redacted + text.slice(retainedFrom);
+  return text.replace(/https?:\/\/[^\s<>"']+/gu, raw => {
+    try { const url = new URL(raw); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); }
+    catch { return "[invalid-url]"; }
+  }).replace(/(?:bearer|basic)\s+[a-z0-9+/_.=-]+/giu, "[authorization removed]")
+    .replace(/((?:password|passwd|token|cookie|authorization|private[-_ ]?key|challenge|signature)\s*[=:]\s*)[^\s,;]+/giu, "$1[removed]")
+    .replace(/-----BEGIN[^-]*PRIVATE KEY-----[\s\S]*?-----END[^-]*PRIVATE KEY-----/gu, "[private key removed]");
 }

@@ -1,33 +1,52 @@
+import { commandFromRow } from "./command-record-row.js";
+import { workerSlotFromRow } from "./worker-slots.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
-import { WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase, type WorkerControlRecord } from "../../../models/run/worker-control.js";
+import { WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase } from "../../../models/run/worker-control.js";
 import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 
-export const WORKER_CONTROL_DDL = `CREATE TABLE worker_controls (
-  record_key TEXT PRIMARY KEY, scope TEXT NOT NULL, record_json TEXT NOT NULL CHECK(json_valid(record_json)), created_at TEXT NOT NULL
-) STRICT`;
-export const WORKER_BROWSER_DDL = `CREATE TABLE worker_browsers (
-  record_key TEXT PRIMARY KEY, worker_id TEXT NOT NULL, record_json TEXT NOT NULL CHECK(json_valid(record_json)), created_at TEXT NOT NULL
-) STRICT`;
-const JsonRow = z.object({ record_json: z.string() });
-const parseControl = (row: unknown) => WorkerControlRecordSchema.parse(JSON.parse(JsonRow.parse(row).record_json));
-const parseBrowser = (row: unknown) => WorkerBrowserObservationSchema.parse(JSON.parse(JsonRow.parse(row).record_json));
+const ControlRowSchema = z.strictObject({ command_id: z.string(), scope: z.string(), worker_id: z.string().nullable(),
+  phase: z.string(), audited_at: z.string().nullable(), payload_json: z.string(), created_at: z.string() });
+export function workerControlFromRow(input: unknown) {
+  const row = ControlRowSchema.parse(input), record = WorkerControlRecordSchema.parse(JSON.parse(row.payload_json));
+  const workerId = "workerId" in record.request.target ? record.request.target.workerId
+    : record.request.type === "spawn-worker" ? record.request.payload.workerId : null;
+  if (row.command_id !== record.commandId || row.scope !== record.scope || row.worker_id !== workerId
+    || row.phase !== record.phase.state || row.audited_at !== (record.auditedAt ?? null)
+    || row.created_at !== record.admittedAt) throw new Error("worker-control-storage-identity-mismatch");
+  return record;
+}
+const BrowserRowSchema = z.strictObject({ id: z.string(), worker_id: z.string(), lease_generation: z.number().int().positive(),
+  system: z.string(), state: z.string(), auth_fingerprint: z.string(), presentation: z.string(), profile_revision: z.number().int().positive(),
+  payload_json: z.string(), opened_at: z.string(), observed_at: z.string() });
+export function workerBrowserFromRow(input: unknown) {
+  const row = BrowserRowSchema.parse(input), record = WorkerBrowserObservationSchema.parse(JSON.parse(row.payload_json));
+  if (row.id !== record.sessionId || row.worker_id !== record.workerId || row.lease_generation !== record.leaseGeneration
+    || row.system !== record.system || row.state !== record.health || row.auth_fingerprint !== record.configFingerprint
+    || row.presentation !== record.browserMode || row.profile_revision !== record.profileRevision
+    || row.opened_at !== record.openedAt || row.observed_at !== record.observedAt) throw new Error("worker-browser-storage-identity-mismatch");
+  return record;
+}
 export function createWorkerControlRepository(deps: {
   database: DatabaseSync;
-  mutate<T>(table: "worker_controls" | "worker_browsers", work: () => { result: T; changes: number }): T;
+  mutate<T>(table: "worker_controls" | "browser_sessions", work: () => { result: T; changes: number }): T;
 }) {
   const { database } = deps;
   const get = (id: string) => {
-    const row = database.prepare("SELECT record_json FROM worker_controls WHERE record_key=?").get(CommandIdSchema.parse(id));
-    return row === undefined ? undefined : parseControl(row);
+    const row = database.prepare("SELECT * FROM worker_controls WHERE command_id=?").get(CommandIdSchema.parse(id));
+    if (row === undefined) return undefined;
+    const record = workerControlFromRow(row);
+    const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
+    if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
+    return record;
   };
-  const pending = (scope: string) => database.prepare("SELECT record_json FROM worker_controls WHERE scope=? AND json_extract(record_json,'$.auditedAt') IS NULL ORDER BY rowid").all(scope).map(parseControl);
+  const pending = (scope: string) => database.prepare("SELECT * FROM worker_controls WHERE scope=? AND audited_at IS NULL ORDER BY rowid").all(scope).map(workerControlFromRow);
   return Object.freeze({
     get,
     pending,
-    list: () => database.prepare("SELECT record_json FROM worker_controls ORDER BY rowid").all().map(parseControl),
+    list: () => database.prepare("SELECT * FROM worker_controls ORDER BY rowid").all().map(workerControlFromRow),
     admit: (input: unknown) => deps.mutate("worker_controls", () => {
       const record = WorkerControlRecordSchema.parse(input);
       const prior = get(record.commandId);
@@ -35,9 +54,20 @@ export function createWorkerControlRepository(deps: {
         if (canonicalJsonStringify(prior.request) !== canonicalJsonStringify(record.request)) throw new CommandIdentityConflictError();
         return { result: prior, changes: 0 };
       }
+      const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
+      if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
+      if (record.roster !== undefined) {
+        for (const original of [...record.roster.selected, ...record.roster.excess]) {
+          const row = database.prepare("SELECT * FROM worker_slots WHERE id=?").get(original.workerId);
+          if (row === undefined || canonicalJsonStringify(workerSlotFromRow(row)) !== canonicalJsonStringify(original)) throw new Error("worker-control-roster-binding-mismatch");
+        }
+      }
       if (record.phase.state !== "admitted" || record.auditedAt !== undefined) throw new Error("worker-control-invalid-admission");
       if (pending(record.scope).length !== 0) throw new Error("worker-control-unresolved-effect");
-      database.prepare("INSERT INTO worker_controls(record_key,scope,record_json,created_at) VALUES (?,?,?,?)").run(record.commandId,record.scope,canonicalJsonStringify(record),record.admittedAt);
+      const workerId = "workerId" in record.request.target ? record.request.target.workerId
+        : record.request.type === "spawn-worker" ? record.request.payload.workerId : null;
+      database.prepare("INSERT INTO worker_controls(command_id,scope,worker_id,phase,audited_at,payload_json,created_at) VALUES (?,?,?,'admitted',NULL,?,?)")
+        .run(record.commandId,record.scope,workerId,canonicalJsonStringify(record),record.admittedAt);
       return { result: record, changes: 1 };
     }),
     transition: (id: string, expected: WorkerControlPhase["state"], input: unknown) => deps.mutate("worker_controls", () => {
@@ -50,40 +80,47 @@ export function createWorkerControlRepository(deps: {
       };
       if (!allowed[expected].includes(phase.state)) throw new Error("worker-control-invalid-transition");
       const record = WorkerControlRecordSchema.parse({ ...current, phase });
-      database.prepare("UPDATE worker_controls SET record_json=? WHERE record_key=?").run(canonicalJsonStringify(record),id);
+      if (database.prepare("UPDATE worker_controls SET phase=?,audited_at=?,payload_json=? WHERE command_id=? AND payload_json=?")
+        .run(record.phase.state,record.auditedAt ?? null,canonicalJsonStringify(record),id,canonicalJsonStringify(current)).changes !== 1) throw new Error("worker-control-phase-conflict");
       return { result: record, changes: 1 };
     }),
     audit: (id: string, now: string) => deps.mutate("worker_controls", () => {
       const current = get(id);
       if (current === undefined) throw new Error("worker-control-not-found");
       const record = WorkerControlRecordSchema.parse({ ...current, auditedAt: IsoInstantSchema.parse(now) });
-      database.prepare("UPDATE worker_controls SET record_json=? WHERE record_key=?").run(canonicalJsonStringify(record),id);
+      if (database.prepare("UPDATE worker_controls SET phase=?,audited_at=?,payload_json=? WHERE command_id=? AND payload_json=?")
+        .run(record.phase.state,record.auditedAt ?? null,canonicalJsonStringify(record),id,canonicalJsonStringify(current)).changes !== 1) throw new Error("worker-control-phase-conflict");
       return { result: record, changes: 1 };
     }),
-    observe: (input: unknown) => deps.mutate("worker_browsers", () => {
+    observe: (input: unknown) => deps.mutate("browser_sessions", () => {
       const record = WorkerBrowserObservationSchema.parse(input);
-      const priorRow = database.prepare("SELECT record_json FROM worker_browsers WHERE record_key=?").get(record.sessionId);
+      const priorRow = database.prepare("SELECT * FROM browser_sessions WHERE id=?").get(record.sessionId);
       if (priorRow !== undefined) {
-        const prior = parseBrowser(priorRow);
+        const prior = workerBrowserFromRow(priorRow);
         const identity = (value: typeof record) => { const { health: _health, observedAt: _observedAt, ...fields } = value; return canonicalJsonStringify(fields); };
         if (identity(prior) !== identity(record)) throw new Error("worker-browser-observation-identity-conflict");
         if (prior.health === "closed" && record.health !== "closed") throw new Error("worker-browser-closed-session-cannot-reopen");
       }
-      database.prepare("INSERT INTO worker_browsers(record_key,worker_id,record_json,created_at) VALUES (?,?,?,?) ON CONFLICT(record_key) DO UPDATE SET record_json=excluded.record_json").run(record.sessionId,record.workerId,canonicalJsonStringify(record),record.observedAt);
+      const json = canonicalJsonStringify(record);
+      const changes = priorRow === undefined
+        ? database.prepare(`INSERT INTO browser_sessions(id,worker_id,lease_generation,system,state,auth_fingerprint,presentation,profile_revision,payload_json,opened_at,observed_at)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(record.sessionId,record.workerId,record.leaseGeneration,record.system,record.health,record.configFingerprint,
+            record.browserMode,record.profileRevision,json,record.openedAt,record.observedAt).changes
+        : database.prepare("UPDATE browser_sessions SET state=?,payload_json=?,observed_at=? WHERE id=? AND payload_json=?")
+          .run(record.health,json,record.observedAt,record.sessionId,canonicalJsonStringify(workerBrowserFromRow(priorRow))).changes;
+      if (changes !== 1) throw new Error("worker-browser-observation-state-conflict");
       return { result: record, changes: 1 };
     }),
-    browsers: (workerId: string) => database.prepare("SELECT record_json FROM worker_browsers WHERE worker_id=? ORDER BY rowid").all(WorkerIdSchema.parse(workerId)).map(parseBrowser),
+    browsers: (workerId: string) => database.prepare("SELECT * FROM browser_sessions WHERE worker_id=? ORDER BY rowid").all(WorkerIdSchema.parse(workerId)).map(workerBrowserFromRow),
   });
 }
 export type WorkerControlRepository = ReturnType<typeof createWorkerControlRepository>;
 
 export function validateWorkerControls(database: DatabaseSync): void {
   for (const row of database.prepare("SELECT * FROM worker_controls").all()) {
-    const record: WorkerControlRecord = parseControl(row);
-    if (row["record_key"] !== record.commandId || row["scope"] !== record.scope || row["created_at"] !== record.admittedAt) throw new Error("worker-control-storage-identity-mismatch");
+    const record = workerControlFromRow(row);
+    const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
+    if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
   }
-  for (const row of database.prepare("SELECT * FROM worker_browsers").all()) {
-    const record = parseBrowser(row);
-    if (row["record_key"] !== record.sessionId || row["worker_id"] !== record.workerId) throw new Error("worker-browser-storage-identity-mismatch");
-  }
+  for (const row of database.prepare("SELECT * FROM browser_sessions").all()) workerBrowserFromRow(row);
 }

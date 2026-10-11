@@ -579,7 +579,7 @@ own value schemas). Reader: `src/control/test-data.ts` for the tracked file and
 `src/infra/config/test-data-local.ts` for the private file (0600, no symlink, ≤64,000 bytes, unique
 keys, errors name keys only), capture-once `TestDataInputSource` with an opaque `sourceId` carried
 by the `test-data-local` protected-input binding. Retired names: `RETIRED_TEST_TARGET_PROTECTED_NAMES`
-in `src/domain/config/protected-settings-legacy.ts` (the frozen seven-name family and its pinned
+in the removed old-format protected-settings schema (the frozen seven-name family and its pinned
 schema hash, used only by migration and D331 historical readers) and
 `RETIRED_TEST_TARGET_ENVIRONMENT_KEYS` in the catalog, refused by name before any value is decoded.
 Credential document schemaVersion 2 (`src/infra/config/credential-store.ts`): the live five-name
@@ -1398,7 +1398,7 @@ parenthetical pointer too); the ledger row (`994837d1f65abd9b9e2f546b3ca52bff906
    is `blocked` by key; malformed is a defect by key; never a name or EID in the registry). Its
    SOURCE sentence ("in `.env`") is superseded by §D331.6 item 6; its "only test-target secret"
    sentence is read as "the only test-target secret OF SEPARATIONS": the person-lookup
-   `live-read` canary (`personLookupCanaryEid`, `docs/rebuild/migrations/person-lookup.md` §T1b, D318's arm)
+   `live-read` canary (`personLookupCanaryEid`, the workflow's task evidence §T1b, D318's arm)
    is the second member of the class, registered per workflow label exactly as D284/D300 require.
    The D300 ledger row carries the same dated note.
 7. **ref dashboard-surfaces §2.1** — the state-root tree still says `.tracker-rebuild/` (stale since

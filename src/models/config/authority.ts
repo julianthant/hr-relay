@@ -1,4 +1,3 @@
-import { ExplorerOverrideImportReceiptSchema } from "../dashboard/explorer-override.js";
 import { z } from "zod";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunRecordSchema, RunStateSchema } from "../run/record.js";
@@ -15,58 +14,47 @@ import {
 } from "../../rules/identity/ids.js";
 
 export const AuthorityTableNameSchema = z.enum([
-  "transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors",
-  "run_summaries", "summary_publication", "archive_transfers", "version_changes",
-  "database_state",
-  "explorer_overrides",
-  "workflow_runs",
-  "run_failures",
-  "run_results",
-  "diagnostic_snapshots",
-  "diagnostic_files",
-  "run_receipts",
-  "dryrun_results",
-  "generated_artifacts",
-  "provider_usage",
-  "provider_requests",
-  "workflow_workers",
-  "delegation_dependencies",
-  "run_delegations",
+  "database_states",
+  "database_upgrades",
+  "settings_snapshots",
   "commands",
   "command_audits",
-  "notifications", "notification_publications", "notification_health",
-  "settings_snapshots",
-  "app_settings",
-  "version_plans",
-  "checkpoint_payloads",
-  "run_checkpoints",
-  "workflow_run_requests",
-  "run_operations",
-  "run_operation_attempts",
-  "imported_artifacts",
-  "extracted_artifacts",
-  "version_bump_applications",
-  "archived_runs",
-  "worker_auth",
-  "worker_pools",
-  "worker_controls",
-  "worker_browsers",
-  "workflow_run_batches",
+  "settings",
+  "run_batches",
   "deleted_runs",
-  "database_upgrades",
+  "runs",
+  "run_requests",
+  "run_delegations",
+  "delegation_dependencies",
+  "run_checkpoints",
+  "gate_results",
+  "run_results",
+  "run_failures",
+  "run_receipts",
+  "write_intents",
+  "write_attempts",
+  "worker_pools",
+  "worker_slots",
+  "worker_leases",
+  "worker_controls",
+  "browser_sessions",
+  "auth_leases",
+  "notifications",
+  "notification_states",
+  "explorer_overrides",
+  "artifacts",
   "timeline_events",
-  "timeline_operation_sources",
-  "runtime_versions", "runtime_version_adoptions", "runtime_version_changes",
+  "diagnostic_snapshots",
+  "diagnostic_files",
+  "dryrun_results",
+  "run_search",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([]);
 
 export const TableNameSchema = z.union([AuthorityTableNameSchema, ProjectionTableNameSchema]);
 export const TableClassSchema = z.enum(["authority", "projection"]);
-/** Kept in the name grammar only for released backup/deletion compatibility. */
-const RETIRED_ARCHIVE_TABLES: readonly string[] = ["archived_runs", "version_plans", "version_bump_applications"];
-const CURRENT_AUTHORITY_TABLE_NAMES = AuthorityTableNameSchema.options.filter(name => !RETIRED_ARCHIVE_TABLES.includes(name));
-const ALL_TABLE_NAMES = [...CURRENT_AUTHORITY_TABLE_NAMES, ...ProjectionTableNameSchema.options];
+const ALL_TABLE_NAMES = [...AuthorityTableNameSchema.options, ...ProjectionTableNameSchema.options];
 
 const AuthorityTableSpecSchema = z.strictObject({
   name: AuthorityTableNameSchema,
@@ -118,7 +106,7 @@ const projection = (name: z.infer<typeof ProjectionTableNameSchema>) => ({
 });
 
 export const AUTHORITY_TABLE_REGISTRY = deepFreeze(AuthorityTableRegistrySchema.parse([
-  ...CURRENT_AUTHORITY_TABLE_NAMES.map(authority),
+  ...AuthorityTableNameSchema.options.map(authority),
   ...ProjectionTableNameSchema.options.map(projection),
 ]));
 
@@ -153,17 +141,10 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47), z.literal(48), z.literal(49), z.literal(50), z.literal(51), z.literal(52), z.literal(53), z.literal(54), z.literal(55)]),
+  toSchemaVersion: z.literal(1),
 });
 
-const AuthorityUpgradeBaselineV56Schema = AuthorityUpgradeRecordBaseSchema.extend({
-  upgradeId: z.literal("fresh"),
-  phase: z.literal("baseline"),
-  fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.literal(56),
-});
-
-const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
+const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
   upgradeId: FingerprintSchema,
   phase: z.enum(["planned", "committed", "settled"]),
   planDigest: FingerprintSchema,
@@ -172,85 +153,11 @@ const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.e
     sha256: FingerprintSchema,
     authorityGeneration: NonNegativeIntSchema,
   }),
-  settings: z.strictObject({
-    ordinaryRevisionBefore: PositiveIntSchema,
-    ordinaryRevisionAfter: PositiveIntSchema,
-    settingsFingerprintAfter: FingerprintSchema,
-    settingsSchemaHashAfter: FingerprintSchema,
-    protectedRevisionAfter: PositiveIntSchema,
-    protectedEntryNames: z.array(z.string().min(1)),
-  }),
-  tombstoneBackfill: z.strictObject({
-    fromRoots: NonNegativeIntSchema,
-    fromReconstructedRoots: NonNegativeIntSchema,
-    unknown: NonNegativeIntSchema,
-  }),
-  orphanGateRecordsRemoved: NonNegativeIntSchema,
-  historicalExposure: z.array(z.literal("operator.timekeeperName")),
-  envKeysToRemove: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)),
-});
-
-export const TombstoneBackfillCountsSchema = z.strictObject({
-  fromRoots: NonNegativeIntSchema,
-  fromReconstructedRoots: NonNegativeIntSchema,
-  unknown: NonNegativeIntSchema,
-  missingRunNumber: NonNegativeIntSchema,
-});
-
-/** Sqlite settings upgrade observations never authenticate or gate the independent credential store. */
-const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
-  format: z.literal(3),
-  historicalExposure: z.array(z.literal("operator.timekeeperName")),
-  tombstoneBackfill: TombstoneBackfillCountsSchema,
-  upgradeId: FingerprintSchema,
-  phase: z.enum(["committed", "settled"]),
-  toSchemaVersion: z.union([z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47), z.literal(48), z.literal(49), z.literal(50), z.literal(51), z.literal(52), z.literal(53), z.literal(54), z.literal(55)]),
-  backupManifest: z.string().min(1),
-  ordinaryRevision: PositiveIntSchema,
-  ordinaryFingerprint: FingerprintSchema,
-  orphanGateRecordsRemoved: NonNegativeIntSchema,
-  sourceFiles: z.array(z.string().min(1)),
-  credentialCommandId: CommandIdSchema,
-  credentialWriteId: z.uuid(),
-  importedKeys: z.array(z.string().min(1)),
-  envKeysToRemove: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/u)),
-  explorerImport: ExplorerOverrideImportReceiptSchema.optional(),
-  generatedImport: z.strictObject({manifestDigest: FingerprintSchema, copyDirectory: z.string().min(1), backupSha256: FingerprintSchema}).optional(),
-  timelineImport: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("fresh"), imported: z.literal(0), excludedDeleted: z.literal(0) }),
-    z.strictObject({ state: z.literal("imported"), manifestDigest: FingerprintSchema,
-      copyDirectory: z.string().min(1), backupSha256: FingerprintSchema,
-      imported: NonNegativeIntSchema, excludedDeleted: NonNegativeIntSchema }),
-  ]).optional(),
-}).superRefine((record, context) => {
-  if ((record.toSchemaVersion >= 51) !== (record.explorerImport !== undefined)) {
-    context.addIssue({ code: "custom", message: "Explorer import receipt must match its upgrade version" });
-  }
-  if ((record.toSchemaVersion >= 38) !== (record.timelineImport !== undefined)) {
-    context.addIssue({ code: "custom", message: "timeline import evidence must match its upgrade version" });
-  }
-  if (record.timelineImport?.state === "fresh" && record.fromSchemaVersion !== 0) {
-    context.addIssue({ code: "custom", message: "existing authority requires verified timeline source evidence" });
-  }
-});
-
-export const AuthorityCapabilityUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
-  format: z.literal(4),
-  phase: z.literal("settled"),
-  fromSchemaVersion: z.literal(55),
-  toSchemaVersion: z.literal(56),
-  sourceGeneration: NonNegativeIntSchema,
-  sourceFingerprint: FingerprintSchema,
-  backupManifest: z.string().min(1),
-  backupSha256: FingerprintSchema,
 });
 
 export const AuthorityUpgradeRecordSchema = z.union([
   AuthorityUpgradeBaselineRecordSchema,
-  AuthorityUpgradeBaselineV56Schema,
-  AuthorityUpgradeExecutionRecordSchema,
-  SqliteSettingsUpgradeRecordSchema,
-  AuthorityCapabilityUpgradeRecordSchema,
+  AuthorityForwardUpgradeRecordSchema,
 ]);
 export type AuthorityUpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 
@@ -292,7 +199,7 @@ export const RunExistenceSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), runId: RunIdSchema }),
   z.strictObject({
     state: z.literal("present"),
-    disposition: z.enum(["live", "archived"]),
+    disposition: z.literal("live"),
     run: RunRecordSchema,
   }),
   z.strictObject({ state: z.literal("deleted"), tombstone: DeletedRunRecordSchema }),
@@ -312,7 +219,7 @@ export const RunRecordRefusalSchema = z.discriminatedUnion("reason", [
     "parent-missing", "retry-of-missing", "tombstoned", "runtime-stale", "cursor-stale",
     "owned-by-worker", "lost", "replay-divergent", "heartbeat-live", "invalid-state",
     "source-deleted", "not-terminal", "already-archived", "workflow-unregistered",
-    "is-member", "use-archive-door", "retention-not-due", "policy-refused",
+    "is-member", "use-archive-door", "retention-not-due", "policy-refused", "shared-checkpoint", "unresolved-write",
   ]) }),
 ]);
 export type RunRecordRefusal = z.infer<typeof RunRecordRefusalSchema>;

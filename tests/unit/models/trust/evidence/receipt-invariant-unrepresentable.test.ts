@@ -26,6 +26,7 @@ const MANDATORY_FACT = {
 
 /** A receipt that PASSES — the control every case below mutates by one clause. */
 const VERIFIED_DONE = {
+  composition: 5,
   receiptId: UUID_1,
   runId: UUID_2,
   traceId: "on-120000-2222",

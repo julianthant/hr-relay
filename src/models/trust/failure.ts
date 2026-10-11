@@ -93,6 +93,10 @@ export const FailureRecordSchema = z.strictObject({
   action: FailureActionSchema.optional(),
   causeChain: z.array(FailureCauseSchema).min(1).max(12),
   diagnosticBundleId: DiagnosticBundleIdSchema.optional(),
+  debug: z.strictObject({
+    stack: z.string(), causes: z.array(z.string()).max(12),
+    originalBytes: z.number().int().nonnegative(), omittedBytes: z.number().int().nonnegative(),
+  }).optional(),
   remediation: z.array(RemediationActionSchema).min(1),
   /** Authority-only; every operator projection removes this classified evidence reference. */
   writeAuthorityReason: WriteAuthorityReasonSchema.optional(),

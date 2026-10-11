@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
 import { ExecutorSpanEventSchema } from "../../../src/backend/logs/span-emitter.js";
@@ -41,6 +42,7 @@ import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/s
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
 
 export const EXECUTOR_EID = EidSchema.parse("10873698");
@@ -67,6 +69,9 @@ export function openAuthorityHarness(): AuthorityHarness {
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
+  const config = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  assert.equal(config.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);
+  assert.equal(config.configFingerprint, QUEUED_RUN.envelope.configFingerprint);
   return {
     database,
     clock,
@@ -239,6 +244,7 @@ export function sessionFactoryHarness(
   let opens = 0;
   let logins = 0;
   const opensBySystem = new Map<string, number>();
+  const admittedSyntheticProfiles = new Map<string, number>();
   const closeReasons: BrowserSessionCloseReason[] = [];
   const trace: SessionFactoryTraceEntry[] = [];
   return {
@@ -252,15 +258,20 @@ export function sessionFactoryHarness(
           throw new Error(`session factory has no driver for ${input.system}`);
         }
         const driver = driverFactory(systemOpens);
+        if(!admittedSyntheticProfiles.has(input.system))admittedSyntheticProfiles.set(input.system,1);
+        const profileRevision=admittedSyntheticProfiles.get(input.system);
+        assert.ok(profileRevision!==undefined);
         const sessionId = BrowserSessionIdSchema.parse(
           `00000000-0000-4000-8000-${String(opens).padStart(12, "0")}`,
         );
         trace.push({ kind: "open", system: input.system, sessionId });
         return {
           sessionId,
+          profileRevision,
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
           configFingerprint: input.configFingerprint,
+          signInFingerprint: input.configFingerprint,
           ...(input.browserMode === undefined ? {} : { browserMode: input.browserMode }),
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,

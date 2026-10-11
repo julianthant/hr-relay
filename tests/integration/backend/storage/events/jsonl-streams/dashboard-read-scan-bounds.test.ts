@@ -4,11 +4,10 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
-import { appendEventStreamLine } from "../../../../../../src/backend/storage/events/jsonl-streams.js";
-import { createNoteJsonlWriter } from "../../../../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter } from "../../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { deterministicUuid } from "../../../../../../src/backend/runs/lifecycle/support.js";
-import { RunRecordSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
+import { type RunRecord } from "../../../../../../src/models/run/record.js";
 import {
   assertNoteWithinRunScope,
   runNotePartitionScope as sharedNotePartitionScope,
@@ -18,7 +17,6 @@ import type { RunCheckpointRecord } from "../../../../../../src/models/workflow/
 import {
   buildRunSection,
   createRunNoteScanCache,
-  runNotePartitionScope,
   type RunDetailQueryDeps,
   type RunNoteScanEntry,
 } from "../../../../../../src/backend/runs/queries/run-detail.js";
@@ -264,7 +262,6 @@ describe("a row reads its evidence receipt once", () => {
       summaries: ["a safe warning"],
     }));
     const legacyReceipt = { ...cleanReceiptOf({ seed: 4 }) };
-    delete legacyReceipt.composition;
     w.authority.receipts.set(uuidOf(4), legacyReceipt);
 
     const counted = countAuthorityReads(w, () => w.projection.buildActivityReportWire(
@@ -309,7 +306,7 @@ describe("a logs GET opens only its run partitions", () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   function depsOf(w: DashboardWorld): RunDetailQueryDeps {
-    return { runReader: w.runReader,
+    return { timeline: w.timeline, runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -319,7 +316,7 @@ describe("a logs GET opens only its run partitions", () => {
 
   /** `count` note lines for a run, written by the REAL writer at the clock's day. */
   function emitNotes(w: DashboardWorld, seed: number, count: number, from = 0): void {
-    const notes = createNoteJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     for (let index = 0; index < count; index += 1) {
       notes.emitNote({
         workflow: "person-lookup",
@@ -330,9 +327,14 @@ describe("a logs GET opens only its run partitions", () => {
     }
   }
 
-  /** Unreadable bytes in ONE `notes/` partition — the tripwire for a scan. */
   function poison(w: DashboardWorld, date: string): void {
-    appendEventStreamLine(w.stateRoot, "notes", "person-lookup", date, "{ not json at all");
+    const seed = date === "2026-08-03" ? 1 : date < "2026-08-03" ? 100 : 101;
+    if (seed !== 1 && w.authority.getRun(uuidOf(100)) === undefined) {
+      for (const foreignSeed of [100, 101]) { terminalDone(w, foreignSeed); emitNotes(w, foreignSeed, 1); }
+    }
+    const raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
+    try { const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get(); assert.equal(typeof trigger?.sql, "string"); raw.exec("DROP TRIGGER timeline_events_immutable; PRAGMA ignore_check_constraints=ON"); raw.prepare("UPDATE timeline_events SET payload_json='{}' WHERE run_id=? AND kind='note'").run(uuidOf(seed)); raw.exec(String(trigger?.sql)); }
+    finally { raw.close(); }
   }
 
   it("serves the run's notes without reading a distant partition of the same workflow", () => {
@@ -355,7 +357,8 @@ describe("a logs GET opens only its run partitions", () => {
     const w = world();
     terminalDone(w, 1);
     emitNotes(w, 1, 2);
-    appendEventStreamLine(w.stateRoot, "notes", "separations", "2026-08-03", "{ not json at all");
+    queuedEventOf(w, { seed: 102, workflow: "separations" });
+    poison(w, "2026-12-31");
     const section = buildRunSection(depsOf(w), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.equal(section.payload.notes.length, 2);
@@ -370,10 +373,7 @@ describe("a logs GET opens only its run partitions", () => {
     // logs tab just answered 500 has nothing to grep for.
     assert.throws(
       () => buildRunSection(depsOf(w), uuidOf(1), "logs"),
-      new RegExp(
-        `notes line ${join(w.stateRoot, "notes", "person-lookup-2026-08-03.jsonl").replaceAll(/[.\\/]/g, "\\$&")}:3 `
-        + "is not a readable note",
-      ),
+      /timeline-record-invalid/u,
     );
   });
 
@@ -388,32 +388,6 @@ describe("a logs GET opens only its run partitions", () => {
     const section = buildRunSection(depsOf(w), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.notes.map((note) => note.message), ["note 0", "note 1"]);
-  });
-
-  it("scopes to the run's own window, with a day of margin ABOVE it and none below", () => {
-    const w = world();
-
-    terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
-    const row = w.projection.runFold(uuidOf(1));
-    const authority = w.authority.getRun(uuidOf(1));
-    assert.ok(row !== undefined && authority !== undefined);
-    assert.deepEqual(runNotePartitionScope(uuidOf(1), row, authority), {
-      workflow: "person-lookup",
-      fromDate: "2026-08-03",
-      toDate: "2026-08-04",
-    });
-  });
-
-  it("refuses to choose partitions from an instant it cannot read", () => {
-    const w = world();
-    terminalDone(w, 1);
-    const row = w.projection.runFold(uuidOf(1));
-    const authority = w.authority.getRun(uuidOf(1));
-    assert.ok(row !== undefined && authority !== undefined);
-    assert.throws(
-      () => runNotePartitionScope(uuidOf(1), { ...row, lastEventAt: "not an instant" }, authority),
-      /refuses to decide which partitions it may skip/,
-    );
   });
 
   /* ── the producer half of the same contract ───────────────────────────── */
@@ -479,19 +453,19 @@ describe("a logs GET opens only its run partitions", () => {
       workflow: authority.envelope.workflow,
       instants: runRecordNoteScopeInstants(authority),
     });
-    const reader = runNotePartitionScope(uuidOf(1), row, authority);
+    const reader = sharedNotePartitionScope({ runId: uuidOf(1), workflow: authority.envelope.workflow, instants: [...runRecordNoteScopeInstants(authority), ...runRecordNoteScopeInstants(authority)] });
     assert.ok(reader.fromDate <= producer.fromDate, `${reader.fromDate} must not start after ${producer.fromDate}`);
     assert.ok(reader.toDate >= producer.toDate, `${reader.toDate} must not end before ${producer.toDate}`);
   });
 
-  it("does NOT serve a note written past the scope — the reader bound the assertion exists to refuse", () => {
+  it("refuses producer notes outside the admitted time scope before append", () => {
     const w = world();
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
     emitNotes(w, 1, 1);
     // Injected past the assertion, exactly as an unchecked producer would file
     // it: the line is on disk, in this run's own workflow, and unservable.
     w.clock.setWall(new Date(AT.getTime() + 2 * DAY_MS));
-    emitNotes(w, 1, 1, 1);
+    assert.throws(() => assertNoteWithinRunScope(authorityOf(w), { runId: uuidOf(1), workflow: "person-lookup", at: w.clock.now() }), /outside/u);
     const section = buildRunSection(depsOf(w), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.notes.map((note) => note.message), ["note 0"]);
@@ -518,7 +492,7 @@ describe("a logs GET opens only its run partitions", () => {
       system?: string;
     }>[],
   ): RunDetailQueryDeps {
-    return { runReader: w.runReader,
+    return { timeline: w.timeline, runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -668,7 +642,7 @@ describe("a logs GET opens only its run partitions", () => {
     });
     emitObserved("kuali/save-separation-finalization", "write", instantOffsetOf(0, 40));
     emitObserved("kuali/verify-separation-finalization", "read", instantOffsetOf(0, 50));
-    const deps: RunDetailQueryDeps = { runReader: w.runReader,
+    const deps: RunDetailQueryDeps = { timeline: w.timeline, runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -721,7 +695,7 @@ describe("a logs GET opens only its run partitions", () => {
 
   it("examines only this run's indexed span rows, excludes another run, and preserves legal retry attempts", () => {
     const w = world();
-    terminalDone(w, 1);
+    terminalDone(w, 1, { attempt: 2 });
     terminalDone(w, 2);
     observedEvent(w, { seed: 2, at: instantOffsetOf(0, 5) });
     observedEvent(w, { seed: 1, attempt: 1, at: instantOffsetOf(0, 10) });
@@ -736,13 +710,6 @@ describe("a logs GET opens only its run partitions", () => {
       spanPath: traceOf(1),
       cause: "recovery",
     });
-    const authority = w.authority.getRun(uuidOf(1));
-    assert.ok(authority !== undefined);
-    w.authority.put(RunRecordSchema.parse({
-      ...authority,
-      envelope: { ...authority.envelope, attempt: 2 },
-      version: authority.version + 1,
-    }));
     observedEvent(w, { seed: 1, attempt: 2, at: instantOffsetOf(0, 20) });
     assert.equal(w.projection.runLogSnapshot(uuidOf(1)).entries.length, 2);
     assert.equal(w.projection.runLogSnapshot(uuidOf(2)).entries.length, 1);
@@ -765,7 +732,7 @@ describe("a logs GET opens only its run partitions", () => {
     assert.deepEqual(section.payload.observations?.map((row) => row.kind), ["observed"]);
   });
 
-  it("keeps SQLite ingestion order when equal-time observations landed in different day files", () => {
+  it("keeps SQLite ingestion order when equal-time observations append on different days", () => {
     const w = world();
     terminalDone(w, 1);
     const observedAt = instantOffsetOf(0, 10);
@@ -785,7 +752,7 @@ describe("a logs GET opens only its run partitions", () => {
     terminalDone(w, 1);
     const authority = w.authority.getRun(uuidOf(1));
     assert.ok(authority !== undefined);
-    const notes = createNoteJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     notes.emitRunAction({
       workflow: "person-lookup",
       address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
@@ -800,7 +767,7 @@ describe("a logs GET opens only its run partitions", () => {
   it("serves classified note values in Logs", () => {
     const w = world();
     terminalDone(w, 1);
-    const notes = createNoteJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     notes.emitNote({
       workflow: "person-lookup",
       address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
@@ -816,70 +783,29 @@ describe("a logs GET opens only its run partitions", () => {
   it("refuses a same-run observation whose trace is not the run authority trace", () => {
     const w = world();
     terminalDone(w, 1);
-    observedEvent(w, { traceId: traceOf(2) });
-
-    assert.throws(
-      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "context-data"),
-      /run 0001.*span trace pl-100002-0002.*authority trace is pl-100001-0001/s,
-    );
+    assert.throws(() => observedEvent(w, { traceId: traceOf(2) }), /timeline-event-owner-mismatch/u);
   });
 
   it("refuses observed rows under a foreign workflow or outside the run's legal attempts", () => {
     const foreignWorkflow = world();
     terminalDone(foreignWorkflow, 1);
-    observedEvent(foreignWorkflow, { workflow: "separations" });
-    assert.throws(
-      () => buildRunSection(observedDepsOf(foreignWorkflow, [SEARCH_ORIGIN]), uuidOf(1), "context-data"),
-      /run 0001.*workflow separations.*authority names person-lookup/s,
-    );
-
+    assert.throws(() => observedEvent(foreignWorkflow, { workflow: "separations" }), /timeline-event-owner-mismatch/u);
     const foreignAttempt = world();
     terminalDone(foreignAttempt, 1);
-    observedEvent(foreignAttempt, { attempt: 2 });
-    assert.throws(
-      () => buildRunSection(observedDepsOf(foreignAttempt, [SEARCH_ORIGIN]), uuidOf(1), "context-data"),
-      /run 0001.*attempt 2.*legal attempts 1\.\.1/s,
-    );
+    assert.throws(() => observedEvent(foreignAttempt, { attempt: 2 }), /timeline-event-owner-mismatch/u);
   });
 
   it("refuses foreign note workflow and trace identities by source line", () => {
     const foreignWorkflow = world();
     terminalDone(foreignWorkflow, 1);
-    appendEventStreamLine(
-      foreignWorkflow.stateRoot,
-      "notes",
-      "person-lookup",
-      "2026-08-03",
-      JSON.stringify({
-        ts: instantOffsetOf(0, 10),
-        workflow: "separations",
-        pid: 4242,
-        runId: uuidOf(1),
-        attempt: 1,
-        traceId: traceOf(1),
-        spanPath: traceOf(1),
-        level: "step",
-        message: "foreign workflow",
-      }),
-    );
-    assert.throws(
-      () => buildRunSection(observedDepsOf(foreignWorkflow, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
-      /notes line .*:1 is filed in workflow person-lookup but names workflow separations/s,
-    );
+    const foreignNotes = createNoteTimelineWriter({ repository: foreignWorkflow.timeline, clock: foreignWorkflow.clock, pid: 4242 });
+    assert.throws(() => foreignNotes.emitNote({ workflow: "separations", address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) }, level: "step", message: "foreign workflow" }), /timeline-event-owner-mismatch/u);
 
     const foreignTrace = world();
     terminalDone(foreignTrace, 1);
-    const notes = createNoteJsonlWriter({ stateRoot: foreignTrace.stateRoot, clock: foreignTrace.clock, pid: 4242 });
-    notes.emitNote({
-      workflow: "person-lookup",
-      address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(2), spanPath: traceOf(2) },
-      level: "step",
-      message: "foreign trace",
-    });
-    assert.throws(
-      () => buildRunSection(observedDepsOf(foreignTrace, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
-      /run 0001.*note trace pl-100002-0002.*authority trace is pl-100001-0001/s,
-    );
+    const notes = createNoteTimelineWriter({ repository: foreignTrace.timeline, clock: foreignTrace.clock, pid: 4242 });
+    assert.throws(() => notes.emitNote({ workflow: "person-lookup", address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(2), spanPath: traceOf(2) }, level: "step", message: "foreign trace" }), /timeline-note-owner-mismatch/u);
+
   });
 
   it("orders equal-clock rows by their durable stream location and pages the combined list without a second scan", () => {
@@ -964,16 +890,20 @@ describe("a logs GET opens only its run partitions", () => {
     const noSpans = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(noSpans.section, "logs");
     assert.deepEqual(noSpans.payload.rows, []);
-    appendEventStreamLine(w.stateRoot, "spans", "person-lookup", "2026-08-03", "{ not json at all");
+    mkdirSync(join(w.stateRoot, "spans"), { recursive: true });
+    writeFileSync(join(w.stateRoot, "spans", "person-lookup-2026-08-03.jsonl"), "{ not json at all\n");
     w.projection.ingestFromTimeline();
     const unchanged = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(unchanged.section, "logs");
     assert.deepEqual(unchanged.payload.rows, []);
     observedEvent(w);
-    const raw = new DatabaseSync(join(w.stateRoot, "timeline.sqlite"));
+    const raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
     try {
-      raw.exec("DROP TRIGGER timeline_events_never_updated; PRAGMA ignore_check_constraints=ON");
-      raw.prepare("UPDATE timeline_events SET record_json='{}' WHERE cursor=(SELECT max(cursor) FROM timeline_events)").run();
+      const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get();
+      assert.equal(typeof trigger?.sql, "string");
+      raw.exec("DROP TRIGGER timeline_events_immutable; PRAGMA ignore_check_constraints=ON");
+      raw.prepare("UPDATE timeline_events SET payload_json='{}' WHERE cursor=(SELECT max(cursor) FROM timeline_events)").run();
+      raw.exec(String(trigger?.sql));
     } finally { raw.close(); }
     w.projection.rebuildFromTimeline();
     assert.throws(
@@ -985,7 +915,8 @@ describe("a logs GET opens only its run partitions", () => {
   it("does not open another workflow's span partition even when it is malformed", () => {
     const w = world();
     terminalDone(w, 1);
-    appendEventStreamLine(w.stateRoot, "spans", "separations", "2026-08-03", "{ not json at all");
+    mkdirSync(join(w.stateRoot, "spans"), { recursive: true });
+    writeFileSync(join(w.stateRoot, "spans", "separations-2026-08-03.jsonl"), "{ not json at all\n");
     const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.rows, []);
@@ -994,9 +925,9 @@ describe("a logs GET opens only its run partitions", () => {
 
 
 
-describe("version-bump freeze scans a run notes stream once", () => {
+describe("native logs snapshot scans a run once", () => {
   function depsOf(w: DashboardWorld): RunDetailQueryDeps {
-    return { runReader: w.runReader,
+    return { timeline: w.timeline, runReader: w.runReader,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -1008,7 +939,7 @@ describe("version-bump freeze scans a run notes stream once", () => {
   it("scans once across a whole page walk, and every page is the same list", () => {
     const w = world();
     terminalDone(w, 1);
-    const notes = createNoteJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     for (let index = 0; index < 450; index += 1) {
       notes.emitNote({
         workflow: "person-lookup",
@@ -1060,7 +991,7 @@ describe("version-bump freeze scans a run notes stream once", () => {
   it("re-reads the corpus on EVERY call when no cache is handed in", () => {
     const w = world();
     terminalDone(w, 1);
-    const notes = createNoteJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     const emit = (message: string): void => {
       notes.emitNote({
         workflow: "person-lookup",

@@ -62,7 +62,7 @@ it("admits and releases simultaneous installed children after a live mutex holde
     import { randomUUID } from "node:crypto";
     const { observeProcessIdentity } = await import(${JSON.stringify(locksUrl)});
     const root = process.argv[1];
-    const mutex = join(root, ".runtime-control", "admission-mutex");
+    const mutex = join(root, ".tracker/control", "admission-mutex");
     mkdirSync(mutex, { mode: 0o700 });
     const observed = observeProcessIdentity(process.pid);
     if (observed.state !== "alive") throw new Error("holder identity unavailable");
@@ -101,7 +101,7 @@ function initializedRoot(): string {
 }
 it.each(["live", "empty", "malformed", "unknown"] as const)("preserves %s owner custody without attempting abandoned-owner recovery", condition => {
   const root = initializedRoot();
-  const mutex = join(root, ".runtime-control", "admission-mutex");
+  const mutex = join(root, ".tracker/control", "admission-mutex");
   mkdirSync(mutex, { mode: 0o700 });
   if (condition !== "empty") {
     const observation = processLocks.observeProcessIdentity(process.pid);
@@ -118,11 +118,11 @@ it.each(["live", "empty", "malformed", "unknown"] as const)("preserves %s owner 
   else if (condition === "malformed") assert.throws(() => acquireEntrypointAdmission(root, "shared"), SyntaxError);
   else assert.throws(() => acquireEntrypointAdmission(root, "shared"), AdmissionMutexBusyError);
   assert.deepEqual(readdirSync(mutex).map(name => ({ name, bytes: readFileSync(join(mutex, name)) })), before);
-  assert.equal(existsSync(join(root, ".runtime-control", "admission-mutex-recovery")), false);
+  assert.equal(existsSync(join(root, ".tracker/control", "admission-mutex-recovery")), false);
 });
 it("propagates non-EEXIST mutex mkdir failures without translating them to busy", () => {
   const root = initializedRoot();
-  const mutex = join(root, ".runtime-control", "admission-mutex");
+  const mutex = join(root, ".tracker/control", "admission-mutex");
   const failure = Object.assign(new Error("injected mkdir access failure"), { code: "EACCES" });
   vi.mocked(filesystem.mkdirSync).mockImplementationOnce(() => { throw failure; });
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
@@ -135,9 +135,9 @@ it("refuses symlink mutex custody and preserves an immediate exclusive lease con
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), /installation lease busy/u);
   admission.release();
   const target = initializedRoot();
-  symlinkSync(join(target, ".runtime-control"), join(root, ".runtime-control", "admission-mutex"));
+  symlinkSync(join(target, ".tracker/control"), join(root, ".tracker/control", "admission-mutex"));
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), /unsafe directory/u);
-  assert.equal(existsSync(join(target, ".runtime-control", "installation.json")), true);
+  assert.equal(existsSync(join(target, ".tracker/control", "installation.json")), true);
 });
 
 it("propagates installation lstat access failure instead of treating the path as absent", () => {
@@ -146,3 +146,39 @@ it("propagates installation lstat access failure instead of treating the path as
   vi.mocked(filesystem.lstatSync).mockImplementationOnce(() => { throw failure; });
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
 });
+
+it("admits exactly one of sixteen singleton contenders paused at the same generation and preserves its owner through release", async () => {
+  const root = initializedRoot();
+  const locksUrl = pathToFileURL(join(process.cwd(), "src/backend/storage/sqlite/runtime-process-locks.ts")).href;
+  const processLockRoot = join(root, "singleton-contention");
+  const go = join(root, "publish-contenders");
+  const code = `
+    import { existsSync } from "node:fs";
+    import { join } from "node:path";
+    const { acquireRuntimeProcessLock } = await import(${JSON.stringify(locksUrl)});
+    const root = process.argv[1];
+    const wait = new Int32Array(new SharedArrayBuffer(4));
+    try {
+      const lock = acquireRuntimeProcessLock({ processLockRoot: join(root, "singleton-contention"), name: "server", pid: process.pid }, undefined, {
+        afterSingletonGenerationRead() { process.send({ state: "generation-read" });
+          while (!existsSync(join(root, "publish-contenders"))) Atomics.wait(wait, 0, 0, 10); }
+      });
+      process.on("message", () => { lock.release(); process.send({ state: "released" }); process.disconnect(); });
+      process.send({ state: "held", detail: String(process.pid) });
+    } catch (error) { process.send({ state: "refused", detail: error.message }); process.disconnect(); }
+  `;
+  const contenders = Array.from({ length: 16 }, () => launch(code, root));
+  assert.deepEqual((await Promise.all(contenders.map(value => value.next()))).map(value => value.state), Array.from({ length: 16 }, () => "generation-read"));
+  writeFileSync(go, "publish", { mode: 0o600, flag: "wx" });
+  const results = await Promise.all(contenders.map(value => value.next()));
+  const winnerIndex = results.findIndex(value => value.state === "held");
+  const winner = contenders[winnerIndex];
+  assert.ok(winner !== undefined);
+  assert.equal(results.filter(value => value.state === "held").length, 1);
+  assert.equal(results.filter(value => value.state === "refused").length, 15);
+  const snapshot = processLocks.observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: "0".repeat(64) });
+  assert.equal(snapshot.processLocks.server.state, "active");
+  assert.equal(snapshot.processLocks.server.state === "active" && snapshot.processLocks.server.pid, Number(results[winnerIndex]?.detail));
+  winner.child.send("release"); assert.equal((await winner.next()).state, "released");
+  assert.equal(processLocks.observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: "0".repeat(64) }).processLocks.server.state, "stopped");
+}, 30_000);

@@ -8,36 +8,25 @@ import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
 
 const PRIVATE_SQLITE_ADAPTERS = [
-  "src/backend/storage/compatibility/archive-upgrade-journal.ts",
-  "src/backend/storage/compatibility/backup-inspection.ts",
-  "src/backend/storage/sqlite/archive-compatibility.ts",
-  "src/backend/storage/sqlite/archive-database.ts",
   "src/backend/storage/sqlite/authority-database.ts",
-  "src/backend/storage/sqlite/backup-service.ts",
-  "src/backend/storage/sqlite/completion-conversion.ts",
-  "src/backend/storage/sqlite/explorer-override-conversion.ts",
+  "src/backend/storage/sqlite/backup-inspection.ts",
+  "src/backend/storage/sqlite/command-record-row.ts",
   "src/backend/storage/sqlite/explorer-overrides.ts",
   "src/backend/storage/sqlite/failure-resolution.ts",
-  "src/backend/storage/sqlite/foundation-retirement.ts",
   "src/backend/storage/sqlite/generated-artifacts.ts",
-  "src/backend/storage/sqlite/generated-conversion.ts",
   "src/backend/storage/sqlite/imported-artifacts.ts",
+  "src/backend/storage/sqlite/native-run-deletion.ts",
   "src/backend/storage/sqlite/notification-publications.ts",
-  "src/backend/storage/sqlite/provider-accounting.ts",
-  "src/backend/storage/sqlite/provider-storage.ts",
+  "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
   "src/backend/storage/sqlite/relocation-restore-candidate.ts",
-  "src/backend/storage/sqlite/run-evidence-ownership.ts",
   "src/backend/storage/sqlite/run-search-index.ts",
   "src/backend/storage/sqlite/run-summaries.ts",
-  "src/backend/storage/sqlite/runtime-versions.ts",
   "src/backend/storage/sqlite/settings-activation.ts",
   "src/backend/storage/sqlite/settings-storage.ts",
-  "src/backend/storage/sqlite/stopped-database-conversion.ts",
-  "src/backend/storage/sqlite/timeline-conversion.ts",
   "src/backend/storage/sqlite/timeline-repository.ts",
   "src/backend/storage/sqlite/transaction-selection.ts",
   "src/backend/storage/sqlite/worker-control.ts",
-  "src/backend/storage/maintenance/upgrade.ts",
+  "src/backend/storage/sqlite/worker-slots.ts",
 ];
 const ADAPTER_PATH = "src/backend/storage/sqlite/authority-database.ts";
 
@@ -60,10 +49,32 @@ function publicSqliteLeaks(file: string): readonly string[] {
     const symbol = type.getSymbol();
     if (symbol?.name === "DatabaseSync" || type.aliasSymbol?.name === "DatabaseSync") return true;
     if (type.isUnionOrIntersection()) return type.types.some(member => rawType(member, location, seen, activeSymbols));
+    if (type.aliasTypeArguments?.some(argument => rawType(argument, location, seen, activeSymbols))) return true;
+    if ((type.flags & ts.TypeFlags.TypeParameter) !== 0) {
+      const constraint = checker.getBaseConstraintOfType(type);
+      return constraint !== undefined && rawType(constraint, location, seen, activeSymbols);
+    }
+    if ((type.flags & ts.TypeFlags.Conditional) !== 0) {
+      const { trueType, falseType } = (type as ts.ConditionalType).root.node;
+      return [trueType, falseType].some(branch => rawType(checker.getTypeFromTypeNode(branch), branch, seen, activeSymbols));
+    }
+    if ((type.flags & ts.TypeFlags.IndexedAccess) !== 0) {
+      return rawType((type as ts.IndexedAccessType).objectType, location, seen, activeSymbols);
+    }
     if ((type.flags & ts.TypeFlags.Object) === 0) return false;
-    // Inspect generic payloads before cutting recursive container prototypes.
-    if (((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0
-      && checker.getTypeArguments(type as ts.TypeReference).some(argument => rawType(argument, location, seen, activeSymbols))) return true;
+    if (((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Mapped) !== 0) {
+      for (const declaration of symbol?.declarations ?? []) {
+        const mapped = ts.isMappedTypeNode(declaration) ? declaration
+          : ts.isTypeAliasDeclaration(declaration) && ts.isMappedTypeNode(declaration.type) ? declaration.type : undefined;
+        if (mapped?.type !== undefined && rawType(checker.getTypeFromTypeNode(mapped.type), mapped.type, seen, activeSymbols)) return true;
+      }
+    }
+    // Check each concrete payload, then visit the generic declaration instead of fluent wrapper permutations.
+    if (((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0) {
+      const reference = type as ts.TypeReference;
+      if (checker.getTypeArguments(reference).some(argument => rawType(argument, location, seen, activeSymbols))) return true;
+      if (reference.target !== type) return rawType(reference.target, location, seen, activeSymbols);
+    }
     if (symbol !== undefined && (activeSymbols.has(symbol)
       || symbol.declarations?.every(declaration => /\/typescript\/lib\/lib\.[^/]+\.d\.ts$/u.test(declaration.getSourceFile().fileName.replaceAll("\\", "/"))) === true)) return false;
     if (symbol !== undefined) activeSymbols.add(symbol);
@@ -158,5 +169,18 @@ it("allows closed results from private local SQLite use and rejects direct, alia
       writeFileSync(file, header + body + '}');
       assert.ok(publicSqliteLeaks(file).length > 0, body);
     }
+    for (const body of [
+      'open<T>(): T extends string ? { raw: DatabaseSync } : string { throw new Error("fixture"); }',
+      'open() { class Holder<T> { readonly value?: T; readonly raw = new DatabaseSync(); } return new Holder<string>(); }',
+      'open() { class Holder<T> { value!: { [K in keyof T]: DatabaseSync }; } return new Holder<{ safe: string }>(); }',
+      'open() { type Fields<T> = { [K in keyof T]: DatabaseSync }; class Holder<T> { value!: Fields<T>; } return new Holder<{ safe: string }>(); }',
+      'open() { class Holder<T> { value!: { [K in keyof T]: K extends string ? DatabaseSync : never }[keyof T]; } return new Holder<{ safe: string }>(); }',
+      'open<T extends { nested: DatabaseSync }>(input: T) { return Promise.resolve(new Map([["raw", input]])); }',
+    ]) {
+      writeFileSync(file, header + body + '}');
+      assert.ok(publicSqliteLeaks(file).length > 0, body);
+    }
+    writeFileSync(file, header + 'open() { class Holder<T> { value!: { [K in keyof T]: T[K] }; } return new Holder<{ safe: string }>(); } }');
+    assert.deepEqual(publicSqliteLeaks(file), []);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

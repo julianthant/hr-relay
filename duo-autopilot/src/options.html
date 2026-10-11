@@ -195,45 +195,6 @@
         <div class="group" id="credGroup"></div>
       </section>
 
-      <!-- Enrollment (primary path for a new user) -->
-      <section class="block">
-        <div class="sec-label">Set up a credential</div>
-        <div class="group">
-          <button class="row tap" id="actEnroll">
-            <span class="ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"/><path d="M9.5 12h5"/><path d="M12 9.5v5"/></svg>
-            </span>
-            <div class="row-main">
-              <div class="row-title">Enroll via Duo</div>
-              <div class="row-desc">Capture a new credential from Duo’s “Add a device” page</div>
-            </div>
-            <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
-          </button>
-
-          <div class="enroll-panel" id="enrollPanel" hidden>
-            <div id="enrollChoose">
-              <p class="enroll-hint">Which factor will you add in Duo?</p>
-              <div class="paste-actions">
-                <button class="btn primary" id="enrollInternal">Touch ID</button>
-                <button class="btn" id="enrollUsb">Security key</button>
-              </div>
-            </div>
-            <div id="enrollArmed" hidden>
-              <p class="enroll-hint"><b>Armed</b> — capturing your next <span id="enrollFactorName">Touch&nbsp;ID</span> enrollment. In another tab:</p>
-              <ol class="enroll-steps">
-                <li>Start any UCSD login and reach the Duo prompt.</li>
-                <li>Pick <b>Other options → Manage devices</b>; re-approve once with your phone.</li>
-                <li>Choose <b>Add a device</b> → the factor above. Autopilot captures it automatically.</li>
-              </ol>
-              <div class="paste-actions">
-                <button class="btn" id="enrollCancel">Cancel</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <p class="msg" id="enrollMsg" aria-live="polite"></p>
-      </section>
-
       <!-- Settings group -->
       <section class="block">
         <div class="sec-label">Autopilot</div>
@@ -275,46 +236,6 @@
       <section class="block">
         <div class="sec-label">Credential</div>
         <div class="group">
-          <button class="row tap" id="actImport">
-            <span class="ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
-            </span>
-            <div class="row-main">
-              <div class="row-title">Import from packaged file</div>
-              <div class="row-desc">Loads credentials/duo-webauthn.json from the unpacked folder</div>
-            </div>
-            <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
-          </button>
-
-          <button class="row tap" id="actPaste">
-            <span class="ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
-            </span>
-            <div class="row-main">
-              <div class="row-title">Paste JSON…</div>
-            </div>
-            <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
-          </button>
-
-          <div class="paste-editor" id="pasteEditor" hidden>
-            <textarea id="pasteArea" placeholder='{ "credentials": [ … ] }' spellcheck="false"></textarea>
-            <div class="paste-actions">
-              <button class="btn primary" id="pasteSave">Save</button>
-              <button class="btn" id="pasteCancel">Cancel</button>
-            </div>
-          </div>
-
-          <button class="row tap" id="actResync">
-            <span class="ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-            </span>
-            <div class="row-main">
-              <div class="row-title">Resync signCount</div>
-              <div class="row-desc">Bump counters to 1,000,000 if Duo stalls</div>
-            </div>
-            <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
-          </button>
-
           <button class="row tap danger" id="actClear">
             <span class="ico">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>

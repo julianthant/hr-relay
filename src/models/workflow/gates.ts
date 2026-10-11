@@ -6,6 +6,7 @@ import {
   CommandIdSchema,
   FingerprintSchema,
   GateIdSchema,
+  NodeIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   RunIdSchema,
@@ -14,6 +15,7 @@ import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-valu
 
 const GateResultRecordFields = {
   runId: RunIdSchema,
+  nodeId: NodeIdSchema,
   gateId: GateIdSchema,
   commandId: CommandIdSchema,
   expectedVersion: PositiveIntSchema,
@@ -30,6 +32,7 @@ export const OperatorGateResultRecordSchema = z.strictObject({
 /** A non-operator settlement keeps provider/event identity without inventing a person or command. */
 export const SourceGateResultRecordSchema = z.strictObject({
   runId: RunIdSchema,
+  nodeId: NodeIdSchema,
   gateId: GateIdSchema,
   expectedVersion: PositiveIntSchema,
   resolvedAt: IsoInstantSchema,
@@ -72,6 +75,7 @@ export function sourceGateResultRecordSchema<ResultSchema extends z.ZodType>(
 ) {
   return z.strictObject({
     runId: RunIdSchema,
+  nodeId: NodeIdSchema,
     gateId: GateIdSchema,
     expectedVersion: PositiveIntSchema,
     resolvedAt: IsoInstantSchema,

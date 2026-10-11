@@ -1,7 +1,9 @@
-import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
+import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
+import { protectedSecretSource } from "./protected-secret-source.js";
+import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -49,7 +51,7 @@ import {
 } from "../../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { SeparationsCanonicalInput, SeparationsInput } from "../../../src/workflows/separations/workflow.js";
-import { UUID_2, UUID_3, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
+import { UUID_2, UUID_3, CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
   ManualScheduler,
@@ -75,7 +77,7 @@ export const COMPOSITION_RUN_ID = UUID_2;
 export const COMPOSITION_ITEM_ID = UUID_3;
 export const COMPOSITION_NOW = "2026-08-14T10:00:00.000Z";
 export const COMPOSITION_IMPL_FINGERPRINT = FingerprintSchema.parse("c".repeat(64));
-export const COMPOSITION_CONFIG_FINGERPRINT = FingerprintSchema.parse("b".repeat(64));
+export const COMPOSITION_CONFIG_FINGERPRINT = FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint);
 
 export const SWEEP_NODE = "clear-pending";
 export const TERMINATION_NODE = "file-termination";
@@ -272,6 +274,10 @@ export function compositionNode(id: string): Extract<RuntimeFlowNode, { kind: "t
 export function compositionQueuedRun(
   options: Readonly<{ dryRun?: boolean }> = {},
 ): Record<string, unknown> {
+  const admitted = admitProtectedInput(separationsDescriptor,
+    [{ documentNumber: COMPOSITION_DOCUMENT, searchTimeoutMs: 15_000 }],
+    protectedSecretSource({ timekeeperName: COMPOSITION_TIMEKEEPER }))[0];
+  if (admitted === undefined) throw new Error("fixture protected input admission missing");
   return {
     envelope: {
       runId: COMPOSITION_RUN_ID,
@@ -282,7 +288,7 @@ export function compositionQueuedRun(
       contractFingerprint: separationsDescriptor.contractFingerprint,
       resolvedInstance: { kuali: "prod", ucpath: "prod", "new-kronos": "prod" },
       configFingerprint: COMPOSITION_CONFIG_FINGERPRINT,
-      configSnapshotId: UUID_4,
+      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
       shape: "single",
       priority: "bulk",
       dryRun: options.dryRun ?? false,
@@ -290,10 +296,11 @@ export function compositionQueuedRun(
       enqueuedAt: COMPOSITION_NOW,
     },
     input: {
-      raw: { ...COMPOSITION_RUN_INPUT },
+      raw: admitted.raw,
       parsed: {
         schemaHash: deriveSchemaHash(SeparationsCanonicalInput, "output"),
-        value: { ...COMPOSITION_RUN_INPUT },
+        value: admitted.admitted,
+        protectedBindings: admitted.bindings,
       },
       ingressSchemaHash: deriveSchemaHash(SeparationsInput, "input"),
     },
@@ -330,7 +337,7 @@ export function compositionHarness(options: Readonly<{
   kualiCommitDoesNotPersist?: boolean;
 }> = {}): CompositionHarness {
   const clock = manualClock(new Date(COMPOSITION_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-separations-composition-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-separations-composition-"));
   const database = AuthorityDatabase.open(
     {
       path: join(root, "authority.sqlite"),
@@ -339,6 +346,7 @@ export function compositionHarness(options: Readonly<{
     },
     clock,
   );
+  testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: separationsDescriptor, poolIndex: 1 });
   const ucpath = createUcpathSmartHrFakeWorld({
     emplId: COMPOSITION_EID,
     displayedName: COMPOSITION_UCPATH_NAME,

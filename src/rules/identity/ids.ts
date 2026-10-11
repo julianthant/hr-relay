@@ -73,10 +73,6 @@ export const CommandAuditIdSchema = brandedText<"CommandAuditId">(UUID_PATTERN, 
 export const OutboxIdSchema = brandedText<"OutboxId">(UUID_PATTERN, "outbox id must be a UUID");
 export const WriteIntentIdSchema = brandedText<"WriteIntentId">(UUID_PATTERN, "write intent id must be a UUID");
 export const WriteAttemptIdSchema = brandedText<"WriteAttemptId">(UUID_PATTERN, "write attempt id must be a UUID");
-export const ProviderAdmissionIdSchema = brandedText<"ProviderAdmissionId">(
-  UUID_PATTERN,
-  "provider admission id must be a UUID",
-);
 export const RowRejectIdSchema = brandedText<"RowRejectId">(UUID_PATTERN, "row reject id must be a UUID");
 
 /** A detected source column's identity: the header AND its occurrence, never the position, so duplicates stay distinct and the id survives a reordered export. */
@@ -208,7 +204,6 @@ export type CommandAuditId = z.infer<typeof CommandAuditIdSchema>;
 export type OutboxId = z.infer<typeof OutboxIdSchema>;
 export type WriteIntentId = z.infer<typeof WriteIntentIdSchema>;
 export type WriteAttemptId = z.infer<typeof WriteAttemptIdSchema>;
-export type ProviderAdmissionId = z.infer<typeof ProviderAdmissionIdSchema>;
 export type RowRejectId = z.infer<typeof RowRejectIdSchema>;
 export type SourceColumnId = z.infer<typeof SourceColumnIdSchema>;
 export type IntakeTargetFieldId = z.infer<typeof IntakeTargetFieldIdSchema>;

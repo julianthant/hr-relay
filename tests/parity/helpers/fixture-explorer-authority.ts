@@ -21,7 +21,6 @@ import type { ExplorerQueryDeps } from "../../../src/backend/runs/queries/explor
 import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
 import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../support/fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { PARITY_DIST_DIR } from "./bundle.js";
@@ -38,10 +37,10 @@ export async function startExplorerAuthorityServer(fault?: "empty-registry" | "u
     lifecycle: new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: unexpected }),
     authority: database, appVersion: "0.1.0", clock, ids: sequentialIdFactory("d"),
     descriptors: { resolve: id => WORKFLOW_MODULES.find(m => m.descriptor.id === id)?.descriptor },
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS, configIdentity: UNSTORED_CONFIG_IDENTITY,
+ configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { resolvePresent: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { planWorkerCount: unexpected, spawnWorker: unexpected, refreshBrowser: unexpected, reopenBrowser: unexpected },
+    workerRuntime: { pool: { planPoolWorkerCount: unexpected, spawnPoolWorker: unexpected, refreshPoolBrowser: unexpected, reopenPoolBrowser: unexpected, stopPoolWorker: unexpected, pausePoolWorker: unexpected, resumePoolWorker: unexpected } },
     explorerEdits: composition.executor,
   });
   const commands = createDashboardCommandService({ kernel, projection: { ingestFromTimeline: unexpected, refreshRun: unexpected } });

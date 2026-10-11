@@ -1,19 +1,19 @@
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../../../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import {
-  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
+  ATOMIC_WRITE_COMMIT as NATIVE_ATOMIC_WRITE_COMMIT,
   NOW,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
+const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(NATIVE_ATOMIC_WRITE_COMMIT);
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe("dry-run write-safety evidence query", () => {
   it("counts only rows joined from the named run's intents", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-counts-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-dry-run-counts-"));
     roots.push(root);
     const database = AuthorityDatabase.open(
       { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "dry-run-count-test" },
@@ -46,7 +46,7 @@ describe("dry-run write-safety evidence query", () => {
       { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 },
     );
 
-    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, join(root, "state.db"));
     database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     assert.deepEqual(
       database.authority.writeIntents.countDryRunEvidenceByRun(WRITE_INTENT_ATTEMPTING.runId),

@@ -10,7 +10,7 @@ export const TransactionExportRequestSchema = TransactionHistorySelectionSchema.
 /** The public presentation is frozen before opening the caller-owned output with O_EXCL. */
 export function exportTransactions(history: TransactionHistory, input: unknown) {
   const request = TransactionExportRequestSchema.parse(input);
-  const snapshot = history.query({ from: request.from, to: request.to, ...(request.system === undefined ? {} : { system: request.system }) });
+  const snapshot = history.query({ from: request.from, to: request.to, ...(request.system === undefined ? {} : { system: request.system }), ...(request.runId === undefined ? {} : { runId: request.runId }) });
   const rows = snapshot.rows.map(({ eventId, operationId, generation, runId, localDate, presentation }) =>
     ({ eventId, operationId, generation, runId, localDate, presentation }));
   const content = { version: 1, selection: snapshot.range, rows };

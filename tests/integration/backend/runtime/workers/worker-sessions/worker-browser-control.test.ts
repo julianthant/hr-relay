@@ -1,6 +1,7 @@
+import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it } from "vitest";
@@ -29,7 +30,7 @@ function harness() {
   const factory: WorkerBrowserSessionFactory = { async open(input) {
     opened.push(input);
     const sessionId = BrowserSessionIdSchema.parse(randomUUID());
-    return { sessionId, system: input.system, instance: input.instance, configFingerprint: input.configFingerprint,
+    return { sessionId, system: input.system, instance: input.instance, configFingerprint: input.configFingerprint, signInFingerprint: input.configFingerprint, profileRevision: 1,
       browserMode: input.browserMode, profileDirectory: `/fixture/${input.system}/${input.configFingerprint}`, acceptDownloads: input.acceptDownloads, exclusive: input.exclusive,
       driver: { system: input.system }, authentication: { async authenticate() { if (loginFails) throw new Error("fixture-authentication-failed"); return "already-authenticated"; } },
       async reset() { await resetHold; if (resetFails) throw new Error("fixture-reset-failed"); },
@@ -124,18 +125,21 @@ describe("exact worker browser controls", () => {
 
 describe("durable worker control admission", () => {
   it("survives heartbeat changes, consumes a basis once across connections, and retains exact request/outcome", () => {
-    const root = mkdtempSync(join(tmpdir(), "worker-control-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "worker-control-"));
     const clock = manualClock(new Date(NOW));
     const first = AuthorityDatabase.open({ path: join(root, "authority.db"), busyTimeoutMs: 250, migrationOwner: "test" }, clock);
     const second = AuthorityDatabase.open({ path: join(root, "authority.db"), busyTimeoutMs: 250, migrationOwner: "test" }, clock);
     try {
+      seedSyntheticRuntimeConfig(first);
+      first.authority.workerPools.plan({workflow:WORKFLOW,expectedVersion:0,desiredWorkers:1,requestedBy:"local-operator",now:NOW});
+      first.authority.workerSlots.allocate({workflow:WORKFLOW,poolIndex:1,commandId:null,now:NOW});
       first.authority.workerLeases.start({ workerId: WORKER, workflow: WORKFLOW, browserSystems: ["crm"], processId: 42, requestedBy: "local-operator", now: NOW });
       first.authority.workerLeases.reportLifecycle({ workerId: WORKER, leaseGeneration: 1, lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW }, now: NOW });
       const commandId = randomUUID();
       const request = { commandId, family: "worker-browser", type: "pause-worker", source: "dashboard", requestedAt: NOW, requestedBy: "local-operator",
         target: { workerId: WORKER, expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } };
       first.withAuthorityTransaction(r => {
-        r.workerLeases.reserveControl(WORKER, request.target.controlBasis, commandId, NOW);
+        r.commands.insert(request); r.workerLeases.reserveControl(WORKER, request.target.controlBasis, commandId, NOW);
         r.workerControls.admit({ commandId, request, scope: "worker-pool:person-lookup", executorId: randomUUID(), admittedAt: NOW, expiresAt: "2026-09-18T18:03:00.000Z", basisVersion: 2, phase: { state: "admitted" } });
       });
       assert.throws(() => second.authority.workerLeases.reserveControl(WORKER, request.target.controlBasis, randomUUID(), NOW), /basis-conflict/);
@@ -150,16 +154,19 @@ describe("durable worker control admission", () => {
   });
 
   it("executes a ready exact-session request once and retains its result after another connection loses acknowledgement", async () => {
-    const h = harness(); const root = mkdtempSync(join(tmpdir(), "worker-channel-"));
+    const h = harness(); const root = mkdtempSync(join(realpathSync(tmpdir()), "worker-channel-"));
     const db = AuthorityDatabase.open({ path: join(root, "authority.db"), busyTimeoutMs: 250, migrationOwner: "test" }, h.clock);
     try {
       const sessionId = await h.warm();
+      seedSyntheticRuntimeConfig(db);
+      db.authority.workerPools.plan({workflow:WORKFLOW,expectedVersion:0,desiredWorkers:1,requestedBy:"local-operator",now:NOW});
+      db.authority.workerSlots.allocate({workflow:WORKFLOW,poolIndex:1,commandId:null,now:NOW});
       db.authority.workerLeases.start({ workerId: WORKER, workflow: WORKFLOW, browserSystems: ["crm"], processId: 42, requestedBy: "local-operator", now: NOW });
       db.authority.workerLeases.reportLifecycle({ workerId: WORKER, leaseGeneration: 1, lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW }, now: NOW });
       const commandId = randomUUID();
       const request = { commandId, family: "worker-browser", type: "reopen-browser", source: "dashboard", requestedAt: NOW, requestedBy: "local-operator",
         target: { workerId: WORKER, browserSessionId: sessionId, expectedVersion: 2, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } };
-      db.withAuthorityTransaction(r => { r.workerLeases.reserveControl(WORKER, request.target.controlBasis, commandId, NOW);
+      db.withAuthorityTransaction(r => { r.commands.insert(request); r.workerLeases.reserveControl(WORKER, request.target.controlBasis, commandId, NOW);
         r.workerControls.admit({ commandId, request, scope: "worker-pool:person-lookup", executorId: randomUUID(), admittedAt: NOW, expiresAt: "2026-09-18T18:03:00.000Z", basisVersion: 2, phase: { state: "admitted" } });
         r.workerControls.transition(commandId, "admitted", { state: "ready" }); });
       const consume = createWorkerBrowserControl({ database: db, workerId: WORKER, leaseGeneration: 1, clock: h.clock, signal: SIGNAL });
@@ -172,17 +179,20 @@ describe("durable worker control admission", () => {
 
 describe("worker delivery fencing", () => {
   it.each(["expired", "generation", "revision", "busy", "replaced", "effect-failure"] as const)("retains %s evidence and cannot deliver a deferred or duplicate effect", async scenario => {
-    const h=harness(); let bound = false; const root=mkdtempSync(join(tmpdir(),"worker-fence-"));
+    const h=harness(); let bound = false; const root=mkdtempSync(join(realpathSync(tmpdir()),"worker-fence-"));
     const db=AuthorityDatabase.open({path:join(root,"authority.db"),busyTimeoutMs:250,migrationOwner:"test"},h.clock);
     try {
       const sessionId=await h.warm();
+      seedSyntheticRuntimeConfig(db);
+      db.authority.workerPools.plan({workflow:WORKFLOW,expectedVersion:0,desiredWorkers:1,requestedBy:"local-operator",now:NOW});
+      db.authority.workerSlots.allocate({workflow:WORKFLOW,poolIndex:1,commandId:null,now:NOW});
       db.authority.workerLeases.start({workerId:WORKER,workflow:WORKFLOW,browserSystems:["crm"],processId:42,requestedBy:"local-operator",now:NOW});
       db.authority.workerLeases.reportLifecycle({workerId:WORKER,leaseGeneration:1,lifecycle:{state:"idle",startedAt:NOW,heartbeatAt:NOW},now:NOW});
       const commandId=randomUUID();
       const request={commandId,family:"worker-browser",type:"refresh-browser",source:"dashboard",requestedAt:NOW,requestedBy:"local-operator",
         target:{workerId:WORKER,browserSessionId:scenario==="replaced"?randomUUID():sessionId,expectedVersion:2,controlBasis:{leaseGeneration:1,controlRevision:1}}};
       db.withAuthorityTransaction(r=>{
-        r.workerLeases.reserveControl(WORKER,request.target.controlBasis,commandId,NOW);
+        r.commands.insert(request);r.workerLeases.reserveControl(WORKER,request.target.controlBasis,commandId,NOW);
         r.workerControls.admit({commandId,request,scope:"worker-pool:person-lookup",executorId:randomUUID(),admittedAt:NOW,expiresAt:scenario==="expired"?NOW:"2026-09-18T18:03:00.000Z",basisVersion:2,phase:{state:"admitted"}});
         r.workerControls.transition(commandId,"admitted",{state:"ready"});
       });

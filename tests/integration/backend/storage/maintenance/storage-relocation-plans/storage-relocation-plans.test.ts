@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { createStorageRelocationPlanReader } from "../../../../../../src/backend/storage/maintenance/storage-relocation-plans.js";
 import { executeStorageRelocationCommand } from "../../../../../../src/backend/runs/commands/command-kernel.js";
@@ -13,28 +13,31 @@ import {
 } from "../../../../../../src/rules/commands/commands.js";
 import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
 import { acquireInstallation } from "../../../../../../src/backend/storage/admission/installation.js";
-import { acquireRuntimeRestoreAdmission } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { relocate } from "../../../../../support/helpers/storage/storage-relocation-fixture.js";
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { resolveConfigWithProvenance } from "../../../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
-import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
-import { ConfigSnapshotWriteSchema } from "../../../../../../src/models/config/snapshot.js";
+
 import { acquireEntrypointAdmission } from "../../../../../../src/backend/storage/admission/bootstrap-admission.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
 function fixture() {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-plan-")));
-  cleanups.push(() => rmSync(workspace, { recursive: true, force: true }));
-  const pair = { stateRoot: join(workspace, ".tracker"), artifactRoot: join(workspace, ".tracker", "artifacts") };
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "relocation-plan-")));
+  const workspace = join(root, "workspace");
+  mkdirSync(workspace, { mode: 0o700 });
+  cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+  const pair = { stateRoot: join(workspace, ".tracker/data"), artifactRoot: join(workspace, ".tracker/data", "artifacts") };
   const adoption = acquireEntrypointAdmission(workspace, "exclusive"); adoption.release();
   const lease = acquireInstallation(workspace, "shared"); cleanups.push(() => lease.release());
   const admission = RuntimeAdmission.fromInstallationLease(lease);
   const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
   const database = AuthorityDatabase.open(admission, { path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
   cleanups.push(() => database.close());
+  const initial = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, admission);
+  database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1, fingerprint: initial.fingerprint,
+    config: initial.config, provenance: initial.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const producer = createStorageRelocationPlanReader({ authority: database, admission, workspace });
   const execute = (value: unknown) => executeStorageRelocationCommand({ authority: database, clock,
     ids: { uuid: randomUUID }, storageRelocationPlans: producer }, value);
@@ -47,7 +50,7 @@ function target(f: PlanContext, expectedRevision: number) {
     sourcePair: { stateRoot: f.lease.locator.stateRoot, artifactRoot: f.lease.locator.artifactRoot }, expectedRevision };
 }
 function plan(f: PlanContext, expectedRevision: number, desiredPair = {
-  stateRoot: join(f.workspace, "moved-state"), artifactRoot: join(f.workspace, "moved-state", "artifacts"),
+  stateRoot: join(dirname(f.workspace), "moved-state"), artifactRoot: join(dirname(f.workspace), "moved-state", "artifacts"),
 }): StorageRelocationCommandRequest {
   const basis = target(f, expectedRevision);
   const request = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation", type: "plan-storage-relocation",
@@ -66,55 +69,12 @@ function cancel(f: PlanContext, expectedRevision: number, pending: NonNullable<R
   return StorageRelocationCommandRequestSchema.parse({ ...request, payload: { ...request.payload,
     requestFingerprint: storageRelocationRequestFingerprint(request) } });
 }
-function activateArtifactPlan(f: ReturnType<typeof fixture>, request: StorageRelocationCommandRequest,
-  bindingPatch: Partial<{ commandId: string; requestFingerprint: string }> = {}) {
+async function activateArtifactPlan(f: ReturnType<typeof fixture>, request: StorageRelocationCommandRequest) {
   if (request.type !== "plan-storage-relocation") throw new Error("expected plan");
   f.database.close();
   f.lease.release();
-  const held = acquireRuntimeRestoreAdmission({ processLockRoot: join(f.workspace, ".tracker", "locks"), pid: process.pid });
-  const moving = acquireInstallation(f.workspace, "exclusive");
+  await relocate(f.workspace, request.commandId);
   const destination = request.payload.desiredPair;
-  const binding = { commandId: request.commandId, revision: request.target.expectedRevision + 1,
-    expectedRevision: request.target.expectedRevision, requestFingerprint: request.payload.requestFingerprint,
-    desiredDigest: request.payload.desiredDigest, ...bindingPatch };
-  const operationId = moving.beginRelocation(destination, binding, held);
-  moving.prepareDestinationRoots();
-  moving.recordVerifiedPreparation(() => ({ operationId, installationId: moving.locator.installationId,
-    sourceGeneration: moving.locator.generation,
-    source: { stateRoot: moving.locator.stateRoot, artifactRoot: moving.locator.artifactRoot }, destination, plan: binding,
-    sourceDatabaseIdentity: "e".repeat(64), sourceSchemaVersion: 56, sourceAuthorityGeneration: 0,
-    sourceAuthorityContentFingerprint: "f".repeat(64), backupReceiptId: "synthetic-preupgrade-backup",
-    backupManifestPath: join(moving.locator.stateRoot, "backups", "authority", "preupgrade.manifest.json"),
-    backupManifestSha256: "1".repeat(64), backupFilePath: join(moving.locator.stateRoot, "backups", "authority", "preupgrade.sqlite"),
-    backupFileSha256: "2".repeat(64) }));
-  const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), f.clock, destination);
-  const configFingerprint = sha256Hex(canonicalJsonStringify(resolved.config));
-  const configSnapshotId = "11111111-1111-4111-8111-111111111111";
-  moving.recordActivationIntent(() => ({ operationId, installationId: moving.locator.installationId,
-    sourceGeneration: moving.locator.generation,
-    source: { stateRoot: moving.locator.stateRoot, artifactRoot: moving.locator.artifactRoot }, destination, plan: binding,
-    stageAuthority: { manifestPath: join(moving.locator.stateRoot, "backups", "authority", "stage.manifest.json"),
-      manifestSha256: "1".repeat(64), backupPath: join(moving.locator.stateRoot, "backups", "authority", "stage.sqlite"),
-      backupSha256: "2".repeat(64) }, stageArchive: null,
-    nativeDestinationPath: join(destination.stateRoot, "state.db"), nativeDestinationSha256: null,
-    preAuthorityGeneration: 0, preAuthorityContentFingerprint: "3".repeat(64), managedInventoryDigest: "4".repeat(64),
-    settingsRevision: 1, settingsFingerprint: "5".repeat(64), priorActive: null,
-    snapshot: ConfigSnapshotWriteSchema.parse({ configSnapshotId, revision: 1, fingerprint: configFingerprint,
-      capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance }) }));
-  const verify = () => ({ operationId, installationId: moving.locator.installationId,
-    sourceGeneration: moving.locator.generation,
-    source: { stateRoot: moving.locator.stateRoot, artifactRoot: moving.locator.artifactRoot },
-    destination, plan: binding, stagingReceiptId: "synthetic-stage", stagingDigest: "a".repeat(64),
-    backupReceiptId: "synthetic-backup", backupDigest: "b".repeat(64),
-    finalDatabasePath: join(destination.stateRoot, "state.db"),
-    configSnapshotId, configFingerprint,
-    authorityVersion: 56 as const, databaseIdentity: "synthetic-authority", managedStateEntries: [] });
-  moving.recordVerifiedStage(verify);
-  moving.fenceRelocationSource();
-  moving.retainRelocationSources();
-  moving.switchRelocationLocator(verify);
-  moving.settleRelocation(verify);
-  moving.release(); held.release();
   const lease = acquireInstallation(f.workspace, "shared");
   cleanups.push(() => lease.release());
   const admission = RuntimeAdmission.fromInstallationLease(lease);
@@ -140,7 +100,7 @@ it("persists immutable planned intent, exact retry, cancel revision, and readbac
   expect(f.execute(cancelled).state).toBe("applied");
   expect(f.producer.read()).toMatchObject({ revision: 2, pending: null });
   expect(f.execute(cancelled).state).toBe("applied");
-  const next = plan(f, 2, { stateRoot: f.pair.stateRoot, artifactRoot: join(f.workspace, "moved-artifacts") });
+  const next = plan(f, 2, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") });
   expect(f.execute(next).state).toBe("applied");
   expect(f.producer.read()).toMatchObject({ revision: 3, pending: { commandId: next.commandId } });
   expect(f.lease.locator).toMatchObject({ generation: 0, ...f.pair });
@@ -188,15 +148,15 @@ it("refuses divergent command identity and cancellation of a different plan", ()
 
 it("admits artifact-only intent and refuses stranded nested artifacts or unsafe path overlap", () => {
   const f = fixture();
-  const artifactOnly = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(f.workspace, "new-artifacts") });
+  const artifactOnly = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "new-artifacts") });
   expect(f.execute(artifactOnly).state).toBe("applied");
   const nestedArtifactOnly = plan(f, 1, { stateRoot: f.pair.stateRoot, artifactRoot: join(f.pair.stateRoot, "new-artifacts") });
-  expect(() => f.execute(nestedArtifactOnly)).toThrow(/overlaps a source root/u);
-  const impossible = plan(f, 1, { stateRoot: join(f.workspace, "new-state"), artifactRoot: f.pair.artifactRoot });
+  expect(() => f.execute(nestedArtifactOnly)).toThrow(/destination is inside workspace/u);
+  const impossible = plan(f, 1, { stateRoot: join(dirname(f.workspace), "new-state"), artifactRoot: f.pair.artifactRoot });
   expect(() => f.execute(impossible)).toThrow(/strand nested artifacts/u);
-  const overlapping = plan(f, 1, { stateRoot: join(f.pair.stateRoot, "nested"), artifactRoot: join(f.workspace, "other-artifacts") });
-  expect(() => f.execute(overlapping)).toThrow(/overlaps a source root/u);
-  const relative = plan(f, 1, { stateRoot: "relative", artifactRoot: join(f.workspace, "other-artifacts") });
+  const overlapping = plan(f, 1, { stateRoot: join(f.pair.stateRoot, "nested"), artifactRoot: join(dirname(f.workspace), "other-artifacts") });
+  expect(() => f.execute(overlapping)).toThrow(/destination is inside workspace/u);
+  const relative = plan(f, 1, { stateRoot: "relative", artifactRoot: join(dirname(f.workspace), "other-artifacts") });
   expect(() => f.execute(relative)).toThrow(/canonical absolute/u);
   expect(f.producer.read().revision).toBe(1);
 });
@@ -239,21 +199,22 @@ it("refuses mismatched or multiple command audits", () => {
   const valid = plan(g, 0); g.execute(valid);
   const audit = g.database.authority.commandAudits.findByCommand(valid.commandId);
   if (audit === undefined) throw new Error("expected audit");
-  g.database.withAuthorityTransaction((repositories) => {
+  expect(() => g.database.withAuthorityTransaction((repositories) => {
     repositories.commandAudits.insert({ ...audit, auditId: randomUUID() });
-  });
-  expect(() => g.producer.read()).toThrow(/recorded audits/u);
+  })).toThrow(/command-audit-outcome-conflict/u);
+  expect(g.database.authority.commandAudits.findByCommand(valid.commandId)).toEqual(audit);
+  expect(g.producer.read().revision).toBe(1);
 });
 
-it("projects one global command revision across a completed receipt and new plan and cancel", () => {
+it("projects one global command revision across a completed receipt and new plan and cancel", async () => {
   const f = fixture();
-  const destination = { stateRoot: f.pair.stateRoot, artifactRoot: join(f.workspace, "moved-artifacts") };
+  const destination = { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") };
   const first = plan(f, 0, destination);
   expect(f.execute(first).state).toBe("applied");
-  const active = activateArtifactPlan(f, first);
+  const active = await activateArtifactPlan(f, first);
   expect(active.producer.read()).toMatchObject({ revision: 1, sourceGeneration: 1,
     sourcePair: destination, pending: null });
-  const next = plan(active, 1, { stateRoot: destination.stateRoot, artifactRoot: join(f.workspace, "later-artifacts") });
+  const next = plan(active, 1, { stateRoot: destination.stateRoot, artifactRoot: join(dirname(f.workspace), "later-artifacts") });
   expect(active.execute(next).state).toBe("applied");
   const pending = active.producer.read().pending;
   if (pending === null) throw new Error("expected new pending plan");
@@ -266,38 +227,44 @@ it("projects one global command revision across a completed receipt and new plan
   expect(active.database.authority.commandAudits.findByCommand(first.commandId)?.result.state).toBe("applied");
 });
 
-it("refuses a receipt bound to a different plan despite a valid control receipt chain", () => {
+it("refuses a receipt bound to a different plan despite a valid control receipt chain", async () => {
   const f = fixture();
-  const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(f.workspace, "moved-artifacts") });
+  const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") });
   f.execute(first);
-  const active = activateArtifactPlan(f, first, { commandId: randomUUID() });
-  expect(() => active.producer.read()).toThrow(/activation receipt does not match pending plan/u);
+  const active = await activateArtifactPlan(f, first);
+  const directory = join(f.workspace, ".tracker/control", "relocation-receipts");
+  const path = join(directory, readdirSync(directory)[0]);
+  const bytes = readFileSync(path, "utf8");
+  const receipt = JSON.parse(bytes) as { plan: { commandId: string } };
+  writeFileSync(path, JSON.stringify({ ...receipt, plan: { ...receipt.plan, commandId: randomUUID() } }));
+  expect(() => active.producer.read()).toThrow(/relocation receipt evidence mismatch/u);
 });
 
-it("refuses missing receipts and corrupt historical audits after activation", () => {
+it("refuses missing receipts and corrupt historical audits after activation", async () => {
   const f = fixture();
-  const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(f.workspace, "moved-artifacts") });
+  const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") });
   f.execute(first);
-  const active = activateArtifactPlan(f, first);
+  const active = await activateArtifactPlan(f, first);
   const audit = active.database.authority.commandAudits.findByCommand(first.commandId);
   if (audit === undefined) throw new Error("expected audit");
-  active.database.withAuthorityTransaction((repositories) => {
+  expect(() => active.database.withAuthorityTransaction((repositories) => {
     repositories.commandAudits.insert({ ...audit, auditId: randomUUID() });
-  });
-  expect(() => active.producer.read()).toThrow(/recorded audits/u);
-  const receiptDirectory = join(f.workspace, ".runtime-control", "relocation-receipts");
+  })).toThrow(/command-audit-outcome-conflict/u);
+  expect(active.database.authority.commandAudits.findByCommand(first.commandId)).toEqual(audit);
+  expect(active.producer.read().revision).toBe(1);
+  const receiptDirectory = join(f.workspace, ".tracker/control", "relocation-receipts");
   unlinkSync(join(receiptDirectory, readdirSync(receiptDirectory)[0]));
   expect(() => active.producer.read()).toThrow(/active locator receipt chain mismatch/u);
   const after = plan(active, 1);
   expect(() => active.producer.validate(after)).toThrow(/active locator receipt chain mismatch/u);
 });
 
-it("refuses duplicate or rewound control receipts before projecting command history", () => {
+it("refuses duplicate or rewound control receipts before projecting command history", async () => {
   const f = fixture();
-  const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(f.workspace, "moved-artifacts") });
+  const first = plan(f, 0, { stateRoot: f.pair.stateRoot, artifactRoot: join(dirname(f.workspace), "moved-artifacts") });
   f.execute(first);
-  const active = activateArtifactPlan(f, first);
-  const directory = join(f.workspace, ".runtime-control", "relocation-receipts");
+  const active = await activateArtifactPlan(f, first);
+  const directory = join(f.workspace, ".tracker/control", "relocation-receipts");
   const name = readdirSync(directory)[0];
   const path = join(directory, name);
   const bytes = readFileSync(path);
@@ -325,11 +292,11 @@ it("refuses a missing, malformed, or drifting locator after plan reader creation
   for (const failure of ["missing", "malformed", "drift"] as const) {
     const f = fixture();
     expect(f.producer.read()).toMatchObject({ revision: 0, pending: null });
-    const locatorPath = join(f.workspace, ".runtime-control", "locator.json");
+    const locatorPath = join(f.workspace, ".tracker/control", "locator.json");
     if (failure === "missing") unlinkSync(locatorPath);
     else if (failure === "malformed") writeFileSync(locatorPath, "{");
     else {
-      const alternateArtifactRoot = join(f.workspace, "alternate-artifacts");
+      const alternateArtifactRoot = join(dirname(f.workspace), "alternate-artifacts");
       mkdirSync(alternateArtifactRoot, { mode: 0o700 });
       copyFileSync(join(f.pair.artifactRoot, ".runtime-owner.json"), join(alternateArtifactRoot, ".runtime-owner.json"));
       const locator = JSON.parse(readFileSync(locatorPath, "utf8")) as Record<string, unknown>;

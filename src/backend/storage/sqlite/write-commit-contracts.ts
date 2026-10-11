@@ -15,6 +15,7 @@ import {
   WriteRetrySettlementSchema,
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
+  ParkedWriteResolutionBindingSchema,
 } from "../../../rules/write-safety/write-safety.js";
 import { RunClaimTokenSchema } from "./run-store-contracts.js";
 
@@ -111,22 +112,32 @@ export const AtomicWriteCommitReportSchema = z.strictObject({
   state: z.literal("committed"), intent: WriteIntentRecordSchema, attempt: WriteAttemptRecordSchema,
   transaction: LedgerEntryPayloadSchema, committedSpan: WriteCommittedSpanOutboxPayloadSchema,
 }).superRefine((report, context) => {
-  if (report.intent.status !== "committed" || report.attempt.outcome.state !== "committed") {
-    context.addIssue({ code: "custom", message: "atomic report requires committed intent and attempt" }); return;
+  const intent = report.intent;
+  if (intent.status !== "committed") {
+    context.addIssue({code:"custom",message:"atomic report requires a committed intent"});return;
   }
-  if (!AtomicWriteCommitInputSchema.safeParse({ writeIntentId: report.intent.writeIntentId,
-    generation: report.intent.generation, completionProof: report.intent.completionProof,
-    confirmedAt: report.intent.confirmedAt, outcome: report.committedSpan.outcome,
-    transaction: report.transaction, committedSpan: report.committedSpan }).success
-    || report.attempt.writeIntentId !== report.intent.writeIntentId
-    || report.attempt.writeAttemptId !== report.intent.currentAttemptId
-    || report.attempt.generation !== report.intent.generation
-    || report.attempt.runId !== report.transaction.runId
-    || report.attempt.runAttempt !== report.transaction.attempt
-    || report.attempt.outcome.confirmedAt !== report.intent.confirmedAt
-    || canonicalJsonStringify(report.attempt.outcome.completionProof) !== canonicalJsonStringify(report.transaction.proof)) {
-    context.addIssue({ code: "custom", message: "atomic report exact evidence mismatch" });
-  }
+  const outcome = report.attempt.outcome;
+  const ordinary = outcome.state === "committed" && outcome.confirmedAt === intent.confirmedAt
+    && canonicalJsonStringify(outcome.completionProof) === canonicalJsonStringify(intent.completionProof);
+  const resolved = outcome.state === "parked" && intent.resolution !== undefined
+    && intent.resolution.writeAttemptId === report.attempt.writeAttemptId && intent.resolution.decision === "present"
+    && report.transaction.proofSource === "operator-attestation";
+  if ((!ordinary && !resolved) || !AtomicWriteCommitInputSchema.safeParse({writeIntentId:intent.writeIntentId,
+    generation:intent.generation,completionProof:intent.completionProof,confirmedAt:intent.confirmedAt,
+    outcome:report.committedSpan.outcome,transaction:report.transaction,committedSpan:report.committedSpan}).success
+    || report.attempt.writeIntentId !== intent.writeIntentId || report.attempt.writeAttemptId !== intent.currentAttemptId
+    || report.attempt.generation !== intent.generation || report.attempt.runId !== report.transaction.runId
+    || report.attempt.runAttempt !== report.transaction.attempt) context.addIssue({code:"custom",message:"atomic report exact evidence mismatch"});
+});
+
+export const ResolvedParkedWriteCommitInputSchema = z.strictObject({
+  commit:AtomicWriteCommitInputSchema,checkpoint:RunCheckpointRecordSchema,
+  expectedIntentVersion:PositiveIntSchema,resolution:ParkedWriteResolutionBindingSchema,
+});
+
+export const ResolvedParkedWriteAbsenceInputSchema = z.strictObject({
+  writeIntentId:WriteIntentIdSchema,generation:PositiveIntSchema,expectedIntentVersion:PositiveIntSchema,
+  settlement:WriteRetrySettlementSchema,resolution:ParkedWriteResolutionBindingSchema,
 });
 
 /** Ref write-safety §4.3 park codes — mirrors the parked intent/run vocabulary exactly. */
@@ -163,14 +174,6 @@ export const WriteIntentRetrySettlementRequestSchema = z.strictObject({
   if (request.settlement.generation !== request.generation) {
     context.addIssue({ code: "custom", path: ["settlement", "generation"], message: "settlement must resolve the exact prior generation" });
   }
-});
-
-
-export const WriteIntentReopenRequestSchema = z.strictObject({
-  writeIntentId: WriteIntentIdSchema,
-  generation: PositiveIntSchema,
-  expectedVersion: PositiveIntSchema,
-  now: IsoInstantSchema,
 });
 
 
@@ -234,7 +237,6 @@ export type AtomicWriteCommitReport = z.infer<typeof AtomicWriteCommitReportSche
 export type WriteIntentParkCode = z.infer<typeof WriteIntentParkCodeSchema>;
 export type WriteIntentParkRequest = z.infer<typeof WriteIntentParkRequestSchema>;
 export type WriteIntentRetrySettlementRequest = z.infer<typeof WriteIntentRetrySettlementRequestSchema>;
-export type WriteIntentReopenRequest = z.infer<typeof WriteIntentReopenRequestSchema>;
 export type WriteRefenceInput = z.infer<typeof WriteRefenceInputSchema>;
 export type SequencedWriteCommitStep = z.infer<typeof SequencedWriteCommitStepSchema>;
 export type SequencedWriteCommitInput = z.infer<typeof SequencedWriteCommitInputSchema>;

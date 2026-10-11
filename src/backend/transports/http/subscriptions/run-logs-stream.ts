@@ -5,7 +5,7 @@ import { CompositeCursorSchema, CompositeStreamEnvelopeSchema, type CompositeStr
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../models/dashboard/subscription.js";
 import type { ConfirmedActionEvent } from "../../../../models/events/confirmed-action.js";
 import type { RunRecord } from "../../../../models/run/record.js";
-import type { EventStreamFileCursor } from "../../../storage/events/jsonl-streams.js";
+import type { TimelineCursor } from "../../../storage/events/timeline-reader.js";
 import type { RunLogTail } from "../../../logs/run-log-stream.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../../../runs/projections/run-queue-projection.js";
 
@@ -34,7 +34,7 @@ export interface RunLogsStreamDeps {
   readonly projection: Pick<RunQueueProjection, "onChange" | "buildDashboardDayWire" | "cursor" | "generation">;
   readonly readRun: (runId: string) => Readonly<{ disposition: "live" | "archived"; run: RunRecord }> | undefined;
   readonly store: Readonly<{
-    tail(cursors: ReadonlyMap<string, EventStreamFileCursor>): RunLogTail;
+    tail(cursors: ReadonlyMap<string, TimelineCursor>): RunLogTail;
     snapshot(authority: RunRecord): Readonly<{ events: readonly ConfirmedActionEvent[]; hasEarlier: boolean; parsedLines: number }>;
   }>;
   readonly retention?: number;
@@ -54,7 +54,7 @@ export class RunLogsStreamHub {
   #generation: string;
   #ordinal = 0;
   #ring: Change[] = [];
-  #cursors: ReadonlyMap<string, EventStreamFileCursor> = new Map();
+  #cursors: ReadonlyMap<string, TimelineCursor> = new Map();
   #closed = false;
   #degraded = false;
   #recovering = false;

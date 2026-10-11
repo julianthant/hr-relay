@@ -39,16 +39,16 @@ export const STEP_PROOF_MODULES = Object.freeze([
   separationsKualiFinalizationModule,
 ]);
 
-export const HISTORICAL_STEP_PROOF_DESCRIPTORS = Object.freeze(
+export const STEP_PROOF_DESCRIPTORS = Object.freeze(
   STEP_PROOF_MODULES.map((module) => module.descriptor),
 );
 
-export function historicalStepProofModuleOf(id: string) {
+export function stepProofModuleOf(id: string) {
   return STEP_PROOF_MODULES.find(
     (module) => String(module.descriptor.id) === id,
   );
 }
 
-export function historicalStepProofDescriptorOf(id: string) {
-  return historicalStepProofModuleOf(id)?.descriptor;
+export function stepProofDescriptorOf(id: string) {
+  return stepProofModuleOf(id)?.descriptor;
 }

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { HistoricalNotificationSnoozeCommandSchema } from "../../../rules/commands/commands-history.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
@@ -31,7 +30,7 @@ function withOperatorProvenance(input: unknown, clock: Clock): unknown {
 }
 
 type CommandJournalRead = Readonly<{
-  get(commandId: string): CommandRequest | z.infer<typeof HistoricalNotificationSnoozeCommandSchema> | undefined;
+  get(commandId: string): CommandRequest | undefined;
 }>;
 
 const OrdinarySettingsIngressRequestSchema = SettingsCommandRequestSchema.extend({
@@ -168,7 +167,6 @@ export function stampOperatorCommand(
   clock: Clock,
   journal: CommandJournalRead,
   protectedCommandAcceptedAt: (commandId: string) => string | undefined,
-  runtimeVersionAcceptedAt?: (commandId: string) => string | undefined,
 ): CommandRequest {
   const intent = CommandRequestSchema.parse(withOperatorProvenance(input, clock));
   const accepted = journal.get(intent.commandId);
@@ -176,7 +174,6 @@ export function stampOperatorCommand(
     ...intent,
     requestedAt: accepted?.requestedAt
       ?? (intent.family === "settings" && intent.type === "apply-protected-settings" ? protectedCommandAcceptedAt(intent.commandId) : undefined)
-      ?? (intent.type === "apply-runtime-version" ? runtimeVersionAcceptedAt?.(intent.commandId) : undefined)
       ?? clock.now().toISOString(),
     requestedBy: LOCAL_OPERATOR_ACTOR_ID,
     source: "dashboard",
@@ -242,7 +239,7 @@ export function acceptOperatorBulkCommand(
 export interface OperatorCommandIngress {
   submit(
     input: unknown,
-    execute: (accepted: CommandRequest | z.infer<typeof HistoricalNotificationSnoozeCommandSchema>) => Promise<CommandResult>,
+    execute: (accepted: CommandRequest) => Promise<CommandResult>,
   ): Promise<CommandResult>;
   executeBulk(
     input: unknown,
@@ -255,7 +252,6 @@ export function createOperatorCommandIngress(input: Readonly<{
   clock: Clock;
   journal: CommandJournalRead;
   protectedCommandAcceptedAt: (commandId: string) => string | undefined;
-  runtimeVersionAcceptedAt?: (commandId: string) => string | undefined;
   bulkAcceptances: BulkCommandAcceptanceAuthority;
 }>): OperatorCommandIngress {
   const tails = new Map<string, Promise<void>>();
@@ -283,22 +279,13 @@ export function createOperatorCommandIngress(input: Readonly<{
   return Object.freeze({
     submit(
       command: unknown,
-      execute: (accepted: CommandRequest | z.infer<typeof HistoricalNotificationSnoozeCommandSchema>) => Promise<CommandResult>,
+      execute: (accepted: CommandRequest) => Promise<CommandResult>,
     ): Promise<CommandResult> {
-      const historicalSnooze = HistoricalNotificationSnoozeCommandSchema.safeParse(command);
-      if (historicalSnooze.success) {
-        if (historicalSnooze.data.requestedBy !== LOCAL_OPERATOR_ACTOR_ID
-          || historicalSnooze.data.target.actorId !== LOCAL_OPERATOR_ACTOR_ID) {
-          throw new RequestIdentityRefusedError("historical notification actor does not match the local operator");
-        }
-        return serialize([`command:${historicalSnooze.data.commandId}`], () => execute(historicalSnooze.data));
-      }
       const ingress = parseOperatorCommand(command, input.clock);
       if (ingress.state === "refused") return Promise.resolve(ingress.response);
       return serialize([`command:${ingress.request.commandId}`], async () => {
         try {
-          return await execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt,
-            input.runtimeVersionAcceptedAt));
+          return await execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt));
         } catch (error) {
           if (!(error instanceof CommandIdentityConflictError)) throw error;
           return CommandResultSchema.parse({ state: "rejected", commandId: ingress.request.commandId, code: "command-divergent", message: error.message });

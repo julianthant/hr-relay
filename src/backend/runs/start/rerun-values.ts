@@ -73,7 +73,6 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       const run = existence.run;
       if (run.envelope.runId !== request.runId) refuse("source-invalid");
       if (run.version !== request.expectedVersion) refuse("source-stale");
-      if (existence.disposition === "archived") refuse("source-archived");
       const descriptor = deps.descriptors.resolve(run.envelope.workflow);
       if (descriptor === undefined || descriptor.id !== run.envelope.workflow
         || descriptor.version !== run.envelope.descriptorVersion

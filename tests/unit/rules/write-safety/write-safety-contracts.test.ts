@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import {
   NegativeSettlementEvaluationInputSchema,
@@ -10,6 +12,8 @@ import {
   WriteBindingProofSchema,
   WriteIntentRecordSchema,
   evaluateNegativeSettlement,
+  deriveIdempotencyKeyDigest,
+  deriveWriteBindingProofDigest,
 } from "../../../../src/rules/write-safety/write-safety.js";
 import {
   ABSENCE_1,
@@ -47,6 +51,17 @@ const evaluation = (verdicts: readonly unknown[], policy: unknown = POLICY) => (
 });
 
 describe("write-safety schema and negative-settlement rules", () => {
+  it("preserves the exact SHA-256 identities of permanent keys and binding proofs", () => {
+    for (const key of ["fixture:write", "fixture:résumé:東京:🧭", "fixture:\ud800"]) {
+      const expected = createHash("sha256").update("hrauto:permanent-write-key:v1\0").update("ucpath").update("\0").update(key).digest("hex");
+      assert.equal(deriveIdempotencyKeyDigest("ucpath", key), expected);
+    }
+    for (const proof of [SUBJECT_PROOF, UNSCOPED_PROOF]) {
+      const expected = createHash("sha256").update("hrauto:write-binding-proof:v1\0").update(canonicalJsonStringify(WriteBindingProofSchema.parse(proof))).digest("hex");
+      assert.equal(deriveWriteBindingProofDigest(proof), expected);
+    }
+  });
+
   it("requires evidence-qualified probe verdicts and closed binding proofs", () => {
     assert.equal(RecoveryProbeVerdictSchema.safeParse({ state: "absent", evidence: ABSENCE_1 }).success, true);
     assert.equal(RecoveryProbeVerdictSchema.safeParse({ state: "absent" }).success, false);

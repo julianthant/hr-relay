@@ -7,7 +7,7 @@ import { createServer,type IncomingMessage,type Server,type ServerResponse } fro
 import { tmpdir } from "node:os";
 import { extname,join,normalize } from "node:path";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
@@ -162,7 +162,7 @@ export async function startSeededServer(
     },
     descriptors,
   });
-  const jsonlWriter = createTimelineEmitter({
+  const timelineWriter = createTimelineEmitter({
     repository: database.authority.timelineEvents,
     clock,
     pid: 4242,
@@ -170,11 +170,11 @@ export async function startSeededServer(
 
   const spans: ReturnType<typeof createTimelineEmitter> = Object.freeze({
     emit: (event: unknown): void => {
-      jsonlWriter.emit(event);
+      timelineWriter.emit(event);
       database.afterAuthorityCommit(() => projection.ingestFromTimeline());
     },
   });
-  const notes = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+  const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
 
   const runIds = seed({ database, spans, notes });
   if (input.dateNavigation === true) {

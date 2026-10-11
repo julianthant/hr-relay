@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../../../../src/backend/runs/commands/command-kernel.js";
-import { createOperatorCommandIngress } from "../../../../../../src/backend/runs/commands/operator-command-ingress.js";
 import { NotificationRecordSchema, NotificationStateRequestSchema } from "../../../../../../src/models/notifications/notifications.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { CommandIdentityConflictError, CommandRequestSchema } from "../../../../../../src/rules/commands/commands.js";
@@ -93,45 +92,3 @@ it("returns exact replay and refuses divergent reuse without another update", ()
   assert.equal(h.row().version, 2);
 });
 
-it("replays only a settled exact historical Snooze without changing notification or journal facts", async () => {
-  const h = harness();
-  assert.equal(h.kernel.execute(h.command(1, "notification-snooze", 1)).state, "applied");
-  const before = h.row();
-  const legacy = { ...h.command(20, "notification-snooze", 1), payload: { until: "2026-10-02T17:30:00.000Z" } };
-  const target = { family: "notification", notificationId: before.notificationId };
-  const audit = { request: legacy, result: { state: "applied", commandId: legacy.commandId, affectedTargets: [target] },
-    versionChanges: [{ target, before: 1, after: 2 }] };
-  h.commands.set(legacy.commandId, { request: legacy, audit });
-  const originalJournalSize = h.commands.size;
-  const ingress = createOperatorCommandIngress({ clock: manualClock(new Date(NOW)), journal: { get: () => undefined },
-    protectedCommandAcceptedAt: () => undefined,
-    bulkAcceptances: { withTransaction: () => { throw new Error("unused bulk authority"); } } });
-  const submit = (input: unknown) => ingress.submit(input, async request => h.kernel.execute(request));
-  const replay = await submit(legacy);
-  assert.equal(replay.state, "already-applied");
-  assert.equal(h.row(), before);
-  assert.equal(h.commands.size, originalJournalSize);
-  assert.equal(h.commands.get(legacy.commandId)?.audit, audit);
-
-  const rejection = async (input: unknown, message: RegExp) => {
-    const result = await submit(input);
-    assert.equal(result.state, "rejected");
-    if (result.state !== "rejected") assert.fail("historical replay should refuse");
-    assert.match(result.message, message);
-  };
-  const unknown = { ...legacy, commandId: commandId(21) };
-  await rejection(unknown, /does not exist/);
-  h.commands.set(unknown.commandId, { request: unknown });
-  await rejection(unknown, /no settled audit/);
-  await rejection({ ...legacy, payload: { until: "2026-10-02T19:00:00.000Z" } }, /identity differs/);
-  await rejection({ ...legacy, source: "dashboard" }, /identity differs/);
-  assert.throws(() => { void submit({ ...legacy, target: { ...legacy.target, actorId: "foreign-actor" } }); }, /actor/);
-  assert.throws(() => { void submit({ ...legacy, requestedBy: "foreign-actor" }); }, /actor/);
-  h.commands.set(legacy.commandId, { request: legacy, audit: { ...audit, result: { ...audit.result, commandId: commandId(22) } } });
-  await rejection(legacy, /audit does not match/);
-  h.commands.set(legacy.commandId, { request: legacy, audit: { ...audit, versionChanges: [{ target, before: 2, after: 3 }] } });
-  await rejection(legacy, /audit does not match/);
-  assert.equal(h.row(), before);
-  assert.equal(h.commands.size, originalJournalSize + 1);
-  assert.equal(CommandRequestSchema.safeParse(unknown).success, false);
-});

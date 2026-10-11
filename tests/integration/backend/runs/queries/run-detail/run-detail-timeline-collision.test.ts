@@ -3,7 +3,6 @@ import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../../../../src/backend/runs/queries/run-detail.js";
-import { createArchiveSnapshotSource } from "../../../../../../src/backend/runs/queries/archive-snapshot.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import {
   claimEventOf,
@@ -34,7 +33,7 @@ const NODE = "timecard-search";
 const SPAN_PATH = `${traceOf(SEED)}/${NODE}#1`;
 
 function deps(w: DashboardWorld) {
-  return { runReader: w.runReader,
+  return { runReader: w.runReader, timeline: w.timeline,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,
@@ -117,14 +116,4 @@ describe("two executions sharing one span identity in a checkpoint without claim
     assert.notEqual(after[1]?.noteId, before[0]?.noteId);
   });
 
-  it("DERIVES the archive snapshot, which is what the bump refused for the whole workflow", () => {
-
-    const w = poisonedWorld();
-    const snapshot = createArchiveSnapshotSource(deps(w)).snapshot(uuidOf(SEED));
-    assert.equal(snapshot.detail.timeline.events.length, 2);
-    assert.equal(
-      new Set(snapshot.detail.timeline.events.map((event) => event.noteId)).size,
-      2,
-    );
-  });
 });

@@ -1,15 +1,19 @@
+import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
+import { testWorkerPorts, testRunLifecycle, testRunContinuation } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { createWriteResolutionExecutor } from "../../../../../../src/backend/runtime/writes/write-recovery.js";
+import { createWriteSequencer } from "../../../../../../src/backend/runtime/writes/write-sequencer.js";
+import { runWorkerLoop } from "../../../../../../src/backend/runtime/workers/worker-loop.js";
+import { fixtureDuoCeremonyGates } from "../../../../../support/helpers/duo-ceremony-fixtures.js";
+import { ManualScheduler, recordingEmitter, recordingLogger } from "../../../../../support/helpers/phase1f-executor-harness.js";
+import { createWriteFixtureWorld, buildWriteFixtureRegistry, writeFixtureSessions, writeFixtureDescriptor, writeFixtureQueuedRun,
+  absentProbeEvidence, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_IMPL_FINGERPRINT } from "../../../../../support/fixtures/write-sequencer-fixtures.js";
 import { explorerEditCommandFingerprint } from "../../../../../../src/models/dashboard/explorer-override.js";
-import { createRunLifecycleStorage } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
-import { captureArchiveReport } from "../../../../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../../../../src/backend/storage/archive/archive-transfer.js";
-import { projectArchiveReport } from "../../../../../../src/backend/storage/sqlite/archive-records.js";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RunRecordService, lifecycleCommandId } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -24,7 +28,7 @@ import {
   type CommandKernel,
   type SettingsApplicationExecutor,
   type ExplorerEditExecutor,
-  type WorkerRuntimeExecutor,
+  type WorkerPoolRuntimeAdoption,
   type WriteResolutionExecutor,
 } from "../../../../../../src/backend/runs/commands/command-kernel.js";
 import {
@@ -73,10 +77,8 @@ import {
   NOW,
   UUID_4,
   UUID_7,
-  WRITE_ATTEMPT,
-  WRITE_INTENT_ATTEMPTING,
 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
+import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   appliedRunIds,
   seedInitialSettingsRuntimeConfig,
@@ -85,10 +87,8 @@ import {
 import { fixtureDescriptor } from "../../../../../support/fixtures/descriptor-fixtures.js";
 import { FixtureReadReceipt } from "../../../../../support/fixtures/descriptor-fixtures.js";
 import { separationsIdentityCheckModule } from "../../../../../../src/backend/app/registries/step-proof-modules.js";
-import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
-import {
-  UNWIRED_ARCHIVE_SNAPSHOTS,
-} from "../../../../../support/fixtures/archive-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
+
 import { createExplorerEditService } from "../../../../../../src/backend/runs/commands/explorer-edit-service.js";
 import { explorerQueryDeps } from "../../../../../support/fixtures/explorer-seams.js";
 
@@ -96,7 +96,7 @@ const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 
 function databasePath(name: string): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-command-kernel-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-command-kernel-"));
   roots.push(root);
   return join(root, name);
 }
@@ -158,6 +158,7 @@ const DESCRIPTOR_SET: readonly AnyWorkflowDescriptor[] = [
   parallelDescriptor,
   fixtureDescriptor,
   identityCheckDescriptor,
+  writeFixtureDescriptor,
 ];
 const externalGateInputSchema = z.strictObject({ token: z.string().min(1) });
 const externalGateCanonicalInput = defineCanonicalInput(
@@ -280,45 +281,46 @@ interface Harness {
   readonly explorerCalls: unknown[];
 }
 
-function acceptingWorkerRuntime(calls: string[]): WorkerRuntimeExecutor {
-  return {
-    planWorkerCount: (context) => {
-      calls.push(`plan:${context.command.type}`);
-      return { state: "accepted", workerIds: ["worker-1", "worker-2"] };
-    },
-    spawnWorker: (context) => {
-      calls.push(`spawn:${context.command.type}`);
-      return { state: "accepted" };
-    },
-    refreshBrowser: (context) => {
-      calls.push(`refresh:${context.command.type}`);
-      return { state: "accepted" };
-    },
-    reopenBrowser: (context) => {
-      calls.push(`reopen:${context.command.type}`);
-      return { state: "accepted" };
-    },
+function acceptingWorkerRuntime(calls: string[], database: AuthorityDatabase): WorkerPoolRuntimeAdoption {
+  const control = async (context: import("../../../../../../src/backend/runs/commands/command-kernel.js").WorkerRuntimeContext) => {
+    const command = context.command;
+    calls.push(`${command.type === "spawn-worker" ? "spawn" : command.type === "refresh-browser" ? "refresh" : command.type === "reopen-browser" ? "reopen" : command.type}:${command.type}`);
+    if ((command.type === "stop-worker" || command.type === "pause-worker" || command.type === "resume-worker") && "workerId" in command.target) {
+      const lease = database.authority.workerLeases.get(command.target.workerId);
+      assert.ok(lease);
+      const result = database.authority.workerLeases.control({ workerId: lease.workerId,
+        expectedVersion: lease.version, commandId: command.commandId, control: { directive: command.type === "stop-worker" ? "stop" : command.type === "pause-worker" ? "pause" : "run",
+        requestedBy: command.requestedBy, requestedAt: context.now }, now: context.now });
+      assert.equal(result.state, "applied");
+      if (command.type === "stop-worker") return { state: "accepted", directiveLeaseVersions: { before: lease.version, after: lease.version + 1 } };
+    }
+    if (command.type === "refresh-browser" || command.type === "reopen-browser") {
+      const controls = database.authority.workerControls;
+      assert.equal(controls.get(command.commandId)?.phase.state, "admitted");
+      controls.transition(command.commandId, "admitted", { state: "ready" });
+      controls.transition(command.commandId, "ready", { state: "executing", startedAt: context.now });
+      controls.transition(command.commandId, "executing", { state: "succeeded", startedAt: context.now,
+        completedAt: context.now, acknowledgement: { kind: "control", browserSessionId: command.target.browserSessionId } });
+    }
+    return { state: "accepted" };
   };
+  return { pool: {
+    planPoolWorkerCount: async context => { calls.push(`plan:${context.command.type}`); assert.ok(context.roster);
+      return { state: "accepted", workerIds: context.roster.selected.map(slot => slot.workerId), retirements: [] }; },
+    spawnPoolWorker: control, refreshPoolBrowser: control, reopenPoolBrowser: control,
+    stopPoolWorker: control, pausePoolWorker: control, resumePoolWorker: control,
+  } };
 }
 
-/** Resolves the park by re-queueing the run — the durable half a real sequencer owns. */
-function requeueingWriteResolution(calls: string[]): WriteResolutionExecutor {
-  const resolve = (repositories: AuthorityRepositories, context: {
-    readonly command: { type: string };
-    readonly run: { envelope: { runId: string }; version: number };
-    readonly now: string;
-  }) => {
-    calls.push(`${context.command.type}:${context.run.envelope.runId}`);
-    const outcome = repositories.runs.transition({
-      runId: context.run.envelope.runId,
-      expectedVersion: context.run.version,
-      lifecycle: { state: "queued" },
-      now: context.now,
-    });
-    if (outcome.state !== "applied") throw new Error(`fake write resolution could not requeue: ${outcome.state}`);
-    return { run: outcome.run };
+function requeueingWriteResolution(calls: string[], database: AuthorityDatabase, clock: ReturnType<typeof manualClock>): WriteResolutionExecutor {
+  const executor = createWriteResolutionExecutor({ authority: database,
+    continuation: testRunContinuation(database, clock), ids: sequentialIdFactory("c"),
+    descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
+    resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
+  return {
+    resolvePresent: (repositories, context) => { calls.push(`${context.command.type}:${context.run.envelope.runId}`); return executor.resolvePresent(repositories, context); },
+    resolveAbsent: (repositories, context) => { calls.push(`${context.command.type}:${context.run.envelope.runId}`); return executor.resolveAbsent(repositories, context); },
   };
-  return { resolvePresent: resolve, resolveAbsent: resolve };
 }
 
 function createHarness(
@@ -353,8 +355,7 @@ function createHarness(
     ...(options.failureResolution === undefined ? {} : { failureResolution: options.failureResolution }),
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
+    configIdentity: { configFingerprint: database.authority.runtimeConfig.get()!.configFingerprint, configSnapshotId: database.authority.runtimeConfig.get()!.configSnapshotId },
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: {
@@ -392,8 +393,8 @@ function createHarness(
         };
       },
     },
-    writeResolution: requeueingWriteResolution(writeCalls),
-    workerRuntime: acceptingWorkerRuntime(workerCalls),
+    writeResolution: requeueingWriteResolution(writeCalls, database, clock),
+    workerRuntime: acceptingWorkerRuntime(workerCalls, database),
     settings: settingsOverride ?? createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), credentials),
   });
   return {
@@ -588,17 +589,7 @@ describe("settings activation and target fences", () => {
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
 
-  it("refuses retired archive relaunch after settings activation", () => {
-    const harness = createHarness();
-    applyCurrentSettings(harness);
-    const fixture = commandFixture("version-archive", "relaunch-archived-run");
-    const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
 
-    const result = harness.kernel.execute(command);
-    assert.equal(result.state, "rejected");
-    if (result.state === "rejected") assert.equal(result.code, "policy-refused");
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-  });
 });
 
 describe("start arm consumes plans atomically", () => {
@@ -1219,73 +1210,56 @@ describe("run arms", () => {
 });
 
 describe("write resolution", () => {
-  function parkOnWrite(harness: Harness): { runId: string; version: number } {
-    assert.equal(harness.database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
-    const claimed = harness.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: "worker-1", now: NOW });
-    assert.equal(claimed.state, "claimed");
-    if (claimed.state !== "claimed") throw new Error("unreachable");
-    const claim = { workerId: "worker-1", claimGeneration: claimed.run.claimGeneration };
-    const lifecycleBase = { workerId: "worker-1", claimedAt: NOW, heartbeatAt: NOW };
-    const validating = harness.database.authority.runs.transition({
-      runId: RUN_ID, expectedVersion: claimed.run.version, claim,
-      lifecycle: { state: "validating", ...lifecycleBase }, now: NOW,
-    });
-    assert.equal(validating.state, "applied");
-    const running = harness.database.authority.runs.transition({
-      runId: RUN_ID, expectedVersion: claimed.run.version + 1, claim,
-      lifecycle: { state: "running", ...lifecycleBase }, now: NOW,
-    });
-    assert.equal(running.state, "applied");
-    const parked = harness.database.authority.runs.transition({
-      runId: RUN_ID, expectedVersion: claimed.run.version + 2, claim,
-      lifecycle: {
-        state: "parked-write",
-        writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
-        intentGeneration: 1,
-        parkedAt: NOW,
-        code: "unknown",
-        message: "probe returned unknown",
-      },
-      now: NOW,
-    });
-    assert.equal(parked.state, "applied");
-    if (parked.state !== "applied") throw new Error("unreachable");
-    const fenced = harness.database.authority.writeIntents.fenceAttempt({
-      intent: WRITE_INTENT_ATTEMPTING,
-      attempt: WRITE_ATTEMPT,
-    });
-    assert.equal(fenced.state, "fenced");
-    return { runId: RUN_ID, version: parked.run.version };
+  async function parkOnWrite(harness: Harness) {
+    const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
+    const world = createWriteFixtureWorld(), stores = buildWriteFixtureRegistry(world), sessions = writeFixtureSessions(world);
+    const scheduler = new ManualScheduler(harness.clock), ids = sequentialIdFactory("b"), emitter = recordingEmitter().emitter, log = recordingLogger().log;
+    harness.clock.advanceWall(Date.parse("2026-08-03T09:00:00.000Z") - harness.clock.nowMs());
+    const run = RunRecordSchema.parse(writeFixtureQueuedRun());
+    harness.database.authority.runs.enqueue({ ...run, envelope: { ...run.envelope, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId } });
+    const ports = testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "kernel.sqlite"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
+    const slot = harness.database.authority.workerSlots.list(writeFixtureDescriptor.id)[0];
+    world.probeResults.push(absentProbeEvidence(NOW)); world.commitThrows = new Error("probe returned unknown");
+    await runWorkerLoop({ ...ports, workflowId: writeFixtureDescriptor.id, workerId: slot.workerId, descriptor: writeFixtureDescriptor,
+      stores, authority: harness.database, sessionFactory: sessions.factory, emitter, clock: harness.clock, ids, scheduler,
+      taskDeadlineMs: 60_000, sessionAcquireMs: 20_000, duoCeremony: fixtureDuoCeremonyGates(harness.clock), heartbeatIntervalMs: 600_000,
+      idleRepollMs: 1_000, log, stopSignal: new AbortController().signal, exitWhenIdle: true,
+      writeSequencerFor: manager => createWriteSequencer({ lifecycle: testRunLifecycle(harness.database, harness.clock), stores,
+        authority: harness.database, sessions: manager, emitter, clock: harness.clock, ids, scheduler, taskDeadlineMs: 60_000,
+        operator: "local-operator", log, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT }) });
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID); assert.ok(parked && parked.lifecycle.state === "parked-write");
+    const intent = harness.database.authority.writeIntents.listByRun(WRITE_FIXTURE_RUN_ID)[0]; assert.ok(intent.status === "parked"); if (intent.status !== "parked") throw new Error("fixture intent must be parked");
+    return { runId: WRITE_FIXTURE_RUN_ID, version: parked.version, intent };
   }
 
-  it("resolves a parked write through the typed executor seam inside the command transaction", () => {
+  it("resolves a parked write through the typed executor seam inside the command transaction", async () => {
     const harness = createHarness();
-    const parked = parkOnWrite(harness);
+    const parked = await parkOnWrite(harness);
     const result = harness.kernel.execute(runCommand("resolve-write-absent", parked.runId, parked.version, {
       target: {
         runId: parked.runId,
         expectedVersion: parked.version,
-        writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
+        writeIntentId: parked.intent.writeIntentId, writeAttemptId: parked.intent.currentAttemptId, bindingProofDigest: parked.intent.bindingProofDigest,
         intentGeneration: 1,
       },
-      payload: { evidenceNote: "Checked UCPath directly; the transaction is absent" },
+      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest, evidenceNote: "Checked UCPath directly; the transaction is absent" },
     }));
     assert.equal(result.state, "applied");
     assert.deepEqual(harness.writeCalls, [`resolve-write-absent:${parked.runId}`]);
     assert.equal(harness.database.authority.runs.get(parked.runId)?.lifecycle.state, "queued");
   });
 
-  it("CAS-conflicts on a stale version and rejects a stale intent generation", () => {
+  it("CAS-conflicts on a stale version and rejects a stale intent generation", async () => {
     const harness = createHarness();
-    const parked = parkOnWrite(harness);
+    const parked = await parkOnWrite(harness);
     const stale = harness.kernel.execute(runCommand("resolve-write-absent", parked.runId, parked.version + 3, {
       target: {
         runId: parked.runId,
         expectedVersion: parked.version + 3,
-        writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
+        writeIntentId: parked.intent.writeIntentId, writeAttemptId: parked.intent.currentAttemptId, bindingProofDigest: parked.intent.bindingProofDigest,
         intentGeneration: 1,
       },
-      payload: { evidenceNote: "stale browser action" },
+      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest, evidenceNote: "stale browser action" },
     }));
     assert.equal(stale.state, "conflict");
 
@@ -1293,10 +1267,10 @@ describe("write resolution", () => {
       target: {
         runId: parked.runId,
         expectedVersion: parked.version,
-        writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
+        writeIntentId: parked.intent.writeIntentId, writeAttemptId: parked.intent.currentAttemptId, bindingProofDigest: parked.intent.bindingProofDigest,
         intentGeneration: 4,
       },
-      payload: { evidenceNote: "stale generation" },
+      payload: { occurrenceKeyDigest: parked.intent.idempotencyKeyDigest, evidenceNote: "stale generation" },
     }));
     assert.equal(staleGeneration.state, "rejected");
     if (staleGeneration.state === "rejected") assert.equal(staleGeneration.code, "invalid-state");
@@ -1742,15 +1716,6 @@ describe("gate resolution", () => {
 });
 
 describe("worker-browser arms", () => {
-  const WORKER_START = {
-    workerId: "worker-1",
-    workflow: "kernel-reject",
-    browserSystems: [],
-    processId: 4242,
-    requestedBy: "local-operator",
-    now: NOW,
-  };
-
   function workerCommand(type: string, target: Record<string, unknown>, payload?: Record<string, unknown>) {
     return {
       commandId: nextCommandId(),
@@ -1764,41 +1729,41 @@ describe("worker-browser arms", () => {
     };
   }
 
-  it("plans worker capacity under activated settings without spawning an unreviewed worker", () => {
+  it("plans worker capacity under activated settings without spawning an unreviewed worker", async () => {
     const harness = createHarness();
     applyCurrentSettings(harness);
-    const result = harness.kernel.execute(workerCommand("plan-worker-count", { workflowId: "kernel-reject", expectedVersion: 0 }, { desiredWorkers: 2 }));
+    const result = await harness.kernel.executeWorkerPool(workerCommand("plan-worker-count", { workflowId: "kernel-reject", expectedVersion: 0 }, { desiredWorkers: 2 }));
     assert.equal(result.state, "applied");
     assert.equal(harness.database.authority.workerPools.get("kernel-reject")?.desiredWorkers, 2);
     assert.deepEqual(harness.workerCalls, ["plan:plan-worker-count"]);
   });
 
-  it("writes durable lease directives for stop/pause/resume against current authority", () => {
+  it("writes durable lease directives for stop/pause/resume against current authority", async () => {
     const harness = createHarness();
-    const started = harness.database.authority.workerLeases.start(WORKER_START);
-    assert.equal(started.state, "started");
+    testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "kernel.sqlite"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    const workerId = harness.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0].workerId;
 
-    const paused = harness.kernel.execute(workerCommand("pause-worker", { workerId: "worker-1", expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }));
+    const paused = await harness.kernel.executeWorkerPool(workerCommand("pause-worker", { workerId, expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }));
     assert.equal(paused.state, "applied");
-    assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "pause");
+    assert.equal(harness.database.authority.workerLeases.get(workerId)?.control.directive, "pause");
 
-    const resumed = harness.kernel.execute(workerCommand("resume-worker", { workerId: "worker-1", expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 2 } }));
+    const resumed = await harness.kernel.executeWorkerPool(workerCommand("resume-worker", { workerId, expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 2 } }));
     assert.equal(resumed.state, "applied");
-    assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "run");
+    assert.equal(harness.database.authority.workerLeases.get(workerId)?.control.directive, "run");
 
-    const stopped = harness.kernel.execute(workerCommand("stop-worker", { workerId: "worker-1", expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 3 } }));
+    const stopped = await harness.kernel.executeWorkerPool(workerCommand("stop-worker", { workerId, expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 3 } }));
     assert.equal(stopped.state, "applied");
-    assert.equal(harness.database.authority.workerLeases.get("worker-1")?.control.directive, "stop");
+    assert.equal(harness.database.authority.workerLeases.get(workerId)?.control.directive, "stop");
 
-    const missing = harness.kernel.execute(workerCommand("stop-worker", { workerId: "worker-9", expectedVersion: 1 }));
+    const missing = await harness.kernel.executeWorkerPool(workerCommand("stop-worker", { workerId: "worker-9", expectedVersion: 1 }));
     assert.equal(missing.state, "rejected");
     if (missing.state === "rejected") assert.equal(missing.code, "target-not-found");
   });
 
-  it("delegates plan/spawn/refresh/reopen to the typed runtime seam after authority validation", () => {
+  it("delegates plan/spawn/refresh/reopen to the typed runtime seam after authority validation", async () => {
     const harness = createHarness();
 
-    const planned = harness.kernel.execute(workerCommand(
+    const planned = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",
       { workflowId: "kernel-reject", expectedVersion: 0 },
       { desiredWorkers: 2 },
@@ -1812,30 +1777,34 @@ describe("worker-browser arms", () => {
     assert.equal(pool?.desiredWorkers, 2);
     assert.equal(pool?.plannedBy, "local-operator");
 
-    const spawned = harness.kernel.execute(workerCommand(
+    const workerId = harness.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0].workerId;
+    const spawned = await harness.kernel.executeWorkerPool(workerCommand(
       "spawn-worker",
       { workflowId: "kernel-reject", expectedVersion: 1 },
-      { workerId: "worker-1" },
+      { workerId },
     ));
     assert.equal(spawned.state, "applied");
 
-    assert.equal(harness.database.authority.workerLeases.start(WORKER_START).state, "started");
-    const spawnLive = harness.kernel.execute(workerCommand(
+    assert.equal(harness.database.authority.workerLeases.start({ workerId, workflow: rejectActiveDescriptor.id, browserSystems: [], processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
+    const spawnLive = await harness.kernel.executeWorkerPool(workerCommand(
       "spawn-worker",
       { workflowId: "kernel-reject", expectedVersion: 1 },
-      { workerId: "worker-1" },
+      { workerId },
     ));
     assert.equal(spawnLive.state, "rejected");
     if (spawnLive.state === "rejected") assert.equal(spawnLive.code, "invalid-state");
 
-    const lease = harness.database.authority.workerLeases.get("worker-1");
+    const lease = harness.database.authority.workerLeases.get(workerId);
     assert.ok(lease !== undefined);
-    const refreshed = harness.kernel.execute(workerCommand(
+    harness.database.authority.workerControls.observe({ workerId, leaseGeneration: lease.leaseGeneration, sessionId: UUID_4, system: "ucpath",
+      configFingerprint: harness.database.authority.runtimeConfig.get()!.configFingerprint, signInFingerprint: HASH_A, browserMode: "headless", acceptDownloads: false,
+      exclusive: false, health: "authenticated", observedAt: NOW, openedAt: NOW, profileRevision: 1 });
+    const refreshed = await harness.kernel.executeWorkerPool(workerCommand(
       "refresh-browser",
-      { workerId: "worker-1", controlBasis: { leaseGeneration: 1, controlRevision: 1 }, browserSessionId: UUID_4, expectedVersion: lease.version },
+      { workerId, controlBasis: { leaseGeneration: 1, controlRevision: 1 }, browserSessionId: UUID_4, expectedVersion: lease.version },
     ));
     assert.equal(refreshed.state, "applied");
-    const unknownWorkflow = harness.kernel.execute(workerCommand(
+    const unknownWorkflow = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",
       { workflowId: "kernel-unknown", expectedVersion: 1 },
       { desiredWorkers: 1 },
@@ -1850,10 +1819,10 @@ describe("worker-browser arms", () => {
     ]);
   });
 
-  it("plan/spawn CAS against the durable POOL version and refuse a stale one by name, before the runtime seam", () => {
+  it("plan/spawn CAS against the durable POOL version and refuse a stale one by name, before the runtime seam", async () => {
     const harness = createHarness();
     // No row yet: the basis is 0, and citing 1 is told so — with the current version.
-    const unplanned = harness.kernel.execute(workerCommand(
+    const unplanned = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",
       { workflowId: "kernel-reject", expectedVersion: 1 },
       { desiredWorkers: 1 },
@@ -1866,7 +1835,7 @@ describe("worker-browser arms", () => {
     assert.equal(harness.database.authority.workerPools.get("kernel-reject"), undefined);
     assert.deepEqual(harness.workerCalls, [], "a refused CAS never reaches the runtime seam");
 
-    const first = harness.kernel.execute(workerCommand(
+    const first = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",
       { workflowId: "kernel-reject", expectedVersion: 0 },
       { desiredWorkers: 1 },
@@ -1877,7 +1846,7 @@ describe("worker-browser arms", () => {
     assert.deepEqual(audit.versionChanges, [{ target: { family: "worker-pool", workflowId: "kernel-reject" }, before: 0, after: 1 }]);
 
     // The same basis again is stale now: the row is at 1.
-    const stale = harness.kernel.execute(workerCommand(
+    const stale = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",
       { workflowId: "kernel-reject", expectedVersion: 0 },
       { desiredWorkers: 3 },
@@ -1886,7 +1855,7 @@ describe("worker-browser arms", () => {
     if (stale.state === "conflict") assert.equal(stale.currentVersion, 1);
     assert.equal(harness.database.authority.workerPools.get("kernel-reject")?.desiredWorkers, 1);
 
-    const staleSpawn = harness.kernel.execute(workerCommand(
+    const staleSpawn = await harness.kernel.executeWorkerPool(workerCommand(
       "spawn-worker",
       { workflowId: "kernel-reject", expectedVersion: 0 },
       { workerId: "worker-1" },
@@ -1895,7 +1864,7 @@ describe("worker-browser arms", () => {
     if (staleSpawn.state === "conflict") assert.equal(staleSpawn.currentVersion, 1);
     assert.deepEqual(harness.workerCalls, ["plan:plan-worker-count"], "only the applied plan reached the seam");
 
-    const next = harness.kernel.execute(workerCommand(
+    const next = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",
       { workflowId: "kernel-reject", expectedVersion: 1 },
       { desiredWorkers: 3 },
@@ -1964,11 +1933,7 @@ describe("deferred arms", () => {
     }
   });
 
-  it("rejects the retired edit-checkpoint command at the strict schema boundary", () => {
-    const fixture = RETIRED_EDIT_CHECKPOINT_COMMAND;
-    assert.ok(fixture !== undefined, "the retired fixture remains as a negative control");
-    assert.equal(CommandRequestSchema.safeParse(fixture).success, false);
-  });
+
 });
 
 describe("apply-settings authority", () => {
@@ -2456,7 +2421,7 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     assert.equal(tombstone.origin, "queue");
     assert.equal(tombstone.commandId, lifecycleCommandId("operator-delete", command.commandId));
     assert.equal(tombstone.workflow, "kernel-reject");
-    assert.deepEqual(tombstone.removed.filter(({ table }) => table === "workflow_runs"), [{ table: "workflow_runs", rows: 1 }]);
+    assert.deepEqual(tombstone.removed.filter(({ table }) => table === "runs"), [{ table: "runs", rows: 1 }]);
     assert.ok(harness.database.authority.commands.get(command.commandId) !== undefined, "the delete is journaled");
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 1);
 
@@ -2465,72 +2430,7 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     if (again.state === "rejected") assert.equal(again.code, "target-deleted");
   });
 
-  it("sends an archived run to the Archive door, which cites the exact record it removes", () => {
-    const harness = createHarness();
-    assert.equal(harness.database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
-    const version = settle(harness, RUN_ID);
-    const storage = createRunLifecycleStorage(harness.database);
-    const snapshot = storage.capture(RUN_ID);
-    const report = captureArchiveReport({ snapshot, transferId: nextCommandId(), capturedAt: NOW, sections: [], files: [] });
-    transferArchiveReport(storage, report, version);
-    const view = projectArchiveReport(report); assert.ok(view.state === "available");
 
-    const queueDoor = harness.kernel.execute(runCommand("delete", RUN_ID, version));
-    assert.equal(queueDoor.state, "rejected");
-    if (queueDoor.state === "rejected") {
-      assert.equal(queueDoor.code, "target-not-found");
-      assert.equal(harness.database.authority.deletedRuns.get(RUN_ID), undefined);
-    }
-    assert.ok(storage.readReport(RUN_ID) !== undefined);
-
-    const beforeArchivedGateAttempt = harness.database.getMeta().authorityGeneration;
-    const archivedTimeline = harness.database.authority.timelineEvents.page({});
-    const archivedGateAttempt = harness.kernel.execute(CommandRequestSchema.parse({
-      commandId: nextCommandId(),
-      requestedAt: NOW,
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "gate",
-      type: "resolve-gate",
-      target: { runId: RUN_ID, gateId: "identity-approval", expectedVersion: version },
-      payload: { result: {
-        schemaHash: deriveSchemaHash(IdentityApprovalResultSchema, "output"),
-        value: { decision: "rejected", reason: "the archived run cannot be changed", evidenceDigest: HASH_A },
-      } },
-    }));
-    assert.equal(archivedGateAttempt.state, "rejected");
-    if (archivedGateAttempt.state === "rejected") {
-      assert.ok(archivedGateAttempt.code === "target-not-found" || archivedGateAttempt.code === "target-deleted");
-    }
-    assert.equal(harness.database.authority.gateResults.get(`${RUN_ID}:identity-approval`), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, beforeArchivedGateAttempt);
-    assert.deepEqual(harness.database.authority.timelineEvents.page({}), archivedTimeline);
-
-    const archiveDoor = (archiveFingerprint: string) => ({
-      commandId: nextCommandId(),
-      requestedAt: NOW,
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "version-archive",
-      type: "delete-archived-run",
-      target: { archivedRunId: RUN_ID, archiveFingerprint },
-    });
-    const wrongRecord = harness.kernel.execute(archiveDoor(HASH_B));
-    assert.equal(wrongRecord.state, "rejected");
-    if (wrongRecord.state === "rejected") assert.equal(wrongRecord.code, "schema-mismatch");
-    assert.ok(storage.readReport(RUN_ID) !== undefined, "a mismatched digest removes nothing");
-
-    const deleted = harness.kernel.execute(archiveDoor(view.archiveFingerprint));
-    assert.equal(deleted.state, "applied");
-    assert.equal(storage.readReport(RUN_ID), undefined);
-    assert.equal(harness.database.authority.runs.get(RUN_ID), undefined, "the retained tasks row goes with the record");
-    const tombstone = harness.database.authority.deletedRuns.get(RUN_ID);
-    assert.equal(tombstone?.origin, "archive");
-    assert.deepEqual(
-      tombstone?.removed.filter(({ table }) => table === "archive_transfers"),
-      [{ table: "archive_transfers", rows: 1 }],
-    );
-  });
 
   it("deletes a tree leaves-first, and refuses the tree while any member is not terminal", () => {
     const harness = createHarness();
@@ -2677,11 +2577,7 @@ describe("F repaired reviewed settings fence", () => {
   it("requires a fresh review without consuming a plan after active settings change", () => {
     const h = createHarness();
     const plan = createPlan(h, rejectActiveDescriptor, ["10800000"]);
-    const snapshot = h.database.authority.configSnapshots.get(UUID_4);
-    assert.ok(snapshot !== undefined);
-    h.database.authority.configSnapshots.insert({ ...snapshot, configSnapshotId: UUID_7, fingerprint: HASH_A });
-    h.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
-      configSnapshotId: UUID_7, configFingerprint: HASH_A, activatedAt: NOW });
+    applyCurrentSettings(h);
     const result = h.kernel.execute(startCommand(plan));
     assert.equal(result.state, "rejected");
     assert.ok(result.state === "rejected");
@@ -2700,11 +2596,7 @@ it("F accepted start replay keeps its original run after active settings change"
  const first = h.kernel.execute(command);
  const runId = singleAppliedRunId(first);
  const original = h.database.authority.runs.get(runId);
- const snapshot = h.database.authority.configSnapshots.get(UUID_4);
- assert.ok(snapshot !== undefined);
- h.database.authority.configSnapshots.insert({ ...snapshot, configSnapshotId: UUID_7, fingerprint: HASH_A });
- h.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
-  configSnapshotId: UUID_7, configFingerprint: HASH_A, activatedAt: NOW });
+ applyCurrentSettings(h);
  const replay = h.kernel.execute(command);
  assert.equal(replay.state, "already-applied");
  assert.equal(singleAppliedRunId(replay), runId);

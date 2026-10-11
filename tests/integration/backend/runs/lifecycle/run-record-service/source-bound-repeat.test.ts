@@ -1,6 +1,7 @@
+import { NativeCommandAuditSchema } from "../../../../../../src/backend/storage/sqlite/command-record-row.js";
+import { DatabaseSync } from "node:sqlite";
 import { defineTaskStoreRegistry } from "../../../../../../src/workflow-kit/task-registry.js";
 import { buildWriteFixtureRegistry } from "../../../../../support/fixtures/write-sequencer-fixtures.js";
-import { PlannedRunSchema, StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../../../../src/models/run/start-plan.js";
 import { sourceBoundReadDescriptor, sourceBoundReadStores } from "../../../../../support/fixtures/source-bound-read-fixtures.js";
 import { CreateRunRequestSchema } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
@@ -48,10 +49,10 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
             sourceId: "10000000-0000-4000-8000-000000000001" }] } } };
       assert.equal(h.database.authority.runs.enqueue({ ...source, lifecycle: { state: "queued" } }).state, "inserted");
       const claimed = h.database.authority.runs.claimNext({ workflow: source.envelope.workflow,
-        workerId: "fixture-owner", now: h.clock.now().toISOString() });
+        workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, now: h.clock.now().toISOString() });
       assert.ok(claimed.state === "claimed");
       assert.equal(h.database.authority.runs.transition({ runId: source.envelope.runId, expectedVersion: claimed.run.version,
-        claim: { workerId: "fixture-owner", claimGeneration: claimed.run.claimGeneration },
+        claim: { workerId: h.database.authority.workerSlots.list(h.descriptor.id)[0].workerId, claimGeneration: claimed.run.claimGeneration },
         lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
         now: h.clock.now().toISOString() }).state, "applied");
       const { runId: _runId, runAttempt: _attempt, currentAttemptId: _attemptId, bindingProof: _binding,
@@ -181,9 +182,9 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     const intent = h.database.authority.writeIntents.listByRun(repeat.envelope.runId)[0];
     assert.equal(intent.status, "parked");
     const base = { requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "run", type: "resolve-write-present",
-      target: { runId: repeat.envelope.runId, expectedVersion: parked.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation } };
+      target: { runId: repeat.envelope.runId, expectedVersion: parked.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest } };
     const payload = { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T123456" } }, evidenceNote: "Exact occurrence receipt inspected" };
-    assert.equal(h.kernel.execute({ ...base, commandId: h.ids.uuid(), payload }).state, "rejected");
+    assert.throws(() => h.kernel.execute({ ...base, commandId: h.ids.uuid(), payload }), /occurrenceKeyDigest/u);
     assert.equal(h.kernel.execute({ ...base, commandId: h.ids.uuid(), payload: { ...payload, occurrenceKeyDigest: intent.idempotencyKeyDigest } }).state, "rejected");
     assert.deepEqual(h.fresh(repeat), parked);
     assert.deepEqual(h.database.authority.writeIntents.get(intent.writeIntentId), intent);
@@ -275,12 +276,51 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     const h = harness(); const source = await completed(h);
     const warning = h.proposal(source); assert.ok(warning.rerun);
     const accepted = h.proposal(source, warning.rerun.warningDigest);
-    assert.equal(h.lifecycle.delete({ commandId: h.ids.uuid(), runId: source.envelope.runId, expectedVersion: source.version }).state, "deleted");
+    const deleted=h.lifecycle.delete({ commandId: h.ids.uuid(), runId: source.envelope.runId, expectedVersion: source.version });
+    assert.equal(deleted.state,"deleted",JSON.stringify(deleted));
     const minted = h.lifecycleIds.minted().length; const roots = h.queueRoots.length;
     const result = h.kernel.execute(h.command(accepted));
     assert.equal(result.state, "rejected"); if (result.state === "rejected") assert.equal(result.code, "target-deleted");
     assert.equal(h.lifecycleIds.minted().length, minted); assert.equal(h.queueRoots.length, roots);
     assert.equal(h.database.authority.startPlans.get(accepted.startPlanId)?.consumedBy, undefined);
+  });
+
+  it("retains an exact external command proof reference and refuses deletion atomically",async()=>{
+    const h=harness(),source=await completed(h),peer=h.start(h.proposal());
+    const checkpoint=h.database.authority.runCheckpoints.listByItem(h.descriptor.id,source.envelope.itemId)[0];assert.ok(checkpoint);
+    const commandId=h.ids.uuid();
+    h.database.authority.commands.insert({commandId,requestedAt:h.clock.now().toISOString(),requestedBy:"local-operator",source:"dashboard",
+      family:"run",type:"resolve-write-present",target:{runId:peer.envelope.runId,expectedVersion:peer.version,
+        writeIntentId:h.ids.uuid(),intentGeneration:1,writeAttemptId:h.ids.uuid(),bindingProofDigest:source.envelope.contractFingerprint},
+      payload:{occurrenceKeyDigest:source.envelope.contractFingerprint,proof:{schemaHash:checkpoint.output.schemaHash,value:{checkpoint}},evidenceNote:"offline checkpoint inspection"}});
+    const generation=h.database.getMeta().authorityGeneration;
+    const result=h.lifecycle.delete({commandId:h.ids.uuid(),runId:source.envelope.runId,expectedVersion:source.version});
+    assert.deepEqual(result,{state:"refused",refusal:{reason:"shared-checkpoint"}});
+    assert.deepEqual(h.fresh(source),source);assert.equal(h.database.getMeta().authorityGeneration,generation);
+    assert.ok(h.database.authority.commands.get(commandId));
+  });
+
+  it.each(["target","missing-audit","audit-owner"])("refuses malformed or ambiguous terminal history owner %s before deletion",async fault=>{
+    const h=harness(),source=await completed(h),raw=new DatabaseSync(h.authorityPath);
+    try {
+      const row=raw.prepare("SELECT * FROM commands WHERE target_id=? AND json_extract(request_json,'$.operation')='terminalize'").get(source.envelope.runId);
+      assert.ok(row && typeof row.id==="string" && typeof row.outcome_json==="string");
+      const auditRow=raw.prepare("SELECT * FROM command_audits WHERE command_id=?").get(row.id);assert.ok(auditRow);
+      if(fault==="target")raw.prepare("UPDATE commands SET target_id=? WHERE id=?").run(h.ids.uuid(),row.id);
+      else if(fault==="missing-audit"){raw.exec("DROP TRIGGER command_audits_retained");raw.prepare("DELETE FROM command_audits WHERE command_id=?").run(row.id);}
+      else {
+        raw.exec("DROP TRIGGER command_audits_immutable");
+        const original=NativeCommandAuditSchema.parse(JSON.parse(row.outcome_json));
+        assert.ok("kind" in original && original.kind==="run-lifecycle" && original.result.kind==="run");
+        const audit={...original,result:{...original.result,runId:h.ids.uuid()}};
+        raw.prepare("UPDATE command_audits SET payload_json=? WHERE command_id=?").run(canonicalJsonStringify(audit),row.id);
+        raw.prepare("UPDATE commands SET outcome_json=? WHERE id=?").run(canonicalJsonStringify(audit),row.id);
+      }
+    }finally{raw.close();}
+    const generation=h.database.getMeta().authorityGeneration,commandId=h.ids.uuid();
+    assert.throws(()=>h.lifecycle.delete({commandId,runId:source.envelope.runId,expectedVersion:source.version}),/identity-mismatch|terminal-audit-missing|terminal-owner-mismatch/u);
+    assert.deepEqual(h.fresh(source),source);assert.equal(h.database.getMeta().authorityGeneration,generation);
+    assert.equal(h.database.authority.lifecycleJournal.getCommand(commandId),undefined);
   });
 
   it("rolls back the plan, session, first creation and publication when the second real service create refuses", () => {
@@ -374,19 +414,6 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.deepEqual(effects(h).intents, before.intents); assert.deepEqual(h.fresh(source), source);
   });
 
-  it("reads legacy identity-bearing plans only to return a named replan refusal", () => {
-    const h = harness(); const wire = h.proposal();
-    const current = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(current);
-    const planned = current.planned.map((entry) => PlannedRunSchema.parse({ ...entry, runId: h.ids.uuid(), traceId: "wf-100000-cccc" }));
-    const legacy = StartPlanRecordSchema.parse({ ...current, startPlanId: h.planIds.uuid(), planned,
-      inputFingerprint: derivePlannedInputFingerprint(planned, current.ingressSchemaHash, current.canonicalInputSchemaHash) });
-    h.database.authority.startPlans.create(legacy);
-    const command = h.command(wire); command.target.startPlanId = legacy.startPlanId;
-    command.payload = { ...command.payload, inputFingerprint: legacy.inputFingerprint };
-    const result = h.kernel.execute(command);
-    assert.equal(result.state, "rejected"); if (result.state === "rejected") assert.equal(result.code, "replan-required");
-    assert.deepEqual(h.lifecycleIds.minted(), []); assert.deepEqual(h.queueRoots, []);
-    assert.equal(h.database.authority.startPlans.get(legacy.startPlanId)?.consumedBy, undefined);
-  });
+
 
 });

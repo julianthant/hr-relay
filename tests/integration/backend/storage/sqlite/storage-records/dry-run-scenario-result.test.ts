@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -10,6 +10,7 @@ import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { DryRunScenarioResultSchema } from "../../../../../../src/models/trust/dry-run-scenario-result.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../../../../../src/backend/storage/sqlite/storage-records.js";
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 
 const NOW = "2026-08-25T12:00:00.000Z";
@@ -47,16 +48,18 @@ const NOT_STARTED_BLOCKED_RESULT = {
 };
 
 function databasePath(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-result-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-dry-run-result-"));
   roots.push(root);
   return join(root, "authority.sqlite");
 }
 
 function openDatabase(path = databasePath()): AuthorityDatabase {
-  return AuthorityDatabase.open(
+  const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "dry-run-result-test" },
     manualClock(new Date(NOW)),
   );
+  if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  return database;
 }
 
 afterEach(() => {
@@ -185,17 +188,17 @@ describe("dry-run scenario result authority repository", () => {
     database.close();
   });
 
-  it("stores the parsed result as canonical record_json", () => {
+  it("stores the parsed result as canonical payload_json", () => {
     const path = databasePath();
     const database = openDatabase(path);
     const parsed = DryRunScenarioResultSchema.parse(NOT_STARTED_BLOCKED_RESULT);
     database.authority.dryRunScenarioResults.insert(parsed);
     const raw = new DatabaseSync(path, { readOnly: true });
     const row = raw.prepare(`
-      SELECT record_json FROM dryrun_results WHERE record_key = ?
+      SELECT payload_json FROM dryrun_results WHERE id = ?
     `).get(parsed.resultId);
 
-    assert.equal(row?.record_json, canonicalJsonStringify(parsed));
+    assert.equal(row?.payload_json, canonicalJsonStringify(parsed));
     raw.close();
     database.close();
   });
@@ -270,7 +273,7 @@ describe("dry-run scenario result authority repository", () => {
     database.close();
   });
 
-  it("rejects resolved subject values before any record_json is written", () => {
+  it("rejects resolved subject values before any payload_json is written", () => {
     const path = databasePath();
     const database = openDatabase(path);
 
@@ -285,7 +288,7 @@ describe("dry-run scenario result authority repository", () => {
     const raw = new DatabaseSync(path, { readOnly: true });
     const row = raw.prepare(`
       SELECT count(*) AS count FROM dryrun_results
-      WHERE instr(record_json, '10873698') > 0
+      WHERE instr(payload_json, '10873698') > 0
     `).get();
     assert.equal(row?.count, 0);
     raw.close();
@@ -300,9 +303,9 @@ describe("dry-run scenario result authority repository", () => {
     const raw = new DatabaseSync(path);
 
     assert.throws(
-      () => raw.prepare("UPDATE dryrun_results SET subject_label = ? WHERE record_key = ?")
+      () => raw.prepare("UPDATE dryrun_results SET subject_label = ? WHERE id = ?")
         .run("rewritten-canary", NOT_STARTED_BLOCKED_RESULT.resultId),
-      /dry-run scenario results are immutable/,
+      /retained-evidence-immutable/u,
     );
     raw.close();
   });
@@ -315,9 +318,9 @@ describe("dry-run scenario result authority repository", () => {
     const raw = new DatabaseSync(path);
 
     assert.throws(
-      () => raw.prepare("DELETE FROM dryrun_results WHERE record_key = ?")
+      () => raw.prepare("DELETE FROM dryrun_results WHERE id = ?")
         .run(NOT_STARTED_BLOCKED_RESULT.resultId),
-      /owned evidence is never deleted outside deletion or verified transfer/,
+      /owner-deletion-required/u,
     );
     raw.close();
   });
@@ -334,8 +337,8 @@ describe("dry-run scenario result authority repository", () => {
     };
     raw.prepare(`
       INSERT INTO dryrun_results
-        (record_key, scenario_id, workflow, subject_label, manifest_digest, verdict,
-         execution_state, run_id, trace_id, wall_time_ms, record_json, created_at)
+        (id, scenario_id, workflow, subject_label, manifest_digest, verdict,
+         execution_state, run_id, trace_id, wall_time_ms, payload_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       corrupted.resultId, corrupted.scenarioId, corrupted.workflow, corrupted.subjectLabel,
@@ -346,7 +349,7 @@ describe("dry-run scenario result authority repository", () => {
 
     assert.throws(
       () => openDatabase(path),
-      /authority table dryrun_results record .* failed strict record schema validation/,
+      /authority table dryrun_results failed native record validation/,
     );
   });
 });

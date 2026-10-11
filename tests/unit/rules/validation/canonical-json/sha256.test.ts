@@ -16,6 +16,23 @@ function nodeSha256(text: string): string {
 }
 
 describe("browser-safe SHA-256 parity", () => {
+  it("preserves exact canonical bytes and hashes across nested arrays and objects", () => {
+    const input = [{ z: [null, true, -0, 1e30, ["東京", "\ud800", "\n\"\\"]], a: [{ ä: 3, a: 2, Z: 1 }] }];
+    const expected = '[{"a":[{"Z":1,"a":2,"ä":3}],"z":[null,true,0,1e+30,["東京","\\ud800","\\n\\"\\\\"]]}]';
+    const actual = canonicalJsonStringify(input);
+    assert.equal(actual, expected);
+    assert.deepEqual(Buffer.from(actual, "utf8"), Buffer.from(expected, "utf8"));
+    assert.equal(sha256Hex(actual), nodeSha256(expected));
+  });
+
+  it("refuses invalid values nested through arrays before serialization", () => {
+    for (const invalid of [undefined, Number.NaN, Infinity, -Infinity, 1n, new Map(), () => 1, Symbol("invalid")]) {
+      assert.throws(() => canonicalJsonStringify([{ nested: [[{ value: invalid }]] }]));
+    }
+    const sparse = Array(1);
+    assert.throws(() => canonicalJsonStringify([{ nested: [sparse] }]));
+  });
+
   it("matches Node for Unicode, NUL, and lone surrogate UTF-8 encoding", () => {
     const values = [
       "UCSD 🧭 résumé 東京",

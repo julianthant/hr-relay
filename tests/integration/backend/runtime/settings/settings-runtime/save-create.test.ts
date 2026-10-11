@@ -11,7 +11,7 @@ afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); });
 function fixture() { const f = settingsFixture(); cleanups.push(f.close); return f; }
 function counts(f: ReturnType<typeof fixture>) {
   const db = new DatabaseSync(f.path, { readOnly: true });
-  try { return ["settings_snapshots", "commands", "command_audits", "workflow_runs"].map((table) =>
+  try { return ["settings_snapshots", "commands", "command_audits", "runs"].map((table) =>
     db.prepare(`SELECT count(*) AS n FROM ${table}`).get()); } finally { db.close(); }
 }
 it("atomically saves a complete resolution, selects new groups, retains old runs and replays without effects", () => {

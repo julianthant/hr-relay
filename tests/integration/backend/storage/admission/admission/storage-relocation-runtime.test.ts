@@ -24,7 +24,7 @@ it("plans, reads, retries, conflicts, and cancels through a real admitted dashbo
     copyFileSync(join(process.cwd(), "package-lock.json"), join(workspace, "package-lock.json"));
     mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
     mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
-    const fixtureAdmission = RuntimeAdmission.syntheticFixture(join(stateRoot, "state.db"), "authority");
+    const fixtureAdmission = RuntimeAdmission.syntheticFixture(join(stateRoot, "state.db"));
     try {
       const database = AuthorityDatabase.open(fixtureAdmission, { path: join(stateRoot, "state.db"), busyTimeoutMs: 250,
         migrationOwner: "unit-test" }, clock);
@@ -43,7 +43,7 @@ it("plans, reads, retries, conflicts, and cancels through a real admitted dashbo
         assert.equal(view.pending, null);
         const target = { installationId: view.installationId, sourceGeneration: view.sourceGeneration,
           sourcePair: view.sourcePair, expectedRevision: view.revision };
-        const desiredPair = { stateRoot: join(workspace, "moved-state"), artifactRoot: join(workspace, "moved-state", "artifacts") };
+        const desiredPair = { stateRoot: `${workspace}-moved-state`, artifactRoot: join(`${workspace}-moved-state`, "artifacts") };
         const basis = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation", type: "plan-storage-relocation",
           commandId: randomUUID(), requestedAt: "2026-09-26T11:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
           target, payload: { writeId: randomUUID(), desiredPair, desiredDigest: storageRelocationDesiredDigest(target, desiredPair),

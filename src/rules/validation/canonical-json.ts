@@ -19,7 +19,7 @@ function serialize(value: JsonValue): string {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map((item) => serialize(JsonValueSchema.parse(item))).join(",")}]`;
+    return `[${value.map((item: JsonValue) => serialize(item)).join(",")}]`;
   }
   return `{${Object.entries(value)
     .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)

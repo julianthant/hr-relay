@@ -1,3 +1,4 @@
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../../../src/workflow-kit/validation/build-manifest.js";
 import { deriveStableUuid } from "../../../../../../src/rules/identity/identifiers.js";
 import { checkpointLookupKey } from "../../../../../../src/models/workflow/checkpoint.js";
@@ -384,7 +385,7 @@ function packetWithPlan(): IdentityEvidencePacket {
         payrollTitleCode: "004921",
         payrollTitle: "STDT 2",
         terminationEffectiveDate: "06/20/2026",
-        timekeeperName: "Julian Zaw",
+        timekeeperName: { kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: uuidOf(91) },
       },
       dates: {
         kualiLastDayWorked: "06/12/2026",
@@ -405,19 +406,23 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
   const seeded = RunRecordSchema.parse({ ...runRecordOf({ seed: 1, workflow: separationsDescriptor.id }),
     envelope: { ...runRecordOf({ seed: 1 }).envelope, workflow: separationsDescriptor.id,
       descriptorVersion: separationsDescriptor.version, contractFingerprint: separationsDescriptor.contractFingerprint } });
+  testWorkerPorts(world.database, manualClock(new Date(GATE_NOW)), { path: join(world.stateRoot, "authority.db"), descriptor: separationsDescriptor, poolIndex: 1 });
+  const slot = world.database.authority.workerSlots.list(separationsDescriptor.id).find(record => record.poolIndex === 1 && record.retiredAt === null);
+  assert.ok(slot);
+  const workerId = slot.workerId;
   world.database.authority.runs.enqueue(seeded);
   const claimed = world.database.authority.runs.claimNext({ workflow: separationsDescriptor.id,
-    workerId: "identity-fixture-worker", now: GATE_NOW });
+    workerId, now: GATE_NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("identity fixture claim refused");
   let current = claimed.run;
   for (const lifecycle of [
-    { state: "validating", workerId: "identity-fixture-worker", claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
-    { state: "running", workerId: "identity-fixture-worker", claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
+    { state: "validating", workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
+    { state: "running", workerId, claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
     PARKED_GATE_LIFECYCLE,
   ]) {
     const result = world.database.authority.runs.transition({ runId: RUN_ID, expectedVersion: current.version,
-      claim: { workerId: "identity-fixture-worker", claimGeneration: 1 }, lifecycle, now: GATE_NOW });
+      claim: { workerId, claimGeneration: 1 }, lifecycle, now: GATE_NOW });
     assert.equal(result.state, "applied");
     if (result.state !== "applied") throw new Error("identity fixture transition refused");
     current = result.run;
@@ -462,7 +467,7 @@ describe("separations — the identity-gate wire", () => {
     const packet = packetWithPlan();
     seedGate(world, packet);
 
-    const deps: RunDetailQueryDeps = { runReader: world.runReader,
+    const deps: RunDetailQueryDeps = { runReader: world.runReader, timeline: world.timeline,
       stateRoot: world.stateRoot,
       projection: world.projection,
       authority: world.authority,
@@ -548,7 +553,7 @@ describe("separations — the identity-gate wire", () => {
     );
   });
 
-  it("binds approval to retained value identity and never serves historical protected bytes or digests", () => {
+  it("binds approval to retained value identity and keeps protected bytes and invalid digests private", () => {
     const packet = packetWithPlan();
     assert.equal(JSON.stringify(packet).includes("Julian Zaw"), false);
     assert.equal(packet.plan.state, "planned");
@@ -568,13 +573,10 @@ describe("separations — the identity-gate wire", () => {
       chosenFrom: "checked", evidenceDigest: digest });
     assert.equal(verifyIdentityApproval(first, result).state, "approved");
     assert.equal(verifyIdentityApproval(rotated, result).state, "refused");
-    const historicalDigest = FingerprintSchema.parse("e".repeat(64));
-    const refusal = verifyIdentityApproval(first, result, historicalDigest);
+    const invalidDigest = FingerprintSchema.parse("e".repeat(64));
+    const refusal = verifyIdentityApproval(first, result, invalidDigest);
     assert.equal(refusal.state, "refused");
-    assert.equal(JSON.stringify(refusal).includes(historicalDigest.slice(0, 12)), false);
-    const historical = SeparationWritePlanSchema.parse({ ...packet.plan,
-      document: { ...packet.plan.document, timekeeperName: "Another Synthetic Operator" } });
-    assert.equal(deriveIdentityEvidenceDigest({ ...packet, plan: historical }), deriveIdentityEvidenceDigest(packet));
+    assert.equal(JSON.stringify(refusal).includes(invalidDigest.slice(0, 12)), false);
   });
 
   it("moves the evidence digest when a PLANNED VALUE moves, not only when the person does", () => {

@@ -42,8 +42,8 @@ import {
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../../../support/helpers/phase1f-executor-harness.js";
 
 const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
-const WORKER_A = WorkerIdSchema.parse("duo-proof-worker-a");
-const WORKER_B = WorkerIdSchema.parse("duo-proof-worker-b");
+const WORKER_A = WorkerIdSchema.parse("person-lookup-worker-1");
+const WORKER_B = WorkerIdSchema.parse("person-lookup-worker-2");
 const RUN_FINGERPRINT = FingerprintSchema.parse("3".repeat(64));
 const SYSTEM: BrowserSystemId = "ucpath";
 const NEED = { system: SYSTEM, access: "read", session: "reuse-worker" } as const;
@@ -115,10 +115,12 @@ function recipeFactory(
         },
       });
       return {
+        profileRevision: 1,
         sessionId,
         system: input.system,
         instance: input.instance,
         configFingerprint: input.configFingerprint,
+        signInFingerprint: input.configFingerprint,
         acceptDownloads: input.acceptDownloads,
         exclusive: input.exclusive,
         driver: { system: input.system },
@@ -175,6 +177,10 @@ function managerFor(
 const databases: AuthorityDatabase[] = [];
 function sharedAuthority(clock: TestClock): AuthorityDatabase {
   const database = openDuoCeremonyLeaseDatabase(clock);
+  database.withAuthorityTransaction(repositories => {
+    repositories.workerPools.plan({ workflow: WORKFLOW_ID, expectedVersion: 0, desiredWorkers: 2, requestedBy: "local-operator", now: clock.now().toISOString() });
+    for (const poolIndex of [1, 2]) repositories.workerSlots.allocate({ workflow: WORKFLOW_ID, poolIndex, commandId: null, now: clock.now().toISOString() });
+  });
   databases.push(database);
   return database;
 }
@@ -320,7 +326,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
     // Poison-on-supersede: A's ceremony finally settles and its release finds
     // the row moved on — loud, never a silent write over B's row.
     holdA.resolve();
-    await assert.rejects(ceremonyA, /generation 1 was superseded by generation 2 \(worker duo-proof-worker-b, crm\)/);
+    await assert.rejects(ceremonyA, /generation 1 was superseded by generation 2 \(worker person-lookup-worker-2, crm\)/);
     assert.equal(leaseRow(database).generation, 2, "the successor's row is untouched");
     gateA.dispose();
     gateB.dispose();
@@ -371,7 +377,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
       manager.withDriver(NEED, "prod", new AbortController().signal, async () => "never"),
       (error: unknown) => {
         assert.ok(error instanceof Error);
-        assert.match(error.message, /Duo refused the WebAuthn assertion AGAIN on a freshly created profile at \/tmp\/fixture-profiles\/duo-proof-worker-a\/ucpath/);
+        assert.match(error.message, /Duo refused the WebAuthn assertion AGAIN on a freshly created profile at \/tmp\/fixture-profiles\/person-lookup-worker-1\/ucpath/);
         assert.match(error.message, /not deleted a third time/);
         assert.ok(error.cause instanceof DuoTerminalRefusalError);
         return true;

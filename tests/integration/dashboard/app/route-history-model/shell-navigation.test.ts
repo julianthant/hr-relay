@@ -263,35 +263,3 @@ it("native date history preserves a dirty Settings draft, then restores the acce
   assert.equal(new URLSearchParams(location.search).has("settings"), false);
 });
 
-it("replaces transient Archive search without creating history and preserves queued replacement mode", async () => {
-  const history = await mountHistory();
-  const pushes = vi.spyOn(window.history, "pushState");
-  const route: AppRouteState = { start: false, archive: "", archiveBrowse: { filters: { search: "M" } } };
-  await act(async () => history.navigate(route, "replace"));
-  assert.equal(pushes.mock.calls.length, 0);
-  assert.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), 2);
-  await history.pop(1, "?archive=");
-  await act(async () => history.navigate({ ...route, archiveBrowse: { filters: { search: "Morgan" } } }, "replace"));
-  await history.pop(2, "?archive=");
-  assert.equal(pushes.mock.calls.length, 0);
-  assert.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), 2);
-  assert.match(location.search, /Morgan/);
-});
-
-it("queues transient Archive replacement during dirty Settings restoration without replaying an abandoned guard", async () => {
-  const history = await mountHistory();
-  const pushes = vi.spyOn(window.history, "pushState");
-  await history.pop(1, "?day=2026-08-02");
-  await act(async () => history.navigate({ start: false, archive: "", archiveBrowse: { filters: { search: "public query" } } }, "replace"));
-  assert.equal(location.search, "?day=2026-08-02");
-  assert.equal(pushes.mock.calls.length, 0);
-  await history.pop(2, "?settings=display");
-  assert.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), 2);
-  assert.deepEqual(history.go.mock.calls, [[1]]);
-  assert.equal(pushes.mock.calls.length, 0);
-  assert.equal(parseRoute(location.search).archiveBrowse?.filters.search, "public query");
-  const accepted = location.search;
-  await act(async () => history.confirm());
-  assert.equal(location.search, accepted);
-  assert.deepEqual(history.go.mock.calls, [[1]]);
-});

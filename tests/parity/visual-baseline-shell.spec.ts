@@ -357,7 +357,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(storage.getByRole("region", { name: "Stored data diagnostics", exact: true })).toBeVisible();
 
       report = { ...FIXTURE_STORAGE_DOCTOR,
-        recovery: { state: "interrupted", findings: [{ marker: "lifecycle-restore", state: "interrupted" }] },
+        recovery: { state: "interrupted", findings: [{ marker: "authority-restore", state: "interrupted" }] },
         authorityUpgrades: { state: "available", phases: [{ phase: "settled", fromSchemaVersion: 26, toSchemaVersion: 27, recordedAt: FIXTURE_NOW }] },
         protectedSettings: { state: "available", entries: ProtectedSettingsNameSchema.options.map((name, index) => ({ name, present: index % 2 === 0 })) },
       };

@@ -1,5 +1,7 @@
 
 import assert from "node:assert/strict";
+import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +11,7 @@ import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-stor
 import { createStartPlanService } from "../../../../../../src/backend/runs/commands/start-plan-service.js";
 import { StartStepOmissionRefusedError } from "../../../../../../src/backend/runs/start/step-selection.js";
 import type { AnyWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";
-import { CONFIG_SNAPSHOT, HASH_A, NOW, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, NOW, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   omissionAssertingDescriptor,
@@ -35,9 +37,7 @@ function harnessFor(descriptor: AnyWorkflowDescriptor) {
     CLOCK,
   );
   databases.push(database);
-  database.authority.configSnapshots.insert({...CONFIG_SNAPSHOT,configSnapshotId:UUID_4,fingerprint:HASH_A});
-  database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
-    configSnapshotId: UUID_4, configFingerprint: HASH_A, activatedAt: NOW });
+  database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, configSnapshotId: UUID_4 });
   const ids = sequentialIdFactory("b");
   let transactions = 0;
   const service = createStartPlanService({
@@ -56,7 +56,7 @@ function harnessFor(descriptor: AnyWorkflowDescriptor) {
     clock: CLOCK,
     ids,
     planTtlMs: 10 * 60 * 1000,
-    configFingerprint: HASH_A,
+    configFingerprint: CONFIG_SNAPSHOT.fingerprint,
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
   });
@@ -187,16 +187,19 @@ describe("start plan step omissions", () => {
 });
 
 
-it("F plan service selects the active snapshot inside its write boundary after boot", () => {
+it("plan service selects the active snapshot inside its write boundary after boot", () => {
  const h = harnessFor(omissionAssertingDescriptor);
  const nextId = "83000000-0000-4000-8000-000000000097";
- const fingerprint = "b".repeat(64);
- h.database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT, configSnapshotId: nextId, fingerprint });
- h.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
+ const config = { ...CONFIG_SNAPSHOT.config, timeouts: { ...CONFIG_SNAPSHOT.config.timeouts, taskMs: 90_000 } };
+ const fingerprint = sha256Hex(canonicalJsonStringify(config));
+ h.database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT, configSnapshotId: nextId, fingerprint, config });
+ const active = h.database.authority.runtimeConfig.get();
+ assert.ok(active);
+ h.database.authority.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
   configSnapshotId: nextId, configFingerprint: fingerprint, activatedAt: NOW });
  const wire = h.service.plan(request(h.descriptor, {}));
  assert.equal(wire.configSnapshotId, nextId);
  assert.equal(wire.fingerprints.configFingerprint, fingerprint);
  assert.equal(h.database.authority.startPlans.get(wire.startPlanId)?.configSnapshotId, nextId);
- assert.equal(h.database.authority.configSnapshots.get(UUID_4)?.fingerprint, HASH_A);
+ assert.equal(h.database.authority.configSnapshots.get(UUID_4)?.fingerprint, CONFIG_SNAPSHOT.fingerprint);
 });

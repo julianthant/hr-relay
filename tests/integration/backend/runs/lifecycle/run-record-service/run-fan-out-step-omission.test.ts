@@ -3,7 +3,7 @@ import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run
 import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -15,7 +15,7 @@ import { deriveSchemaHash } from "../../../../../../src/models/validation/schema
 import type { StepOmissions } from "../../../../../../src/models/workflow/step-omission.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../../../../../src/workflows/person-lookup/workflow.js";
-import { HASH_B, NOW, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { NOW, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 
 const roots: string[] = [];
@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-fan-out-omission-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-fan-out-omission-"));
   roots.push(root);
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -44,21 +44,24 @@ function plannedEntry(eid: string) {
     matchKey: `eid:${eid}`,
     rawInput: { emplId: eid },
     parsedInput: {
+      protectedBindings: [],
       schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
       value: { emplId: eid, keepNonHdh: false, includeCrmDates: false },
     },
   };
 }
 
-function baseEnvelope(sessionId: string, stepOmissions?: StepOmissions) {
+function baseEnvelope(database: AuthorityDatabase, sessionId: string, stepOmissions?: StepOmissions) {
+  const active = database.authority.runtimeConfig.get();
+  assert.ok(active);
   return {
     commandId: sessionId, actorId: "local-operator",
     workflow: personLookupDescriptor.id,
     descriptorVersion: personLookupDescriptor.version,
     contractFingerprint: personLookupDescriptor.contractFingerprint,
     resolvedInstance: { ucpath: "prod" as const, crm: "prod" as const },
-    configFingerprint: HASH_B,
-    configSnapshotId: UUID_4,
+    configFingerprint: active.configFingerprint,
+    configSnapshotId: active.configSnapshotId,
     shape: "single" as const,
     priority: "bulk" as const,
     dryRun: false,
@@ -81,7 +84,7 @@ describe("fanOutQueuedRuns", () => {
       new RunRecordService({ database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("a"), publishQueued: () => {} }),
       (message) => { throw new Error(message); },
       personLookupDescriptor,
-      baseEnvelope("bbbbbbbb-0001-4000-8000-000100000000", stepOmissions),
+      baseEnvelope(database, "bbbbbbbb-0001-4000-8000-000100000000", stepOmissions),
       [plannedEntry("10873698")],
       NOW,
       "fixture fan-out",
@@ -98,7 +101,7 @@ describe("fanOutQueuedRuns", () => {
       new RunRecordService({ database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("a"), publishQueued: () => {} }),
       (message) => { throw new Error(message); },
       personLookupDescriptor,
-      baseEnvelope("bbbbbbbb-0002-4000-8000-000200000000"),
+      baseEnvelope(database, "bbbbbbbb-0002-4000-8000-000200000000"),
       [plannedEntry("10001573")],
       NOW,
       "fixture fan-out",

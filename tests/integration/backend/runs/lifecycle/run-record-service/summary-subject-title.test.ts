@@ -1,3 +1,6 @@
+import { admitDirectWorker } from "../../../../../../src/backend/storage/sqlite/worker-slots.js";
+import { workflowProjections } from "../../../../../../src/workflow-kit/workflow.js";
+import { join } from "node:path";
 import { it } from "vitest";
 import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
 import assert from 'node:assert/strict';
@@ -14,7 +17,7 @@ import { createOperatorProjection, createOperatorRunDetail } from '../../../../.
 import { queryQueueSummaries, queryActivitySummaries } from '../../../../../../src/backend/runs/queries/run-summaries.js';
 import { buildRunDetail } from '../../../../../../src/backend/runs/queries/run-detail.js';
 
-it("keeps the resolved subject and operator label distinct in the summary-backed day", () => {
+it("keeps the resolved subject and operator label distinct in the derived summary day", () => {
 const f = foundationFixture();
 try {
   const runId = id(720);
@@ -24,18 +27,27 @@ try {
       parsed: { ...f.run.input.parsed, value: { emplId: '10000000', keepNonHdh: false, includeCrmDates: false }, protectedBindings: [] } },
     lifecycle: { state: 'queued' }, claimGeneration: 0, version: 1, createdAt: NOW, updatedAt: NOW,
   }));
-  const claim = f.db.authority.runs.claimNext({ workflow: 'person-lookup', workerId: 'subject-probe-worker', now: NOW });
+  const workerId=f.db.withAuthorityTransaction(repositories=>{
+    const pool=repositories.workerPools.get("person-lookup");assert.ok(pool);
+    const slot=admitDirectWorker(repositories,{commandId:id(717),workflow:"person-lookup",poolIndex:2,
+      expectedPoolVersion:pool.version,processId:process.pid,processAcquisitionId:id(718),authorityPath:f.path,
+      processLockRoot:join(f.root,"locks"),now:NOW},id(719));
+    assert.equal(repositories.workerLeases.start({workerId:slot.workerId,workflow:"person-lookup",
+      browserSystems:workflowProjections(personLookupDescriptor).systems,processId:process.pid,requestedBy:"local-operator",now:NOW}).state,"started");
+    return slot.workerId;
+  });
+  const claim = f.db.authority.runs.claimNext({ workflow: 'person-lookup', workerId, now: NOW });
   assert.equal(claim.state, 'claimed');
   if (claim.state !== 'claimed') throw new Error('fixture-not-claimed');
   assert.equal(claim.run.envelope.runId, runId);
   const validating = f.db.authority.runs.transition({ runId, expectedVersion: claim.run.version,
-    claim: { workerId: 'subject-probe-worker', claimGeneration: 1 },
-    lifecycle: { state: 'validating', workerId: 'subject-probe-worker', claimedAt: NOW, heartbeatAt: NOW }, now: NOW });
+    claim: { workerId, claimGeneration: 1 },
+    lifecycle: { state: 'validating', workerId, claimedAt: NOW, heartbeatAt: NOW }, now: NOW });
   assert.equal(validating.state, 'applied');
   if (validating.state !== 'applied') throw new Error('fixture-not-validating');
   const running = f.db.authority.runs.transition({ runId, expectedVersion: validating.run.version,
-    claim: { workerId: 'subject-probe-worker', claimGeneration: 1 },
-    lifecycle: { state: 'running', workerId: 'subject-probe-worker', claimedAt: NOW, heartbeatAt: NOW, currentNodeId: 'searching' }, now: NOW });
+    claim: { workerId, claimGeneration: 1 },
+    lifecycle: { state: 'running', workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: 'searching' }, now: NOW });
   assert.equal(running.state, 'applied');
   if (running.state !== 'applied') throw new Error('fixture-not-running');
   const e = running.run.envelope;
@@ -58,7 +70,6 @@ try {
     appVersion: '0.1.0', descriptorSetHash: FingerprintSchema.parse(HASH), ledger, descriptors, reader: servedReader });
   projection.rebuildFromTimeline();
   assert.equal(projection.health().state, 'live');
-  f.db.refreshRunSummaries();
 
   const detailDeps = createOperatorRunDetail({ database: f.db, stateRoot: f.root, projection, runReader: reader });
   const observe = (stage: string) => {

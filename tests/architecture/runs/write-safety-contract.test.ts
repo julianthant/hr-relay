@@ -1,4 +1,4 @@
-import { testRunContinuation } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunContinuation, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -124,6 +124,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     );
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
+    testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
     const recovery = createWriteRecoveryService({
       continuation: testRunContinuation(database, clock),
       stores: registry,

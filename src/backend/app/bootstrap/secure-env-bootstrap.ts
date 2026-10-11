@@ -2,10 +2,10 @@ import { fileURLToPath } from "node:url";
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
 import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
-import { acquireRuntimeRestoreAdmission } from "../../storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { join } from "node:path";
-import type { RuntimeAdmission } from "../../storage/admission/admission.js";
+import { acquireExclusiveRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
 import { parseDryRunScenarioArguments } from "../../runs/start/dry-run-scenario-runner.js";
 import { loadDryRunScenarioManifest } from "../dry-run/manifests.js";
@@ -14,7 +14,7 @@ export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
 export interface SecureEnvironmentBootstrapDependencies {
   readonly assertEnvironment?: () => void;
-  readonly runCli?: (admission: RuntimeAdmission) => Promise<void>;
+  readonly runCli?: (admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined) => Promise<void>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
@@ -59,6 +59,13 @@ export async function runSecureEnvironmentBootstrap(
     return;
   }
 
+  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-restore") {
+    const { runOfflineAuthorityRestoreRecovery } = await import("../composition/storage-compose.js");
+    const { report, json } = await runOfflineAuthorityRestoreRecovery(workspace, entrypointArgs.slice(2));
+    process.stdout.write(json ? `${JSON.stringify(report)}\n`
+      : `storage restore: verified ${report.outcome} operation ${report.operationId} settled\n`);
+    return;
+  }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "relocate") {
     const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../composition/storage/relocate.js");
     const command = parseRelocationCommand(entrypointArgs.slice(2));
@@ -98,12 +105,32 @@ export async function runSecureEnvironmentBootstrap(
       assertDashboardBuildCurrent({ distDir: join(root, "dist", "dashboard"), repoRoot: root });
     }))(workspace);
   }
-  const mode = entrypoint === "cli" && entrypointArgs[0] === "storage"
+  const bootDiagnostics = entrypoint === "cli" && entrypointArgs[0] === "explain" && entrypointArgs[1] === "diagnostics" && entrypointArgs.includes("--boot");
+  if (bootDiagnostics) {
+    const { parseDiagnosticArgs } = await import("../composition/explain-compose.js");
+    parseDiagnosticArgs(entrypointArgs.slice(2));
+  }
+  const mode = bootDiagnostics || entrypoint === "cli" && entrypointArgs[0] === "storage"
     && !["backup", "doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
-  const admission = (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested)))(mode);
+  let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
+  let initialWorkerAuthorityPath: string | undefined;
+  const beforeInitialAuthorityOpen = entrypoint === "cli" && entrypointArgs[0] === "worker"
+    ? (pair: Readonly<{ stateRoot: string }>) => {
+      const authorityPath = join(pair.stateRoot, "state.db");
+      if (initialWorkerCustody !== undefined) {
+        if (initialWorkerAuthorityPath !== authorityPath) throw new Error("worker-process-admission-authority-mismatch");
+        return;
+      }
+      initialWorkerCustody = acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot),
+        name: "workers", pid: process.pid, admission: { kind: "unbound-worker", authorityPath } });
+      initialWorkerAuthorityPath = authorityPath;
+    } : undefined;
+  // Failed initialization retains custody because authority closure is unproved.
+  const admission = (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
+    : acquireEntrypointAdmission(workspace, requested, beforeInitialAuthorityOpen)))(mode);
   try {
-  if (!(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
+  if (!bootDiagnostics && !(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
 
   }
@@ -117,7 +144,11 @@ export async function runSecureEnvironmentBootstrap(
     );
     const runCli = dependencies.runCli ?? (await import("../../../cli.js")).runCli;
     // Await shutdown so a rejection reaches the process exit.
-    await runCli(admission);
+    await runCli(admission, () => {
+      const custody = initialWorkerCustody;
+      initialWorkerCustody = undefined;
+      return custody;
+    });
     return;
   }
 
@@ -144,5 +175,6 @@ export async function runSecureEnvironmentBootstrap(
         process.removeListener("SIGTERM", absorb);
       }
     } else admission.release();
+    initialWorkerCustody?.release();
   }
 }

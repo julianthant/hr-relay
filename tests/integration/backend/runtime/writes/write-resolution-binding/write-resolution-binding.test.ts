@@ -16,6 +16,7 @@ import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
 import {
   deriveWriteBindingProofDigest,
+  deriveWriteAuthorityReason,
   WriteIntentRecordSchema,
   type WriteIntentRecord,
 } from "../../../../../../src/rules/write-safety/write-safety.js";
@@ -116,6 +117,7 @@ function parkedIntent(overrides: Readonly<{ proofTaskId?: string }> = {}): Write
     status: "parked",
     parkedCode: "unknown",
     message: "clicked, cannot prove it landed",
+    authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown","probe","binding fixture indeterminate probe"),
   });
 }
 

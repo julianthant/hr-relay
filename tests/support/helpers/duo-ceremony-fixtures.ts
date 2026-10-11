@@ -1,4 +1,5 @@
 
+import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +14,8 @@ import type { Clock } from "../../../src/rules/time/clock.js";
 import { FingerprintSchema, WorkerIdSchema } from "../../../src/rules/identity/ids.js";
 import type { BrowserSystemId, WorkerId } from "../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "./synthetic-database-admission.js";
+import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "./registered-workflows.js";
 
 export const FIXTURE_DUO_CREDENTIAL_KEY = FingerprintSchema.parse("d0".repeat(32));
 
@@ -69,10 +72,16 @@ export function duoCeremonyGatesOver(
 /** One open gate for a recipe test that drives `defineVerifiedLoginRecipe` directly. */
 export function fixtureDuoCeremonyGate(
   system: BrowserSystemId,
-  workerId: WorkerId = WorkerIdSchema.parse("recipe-fixture-worker"),
+  workerId: WorkerId = WorkerIdSchema.parse("person-lookup-worker-1"),
   clock: Clock = systemClock,
 ): DuoCeremonyGateHandle {
-  return fixtureDuoCeremonyGates(clock).openGate({
+  const root = mkdtempSync(join(tmpdir(), "hrauto-duo-recipe-fixture-"));
+  const path = join(root, "authority.sqlite");
+  const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+  testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex: 1 });
+  const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(candidate => candidate.poolIndex === 1);
+  assert.equal(slot?.workerId, workerId, "recipe gate must use its actually admitted worker");
+  return duoCeremonyGatesOver(database, clock, realScheduler).openGate({
     workerId,
     system,
     envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,

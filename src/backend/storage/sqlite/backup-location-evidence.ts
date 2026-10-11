@@ -3,7 +3,6 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { inspectDoctorPairWithOrigin } from "./storage-recovery-status.js";
 
 export type BackupLocationOrigin = "current" | "previous-location";
 
@@ -30,10 +29,6 @@ export async function verifyBackupLocationEvidence(admission: RuntimeAdmission,
   activeAuthorityPath: string, manifestPath: string) {
   requireDatabaseSourcePath(manifestPath);
   const classify = (identity: string) => classifyBackupLocationOrigin(admission, activeAuthorityPath, identity);
-  if (manifestPath.endsWith(".lifecycle.json")) {
-    const inspected = await inspectDoctorPairWithOrigin(admission, manifestPath, classify);
-    return { ...inspected, selection: "lifecycle-pair" as const };
-  }
   const manifest = parseBackupManifestFile(manifestPath);
   const origin = classify(manifest.sourceDatabaseIdentity);
   const verified = await verifyBackupManifestAtPath(admission, manifestPath, manifest.sourceDatabaseIdentity);

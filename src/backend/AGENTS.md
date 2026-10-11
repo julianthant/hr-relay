@@ -17,9 +17,9 @@ task starts at the repository root.
   one reset-required response, not an unbounded stream-controller push path.
 - Production static serving validates the bundle before authority/locks/sockets, registers last,
   checks lexical and realpath containment, and uses the closed extension/cache policy.
-- Archived resources first admit canonical archive membership through RunRecordService.read, then
-  bind evidence to the exact immutable run/digest and frozen capture metadata. Never reconstruct
-  archived evidence from current inputs or infer purge from a deadline; preserve safe download headers.
+- Run resources first admit exact run membership through RunRecordService.read, then bind evidence
+  to the immutable run/digest and retained capture metadata. Never reconstruct evidence from current
+  inputs or infer purge from a deadline; preserve safe download headers.
 - Boot/upgrade follows the current authority floor and boot/upgrade contract. Old integration-lineage lessons are
   history, not permission to migrate an existing database during ordinary startup.
 

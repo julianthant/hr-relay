@@ -148,8 +148,7 @@ const OptionalRunIdSchema = z.discriminatedUnion("state", [
 ]);
 
 export const RunEvidenceReceiptSchema = z.strictObject({
-    /* The derivation composition this receipt was built under; a stored receipt is immutable and re-derives under ITS OWN composition, so absence is a closed state rather than a default. */
-  composition: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
+  composition: z.literal(5),
   receiptId: EvidenceReceiptIdSchema,
   runId: RunIdSchema,
   traceId: TraceIdSchema,
@@ -214,20 +213,13 @@ export const RunEvidenceReceiptSchema = z.strictObject({
 
 export type RunEvidenceReceipt = z.infer<typeof RunEvidenceReceiptSchema>;
 
-export const OperatorReceiptProjectionSchema = z.union([
-  z.strictObject({
-    state: z.literal("available"),
-    value: RunEvidenceReceiptSchema,
-  }),
-  z.strictObject({
-    state: z.literal("withheld"),
-    composition: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-    reason: z.string().min(1),
-  }),
-]);
+export const OperatorReceiptProjectionSchema = z.strictObject({
+  state: z.literal("available"),
+  value: RunEvidenceReceiptSchema,
+});
 export type OperatorReceiptProjection = z.infer<typeof OperatorReceiptProjectionSchema>;
 
-/** Serve retained receipts of every composition to the local operator. */
+/** Serve the authenticated current receipt to the local operator. */
 export function projectReceiptForOperator(receiptInput: unknown): OperatorReceiptProjection {
   const receipt = RunEvidenceReceiptSchema.parse(receiptInput);
   return Object.freeze(OperatorReceiptProjectionSchema.parse({

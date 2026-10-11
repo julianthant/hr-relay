@@ -12,13 +12,6 @@ type DashboardStreamEnvelope,
 import { assertServedBundle,type ParityBundleProof } from "./bundle.js";
 import { restrictedJpegDiagnosticFixture } from "../../../../../support/fixtures/dashboard/diagnostic-jpeg-fixture.js";
 import { registerFixtureActivityRoutes } from "./fixture-activity-routes.js";
-import {
-FIXTURE_ARCHIVE_EVIDENCE_RUN
-} from "../../../../../support/fixtures/dashboard/fixture-archive-evidence.js";
-import { registerFixtureArchiveRoutes } from "./fixture-archive-routes.js";
-import {
-FIXTURE_ARCHIVED_RUN
-} from "../../../../../support/fixtures/dashboard/fixture-archive.js";
 import { FIXTURE_COMMAND_RESULTS } from "../../../../../support/fixtures/dashboard/fixture-day.js";
 import { registerFixtureDetailRoutes } from "./fixture-detail-routes.js";
 import { FIXTURE_DIAGNOSTIC_BUNDLE,FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES } from "../../../../../support/fixtures/dashboard/fixture-diagnostic.js";
@@ -85,8 +78,6 @@ export function createFixtureBff(
   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
   const runCaptureEvidence = input.runCaptureScenario === "evidence";
   const dayWire = input.dayWire ?? (runCaptureEvidence ? FIXTURE_RUN_CAPTURE_DAY : profile.day);
-  const archiveEvidence = input.archiveScenario === "evidence";
-  const archivedRun = archiveEvidence ? FIXTURE_ARCHIVE_EVIDENCE_RUN : FIXTURE_ARCHIVED_RUN;
   if (input.diagnosticFixture !== undefined && input.diagnosticFixture !== "restricted-jpeg") {
     throw new Error(`unknown diagnostic fixture ${String(input.diagnosticFixture)}`);
   }
@@ -113,7 +104,6 @@ export function createFixtureBff(
 
   registerFixtureExplorerRoutes({ app });
 
-  registerFixtureArchiveRoutes({ app, archiveEvidence, archivedRun, input });
 
   registerFixtureActivityRoutes({ app });
 
@@ -222,9 +212,6 @@ export async function startFixtureServer(
     bundle: ParityBundleProof;
     profile?: FixtureDashboardProfile;
     dayWire?: DashboardDayWire;
-    archiveScenario?: "evidence";
-    archiveComparison?: FixtureBffOptions["archiveComparison"];
-    savedArchiveFileResponse?: (runId: string, digest: string) => Response | Promise<Response>;
     diagnosticFixture?: "restricted-jpeg";
     runCaptureScenario?: "evidence";
     preflightScenario?: FixtureBffOptions["preflightScenario"];
@@ -235,9 +222,6 @@ export async function startFixtureServer(
   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
   const dayWire = input.dayWire ?? (input.runCaptureScenario === "evidence" ? FIXTURE_RUN_CAPTURE_DAY : profile.day);
   const { app } = createFixtureBff({ profile, dayWire,
-    ...(input.savedArchiveFileResponse === undefined ? {} : { savedArchiveFileResponse: input.savedArchiveFileResponse }),
-    ...(input.archiveScenario === undefined ? {} : { archiveScenario: input.archiveScenario }),
-    ...(input.archiveComparison === undefined ? {} : { archiveComparison: input.archiveComparison }),
     ...(input.diagnosticFixture === undefined ? {} : { diagnosticFixture: input.diagnosticFixture }),
     ...(input.runCaptureScenario === undefined ? {} : { runCaptureScenario: input.runCaptureScenario }),
     ...(input.preflightScenario === undefined ? {} : { preflightScenario: input.preflightScenario }),
@@ -253,10 +237,9 @@ export async function startFixtureServer(
         return;
       }
 
-      const archiveCapture = /^\/artifacts\/v1\/archive\/[^/]+\/(?:files\/)?[^/]+$/u.test(url.pathname);
       const genericCapture = /^\/artifacts\/v1\/(?!archive(?:\/|$))[^/.]+(?:\/[^/.]+)*$/u.test(url.pathname)
         || /^\/artifacts\/v1\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[/.]|$)/iu.test(url.pathname);
-      if (url.pathname.startsWith("/api/") || archiveCapture || genericCapture) {
+      if (url.pathname.startsWith("/api/") || genericCapture) {
         const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
         const response = await app.fetch(new Request(`http://127.0.0.1${url.pathname}${url.search}`, {
           method: req.method ?? "GET",
@@ -265,7 +248,7 @@ export async function startFixtureServer(
           ),
           ...(body === undefined ? {} : { body: new Uint8Array(body) }),
         }));
-        if (archiveCapture || genericCapture) {
+        if (genericCapture) {
           artifactExchanges.push(Object.freeze({
             method: req.method ?? "GET",
             pathname: url.pathname,

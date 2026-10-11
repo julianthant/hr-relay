@@ -99,7 +99,7 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     actorId: "local-operator",
 
     appVersion: input.seed === 4
-      ? { state: "absent", reason: "enqueued before runs stamped their app build (D179)" }
+      ? { state: "absent", reason: "No app build is recorded for this fixture." }
       : { state: "present", value: FIXTURE_APP_VERSION },
     descriptorVersion: 1,
     descriptorHash: FIXTURE_DESCRIPTOR_HASH,
@@ -113,10 +113,10 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     priority: input.seed === 9 ? "bulk" : "interactive",
 
     runNumber: input.seed === 4
-      ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
+      ? { state: "absent", reason: "No run number is recorded for this fixture." }
       : { state: "present", value: input.seed },
     // Keep session absence in this corpus; no surface consumes the field.
-    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
+    session: { state: "absent", reason: "This fixture has no run session." },
     containment: kind === "member" ? "member" : "root",
     linkedRuns: [],
     facts: TERMINAL.has(input.status)

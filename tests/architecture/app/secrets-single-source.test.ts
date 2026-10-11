@@ -111,12 +111,17 @@ describe("secrets single source", () => {
     for (const candidate of [
       content.replace("assertNoMigratedEnvironmentKeys()))", "(() => undefined)()))"),
       content.replace('entrypointArgs[0] === "test-data"', 'entrypointArgs[0] === "dashboard"'),
-      content.replace("acquireEntrypointAdmission(workspace, requested)", "undefined"),
+      content.replace("acquireEntrypointAdmission(workspace, requested, beforeInitialAuthorityOpen)", "undefined"),
       content.replace('if (selector === "cli" || selector === "test-target-document-number") return selector;', 'return "cli";'),
       content.replace('from "../../../models/config/secrets.js"', 'from "../../../models/config/forged-secrets.js"'),
       content.replace("const runCli =", "assertNoMigratedEnvironmentKeys = () => undefined; const runCli ="),
       content.replace('import { assertNoMigratedEnvironmentKeys }', 'import { assertNoMigratedEnvironmentKeys as forged }'),
-      content.replace('await runCli(admission);', 'await runCli(admission); await runCli(admission);'),
+      content.replace('await runCli(admission, () => {', 'await runCli(admission); await runCli(admission, () => {'),
+      content.replace('bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)', 'bootDiagnostics ? acquireEntrypointAdmission(workspace, requested)'),
+      content.replace('const custody = initialWorkerCustody;', 'const custody = undefined;'),
+      content.replace('initialWorkerCustody = undefined;', 'initialWorkerCustody = custody;'),
+      content.replace('!bootDiagnostics &&', ''),
+      content.replace('acquireExclusiveRuntimeAdmission, type RuntimeAdmission', 'forgedAdmission, type RuntimeAdmission'),
     ]) assert.ok(audit(candidate).length > 0, candidate);
     const wrapperPath = "scripts/dev/secure-env-bootstrap.ts";
     const wrapper = readFileSync(join(REPO_ROOT, wrapperPath), "utf8");
@@ -161,7 +166,7 @@ describe("secrets single source", () => {
       "const payload = [cli.runCli]; payload[0]();",
     ]) {
       const bootstrap = readFileSync(join(REPO_ROOT, "src/backend/app/bootstrap/secure-env-bootstrap.ts"), "utf8")
-        .replace("await runCli(admission);", `await runCli(admission); const cli = { runCli }; ${packedInvocation}`);
+        .replace("await runCli(admission, () => {", `const cli = { runCli }; ${packedInvocation} await runCli(admission, () => {`);
       assert.match(
         auditSoleRunnerInvocation([
           { path: "src/backend/app/bootstrap/secure-env-bootstrap.ts", content: bootstrap },
@@ -188,7 +193,7 @@ describe("secrets single source", () => {
       "const runtimeKey = String(Date.now()); const payload = { [runtimeKey]: cli.runCli }; const { invoke } = payload; invoke();",
     ]) {
       const bootstrap = readFileSync(join(REPO_ROOT, "src/backend/app/bootstrap/secure-env-bootstrap.ts"), "utf8")
-        .replace("await runCli(admission);", `await runCli(admission); const cli = { runCli }; ${packedInvocation}`);
+        .replace("await runCli(admission, () => {", `const cli = { runCli }; ${packedInvocation} await runCli(admission, () => {`);
       assert.match(
         auditSoleRunnerInvocation([
           { path: "src/backend/app/bootstrap/secure-env-bootstrap.ts", content: bootstrap },

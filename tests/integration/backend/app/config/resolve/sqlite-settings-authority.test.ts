@@ -1,7 +1,11 @@
 import { rebuildRuntimeIsolation } from "../../../../../../src/backend/app/config/runtime-isolation.js";
-import { composeStorageCommand } from "../../../../../support/helpers/synthetic-storage-admission.js";
+import { composeStorageCommand } from "../../../../../../src/backend/app/composition/storage-compose.js";
+import { acquireEntrypointAdmission } from "../../../../../../src/backend/storage/admission/bootstrap-admission.js";
+import type { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
+import { createCredentialStore as nativeCredentialStore } from "../../../../../../src/backend/storage/configuration/credential-store.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, existsSync, rmSync, copyFileSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, rmSync, copyFileSync, readFileSync, readdirSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -25,23 +29,28 @@ import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { DESCRIPTORS } from "../../../../../../src/backend/app/registries/workflow-registry.js";
 import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
-afterEach(() => { for (const database of databases.splice(0)) database.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(hooks?: CredentialStoreHooks) {
-  const repoRoot = mkdtempSync(join(tmpdir(), "sqlite-settings-")); roots.push(repoRoot);
-  const root = join(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(root);
+const admissions: RuntimeAdmission[] = [];
+afterEach(() => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+function fixture(hooks?: CredentialStoreHooks, exclusive = false) {
+  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "sqlite-settings-")); roots.push(repoRoot);
+  const admission = exclusive ? acquireEntrypointAdmission(repoRoot, "exclusive") : undefined;
+  if (admission !== undefined) admissions.push(admission);
+  const root = join(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(root, { recursive: true, mode: 0o700 });
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "credential-restore-proof", version: "0.1.0" }));
   const clock = manualClock(new Date("2026-09-06T12:00:00Z"));
   const path = join(root, "state.db");
-  const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "settings-test" }, clock); databases.push(database);
-  const store = createCredentialStore({ stateRoot: root, ...(hooks === undefined ? {} : { hooks }) });
+  const options = { path, busyTimeoutMs: 250, migrationOwner: "settings-test" };
+  const database = admission === undefined ? AuthorityDatabase.open(options, clock) : NativeAuthorityDatabase.open(admission, options, clock); databases.push(database);
+  seedSyntheticRuntimeConfig(database);
+  const credentialOptions = { stateRoot: root, ...(hooks === undefined ? {} : { hooks }) };
+  const store = admission === undefined ? createCredentialStore(credentialOptions) : nativeCredentialStore({ ...credentialOptions, admission });
   const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
   const execute = (request: unknown, authority: CommandAuthority = database) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request);
-  return { repoRoot, root, path, database, store, execute, clock };
+  return { repoRoot, root, path, database, store, execute, clock, admission };
 }
 function ordinary(expectedRevision = 1) {
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
@@ -193,7 +202,7 @@ describe("SQLite settings authority", () => {
     const bytes = readFileSync(path);
     assert.throws(() => f.database.withAuthorityTransaction((repositories) => repositories.lifecycleJournal.insertCommand({
       kind: "run-lifecycle", commandId: pending.commandId, operation: "create",
-      requestFingerprint: "0".repeat(64), fence: { kind: "none" }, recordedAt: pending.requestedAt,
+      requestFingerprint: "0".repeat(64), request: {}, fence: { kind: "none" }, recordedAt: pending.requestedAt,
     })), CommandIdentityConflictError);
     assert.deepEqual(readFileSync(path), bytes);
     assert.equal(f.database.getMeta().authorityGeneration, generation);
@@ -202,7 +211,7 @@ describe("SQLite settings authority", () => {
     assert.equal(f.execute(pending).state, "applied");
   });
   it("refuses a retained credential identity before async worker-pool effects", async () => {
-    const f = fixture(); seedSyntheticRuntimeConfig(f.database);
+    const f = fixture();
     const pending = protectedCommand();
     assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
     const path = join(f.root, "credentials", "protected.json");
@@ -215,13 +224,13 @@ describe("SQLite settings authority", () => {
     const kernel = createCommandKernel({
       authority: f.database, clock: f.clock, ids,
       lifecycle: new RunRecordService({ database: f.database, clock: f.clock, ids, publishQueued: () => {} }),
-      appVersion: "0.1.0", archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
+      appVersion: "0.1.0",
       configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
       intakeProjections: NO_INTAKE_PROJECTIONS,
       descriptors: { resolve: (id) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === id) },
       writeResolution: { resolvePresent: unused, resolveAbsent: unused },
       workerRuntime: { pool: {
-        planPoolWorkerCount: () => { effects++; return Promise.resolve({ state: "accepted", workerIds: ["person-lookup-worker-1"] }); },
+        planPoolWorkerCount: () => { effects++; return Promise.resolve({ state: "accepted", workerIds: ["person-lookup-worker-1"], retirements: [] }); },
         spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
         stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused,
       } },
@@ -270,15 +279,15 @@ describe("SQLite settings authority", () => {
     assert.equal(f.execute(request).state, "already-applied");
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try {
-      const rows = JSON.stringify(raw.prepare("SELECT record_json FROM commands UNION ALL SELECT record_json FROM command_audits").all());
+      const rows = JSON.stringify(raw.prepare("SELECT request_json FROM commands UNION ALL SELECT payload_json FROM command_audits").all());
       assert.equal(rows.includes("synthetic-private-value"), false);
       assert.equal(rows.includes("different-private-value"), false);
       assert.ok(rows.includes("<set>"));
     } finally { raw.close(); }
   });
   it("after uncertain audit, real CLI restore preserves credentials and exact retry repairs the missing audit", async () => {
-    const f = fixture(); const request = protectedCommand();
-    const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot);
+    const f = fixture(undefined, true); const request = protectedCommand(); assert.ok(f.admission);
+    const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission);
     assert.equal(backup.exitCode, 0, backup.output);
     const directory = join(f.root, "backups", "authority");
     const name = readdirSync(directory).find((entry) => entry.endsWith(".manifest.json")); assert.ok(name);
@@ -288,10 +297,10 @@ describe("SQLite settings authority", () => {
     const credentialBytes = readFileSync(credentialPath);
     assert.equal(f.store.read().revision, 2);
     f.database.close();
-    const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join(directory, name), "--json"], f.clock, f.repoRoot);
+    const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join(directory, name), "--json"], f.clock, f.repoRoot, f.admission);
     assert.equal(restore.exitCode, 0, restore.output);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    const restored = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-restore-retry" }, f.clock); databases.push(restored);
+    const restored = NativeAuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-restore-retry" }, f.clock); databases.push(restored);
     assert.equal(restored.authority.commands.get(request.commandId), undefined);
     const generation = restored.getMeta().authorityGeneration;
     const foreign = f.execute({ ...ordinary(), commandId: request.commandId }, restored);
@@ -307,7 +316,7 @@ describe("SQLite settings authority", () => {
     assert.equal(f.execute(request, restored).state, "already-applied");
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(f.store)), "synthetic-private-value");
-    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], f.clock, f.repoRoot);
+    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], f.clock, f.repoRoot, f.admission);
     assert.equal(doctor.exitCode, 0, doctor.output);
     for (const value of ["synthetic-private-value", "divergent-after-restore"]) {
       assert.equal(doctor.output.includes(value), false); assert.equal(restore.output.includes(value), false);

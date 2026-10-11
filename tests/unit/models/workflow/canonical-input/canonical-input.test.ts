@@ -1,3 +1,4 @@
+import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { describe, it } from "vitest";
@@ -141,16 +142,16 @@ describe("canonical input snapshots", () => {
   it("fails loud on a corrupted stored snapshot instead of re-deriving it", () => {
     const canonical = defineCanonicalInput(PersonLookupInput, PersonLookupCanonical, SAMPLES);
     assert.deepEqual(
-      parseCanonicalInputSnapshot(canonical, { name: "Ada", keepNonHdh: false, includeCrmDates: false }),
+      parseCanonicalInputSnapshot(canonical, { schemaHash: deriveSchemaHash(canonical, "output"), value: { name: "Ada", keepNonHdh: false, includeCrmDates: false } }),
       { name: "Ada", keepNonHdh: false, includeCrmDates: false },
     );
     // A missing flag is exactly the case a default would have papered over.
     assert.throws(
-      () => parseCanonicalInputSnapshot(canonical, { name: "Ada", keepNonHdh: false }),
+      () => parseCanonicalInputSnapshot(canonical, { schemaHash: deriveSchemaHash(canonical, "output"), value: { name: "Ada", keepNonHdh: false } }),
       /stored canonical input snapshot is invalid and will not be re-derived from ingress/,
     );
     assert.throws(
-      () => parseCanonicalInputSnapshot(canonical, { name: "Ada", keepNonHdh: false, includeCrmDates: "yes" }),
+      () => parseCanonicalInputSnapshot(canonical, { schemaHash: deriveSchemaHash(canonical, "output"), value: { name: "Ada", keepNonHdh: false, includeCrmDates: "yes" } }),
       /stored canonical input snapshot is invalid/,
     );
   });

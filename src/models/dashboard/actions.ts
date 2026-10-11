@@ -1,6 +1,6 @@
 /** Server-authored action descriptors: the ONLY source a surface may render a run control from — a control the server did not describe is unreachable, not hidden. */
 import { z } from "zod";
-import { WriteIntentIdSchema } from "../../rules/identity/ids.js";
+import { WriteIntentIdSchema, WriteAttemptIdSchema, FingerprintSchema } from "../../rules/identity/ids.js";
 
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
@@ -15,6 +15,9 @@ export const ActionCommandKeySchema = z.enum([
 export const ActionWriteTargetSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
   intentGeneration: z.number().int().positive(),
+  writeAttemptId: WriteAttemptIdSchema,
+  bindingProofDigest: FingerprintSchema,
+  occurrenceKeyDigest: FingerprintSchema,
 });
 
 export const ActionConfirmWireSchema = z.strictObject({

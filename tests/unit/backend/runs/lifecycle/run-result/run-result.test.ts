@@ -74,6 +74,7 @@ function checkpoint(nodeId: "active-status" | "crm-dates", value: unknown) {
     itemId: QUEUED_RUN.envelope.itemId,
     nodeId,
     attempt: 1,
+    claimGeneration: 1,
     runId: QUEUED_RUN.envelope.runId,
     output: { schemaHash: deriveSchemaHash(schema, "output"), value: schema.parse(value) },
     descriptorVersion: 1,

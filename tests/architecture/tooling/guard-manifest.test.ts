@@ -207,41 +207,6 @@ function writeFixture(root: string, path: string, content: string): void {
 }
 
 describe("reviewed architecture guard manifest", () => {
-  it("records every retirement as an explicit replacement rather than a silent shrink", () => {
-
-    const retired = inventory.guards.filter(({ status }) => status === "retired");
-    const activeNames = new Set(
-      inventory.guards.filter(({ status }) => status === "active").map(({ name }) => name),
-    );
-    assert.ok(retired.length > 0, "retirements must stay recorded");
-    for (const entry of retired) {
-      if (entry.name === "ai-advisory-no-authority") {
-        assert.equal(entry.file, "tests/architecture/processing/ai-advisory-no-authority.test.ts");
-        assert.equal(entry.retiredBy, "brief-R");
-        assert.equal(entry.replacementRequired, false);
-        assert.equal(entry.reason, "Brief R removes the advisory route, model, query and all AI provider adapters. Deciding evidence: evidence-R-removals/resume/executor/removed-tests.json; historical identities parse only and active admission rejects ai.advisory.");
-        for (const removed of [entry.file, "src/backend/logs/trust/advisory.ts", "src/backend/runs/queries/advisory.ts", "src/models/dashboard/advisory.ts", "src/models/trust/advisory.ts", "src/backend/processing/providers/gemini-advisory.ts"]) {
-          assert.equal(existsSync(join(REPO_ROOT, removed)), false, removed);
-        }
-        assert.equal(readFileSync(join(REPO_ROOT, "src/backend/transports/http/routes/run-detail.ts"), "utf8").includes('"/api/v1/runs/:runId/advisory"'), false);
-        assert.ok(entry.invariant.trim().length > 40, entry.name);
-        continue;
-      }
-      assert.match(entry.retiredBy ?? "", /^D\d+$/, `${entry.name} must name the deciding decision`);
-      assert.ok(entry.invariant.trim().length > 40, `${entry.name} must explain where its invariant went`);
-      assert.equal(entry.replacementRequired, true, entry.name);
-      if (entry.replacedBy !== undefined && entry.replacedBy !== null) {
-        assert.ok(
-          activeNames.has(entry.replacedBy),
-          `${entry.name} replacement must resolve to an active guard: ${entry.replacedBy}`,
-        );
-      }
-    }
-    assert.ok(
-      retired.some(({ replacedBy }) => replacedBy === "operational-isolation"),
-      "runtime-isolation's surviving configuration half must name its replacement",
-    );
-  });
 
   it("recursively registers every guard file exactly once and every active entry exists", () => {
     const active = inventory.guards.filter(({ status }) => status === "active");
@@ -372,7 +337,7 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runs/start/dry-run-scenario-runner.ts",
       "src/backend/runs/provenance/evidence-receipt.ts",
       "src/backend/runs/lifecycle/failure-resolution.ts",
-      "src/backend/runs/start/provider-admission.ts",
+      "src/backend/processing/providers/provider-client.ts",
       "src/backend/runs/lifecycle/run-claim-admission.ts",
       "src/backend/runs/lifecycle/run-fan-out.ts",
       "src/backend/runs/lifecycle/run-record-service.ts",

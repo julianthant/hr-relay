@@ -29,7 +29,7 @@ outcome resolution. Earlier automatic completed-proof reuse statements continue 
 and internal compatibility recovery; they do not veto a D335 confirmed repeat.
 
 **Where the evidence lives.** Doc 02 owns the Phase-2 phase record and points here for the numbers;
-doc 03.3 owns Separations' three controlled proofs and current targets; `docs/rebuild/migrations/separations.md`
+doc 03.3 owns Separations' three controlled proofs and current targets; the workflow's task evidence
 is the as-built migration record. This doc owns the CONTRACT — what every write must declare, what
 the kernel does with it, and what may never be substituted for proof.
 
@@ -606,7 +606,7 @@ the stop condition BEFORE the step runs.
 its controlled commit must confirm or move it.
 
 **Where each proof lives.** The Phase-2 kernel proof is §3.4 below, with doc 02 carrying the phase
-record. Separations' three are doc 03.3's, with `docs/rebuild/migrations/separations.md` §6 as the checklist
+record. Separations' three are doc 03.3's, with the workflow's task evidence §6 as the checklist
 and its §9.x as the live log; current protocol blockers are §§9.35–9.36, not the old 08-28 window. Every later admitted workflow names its
 own under `ref workflow-model` §1.6.2. A proof is RECORDED, never re-run: re-running one would be a second real HR write
 (ref guards-and-tests §10.1).
@@ -1159,7 +1159,7 @@ authority, the thing that records whether a real HR transaction exists — alway
 - [x] the staged set is TWELVE fields in one pass, not ten — D217 folded legacy's step-13 date write-backs in; the graph did not move, and both new controls carry `exactly-one-visible` from a read-only pass, NOT D208's `exactly-one-editable`
 - [ ] the inheritance is PROVISIONAL: Phase 3.3 Task 3's controlled commit must record the save-answer latency, the first agreeing server-side read and the first agreeing reload, and either confirm the 30 s bound or move it — **the composed workflow may not rely on the stabilized arm in production until it does**
 - [ ] five of the twelve staged fields have an ASSERTED payload check and five are recorded-and-named because their `formKey` model shape was never observed; the controlled commit closes them by reading the real payload
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/kuali/save-separation-finalization.ts:117-145`, `docs/rebuild/migrations/separations.md` §4e/§9.10; left: the controlled commit and the five unasserted payload checks
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/kuali/save-separation-finalization.ts:117-145`, the workflow's task evidence §4e/§9.10; left: the controlled commit and the five unasserted payload checks
 
 D64/D69 admit `recoveryAbsence.kind:"stabilized"` **only** with a measured propagation window; the
 open question this subsection settles is what a measurement is a measurement *of*. **It is a
@@ -2125,7 +2125,7 @@ exemption is a property of this graph, and it expires the moment the graph chang
 - [x] `ucpath/read-job-summary` returns the whole grid VERBATIM and classifies nothing; the disposition is a pure unconditional fold, so a single-employment person who is already terminated is checked rather than skipped (D201)
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-approval.ts:83-165`, `src/domain/trust/gate-decisions.ts`, `tests/unit/architecture/identity-gate-before-commit.test.ts`; left: nothing in chunk 3
 
-Separations chunk 3 (`docs/rebuild/migrations/separations.md` §9.5/§9.6) builds §14 as
+Separations chunk 3 (the workflow's task evidence §9.5/§9.6) builds §14 as
 `separations-identity-check`: two UCPath reads, a pure comparison producing the decision packet, the
 operator gate, and a post-gate check — registered, live-proved, and terminal `done` over a real person
 through the real command endpoint. D77's ALWAYS-GATE policy is unchanged. Three parts of §14.4/§14.5

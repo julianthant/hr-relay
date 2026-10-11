@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, constants, copyFileSync, existsSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync } from "node:fs";
+import { closeSync, constants, copyFileSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
@@ -11,27 +11,23 @@ import { hostConfigFacts, type HostConfigFacts } from "../../../../models/config
 import { resolveConfigWithProvenance } from "../../config/resolve.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { hostAwareResolutionEnvironment } from "../../../../models/config/secrets.js";
-import { inspectAuthorityBackupReadOnly } from "../../../storage/compatibility/backup-inspection.js";
+import { inspectAuthorityBackupReadOnly } from "../../../storage/sqlite/backup-inspection.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
-import { ArchiveDatabase } from "../../../storage/sqlite/archive-database.js";
 import { verifyBackupManifestAtPath } from "../../../storage/sqlite/backup-service.js";
-import { verifyLifecyclePair } from "../../../storage/sqlite/lifecycle-storage.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
-import { RecoveryStopProofStore } from "../../../storage/sqlite/recovery-stop-proof.js";
-import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../../storage/sqlite/runtime-process-locks.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
+import { acquireRuntimeRestoreAdmission } from "../../../storage/sqlite/runtime-process-locks.js";
 import { acquireRecoveryRuntimeRelocation, type RuntimeAdmission, type RuntimeRelocationOperation } from "../../../storage/admission/admission.js";
 import { inspectPendingRelocationRecovery, type RelocationPlanBinding, type VerifiedRelocationActivationIntent,
   type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../storage/admission/installation.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { projectStorageRelocationPlanHistory } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { readSettings } from "../../../runtime/settings/settings-runtime.js";
-import { backupStoppedAuthority, upgradeRelocationCapabilityV56 } from "../../../storage/maintenance/upgrade.js";
+import { backupStoppedAuthority } from "../../../storage/maintenance/upgrade.js";
 import { copyRelocationFile, inspectRelocationFiles, prepareRelocationDirectories, verifyRelocationBackupTree,
   verifyRelocationFileCopies, verifyRelocationLiveReferences, verifyRetainedRelocationCopies,
   type RelocationFileInventory } from "../../../storage/maintenance/relocation-inventory.js";
 
 const UUID = z.uuid();
-const RESTORE_PROOF_MAX_AGE_MS = 5 * 60_000;
 
 export class StorageRelocationIncompleteError extends Error {
   constructor(readonly operationId: string, cause: unknown) {
@@ -62,9 +58,8 @@ function digest(path: string, expectedLinks = 1): string {
 function sync(path: string): void { const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); try { fsyncSync(fd); } finally { closeSync(fd); } }
 
 export function copyNativeSnapshot(source: string, destination: string, expectedSha256: string, operationId: string,
-  admission: RuntimeAdmission, kind: "authority" | "archive", afterPublish?: () => void): void {
-  if (kind === "authority") admission.assertAuthorityDatabase(destination);
-  else admission.assertArchiveDatabase(destination);
+  admission: RuntimeAdmission, afterPublish?: () => void): void {
+  admission.assertAuthorityDatabase(destination);
   if (digest(source) !== expectedSha256) throw new Error("storage-relocation: native snapshot digest changed");
   const parent = dirname(destination);
   const candidate = join(parent, `.relocation-${operationId}-${basename(destination)}.tmp`);
@@ -118,16 +113,6 @@ function requireExactPlan(operation: RuntimeRelocationOperation, authority: Auth
   }
 }
 
-function stopProof(admission: RuntimeAdmission, workspace: string, clock: Clock) {
-  const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
-  admission.assertFixedProcessLockRoot(workspace, processLockRoot);
-  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"));
-  const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, clock);
-  const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: RESTORE_PROOF_MAX_AGE_MS }, clock);
-  proofs.recordRuntimeState(snapshot);
-  return proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity });
-}
-
 async function verifyPreparation(admission: RuntimeAdmission, evidence: VerifiedRelocationPreparation): Promise<void> {
   if (digest(evidence.backupManifestPath) !== evidence.backupManifestSha256
     || digest(evidence.backupFilePath) !== evidence.backupFileSha256) {
@@ -140,13 +125,11 @@ async function verifyPreparation(admission: RuntimeAdmission, evidence: Verified
     || verified.manifest.schemaVersion !== evidence.sourceSchemaVersion) {
     throw new Error("storage-relocation: prepared backup identity changed");
   }
-  if (existsSync(join(evidence.source.stateRoot, "archive.sqlite"))) {
-    await verifyLifecyclePair(admission, `${evidence.backupManifestPath}.lifecycle.json`);
-  }
+
 }
 
 function inventoryDigest(files: RelocationFileInventory): string {
-  const transientNative = new Set(["state.db-wal", "state.db-shm", "archive.sqlite-wal", "archive.sqlite-shm"]);
+  const transientNative = new Set(["state.db-wal", "state.db-shm"]);
   return createHash("sha256").update(canonicalJsonStringify({
     directories: files.directories.map((row) => [row.role, row.relativePath]),
     files: files.files.filter((row) => row.role !== "state" || !transientNative.has(row.relativePath))
@@ -156,7 +139,7 @@ function inventoryDigest(files: RelocationFileInventory): string {
 
 function selectActivationIntent(operation: RuntimeRelocationOperation, admission: RuntimeAdmission,
   stageAuthority: VerifiedRelocationActivationIntent["stageAuthority"],
-  stageArchive: VerifiedRelocationActivationIntent["stageArchive"], sourceFiles: RelocationFileInventory,
+  sourceFiles: RelocationFileInventory,
   preAuthority: Readonly<{ generation: number; fingerprint: string }>,
   clock: Clock, hostFactsInput?: HostConfigFacts): VerifiedRelocationActivationIntent {
   const inventory = operation.inventory();
@@ -173,7 +156,7 @@ function selectActivationIntent(operation: RuntimeRelocationOperation, admission
     return {
       operationId: inventory.operationId, installationId: inventory.installationId,
       sourceGeneration: inventory.fromGeneration, source: inventory.source, destination: inventory.destination,
-      plan: inventory.plan, stageAuthority, stageArchive,
+      plan: inventory.plan, stageAuthority,
       nativeDestinationPath: nativePath,
       nativeDestinationSha256: inventory.source.stateRoot === inventory.destination.stateRoot ? null : digest(nativePath),
       preAuthorityGeneration: preAuthority.generation,
@@ -245,27 +228,6 @@ async function verifyStageEvidence(operation: RuntimeRelocationOperation, destin
   if (stage.backupPath !== stageBackupPath || stage.manifest.authorityGeneration !== intent.preAuthorityGeneration
     || stage.manifest.authorityContentFingerprint !== intent.preAuthorityContentFingerprint) {
     throw new Error("storage-relocation: retained stage backup differs from intent");
-  }
-  if (intent.stageArchive !== null) {
-    const pairedPath = physicalStagePath(operation, intent.stageArchive.pairedManifestPath);
-    const archivePath = physicalStagePath(operation, intent.stageArchive.archivePath);
-    if (digest(pairedPath) !== intent.stageArchive.pairedManifestSha256
-      || digest(archivePath) !== intent.stageArchive.archiveSha256) {
-      throw new Error("storage-relocation: retained archive stage changed");
-    }
-    const pair = await verifyLifecyclePair(destination, pairedPath);
-    if (join(pair.root, pair.pair.archiveFile) !== archivePath) {
-      throw new Error("storage-relocation: retained archive identity differs");
-    }
-    const liveArchivePath = join(intent.destination.stateRoot, "archive.sqlite");
-    const archive = new ArchiveDatabase(destination, liveArchivePath, { readOnly: true });
-    try {
-      if (archive.fingerprint() !== pair.pair.archiveFingerprint) {
-        throw new Error("storage-relocation: destination archive differs from pinned stage");
-      }
-    } finally { archive.close(); }
-  } else if (existsSync(join(intent.destination.stateRoot, "archive.sqlite"))) {
-    throw new Error("storage-relocation: unbound destination archive appeared");
   }
   if (basename(evidence.backupReceiptId) !== evidence.backupReceiptId
     || !/^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite$/u.test(evidence.backupReceiptId)) {
@@ -345,9 +307,8 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       try { requireExactPlan(operation, source, workspace); } finally { source.close(); }
       if (inventory.phase === "preparing") {
         const inspected = inspectAuthorityBackupReadOnly(admission, sourcePath);
-        if (inspected.schemaVersion !== NORMAL_AUTHORITY_SCHEMA_VERSION
-          && inspected.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("storage-relocation: unsupported source schema");
-        const report = await backupStoppedAuthority(admission, inventory.source.stateRoot, clock);
+        if (inspected.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("storage-relocation: unsupported source schema");
+        const report = await backupStoppedAuthority(admission, inventory.source.stateRoot, clock,processLockRoot,restore);
         const manifest = report.manifests.at(-1);
         if (manifest === undefined) throw new Error("storage-relocation: preparation backup missing manifest");
         inspectRelocationFiles({ admission, source: inventory.source, destination: inventory.destination,
@@ -359,7 +320,6 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
           || backup.manifest.authorityContentFingerprint !== inspected.authorityContentFingerprint) {
           throw new Error("storage-relocation: preparation backup is stale");
         }
-        if (existsSync(join(inventory.source.stateRoot, "archive.sqlite"))) await verifyLifecyclePair(admission, `${manifestPath}.lifecycle.json`);
         const evidence: VerifiedRelocationPreparation = {
           operationId: inventory.operationId, installationId: inventory.installationId,
           sourceGeneration: inventory.fromGeneration, source: inventory.source, destination: inventory.destination,
@@ -377,29 +337,18 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       const prepared = operation.inventory().preparation;
       if (prepared === undefined) throw new Error("storage-relocation: preparation receipt missing");
       await verifyPreparation(admission, prepared);
-      if (prepared.sourceSchemaVersion === NORMAL_AUTHORITY_SCHEMA_VERSION) {
-        const stoppedSystemProof = stopProof(admission, workspace, clock);
-        await upgradeRelocationCapabilityV56(admission, { workspaceRoot: workspace,
-          stateRoot: inventory.source.stateRoot, processLockRoot,
-          backupManifest: prepared.backupManifestPath,
-          expectedSource: { authorityGeneration: prepared.sourceAuthorityGeneration,
-            authorityContentFingerprint: prepared.sourceAuthorityContentFingerprint },
-          stoppedSystemProof, heldRestoreAdmission: restore }, clock);
-      }
       operation.prepareDestinationRoots();
-      const source56 = inspectAuthorityBackupReadOnly(admission, sourcePath, CURRENT_AUTHORITY_SCHEMA_VERSION);
-      const stageBackup = await backupStoppedAuthority(admission, inventory.source.stateRoot, clock);
+      const nativeSource = inspectAuthorityBackupReadOnly(admission, sourcePath, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      const stageBackup = await backupStoppedAuthority(admission, inventory.source.stateRoot, clock,processLockRoot,restore);
       const stageManifest = stageBackup.manifests.at(-1);
-      if (stageManifest === undefined || stageManifest.authorityGeneration !== source56.authorityGeneration
-        || stageManifest.authorityContentFingerprint !== source56.authorityContentFingerprint) {
+      if (stageManifest === undefined || stageManifest.authorityGeneration !== nativeSource.authorityGeneration
+        || stageManifest.authorityContentFingerprint !== nativeSource.authorityContentFingerprint) {
         throw new Error("storage-relocation: native stage backup is stale");
       }
       const sourceFiles = inspectRelocationFiles({ admission, source: inventory.source,
         destination: inventory.destination, fixedLockRoot: processLockRoot, operation });
       const stageManifestPath = join(inventory.source.stateRoot, "backups", "authority", `${stageManifest.backupFileName}.manifest.json`);
       const verifiedStageBackup = await verifyBackupManifestAtPath(admission, stageManifestPath);
-      const verifiedStagePair = "pairedManifestPath" in stageBackup
-        ? await verifyLifecyclePair(admission, stageBackup.pairedManifestPath) : undefined;
       await verifyRelocationBackupTree({ admission, operation, stateRoot: inventory.source.stateRoot });
       verifyRelocationLiveReferences({ admission, source: inventory.source });
       const destination = operation.destinationAdmission();
@@ -407,16 +356,12 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         prepareRelocationDirectories({ destinationAdmission: destination, inventory: sourceFiles });
         if (inventory.source.stateRoot !== inventory.destination.stateRoot) {
           copyNativeSnapshot(verifiedStageBackup.backupPath, join(inventory.destination.stateRoot, "state.db"),
-            verifiedStageBackup.manifest.sha256, inventory.operationId, destination, "authority",
+            verifiedStageBackup.manifest.sha256, inventory.operationId, destination,
             input.faults?.afterNativePublish);
-          if (verifiedStagePair !== undefined) {
-            copyNativeSnapshot(join(verifiedStagePair.root, verifiedStagePair.pair.archiveFile),
-              join(inventory.destination.stateRoot, "archive.sqlite"),
-              verifiedStagePair.pair.archiveDigest, inventory.operationId, destination, "archive");
-          }
+
         }
         for (const file of sourceFiles.files) {
-          if (file.role === "state" && (["state.db", "state.db-wal", "state.db-shm", "archive.sqlite", "archive.sqlite-wal", "archive.sqlite-shm"].includes(file.relativePath))) continue;
+          if (file.role === "state" && (["state.db", "state.db-wal", "state.db-shm", "archive.sqlite"].includes(file.relativePath))) continue;
           copyRelocationFile({ sourceAdmission: admission, destinationAdmission: destination, inventory: sourceFiles,
             file, operationId: inventory.operationId });
         }
@@ -424,22 +369,14 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         const stageAuthority = { manifestPath: verifiedStageBackup.manifestPath,
           manifestSha256: digest(verifiedStageBackup.manifestPath), backupPath: verifiedStageBackup.backupPath,
           backupSha256: digest(verifiedStageBackup.backupPath) };
-        const stageArchive = verifiedStagePair === undefined ? null : {
-          pairedManifestPath: `${stageManifestPath}.lifecycle.json`,
-          pairedManifestSha256: digest(`${stageManifestPath}.lifecycle.json`),
-          archivePath: join(verifiedStagePair.root, verifiedStagePair.pair.archiveFile),
-          archiveSha256: digest(join(verifiedStagePair.root, verifiedStagePair.pair.archiveFile)),
-        };
-        const intent = selectActivationIntent(operation, destination, stageAuthority, stageArchive, sourceFiles,
+        const intent = selectActivationIntent(operation, destination, stageAuthority, sourceFiles,
           { generation: verifiedStageBackup.manifest.authorityGeneration,
             fingerprint: verifiedStageBackup.manifest.authorityContentFingerprint }, clock, input.hostFacts);
         operation.recordActivationIntent(() => {
           if (digest(intent.stageAuthority.manifestPath) !== intent.stageAuthority.manifestSha256
             || digest(intent.stageAuthority.backupPath) !== intent.stageAuthority.backupSha256
             || (intent.nativeDestinationSha256 !== null
-              && digest(intent.nativeDestinationPath) !== intent.nativeDestinationSha256)
-            || (intent.stageArchive !== null && (digest(intent.stageArchive.pairedManifestPath) !== intent.stageArchive.pairedManifestSha256
-              || digest(intent.stageArchive.archivePath) !== intent.stageArchive.archiveSha256))) {
+              && digest(intent.nativeDestinationPath) !== intent.nativeDestinationSha256)) {
             throw new Error("storage-relocation: activation stage changed");
           }
           return intent;
@@ -457,9 +394,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         throw new Error("storage-relocation: managed source inventory changed after activation intent");
       }
       if (digest(intent.stageAuthority.manifestPath) !== intent.stageAuthority.manifestSha256
-        || digest(intent.stageAuthority.backupPath) !== intent.stageAuthority.backupSha256
-        || (intent.stageArchive !== null && (digest(intent.stageArchive.pairedManifestPath) !== intent.stageArchive.pairedManifestSha256
-          || digest(intent.stageArchive.archivePath) !== intent.stageArchive.archiveSha256))) {
+        || digest(intent.stageAuthority.backupPath) !== intent.stageAuthority.backupSha256) {
         throw new Error("storage-relocation: activation stage bytes changed");
       }
       const destination = operation.destinationAdmission();
@@ -468,7 +403,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         applyActivationIntent(destination, intent, intent.stageAuthority.backupPath,
           input.faults?.beforeActivationTransaction);
         input.faults?.afterActivationWrite?.();
-        const finalBackup = await backupStoppedAuthority(destination, pending.destination.stateRoot, clock);
+        const finalBackup = await backupStoppedAuthority(destination, pending.destination.stateRoot, clock,processLockRoot,restore);
         const finalManifest = finalBackup.manifests.at(-1);
         if (finalManifest === undefined) throw new Error("storage-relocation: final backup missing");
         const finalManifestPath = join(pending.destination.stateRoot, "backups", "authority",

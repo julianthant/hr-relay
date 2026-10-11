@@ -1,7 +1,7 @@
+import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { ProviderAccountingStorage } from "../../../workflow-kit/provider-accounting.js";
 import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds, projectGeneratedUpdates } from "../../logs/generated-artifact-projection.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { localDatePart } from "../../../rules/time/clock.js";
@@ -15,7 +15,7 @@ import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import { TaskError, wrapUnhandledTaskError } from "../../../workflow-kit/errors.js";
-import type { ProviderAdmissionRepository, ProviderClient } from "../../../workflow-kit/providers.js";
+import type { ProviderClient } from "../../../workflow-kit/providers.js";
 import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -26,7 +26,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import type { AnyReadTaskContract } from "../../../models/task/task-contract.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
-import type { NoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
+import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 import type { ConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
 import { createConfirmedInvocation } from "../../logs/confirmed-invocation.js";
 import { publishConfirmedSubmit } from "../../logs/confirmed-submit.js";
@@ -39,7 +39,7 @@ import type { RunResultRecord, TerminalDependencyEvidence } from "../../../model
 import type { SessionNeed } from "../../../models/sessions/session.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
-import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, migrateCanonicalInputSnapshot, RunCheckpointRecordSchema, type CanonicalInputSnapshotMigration, type CheckpointMigration, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
 import { deriveArtifactProjectionRows } from "../../../models/workflow/artifact-projection.js";
 import { childRunOutcomeSchema, DelegationManifestRefSchema } from "../../../models/workflow/graph.js";
@@ -53,7 +53,7 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
 import { RunClaimTokenSchema, type RunClaimToken } from "../../storage/sqlite/run-store-contracts.js";
 import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
-import { createAdmittedProviderClient, type ProviderAdapterRegistry, type ProviderAdmissionClientDependencies, type ProviderAdmissionIdFactory } from "../../runs/start/provider-admission.js";
+import { createProviderClient, type ProviderAdapterRegistry, type ProviderClientDependencies, type ProviderRequestIdFactory } from "../../processing/providers/provider-client.js";
 import { buildEntryValidationFailureRecord, buildNodeFailureRecord } from "./run-failure.js";
 import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-result.js";
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
@@ -154,11 +154,9 @@ export interface RunArtifactProjector {
 
 export interface RunProviderWiring {
   readonly adapters: ProviderAdapterRegistry;
-  readonly repository: ProviderAdmissionRepository;
-  readonly accounting?: ProviderAccountingStorage;
   /** `AuthorityRepositories["configSnapshots"]` satisfies this. */
   readonly configSnapshots: Readonly<{ get(snapshotId: string): unknown }>;
-  readonly idFactory: ProviderAdmissionIdFactory;
+  readonly idFactory: ProviderRequestIdFactory;
 }
 
 /** The per-node slice of `RunProviderWiring` plus the run's exact stored snapshot. */
@@ -176,12 +174,12 @@ type TaskCapabilityWiring = Readonly<{
 
 function admittedClientFor(
   capability: ProviderCapabilityId,
-  dependencies: ProviderAdmissionClientDependencies,
+  dependencies: ProviderClientDependencies,
 ): ProviderClient<ProviderCapabilityId> {
   switch (capability) {
-    case "ocr.extract": return createAdmittedProviderClient(capability, dependencies);
-    case "geocode.census": return createAdmittedProviderClient(capability, dependencies);
-    case "geocode.nominatim": return createAdmittedProviderClient(capability, dependencies);
+    case "ocr.extract": return createProviderClient(capability, dependencies);
+    case "geocode.census": return createProviderClient(capability, dependencies);
+    case "geocode.nominatim": return createProviderClient(capability, dependencies);
   }
 }
 
@@ -199,10 +197,8 @@ export interface RunExecutorDependencies {
   readonly taskDeadlineMs: number;
   readonly log: TaskLogger;
   /** Optional production sink for task messages and browser actions. */
-  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
+  readonly taskNotes?: Pick<NoteTimelineWriter, "emitRunLog" | "emitRunAction">;
   readonly confirmedActionPublisher?: ConfirmedActionPublisher;
-  readonly checkpointMigrations?: readonly CheckpointMigration[];
-  readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
   /** Registered workflow/external source ports for non-operator gates. */
@@ -464,6 +460,7 @@ export async function executeClaimedRun(
       configFingerprint: envelope.configFingerprint,
       descriptorFingerprint: descriptor.contractFingerprint,
     });
+    try {
     const bound = prepared === undefined
       ? failure
       : FailureRecordSchema.parse({ ...failure, diagnosticBundleId: prepared.bundleId });
@@ -494,6 +491,12 @@ export async function executeClaimedRun(
       });
     }
     return RunExecutionOutcomeSchema.parse({ state: "failed", runId, failureId: bound.failureId });
+    } catch (error) {
+      if (prepared !== undefined && capture !== undefined) {
+        try { capture.discard(prepared); } catch (cleanup) { throw new AggregateError([error, cleanup], "diagnostic-failure-settlement-disposal-failed", { cause: cleanup }); }
+      }
+      throw error;
+    }
   };
 
   const interpret = async (): Promise<RunExecutionOutcome> => {
@@ -502,15 +505,8 @@ export async function executeClaimedRun(
 
     const problems: string[] = [];
     let canonicalInput: JsonValue | undefined;
-    const canonicalSchemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
     try {
-      const migrated = migrateCanonicalInputSnapshot(
-        { schemaHash: initial.input.parsed.schemaHash, value: initial.input.parsed.value },
-        canonicalSchemaHash,
-        deps.canonicalInputMigrations ?? [],
-        descriptor.id,
-      );
-      canonicalInput = JsonValueSchema.parse(descriptor.canonicalInput.parse(migrated));
+      canonicalInput = JsonValueSchema.parse(parseCanonicalInputSnapshot(descriptor.canonicalInput, initial.input.parsed));
     } catch (error) {
       problems.push(error instanceof Error ? error.message : "canonical input snapshot failed to parse");
     }
@@ -728,7 +724,6 @@ export async function executeClaimedRun(
           stored,
           checkpointExpectation(node),
           node.uses.output,
-          deps.checkpointMigrations ?? [],
         );
         // `stored` is the repository's strict parse already; a found load has a row.
         const storedRecord = load.found ? requireStoredCheckpoint(stored, String(node.id)) : undefined;
@@ -1118,8 +1113,7 @@ export async function executeClaimedRun(
             configSnapshot: provider.storedSnapshot,
             runSignal: controller.signal,
             adapters: provider.wiring.adapters,
-            repository: provider.wiring.repository,
-            ...(provider.wiring.accounting===undefined?{}:{accounting:provider.wiring.accounting}),
+            observe: event => taskLogger.debug("provider request", { ...event, nodeId: String(node.id), taskId: contract.id }),
             clock,
             idFactory: provider.wiring.idFactory,
             deadlineScheduler: deps.scheduler,

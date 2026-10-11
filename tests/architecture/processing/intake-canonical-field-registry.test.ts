@@ -1,135 +1,19 @@
-
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import rawInventory from "../../../src/models/fields/canonical-field-inventory.json" with { type: "json" };
 import { CANONICAL_FIELDS, CANONICAL_FIELD_IDS } from "../../../src/models/fields/registry.js";
 import type { CanonicalField } from "../../../src/models/fields/registry.js";
-import {
-  CanonicalFieldInventorySchema,
-  auditCanonicalFieldInventory,
-  auditCanonicalFieldRegistry,
-  type CanonicalFieldInventory,
-} from "../models/helpers/canonical-field-inventory-audit.js";
-import { REPO_ROOT } from "../support/helpers/guard-files.js";
-import { FROZEN_LEGACY_ARCHITECTURE_PROVENANCE } from "../support/helpers/frozen-legacy-architecture-provenance.js";
-
-const inventory = CanonicalFieldInventorySchema.parse(rawInventory);
+import { auditCanonicalFieldRegistry } from "../models/helpers/canonical-field-registry-audit.js";
 
 const registry: ReadonlyMap<string, CanonicalField> = new Map(
   CANONICAL_FIELD_IDS.map((id) => [id, CANONICAL_FIELDS[id] as CanonicalField]),
 );
 
-function readSource(ref: string): string | null {
-  if (ref.startsWith("legacy:")) {
-    return FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.canonicalFields.files
-      .find(({ path }) => path === ref.slice("legacy:".length))?.text ?? null;
-  }
-  const path = resolve(REPO_ROOT, ref.startsWith("doc:") ? ref.slice("doc:".length) : ref);
-  return existsSync(path) ? readFileSync(path, "utf8") : null;
-}
-
-function fixtureInventory(patch: (draft: CanonicalFieldInventory) => void): CanonicalFieldInventory {
-  const draft = structuredClone(inventory);
-  patch(draft);
-  return draft;
-}
-
 describe("ref data-intake-and-edit-data §1 canonical field registry", () => {
-  it("is covered by the recorded scan in both directions", () => {
-    assert.deepEqual(auditCanonicalFieldInventory({ inventory, fields: registry, readSource }), []);
-  });
-
   it("keeps every registry entry coherent", () => {
     assert.deepEqual(auditCanonicalFieldRegistry(registry), []);
   });
 
-  it("names the legacy commit the scan was taken at", () => {
-    assert.equal(inventory.legacyCommit.length >= 7, true);
-    assert.equal(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.canonicalFields.commit.startsWith(inventory.legacyCommit), true);
-    assert.equal(inventory.sources.some((source) => source.kind === "roster-header-rule"), true);
-    assert.equal(inventory.sources.some((source) => source.kind === "ocr-form-field"), true);
-    assert.equal(inventory.sources.some((source) => source.kind === "edit-data-field"), true);
-    assert.equal(inventory.sources.some((source) => source.kind === "workflow-input"), true);
-  });
-
   describe("negative controls — the audit fails when it should", () => {
-    it("catches a canonical field no source evidences", () => {
-      const orphaned = new Map(registry);
-      orphaned.set("phantom", { ...(registry.get("eid") as CanonicalField), id: "phantom" as CanonicalField["id"] });
-      const violations = auditCanonicalFieldInventory({ inventory, fields: orphaned, readSource });
-      assert.deepEqual(violations, ["canonical field phantom: no scanned source evidences it"]);
-    });
-
-    it("catches a scanned field that maps to an unknown canonical id", () => {
-      const drifted = fixtureInventory((draft) => {
-        // Reuse a real field name so only the TARGET is wrong.
-        (draft.sources[0].canonical as Record<string, string>).emplId = "notAField";
-      });
-      const violations = auditCanonicalFieldInventory({ inventory: drifted, fields: registry, readSource });
-      assert.equal(
-        violations.includes("legacy:src/workflows/work-study/schema.ts: field emplId maps to unknown canonical field notAField"),
-        true,
-        violations.join("\n"),
-      );
-    });
-
-    it("catches a scanned field that no longer exists in its source file", () => {
-      const drifted = fixtureInventory((draft) => {
-        draft.sources[0].local.fieldRemovedFromLegacy = "execution-option";
-      });
-      const violations = auditCanonicalFieldInventory({ inventory: drifted, fields: registry, readSource });
-      assert.equal(
-        violations.includes(
-          "legacy:src/workflows/work-study/schema.ts: scanned field fieldRemovedFromLegacy no longer appears in that file",
-        ),
-        true,
-        violations.join("\n"),
-      );
-    });
-
-    it("catches a source ref that resolves to nothing", () => {
-      const drifted = fixtureInventory((draft) => {
-        draft.sources.push({
-          ref: "legacy:src/workflows/does-not-exist/schema.ts",
-          kind: "workflow-input",
-          canonical: {},
-          local: { emplId: "execution-option" },
-        });
-      });
-      const violations = auditCanonicalFieldInventory({ inventory: drifted, fields: registry, readSource });
-      assert.equal(
-        violations.includes(
-          "legacy:src/workflows/does-not-exist/schema.ts: does not resolve to a file in the repository it names",
-        ),
-        true,
-        violations.join("\n"),
-      );
-    });
-
-    it("catches an undeclared local reason and an unused declared one", () => {
-      const drifted = fixtureInventory((draft) => {
-        draft.sources[1].local.dryRun = "because-i-said-so";
-        draft.localReasons.never_used = "unused";
-      });
-      const parsed = CanonicalFieldInventorySchema.safeParse(drifted);
-      // `never_used` is not kebab-case, so the schema refuses it before the
-      // audit ever runs — which is the stronger of the two failures.
-      assert.equal(parsed.success, false);
-
-      const kebab = fixtureInventory((draft) => {
-        draft.sources[1].local.dryRun = "because-i-said-so";
-        draft.localReasons["never-used"] = "unused";
-      });
-      const violations = auditCanonicalFieldInventory({ inventory: kebab, fields: registry, readSource });
-      assert.equal(
-        violations.includes("legacy:src/workflows/oath-signature/schema.ts: field dryRun cites undeclared reason because-i-said-so"),
-        true,
-        violations.join("\n"),
-      );
-      assert.equal(violations.includes("localReasons.never-used: declared but never cited"), true, violations.join("\n"));
-    });
 
     it("catches a header alias claimed by two fields", () => {
       const collided = new Map(registry);

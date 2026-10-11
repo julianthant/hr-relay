@@ -3,7 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { it } from "vitest";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { reapTestRuns, runTestProcess } from "../../../../scripts/test/runner.js";
@@ -152,5 +152,48 @@ it("retains malformed ownership and unrelated files instead of guessing they are
     writeFileSync(join(run, "keep"), "unknown ownership");
     assert.throws(() => reapTestRuns(root));
     assert.equal(readFileSync(join(run, "keep"), "utf8"), "unknown ownership");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("removes old empty owner-less runs, including an empty tmp directory", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
+  try {
+    for (const withTmp of [false, true]) {
+      const run = join(root, withTmp ? "run-emptytmp" : "run-empty");
+      mkdirSync(run, { mode: 0o700 });
+      if (withTmp) mkdirSync(join(run, "tmp"), { mode: 0o700 });
+      const old = new Date(Date.now() - 11 * 60_000);
+      utimesSync(run, old, old);
+      assert.deepEqual(reapTestRuns(root), { removed: [run], retained: [] });
+      assert.equal(existsSync(run), false);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("retains fresh owner-less runs during startup", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
+  try {
+    const run = join(root, "run-starting"); mkdirSync(run, { mode: 0o700 });
+    assert.deepEqual(reapTestRuns(root), { removed: [], retained: [run] });
+    assert.equal(existsSync(run), true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("retains owner-less runs with other content", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
+  try {
+    for (const location of ["root", "tmp", "tmpfile"]) {
+      const inTmp = location === "tmp";
+      const run = join(root, `run-${location}`);
+      mkdirSync(run, { mode: 0o700 });
+      if (inTmp) mkdirSync(join(run, "tmp"), { mode: 0o700 });
+      const content = join(inTmp ? join(run, "tmp") : run, location === "tmpfile" ? "tmp" : "keep");
+      writeFileSync(content, "unknown ownership");
+      const old = new Date(Date.now() - 11 * 60_000);
+      utimesSync(run, old, old);
+      assert.deepEqual(reapTestRuns(root), { removed: [], retained: [run] });
+      assert.equal(readFileSync(content, "utf8"), "unknown ownership");
+      rmSync(run, { recursive: true });
+    }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

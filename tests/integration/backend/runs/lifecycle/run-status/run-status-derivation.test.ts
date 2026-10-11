@@ -13,6 +13,7 @@ import {
   runEndedEventOf,
   runRecordOf,
   taskEventsOf,
+  traceOf,
   uuidOf,
   type DashboardWorld,
 } from "../../../../../support/helpers/backend/dashboard-harness.js";
@@ -38,7 +39,7 @@ const TIMELINE: NonNullable<RunDetailDescriptorView["timeline"]> = [
 
 function detailOf(w: DashboardWorld, seed: number, timeline?: NonNullable<RunDetailDescriptorView["timeline"]>) {
   return buildRunDetail(
-    { runReader: w.runReader,
+    { runReader: w.runReader, timeline: w.timeline,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -74,8 +75,8 @@ describe("authority-only run status", () => {
       if (entry.fold === "claim") claimEventOf(w, seed);
       if (entry.fold === "gate") w.writer.emit({
         t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-        runId: uuidOf(seed), attempt: 1, traceId: `pl-100005-${uuidOf(seed).slice(0, 4)}`,
-        spanPath: `pl-100005-${uuidOf(seed).slice(0, 4)}`, gate: "identity-approval",
+        runId: uuidOf(seed), attempt: 1, traceId: traceOf(seed),
+        spanPath: traceOf(seed), gate: "identity-approval",
       });
       const lifecycle = entry.state === "queued" ? { state: entry.state }
         : entry.state === "parked-gate" ? { state: entry.state, gateId: "identity-approval", parkedAt: instantOffsetOf(0), resumeAt: "search-person" }

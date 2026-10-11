@@ -156,7 +156,12 @@ export interface SeededExitRun {
 
 export function seedPersonLookupExitRun(
   database: AuthorityDatabase,
+  options: { readonly dryRun?: boolean } = {},
 ): SeededExitRun {
+  const active = database.authority.runtimeConfig.get();
+  if (active === undefined) throw new Error("exit fixture requires admitted current settings");
+  const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(record => record.poolIndex === 1 && record.retiredAt === null);
+  if (slot === undefined || database.authority.workerLeases.get(slot.workerId) === undefined) throw new Error("exit fixture requires an admitted leased worker");
   database.authority.runs.enqueue({
     envelope: {
       runId: EXIT_RUN_ID,
@@ -166,17 +171,18 @@ export function seedPersonLookupExitRun(
       descriptorVersion: personLookupDescriptor.version,
       contractFingerprint: personLookupDescriptor.contractFingerprint,
       resolvedInstance: { ucpath: "prod", crm: "prod" },
-      configFingerprint: CONFIG_FINGERPRINT,
-      configSnapshotId: CONFIG_SNAPSHOT_ID,
+      configFingerprint: active.configFingerprint,
+      configSnapshotId: active.configSnapshotId,
       shape: "single",
       priority: "interactive",
-      dryRun: false,
+      dryRun: options.dryRun ?? false,
       attempt: 1,
       enqueuedAt: ENQUEUED_AT,
     },
     input: {
       raw: { emplId: EXIT_EID },
       parsed: {
+        protectedBindings: [],
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
         value: { emplId: EXIT_EID, keepNonHdh: false, includeCrmDates: false },
       },
@@ -189,7 +195,7 @@ export function seedPersonLookupExitRun(
     updatedAt: ENQUEUED_AT,
   });
 
-  const workerId = "person-lookup-worker-1";
+  const workerId = slot.workerId;
   const firstClaim = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
@@ -252,7 +258,7 @@ export function seedPersonLookupExitRun(
     now: ATTEMPT_2_AT,
   });
   if (requeued.state !== "applied")
-    throw new Error("exit run did not requeue for attempt 2");
+    throw new Error("exit run did not requeue for its next claim");
   const claimed = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
@@ -292,7 +298,7 @@ export function seedPersonLookupExitRun(
 
   const crossVerify = checkpoint({
     nodeId: "cross-verify",
-    attempt: 2,
+    attempt: 1,
     claimGeneration: claimed.run.claimGeneration,
     schema: CrmReadOnboardingRecord.output,
     value: CRM_OUTPUT,
@@ -311,7 +317,7 @@ export function seedPersonLookupExitRun(
   });
   const activeStatus = checkpoint({
     nodeId: "active-status",
-    attempt: 2,
+    attempt: 1,
     claimGeneration: claimed.run.claimGeneration,
     schema: ReadActiveStatus.output,
     value: ACTIVE_STATUS_OUTPUT,
@@ -554,6 +560,7 @@ export function kualiReceiptEvidence(
     input: {
       raw: canonicalInput,
       parsed: {
+        protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: "11111111-1111-4111-8111-111111111111" }],
         schemaHash: deriveSchemaHash(
           SeparationsKualiFinalizationCanonicalInput,
           "output",
@@ -768,6 +775,7 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
   const gateResult = GateResultRecordSchema.parse({
     runId: GATE_RUN_ID,
     gateId: "identity-approval",
+    nodeId: "identity-approval",
     commandId: GATE_COMMAND_ID,
     expectedVersion: 17,
     resolvedBy: GATE_RESOLVED_BY,
@@ -811,6 +819,7 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
     input: {
       raw: canonicalInput,
       parsed: {
+        protectedBindings: [],
         schemaHash: deriveSchemaHash(
           SeparationsIdentityCheckCanonicalInput,
           "output",

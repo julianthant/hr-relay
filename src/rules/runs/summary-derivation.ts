@@ -1,6 +1,6 @@
 import { RunSummarySchema, type RunSummary } from "../../models/run/summary.js";
 import type { RunSummarySource } from "../../models/run/summary.js";
-import { CurrentSeparationsPseudonymSourceResultSchema } from "../../models/trust/activity-person-pseudonym-backfill.js";
+import { SeparationsResultSchema } from "../../models/workflows/separations/result.js";
 import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { sha256Hex } from "../validation/sha256.js";
@@ -45,12 +45,12 @@ export function runSummaryDigest(summary: RunSummary): string {
 export function deriveCanonicalPerson(run: RunSummarySource["run"], result: RunSummarySource["result"]): RunSummary["person"] {
   let person: RunSummary["person"] = { state: "unavailable", reason: "canonical-result-unavailable" };
   if (run.envelope.workflow === "separations" && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done" && result !== null) {
-    const hash = deriveSchemaHash(CurrentSeparationsPseudonymSourceResultSchema, "output");
+    const hash = deriveSchemaHash(SeparationsResultSchema, "output");
     if (result.runId !== run.envelope.runId || result.workflowId !== run.envelope.workflow
       || result.attempt !== run.envelope.attempt || result.descriptorVersion !== run.envelope.descriptorVersion
       || result.contractFingerprint !== run.envelope.contractFingerprint || result.configFingerprint !== run.envelope.configFingerprint
       || result.configSnapshotId !== run.envelope.configSnapshotId) throw new Error("summary-result-identity-mismatch");
-    const parsed = CurrentSeparationsPseudonymSourceResultSchema.safeParse(result.result.value);
+    const parsed = SeparationsResultSchema.safeParse(result.result.value);
     if (result.resultSchemaHash === hash && result.result.schemaHash === hash && parsed.success) {
       person = { state: "available", identity: parsed.data.approved.emplId };
     }

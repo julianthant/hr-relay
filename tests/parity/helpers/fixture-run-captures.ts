@@ -76,6 +76,7 @@ export const FIXTURE_RUN_CAPTURE_RECEIPTS: Readonly<Record<string, RunDetailSect
     payload: {
       state: "available",
       value: RunEvidenceReceiptSchema.parse({
+        composition: 5,
         receiptId: RUN_CAPTURE_FULL_RECEIPT_ID,
         runId: FIXTURE_IDS.doneRun,
         traceId: "fw-100001-0000",

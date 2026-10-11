@@ -1,3 +1,5 @@
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { testRunService, testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { sweepWorkerClaims } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 
@@ -41,10 +43,11 @@ import {
   ITEM_ID,
   QUEUED_RUN,
   RUN_ID,
-  WORKER_ID,
   WORKFLOW_ID,
 } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 
+const WORKER_ID = "person-lookup-worker-1";
+const SIBLING_WORKER_ID = "person-lookup-worker-2";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 afterEach(() => {
@@ -59,6 +62,7 @@ function openDatabase(): AuthorityDatabase {
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
+  for (const poolIndex of [1, 2]) testWorkerPorts(database, manualClock(new Date(NOW)), { path: join(root, "authority.sqlite"), descriptor: personLookupDescriptor, poolIndex });
   databases.push(database);
   return database;
 }
@@ -132,7 +136,7 @@ describe("expired-claim sweep write-intent gate", () => {
     assert.equal(run.envelope.attempt, 1);
     const reclaim = database.authority.runs.claimNext({
       workflow: WORKFLOW_ID,
-      workerId: "worker-2",
+      workerId: SIBLING_WORKER_ID,
       now: MUCH_LATER,
     });
     assert.equal(reclaim.state, "idle");
@@ -158,7 +162,7 @@ describe("expired-claim sweep write-intent gate", () => {
     assert.equal(run.lifecycle.state, "claimed");
     const reclaim = database.authority.runs.claimNext({
       workflow: WORKFLOW_ID,
-      workerId: "worker-2",
+      workerId: SIBLING_WORKER_ID,
       now: MUCH_LATER,
     });
     assert.equal(reclaim.state, "idle");
@@ -187,7 +191,7 @@ describe("expired-claim sweep write-intent gate", () => {
     assert.equal(requeuedFrom, "recovery");
     const reclaim = database.authority.runs.claimNext({
       workflow: WORKFLOW_ID,
-      workerId: "worker-2",
+      workerId: SIBLING_WORKER_ID,
       now: LATER,
     });
     assert.equal(reclaim.state, "claimed");
@@ -212,7 +216,7 @@ describe("expired-claim sweep write-intent gate", () => {
     database.authority.runs.enqueue(SIBLING_RUN);
     const sibling = database.authority.runs.claimNext({
       workflow: WORKFLOW_ID,
-      workerId: "worker-2",
+      workerId: SIBLING_WORKER_ID,
       now: NOW,
     });
     assert.equal(sibling.state, "claimed");
@@ -347,8 +351,8 @@ describe("bounded recovery candidate selection", () => {
       const queries = spy.mock.calls.map(([sql]) => sql.replace(/\s+/gu, " ").trim());
       assert.ok(queries.some((sql) => sql.includes("WHERE state IN ('claimed', 'validating', 'running')")
         && sql.includes("AND heartbeat_at < ?")), "recovery must filter active/stale rows before reading their JSON");
-      assert.equal(queries.some((sql) => sql.startsWith("SELECT DISTINCT workflow FROM workflow_runs")), false);
-      assert.equal(queries.some((sql) => sql === "SELECT record_json FROM workflow_runs WHERE workflow = ? ORDER BY created_at, record_key"), false);
+      assert.equal(queries.some((sql) => sql.startsWith("SELECT DISTINCT workflow FROM runs")), false);
+      assert.equal(queries.some((sql) => sql === "SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id"), false);
     } finally {
       spy.mockRestore();
     }

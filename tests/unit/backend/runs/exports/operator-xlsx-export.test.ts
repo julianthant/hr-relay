@@ -13,7 +13,8 @@ function searchEvidence(): Record<string, unknown> {
   const filename = "hr-run-search-2026-08-28-g19.xlsx";
   return {
     exportId: EXPORT_ID,
-    workbookVersion: 1,
+    workbookVersion: 3,
+    requestedBy: "local-operator",
     createdAt: "2026-08-28T16:00:00.000Z",
     selection: {
       kind: "search",
@@ -27,8 +28,9 @@ function searchEvidence(): Record<string, unknown> {
         generatedAt: "2026-08-28T16:00:00.000Z",
         sourceIdentity: HASH,
         authorityGeneration: 19,
-        order: "match-strength/enqueued-desc/run-id-asc:v1",
+        order: "match-strength/enqueued-desc/run-id-asc:v2",
         totalMatches: 1,
+        coverage: { matched: 1, subjectUnavailable: 1, actorUnavailable: 1, candidateLimit: 10000 },
       },
     },
     workbook: { sheetNames: ["Read Me", "Runs"], rowCount: 1 },
@@ -49,26 +51,12 @@ function searchEvidence(): Record<string, unknown> {
 }
 
 describe("operator XLSX export evidence", () => {
-  it("keeps v1 explicitly unattributed and requires attribution on v2", () => {
-    const v1 = searchEvidence();
-    assert.deepEqual(OperatorXlsxExportEvidenceSchema.parse(v1), v1);
-    assert.throws(() => OperatorXlsxExportEvidenceSchema.parse({
-      ...v1,
-      requestedBy: "local-operator",
-    }));
-    assert.throws(() => OperatorXlsxExportEvidenceSchema.parse({
-      ...v1,
-      workbookVersion: 2,
-    }));
-    assert.deepEqual(OperatorXlsxExportEvidenceSchema.parse({
-      ...v1,
-      workbookVersion: 2,
-      requestedBy: "local-operator",
-    }), {
-      ...v1,
-      workbookVersion: 2,
-      requestedBy: "local-operator",
-    });
+  it("requires current workbook attribution", () => {
+    const evidence = searchEvidence();
+    assert.deepEqual(OperatorXlsxExportEvidenceSchema.parse(evidence), evidence);
+    const { requestedBy: _requestedBy, ...unattributed } = evidence;
+    assert.throws(() => OperatorXlsxExportEvidenceSchema.parse(unattributed));
+    assert.throws(() => OperatorXlsxExportEvidenceSchema.parse({ ...evidence, requestedBy: "" }));
   });
 
   it("refuses workbook sheets and filenames from the other selection arm", () => {
@@ -83,6 +71,8 @@ describe("operator XLSX export evidence", () => {
           generatedAt: "2026-08-28T16:00:00.000Z",
           sourceIdentity: HASH,
           totalRuns: 1,
+          authorityGeneration: 19,
+          reportDigest: HASH,
         },
       },
     };

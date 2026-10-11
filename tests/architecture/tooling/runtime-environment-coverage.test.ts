@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, it } from "vitest";
 import { auditRuntimeEnvironmentInventory, COMPUTED_ENVIRONMENT_READERS, EXACT_ENVIRONMENT_READER_OWNERS, isRegisteredEnvironmentKey, RUNTIME_ENVIRONMENT_EXACT, RUNTIME_ENVIRONMENT_FAMILIES, RUNTIME_ENVIRONMENT_REGISTRY, runtimeEnvironmentFamilyForKey } from "../../../src/models/runtime/runtime-environment.js";
 import { ENVIRONMENT_SOURCE_EXTENSIONS, inventoryEnvironmentAccesses, type EnvironmentAccessOccurrence } from "../runtime/helpers/environment-read-audit.js";
-import { gitVisibleFiles, isLegacyPath, REPO_ROOT } from "../support/helpers/guard-files.js";
+import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
 interface ExampleEnvironmentInventory {
   readonly keys: readonly string[];
@@ -42,7 +42,7 @@ function parseExampleEnvironment(content: string): ExampleEnvironmentInventory {
 
 /** Test-lane paths on either side, which own their own environment reads. */
 function isTestPath(path: string): boolean {
-  return path.startsWith("tests/") || path.startsWith("legacy:tests/");
+  return path.startsWith("tests/");
 }
 
 
@@ -110,7 +110,7 @@ function auditOccurrences(occurrences: readonly EnvironmentAccessOccurrence[]): 
   }
   for (const expected of EXACT_ENVIRONMENT_READER_OWNERS) {
 
-    const expectedPaths = expected.paths.filter((path) => !isLegacyPath(path)).toSorted();
+    const expectedPaths = expected.paths.toSorted();
     if (expectedPaths.length === 0) continue;
     const actualPaths = [...(actualExactReaders.get(expected.key) ?? [])].sort();
     if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths)) {
@@ -129,7 +129,6 @@ function auditOccurrences(occurrences: readonly EnvironmentAccessOccurrence[]): 
   const actualComputed = aggregateComputed(productionComputed);
 
   const expectedComputed = new Map(COMPUTED_ENVIRONMENT_READERS
-    .filter((reader) => !isLegacyPath(reader.path))
     .map((reader) => [computedIdentity(reader), reader.occurrenceCount]));
   for (const [identity, count] of actualComputed) {
     if (expectedComputed.get(identity) !== count) violations.push(`unregistered or changed computed reader ${identity} (${count})`);
@@ -189,14 +188,11 @@ describe("runtime environment inventory coverage", () => {
     ]);
   });
 
-  it("resolves only the bare family key and numeric suffixes 2 through maximum", () => {
-    for (const family of RUNTIME_ENVIRONMENT_FAMILIES) {
-      assert.equal(isRegisteredEnvironmentKey(family.prefix), true);
-      assert.equal(isRegisteredEnvironmentKey(`${family.prefix}0`), false);
-      assert.equal(isRegisteredEnvironmentKey(`${family.prefix}1`), false);
-      assert.equal(isRegisteredEnvironmentKey(`${family.prefix}2`), family.maximum >= 2);
-      assert.equal(isRegisteredEnvironmentKey(`${family.prefix}${family.maximum}`), true);
-      assert.equal(isRegisteredEnvironmentKey(`${family.prefix}${family.maximum + 1}`), false);
+  it("keeps the current family inventory empty and unknown keys unregistered", () => {
+    assert.deepEqual(RUNTIME_ENVIRONMENT_FAMILIES, []);
+    for (const key of ["UNKNOWN_KEY", "UNKNOWN_KEY2"]) {
+      assert.equal(runtimeEnvironmentFamilyForKey(key), undefined);
+      assert.equal(isRegisteredEnvironmentKey(key), false);
     }
   });
 
@@ -284,7 +280,7 @@ describe("runtime environment inventory coverage", () => {
       ...RUNTIME_ENVIRONMENT_REGISTRY,
       computedReaders: RUNTIME_ENVIRONMENT_REGISTRY.computedReaders.map((reader) =>
         reader.path === "scripts/dev/dashboard.ts" && reader.targets.kind === "bulk-pass-through"
-          ? { ...reader, targets: { ...reader.targets, boundary: "legacy-daemon-child" as const } }
+          ? { ...reader, targets: { ...reader.targets, boundary: "test-command-child" as const } }
           : reader),
     };
     assert.match(

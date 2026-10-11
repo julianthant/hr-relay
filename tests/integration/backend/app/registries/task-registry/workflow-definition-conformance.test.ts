@@ -122,7 +122,7 @@ describe("workflow definition registry conformance", () => {
         queuedEventOf(world, { seed, workflow: id });
         for (const nodeId of expectedTaskIds) taskEventsOf(world, seed, nodeId, "done");
         const detail = buildRunDetail({ runReader: world.runReader,
-          stateRoot: world.stateRoot,
+          stateRoot: world.stateRoot, timeline:world.timeline,
           projection: world.projection,
           authority: world.authority,
           descriptors: { resolve: (workflowId) => workflowId === id ? descriptor : undefined },
@@ -235,7 +235,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
         if (node.kind === "task") taskEventsOf(world, seed, String(node.id), "done");
       }
       const detail = buildRunDetail({ runReader: world.runReader,
-        stateRoot: world.stateRoot,
+        stateRoot: world.stateRoot, timeline:world.timeline,
         projection: world.projection,
         authority: world.authority,
         descriptors: { resolve: (workflowId) => workflowId === id ? descriptor : undefined },

@@ -1,6 +1,8 @@
+import { inMemoryRunReaderFake } from "../../../../../support/helpers/canonical-run-reader.js";
+import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../../../../../src/models/run/deleted-run.js";
 import { RunRecordSchema, RunLifecycleSchema } from "../../../../../../src/models/run/record.js";
 import { DatabaseSync } from "node:sqlite";
-import { createTimelineRepository } from "../../../../../../src/backend/storage/sqlite/timeline-repository.js";
+import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RunSessionRecordSchema } from "../../../../../../src/models/run/session.js";
@@ -9,7 +11,7 @@ import { ContextDataSectionSchema, ObservedLogRowWireSchema } from "../../../../
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../../../src/models/dashboard/projection.js";
 import { buildRunDetail } from "../../../../../../src/backend/runs/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../../../../src/backend/runs/projections/run-queue-projection.js";
@@ -68,29 +70,23 @@ function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
   return created;
 }
 
-function otherConnection(w: DashboardWorld) {
-  const database = new DatabaseSync(join(w.stateRoot, "timeline.sqlite"));
-  const repository = createTimelineRepository({ database, read: (read) => read(),
-    assertOwner: (record) => {
-      if (record.scope.kind === "run" && w.authority.records.has(record.scope.runId)) {
-        database.prepare("INSERT OR IGNORE INTO workflow_runs(record_key) VALUES (?)").run(record.scope.runId);
-      }
-    }, mutate: (work) => {
-      if (database.isTransaction) return work().result;
-      database.exec("BEGIN IMMEDIATE");
-      try { const result = work().result; database.exec("COMMIT"); return result; }
-      catch (error) { database.exec("ROLLBACK"); throw error; }
-    } });
-  return { database, writer: createTimelineEmitter({ repository, clock: w.clock, pid: 777 }) };
+function otherConnection(w: DashboardWorld, pid = 777) {
+  const database = AuthorityDatabase.open({ path: join(w.stateRoot, "authority.db"),
+    busyTimeoutMs: 500, migrationOwner: "projection-peer-fixture" }, w.clock);
+  return { database, writer: createTimelineEmitter({ repository: database.authority.timelineEvents, clock: w.clock, pid }) };
 }
-function appendOther(w: DashboardWorld, event: unknown): void {
-  const other = otherConnection(w);
+function appendOther(w: DashboardWorld, event: unknown, pid = 777): void {
+  const other = otherConnection(w, pid);
   try { other.writer.emit(event); } finally { other.database.close(); }
 }
 function corruptLatest(w: DashboardWorld): void {
-  using raw = new DatabaseSync(join(w.stateRoot, "timeline.sqlite"));
-  raw.exec("DROP TRIGGER timeline_events_never_updated; PRAGMA ignore_check_constraints=ON");
-  raw.exec("UPDATE timeline_events SET record_json='{}' WHERE cursor=(SELECT MAX(cursor) FROM timeline_events)");
+  using raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
+  const sql = raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='timeline_events_immutable'").get()?.sql;
+  assert.equal(typeof sql, "string");
+  if (typeof sql !== "string") throw new Error("missing timeline immutable guard");
+  raw.exec("DROP TRIGGER timeline_events_immutable; PRAGMA ignore_check_constraints=ON");
+  try { assert.equal(raw.prepare("UPDATE timeline_events SET payload_json='{}' WHERE cursor=(SELECT MAX(cursor) FROM timeline_events)").run().changes, 1); }
+  finally { raw.exec(sql); }
 }
 
 afterEach(() => {
@@ -406,7 +402,7 @@ describe("THE run/queue projection", () => {
   it("keeps a re-run node's chip on the CURRENT run attempt when the span path repeats", () => {
 
     const w = world();
-    queuedEventOf(w, { seed: 1 });
+    queuedEventOf(w, { seed: 1, attempt: 2 });
     claimEventOf(w, 1);
     const base = {
       workflow: "person-lookup" as const,
@@ -428,7 +424,7 @@ describe("THE run/queue projection", () => {
     assert.equal(step?.state, "done");
 
 
-    const detail = buildRunDetail({ runReader: w.runReader, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } }, uuidOf(1));
+    const detail = buildRunDetail({ runReader: w.runReader, stateRoot: w.stateRoot, timeline: w.timeline, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } }, uuidOf(1));
     const crossVerify = detail.timeline.events.filter((event) => event.label === "cross-verify");
     assert.equal(crossVerify.length, 2);
     assert.equal(new Set(detail.timeline.events.map((event) => event.noteId)).size, detail.timeline.events.length);
@@ -608,7 +604,7 @@ describe("THE run/queue projection", () => {
     const fold = w.projection.runFold(uuidOf(1));
     assert.equal(fold?.taskSpans.length, 1);
     assert.equal(fold?.taskSpans[0].outcome, "done");
-    const detail = buildRunDetail({ runReader: w.runReader, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } }, uuidOf(1));
+    const detail = buildRunDetail({ runReader: w.runReader, stateRoot: w.stateRoot, timeline: w.timeline, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } }, uuidOf(1));
     assert.equal(detail.timeline.events.length > 0, true);
   });
 
@@ -627,14 +623,14 @@ describe("THE run/queue projection", () => {
     const w = world(); queuedEventOf(w, { seed: 1 });
     const other = otherConnection(w);
     try {
-      other.database.exec("BEGIN IMMEDIATE");
+      other.database.withAuthorityTransaction(() => {
       other.writer.emit({ workflow: "person-lookup", runId: uuidOf(1), attempt: 1,
         traceId: traceOf(1), spanPath: `${traceOf(1)}/searching#1`, parentSpanPath: traceOf(1),
         t: "span.started", kind: "task", ts: w.clock.now().toISOString(), name: "searching" });
       w.projection.ingestFromTimeline();
       assert.equal(w.projection.health().state, "live");
       assert.equal(w.projection.runFold(uuidOf(1))?.taskSpans.length, 0);
-      other.database.exec("COMMIT");
+      });
       w.projection.ingestFromTimeline(); w.projection.ingestFromTimeline();
       assert.equal(w.projection.runFold(uuidOf(1))?.taskSpans.length, 1);
     } finally { other.database.close(); }
@@ -655,7 +651,9 @@ describe("THE run/queue projection", () => {
   it("notices a workflow whose first SQLite event arrives after boot", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({ seed: 2, workflow: "zz-flow" }));
+    const nativeOwner = runRecordOf({ seed: 2, workflow: "zz-flow" });
+    w.authority.put(nativeOwner);
+    w.database.authority.runs.enqueue(nativeOwner);
     appendOther(w, JSON.parse(rawQueuedLineOf(w, 2, "zz-flow")));
     w.projection.ingestFromTimeline();
     assert.equal(w.projection.health().state, "live");
@@ -858,7 +856,7 @@ describe("settled run presentation retains skip reasons and measured timing", ()
     seedExitRunShape(w);
 
     const detail = buildRunDetail(
-      { runReader: w.runReader, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
+      { runReader: w.runReader, stateRoot: w.stateRoot, timeline: w.timeline, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
       uuidOf(1),
     );
     const crmDates = detail.timeline.events.find((event) => event.label === "crm-dates");
@@ -882,7 +880,7 @@ describe("settled run presentation retains skip reasons and measured timing", ()
     taskEventsOf(w, 1, "crm-dates", "skipped");
 
     const detail = buildRunDetail(
-      { runReader: w.runReader, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
+      { runReader: w.runReader, stateRoot: w.stateRoot, timeline: w.timeline, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
       uuidOf(1),
     );
     const crmDates = detail.timeline.events.find((event) => event.label === "crm-dates");
@@ -947,7 +945,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     });
   }
 
-  it("returns a requeued run to the queue, advances its attempt, and frees the worker holding it", () => {
+  it("returns a requeued run to the queue, preserves its attempt, and frees the worker holding it", () => {
     const w = world();
     seedWorkerSpans(w);
     queuedEventOf(w, { seed: 1 });
@@ -959,18 +957,17 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
       { state: "present", runId: uuidOf(1), traceId: traceOf(1) },
     );
 
-    w.authority.put(runRecordOf({ seed: 1, attempt: 2, lifecycle: { state: "queued" } }));
+    w.authority.put(runRecordOf({ seed: 1, attempt: 1, claimGeneration: 1, lifecycle: { state: "queued" } }));
     w.writer.emit({
       t: "run.requeued", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1),
-      cause: "recovery", nextAttempt: 2,
+      cause: "recovery", nextAttempt: 1,
     });
 
-    // The row is queued again — not "running with nobody running it" — and it
-    // carries the attempt the NEXT claim will run under.
+    // Recovery preserves the run attempt; the next claim advances its fence.
     const surface = w.projection.queueSurface(uuidOf(1));
     assert.equal(surface?.status, "queued");
-    assert.equal(surface?.attempt, 2);
+    assert.equal(surface?.attempt, 1);
     const fold = w.projection.runFold(uuidOf(1));
     assert.equal(fold?.requeues, 1);
     assert.equal(fold?.claimedBy, undefined);
@@ -1118,23 +1115,27 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     assert.match(w.projection.health().lastError ?? "", /skipped is a task-span outcome/);
   });
 
-  it("hands the client a fresh snapshot when an archived row leaves the payload", () => {
+  it("hands the client a fresh snapshot when a canonically deleted row leaves the payload", () => {
     const w = world();
+    const deleted = new Map<string, DeletedRunRecord>();
+    const canonical = inMemoryRunReaderFake({ ...w.runReaderState, deleted });
+    vi.spyOn(w.runReader, "read").mockImplementation(canonical.read);
     queuedEventOf(w, { seed: 1 });
     queuedEventOf(w, { seed: 2 });
     taskEventsOf(w, 1, "searching");
     const before = w.changes.length;
-
-
-    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0) } }));
-    w.authority.archived.add(uuidOf(1));
-    w.projection.refreshRun(uuidOf(1));
-    w.authority.put(runRecordOf({ seed: 2, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0) } }));
-    w.authority.archived.add(uuidOf(2));
-    w.projection.refreshRun(uuidOf(2));
-    // A run the fold never saw is not a projection event at all.
+    for (const seed of [1, 2]) {
+      const run = w.authority.getRun(uuidOf(seed)); assert.ok(run);
+      w.authority.records.delete(run.envelope.runId);
+      deleted.set(run.envelope.runId, DeletedRunRecordSchema.parse({
+        runId: run.envelope.runId, workflow: run.envelope.workflow, traceId: run.envelope.traceId,
+        itemId: run.envelope.itemId, attempt: run.envelope.attempt, runNumber: run.runNumber ?? null,
+        ordinalSource: "tombstone", origin: "queue", commandId: uuidOf(800 + seed),
+        deletedAt: instantOffsetOf(0), tallyVersion: 3, removed: [{ table: "runs", rows: 1 }],
+      }));
+      w.projection.refreshRun(run.envelope.runId);
+    }
     w.projection.refreshRun(uuidOf(99));
-
     assert.deepEqual(w.changes.slice(before).map(({ kind }) => kind), ["snapshot", "snapshot"]);
     const day = w.projection.buildDashboardDayWire(DAY);
     assert.deepEqual(day.queueSurfaces, []);
@@ -1306,22 +1307,6 @@ describe("the queue row's served facts", () => {
     });
   });
 
-  it("serves pre-composition-3 receipt diagnostics in Queue without mutating authority", () => {
-    const w = world();
-    seedWorld(w);
-    const raw = "ucpath:termination|10812345|2026-08-29";
-    const legacy = RunEvidenceReceiptSchema.parse({
-      ...receiptWithWarningsOf({ seed: 3, summaries: [raw] }),
-      composition: 2,
-    });
-    w.authority.receipts.set(uuidOf(3), legacy);
-
-    const row = rowOf(w, 3);
-    assert.equal(JSON.stringify(row).includes(raw), true);
-    assert.equal(row.warnings.state, "present");
-    assert.equal(w.authority.receipts.get(uuidOf(3)), legacy);
-  });
-
   it("three distinct absences, and never a fabricated zero", () => {
     const w = world();
     seedWorld(w);
@@ -1384,6 +1369,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
   it("serves the run's session off its own row, and names the absence of one", () => {
     const w = world();
     w.authority.batches.set(uuidOf(70), RunSessionRecordSchema.parse({ sessionId: uuidOf(70), workflow: "person-lookup", origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 }));
+    const nativeBatch = w.authority.batches.get(uuidOf(70)); assert.ok(nativeBatch);
+    w.database.authority.runSessions.insert(nativeBatch);
     queuedEventOf(w, { seed: 1, sessionId: uuidOf(70) });
     queuedEventOf(w, { seed: 2, sessionId: uuidOf(70) });
     queuedEventOf(w, { seed: 3 });
@@ -1402,6 +1389,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     const w = world();
     const batch = RunSessionRecordSchema.parse({ sessionId: uuidOf(70), workflow: "person-lookup", origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 });
     w.authority.batches.set(batch.sessionId, batch);
+    w.database.authority.runSessions.insert(batch);
     queuedEventOf(w, { seed: 1, sessionId: batch.sessionId });
     queuedEventOf(w, { seed: 2, sessionId: batch.sessionId });
     w.projection.reconcileWorkerAuthority();
@@ -1604,13 +1592,13 @@ describe("the queue row's ordinal, class, links and outcome", () => {
       workflow: "person-lookup", pid: 778, runId: uuidOf(1), attempt: 1,
       traceId: traceOf(1), spanPath: `${traceOf(1)}/searching#1.1`, parentSpanPath: traceOf(1),
     };
-    const line = (event: Record<string, unknown>): void => {
-      appendOther(w, event);
+    const line = (event: Record<string, unknown>, pid = 778): void => {
+      appendOther(w, event, pid);
     };
     line({ ...base, t: "span.started", kind: "task", ts: instantOffsetOf(0, 1_000), name: "searching" });
     line({ ...base, t: "span.ended", kind: "task", ts: instantOffsetOf(0, 5_000), outcome: "done" });
-    line({ ...base, t: "span.started", kind: "task", ts: instantOffsetOf(0, 9_000), name: "searching" });
-    line({ ...base, t: "span.ended", kind: "task", ts: instantOffsetOf(0, 12_000), outcome: "done" });
+    line({ ...base, t: "span.started", kind: "task", ts: instantOffsetOf(0, 9_000), name: "searching" }, 779);
+    line({ ...base, t: "span.ended", kind: "task", ts: instantOffsetOf(0, 12_000), outcome: "done" }, 779);
 
     w.projection.ingestFromTimeline();
 

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
-import type { RunRecord } from "../../../../../../src/models/run/record.js";
+import { RunRecordSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
 import { UUID_5, UUID_7 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
   COMPOSITION_EID,
@@ -31,8 +31,15 @@ function harness(): CompositionHarness {
   return created;
 }
 
-function restartRun(runId: string, attempt: number, retryOf: string): Record<string, unknown> {
-  const run = compositionQueuedRun();
+function protectedQueuedRun(): RunRecord {
+  const run = RunRecordSchema.parse(compositionQueuedRun());
+  return RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
+    protectedBindings: [...run.input.parsed.protectedBindings,
+      { kind: "test-data-local", inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: UUID_7 }] } } });
+}
+
+function restartRun(runId: string, attempt: number, retryOf: string, protectedInput = false): Record<string, unknown> {
+  const run = protectedInput ? structuredClone(protectedQueuedRun()) : compositionQueuedRun();
   const envelope = run.envelope as Record<string, unknown>;
   envelope.runId = runId;
   envelope.attempt = attempt;
@@ -50,8 +57,8 @@ function worldCounts(h: CompositionHarness): Readonly<{ stages: number; clicks: 
   };
 }
 
-async function fileTermination(h: CompositionHarness): Promise<RunRecord> {
-  const { run, claim } = compositionClaimRunning(h.database, h.clock, compositionQueuedRun(), TERMINATION_NODE);
+async function fileTermination(h: CompositionHarness, protectedInput = false): Promise<RunRecord> {
+  const { run, claim } = compositionClaimRunning(h.database, h.clock, protectedInput ? protectedQueuedRun() : compositionQueuedRun(), TERMINATION_NODE);
   const outcome = await h.bound(() => h.sequencer.executeTransaction(compositionContext(run, claim, TERMINATION_NODE)));
   assert.equal(Reflect.get(outcome as object, "disposition"), "committed");
   assert.deepEqual(worldCounts(h), { stages: 1, clicks: 1, rows: 1 });
@@ -96,10 +103,10 @@ describe("write sequencer — no repeat writes across recovery", () => {
 
   it("a restart whose fresh facts no longer match the completed write refuses by node name and key reference — no stage, fence or click", async () => {
     const h = harness();
-    const first = await fileTermination(h);
+    const first = await fileTermination(h, true);
 
     const { run, claim } = compositionClaimRunning(
-      h.database, h.clock, restartRun(UUID_7, 2, first.envelope.runId), TERMINATION_NODE,
+      h.database, h.clock, restartRun(UUID_7, 2, first.envelope.runId, true), TERMINATION_NODE,
     );
     const moved = compositionContext(run, claim, TERMINATION_NODE);
     const approval = COMPOSITION_SCOPE_OUTPUTS.approval;

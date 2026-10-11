@@ -10,7 +10,7 @@ intention.
 
 **Section numbers are load-bearing and do not move.** `§1.1`, `§1.2.1`, `§2`, `§2.1`, `§3`, `§3.2`,
 `§4`, `§5.5`, `§5.7`, `§8` and the rest are cited from the phase docs, the sibling reference docs,
-`docs/rebuild/migrations/separations.md`, the tree's `doc:` attributes and from `src/` itself. A rewrite adds
+the workflow's task evidence, the tree's `doc:` attributes and from `src/` itself. A rewrite adds
 and corrects; it does not renumber.
 
 **As-built is folded in, not appended.** This doc used to carry four dated `Phase 1e` / `Phase 1f`
@@ -1196,7 +1196,7 @@ four artifacts under the former scenario-tier contract:
 1. `src/workflows/<id>/workflow.ts` containing one `defineWorkflow(...)` call;
 2. `tests/scenario/workflows/<id>/structural.scenario.test.ts`;
 3. `tests/scenario/workflows/<id>/dry-run.scenario.ts`; and
-4. `docs/rebuild/migrations/<id>.md`.
+4. the workflow's task evidence.
 
 Those T1 files are historical and are not current requirements. Generated descriptors, module
 requirements, registry values, build-manifest rows and generic dashboard projections do not count
@@ -1433,7 +1433,7 @@ Three things this settles, each because the alternative is a lie somewhere:
    It bound previewability to whether the workflow offers a paste-a-line input surface, so all three
    registered write workflows (each `surfaces: {}` by design, their ingress being many correlated
    values a line parser cannot invent) were structurally un-startable as dry runs while being exactly
-   the workflows a preview exists for. `docs/rebuild/migrations/separations.md` §9.9 gap 1 is the measured
+   the workflows a preview exists for. the workflow's task evidence §9.9 gap 1 is the measured
    report of that; chunk 4's dry-run proof had to be driven through a harness because of it.
 2. **Every transaction node must declare the arm, not just the first one a preview would reach.** A
    run stops at the first, so checking only the first would be a true statement about the wrong
@@ -2557,7 +2557,7 @@ or after its first `always-rerun` node could not be retried at all**, which for 
 live: run `555ba4b4` retried `12a5cd3e`, replayed the whole read chain from the first run's
 checkpoints, and died in 1.89 s with
 `run checkpoint separations\0…\0timecard-search\0 1 \0 1 already exists with different content`
-(`docs/rebuild/migrations/separations.md` §9.17 item 8).
+(the workflow's task evidence §9.17 item 8).
 
 **The counter is not invented either.** `(workflow, item_id)` is the logical item and this table is
 keyed by it, so every component of the key must be item-scoped; `attempt` was the only one that was

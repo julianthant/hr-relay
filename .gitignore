@@ -16,9 +16,6 @@ node_modules/
 .vscode/
 .idea/
 
-# Auth session state
-.auth-rebuild/
-
 # Claude Code
 .claude/settings.local.json
 .design/
@@ -33,7 +30,6 @@ duo-autopilot/node_modules/
 
 # Rebuild runtime state + artifacts (isolated roots, see config/runtime-isolation.json)
 .tracker/
-.runtime-control/
 
 # Coverage lane output (`npm run test:coverage`) — regenerated every run.
 coverage/
@@ -50,13 +46,6 @@ dist/
 # that is the evidence; this is only what a failing run left behind.
 tests/parity/.output/
 
-# Live-probe screenshots and accessibility dumps. A probe against UCPath /
-# Kuali / CRM captures REAL names, EIDs, and transaction numbers, so these are
-# restricted HR data and must never enter git. The committed evidence for a
-# probe is its sanitized manifest under docs/rebuild/evidence/selectors/**, which records that a
-# recipe matched exactly once and deliberately carries `capturedValue: false`.
-.screenshots/
-
 # OS
 .DS_Store
 Thumbs.db
@@ -66,4 +55,3 @@ Thumbs.db
 OnboardingRoster-*.xlsx
 *.xlsx
 !tests/**/fixtures/**/*.xlsx
-.auth/

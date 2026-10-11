@@ -1,0 +1,1 @@
+export const EVENT_STREAM_RETENTION_DAYS = 30;

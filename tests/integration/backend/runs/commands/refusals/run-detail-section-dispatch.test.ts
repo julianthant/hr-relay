@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { RunIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { SectionUnavailableError } from "../../../../../../src/backend/runs/commands/refusals.js";
-import { createNoteJsonlWriter } from "../../../../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter } from "../../../../../../src/backend/storage/events/note-timeline-writer.js";
 import {
   buildRunSection,
   readRunSection,
@@ -27,7 +27,7 @@ afterEach(() => {
 
 function depsOf(current: DashboardWorld): RunDetailQueryDeps {
   return {
-    runReader: current.runReader,
+    runReader: current.runReader, timeline: current.timeline,
     stateRoot: current.stateRoot,
     projection: current.projection,
     authority: current.authority,
@@ -81,7 +81,7 @@ describe("run-detail section registration", () => {
   it("pages bounded Logs responses through readRunSection", async () => {
     const current = world();
     queuedEventOf(current, { seed: 1 });
-    const notes = createNoteJsonlWriter({ stateRoot: current.stateRoot, clock: current.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: current.timeline, clock: current.clock, pid: 4242 });
     for (let index = 0; index < 201; index += 1) {
       notes.emitNote({
         workflow: "person-lookup",

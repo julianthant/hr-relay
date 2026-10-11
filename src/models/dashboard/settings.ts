@@ -1,4 +1,4 @@
-/** Workflow capabilities are live descriptor facts. The system-host arm is retained for wire compatibility; its test state is unavailable for new runs. */
+/** Workflow capabilities are descriptor facts; system-host facts carry explicit test availability. */
 import { z } from "zod";
 import {
   BrowserSystemIdSchema,
@@ -7,11 +7,11 @@ import {
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 
-/** The retired host id stays parseable for older facts wires. */
+/** The system-host section wire identity. */
 export const SETTINGS_SYSTEM_HOSTS_SECTION_ID = "system-hosts";
 export const SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID = "workflow-capabilities";
 
-/** Old wire states remain readable; current projections offer no test host. */
+/** Explicit test-host availability states. */
 export const SystemHostTestWireSchema = z.union([
   z.strictObject({ state: z.literal("not-provisioned") }),
   z.strictObject({ state: z.literal("not-distinct") }),
@@ -19,7 +19,7 @@ export const SystemHostTestWireSchema = z.union([
 ]);
 export type SystemHostTestWire = z.infer<typeof SystemHostTestWireSchema>;
 
-/** Production entry stays available in the compatibility projection. */
+/** Each system has its production entry and test availability. */
 export const SystemHostWireSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   production: z.url(),

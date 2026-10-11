@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ConfirmedActionEventSchema, confirmedStepOccurrence } from "../../../../src/models/events/confirmed-action.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
-import { createNoteJsonlWriter } from "../../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { DeclaredActionOccurrenceSchema } from "../../../../src/rules/workflow/task-provenance.js";
 import { OperationActionIdSchema } from "../../../../src/models/workflow/operation-display.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
@@ -35,8 +35,8 @@ const authority = { envelope: { runId: RUN, workflow: "onboarding", traceId: "fp
 describe("confirmed action note append boundary", () => {
   it("withholds unregistered values before the append port and preserves exact owner/identity", () => {
     const lines: string[] = [];
-    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)),
-      pid: 1, appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const writer = createNoteTimelineWriter({ clock: manualClock(new Date(AT)),
+      pid: 1, repository: { append: (input) => { lines.push(JSON.stringify((input as {payload: {note: unknown}}).payload.note)); return {} as never; } } });
     const note = writer.emitConfirmedAction(event, authority);
     assert.equal(lines.length, 1);
     const stored = NoteWireSchema.parse(JSON.parse(lines[0]));
@@ -49,8 +49,8 @@ describe("confirmed action note append boundary", () => {
 
   it.each(["protection-unresolved", "classification-required"] as const)("persists the canonical withheld reason %s without raw values", (reason) => {
     const lines: string[] = [];
-    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)),
-      pid: 1, appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const writer = createNoteTimelineWriter({ clock: manualClock(new Date(AT)),
+      pid: 1, repository: { append: (input) => { lines.push(JSON.stringify((input as {payload: {note: unknown}}).payload.note)); return {} as never; } } });
     const occurrence = DeclaredActionOccurrenceSchema.parse({ ...event.action, state: "completed" as const,
       value: { slot: "field-value", fieldPath: "emplId", producer: { kind: "run-input" as const, path: "emplId" },
         consumed: { state: "withheld" as const, reason } } });
@@ -71,8 +71,8 @@ describe("confirmed action note append boundary", () => {
 
   it.each(["browser", "headless"] as const)("retains eligible %s local consumption through the frozen append boundary", (source) => {
     const lines: string[] = [];
-    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)), pid: 1,
-      appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const writer = createNoteTimelineWriter({ clock: manualClock(new Date(AT)), pid: 1,
+      repository: { append: (input) => { lines.push(JSON.stringify((input as {payload: {note: unknown}}).payload.note)); return {} as never; } } });
     const target = source === "browser" ? "ucpath.person-org.eid-input" : "read-local";
     const frozenInvocation = authority.envelope.operationDisplaySnapshot!.invocations[0];
     const session = source === "browser" ? frozenInvocation.operation.session : { kind: "local", id: "browser-session" };
@@ -109,8 +109,8 @@ describe("confirmed action note append boundary", () => {
 
   it.each(["browser", "headless"] as const)("binds eligible %s constant consumption to its exact frozen digest", (source) => {
     const lines: string[] = [];
-    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)), pid: 1,
-      appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const writer = createNoteTimelineWriter({ clock: manualClock(new Date(AT)), pid: 1,
+      repository: { append: (input) => { lines.push(JSON.stringify((input as {payload: {note: unknown}}).payload.note)); return {} as never; } } });
     const invocation = authority.envelope.operationDisplaySnapshot!.invocations[0];
     const frozen = { ...authority, envelope: { ...authority.envelope, operationDisplaySnapshot: {
       invocations: [{ ...invocation, bindings: [{ slot: "field-value", value: { kind: "constant", valueDigest: HASH } }],
@@ -135,8 +135,8 @@ describe("confirmed action note append boundary", () => {
 
   it("throws on append failure and refuses a foreign frozen run before any append", () => {
     let attempts = 0;
-    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)),
-      pid: 1, appendLine: () => { attempts++; throw new Error("append failed"); } });
+    const writer = createNoteTimelineWriter({ clock: manualClock(new Date(AT)),
+      pid: 1, repository: { append: () => { attempts++; throw new Error("append failed"); } } });
     assert.throws(() => writer.emitConfirmedAction(event, authority), /append failed/u);
     assert.equal(attempts, 1);
     const foreignAction = { ...event.action, runId: "33333333-3333-4333-8333-333333333333" };
@@ -147,8 +147,8 @@ describe("confirmed action note append boundary", () => {
 
   it("binds submit and saved verifier to their separate frozen invocations", () => {
     const lines: string[] = [];
-    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)),
-      pid: 1, appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const writer = createNoteTimelineWriter({ clock: manualClock(new Date(AT)),
+      pid: 1, repository: { append: (input) => { lines.push(JSON.stringify((input as {payload: {note: unknown}}).payload.note)); return {} as never; } } });
     const commit = { ...action, invocationId: "commit-operation", taskId: "ucpath/fixture-commit",
       logicalActionId: "submit", state: "completed" as const };
     const verifier = { ...action, invocationId: "verify-operation", taskId: "ucpath/fixture-verify",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DESCRIPTORS, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../../../src/backend/app/registries/step-proof-modules.js";
+import { STEP_PROOF_DESCRIPTORS } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
 
 
@@ -15,7 +15,7 @@ describe("workflow descriptor registry", () => {
       "separations",
     ]);
     expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations"]);
-    for (const descriptor of HISTORICAL_STEP_PROOF_DESCRIPTORS) {
+    for (const descriptor of STEP_PROOF_DESCRIPTORS) {
       expect(() => workflowModuleOf(descriptor.id)).toThrow(/not registered/u);
     }
   });

@@ -35,6 +35,7 @@ import { createDashboardTransport } from "../../../../../../src/dashboard/client
 import { verifySelectionDownload } from "../../../../../../src/dashboard/client/queries/selection-download.js";
 import { DashboardClientError } from "../../../../../../src/dashboard/client/errors.js";
 import { activityPresetRange, type ActivityRangePreset } from "../../../../../../src/dashboard/surfaces/activity/activity-model.js";
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runRecordOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
 
 const cleanup:(()=>void)[]=[];
@@ -102,6 +103,7 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
   const root=mkdtempSync(join(tmpdir(),"activity-selection-proof-")),path=join(root,"state.db");
   const clock=manualClock(new Date("2026-09-21T17:00:00Z"));
   const database=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"activity-selection-proof"},clock);
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   cleanup.push(()=>{database.close();rmSync(root,{recursive:true,force:true});});
   const activityDays: readonly string[] = options.rangeAware ? RANGE_AWARE_ACTIVITY_DAYS : ["2026-09-20", "2026-09-20", "2026-09-20"];
   for (const [index, day] of activityDays.entries()) {
@@ -126,7 +128,7 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
     :composeActivity({database,clock,descriptors,ledger,timeZone:"UTC"});
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
-  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts"))});
+  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts"))});
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
     search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));

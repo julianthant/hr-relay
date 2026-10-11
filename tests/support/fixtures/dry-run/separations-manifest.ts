@@ -100,9 +100,7 @@ const MANIFEST = {
 
   arm: "dry-run-preview",
   transactionNode: TRANSACTION_NODE,
-  recordedBy: "the 2026-09-02 supplied-EID policy correction and current separations graph; "
-    + "docs/rebuild/migrations/separations.md §9.27 addendum 7 remains the historical dryRun=true subject "
-    + "evidence from doc 4502, while D284's closed doc 4537 reference remains the registered subject",
+  recordedBy: "the current separations graph and public finalization subject registry",
   cases: [
     {
       caseId: "nothing-to-sweep",

@@ -22,9 +22,6 @@ export function executeFailureResolution(
   if (run === undefined || failure === undefined || failure.runId !== runId) {
     rejectCommandRequest(request, "target-not-found", "The exact live run and failure are unavailable.");
   }
-  if (repositories.archivedRuns.get(runId) !== undefined) {
-    rejectCommandRequest(request, "invalid-state", "Archived failures are read-only.");
-  }
   const current = repositories.failureResolution.read(runId, failureId);
   if (current === undefined) throw new Error("failure-resolution-annotation-missing");
   if (current.resolution.version !== expectedVersion) {
@@ -54,7 +51,7 @@ export function executeFailureResolution(
   return { result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
     versionChanges: [{ target, before: expectedVersion, after: resolution.version }], affectedDependencyIds: [] };
 }
-/** Real capture passes through D's boundary without changing immutable evidence. */
+/** Real capture preserves immutable failure evidence. */
 export function bindFailureCapture(capture:RunDiagnosticCapture):RunDiagnosticCapture {
- return Object.freeze({captureForFailure:(context:Parameters<RunDiagnosticCapture["captureForFailure"]>[0])=>capture.captureForFailure(context),persist:(bundle:Parameters<RunDiagnosticCapture["persist"]>[0])=>capture.persist(bundle)});
+ return Object.freeze({captureForFailure:(context:Parameters<RunDiagnosticCapture["captureForFailure"]>[0])=>capture.captureForFailure(context),persist:(bundle:Parameters<RunDiagnosticCapture["persist"]>[0])=>capture.persist(bundle),discard:(bundle:Parameters<RunDiagnosticCapture["discard"]>[0])=>capture.discard(bundle)});
 }

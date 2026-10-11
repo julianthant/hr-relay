@@ -1,9 +1,16 @@
+import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
+import { readFileSync as readBuildFile } from "node:fs";
+import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../logs/emergency-faults.js";
+import { admitDirectWorker, admitSupervisedWorker } from "../../storage/sqlite/worker-slots.js";
+import { z } from "zod";
+import { WorkerPoolMemberSchema } from "../../../models/run/worker-slot.js";
+import { CommandIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { composeRuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { claimWithPreflight } from "../preflight/worker-admission.js";
 import { createWorkerBrowserControl } from "../../runtime/workers/worker-browser-control.js";
 import { selectRunRuntime } from "../../runs/settings/run-settings.js";
-import { createRunResourcesFactory } from "./worker/run-resources.js";
+import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
@@ -18,7 +25,7 @@ import type { WorkflowModule } from "../../../workflow-kit/workflow-definition.j
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
-import { poolWorkerId, runWorkerLoop, type WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
+import { runWorkerLoop, type WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 import type { DuoCeremonyGateFactory } from "../../runtime/gates/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../runtime/workers/worker-sessions.js";
 import { createWriteSequencer } from "../../runtime/writes/write-sequencer.js";
@@ -38,13 +45,13 @@ import { createDiagnosticCaptureService } from "../../logs/diagnostics/diagnosti
 import { createRunBrowserScreenshotCapture, createRunDiagnosticCapture } from "../../logs/diagnostics/run-diagnostic-capture.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
-import { createNoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
-import { pruneEventStreams } from "../../storage/events/jsonl-streams.js";
+import { createDebugEventWriter } from "../../logs/debug-events.js";
+import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 
 
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { acquireRuntimeProcessLock, type ProcessIdentityObserver } from "../../storage/sqlite/runtime-process-locks.js";
+import { assertWorkerProcessCustody, bindWorkerProcessAdmission, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
 // Cadences are composition choices; the contracts constrain renewal and recovery ordering, not numeric defaults.
@@ -58,7 +65,9 @@ export { createTimeoutDeadlineScheduler };
 export function lineTaskLogger(write: (line: string) => void, clock: Clock): TaskLogger {
   const emit = (level: "debug" | "info" | "warn") =>
     (message: string, fields?: Readonly<Record<string, string | number | boolean>>): void => {
-      write(JSON.stringify({ ts: clock.now().toISOString(), level, message, ...fields }));
+      const safeFields = Object.fromEntries(Object.entries(fields ?? {}).filter(([key]) => !/password|token|cookie|authorization|privatekey|challenge|signature/iu.test(key))
+        .map(([key, value]) => [key, typeof value === "string" ? sanitizeDebugText(value) : value]));
+      write(JSON.stringify({ ts: clock.now().toISOString(), level, message: sanitizeDebugText(message), ...safeFields }));
     };
   return Object.freeze({ debug: emit("debug"), info: emit("info"), warn: emit("warn") });
 }
@@ -68,6 +77,7 @@ export interface WorkerCliArguments {
   readonly poolIndex: PositiveInt;
   /** `--drain`: claim until the queue is idle once, then exit (harness mode). */
   readonly drain: boolean;
+  readonly launch?: Readonly<{ workerId: WorkerId; ordinal: PositiveInt; membershipRevision: PositiveInt; commandId: string }>;
 }
 
 /** `worker <workflow-id> --pool-index <positive-int> [--drain]` — anything else refuses by name. */
@@ -86,12 +96,19 @@ export function parseWorkerArguments(args: readonly string[], scenarioStepProofI
   }
   let drain = false;
   let poolIndex: PositiveInt | undefined;
+  const launchFields = new Map<string, string>();
   for (let index = 0; index < rest.length; index += 1) {
     const flag = rest[index];
     if (flag === "--drain") {
       if (drain) throw new Error("duplicate worker flag: --drain");
       drain = true;
       continue;
+    }
+    if (flag === "--worker-id" || flag === "--ordinal" || flag === "--membership-revision" || flag === "--launch-command-id") {
+      if (launchFields.has(flag)) throw new Error(`duplicate worker flag: ${flag}`);
+      const raw = rest[index + 1];
+      if (raw === undefined || raw.startsWith("--")) throw new Error(`worker ${flag} requires its admitted value`);
+      launchFields.set(flag, raw); index += 1; continue;
     }
     if (flag === "--pool-index") {
       if (poolIndex !== undefined) throw new Error("duplicate worker flag: --pool-index");
@@ -106,7 +123,7 @@ export function parseWorkerArguments(args: readonly string[], scenarioStepProofI
       if (!Number.isSafeInteger(numeric)) {
         throw new Error(`worker --pool-index must be a positive safe integer; received ${raw}`);
       }
-      poolIndex = PositiveIntSchema.parse(numeric);
+      poolIndex = PositiveIntSchema.refine(value => value <= 3, "worker pool index cannot exceed three").parse(numeric);
       index += 1;
       continue;
     }
@@ -115,10 +132,17 @@ export function parseWorkerArguments(args: readonly string[], scenarioStepProofI
   if (poolIndex === undefined) {
     throw new Error("the worker command requires --pool-index <positive-int>; no pool index may be guessed");
   }
-  return Object.freeze({ workflowId, poolIndex, drain });
+  if (launchFields.size === 0) return Object.freeze({ workflowId, poolIndex, drain });
+  const launch = z.strictObject({ workerId: WorkerIdSchema, ordinal: PositiveIntSchema,
+    membershipRevision: PositiveIntSchema, commandId: CommandIdSchema }).parse({
+    workerId: launchFields.get("--worker-id"), ordinal: Number(launchFields.get("--ordinal")),
+    membershipRevision: Number(launchFields.get("--membership-revision")), commandId: launchFields.get("--launch-command-id") });
+  WorkerPoolMemberSchema.parse({ workflowId, poolIndex, workerId: launch.workerId, ordinal: launch.ordinal, membershipRevision: launch.membershipRevision });
+  return Object.freeze({ workflowId, poolIndex, drain, launch });
 }
 
 export interface WorkerComposeInput {
+  readonly takeInitialCustody?: () => RuntimeProcessLockHandle | undefined;
   readonly admission?: RuntimeAdmission;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   readonly isolation: RuntimeIsolation;
@@ -144,6 +168,7 @@ export interface WorkerComposeInput {
   /** Test-only observation/crash hooks for the settings exclusion boundary. */
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
+  readonly createSessionFactory?: (profiles: BrowserProfileAuthority) => WorkerBrowserSessionFactory;
   /** Registered non-operator gate sources; production workflows without a provider fail at the gate. */
   readonly gateSourcePorts?: readonly GateSourcePort[];
   // Tests may inject the ceremony factory without configuring live credential identity.
@@ -295,7 +320,7 @@ function startWorkerMaintenance(input: Readonly<{
 
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
   const admission = requireRuntimeAdmission(input.admission);
-  const { workflowId, poolIndex, drain } = parseWorkerArguments(
+  const { workflowId, poolIndex, drain, launch } = parseWorkerArguments(
     input.args, input.scenarioStepProofModule?.descriptor.id,
   );
   const clock = input.clock ?? systemClock;
@@ -319,7 +344,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const descriptor = module.descriptor;
   const resolveDescriptor = (id: string) => SERVER_REGISTRY[id]?.descriptor
     ?? (scenarioModule?.descriptor.id === id ? scenarioModule.descriptor : undefined);
-  const workerId = poolWorkerId(workflowId, poolIndex);
+
 
 
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
@@ -327,42 +352,46 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const hostFacts = hostConfigFacts(env);
   const stateRoot = admission.stateRoot;
   mkdirSync(stateRoot, { recursive: true });
-  const taskNotes = createNoteJsonlWriter({ stateRoot, clock });
-  const protectedAuthority = createCredentialStore({ admission, stateRoot });
-  // The worker role lock proves open-handle ownership; the worker lease separately fences claims.
-  const processLock = acquireRuntimeProcessLock(
-    {
-      processLockRoot: join(repoRoot, input.isolation.processLockRoot),
-      name: "workers",
-      workerId,
-      pid: input.processId ?? process.pid,
+  const processLockRoot = join(repoRoot, input.isolation.processLockRoot);
+  const authorityPath = join(stateRoot, "state.db");
+  const initialCustody = input.takeInitialCustody?.();
+  const bound = bindWorkerProcessAdmission({ processLockRoot, authorityPath, pid: input.processId ?? process.pid,
+    ...(initialCustody === undefined ? {} : { initialCustody }),
+    ...(launch === undefined ? {} : { workerId: launch.workerId }), clock,
+    hooks: { observeProcessIdentity: input.processIdentityObserver },
+    open: () => {
+      admission.assertAuthorityDatabase(authorityPath);
+      try {
+        return (input.openDatabase ?? ((options, openClock) => AuthorityDatabase.open(admission, options, openClock)))(
+        { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" }, clock);
+      } catch (error) {
+        appendEmergencyFault({ stateRoot, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version, code: "DATABASE_WRITER_UNAVAILABLE", error: error instanceof Error ? error : new Error("Database writer unavailable"), now: clock.now() });
+        throw error;
+      }
     },
-    clock,
-    { observeProcessIdentity: input.processIdentityObserver },
-  );
-  let database: AuthorityDatabase;
+    close: input.closeDatabase ?? (value => value.close()),
+    admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
+      readSettings(repositories);
+      if (launch === undefined) {
+        const before = repositories.workerPools.get(workflowId);
+        return admitDirectWorker(repositories, { commandId: ids.uuid(), workflow: workflowId, poolIndex,
+          expectedPoolVersion: before?.version ?? 0, processId: input.processId ?? process.pid,
+          processAcquisitionId: acquisitionId, authorityPath, processLockRoot, now: clock.now().toISOString() }, ids.uuid()).workerId;
+      }
+      return admitSupervisedWorker(repositories, { member: { workflowId, poolIndex, workerId: launch.workerId,
+        ordinal: launch.ordinal, membershipRevision: launch.membershipRevision }, commandId: launch.commandId, now: clock.now().toISOString() });
+    }),
+  });
+  const { value: database, workerId, processLock } = bound;
   let runtimeError: unknown;
+  const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
-  try {
-    admission.assertAuthorityDatabase(join(stateRoot, "state.db"));
-    database = (input.openDatabase ?? ((options, openClock) =>
-      AuthorityDatabase.open(admission, options, openClock)))(
-      { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" },
-      clock,
-    );
-  } catch (openError) {
-    try {
-      processLock.release();
-    } catch (releaseError) {
-      throw new AggregateError(
-        [openError, releaseError],
-        `worker ${workerId} authority open failed and its process record could not release`,
-        { cause: releaseError },
-      );
-    }
-    throw openError;
-  }
 
+  importEmergencyFaults(stateRoot, database.authority.timelineEvents);
+  const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
+  const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
+  const taskNotes = createNoteTimelineWriter({ repository: loggingRepository, clock });
+  const protectedAuthority = createCredentialStore({ admission, stateRoot });
   const protectedSecrets = createCredentialSecretSource(protectedAuthority);
   const runRecordService = new RunRecordService({ database, clock, ids,
     publishQueued: () => { throw new Error("worker port cannot create runs"); },
@@ -381,8 +410,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   let resolved: ReturnType<typeof resolveConfigWithProvenance>;
   try {
-    pruneEventStreams({ stateRoot, clock, streams: ["notes"] });
-    const persistedSettings = database.withAuthorityTransaction((repositories) =>
+      const persistedSettings = database.withAuthorityTransaction((repositories) =>
       readSettings(repositories));
     resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock,
       { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot });
@@ -430,7 +458,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
-  const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
+  const emitter = createTimelineEmitter({ repository: loggingRepository, clock });
 
   const artifacts = createContentAddressedArtifactWriter({
     admission,
@@ -446,8 +474,17 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const diagnostics = bindFailureCapture(createRunDiagnosticCapture({ service: diagnosticService }));
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
-  const resources = createRunResourcesFactory({preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  const resources = createRunResourcesFactory({processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+    onDebug: (category, debugWorkerId, event) => {
+      debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
+    },
+    assertProfileOwner: requestedWorkerId => {
+      if (requestedWorkerId !== workerId) throw new Error("browser-profile-worker-owner-mismatch");
+      assertWorkerProcessCustody({ processLockRoot, acquisitionId: z.uuid().parse(processLock.acquisitionId),
+        pid: input.processId ?? process.pid, workerId, authorityPath }, { observeProcessIdentity: input.processIdentityObserver });
+    },
     ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
+    ...(input.createSessionFactory === undefined ? {} : {createSessionFactory:input.createSessionFactory}),
     ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
   const baselineResources = resources.baseline(resolved.config);
 
@@ -668,11 +705,11 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   } catch (error) {
     runtimeError = error;
   } finally {
+    try { await resources.stop(); } catch (error) { cleanupErrors.push(error); }
     if (externalStop !== undefined) externalStop.removeEventListener("abort", onExternalStop);
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
   }
-  const cleanupErrors: unknown[] = [];
   let databaseClosureProven = false;
   try {
     (input.closeDatabase ?? ((opened) => opened.close()))(database);

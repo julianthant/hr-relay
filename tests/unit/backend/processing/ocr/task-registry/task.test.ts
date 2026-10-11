@@ -110,22 +110,6 @@ describe("OCR provider task wrapper", () => {
     ]]);
   });
 
-  it("preserves retry information in a named provider refusal", async () => {
-    const result = await run({
-      state: "unavailable",
-      reason: {
-        code: "rate-exhausted",
-        message: "capability budget spent",
-        retryAt: "2026-08-06T10:00:00.000Z",
-      },
-    });
-    if (result.outcome !== "failure") throw new Error("expected provider-unavailable refusal");
-    assert.equal(result.failure.code, "provider-unavailable");
-    assert.match(result.failure.message, /rate-exhausted/u);
-    assert.match(result.failure.message, /2026-08-06T10:00:00.000Z/u);
-    assert.deepEqual(result.recorded, []);
-  });
-
   it("names an unreadable provider response without recording successful facts", async () => {
     const unreadable = await run({ state: "invalid-response", reason: "not JSON" });
     if (unreadable.outcome !== "failure") throw new Error("expected unreadable-page refusal");

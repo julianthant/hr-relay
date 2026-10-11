@@ -240,7 +240,7 @@ function parityReportPath(cwd: string): string {
 }
 
 export function parityCommandLockPath(cwd: string): string {
-  return resolve(canonicalCheckoutRoot(cwd), ".tracker/locks/parity-json-report.lock");
+  return resolve(canonicalCheckoutRoot(cwd), ".tracker/data/locks/parity-json-report.lock");
 }
 
 function directFileIdentity(stats: Stats): FileIdentity {
@@ -630,7 +630,7 @@ function prepareCommandLockFile(cwd: string): string {
   const uid = currentUid();
   const root = canonicalCheckoutRoot(cwd);
   assertDirectOwnedDirectory(root, uid, false);
-  for (const parent of [resolve(root, ".tracker"), resolve(root, ".tracker/locks")]) {
+  for (const parent of [resolve(root, ".tracker"), resolve(root, ".tracker/data"), resolve(root, ".tracker/data/locks")]) {
     try {
       mkdirSync(parent, { mode: PRIVATE_DIRECTORY_MODE });
     } catch (error) {

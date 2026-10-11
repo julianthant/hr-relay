@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
+import { admitDirectWorker } from "../../../../../../src/backend/storage/sqlite/worker-slots.js";
 import { derivePersistedSettingsFingerprint } from "../../../../../../src/models/config/settings.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -23,7 +25,6 @@ import {
   COMMAND_FIXTURES,
   CONFIG_SNAPSHOT,
   HASH_A,
-  HASH_B,
   HASH_C,
   NOW,
   UUID_1,
@@ -35,11 +36,12 @@ import {
   QUEUED_RUN,
   RUN_ENVELOPE,
   RUN_ID,
-  WORKER_ID,
-  WORKER_START_REQUEST,
+  WORKER_START_REQUEST as BASE_WORKER_START_REQUEST,
   WORKFLOW_ID,
 } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 
+const WORKER_ID = `${WORKFLOW_ID}-worker-1`;
+const WORKER_START_REQUEST = { ...BASE_WORKER_START_REQUEST, workerId: WORKER_ID };
 const CLOCK = manualClock(new Date(NOW));
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
@@ -48,12 +50,18 @@ const LATER = "2026-07-31T17:05:00.000Z";
 const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-rebuild-runs-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-runs-"));
   roots.push(root);
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  for (const poolIndex of [1, 2]) database.withAuthorityTransaction(repositories => {
+    admitDirectWorker(repositories, { commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
+      expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0, processId: WORKER_START_REQUEST.processId,
+      processAcquisitionId: randomUUID(), authorityPath: join(root, "state.sqlite"), processLockRoot: join(root, "locks"), now: NOW }, randomUUID());
+  });
   databases.push(database);
   return database;
 }
@@ -338,7 +346,7 @@ describe("run claim store", () => {
         workflow: WORKFLOW_ID,
         workerId: WORKER_ID,
         now: LATER,
-        configFingerprint: HASH_B,
+        configFingerprint: first.configFingerprint,
         runtimeConfig: {
           generation: first.generation,
           settingsRevision: first.settingsRevision,
@@ -399,7 +407,7 @@ describe("run claim store", () => {
       enqueuedAt: LATER,
     }));
     assert.equal(claimOne(database, LATER).envelope.priority, "interactive");
-    const second = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: "worker-2", now: LATER });
+    const second = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
     if (second.state !== "claimed") throw new Error("the bulk row should still be claimable");
     assert.equal(second.run.envelope.priority, "bulk");
   });
@@ -463,10 +471,10 @@ describe("run claim store", () => {
     );
     // A second, distinct worker takes the other row — parallelism is worker
     // count, and nothing about the first claim blocks it.
-    const second = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: "worker-2", now: LATER });
+    const second = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: `${WORKFLOW_ID}-worker-2`, now: LATER });
     assert.equal(second.state, "claimed");
     assert.equal(database.authority.runs.listByWorker(WORKER_ID).length, 1);
-    assert.equal(database.authority.runs.listByWorker("worker-2").length, 1);
+    assert.equal(database.authority.runs.listByWorker(`${WORKFLOW_ID}-worker-2`).length, 1);
   });
 
   it("frees the worker once its run parks or terminalizes", () => {
@@ -487,7 +495,7 @@ describe("run claim store", () => {
     assert.equal(database.authority.runs.listByWorker(WORKER_ID).length, 1);
   });
 
-  it("requeues with a new attempt and drops every single-resume affordance", () => {
+  it("requeues the immutable attempt and preserves its single-resume authority", () => {
     const database = openDatabase();
     database.authority.runs.enqueue({
       ...QUEUED_RUN,
@@ -521,10 +529,10 @@ describe("run claim store", () => {
     });
     assert.equal(outcome.state, "applied");
     if (outcome.state !== "applied") throw new Error("requeue should apply");
-    assert.equal(outcome.run.envelope.attempt, 2);
-    assert.equal(outcome.run.envelope.startAt, undefined);
-    assert.equal(outcome.run.envelope.injected, undefined);
-    assert.equal(outcome.run.envelope.freshnessOverride, undefined);
+    assert.equal(outcome.run.envelope.attempt, 1);
+    assert.deepEqual(outcome.run.envelope, claimed.envelope);
+    assert.deepEqual(outcome.run.input, claimed.input);
+    assert.equal(outcome.run.claimGeneration, claimed.claimGeneration);
     assert.deepEqual(outcome.run.lifecycle, {
       state: "queued",
       requeuedFrom: "recovery",
@@ -546,7 +554,7 @@ describe("run claim store", () => {
     const wrongWorker = database.authority.runs.transition({
       runId: RUN_ID,
       expectedVersion: claimed.version,
-      claim: { workerId: "worker-2", claimGeneration: 1 },
+      claim: { workerId: `${WORKFLOW_ID}-worker-2`, claimGeneration: 1 },
       lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
       now: LATER,
     });
@@ -807,6 +815,8 @@ describe("worker leases", () => {
         workerId: WORKER_ID,
         workflow: WORKFLOW_ID,
         processId: 1,
+        browserSystems: [],
+        controlRevision: 1,
         leaseGeneration: 1,
         lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: LATER, reason: "shutdown" },
         control: { directive: "run", requestedAt: NOW, requestedBy: "local-operator" },

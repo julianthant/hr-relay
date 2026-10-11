@@ -1,5 +1,5 @@
 
-import { HASH_A, HASH_B, HASH_C, LATER, NOW, UUID_2, UUID_3, UUID_4, UUID_5 } from "./phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, HASH_A, HASH_C, LATER, NOW, UUID_2, UUID_3, UUID_5 } from "./phase1c-contract-fixtures.js";
 import {
   deriveCanonicalInputDigest,
   derivePlannedInputFingerprint,
@@ -36,8 +36,8 @@ export const RUN_ENVELOPE = {
   descriptorVersion: 1,
   contractFingerprint: HASH_A,
   resolvedInstance: { ucpath: "prod", crm: "prod" },
-  configFingerprint: HASH_B,
-  configSnapshotId: UUID_4,
+  configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+  configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
   shape: "single",
   priority: "bulk",
   dryRun: false,
@@ -49,6 +49,7 @@ export const RUN_INPUT = {
   raw: { emplId: "10873698" },
   parsed: {
     schemaHash: HASH_C,
+    protectedBindings: [],
     value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
   },
   ingressSchemaHash: HASH_A,
@@ -67,9 +68,7 @@ export const QUEUED_RUN = {
 const START_PLAN_INGRESS_SCHEMA_HASH = HASH_A;
 const START_PLAN_CANONICAL_INPUT_SCHEMA_HASH = HASH_C;
 const START_PLAN_PLANNED = PlannedRunSchema.array().parse([{
-  runId: RUN_ID,
   itemId: ITEM_ID,
-  traceId: TRACE_ID,
   title: "EID 10873698",
   rawInput: RUN_INPUT.raw,
   input: RUN_INPUT.parsed,
@@ -82,8 +81,8 @@ export const START_PLAN = {
   workflowId: WORKFLOW_ID,
   descriptorVersion: 1,
   descriptorFingerprint: HASH_A,
-  configFingerprint: HASH_B,
-  configSnapshotId: UUID_4,
+  configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+  configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
   ingressSchemaHash: START_PLAN_INGRESS_SCHEMA_HASH,
   canonicalInputSchemaHash: START_PLAN_CANONICAL_INPUT_SCHEMA_HASH,
   inputFingerprint: derivePlannedInputFingerprint(

@@ -190,11 +190,6 @@ describe("one-projection-counts", () => {
         authorizedAt: "2026-08-03T17:20:00.000Z", failureId: uuidOf(9007) },
     }));
 
-    queuedEventOf(world, { seed: 9 });
-    world.authority.put(runRecordOf({ seed: 9,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: world.clock.now().toISOString() },
-    }));
-    world.authority.archived.add(uuidOf(9));
     queuedEventOf(world, { seed: 8 }); // parked on an operator gate
     world.writer.emit({
       t: "gate.opened", ts: world.clock.now().toISOString(), workflow: "person-lookup",
@@ -215,15 +210,13 @@ describe("one-projection-counts", () => {
 
     assert.equal(workflowPanelTotal, statusBarSum);
     assert.equal(statusBarSum, renderedQueueRows);
-    assert.equal(renderedQueueRows, 6); // 1,2,3,4,7,8 — archived gone, members contained
+    assert.equal(renderedQueueRows, 6); // 1,2,3,4,7,8 — members contained
 
     // Containment applied once, inside the projection: the members ride flat
     // for layout, counted only in their operation's rollup.
     const operation = payload.queueSurfaces.find(({ runId }) => runId === uuidOf(4));
     if (operation?.surfaceKind !== "operation") assert.fail("the delegated group must project as an operation");
     assert.equal(operation.memberRollup.total, 2);
-    // The archived row is the one whole run absent from every rendering.
-    assert.equal(payload.queueSurfaces.some(({ runId }) => runId === uuidOf(9)), false);
 
     // And the month calendar rendering descends from the same fold.
     assert.deepEqual(payload.monthCounts, [{ day: DAY, count: 6 }]);
@@ -237,7 +230,7 @@ describe("one-projection-counts", () => {
     for (const [index, instance] of [[0, "prod"], [1, "test"]] as const) {
       const fixture = ledgerCommitFixture(index, { instance, confirmedAt: instantOffsetOf(0),
         runId: fixtureUuid(`one-projection-run-${String(index)}`), itemId: fixtureUuid(`one-projection-item-${String(index)}`) });
-      seedAtomicWriteOwner(world.database, fixture.commit);
+      seedAtomicWriteOwner(world.database, fixture.commit, join(world.stateRoot, "authority.db"));
       assert.equal(world.database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
       world.database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
     }
@@ -251,3 +244,4 @@ describe("one-projection-counts", () => {
     assert.equal(report.totalRuns, 6);
   });
 });
+import { join } from "node:path";

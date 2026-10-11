@@ -50,7 +50,7 @@ describe("ActionEvidenceSchema.proved", () => {
     assert.equal(parsed.proved?.recordedAt, AT);
   });
 
-  it("a pre-composition-2 durable row without proved still parses", () => {
+  it("a commit action can omit optional proof metadata", () => {
     const parsed = ActionEvidenceSchema.parse(COMMIT_ACTION);
     assert.equal(parsed.proved, undefined);
   });
@@ -115,54 +115,13 @@ describe("RunEvidenceReceiptSchema.composition", () => {
     result: "partial",
   });
 
-  it("a stored composition-1 receipt — no `composition` field — still parses", () => {
-    const parsed = RunEvidenceReceiptSchema.parse(RECEIPT_IDENTITY);
-    assert.equal(parsed.composition, undefined);
-  });
-
-  it("a composition-2 receipt states its composition", () => {
-    const parsed = RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 2 });
-    assert.equal(parsed.composition, 2);
-  });
-
-  it("composition 4 adds the protected-value-safe operator projection", () => {
-    const parsed = RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 4 });
-    assert.equal(parsed.composition, 4);
-    assert.equal(projectReceiptForOperator(parsed).state, "available");
-  });
-
   it("composition 5 — the current composition — reaches the operator projection", () => {
     const parsed = RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 5 });
     assert.equal(parsed.composition, 5);
     assert.equal(projectReceiptForOperator(parsed).state, "available");
   });
 
-  it("serves immutable composition 1/2/3 rows to the operator without rewriting them", () => {
-    const legacyRaw = "ucpath:termination|10812345|2026-08-29";
-    for (const composition of [undefined, 2, 3] as const) {
-      const receipt = RunEvidenceReceiptSchema.parse({
-        ...RECEIPT_IDENTITY,
-        ...(composition === undefined ? {} : { composition }),
-        warnings: [{
-          id: ENTRY_ID,
-          code: "LEGACY_DIAGNOSTIC",
-          summary: legacyRaw,
-          loadBearing: true,
-          evidence: [],
-        }],
-      });
-      const immutableBytes = JSON.stringify(receipt);
-      const projected = projectReceiptForOperator(receipt);
-      assert.equal(projected.state, "available");
-      if (projected.state !== "available") throw new Error("a retained receipt must reach the operator");
-      assert.deepEqual(projected.value, receipt);
-      assert.equal(JSON.stringify(projected).includes(legacyRaw), true);
-      assert.equal(JSON.stringify(receipt), immutableBytes);
-    }
-  });
-
   it("refuses a composition this builder never produced", () => {
-    // Composition 1 is the ABSENT state — never a stored literal.
     assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 1 }));
     // No builder has produced 6: a value past the current composition is refused forward.
     assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 6 }));

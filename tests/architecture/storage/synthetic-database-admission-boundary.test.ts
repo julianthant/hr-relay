@@ -65,7 +65,7 @@ function forbiddenReach(closure: ReadonlySet<string>): string[] {
 describe("synthetic database fixture admission import boundary", () => {
   it("uses the real databases and admission without loading test-data or storage CLI composition", () => {
     const closure = valueClosure(narrowHelper);
-    for (const required of ["src/backend/storage/sqlite/authority-database.ts", "src/backend/storage/sqlite/archive-database.ts", "src/backend/storage/admission/admission.ts"]) assert.ok(closure.has(required), required);
+    for (const required of ["src/backend/storage/sqlite/authority-database.ts", "src/backend/storage/admission/admission.ts"]) assert.ok(closure.has(required), required);
     assert.deepEqual(forbiddenReach(closure), []);
     const harness = valueClosure("tests/support/helpers/backend/dashboard-harness.ts");
     assert.ok(harness.has(narrowHelper));

@@ -7,26 +7,20 @@ describe("notification destinations", () => {
     const run = runRecordOf({ seed: 1, enqueuedAt: "2026-07-03T18:00:00.000Z" });
     const row = notificationRecordOf({ seed: 1, title: "private title", lastSeenAt: run.createdAt });
     let deleted = false;
-    const query = createNotificationTargetQuery({ get: () => row, read: () => deleted ? { state: "absent", runId: run.envelope.runId } : { state: "present", disposition: "live", run }, failure: () => undefined, report: () => undefined });
+    const query = createNotificationTargetQuery({ get: () => row, read: () => deleted ? { state: "absent", runId: run.envelope.runId } : { state: "present", disposition: "live", run }, failure: () => undefined });
     expect(query(row.notificationId, "another-actor")).toMatchObject({ kind: "refused", reason: "wrong-actor" });
     expect(query(row.notificationId, row.actorId)).toEqual({ kind: "run", runId: run.envelope.runId, day: "2026-07-03" });
     deleted = true;
     expect(query(row.notificationId, row.actorId)).toMatchObject({ kind: "refused", reason: "run-unavailable" });
     expect(() => query("malformed", row.actorId)).toThrow();
   });
-  it("preserves exact failure identity, verified archive membership and Storage", () => {
+  it("preserves exact failure identity and Storage", () => {
     const failure = failureRecordOf({ seed: 2, code: "TEST_FAILURE" });
     const run = runRecordOf({ seed: 2, enqueuedAt: failure.occurredAt, lifecycle: { state: "terminal", outcome: "failed", failureId: failure.failureId, endedAt: failure.occurredAt } });
     const row = notificationRecordOf({ seed: 2, title: "Failure", lastSeenAt: run.updatedAt });
     row.links = [{ kind: "failure", runId: run.envelope.runId, failureId: failure.failureId }];
-    let archived = false, verified = true;
-    const query = createNotificationTargetQuery({ get: () => row, read: () => ({ state: "present", disposition: archived ? "archived" : "live", run }), failure: () => failure,
-      report: () => verified ? { runId: run.envelope.runId, digest: "ab".repeat(32) } : undefined });
+    const query = createNotificationTargetQuery({ get: () => row, read: () => ({ state: "present", disposition: "live", run }), failure: () => failure });
     expect(query(row.notificationId, row.actorId)).toMatchObject({ kind: "failure", failureId: failure.failureId });
-    archived = true;
-    expect(query(row.notificationId, row.actorId)).toMatchObject({ kind: "archive", runId: run.envelope.runId });
-    verified = false;
-    expect(query(row.notificationId, row.actorId)).toMatchObject({ kind: "refused", reason: "archive-unavailable" });
     row.links = [{ kind: "storage", diagnosticFingerprint: row.dedupeFingerprint }];
     expect(query(row.notificationId, row.actorId)).toEqual({ kind: "storage" });
   });

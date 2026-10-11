@@ -12,15 +12,19 @@ it("pages stable ties over real summary partitions, without whole-source reads",
   const f=foundationFixture();try {
     f.db.withAuthorityTransaction(()=>{for(let n=0;n<12;n++)f.db.authority.runs.enqueue(RunRecordSchema.parse({...f.run,
       envelope:{...f.run.envelope,runId:id(3000+n),itemId:id(3000+n)},lifecycle:{state:"queued"},version:1,claimGeneration:0}));});
-    f.db.refreshRunSummaries();f.db.readRunSummaries=()=>{throw new Error("whole-reader-forbidden");};
+    f.db.readRunSummaries=()=>{throw new Error("whole-reader-forbidden");};
     const seen:string[]=[];let after:{localDay:string;runId:string}|undefined;
     do{const page=queryQueueSummaries(f.db,{limit:3,...(after===undefined?{}:{after})});seen.push(...page.items.map(row=>row.runId));after=page.next??undefined;}while(after!==undefined);
     assert.equal(seen.length,13);assert.equal(new Set(seen).size,13);assert.deepEqual(seen,[...seen].sort());
     assert.throws(()=>queryQueueSummaries(f.db,{limit:3,fromDay:"2026-09-10",toDay:"2026-09-09"}),/range-invalid/);
     const raw=new DatabaseSync(f.path,{readOnly:true});try{
-      const plan=raw.prepare("EXPLAIN QUERY PLAN SELECT record_json FROM run_summaries WHERE workflow=? AND local_day>=? AND local_day<=? AND state>=? AND state<=? ORDER BY local_day,state,record_key LIMIT ?").all("person-lookup","2026-09-09","2026-09-09","queued","queued",4);
+      const plan=raw.prepare("EXPLAIN QUERY PLAN SELECT * FROM runs INDEXED BY runs_day_idx WHERE workflow=? AND local_day>=? AND local_day<=? AND state=? ORDER BY local_day,id LIMIT ?").all("person-lookup","2026-09-09","2026-09-09","queued",4);
       assert.match(JSON.stringify(plan),/USING INDEX/);
-      assert.doesNotMatch(JSON.stringify(plan),/SCAN run_summaries|TEMP B-TREE/);
+      assert.doesNotMatch(JSON.stringify(plan),/SCAN runs/);
+      assert.deepEqual(plan.map(row=>row.detail),[
+        "SEARCH runs USING INDEX runs_day_idx (local_day>? AND local_day<?)",
+        "USE TEMP B-TREE FOR LAST TERM OF ORDER BY",
+      ]);
     }finally{raw.close();}
   }finally{f.dispose();}
 });
@@ -32,7 +36,7 @@ it("agrees with independent expected totals and the retained Activity projector 
       lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:n===3?"2025-01-01T12:00:00.000Z":NOW}));
     const terminal=f.db.authority.runs.get(id(3100));assert.ok(terminal);
     f.db.authority.runs.transition({runId:terminal.envelope.runId,expectedVersion:terminal.version,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:"2026-09-09T12:00:05.000Z"},now:"2026-09-09T12:00:05.000Z"});
-    f.db.refreshRunSummaries();
+    
     for(const row of f.db.readRunSummaries()) {const run=f.db.authority.runs.get(row.runId);assert.ok(run);world.authority.put(run);}
     const expected=world.projection.buildActivityReportWire("2026-09-09","2026-09-09");
     const actual=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:expected.generatedAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>expected.ledger},timeZone:runtimeTimeZone()});
@@ -55,7 +59,7 @@ it("bins the enqueue instant and refuses a timezone mismatch before an indexed d
     const claimTime="2026-09-09T08:20:00.000Z";
     const claim=f.db.authority.runs.claimNext({workflow:"person-lookup",workerId:"activity-volume-worker",now:claimTime});
     assert.equal(claim.state,"claimed");
-    f.db.refreshRunSummaries();
+    
     const timeZone=runtimeTimeZone(),day=activityDatePartAtInstant(enqueuedAt,timeZone);
     const report=queryActivitySummaries(f.db,{from:day,to:day,generatedAt:NOW},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone});
     const enqueueBucket=report.volume?.buckets.find(bucket=>Date.parse(bucket.start)<=Date.parse(enqueuedAt)&&Date.parse(enqueuedAt)<Date.parse(bucket.endExclusive));
@@ -94,7 +98,7 @@ it("folds real summary rows into inclusive DST-day boundaries, distinct repeated
         lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:at,updatedAt:at});
       f.db.authority.runs.enqueue(queued);
     }
-    f.db.refreshRunSummaries();
+    
     const read=(day:string)=>queryActivitySummaries(f.db,{from:day,to:day,generatedAt:NOW},
       {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone:zone});
 

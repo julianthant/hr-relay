@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { OperatorXlsxExportRequestSchema } from "../../../../models/dashboard/xlsx-export.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { CalendarQuerySchema } from "../../../../models/dashboard/calendar.js";
@@ -66,6 +67,8 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
   });
 
   app.get("/events/v1", async (c) => {
+    const connectionId = randomUUID();
+    const lifecycle = (phase: "started" | "settled" | "failed" | "reset", durationMs: number) => deps.debugEvents?.emit({ category: "sse", phase, correlationId: connectionId, durationMs }, { kind: "transport", connectionId });
     const topics = z.string().max(150).refine(value => TOPICS_PATTERN.test(value)
       || RUN_LOG_TOPICS_PATTERN.test(value), "events-topics-invalid").parse(c.req.query("topics"));
     const match = TOPICS_PATTERN.exec(topics);
@@ -79,7 +82,7 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
       const connection = deps.runLogsHub.connect({ runId,
         ...(mixed[1] === undefined ? {} : { day: z.iso.date().parse(mixed[1]) }),
         ...(rawCursor === undefined ? {} : { lastEventId: rawCursor }) });
-      return new Response(compositeEventStreamBody(connection), { status: 200, headers: {
+      return new Response(compositeEventStreamBody(connection, lifecycle), { status: 200, headers: {
         "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive",
       } });
     }
@@ -96,7 +99,7 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
       day: match[1],
       ...resume,
     });
-    const stream = dashboardEventStreamBody(connection);
+    const stream = dashboardEventStreamBody(connection, lifecycle);
     return new Response(stream, {
       status: 200,
       headers: {
