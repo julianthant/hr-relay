@@ -1,9 +1,11 @@
 
 import { join } from "node:path";
 import { z } from "zod";
+import { TimelinePageRequestSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { readEmergencyFaults } from "../../logs/emergency-faults.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { DESCRIPTORS } from "../registries/workflow-registry.js";
-import { HISTORICAL_STEP_PROOF_DESCRIPTORS, historicalStepProofDescriptorOf } from "../registries/step-proof-modules.js";
+import { STEP_PROOF_DESCRIPTORS, stepProofDescriptorOf } from "../registries/step-proof-modules.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../../rules/identity/ids.js";
@@ -28,9 +30,43 @@ export interface ExplainComposeInput {
 
 const SUBJECT_HELP = "usage: cli explain run <traceId|runId> [--json] [--bundle <dir>]";
 
+export function parseDiagnosticArgs(args: readonly string[]) {
+  const values: Record<string, unknown> = {};
+  let json = false, boot = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const flag = args[index];
+    if (flag === "--json" || flag === "--boot") {
+      if (flag === "--json") { if (json) throw new Error("diagnostic-arguments-invalid"); json = true; }
+      else { if (boot) throw new Error("diagnostic-arguments-invalid"); boot = true; }
+      continue;
+    }
+    const key = flag === "--run" ? "runId" : flag === "--after" ? "after" : flag === "--through" ? "through" : flag === "--limit" ? "limit" : undefined;
+    const value = args[++index];
+    if (key === undefined || value === undefined || key in values || key !== "runId" && !/^\d+$/u.test(value)) throw new Error("diagnostic-arguments-invalid");
+    values[key] = key === "runId" ? value : Number(value);
+  }
+  if (boot && Object.keys(values).length > 0) throw new Error("diagnostic-boot-does-not-have-timeline-cursors");
+  return { json, boot, request: TimelinePageRequestSchema.parse(values) };
+}
+
+function renderDebugRecords(records: readonly z.infer<typeof TimelineEventRecordSchema>[]) {
+  return records.map(record => `${String(record.cursor)} ${record.occurredAt} ${record.scope.kind} ${JSON.stringify(record.payload)}`).join("\n");
+}
+
 export function composeExplainRuntime(input: ExplainComposeInput): string {
   const admission = requireRuntimeAdmission(input.admission);
   const [subject, identity, ...flags] = input.args;
+  if (subject === "diagnostics") {
+    const options = parseDiagnosticArgs(input.args.slice(1));
+    if (options.boot) {
+      admission.assertExclusive();
+      const report = readEmergencyFaults(admission.stateRoot);
+      return options.json ? JSON.stringify(report, null, 2) : report.state === "absent" ? `boot diagnostics: absent (${report.reason})`
+        : report.records.map(record => `${record.occurredAt} ${JSON.stringify(record.payload)}`).join("\n");
+    }
+    const page = AuthorityDatabase.inspectTimelinePageReadOnly(admission, join(admission.stateRoot, "state.db"), options.request);
+    return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
+  }
   if (subject !== "run") {
     throw new Error(
       `explain supports only the "run" subject today (ref operator-trust §2.5 also names "failure <fingerprint>", `
@@ -90,7 +126,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   const run = requireTrustRun(runReader, runId);
 
   const descriptor = DESCRIPTORS.find((entry) => entry.id === run.envelope.workflow)
-    ?? historicalStepProofDescriptorOf(run.envelope.workflow);
+    ?? stepProofDescriptorOf(run.envelope.workflow);
   if (descriptor === undefined) {
     throw new Error(
       `run ${run.envelope.runId} is workflow ${run.envelope.workflow}, which this build does not register`,
@@ -105,7 +141,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   if (result !== undefined && result.runId !== run.envelope.runId) throw new Error("TRUST_EVIDENCE_IDENTITY_MISMATCH: Explain result");
   const settled = run.lifecycle.state === "terminal" && run.lifecycle.outcome !== "interrupted";
   const receipt = settled
-    ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
+    ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
     : undefined;
 
   const evidence: ExplainRunEvidence = {
@@ -121,6 +157,13 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
       nodeId: String(dependency.nodeId),
       state: dependency.state === "not-run" ? dependency.reason : "resolved",
     })),
+    debugEvents: authority.timelineEvents.withReadSnapshot(() => {
+      const through = authority.timelineEvents.highWaterMark();
+      const scanned = authority.timelineEvents.page({ runId, after: 0, through, limit: 500 });
+      const nextCursor = scanned.at(-1)?.cursor ?? through;
+      return { records: scanned.filter(record => record.payload.kind === "debug"), nextCursor, through,
+        highWaterMark: through, hasMore: nextCursor < through, after: 0 };
+    }),
   };
   return buildExplainRunView(evidence);
 }

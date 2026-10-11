@@ -1649,6 +1649,7 @@ describe("original claim at failure terminalization", () => {
         });
       },
       persist: () => { throw new Error("lost claimant must never persist the prepared bundle"); },
+      discard: () => {},
     } };
     const result = await executeClaimedRun(deps, { ...claimed, signal: SIGNAL });
     assert.equal(result.state, "abandoned");

@@ -460,6 +460,7 @@ export async function executeClaimedRun(
       configFingerprint: envelope.configFingerprint,
       descriptorFingerprint: descriptor.contractFingerprint,
     });
+    try {
     const bound = prepared === undefined
       ? failure
       : FailureRecordSchema.parse({ ...failure, diagnosticBundleId: prepared.bundleId });
@@ -490,6 +491,12 @@ export async function executeClaimedRun(
       });
     }
     return RunExecutionOutcomeSchema.parse({ state: "failed", runId, failureId: bound.failureId });
+    } catch (error) {
+      if (prepared !== undefined && capture !== undefined) {
+        try { capture.discard(prepared); } catch (cleanup) { throw new AggregateError([error, cleanup], "diagnostic-failure-settlement-disposal-failed", { cause: cleanup }); }
+      }
+      throw error;
+    }
   };
 
   const interpret = async (): Promise<RunExecutionOutcome> => {

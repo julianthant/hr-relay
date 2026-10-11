@@ -5,7 +5,7 @@ import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "
 import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { join } from "node:path";
-import type { RuntimeAdmission } from "../../storage/admission/admission.js";
+import { acquireExclusiveRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
 import { parseDryRunScenarioArguments } from "../../runs/start/dry-run-scenario-runner.js";
 import { loadDryRunScenarioManifest } from "../dry-run/manifests.js";
@@ -105,7 +105,12 @@ export async function runSecureEnvironmentBootstrap(
       assertDashboardBuildCurrent({ distDir: join(root, "dist", "dashboard"), repoRoot: root });
     }))(workspace);
   }
-  const mode = entrypoint === "cli" && entrypointArgs[0] === "storage"
+  const bootDiagnostics = entrypoint === "cli" && entrypointArgs[0] === "explain" && entrypointArgs[1] === "diagnostics" && entrypointArgs.includes("--boot");
+  if (bootDiagnostics) {
+    const { parseDiagnosticArgs } = await import("../composition/explain-compose.js");
+    parseDiagnosticArgs(entrypointArgs.slice(2));
+  }
+  const mode = bootDiagnostics || entrypoint === "cli" && entrypointArgs[0] === "storage"
     && !["backup", "doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
   let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
@@ -122,9 +127,10 @@ export async function runSecureEnvironmentBootstrap(
       initialWorkerAuthorityPath = authorityPath;
     } : undefined;
   // Failed initialization retains custody because authority closure is unproved.
-  const admission = (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested, beforeInitialAuthorityOpen)))(mode);
+  const admission = (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
+    : acquireEntrypointAdmission(workspace, requested, beforeInitialAuthorityOpen)))(mode);
   try {
-  if (!(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
+  if (!bootDiagnostics && !(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
 
   }

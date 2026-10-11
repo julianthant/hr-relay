@@ -10,6 +10,7 @@ import { sanitizeDebugText } from "../../../../src/rules/redaction/redaction.js"
 import { appendEmergencyFault, importEmergencyFaults, withEmergencyTimelineWriter } from "../../../../src/backend/logs/emergency-faults.js";
 import { TimelineEventRecordSchema, type TimelineRepository, type TimelineEventRecord } from "../../../../src/models/events/timeline.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
 function fixture() {
   const records: TimelineEventRecord[] = [];
@@ -22,6 +23,19 @@ function fixture() {
   return { records, repository };
 }
 describe("bounded native debug events", () => {
+  it("binds idempotent client reports to the explicit workflow as well as scope", () => {
+    const { records, repository } = fixture();
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+    const event = { category: "client", phase: "failed", correlationId: "workflow-bound" };
+    const scope = { kind: "client" as const, clientId: "local" };
+    const workflow = WorkflowIdSchema.parse("person-lookup");
+    assert.equal(writer.emit(event, scope, workflow).state, "inserted");
+    assert.equal(writer.emit(event, scope, workflow).state, "existing");
+    assert.throws(() => writer.emit(event, scope, WorkflowIdSchema.parse("separations")), /debug-report-identity-conflict/u);
+    assert.throws(() => writer.emit(event, scope), /debug-report-identity-conflict/u);
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.workflow, "person-lookup");
+  });
   it.each(["session", "duo", "worker", "http", "sse", "client", "boot"] as const)("writes %s once with source/build/time", category => {
     const { records, repository } = fixture();
     createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" }).emit({ category, phase: "failed", correlationId: "owned", message: "Bearer CANARY token=CANARY https://example.test/path?key=CANARY#CANARY" });

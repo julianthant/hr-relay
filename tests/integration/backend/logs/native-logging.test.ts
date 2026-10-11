@@ -130,7 +130,7 @@ describe("ordinary diagnostic authority", () => {
       let id = 0;
       const service = createDiagnosticCaptureService({ authority: w.database.authority, clock: w.world.clock,
         ids: { uuid: () => `00000000-0000-4000-8000-${String(++id).padStart(12,"0")}` }, retentionDays: 1,
-        artifacts: { put: () => { throw new Error("no bytes in this test"); }, open: () => { throw new Error("no bytes in this test"); } } });
+        artifacts: { stageDiagnostic: () => { throw new Error("no bytes in this test"); }, put: () => { throw new Error("no bytes in this test"); }, open: () => { throw new Error("no bytes in this test"); } } });
       const capture = (runId: string, pin = false) => operatorRequestedCapture({ service, runId,
         configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), fields: [],
         ...(pin ? { retention: { kind: "pinned", reason: "write-recovery" } } : {}) });

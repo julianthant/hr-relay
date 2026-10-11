@@ -12,6 +12,7 @@ export interface RunDiagnosticCaptureContext {
 export interface RunDiagnosticCapture {
   captureForFailure(context: RunDiagnosticCaptureContext): Promise<DiagnosticBundle>;
   persist(bundle: DiagnosticBundle): DiagnosticBundle;
+  discard(bundle: DiagnosticBundle): void;
 }
 
 /** A capture selected on the immutable run envelope, taken while a lease still owns its page. */

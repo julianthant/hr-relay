@@ -2,7 +2,7 @@ import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.j
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { prepareNativeRunDeletion, executeNativeRunDeletion, containsDeletionArtifactReference } from "./native-run-deletion.js";
-import { inspectArtifactDeletionFile, removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
+import { inspectArtifactDeletionFile, removeArtifactDeletionFile, pendingDiagnosticArtifacts, reclaimDiagnosticStages } from "../artifacts/content-addressed-artifact-writer.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { importedArtifactFromRow } from "./imported-artifacts.js";
 import { generatedArtifactFromRow } from "./generated-artifacts.js";
@@ -42,6 +42,8 @@ import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type Con
 import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
+import { withAuthorityDatabaseReadOnly } from "./backup-inspection.js";
+import { TimelinePageRequestSchema } from "../../../models/events/timeline.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
 import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
@@ -349,6 +351,7 @@ type FailureRepository = Readonly<{
 type DiagnosticBundleRepository = Readonly<{
   validateOperation(input: unknown): void;
   insert(input: unknown): ImmutableInsertResult<DiagnosticBundle>;
+  insertPrepared(input: unknown, publication: Readonly<{ publish(): DiagnosticBundle; committed(): void }>): ImmutableInsertResult<DiagnosticBundle>;
   get(bundleId: string): DiagnosticBundle | undefined;
   listByRun(runId: string): readonly DiagnosticBundle[];
   listAttachments(bundleId: string): readonly DiagnosticAttachmentStorageRecord[];
@@ -1617,6 +1620,30 @@ export class AuthorityDatabase implements Disposable {
     return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
   }
 
+  static inspectTimelinePageReadOnly(admission: RuntimeAdmission, path: string, input: unknown) {
+    const request = TimelinePageRequestSchema.parse(input);
+    return withAuthorityDatabaseReadOnly(admission, path, database => {
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID
+        || !isCurrentAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("timeline-diagnostic-authority-unsupported");
+      const check = database.prepare("PRAGMA quick_check").all();
+      if (check.length !== 1 || z.object({ quick_check: z.string() }).parse(check[0]).quick_check !== "ok") throw new Error("timeline-diagnostic-authority-corrupt");
+      const names = inspectionTableNames(database);
+      const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+      if (names.length !== expected.length || names.some((name, index) => name !== expected[index])) throw new Error("timeline-diagnostic-authority-registry-mismatch");
+      if (request.runId !== undefined && readTimelineRun(database, request.runId) === undefined) throw new Error("timeline-event-owner-missing");
+      const repository = createTimelineRepository({ database, read: work => work(),
+        mutate: () => { throw new Error("timeline-diagnostic-read-only"); }, assertOwner: record => assertTimelineOwner(database, record) });
+      const highWaterMark = repository.highWaterMark();
+      const through = Math.min(request.through ?? highWaterMark, highWaterMark);
+      if (request.after > through) throw new Error("timeline-diagnostic-cursor-out-of-range");
+      const scanned = repository.page({ ...request, through });
+      for (const record of scanned) assertTimelineOwner(database, record);
+      return { records: scanned.filter(record => record.payload.kind === "debug"),
+        after: request.after, nextCursor: scanned.at(-1)?.cursor ?? through, through, highWaterMark,
+        hasMore: (scanned.at(-1)?.cursor ?? through) < through };
+    });
+  }
+
   /** Event evidence and its complete authority identity from one read-only snapshot. */
   static inspectTimelineReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250, includeRecoveryEvidence = false) {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
@@ -1744,6 +1771,11 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  reclaimPendingDiagnostics(): number {
+    return this.withAuthorityTransaction(() => reclaimDiagnosticStages(this.#admission,
+      ref => this.readManagedArtifactReferences(ref).length > 0));
+  }
+
   sweepOrdinaryDiagnostics(now: string): Readonly<{ purged: readonly string[]; retainedBytes: number }> {
     const instant = IsoInstantSchema.parse(now);
     const due = this.#database.prepare("SELECT * FROM diagnostic_snapshots WHERE retention_kind='ordinary' AND purge_after<=? ORDER BY purge_after,id").all(instant);
@@ -1766,7 +1798,7 @@ export class AuthorityDatabase implements Disposable {
       for (const attachment of bundle.attachments) {
         const ref = ArtifactRefSchema.parse({ id: attachment.artifactId, sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
         this.#authorityWrite("diagnostic_snapshots", () => {
-          const references = this.readManagedArtifactReferences(ref);
+          const references = [...this.readManagedArtifactReferences(ref), ...pendingDiagnosticArtifacts(this.#admission, false)];
           if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256)) { retainedBytes += ref.bytes; return { result: undefined, changes: 0 }; }
           // An explicit unavailable association survives failed or interrupted byte removal.
           try { removeArtifactDeletionFile(this.#admission, inspectArtifactDeletionFile(this.#admission, ref)); }
@@ -2902,12 +2934,10 @@ export class AuthorityDatabase implements Disposable {
       }
       throw new Error("diagnostic-operation-exact-occurrence-not-retained");
     };
-    return Object.freeze({
-      validateOperation,
-      insert: (input: unknown) => {
-        const record = DiagnosticBundleSchema.parse(input);
+    const insert = (input: unknown, publication?: Readonly<{ publish(): DiagnosticBundle; committed(): void }>) => {
+        let record = DiagnosticBundleSchema.parse(input);
         if (record.operation !== undefined) validateOperation(record.operation);
-        const json = canonicalJsonStringify(record);
+        let json = canonicalJsonStringify(record);
         return this.#authorityWrite("diagnostic_snapshots", () => {
           const existing = this.#readRecord("diagnostic_snapshots", record.bundleId, DiagnosticBundleSchema);
           if (existing !== undefined) {
@@ -2918,11 +2948,30 @@ export class AuthorityDatabase implements Disposable {
           }
           if (record.attachments.reduce((total, attachment) => total + attachment.byteLength, 0) > 50 * 1024 * 1024) throw new Error("diagnostic-bundle-size-exceeded");
           if (record.retention.kind === "ordinary") {
-            const row = this.#database.prepare(`SELECT COALESCE(SUM(bytes),0) AS bytes FROM (
-              SELECT f.digest, MAX(json_extract(f.payload_json,'$.attachment.byteLength')) AS bytes
+            const digests = new Map<string, number>();
+            const include = (digest: string, bytes: number) => {
+              const prior = digests.get(digest);
+              if (prior !== undefined && prior !== bytes) throw new Error("diagnostic-digest-byte-length-mismatch");
+              digests.set(digest, bytes);
+            };
+            for (const raw of this.#database.prepare(`SELECT f.digest, json_extract(f.payload_json,'$.attachment.byteLength') AS bytes
               FROM diagnostic_files f JOIN diagnostic_snapshots s ON s.id=f.snapshot_id
-              WHERE s.retention_kind='ordinary' AND json_extract(s.payload_json,'$.availability.state') IS NOT 'purged' GROUP BY f.digest)`).get() as { bytes: number };
-            if (row.bytes + record.attachments.reduce((total, attachment) => total + attachment.byteLength, 0) > 1024 * 1024 * 1024) throw new Error("diagnostic-ordinary-cap-exceeded");
+              WHERE s.retention_kind='ordinary' AND json_extract(s.payload_json,'$.availability.state') IS NOT 'purged'`).all()) {
+              const row = z.strictObject({ digest: FingerprintSchema, bytes: z.number().int().nonnegative() }).parse(raw);
+              include(row.digest, row.bytes);
+            }
+            for (const ref of pendingDiagnosticArtifacts(this.#admission)) include(ref.sha256, ref.bytes);
+            for (const attachment of record.attachments) include(attachment.digest, attachment.byteLength);
+            if ([...digests.values()].reduce((total, bytes) => total + bytes, 0) > 1024 * 1024 * 1024) throw new Error("diagnostic-ordinary-cap-exceeded");
+          }
+          if (publication !== undefined) {
+            const prepared = record;
+            record = DiagnosticBundleSchema.parse(publication.publish());
+            const comparable = ({ contentDigest: _digest, attachments, ...bundle }: DiagnosticBundle) => ({ ...bundle,
+              attachments: attachments.map(({ artifactId: _id, ...attachment }) => attachment) });
+            if (canonicalJsonStringify(comparable(prepared)) !== canonicalJsonStringify(comparable(record))) throw new Error("diagnostic-publication-payload-mismatch");
+            json = canonicalJsonStringify(record);
+            this.afterAuthorityCommit(publication.committed);
           }
           const result = this.#database.prepare(`
             INSERT INTO diagnostic_snapshots
@@ -2964,7 +3013,11 @@ export class AuthorityDatabase implements Disposable {
           }
           return { result: Object.freeze({ state: "inserted" as const, record }), changes };
         });
-      },
+      };
+    return Object.freeze({
+      validateOperation,
+      insert: (input: unknown) => insert(input),
+      insertPrepared: (input: unknown, publication: Readonly<{ publish(): DiagnosticBundle; committed(): void }>) => insert(input, publication),
       get: (bundleId: string) => this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema),
       listByRun: (runId: string) => {
         const rows = this.#database.prepare(`

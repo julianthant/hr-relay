@@ -51,7 +51,7 @@ export function executeFailureResolution(
   return { result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
     versionChanges: [{ target, before: expectedVersion, after: resolution.version }], affectedDependencyIds: [] };
 }
-/** Real capture passes through D's boundary without changing immutable evidence. */
+/** Real capture preserves immutable failure evidence. */
 export function bindFailureCapture(capture:RunDiagnosticCapture):RunDiagnosticCapture {
- return Object.freeze({captureForFailure:(context:Parameters<RunDiagnosticCapture["captureForFailure"]>[0])=>capture.captureForFailure(context),persist:(bundle:Parameters<RunDiagnosticCapture["persist"]>[0])=>capture.persist(bundle)});
+ return Object.freeze({captureForFailure:(context:Parameters<RunDiagnosticCapture["captureForFailure"]>[0])=>capture.captureForFailure(context),persist:(bundle:Parameters<RunDiagnosticCapture["persist"]>[0])=>capture.persist(bundle),discard:(bundle:Parameters<RunDiagnosticCapture["discard"]>[0])=>capture.discard(bundle)});
 }

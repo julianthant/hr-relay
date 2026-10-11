@@ -26,7 +26,7 @@ it("uses disjoint admitted roots and refuses storage after release", async () =>
     const reader = createServerVerifiedArtifactReader({ admission });
     const lease = await reader.prepare(ref);
     assert.deepEqual(await readdir(artifactRoot), [`${ref.sha256}.artifact`]);
-    assert.deepEqual(await readdir(join(stateRoot, "verified-byte-scratch")), []);
+    assert.deepEqual(await readdir(join(stateRoot, "scratch")), []);
     admission.release();
     await assert.rejects(writer.put(SMALL_BYTES, { mediaType: "application/octet-stream" }), /released admission/);
     await assert.rejects(writer.open(ref), /released admission/);
@@ -63,18 +63,18 @@ it("closes snapshot and source when admission is released during snapshotting", 
     assert.equal(revoked, true);
     assert.deepEqual(closed, ["source", "snapshot"]);
     assert.equal(leaseClosed, 0);
-    assert.deepEqual(await readdir(join(workspace, "state", "verified-byte-scratch")), []);
+    assert.deepEqual(await readdir(join(workspace, "state", "scratch")), []);
   } finally {
     admission.release();
     await rm(workspace, { recursive: true, force: true });
   }
 });
 
-it("refuses artifact services during read-only first-adoption inspection", async () => {
+it("refuses writable artifact services during current existing-authority inspection", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-adoption-"));
   const stateRoot = join(workspace, ".tracker/data");
   try {
-    await mkdir(stateRoot, { mode: 0o700 });
+    await mkdir(stateRoot, { recursive: true, mode: 0o700 });
     await writeFile(join(stateRoot, "state.db"), "existing authority evidence");
     assert.throws(() => RuntimeAdmission.acquireInitial(workspace, (_pair, inspection) => {
       assert.throws(() => createContentAddressedArtifactWriter({ admission: inspection }), /read-only/u);
@@ -236,7 +236,7 @@ async function expectVerifyAndPrepareToReject(
     );
     assert.ok(closed.every(({ fd }) => fd === -1), `${operation} must report only closed handles`);
     assert.deepEqual(
-      await readdir(join(workspace, ".tracker", "verified-byte-scratch")),
+      await readdir(join(workspace, ".tracker/data", "scratch")),
       [],
       `${operation} must leave no named scratch residue`,
     );
@@ -537,7 +537,7 @@ describe("server verified artifact reader", () => {
       assert.deepEqual(preparedReads, [64 * 1024], "the next chunk must refuse after the first read observes abort");
       assert.deepEqual(closed.map(({ kind }) => kind).toSorted(), ["prepared", "snapshot", "source"]);
       assert.ok(closed.every(({ fd }) => fd === -1));
-      assert.deepEqual(await readdir(join(workspace, ".tracker", "verified-byte-scratch")), []);
+      assert.deepEqual(await readdir(join(workspace, ".tracker/data", "scratch")), []);
     });
   });
 
@@ -595,7 +595,7 @@ describe("server verified artifact reader", () => {
       });
       assert.equal(injected, true);
       assert.deepEqual(
-        await readdir(join(workspace, ".tracker", "verified-byte-scratch")),
+        await readdir(join(workspace, ".tracker/data", "scratch")),
         [],
       );
     });
@@ -630,7 +630,7 @@ describe("server verified artifact reader", () => {
       assert.equal(injected, true);
       assert.deepEqual(closed.map(({ kind }) => kind).toSorted(), [...expectedClosed].toSorted());
       assert.ok(closed.every(({ fd }) => fd === -1), "every observed transient handle must already be closed");
-      assert.deepEqual(await readdir(join(workspace, ".tracker", "verified-byte-scratch")), []);
+      assert.deepEqual(await readdir(join(workspace, ".tracker/data", "scratch")), []);
     });
   });
 
@@ -665,7 +665,7 @@ describe("server verified artifact reader", () => {
       });
       assert.deepEqual(closed.map(({ kind }) => kind).toSorted(), ["prepared", "snapshot", "source"]);
       assert.ok(closed.every(({ fd }) => fd === -1), "compound failure must not retain an open handle");
-      assert.deepEqual(await readdir(join(workspace, ".tracker", "verified-byte-scratch")), []);
+      assert.deepEqual(await readdir(join(workspace, ".tracker/data", "scratch")), []);
     });
   });
 

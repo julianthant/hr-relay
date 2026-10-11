@@ -6,6 +6,7 @@ import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { AuthorityBackupService } from "../sqlite/backup-service.js";
 import { openAuthorityBackupSourceReadOnly, inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
+import { pendingDiagnosticArtifacts } from "../artifacts/content-addressed-artifact-writer.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot, observeProcessIdentity, RestoreAdmissionFileSchema, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
@@ -15,6 +16,7 @@ export const StorageUpgradeReportSchema = z.strictObject({
   fromSchemaVersion: z.union([z.literal(0), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
+  diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
 });
 export type StorageUpgradeReport = z.infer<typeof StorageUpgradeReportSchema>;
 export interface StorageUpgradeInput {
@@ -60,7 +62,18 @@ export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpg
     requireStopped(admission,input,clock);
     if(inspection!==undefined){const again=inspectAuthorityBackupReadOnly(admission,path);
       if(again.authorityGeneration!==inspection.authorityGeneration||again.authorityContentFingerprint!==inspection.authorityContentFingerprint)throw new Error("source-changed: re-plan upgrade");
-      return report("already-upgraded");}
+      const pending = pendingDiagnosticArtifacts(admission);
+      if (pending.length === 0) return report("already-upgraded");
+      const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "diagnostic-maintenance" }, clock);
+      let reclaimedStages: number;
+      try { reclaimedStages = database.reclaimPendingDiagnostics(); } finally { database.close(); }
+      requireStopped(admission,input,clock);
+      const final = inspectAuthorityBackupReadOnly(admission,path);
+      if (final.authorityGeneration !== inspection.authorityGeneration || final.authorityContentFingerprint !== inspection.authorityContentFingerprint) throw new Error("source-changed: diagnostic maintenance authority changed");
+      const retainedStages = pendingDiagnosticArtifacts(admission).length;
+      return StorageUpgradeReportSchema.parse({ ...report("already-upgraded"), diagnostics: {
+        reclaimedStages, retainedStages, capacityWarning: retainedStages > 0,
+      } });}
     if(existsSync(path))throw new Error("source-changed: re-plan upgrade");
     const database=AuthorityDatabase.open(admission,{path,busyTimeoutMs:250,migrationOwner:"storage-upgrade"},clock);
     try{database.inspectSchema();}finally{database.close();}

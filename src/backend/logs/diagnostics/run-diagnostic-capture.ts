@@ -85,6 +85,7 @@ export function createRunDiagnosticCapture(options: RunDiagnosticCaptureOptions)
       });
     },
     persist: (bundle: DiagnosticBundle) => options.service.persist(bundle),
+    discard: (bundle: DiagnosticBundle) => options.service.discard(bundle),
   });
 }
 

@@ -2,6 +2,7 @@ import { retainedRunProtectedBindings } from "../../../models/write-safety/prote
 import { PublicTransactionKeyDigestSchema, publicTransactionKeyDigest, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 
 import { z } from "zod";
+import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { TimelineCategoryKeySchema } from "../../../models/workflow/presentation.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
@@ -49,6 +50,9 @@ export const ExplainRunViewSchema = z.strictObject({
     ]),
     detail: z.string().min(1),
   })),
+  debugEvents: z.strictObject({ records: z.array(TimelineEventRecordSchema), after: z.number().int().nonnegative(),
+    nextCursor: z.number().int().nonnegative(), through: z.number().int().nonnegative(),
+    highWaterMark: z.number().int().nonnegative(), hasMore: z.boolean() }).optional(),
   reuse: z.array(z.strictObject({
     nodeId: z.string().min(1),
     kind: z.string().min(1),
@@ -111,6 +115,7 @@ export interface ExplainRunEvidence {
   readonly dependencies: readonly { readonly nodeId: string; readonly state: string }[];
   /** Absent until the command projection exposes a by-run query (see below). */
   readonly commandHistory?: readonly string[];
+  readonly debugEvents?: ExplainRunView["debugEvents"];
 }
 
 type Remediation = z.infer<typeof RemediationActionSchema>;
@@ -161,6 +166,10 @@ function nextSafeAction(
 export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunView {
   const { run } = evidence;
   const { envelope, lifecycle } = run;
+  for (const record of evidence.debugEvents?.records ?? []) {
+    if (record.payload.kind !== "debug" || record.scope.kind !== "run" || record.scope.runId !== envelope.runId
+      || record.workflow !== envelope.workflow) throw new Error("explain-debug-scope-mismatch");
+  }
   const notRun = new Map(evidence.dependencies
     .filter((entry) => entry.state !== "resolved")
     .map((entry) => [entry.nodeId, entry.state]));
@@ -222,6 +231,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     resolvedInstance: envelope.resolvedInstance,
     omittedSteps: [...new Set((envelope.stepOmissions ?? []).map((entry) => String(entry.step)))].sort(),
     timeline,
+    ...(evidence.debugEvents === undefined ? {} : { debugEvents: evidence.debugEvents }),
     reuse: (receipt?.reuse ?? []).map((entry) => ({
 
       nodeId: receipt?.verification
@@ -344,6 +354,9 @@ export function renderExplainRun(view: ExplainRunView): string {
       `${step} — omitted at start; its nodes are operator-asserted or did not run`)),
     ...section("node timeline", view.timeline.map((entry) =>
       `${entry.nodeId.padEnd(22)} ${entry.disposition.padEnd(26)} ${entry.detail}`)),
+    ...section("run-scoped debug events", view.debugEvents === undefined ? ["unavailable: timeline reader was not supplied"]
+      : [...view.debugEvents.records.map(record => `${String(record.cursor)} ${record.occurredAt} ${JSON.stringify(record.payload)}`),
+        `nextCursor=${String(view.debugEvents.nextCursor)} through=${String(view.debugEvents.through)} hasMore=${String(view.debugEvents.hasMore)}`]),
     ...section("checkpoint reuse", view.reuse.map((entry) =>
       `${entry.nodeId.padEnd(22)} ${entry.kind.padEnd(12)} age ${String(entry.ageMs)}ms of ${String(entry.freshnessLimitMs)}ms`)),
     ...section("subject bindings", view.subjectBindings.map((entry) => `${entry.verdict}: ${entry.reason}`)),

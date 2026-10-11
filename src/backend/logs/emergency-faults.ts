@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, lstatSync, unlinkSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, lstatSync, unlinkSync, openSync, closeSync, fstatSync, readSync, constants } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -11,7 +11,7 @@ function faultPath(root: string): string {
   const directory = join(root, "logs");
   const path = join(directory, "boot.jsonl");
   for (const target of [directory, path]) {
-    if (existsSync(target) && lstatSync(target).isSymbolicLink()) throw new Error("boot-log-path-unsafe");
+    if (lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error("boot-log-path-unsafe");
   }
   return path;
 }
@@ -34,14 +34,10 @@ export function appendEmergencyFault(input: { stateRoot: string; build: string; 
   appendFileSync(path, line, { mode: 0o600, flush: true });
 }
 
-export function importEmergencyFaults(stateRoot: string, repository: TimelineRepository): number {
-  const path = faultPath(stateRoot);
-  if (!existsSync(path)) return 0;
-  if (lstatSync(path).size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
-  const content = readFileSync(path, "utf8");
+function parseEmergencyFaults(content: string) {
   if (!content.endsWith("\n")) throw new Error("boot-log-incomplete");
   const lines = content.trimEnd().split("\n");
-  const records = lines.map(line => {
+  return lines.map(line => {
     let input: unknown;
     try { input = JSON.parse(line); } catch { throw new Error("boot-log-invalid"); }
     const parsed = TimelineAppendSchema.safeParse(input);
@@ -49,6 +45,43 @@ export function importEmergencyFaults(stateRoot: string, repository: TimelineRep
       || parsed.data.scope.kind !== "transport" || parsed.data.scope.connectionId !== "database-unavailable") throw new Error("boot-log-invalid");
     return parsed.data;
   });
+}
+
+export function readEmergencyFaults(stateRoot: string) {
+  const path = faultPath(stateRoot);
+  if (!existsSync(path)) return { state: "absent" as const, reason: "boot-log-missing" as const };
+  const directory = lstatSync(join(stateRoot, "logs"));
+  if (!directory.isDirectory() || directory.uid !== process.getuid?.() || (directory.mode & 0o077) !== 0) throw new Error("boot-log-path-unsafe");
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const identity = (stats: ReturnType<typeof fstatSync>) => [stats.dev, stats.ino, stats.size, stats.mtimeMs, stats.ctimeMs].join(":");
+  try {
+    const before = fstatSync(descriptor);
+    if (!before.isFile() || before.nlink !== 1 || before.uid !== process.getuid?.() || (before.mode & 0o077) !== 0) throw new Error("boot-log-path-unsafe");
+    if (before.size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
+    const bytes = Buffer.alloc(before.size + 1);
+    let count = 0;
+    while (count < bytes.length) {
+      const read = readSync(descriptor, bytes, count, bytes.length - count, count);
+      if (read === 0) break;
+      count += read;
+    }
+    if (count !== before.size) throw new Error("boot-log-concurrent-write");
+    let content: string;
+    try { content = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, count)); }
+    catch { throw new Error("boot-log-invalid"); }
+    const records = parseEmergencyFaults(content);
+    if (identity(before) !== identity(fstatSync(descriptor)) || identity(before) !== identity(lstatSync(path))
+      || identity(directory) !== identity(lstatSync(join(stateRoot, "logs")))) throw new Error("boot-log-concurrent-write");
+    return { state: "present" as const, records };
+  } finally { closeSync(descriptor); }
+}
+
+export function importEmergencyFaults(stateRoot: string, repository: TimelineRepository): number {
+  const path = faultPath(stateRoot);
+  if (!existsSync(path)) return 0;
+  if (lstatSync(path).size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
+  const content = readFileSync(path, "utf8");
+  const records = parseEmergencyFaults(content);
   for (const record of records) {
     repository.append(record);
     const stored = repository.get(record.eventId);
