@@ -43,17 +43,16 @@ export function runSummaryDigest(summary: RunSummary): string {
 }
 
 export function deriveCanonicalPerson(run: RunSummarySource["run"], result: RunSummarySource["result"]): RunSummary["person"] {
-  let person: RunSummary["person"] = { state: "unavailable", reason: "canonical-result-unavailable" };
-  if (run.envelope.workflow === "separations" && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done" && result !== null) {
-    const hash = deriveSchemaHash(SeparationsResultSchema, "output");
-    if (result.runId !== run.envelope.runId || result.workflowId !== run.envelope.workflow
-      || result.attempt !== run.envelope.attempt || result.descriptorVersion !== run.envelope.descriptorVersion
-      || result.contractFingerprint !== run.envelope.contractFingerprint || result.configFingerprint !== run.envelope.configFingerprint
-      || result.configSnapshotId !== run.envelope.configSnapshotId) throw new Error("summary-result-identity-mismatch");
-    const parsed = SeparationsResultSchema.safeParse(result.result.value);
-    if (result.resultSchemaHash === hash && result.result.schemaHash === hash && parsed.success) {
-      person = { state: "available", identity: parsed.data.approved.emplId };
-    }
+  if (run.envelope.workflow !== "separations" || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done" || result === null) {
+    return { state: "unavailable", reason: "canonical-result-unavailable" };
   }
-  return person;
+  const hash = deriveSchemaHash(SeparationsResultSchema, "output");
+  if (result.runId !== run.envelope.runId || result.workflowId !== run.envelope.workflow
+    || result.attempt !== run.envelope.attempt || result.descriptorVersion !== run.envelope.descriptorVersion
+    || result.contractFingerprint !== run.envelope.contractFingerprint || result.configFingerprint !== run.envelope.configFingerprint
+    || result.configSnapshotId !== run.envelope.configSnapshotId) throw new Error("summary-result-identity-mismatch");
+  const parsed = SeparationsResultSchema.safeParse(result.result.value);
+  return result.resultSchemaHash === hash && result.result.schemaHash === hash && parsed.success
+    ? { state: "available", identity: parsed.data.approved.emplId }
+    : { state: "unavailable", reason: "canonical-result-unavailable" };
 }

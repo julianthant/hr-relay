@@ -1,11 +1,7 @@
 import { z } from "zod";
 
-interface ZodInternals {
-  readonly _zod: { readonly def: { readonly [key: string]: unknown } };
-}
-
 function schemaDefinition(schema: z.core.$ZodType): { readonly [key: string]: unknown } {
-  return (schema as unknown as ZodInternals)._zod.def;
+  return schema._zod.def as z.core.$ZodTypeDef & { readonly [key: string]: unknown };
 }
 
 /** Audits the complete schema graph because nested open/unknown values cross the same boundary. */
@@ -33,7 +29,7 @@ export function auditContractBoundarySchema(
       return;
     }
     if (type === "object") {
-      const catchall = definition.catchall as ZodInternals | undefined;
+      const catchall = definition.catchall as z.core.$ZodType | undefined;
       if (catchall?._zod.def.type !== "never") issues.push(`${path} must use z.strictObject`);
       const shape = definition.shape as { readonly [key: string]: z.core.$ZodType };
       for (const [key, child] of Object.entries(shape)) visit(child, `${path}.${key}`);
@@ -95,7 +91,7 @@ function schemaOwnsPath(
   function visit(current: z.core.$ZodType, remaining: readonly string[]): boolean {
     if (remaining.length === 0) return true;
     const signature = remaining.join(".");
-    const currentObject = current as unknown as object;
+    const currentObject = current;
     const signatures = seen.get(currentObject) ?? new Set<string>();
     if (signatures.has(signature)) return false;
     signatures.add(signature);
@@ -245,7 +241,7 @@ function relativeLeaves(
   presence: "always" | "sometimes",
   ancestors: readonly object[],
 ): readonly ContractSchemaLeaf[] {
-  const currentObject = schema as unknown as object;
+  const currentObject = schema;
   if (ancestors.includes(currentObject)) {
 // Recursive depth belongs to values; report one leaf rather than inventing a depth limit.
     return [Object.freeze({ path: "", kind: "value" as const, presence })];
