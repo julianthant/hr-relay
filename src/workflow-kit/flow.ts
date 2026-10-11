@@ -171,7 +171,7 @@ export type ChildRunOpts<
     policy: DelegationPolicy;
   }>;
 
-export type GateDecl<S, D extends readonly (keyof S & string)[]> =
+type GateDecl<S, D extends readonly (keyof S & string)[]> =
   | Readonly<{
     dependsOn: D;
     label: string;
@@ -214,17 +214,17 @@ export type ChildRunOutput<
     : readonly ChildRunOutcome<Target>[];
 
 /** A branch's own output names the case it selected — downstream code branches on it. */
-export type BranchOutput<Cases extends Readonly<Record<string, readonly string[]>>> =
+type BranchOutput<Cases extends Readonly<Record<string, readonly string[]>>> =
   Readonly<{ selected: keyof Cases & string }>;
 
 /** A `parallel` join exposes each branch id mapped to the ids it ran. */
-export type ParallelOutput<B extends ParallelBranches> =
+type ParallelOutput<B extends ParallelBranches> =
   Readonly<{
     join: "all" | "all-settled";
     branches: Readonly<{ [K in B[number]["id"]]: readonly string[] }>;
   }>;
 
-export type GateOutput<Decl extends { readonly result: z.ZodType }> = z.output<Decl["result"]>;
+type GateOutput<Decl extends { readonly result: z.ZodType }> = z.output<Decl["result"]>;
 
 /* ── node-tuple transforms ───────────────────────────────────────────────── */
 
@@ -245,7 +245,7 @@ export type AppendTransactionNode<
   D extends readonly (keyof S & string)[],
 > = readonly [...Nodes, TransactionNode<ScopeFor<InputSchema, S, D>, P, C>];
 
-export type AppendBranchNode<
+type AppendBranchNode<
   Nodes extends readonly GraphNodeBase[],
   InputSchema extends z.ZodType,
   S,
@@ -256,7 +256,7 @@ export type AppendBranchNode<
   BranchNode<ScopeFor<InputSchema, S, D>, { readonly [K in keyof Cases]: readonly NodeId[] }>,
 ];
 
-export type AppendParallelNode<Nodes extends readonly GraphNodeBase[]> =
+type AppendParallelNode<Nodes extends readonly GraphNodeBase[]> =
   readonly [...Nodes, ParallelNode];
 
 export type AppendChildRunNode<
@@ -267,7 +267,7 @@ export type AppendChildRunNode<
   D extends readonly (keyof S & string)[],
 > = readonly [...Nodes, ChildRunNode<ScopeFor<InputSchema, S, D>, Target>];
 
-export type AppendGateNode<
+type AppendGateNode<
   Nodes extends readonly GraphNodeBase[],
   Decl extends { readonly resolvedBy: string; readonly result: z.ZodType },
 > = readonly [
@@ -420,13 +420,13 @@ export interface BuiltFlow<
   readonly instrumentation: readonly FlowInstrumentation[];
 }
 
-export interface FlowDecoration {
+interface FlowDecoration {
   readonly nodeId: NodeId;
   readonly contractId: AnyTaskContract["id"];
   readonly hooks: TaskHooks<AnyTaskContract>;
   readonly label: string;
 }
-export interface FlowInstrumentation {
+interface FlowInstrumentation {
   readonly hooks: TaskHooks<AnyTaskContract>;
   readonly label: string;
 }

@@ -88,7 +88,7 @@ export interface WorkerBrowserSessionFactory {
   }>) => Promise<Readonly<{ profileDirectory: string }>>;
 }
 
-export interface SessionLoginOptions {
+interface SessionLoginOptions {
   readonly instance?: string;
   readonly signal?: AbortSignal;
 }
