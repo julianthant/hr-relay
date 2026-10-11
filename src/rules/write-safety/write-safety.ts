@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../validation/sha256.js";
 import { RepeatOccurrenceSchema, repeatOccurrenceKey } from "../../models/run/rerun.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
@@ -120,20 +120,12 @@ export const IdempotencyKeySchema = z.string().min(1).max(512).superRefine((key,
 export function deriveIdempotencyKeyDigest(systemInput: unknown, keyInput: unknown): string {
   const system = BrowserSystemIdSchema.parse(systemInput);
   const key = IdempotencyKeySchema.parse(keyInput);
-  return FingerprintSchema.parse(createHash("sha256")
-    .update("hrauto:permanent-write-key:v1\0")
-    .update(system)
-    .update("\0")
-    .update(key)
-    .digest("hex"));
+  return FingerprintSchema.parse(sha256Hex(`hrauto:permanent-write-key:v1\0${system}\0${key}`));
 }
 
 export function deriveWriteBindingProofDigest(proofInput: unknown): string {
   const proof = WriteBindingProofSchema.parse(proofInput);
-  return FingerprintSchema.parse(createHash("sha256")
-    .update("hrauto:write-binding-proof:v1\0")
-    .update(canonicalJsonStringify(proof))
-    .digest("hex"));
+  return FingerprintSchema.parse(sha256Hex(`hrauto:write-binding-proof:v1\0${canonicalJsonStringify(proof)}`));
 }
 
 export const PresentProofReferenceSchema = z.strictObject({
