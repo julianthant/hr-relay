@@ -43,7 +43,7 @@ import type { SystemLoginContext } from "../../systems/browser-shared/login-cont
 import { BROWSER_SYSTEM_BINDINGS } from "./system-bindings.js";
 import type { BrowserSystemBinding, BrowserSystemBindings } from "./system-bindings.js";
 import { observeProcessIdentity, type ProcessIdentityObservation } from "../../storage/sqlite/runtime-process-locks.js";
-import { attachBrowserDiagnostics } from "../../logs/browser-diagnostics.js";
+import { attachBrowserDiagnostics } from "./browser-diagnostics.js";
 import type { DebugEvent } from "../../../models/events/timeline.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { ProtectedStoreRecordSchema } from "../../../models/config/protected-settings.js";

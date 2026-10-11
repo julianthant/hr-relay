@@ -4,7 +4,7 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import { lifecycleCommandId } from "../../rules/identity/identifiers.js";
 import { LedgerEntryPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../rules/runs/ledger.js";
 import { authenticateParkedWriteResolution } from "../../rules/write-safety/parked-resolution.js";
-import { TransactionOutcomeSchema } from "../../rules/write-safety/write-safety.js";
+import { TransactionOutcomeSchema } from "../../rules/write-safety/write-safety-primitives.js";
 import { TimelineAppendSchema, timelineCheckpointReference, type TimelineEventRecord } from "./timeline.js";
 import type { WriteAttemptRecord, WriteIntentRecord } from "../../rules/write-safety/write-safety.js";
 import { RunCheckpointRecordSchema, type RunCheckpointRecord } from "../workflow/checkpoint.js";

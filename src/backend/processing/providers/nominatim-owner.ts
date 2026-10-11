@@ -2,13 +2,12 @@ import { randomBytes } from "node:crypto";
 import { createServer, createConnection, type Socket } from "node:net";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { systemClock, type Clock } from "../../../rules/time/clock.js";
+import { systemClock, machineMonotonicMs, type Clock } from "../../../rules/time/clock.js";
 import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, type ProviderAdapterOutcome } from "../../../models/providers/providers.js";
 import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
 import { acquireRuntimeProcessLock, readRuntimeProcessLock, runtimeProcessLockIsActive, readGeocodeRuntimeFile, writeGeocodeRuntimeFileExclusive, removeOwnedGeocodeRuntimeFile, type GeocodeFileCustody } from "../../storage/sqlite/runtime-process-locks.js";
 
 const MAX_MESSAGE_BYTES = 65_536;
-const monotonicNow = () => Number(process.hrtime.bigint()) / 1_000_000;
 const ChannelSchema = z.strictObject({ generation: z.number().int().positive(), acquisitionId: z.uuid(), port: z.number().int().min(1).max(65535), token: z.string().regex(/^[a-f0-9]{64}$/u) });
 const RequestSchema = z.strictObject({ token: ChannelSchema.shape.token, requestId: z.uuid(), deadlineMs: z.number().positive(), request: ProviderRequestEnvelopeSchema });
 const ReplySchema = z.discriminatedUnion("state", [
@@ -50,7 +49,7 @@ export function createNominatimService(input: Readonly<{
     const controllers = new Set<AbortController>();
     let draining = false;
     let closing = false;
-    let nextStart = monotonicNow() + 1000;
+    let nextStart = machineMonotonicMs() + 1000;
     let adapter: ProviderAdapter<"geocode.nominatim">;
     const drain = async () => {
       if (draining) return;
@@ -79,7 +78,7 @@ export function createNominatimService(input: Readonly<{
         if (request.token !== token || request.request.capability !== "geocode.nominatim" || closing) { socket.destroy(); return; }
         socket.setTimeout(0);
         const deadline = request.deadlineMs;
-        const remainingMs = deadline - monotonicNow();
+        const remainingMs = deadline - machineMonotonicMs();
         if (remainingMs <= 0 || remainingMs > 2_147_483_647) { socket.end(`${JSON.stringify({ state: "unavailable", code: "timeout" })}\n`); return; }
         const timer = setTimeout(() => controller.abort(), remainingMs);
         const reply = (value: Reply) => { if (!socket.destroyed) socket.end(`${JSON.stringify(value)}\n`); };
@@ -88,12 +87,12 @@ export function createNominatimService(input: Readonly<{
           const wake = () => { if (wait !== undefined) clearTimeout(wait); };
           try {
             if (controller.signal.aborted || closing) { reply({ state: "unavailable", code: closing ? "adapter-unavailable" : "timeout" }); return; }
-            while (nextStart > monotonicNow() && !controller.signal.aborted && !closing) await new Promise<void>(done => {
+            while (nextStart > machineMonotonicMs() && !controller.signal.aborted && !closing) await new Promise<void>(done => {
               const abort = () => { wake(); done(); };
               controller.signal.addEventListener("abort", abort, { once: true });
-              wait = setTimeout(() => { controller.signal.removeEventListener("abort", abort); done(); }, Math.ceil(nextStart - monotonicNow()));
+              wait = setTimeout(() => { controller.signal.removeEventListener("abort", abort); done(); }, Math.ceil(nextStart - machineMonotonicMs()));
             });
-            if (controller.signal.aborted || closing || monotonicNow() >= deadline) { reply({ state: "unavailable", code: closing ? "adapter-unavailable" : "timeout" }); return; }
+            if (controller.signal.aborted || closing || machineMonotonicMs() >= deadline) { reply({ state: "unavailable", code: closing ? "adapter-unavailable" : "timeout" }); return; }
             const outcome = ProviderAdapterOutcomeSchema.parse(await adapter.invoke(request.request, { signal: controller.signal, deadlineMonotonicMs: deadline, requestId: request.requestId }));
             reply({ state: "completed", outcome });
           } catch { reply({ state: "unavailable", code: controller.signal.aborted ? "timeout" : "adapter-unavailable" }); }
@@ -118,9 +117,9 @@ export function createNominatimService(input: Readonly<{
       for (const controller of controllers) controller.abort();
       for (const socket of connections) socket.destroy();
       if (server.listening) await new Promise<void>((done, reject) => server.close(error => error === undefined ? done() : reject(error)));
-      const closureDeadline = monotonicNow() + 5000;
+      const closureDeadline = machineMonotonicMs() + 5000;
       while (draining) {
-        if (monotonicNow() >= closureDeadline) throw new Error("nominatim-owner-closure-unproven");
+        if (machineMonotonicMs() >= closureDeadline) throw new Error("nominatim-owner-closure-unproven");
         await new Promise<void>(done => setTimeout(done, 1));
       }
       if (channelCustody !== undefined) {
@@ -133,7 +132,7 @@ export function createNominatimService(input: Readonly<{
     try {
       adapter = input.adapter((...args) => {
         try { return (input.fetchFn ?? fetch)(...args); }
-        finally { nextStart = monotonicNow() + 1000; }
+        finally { nextStart = machineMonotonicMs() + 1000; }
       });
       await new Promise<void>((done, reject) => { server.once("error", reject); server.listen({ host: "127.0.0.1", port: 0 }, () => { server.removeListener("error", reject); done(); }); });
       const address = server.address();
@@ -189,7 +188,7 @@ export function createNominatimService(input: Readonly<{
         options.signal.addEventListener("abort", abort, { once: true });
         socket.once("connect", () => {
           if (options.signal.aborted) { abort(); return; }
-          socket.write(`${JSON.stringify({ token: channel.token, requestId: options.requestId, deadlineMs: monotonicNow() + remaining(), request })}\n`);
+          socket.write(`${JSON.stringify({ token: channel.token, requestId: options.requestId, deadlineMs: machineMonotonicMs() + remaining(), request })}\n`);
         });
         socket.on("data", chunk => {
           text += chunk.toString("utf8");

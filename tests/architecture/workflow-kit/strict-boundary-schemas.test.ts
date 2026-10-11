@@ -65,7 +65,6 @@ import { ActivityPersonPseudonymEvidenceSchema, ActivityPersonPseudonymGeneratio
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { ActionEvidenceSchema, DecisionEvidenceSchema, EvidenceFactSchema, ReuseEvidenceSchema, RunEvidenceReceiptSchema, UncertaintyEvidenceSchema, VerificationEvidenceSchema } from "../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
-import { FixRecordSchema, KnowledgeRecordSchema } from "../../../src/models/trust/knowledge.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/models/trust/preflight-scenarios.js";
 import { ScenarioManifestSchema } from "../../../src/models/trust/scenario.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
@@ -283,19 +282,6 @@ const UNCERTAINTY_EVIDENCE = {
   evidence: [],
 };
 
-const KNOWLEDGE = {
-  id: UUID_1, status: "active", scope: { system: "ucpath" }, title: "Search state", symptom: "Controls absent",
-  trigger: "Frame race", rootCause: "Incomplete state", invariant: "Ready state is complete", fix: "Add condition",
-  regressionScenarios: ["ucpath/person-search-frame-race"], evidence: [`observation:${UUID_2}`],
-  verifiedAt: NOW, sourceCommits: ["abcdef1"],
-};
-
-const FIX = {
-  id: UUID_3, failureFingerprint: HASH_B, status: "verified", requestedBy: "codex", summary: "Close race",
-  affected: ["ucpath/search-person"], files: ["src/backend/systems/ucpath/driver/person-search.ts"],
-  scenarios: ["ucpath/person-search-frame-race"], verification: [`observation:${UUID_2}`], commit: "abcdef1",
-  knowledge: [UUID_1], createdAt: NOW,
-};
 
 const BOOTSTRAP = {
   wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B, protectedSchemaHash: HASH_A,
@@ -1033,8 +1019,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ReuseEvidence", schema: ReuseEvidenceSchema, fixtures: [REUSE_EVIDENCE] },
   { name: "UncertaintyEvidence", schema: UncertaintyEvidenceSchema, fixtures: [UNCERTAINTY_EVIDENCE] },
   { name: "RunEvidenceReceipt", schema: RunEvidenceReceiptSchema, fixtures: [RECEIPT] },
-  { name: "KnowledgeRecord", schema: KnowledgeRecordSchema, fixtures: [KNOWLEDGE] },
-  { name: "FixRecord", schema: FixRecordSchema, fixtures: [FIX] },
   { name: "FrontendBootstrap", schema: FrontendBootstrapWireSchema, fixtures: [BOOTSTRAP] },
   { name: "DiagnosticBundleWire", schema: DiagnosticBundleWireSchema, fixtures: [{ bundleId: UUID_1, capturedAt: NOW, byteSize: 0, contentDigest: HASH_A, redaction: { fields: [], warnings: [] }, contents: [] }] },
   { name: "DashboardDay", schema: DashboardDayWireSchema, fixtures: [DAY] },

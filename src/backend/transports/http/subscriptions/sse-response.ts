@@ -1,3 +1,4 @@
+import { systemClock } from "../../../../rules/time/clock.js";
 // Use a pull source so socket demand controls delivery; pushing would bypass backpressure.
 import type { DashboardStreamEnvelope } from "../../../../models/dashboard/subscription.js";
 import type { DashboardStreamConnection } from "./dashboard-stream.js";
@@ -20,14 +21,14 @@ function streamBody<T>(connection: Readonly<{ initial: readonly T[]; next(): Pro
   };
   let closed = false;
   let reset = false;
-  const started = performance.now();
+  const started = systemClock.monotonicMs();
   lifecycle?.("started", 0);
   /** Closes the connection once; answers whether THIS call did it. */
   const closeOnce = (failed = false): boolean => {
     if (closed) return false;
     closed = true;
     connection.close();
-    lifecycle?.(failed ? "failed" : reset ? "reset" : "settled", performance.now() - started);
+    lifecycle?.(failed ? "failed" : reset ? "reset" : "settled", systemClock.monotonicMs() - started);
     return true;
   };
   return new ReadableStream<Uint8Array>({

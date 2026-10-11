@@ -233,14 +233,6 @@
       "replacementRequired": true
     },
     {
-      "name": "knowledge-fix-integrity",
-      "file": "tests/architecture/models/knowledge-fix-integrity.test.ts",
-      "status": "active",
-      "owner": "docs/rebuild/reference/operator-trust.md",
-      "invariant": "(ref operator-trust \u00a74, \u00a79): knowledge records carry status/scope/evidence/validity and forward supersession refs, and admission is audited INSIDE the insert transaction because an insert-only table cannot retract a duplicate. Two active records may not claim the same scoped rule \u2014 same scope plus same normalized title or a shared regression scenario \u2014 without the successor explicitly superseding the predecessor; a supersedes ref that names nothing recorded, a self-reference, and a duplicate id are each refused with the conflict named. The generated per-system KNOWLEDGE.md is the active view alone: superseded, retired, and unverified records never reach it. A verified FixRecord requires a commit plus non-empty verification evidence and a regression scenario, a draft may claim neither, and a verified fix may not link knowledge that is missing or itself unverified. A raw chronological lesson append is not authority: triageLesson has exactly one arm and it returns the obligations still owed, never a record. F removes the runtime knowledge service/repositories; this guard retains frozen schema41 historical admission/projection proofs and verifies current-door absence. Nonempty retirement requires source-bound backup; foundation mixed-history supplies positive/negative preservation proof.",
-      "replacementRequired": true
-    },
-    {
       "name": "multi-worker-overlap",
       "file": "tests/architecture/runtime/multi-worker-overlap.test.ts",
       "status": "active",

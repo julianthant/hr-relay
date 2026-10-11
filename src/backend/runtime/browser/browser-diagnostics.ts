@@ -1,6 +1,6 @@
 import type { Page, ConsoleMessage, Request, Response } from "playwright";
-import type { Clock } from "../../rules/time/clock.js";
-import type { BrowserScreenshotEvidence } from "../../workflow-kit/session.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { BrowserScreenshotEvidence } from "../../../workflow-kit/session.js";
 
 /** Unclassified page text is omitted; method/status/error class remain useful and secret-free. */
 export function attachBrowserDiagnostics(page: Page, clock: Clock) {
