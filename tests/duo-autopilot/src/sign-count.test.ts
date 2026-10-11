@@ -3,14 +3,11 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { nextSignCount } from "../../../duo-autopilot/src/sign-count.js";
 
-/** The live values from §9.21's forced-counter reproduction, kept verbatim. */
 const DUO_OBSERVED = 1_787_192_063;
 const FORCED_BEHIND = 1_787_191_000;
 
 describe("duo autopilot sign counter", () => {
   it("presents wall clock when the stored counter has fallen behind it", () => {
-    // §9.21: this exact gap (1 063) burned the whole 60 s acquisition bound
-    // live, on a profile that had logged in at ~19 s a minute earlier.
     assert.equal(nextSignCount(FORCED_BEHIND, DUO_OBSERVED), DUO_OBSERVED);
     assert.notEqual(nextSignCount(FORCED_BEHIND, DUO_OBSERVED), FORCED_BEHIND + 1);
   });
@@ -66,8 +63,6 @@ describe("duo autopilot sign counter", () => {
     ceremony("warm", 1_010);
     profiles.cold.stored = 1_200; // the auto-import stamp on a fresh profile
     ceremony("cold", 1_200);
-    // Under `stored + 1` the warm profile now presents 1003, 1004, 1005 …
-    // against an observed 1201 — refused, forever, with no way back.
     ceremony("warm", 1_210);
     ceremony("cold", 1_220);
     ceremony("warm", 1_230);
