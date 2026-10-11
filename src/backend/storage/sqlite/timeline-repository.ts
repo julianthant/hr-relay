@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { SpanEventWireSchema } from "../../../models/events/types.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -20,6 +20,12 @@ const RowSchema = z.strictObject({
   kind: z.string(), occurred_at: z.string(), recorded_at: z.string(), operation_id: z.string().nullable(),
   operation_generation: z.number().int().positive().nullable(), confirmed_at: z.string().nullable(), system: z.string().nullable(),
 });
+const EventIdSchema = z.uuid();
+const DataVersionSchema = z.object({ data_version: z.number().int() });
+const OrdinaryBytesRowSchema = z.object({ bytes: z.number().int(), data_version: z.number().int() }).optional();
+const OrdinaryBytesSchema = z.number().int().nonnegative();
+const OrdinaryBytesSumSchema = z.object({ bytes: OrdinaryBytesSchema });
+const HighWaterMarkSchema = z.strictObject({ cursor: z.number().int().nonnegative() });
 
 /** Safe diagnostics contain schema-owned field names, never observed keys or values. */
 export class TimelineRecordError extends Error {}
@@ -75,7 +81,7 @@ function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
   return "ordinary";
 }
 
-function ordinaryTimelineBytes(database: DatabaseSync): number {
+function ordinaryTimelineBytes(database: DatabaseSync, prepare: (sql: string) => StatementSync): number {
   database.exec(`CREATE TEMP TABLE IF NOT EXISTS timeline_ordinary_bytes(
     id INTEGER PRIMARY KEY CHECK(id=1), bytes INTEGER NOT NULL, data_version INTEGER NOT NULL);
     CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_insert AFTER INSERT ON main.timeline_events
@@ -88,20 +94,27 @@ function ordinaryTimelineBytes(database: DatabaseSync): number {
       UPDATE timeline_ordinary_bytes SET bytes=bytes
         -CASE WHEN OLD.retention_class='ordinary' THEN length(CAST(OLD.payload_json AS BLOB)) ELSE 0 END
         +CASE WHEN NEW.retention_class='ordinary' THEN length(CAST(NEW.payload_json AS BLOB)) ELSE 0 END WHERE id=1; END;`);
-  const version = z.object({ data_version: z.number().int() }).parse(database.prepare("PRAGMA data_version").get()).data_version;
-  const row = z.object({ bytes: z.number().int(), data_version: z.number().int() }).optional()
-    .parse(database.prepare("SELECT bytes,data_version FROM timeline_ordinary_bytes WHERE id=1").get());
-  if (row !== undefined && row.data_version === version) return z.number().int().nonnegative().parse(row.bytes);
-  const bytes = z.object({ bytes: z.number().int().nonnegative() }).parse(database.prepare(
+  const version = DataVersionSchema.parse(prepare("PRAGMA data_version").get()).data_version;
+  const row = OrdinaryBytesRowSchema.parse(prepare("SELECT bytes,data_version FROM timeline_ordinary_bytes WHERE id=1").get());
+  if (row !== undefined && row.data_version === version) return OrdinaryBytesSchema.parse(row.bytes);
+  const bytes = OrdinaryBytesSumSchema.parse(prepare(
     "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE retention_class = 'ordinary'").get()).bytes;
-  database.prepare("INSERT INTO timeline_ordinary_bytes(id,bytes,data_version) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes,data_version=excluded.data_version").run(bytes,version);
+  prepare("INSERT INTO timeline_ordinary_bytes(id,bytes,data_version) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes,data_version=excluded.data_version").run(bytes,version);
   return bytes;
 }
 
 export function createTimelineRepository(ports: TimelineRepositoryPorts): TimelineRepository {
   const { database } = ports;
+  const statements = new Map<string, StatementSync>();
+  const prepare = (sql: string): StatementSync => {
+    const existing = statements.get(sql);
+    if (existing !== undefined) return existing;
+    const statement = database.prepare(sql);
+    statements.set(sql, statement);
+    return statement;
+  };
   const get = (eventId: string): TimelineEventRecord | undefined => ports.read(() => {
-    const row = database.prepare("SELECT * FROM timeline_events WHERE id = ?").get(z.uuid().parse(eventId));
+    const row = prepare("SELECT * FROM timeline_events WHERE id = ?").get(EventIdSchema.parse(eventId));
     return row === undefined ? undefined : timelineEventFromRow(row);
   });
   return Object.freeze({
@@ -122,12 +135,12 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
         }
         ports.assertOwner(record, true);
         if (timelineRetentionClass(record) === "ordinary") {
-          const bytes = ordinaryTimelineBytes(database);
-          if (bytes + Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: Number((database.prepare("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) + 1 AS cursor").get() as { cursor: number }).cursor) }), "utf8") > 250 * 1024 * 1024) throw new Error("timeline-ordinary-cap-exceeded");
+          const bytes = ordinaryTimelineBytes(database, prepare);
+          if (bytes + Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: Number((prepare("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) + 1 AS cursor").get() as { cursor: number }).cursor) }), "utf8") > 250 * 1024 * 1024) throw new Error("timeline-ordinary-cap-exceeded");
         }
         // SQLite assigns both the cursor and its authenticated JSON mirror from
         // its AUTOINCREMENT sequence under the same owning write transaction.
-        const raw = database.prepare(`
+        const raw = prepare(`
           INSERT INTO timeline_events(id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,
             retention_class,operation_id,operation_generation,confirmed_at,system,payload_json)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,json_set(?,'$.cursor',
@@ -150,20 +163,20 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
         if (request.through !== undefined) { predicates.push("cursor <= ?"); bindings.push(request.through); }
         if (request.runId !== undefined) { predicates.push("run_id = ?"); bindings.push(request.runId); }
         if (request.workflow !== undefined) { predicates.push("workflow = ?"); bindings.push(request.workflow); }
-        const rows = database.prepare(`SELECT * FROM timeline_events WHERE ${predicates.join(" AND ")} ORDER BY cursor LIMIT ?`)
+        const rows = prepare(`SELECT * FROM timeline_events WHERE ${predicates.join(" AND ")} ORDER BY cursor LIMIT ?`)
           .all(...bindings, request.limit);
         return Object.freeze(rows.map(timelineEventFromRow));
       });
     },
     highWaterMark() {
-      return ports.read(() => z.strictObject({ cursor: z.number().int().nonnegative() }).parse(database.prepare(
+      return ports.read(() => HighWaterMarkSchema.parse(prepare(
         "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'timeline_events'), 0) AS cursor",
       ).get()).cursor);
     },
     pruneBefore(retentionDate: string) {
       const cutoff = z.iso.date().parse(retentionDate);
       return ports.mutate(() => {
-        const result = database.prepare(
+        const result = prepare(
           `DELETE FROM timeline_events WHERE retention_class = 'ordinary'
             AND retention_date < CASE WHEN json_extract(payload_json,'$.payload.event.category')='sse'
               AND json_extract(payload_json,'$.payload.event.phase')='settled' THEN date(?,'+23 days') ELSE ? END

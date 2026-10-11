@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -25,6 +25,33 @@ function fixture(path = ":memory:") {
   return { database, repository };
 }
 describe("native logging authority", () => {
+  it("constructs and reads a read-only repository without initializing write accounting", () => {
+    const root = mkdtempSync(join(tmpdir(), "logging-readonly-"));
+    const path = join(root, "state.db");
+    const seeded = fixture(path);
+    createDebugEventWriter({ repository: seeded.repository, clock: manualClock(AT), build: "test" })
+      .emit({ category: "http", phase: "failed", correlationId: "readonly" });
+    seeded.database.close();
+    const before = readFileSync(path);
+    const inventory = readdirSync(root).sort();
+    const database = new DatabaseSync(path, { readOnly: true });
+    try {
+      const repository = createTimelineRepository({ database, read: read => read(),
+        assertOwner: () => { throw new Error("read-only query attempted owner mutation"); },
+        mutate: () => { throw new Error("read-only query attempted mutation"); } });
+      const rows = repository.page({});
+      assert.equal(rows.length, 1);
+      assert.deepEqual(repository.get(rows[0].eventId), rows[0]);
+      assert.equal(repository.highWaterMark(), rows[0].cursor);
+      assert.deepEqual(database.prepare("SELECT name FROM sqlite_temp_master WHERE name LIKE 'timeline_ordinary_bytes%'").all(), []);
+    } finally {
+      database.close();
+      try {
+        assert.deepEqual(readdirSync(root).sort(), inventory);
+        assert.deepEqual(readFileSync(path), before);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
+  });
   it("redacts quoted credential payloads and routes in the actual native writer", () => {
     const { database, repository } = fixture();
     try {
