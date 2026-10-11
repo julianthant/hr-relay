@@ -75,7 +75,7 @@ const DEFERRED_CAPABILITIES = [
 const PROCESS_ENTRYPOINTS = [
   { file: "worker-browser-control-cli.ts", consumers: ["tests/backend/runtime/workers/worker-supervisor.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts"] },
   { file: "worker-stub-cli.ts", consumers: ["tests/backend/app/composition/dashboard/compose.worker-processes.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-pool-parallel-proof-2.integration.test.ts"] },
-  { file: "run-record-race-worker.ts", consumers: ["tests/backend/runs/lifecycle/run-record-service.service-2.integration.test.ts", "tests/backend/runs/lifecycle/run-record-service.service-3.integration.test.ts"] },
+  { file: "run-record-race-worker.ts", consumers: ["tests/support/helpers/backend/run-record-service-world.ts"] },
   { file: "runtime-lock-contender.ts", consumers: ["tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts"] },
 ] as const;
 
