@@ -40,7 +40,7 @@ import {
 } from "../../../models/dashboard/explorer-override.js";
 import type { ExplorerOverrideReader } from "../../../models/dashboard/explorer-override.js";
 
-export interface ExplorerEditExecution {
+interface ExplorerEditExecution {
   readonly result: ExplorerEditApplyResult;
 }
 

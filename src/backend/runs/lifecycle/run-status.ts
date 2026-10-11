@@ -16,7 +16,7 @@ const RUN_OUTCOME_STATUS = {
 } as const satisfies Record<string, RunQueueStatus>;
 
 
-export function deriveRunStatus(authority: RunRecord): RunQueueStatus {
+export function deriveRunStatus(authority: Readonly<{ lifecycle: RunRecord["lifecycle"]; cancelRequested?: boolean }>): RunQueueStatus {
   const { lifecycle } = authority;
   if (lifecycle.state === "terminal") return RUN_OUTCOME_STATUS[lifecycle.outcome];
   if (lifecycle.state === "parked-write") return "blocked";

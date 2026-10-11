@@ -21,7 +21,7 @@ const LABELS: Readonly<Record<string, string>> = {
   ucpathUserId: "UCPath user ID", ucpathPassword: "UCPath password", timekeeperName: "Timekeeper name",
   sharepointOnboardingRosterUrl: "SharePoint onboarding roster URL", activityPersonPseudonym: "Historical Activity pseudonym",
 };
-export function settingsLabel(key: string): string {
+function settingsLabel(key: string): string {
   return LABELS[key] ?? key.split(".").map(part => part.replace(/([a-z])([A-Z])/gu, "$1 $2")).join(" · ");
 }
 function atPath(value: unknown, path: string): unknown {

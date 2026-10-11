@@ -166,8 +166,8 @@ export interface WriteResolutionContext {
   readonly auditId: string;
 }
 
-export const WriteResolutionOutcomeSchema = z.strictObject({ run: RunRecordSchema, intent: WriteIntentRecordSchema });
-export interface PreparedWriteResolution {
+const WriteResolutionOutcomeSchema = z.strictObject({ run: RunRecordSchema, intent: WriteIntentRecordSchema });
+interface PreparedWriteResolution {
   readonly outcome: z.infer<typeof WriteResolutionOutcomeSchema>;
   applyAfterAudit(): z.infer<typeof WriteResolutionOutcomeSchema>;
 }
@@ -179,7 +179,7 @@ export interface WriteResolutionExecutor {
 
 const SettingsApplicationRefusalSchemas = SettingsApplyRefusalSchema.options;
 
-export const OrdinarySettingsApplicationOutcomeSchema = z.union([
+const OrdinarySettingsApplicationOutcomeSchema = z.union([
   z.strictObject({
     state: z.literal("applied"),
     revision: z.number().int().positive(),
@@ -190,7 +190,7 @@ export const OrdinarySettingsApplicationOutcomeSchema = z.union([
   ...SettingsApplicationRefusalSchemas,
 ]);
 
-export const ProtectedSettingsApplicationOutcomeSchema = z.union([
+const ProtectedSettingsApplicationOutcomeSchema = z.union([
   z.strictObject({
     state: z.literal("applied"),
     readback: ProtectedSettingsReadbackSchema,
@@ -230,7 +230,7 @@ export const WorkerPlanAcknowledgementSchema = z.strictObject({
 
 
 // Audit the directive write's versions; a later heartbeat can change the lease version.
-export const WorkerStopPoolAcknowledgementSchema = z.strictObject({
+const WorkerStopPoolAcknowledgementSchema = z.strictObject({
   state: z.literal("accepted"),
   directiveLeaseVersions: z.strictObject({
     before: z.number().int().positive(),

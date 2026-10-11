@@ -4,8 +4,8 @@ import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { NotificationInbox, NotificationPublishReport } from "./inbox.js";
 
-export const BackupHealthStateSchema = z.enum(["current", "stale", "missing"]);
-export type BackupHealthState = z.infer<typeof BackupHealthStateSchema>;
+const BackupHealthStateSchema = z.enum(["current", "stale", "missing"]);
+type BackupHealthState = z.infer<typeof BackupHealthStateSchema>;
 
 
 export function backupHealthDiagnosticFingerprint(input: unknown): Fingerprint {
@@ -13,7 +13,7 @@ export function backupHealthDiagnosticFingerprint(input: unknown): Fingerprint {
   return FingerprintSchema.parse(sha256Hex(`hrauto:storage-health:backup:v1\0${state}`));
 }
 
-export type BackupHealthObservationReport =
+type BackupHealthObservationReport =
   | Readonly<{ published: false; state: BackupHealthState }>
   | Readonly<{ published: true; state: BackupHealthState; report: NotificationPublishReport }>;
 

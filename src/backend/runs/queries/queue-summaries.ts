@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { RunSummaryQuerySchema } from "../../storage/sqlite/run-summaries.js";
-import { statusOf } from "./run-summary-status.js";
+import { deriveRunStatus } from "../lifecycle/run-status.js";
 export const QueueSummaryQuerySchema = z.strictObject({...RunSummaryQuerySchema.shape,workflow:z.string().min(1).optional()}).refine(query=>query.fromDay===undefined||query.toDay===undefined||query.fromDay<=query.toDay,{message:"run-summary-range-invalid"});
 /** Public-safe bounded Queue facts. V owns route composition and action authorization. */
 export function queryQueueSummaries(database:AuthorityDatabase,input:z.input<typeof QueueSummaryQuerySchema>) {
@@ -14,7 +14,7 @@ export function queryQueueSummaries(database:AuthorityDatabase,input:z.input<typ
     const items=selected.map(row=>{
       const batch=row.sessionId===null?null:database.authority.runSessions.get(row.sessionId);
       if(row.sessionId!==null && (batch===undefined || batch?.workflow!==row.workflow))throw new Error("run-summary-batch-unavailable");
-      return {runId:row.runId,workflow:row.workflow,title:row.title,localDay:row.localDay,status:statusOf(row),
+      return {runId:row.runId,workflow:row.workflow,title:row.title,localDay:row.localDay,status:deriveRunStatus(row),
         shape:row.shape,parentRunId:row.parentRunId,attempt:row.attempt,priority:row.priority,
         startedAt:row.startedAt,endedAt:row.endedAt,durationMs:row.durationMs,warningCount:row.warningCount,
         session:batch===null||batch===undefined?null:{sessionId:batch.sessionId,groupInQueue:batch.groupInQueue,version:batch.version,startedAt:batch.startedAt},

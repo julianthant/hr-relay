@@ -162,7 +162,7 @@ export type BulkCommandAcceptanceAuthority = Readonly<{
 }>;
 
 /** Replace caller-authored provenance with facts owned by this BFF process. */
-export function stampOperatorCommand(
+function stampOperatorCommand(
   input: unknown,
   clock: Clock,
   journal: CommandJournalRead,
@@ -199,7 +199,7 @@ function parseOperatorBulkCommand(input: unknown, clock: Clock): BulkIngressDeci
 }
 
 /** Bind one bulk id to one exact ordered accepted parent before any child executes. */
-export function acceptOperatorBulkCommand(
+function acceptOperatorBulkCommand(
   input: unknown,
   clock: Clock,
   repository: BulkCommandAcceptanceRepository,

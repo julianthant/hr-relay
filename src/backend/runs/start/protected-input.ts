@@ -90,10 +90,3 @@ export function admitProtectedInput(
     return { raw, admitted, bindings };
   });
 }
-
-/** Only for durable internal relaunch input; public admission still refuses supplied protected paths. */
-export function retainedRawSubmission(descriptor: AnyWorkflowDescriptor, value: JsonValue): JsonValue {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
-  const paths = new Set((descriptor.protectedInputs ?? []).map(({ inputPath }) => inputPath));
-  return Object.fromEntries(Object.entries(value).filter(([key]) => !paths.has(key as "timekeeperName")));
-}

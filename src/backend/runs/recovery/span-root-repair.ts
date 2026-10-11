@@ -22,12 +22,12 @@ import { runQueuedSpanEvent } from "../commands/run-queued-span.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 
-export const SpanRootRepairRequestSchema = z.strictObject({
+const SpanRootRepairRequestSchema = z.strictObject({
   runId: RunIdSchema,
   stoppedSystemProof: StoppedSystemProofSchema,
 });
 
-export const SpanRootRepairReportSchema = z.strictObject({
+const SpanRootRepairReportSchema = z.strictObject({
   state: z.enum(["repaired", "already-repaired"]),
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
@@ -39,7 +39,7 @@ export const SpanRootRepairReportSchema = z.strictObject({
 });
 export type SpanRootRepairReport = z.infer<typeof SpanRootRepairReportSchema>;
 
-export const OfflineSpanRootRepairOptionsSchema = z.strictObject({
+const OfflineSpanRootRepairOptionsSchema = z.strictObject({
   stateRoot: z.string().min(1),
   authorityPath: z.string().min(1),
   processLockRoot: z.string().min(1),
