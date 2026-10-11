@@ -161,7 +161,16 @@ export function testProjectTopologyViolations(
     const collected = globSync([...include], { cwd: root }).filter((path) => !excluded.has(path));
     return { name, files: collected };
   });
-  return projectOwnershipViolations(all, projects);
+  const parity = all.filter((path) => path.startsWith("tests/parity/"));
+  const runtime = all.filter((path) => !path.startsWith("tests/parity/"));
+  const violations = projectOwnershipViolations(runtime, projects.map((project) => ({
+    ...project, files: project.files.filter((path) => !path.startsWith("tests/parity/")),
+  })));
+  for (const path of parity) {
+    const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
+    if (owners.length > 0) violations.push(`${path}: expected no Vitest projects, found ${owners.join(", ")}`);
+  }
+  return violations;
 }
 
 export function coverageExclusionActivationViolations(
@@ -266,7 +275,14 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root, "tests/models/owned.test.ts", "export {};\n");
       writeFixture(root, "tests/architecture/guard.test.ts", "export {};\n");
       writeFixture(root, "tests/models/real.integration.test.ts", "export {};\n");
+      writeFixture(root, "tests/parity/scene.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);
+      const parityLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
+        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/parity/**") }
+        : project);
+      assert.deepEqual(testProjectTopologyViolations(root, parityLeak), [
+        "tests/parity/scene.test.ts: expected no Vitest projects, found unit",
+      ]);
       writeFixture(root, "tests/perf/shape.integration.test.ts", "export {};\n");
       writeFixture(root, "tests/support/helpers/helper.test.ts", "export {};\n");
       writeFixture(root, "tests/types/input.integration.test.ts", "export {};\n");
