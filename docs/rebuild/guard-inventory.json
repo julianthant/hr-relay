@@ -627,7 +627,7 @@
       "file": "tests/architecture/storage/readonly-authority-snapshot.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/stores.md",
-      "invariant": "Authority inspection and backup readers include committed WAL through a private verified snapshot without opening or changing the source database or its companions; unsafe companions and changed held descriptors refuse.",
+      "invariant": "Authority inspection and backup readers include committed WAL through a private verified copy in a separate process, without source writes or releasing live SQLite process locks; unsafe companions and changed source identities or held copy descriptors refuse.",
       "replacementRequired": true
     }
   ],
