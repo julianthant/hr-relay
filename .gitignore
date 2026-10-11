@@ -31,6 +31,9 @@ duo-autopilot/node_modules/
 # Rebuild runtime state + artifacts (isolated roots, see config/runtime-isolation.json)
 .tracker/
 
+# Briefs, receipts and task evidence (see root AGENTS.md)
+.work/
+
 # Coverage lane output (`npm run test:coverage`) — regenerated every run.
 coverage/
 

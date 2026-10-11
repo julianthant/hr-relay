@@ -17,12 +17,8 @@ docs/
 
 ## Evidence location
 
-Retained rebuild evidence is grouped by task/date under
-the evidence root named in root `AGENTS.md`. New task evidence belongs there,
-outside disposable worktrees. On 2026-09-17, 45 existing folders moved into that parent; its
-`relocation.json` maps their original paths and verifies unchanged file hashes and symlink targets.
-Current documentation uses the new locations. Raw logs, command receipts, historical scripts and
-older Git revisions retain their original paths and bytes; use the map when resolving those records.
+Briefs, receipts and task evidence live in the main checkout's gitignored `.work/` folder, outside
+disposable worktrees.
 Selector fixture and live-read-only evidence now lives under `rebuild/evidence/selectors/<system>/`;
 retained semantic registries name the evidence used by verification. Legacy migration/provenance
 inventories live outside the repository in task evidence. Current architecture checks use only

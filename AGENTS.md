@@ -8,7 +8,7 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
 - Start with the assigned brief and its folder's README, then the
   [codebase map](docs/rebuild/reference/codebase-structure.md). Work only on the assigned task.
 - Work assigned through a brief follows that brief and its folder's README. Receipts, notes and
-  handoffs go in the brief's evidence folder, never in the repository.
+  handoffs go in the brief's evidence folder inside `.work/`, never in a commit.
 - The roadmap at docs/roadmap/roadmap.md lists the key implementations and their status.
   Update it only when the operator or your brief asks.
 - Build the wiring base first: every dashboard component connected to the backend, with no
@@ -84,8 +84,8 @@ The repository holds only the current version. No compatibility readers, old mig
 - Stage exact paths and commit by logical category. Never switch, reset or repurpose another
   checkout.
 - The operator launches every task and chooses every integration into `master`.
-- Evidence goes under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/<task-date>/`.
-  Remove a task's evidence folder once nothing needs it.
+- Briefs, receipts and evidence live in the main checkout's gitignored `.work/` folder; worktrees
+  write there by absolute path. Remove a task's evidence folder once nothing needs it.
   Cleanup removes a worktree's registration and its folder, after its evidence and unknown files are
   saved.
 
