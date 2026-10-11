@@ -197,7 +197,7 @@ function retainedSibling(source: string, operationId: string, role: "state" | "a
 }
 function relocationRetentions(workspace: string, source: RuntimePair, destination: RuntimePair, operationId: string,
   priorReceipts: readonly RelocationCompletionReceipt[]): z.infer<typeof RetentionSchema>[] {
-  validateDestination(workspace, destination);
+  validateDestination(workspace, source, destination);
   const stateMoved = source.stateRoot !== destination.stateRoot;
   const artifactMoved = source.artifactRoot !== destination.artifactRoot;
   if (!stateMoved && !artifactMoved) fail("destination unchanged");
@@ -317,9 +317,10 @@ function validatePair(workspace: string, pair: RuntimePair): RuntimePair {
   if (pair.stateRoot === pair.artifactRoot || (inside(pair.artifactRoot, pair.stateRoot))) fail("invalid root overlap");
   return pair;
 }
-function validateDestination(workspace: string, pair: RuntimePair): void {
+function validateDestination(workspace: string, source: RuntimePair, pair: RuntimePair): void {
   validatePair(workspace, pair);
-  if ([pair.stateRoot, pair.artifactRoot].some(path => inside(workspace, path))) fail("destination is inside workspace");
+  if ((pair.stateRoot !== source.stateRoot && inside(workspace, pair.stateRoot))
+    || (pair.artifactRoot !== source.artifactRoot && inside(workspace, pair.artifactRoot))) fail("destination is inside workspace");
 }
 function assertKnownDefaults(workspace: string, pair: RuntimePair): void {
   validatePair(workspace, pair);

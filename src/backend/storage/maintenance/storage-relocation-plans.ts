@@ -39,7 +39,8 @@ function requirePair(pair: Pair, workspace: string): void {
 function requireDesired(source: Pair, desired: Pair, workspace: string): void {
   requirePair(source, workspace);
   requirePair(desired, workspace);
-  if ([desired.stateRoot, desired.artifactRoot].some(path => inside(workspace, path))) refuse("destination is inside workspace");
+  if ((desired.stateRoot !== source.stateRoot && inside(workspace, desired.stateRoot))
+    || (desired.artifactRoot !== source.artifactRoot && inside(workspace, desired.artifactRoot))) refuse("destination is inside workspace");
   if (source.stateRoot === desired.stateRoot && source.artifactRoot === desired.artifactRoot) refuse("desired pair is unchanged");
   if (source.stateRoot !== desired.stateRoot && source.artifactRoot === desired.artifactRoot
     && inside(source.stateRoot, source.artifactRoot)) refuse("state-only move would strand nested artifacts");

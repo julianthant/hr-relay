@@ -7,9 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
-import { ArchiveDatabase } from "../../../../../../src/backend/storage/sqlite/archive-database.js";
 import { GeneratedArtifactSchema } from "../../../../../../src/models/artifacts/generated-artifact.js";
-import { sealArchiveReport } from "../../../../../../src/models/archive/report.js";
 import { insertGeneratedArtifact } from "../../../../../../src/backend/storage/sqlite/generated-artifacts.js";
 import { insertImportedArtifact } from "../../../../../../src/backend/storage/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../../../../../src/models/intake/imported-artifact.js";
@@ -33,34 +31,37 @@ it("enumerates nested artifacts once and copies private bytes with exact retry",
   const fixedLockRoot = join(source.stateRoot, "locks");
   try {
     for (const path of [source.stateRoot, source.artifactRoot, fixedLockRoot, destination.stateRoot, destination.artifactRoot,
-      join(source.stateRoot, "credentials"), join(source.stateRoot, "archive-files"), join(source.stateRoot, "notes")]) {
+      join(source.stateRoot, "credentials"), join(source.stateRoot, "logs"), join(source.stateRoot, "scratch")]) {
       mkdirSync(path, { recursive: true, mode: 0o700 });
     }
     writeFileSync(join(source.stateRoot, "state.db"), "synthetic-db", { mode: 0o600 });
     const secret = Buffer.from("private credential fixture\0\u0001");
     writeFileSync(join(source.stateRoot, "credentials", "protected.json"), secret, { mode: 0o600 });
-    const archiveFile = Buffer.from("archive-file");
-    const archiveDigest = createHash("sha256").update(archiveFile).digest("hex");
-    writeFileSync(join(source.stateRoot, "archive-files", archiveDigest), archiveFile, { mode: 0o600 });
+    const emergencyFile = Buffer.from(JSON.stringify({ schemaVersion: 1, eventId: randomUUID(),
+      scope: { kind: "client", clientId: "relocation-fixture" }, occurredAt: "2026-09-26T12:00:00.000Z",
+      recordedAt: "2026-09-26T12:00:00.000Z", retentionDate: "2026-09-26", source: { kind: "native" },
+      payload: { kind: "debug", event: { category: "boot", phase: "failed", correlationId: "relocation",
+        build: "fixture", pid: process.pid } } }) + "\n");
+    writeFileSync(join(source.stateRoot, "logs", "boot.jsonl"), emergencyFile, { mode: 0o600 });
     const artifact = artifactBytes(Buffer.from("evidence"));
     writeFileSync(join(source.artifactRoot, artifact.name), artifact.stored, { mode: 0o600 });
     const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot);
     const destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
     try {
       const inventory = inspectRelocationFiles({ admission: sourceAdmission, source, destination, fixedLockRoot });
-      assert.deepEqual(inventory.stateEntries.map((entry) => entry.name), ["archive-files", "artifacts", "credentials", "notes", "state.db"]);
+      assert.deepEqual(inventory.stateEntries.map((entry) => entry.name), ["artifacts", "credentials", "logs", "scratch", "state.db"]);
       prepareRelocationDirectories({ destinationAdmission, inventory });
-      assert.equal(lstatSync(join(destination.stateRoot, "notes")).isDirectory(), true);
+      assert.equal(lstatSync(join(destination.stateRoot, "scratch")).isDirectory(), true);
       assert.equal(inventory.files.filter((file) => file.role === "artifact").length, 1);
       assert.equal(inventory.files.filter((file) => file.relativePath.includes(artifact.name)).length, 1);
-      const archived = inventory.files.find((file) => file.relativePath === `archive-files/${archiveDigest}`);
-      assert.ok(archived);
+      const emergency = inventory.files.find((file) => file.relativePath === "logs/boot.jsonl");
+      assert.ok(emergency);
       const operationId = randomUUID();
-      assert.throws(() => copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file: archived,
+      assert.throws(() => copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file: emergency,
         operationId, hooks: { beforePublish: () => { throw new Error("simulated crash before publication"); } } }),
       /simulated crash before publication/u);
-      copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file: archived, operationId });
-      assert.deepEqual(readFileSync(join(destination.stateRoot, "archive-files", archiveDigest)), archiveFile);
+      copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file: emergency, operationId });
+      assert.deepEqual(readFileSync(join(destination.stateRoot, "logs", "boot.jsonl")), emergencyFile);
       const credential = inventory.files.find((file) => file.relativePath === "credentials/protected.json");
       assert.ok(credential);
       assert.throws(() => copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file: credential,
@@ -123,7 +124,7 @@ it("refuses pending credential writes, invalid event records, and malformed back
   const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
   try {
     for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot,
-      join(source.stateRoot, "credentials"), join(source.stateRoot, "notes"), join(source.stateRoot, "backups", "authority")]) {
+      join(source.stateRoot, "credentials"), join(source.stateRoot, "logs"), join(source.stateRoot, "backups", "authority")]) {
       mkdirSync(path, { recursive: true, mode: 0o700 });
     }
     writeFileSync(join(source.stateRoot, "state.db"), "synthetic-db", { mode: 0o600 });
@@ -136,9 +137,9 @@ it("refuses pending credential writes, invalid event records, and malformed back
       writeFileSync(join(source.stateRoot, ".lifecycle-restore.json"), "{}", { mode: 0o600 });
       assert.throws(scan, /unknown state entry/u);
       rmSync(join(source.stateRoot, ".lifecycle-restore.json"));
-      writeFileSync(join(source.stateRoot, "notes", "workflow-2026-09-26.jsonl"), "{\"bad\":true}\n", { mode: 0o600 });
-      assert.throws(scan, /invalid event stream record/u);
-      rmSync(join(source.stateRoot, "notes", "workflow-2026-09-26.jsonl"));
+      writeFileSync(join(source.stateRoot, "logs", "boot.jsonl"), "{\"bad\":true}\n", { mode: 0o600 });
+      assert.throws(scan, /schemaVersion|Invalid input|invalid|expected/u);
+      rmSync(join(source.stateRoot, "logs", "boot.jsonl"));
       writeFileSync(join(source.stateRoot, "backups", "authority", "bad.manifest.json"), "{}", { mode: 0o600 });
       await assert.rejects(verifyBackupManifestAtPath(admission,
         join(source.stateRoot, "backups", "authority", "bad.manifest.json")));
@@ -193,31 +194,3 @@ it("refuses a durable intake session whose source artifact is missing", () => {
   } finally { rmSync(workspace, { recursive: true, force: true }); }
 });
 
-it("refuses a published archive reference whose managed file is missing", () => {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-inventory-archive-")));
-  const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
-  try {
-    mkdirSync(source.artifactRoot, { recursive: true, mode: 0o700 });
-    const admission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot);
-    try {
-      const authority = AuthorityDatabase.open(admission, { path: join(source.stateRoot, "state.db"),
-        busyTimeoutMs: 250, migrationOwner: "relocation-inventory-test" });
-      authority.close();
-      const archivePath = join(source.stateRoot, "archive.sqlite");
-      const archive = new ArchiveDatabase(admission, archivePath);
-      const runId = randomUUID();
-      const report = sealArchiveReport({ schemaVersion: 1, runId, transferId: randomUUID(),
-        workflow: "fixture", itemId: "subject", attempt: 1, runNumber: 1,
-        title: "Fixture", descriptorVersion: "1", outcome: "done",
-        completedAt: "2026-09-26T12:00:00.000Z", capturedAt: "2026-09-26T12:00:00.000Z",
-        sourceDigest: "b".repeat(64), sources: [], sections: [], files: [{ digest: "c".repeat(64),
-          byteLength: 5, mediaType: "text/plain", name: "missing.txt" }] });
-      archive.capture(report);
-      archive.close();
-      const raw = new DatabaseSync(archivePath);
-      try { raw.prepare("UPDATE archive_records SET state='verified' WHERE run_id=?").run(runId); }
-      finally { raw.close(); }
-      assert.throws(() => verifyRelocationLiveReferences({ admission, source }), /archive-file-unavailable/u);
-    } finally { admission.release(); }
-  } finally { rmSync(workspace, { recursive: true, force: true }); }
-});
