@@ -25,9 +25,30 @@ describe("native run rows", () => {
     expect(envelope).toEqual(run.envelope);
   });
 
-  it.each(["workflow", "item_id", "attempt", "run_number", "state", "claim_generation", "version", "settings_snapshot_id", "dry_run", "local_day", "created_at", "updated_at"])("refuses a mismatched %s scalar", key => {
+  it.each(["workflow", "item_id", "attempt", "run_number", "state", "claim_generation", "version", "settings_snapshot_id", "dry_run", "local_day", "created_at", "updated_at",
+    "id", "batch_id", "parent_id", "outcome", "priority", "not_before", "owner_worker_id", "heartbeat_at", "descriptor_version", "contract_fingerprint", "trace_id", "enqueued_at", "session_id"])("refuses a mismatched %s scalar", key => {
     const row = runRecordColumns(record());
     expect(() => runRecordFromRow({ ...row, [key]: key === "attempt" ? 9 : "mismatch" })).toThrow();
+  });
+
+  it("refuses an omitted native scalar column instead of deriving it from JSON", () => {
+    const { version: _version, ...row } = runRecordColumns(record());
+    expect(() => runRecordFromRow(row)).toThrow("run row columns do not match the native schema");
+  });
+
+  it.each(["envelope_json", "lifecycle_json"])("refuses absent, non-string and malformed %s", key => {
+    const row = runRecordColumns(record());
+    const without: Record<string, unknown> = { ...row };
+    delete without[key];
+    expect(() => runRecordFromRow(without)).toThrow("run row is missing whole-record JSON");
+    expect(() => runRecordFromRow({ ...row, [key]: null })).toThrow("run row is missing whole-record JSON");
+    expect(() => runRecordFromRow({ ...row, [key]: "{" })).toThrow(SyntaxError);
+    expect(() => runRecordFromRow({ ...row, [key]: "{}" })).toThrow();
+  });
+
+  it.each([{ value: null }, { value: [] }, { value: 3 }])("refuses a non-object lifecycle JSON value $value", ({ value }) => {
+    expect(() => runRecordFromRow({ ...runRecordColumns(record()), lifecycle_json: JSON.stringify(value) }))
+      .toThrow("run lifecycle JSON must contain exactly the non-envelope record");
   });
 
   it("refuses extra row columns and unknown whole-record fields", () => {

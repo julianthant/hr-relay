@@ -5,9 +5,8 @@ import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js
 
 export const RUN_RECORD_JSON_SQL = "json_set(lifecycle_json, '$.envelope', json(envelope_json))";
 
-export function runRecordColumns(input: RunRecord) {
-  const record = RunRecordSchema.parse(input);
-  const { envelope, ...lifecycle } = record;
+function runRecordScalarColumns(record: RunRecord) {
+  const { envelope } = record;
   const claim = runClaim(record);
   return {
     id: envelope.runId,
@@ -33,10 +32,21 @@ export function runRecordColumns(input: RunRecord) {
     local_day: searchPartitionDay(new Date(envelope.enqueuedAt)),
     enqueued_at: envelope.enqueuedAt,
     session_id: record.sessionId ?? null,
-    envelope_json: canonicalJsonStringify(envelope),
-    lifecycle_json: canonicalJsonStringify(lifecycle),
     created_at: record.createdAt,
     updated_at: record.updatedAt,
+  };
+}
+
+export function runRecordColumns(input: RunRecord) {
+  const record = RunRecordSchema.parse(input);
+  const { envelope, ...lifecycle } = record;
+  const { created_at, updated_at, ...columns } = runRecordScalarColumns(record);
+  return {
+    ...columns,
+    envelope_json: canonicalJsonStringify(envelope),
+    lifecycle_json: canonicalJsonStringify(lifecycle),
+    created_at,
+    updated_at,
   };
 }
 
@@ -53,14 +63,13 @@ export function runRecordFromRow(input: unknown): RunRecord {
   if (typeof lifecycle !== "object" || lifecycle === null || Array.isArray(lifecycle)
     || Object.hasOwn(lifecycle, "envelope")) throw new Error("run lifecycle JSON must contain exactly the non-envelope record");
   const record = RunRecordSchema.parse({ ...lifecycle, envelope });
-  const columns = runRecordColumns(record);
+  const columns = runRecordScalarColumns(record);
   const actualKeys = Object.keys(row).sort();
-  const expectedKeys = Object.keys(columns).sort();
+  const expectedKeys = [...Object.keys(columns), "envelope_json", "lifecycle_json"].sort();
   if (canonicalJsonStringify(actualKeys) !== canonicalJsonStringify(expectedKeys)) {
     throw new Error("run row columns do not match the native schema");
   }
   for (const [key, expected] of Object.entries(columns)) {
-    if (key.endsWith("_json")) continue;
     if (row[key] !== expected) throw new Error(`run row ${key} does not match its whole-record JSON`);
   }
   return Object.freeze(record);
