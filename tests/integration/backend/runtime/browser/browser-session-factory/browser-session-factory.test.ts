@@ -245,6 +245,18 @@ const OPEN_INPUT = {
 } as const;
 
 describe("worker browser session factory", () => {
+  it("refuses a second launch of the stable profile after an uncertain launcher rejection", async () => {
+    await withTempRuntime(async ({config}) => {
+      let launches = 0;
+      const factory = factoryFor(config, {
+        ...fakeLauncher(),
+        launcher: {launch: () => { launches += 1; return Promise.reject(new Error("uncertain launch failure")); }},
+      }, recordingBindings());
+      await assert.rejects(factory.open(OPEN_INPUT), /uncertain launch failure/u);
+      await assert.rejects(factory.open(OPEN_INPUT), ProfileCustodyUnavailableError);
+      assert.equal(launches, 1);
+    });
+  });
   it("derives every profile segment from the isolation contract and an absolute root", () => {
     // Assert production path derivation as a string; never create or remove a real runtime profile root.
     const production = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.paths;
