@@ -106,7 +106,7 @@ tests/
 └── vitest.config.integration.test.ts
 ```
 
-Unit files use `.test.ts`; integration files use `.integration.test.ts` beside them. Large module groups use topic suffixes. Helper contract tests live beside their helper in `tests/support/`; type-input contract tests live beside their input in `tests/types/`.
+Unit files use `.test.ts`; integration files use `.integration.test.ts` beside them. Large module groups use topic suffixes. Helper contract tests live beside their helper in `tests/support/`; type-input contract tests live beside their input in `tests/types/`. The `tests/architecture/test-layout.test.ts` guard checks canonical filenames and mirrored existing tracked source paths.
 
 Architecture fixtures/helpers are colocated under dashboard, logs, models, runs, runtime, storage,
 support, systems and tooling owners. Unit and integration tests share the same module paths as production code. Shared fixtures, helpers and child-process entrypoints stay under
@@ -142,6 +142,6 @@ step-result presentation and capture association remain Phase 5; the v1 event ca
 artifact. `config/snapshot.ts` owns strictly current immutable snapshots: every current required leaf is present, stored reads apply no live defaults, and stored reads preserve complete snapshot values. `config/schema.ts` owns the current settings grammar; `run/session.ts` owns batches minted by start plans or intake manifests. `trust/` owns current failure, diagnostic, receipt and scenario grammars. There is no `models/logs/` package. A desktop/Electron shell remains future work and has no
 placeholder folder.
 
-Current native store tests cover baseline opening and version refusal (`storage/sqlite/migrations/native-baseline.test.ts`), maintenance custody (`storage/admission/admission/native-maintenance-capability.test.ts`), bounded transaction selection and retained deletion evidence (`storage/sqlite/transaction-history/`), and same-item retries (`runs/queries/item-attempt-history/`).
+Current native store tests cover baseline opening and version refusal (`tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts`), maintenance custody (`tests/backend/storage/sqlite/backup-inspection.integration.test.ts`), bounded transaction selection and retained deletion evidence (`tests/backend/storage/sqlite/transaction-history.integration.test.ts`), and same-item retries (`tests/backend/runs/queries/item-attempt-history.integration.test.ts`).
 
 `src/rules/redaction/redaction.ts` owns classified transforms and diagnostic text sanitization.
