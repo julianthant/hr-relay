@@ -58,7 +58,17 @@ function publicSqliteLeaks(file: string): readonly string[] {
       const { trueType, falseType } = (type as ts.ConditionalType).root.node;
       return [trueType, falseType].some(branch => rawType(checker.getTypeFromTypeNode(branch), branch, seen, activeSymbols));
     }
+    if ((type.flags & ts.TypeFlags.IndexedAccess) !== 0) {
+      return rawType((type as ts.IndexedAccessType).objectType, location, seen, activeSymbols);
+    }
     if ((type.flags & ts.TypeFlags.Object) === 0) return false;
+    if (((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Mapped) !== 0) {
+      for (const declaration of symbol?.declarations ?? []) {
+        const mapped = ts.isMappedTypeNode(declaration) ? declaration
+          : ts.isTypeAliasDeclaration(declaration) && ts.isMappedTypeNode(declaration.type) ? declaration.type : undefined;
+        if (mapped?.type !== undefined && rawType(checker.getTypeFromTypeNode(mapped.type), mapped.type, seen, activeSymbols)) return true;
+      }
+    }
     // Check each concrete payload, then visit the generic declaration instead of fluent wrapper permutations.
     if (((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0) {
       const reference = type as ts.TypeReference;
@@ -162,10 +172,15 @@ it("allows closed results from private local SQLite use and rejects direct, alia
     for (const body of [
       'open<T>(): T extends string ? { raw: DatabaseSync } : string { throw new Error("fixture"); }',
       'open() { class Holder<T> { readonly value?: T; readonly raw = new DatabaseSync(); } return new Holder<string>(); }',
+      'open() { class Holder<T> { value!: { [K in keyof T]: DatabaseSync }; } return new Holder<{ safe: string }>(); }',
+      'open() { type Fields<T> = { [K in keyof T]: DatabaseSync }; class Holder<T> { value!: Fields<T>; } return new Holder<{ safe: string }>(); }',
+      'open() { class Holder<T> { value!: { [K in keyof T]: K extends string ? DatabaseSync : never }[keyof T]; } return new Holder<{ safe: string }>(); }',
       'open<T extends { nested: DatabaseSync }>(input: T) { return Promise.resolve(new Map([["raw", input]])); }',
     ]) {
       writeFileSync(file, header + body + '}');
       assert.ok(publicSqliteLeaks(file).length > 0, body);
     }
+    writeFileSync(file, header + 'open() { class Holder<T> { value!: { [K in keyof T]: T[K] }; } return new Holder<{ safe: string }>(); } }');
+    assert.deepEqual(publicSqliteLeaks(file), []);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
