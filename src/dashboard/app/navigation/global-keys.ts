@@ -1,5 +1,4 @@
 import { shortcutActionForEvent, useShortcutPreferences } from "../../surfaces/settings/navigation/keyboard-preferences-model.js";
-/** THE DASHBOARD'S ONE GLOBAL KEYDOWN LISTENER. */
 import { useEffect } from "react";
 import { useDsModalOpen } from "../../ds/ui.js";
 import type { PanelTab } from "../../surfaces/run-detail/log-panel-model.js";
@@ -99,15 +98,8 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
         return;
       }
 
-      if (action === "next") {
-        const next = stepSelection(visibleRunIds, selectedRunId, "next");
-        if (next === undefined) return;
-        event.preventDefault();
-        onSelectRun(next);
-        return;
-      }
-      if (action === "previous") {
-        const next = stepSelection(visibleRunIds, selectedRunId, "previous");
+      if (action === "next" || action === "previous") {
+        const next = stepSelection(visibleRunIds, selectedRunId, action);
         if (next === undefined) return;
         event.preventDefault();
         onSelectRun(next);

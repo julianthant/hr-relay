@@ -1,7 +1,7 @@
 /** Reading and writing an operator's UI preference, WITHOUT losing the
  * difference between "nothing is stored" and "storage refused". */
 
-export type PreferenceRead =
+type PreferenceRead =
   | { readonly state: "stored"; readonly value: string }
   | { readonly state: "absent" }
   | { readonly state: "unavailable"; readonly reason: string };
@@ -14,7 +14,7 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
 
-export function readPreference(key: string): PreferenceRead {
+function readPreference(key: string): PreferenceRead {
   if (typeof window === "undefined") {
     return { state: "unavailable", reason: "no window (server-side render)" };
   }

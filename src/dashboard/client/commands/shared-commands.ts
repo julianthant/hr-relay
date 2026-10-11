@@ -6,7 +6,7 @@ CommandResultSchema,
 type BulkRunCommandResponse,
 type CommandResult
 } from "../../../rules/commands/commands.js";
-import { schemaError } from "../errors.js";
+import { parseOrThrow } from "../queries/query-parse.js";
 import type { DashboardTransport } from "../transport.js";
 
 
@@ -27,11 +27,7 @@ export function createSharedCommands(transport: DashboardTransport): SharedComma
         method: "POST",
         body: JSON.stringify(command),
       });
-      try {
-        return CommandResultSchema.parse(response);
-      } catch (error) {
-        throw schemaError("POST /api/v1/commands", error);
-      }
+      return parseOrThrow(CommandResultSchema, "POST /api/v1/commands", response);
     },
 
     async executeBulkCommand(request: unknown): Promise<BulkRunCommandResponse> {
@@ -40,10 +36,6 @@ export function createSharedCommands(transport: DashboardTransport): SharedComma
         method: "POST",
         body: JSON.stringify(bulk),
       });
-      try {
-        return BulkRunCommandResponseSchema.parse(response);
-      } catch (error) {
-        throw schemaError("POST /api/v1/commands/bulk", error);
-      }
+      return parseOrThrow(BulkRunCommandResponseSchema, "POST /api/v1/commands/bulk", response);
     }
 }); }

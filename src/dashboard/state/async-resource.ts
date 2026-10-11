@@ -8,8 +8,7 @@ export type AsyncResource<Value> =
   | { readonly state: "loaded"; readonly value: Value }
   | { readonly state: "failed"; readonly error: DashboardClientError };
 
-export const IDLE = Object.freeze({ state: "idle" }) as AsyncResource<never>;
-export const LOADING = Object.freeze({ state: "loading" }) as AsyncResource<never>;
+export const LOADING: AsyncResource<never> = Object.freeze({ state: "loading" });
 
 export function loaded<Value>(value: Value): AsyncResource<Value> {
   return { state: "loaded", value };

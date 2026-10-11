@@ -61,27 +61,7 @@ export function parseRoute(search: string): AppRouteState {
   const archiveWorkflow = params.get("archiveWorkflow");
   const activity = params.get("activity");
   const settings = params.get("settings");
-  const route: {
-    view?: ViewRoute;
-    viewInvalid?: boolean;
-    day?: string;
-    run?: string;
-    section?: string;
-    start: boolean;
-    intake?: string;
-    explore?: string;
-    catalog?: string;
-    catalogView?: CatalogView;
-    archive?: string;
-    archiveView?: ArchiveView;
-    archiveDashboard?: string;
-    archiveWorkflow?: string;
-    archiveBrowse?: ArchiveBrowseState;
-    archiveBrowseInvalid?: boolean;
-    activity?: string;
-    settings?: string;
-    settingsTarget?: string;
-  } = { start: params.get("start") === "1" };
+  const route: { -readonly [Key in keyof AppRouteState]: AppRouteState[Key] } = { start: params.get("start") === "1" };
   const view = parseViewRoute(params.get("view"));
   if (view === null) route.viewInvalid = true;
   else if (Object.keys(view).length) route.view = view;
