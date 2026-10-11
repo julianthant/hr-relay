@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
+import { runInNewContext } from "node:vm";
+import { tsImport } from "tsx/esm/api";
 import { describe, it } from "vitest";
 import type { BrowserContext, Worker } from "playwright";
 import {
@@ -215,8 +217,9 @@ function factoryFor(
     ucpathUserId: "fixture-user",
     ucpathPassword: "fixture-value",
   }),
+  Factory: typeof PlaywrightWorkerSessionFactory = PlaywrightWorkerSessionFactory,
 ): PlaywrightWorkerSessionFactory {
-  return new PlaywrightWorkerSessionFactory({
+  return new Factory({
     config,
     protectedSecrets,
     isolation: rebuildRuntimeIsolation,
@@ -662,6 +665,27 @@ describe("required profile custody admission", () => {
       try {
         assert.deepEqual(calls, ["local:get", "session:access", "session:set"]);
         assert.deepEqual(stored, { duoCredentials: [credential] });
+      } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
+  it("provisions Duo from the runtime-compiled source in an isolated extension scope", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
+      writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
+      const runtime = await tsImport("../../../../../../src/backend/runtime/browser/browser-session-factory.ts", import.meta.url) as
+        typeof import("../../../../../../src/backend/runtime/browser/browser-session-factory.js");
+      let stored: unknown;
+      const chrome = { storage: { local: { get: () => ({}) },
+        session: { setAccessLevel: () => undefined, set: (value: unknown) => { stored = value; }, get: () => stored } } };
+      const serviceWorker = { url: () => `chrome-extension://${"a".repeat(32)}/src/background.js`,
+        evaluate: (operation: (credentials: unknown) => Promise<void>, credentials: unknown) =>
+          runInNewContext(`(${operation.toString()})(credentials)`, { chrome, credentials }) as Promise<void>,
+      } as unknown as Worker;
+      const duoConfig = { ...config, features: { ...config.features, duoWebAuthn: true } };
+      const resource = await factoryFor(duoConfig, fakeLauncher({ serviceWorker }), recordingBindings(), NEVER_SCHEDULER, undefined,
+        runtime.PlaywrightWorkerSessionFactory).open(OPEN_INPUT);
+      try {
+        assert.equal(JSON.stringify(stored), JSON.stringify({ duoCredentials: [credential] }));
       } finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
