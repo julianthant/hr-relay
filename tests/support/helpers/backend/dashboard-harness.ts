@@ -209,6 +209,13 @@ export function makeWorld(input?: Readonly<{
     if(run === undefined)throw new Error("fixture native timeline owner missing");
     visiting.add(runId);
     if(run.envelope.parent !== undefined)synchronizeOwner(run.envelope.parent.runId,visiting);
+    if (run.sessionId !== undefined) {
+      const batch = authority.batches.get(run.sessionId);
+      if (batch === undefined) throw new Error("fixture native batch owner missing");
+      const saved = database.authority.runSessions.get(run.sessionId);
+      if (saved === undefined) database.authority.runSessions.insert(batch);
+      else if (saved.workflow !== batch.workflow || saved.sessionId !== batch.sessionId || saved.startedAt !== batch.startedAt || JSON.stringify(saved.origin) !== JSON.stringify(batch.origin)) throw new Error("fixture native batch identity mismatch");
+    }
     // The canonical fake varies independently; timeline storage owns a real queued envelope.
     const owner = RunRecordSchema.parse({
       envelope: run.envelope, input: run.input, lifecycle: { state: "queued" },

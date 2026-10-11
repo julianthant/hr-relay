@@ -1,4 +1,5 @@
-import { inspectAuthorityBackupReadOnly as realInspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly as realOpenAuthorityBackupSourceReadOnly, withAuthorityDatabaseReadOnly as realWithAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
+import { withAuthorityDatabaseReadOnly as realWithAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { inspectAuthorityBackupReadOnly as realInspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly as realOpenAuthorityBackupSourceReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { AuthorityBackupService as RealAuthorityBackupService, verifyBackupManifestAtPath as realVerifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/backup-service.js";
