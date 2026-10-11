@@ -1,7 +1,6 @@
 
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
-import { afterEach,describe,it } from "vitest";
+import { describe, it } from "vitest";
 import { RunEnvelopeSchema } from "../../../src/models/run/envelope.js";
 import {
 NOW
@@ -10,17 +9,6 @@ import {
 RUN_ENVELOPE,
 RUN_ID
 } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
-
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
 
 describe("RunEnvelope", () => {
   it("accepts the minimum legal first-attempt envelope", () => {

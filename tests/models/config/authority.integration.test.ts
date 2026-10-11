@@ -1,63 +1,81 @@
-import assert from "node:assert/strict";
+import { default as assert } from "node:assert/strict";
+import { rmSync } from "node:fs";
+import { afterEach } from "vitest";
+import { describe } from "vitest";
+import { it } from "vitest";
+import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../../src/backend/storage/sqlite/storage-records.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
+import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname,join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { dirname } from "node:path";
+import { join } from "node:path";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
 import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
-import { admitDirectWorker,admitWorkerPoolRoster } from "../../../src/backend/storage/sqlite/worker-slots.js";
-import { AUTHORITY_TABLE_REGISTRY,type AuthorityTableName } from "../../../src/models/config/authority.js";
+import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
+import { admitWorkerPoolRoster } from "../../../src/backend/storage/sqlite/worker-slots.js";
+import type { AuthorityTableName } from "../../../src/models/config/authority.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../src/models/dashboard/xlsx-export.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
-import {
-CommandRequestSchema
-} from "../../../src/rules/commands/commands.js";
+import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import { projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { explorerAuthorityFixture } from "../../support/fixtures/explorer-authority.js";
-import {
-COMMAND_FIXTURES,
-CONFIG_SNAPSHOT,
-DELEGATION_MANIFEST,
-DEPENDENCY_RECORD,
-GATE_RESULT,
-HASH_A,
-HASH_B,
-HASH_C,
-ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
-LATER,
-NOTIFICATION,
-NOW,
-UUID_1,
-UUID_2,
-UUID_3,
-UUID_5,
-UUID_6,
-UUID_7,
-UUID_8,
-WRITE_ATTEMPT,
-WRITE_INTENT_ATTEMPTING
-} from "../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-QUEUED_RUN,
-RUN_ID,
-RUN_SESSION,
-START_PLAN,
-WORKER_START_REQUEST,
-WORKFLOW_ID,
-} from "../../support/fixtures/phase1f-run-fixtures.js";
+import { COMMAND_FIXTURES } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { DELEGATION_MANIFEST } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { DEPENDENCY_RECORD } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { GATE_RESULT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_A } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_B } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_C } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { LATER } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { NOTIFICATION } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_1 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_2 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_3 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_5 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_7 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_8 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { WRITE_ATTEMPT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_SESSION } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { START_PLAN } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { WORKER_START_REQUEST } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { atomicWriteCheckpoint,currentAtomicWriteFixture,seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { atomicWriteCheckpoint } from "../../support/helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture } from "../../support/helpers/timeline-write-fixture.js";
+import { seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 
+{
+describe("dry-run scenario result authority repository", () => {
+  it("registers the table and its boot-time record schema", () => {
+    assert.equal(
+      AUTHORITY_TABLE_REGISTRY.find(({ name }) => name === "dryrun_results")?.classification,
+      "authority",
+    );
+    assert.equal(AUTHORITY_RECORD_SCHEMA_REGISTRY.dryrun_results, DryRunScenarioResultSchema);
+  });
+});
+}
+
+{
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const roots: string[] = [];
@@ -265,7 +283,6 @@ function prepareRunning(database: AuthorityDatabase) {
   return running.run;
 }
 
-/** Ref operator-trust's trust records hang off a real terminal run and its durable failure. */
 function prepareDelegationOwners(database: AuthorityDatabase): void {
   database.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
     runId: DELEGATION_MANIFEST.parentRunId, itemId: UUID_6, traceId: "pl-120000-0003", shape: "operation" } });
@@ -347,11 +364,6 @@ function terminalSuccessRequest(database: AuthorityDatabase, run: ReturnType<typ
     factoryAuthorization: built.authorization,
   };
 }
-
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
 const INTAKE_MANIFEST = {
   version: 1,
   manifestId: "9f8a1c2d-4b5e-4a6f-9c8d-0e1f2a3b4c5d",
@@ -413,6 +425,10 @@ const DRY_RUN_SCENARIO_RESULT = {
 };
 
 describe("authority generation accounting", () => {
+afterEach(() => {
+  for (const database of openDatabases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 
   type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "database_states" | "database_upgrades">;
@@ -631,3 +647,4 @@ describe("authority generation accounting", () => {
     }
   });
 });
+}

@@ -1,17 +1,7 @@
 
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
-import { afterEach,describe,it } from "vitest";
-import { type TimelineRepository } from "../../../src/models/events/timeline.js";
+import { describe, it } from "vitest";
 import { SpanEventWireSchema } from "../../../src/models/events/types.js";
-
-const roots: string[] = [];
-const repositories = new Map<string, TimelineRepository>();
-
-afterEach(() => {
-  repositories.clear();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
 
 const RUN_ID = "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b";
 const TRACE = "pl-104233-3b8f";
@@ -23,7 +13,6 @@ const TRANSFORMS = ["drop", "digest", "last4", "basename", "count", "allow"] as 
 type Classification = typeof CLASSIFICATIONS[number];
 type Transform = typeof TRANSFORMS[number];
 
-/** Independent expected table — never derived from the production policy it verifies. */
 const EXPECTED_ALLOWED_TRANSFORMS = {
   secret: new Set<Transform>(["drop", "digest", "allow"]),
   "credential-file": new Set<Transform>(["drop", "digest", "allow"]),

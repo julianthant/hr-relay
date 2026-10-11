@@ -4,19 +4,8 @@ import { inMemoryRunReaderFake } from "../../support/helpers/canonical-run-reade
 
 import assert from "node:assert/strict";
 import { afterEach,describe,it,vi } from "vitest";
-import {
-DAY,
-instantOffsetOf,
-makeWorld,
-queuedEventOf as queuedEventBase,
-runRecordOf as runRecordBase,
-taskEventsOf,
-uuidOf,
-workerLeaseOf,
-type DashboardWorld
-} from "../../support/helpers/backend/dashboard-harness.js";
+import { DAY, instantOffsetOf, makeWorld, queuedEventOf as queuedEventBase, runRecordOf as runRecordBase, taskEventsOf, uuidOf, type DashboardWorld } from "../../support/helpers/backend/dashboard-harness.js";
 
-/** C completion contract: projection fixtures still carry a valid terminal settlement. */
 function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {
   const lifecycle = RunLifecycleSchema.parse(input.lifecycle ?? {state:"queued"});
   if (lifecycle.state !== "terminal" || !["done","failed"].includes(lifecycle.outcome)) return runRecordBase(input);
@@ -46,23 +35,7 @@ afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
 });
 
-
 describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", () => {
-
-  function _seedWorkerSpans(w: DashboardWorld, workerId = "person-lookup-worker-1"): void {
-    w.authority.putWorkerLease(workerLeaseOf({ workerId }));
-    w.writer.emit({
-      t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-      workerId, spanPath: `worker/person-lookup/${workerId}`, name: "person-lookup",
-    });
-    w.writer.emit({
-      t: "span.started", kind: "browser", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-      workerId,
-      spanPath: `worker/person-lookup/${workerId}/browser:ucpath#${uuidOf(50)}`,
-      parentSpanPath: `worker/person-lookup/${workerId}`,
-      name: "browser-session:ucpath", system: "ucpath",
-    });
-  }
 
   it("hands the client a fresh snapshot when a canonically deleted row leaves the payload", () => {
     const w = world();

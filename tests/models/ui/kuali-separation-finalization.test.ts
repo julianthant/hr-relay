@@ -1,42 +1,35 @@
-
-import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
-import { describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
-import { saveSeparationFinalizationTask as saveSeparationFinalizationTask_m1 } from "../../../src/backend/systems/kuali/tasks/save-separation-finalization.js";
-import { stageSeparationFinalizationTask as stageSeparationFinalizationTask_m1 } from "../../../src/backend/systems/kuali/tasks/stage-separation-finalization.js";
-import {
-KualiMatchSeparationFinalization as KualiMatchSeparationFinalization_m1
-} from "../../../src/models/systems/kuali/match-separation-finalization.js";
-import type { MutationCapability as MutationCapability_m1 } from "../../../src/models/ui/driver.js";
-import type { KualiRrssDocumentDriver as KualiRrssDocumentDriver_m1 } from "../../../src/models/ui/kuali-rrss-document.js";
-import { KUALI_RRSS_SAVE_BUTTON as KUALI_RRSS_SAVE_BUTTON_m1 } from "../../../src/models/ui/kuali-rrss-document.js";
-import type {
-KualiFinalizationVariables as KualiFinalizationVariables_m0,
-KualiObservedFinalizationFields as KualiObservedFinalizationFields_m0
-} from "../../../src/models/ui/kuali-separation-finalization.js";
-import {
-KUALI_FINALIZATION_ASSERTIONS as KUALI_FINALIZATION_ASSERTIONS_m0,
-KUALI_FINALIZATION_FIELD_NAMES as KUALI_FINALIZATION_FIELD_NAMES_m0,
-KUALI_RRSS_FINALIZATION_FORM_KEYS as KUALI_RRSS_FINALIZATION_FORM_KEYS_m0,
-KUALI_RRSS_FINALIZATION_WIRE_ASSERTED as KUALI_RRSS_FINALIZATION_WIRE_ASSERTED_m0,
-KualiDepartmentOptionNotOfferedError as KualiDepartmentOptionNotOfferedError_m1,
-KualiFinalizationTargetSchema as KualiFinalizationTargetSchema_m1,
-KualiFinalizationVariablesSchema as KualiFinalizationVariablesSchema_m0,
-KualiSaveRefusedError as KualiSaveRefusedError_m1,
-compareKualiFinalizationFields as compareKualiFinalizationFields_m0,
-kualiFinalizationFields as kualiFinalizationFields_m0,
-kualiFinalizationFormKeysMissing as kualiFinalizationFormKeysMissing_m0,
-kualiFinalizationWireUnasserted as kualiFinalizationWireUnasserted_m0,
-type KualiFinalizationTarget as KualiFinalizationTarget_m1
-} from "../../../src/models/ui/kuali-separation-finalization.js";
-import type { DataPoint as DataPoint_m1 } from "../../../src/rules/workflow/task-provenance.js";
-import { TaskError as TaskError_m1 } from "../../../src/workflow-kit/errors.js";
-import { taskFailer as taskFailer_m1,type AnyTask as AnyTask_m1 } from "../../../src/workflow-kit/task.js";
-
+import { default as assert } from "node:assert/strict";
+import { describe } from "vitest";
+import { it } from "vitest";
+import { saveSeparationFinalizationTask } from "../../../src/backend/systems/kuali/tasks/save-separation-finalization.js";
+import { stageSeparationFinalizationTask } from "../../../src/backend/systems/kuali/tasks/stage-separation-finalization.js";
+import { KualiMatchSeparationFinalization } from "../../../src/models/systems/kuali/match-separation-finalization.js";
+import type { MutationCapability } from "../../../src/models/ui/driver.js";
+import type { KualiRrssDocumentDriver } from "../../../src/models/ui/kuali-rrss-document.js";
+import { KUALI_RRSS_SAVE_BUTTON } from "../../../src/models/ui/kuali-rrss-document.js";
+import type { KualiFinalizationVariables } from "../../../src/models/ui/kuali-separation-finalization.js";
+import type { KualiObservedFinalizationFields } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { KUALI_FINALIZATION_ASSERTIONS } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { KUALI_FINALIZATION_FIELD_NAMES } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { KUALI_RRSS_FINALIZATION_FORM_KEYS } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { KUALI_RRSS_FINALIZATION_WIRE_ASSERTED } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { KualiDepartmentOptionNotOfferedError } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { KualiFinalizationTargetSchema } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { KualiFinalizationVariablesSchema } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { KualiSaveRefusedError } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { compareKualiFinalizationFields } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { kualiFinalizationFields } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { kualiFinalizationFormKeysMissing } from "../../../src/models/ui/kuali-separation-finalization.js";
+import { kualiFinalizationWireUnasserted } from "../../../src/models/ui/kuali-separation-finalization.js";
+import type { KualiFinalizationTarget } from "../../../src/models/ui/kuali-separation-finalization.js";
+import type { DataPoint } from "../../../src/rules/workflow/task-provenance.js";
+import { TaskError } from "../../../src/workflow-kit/errors.js";
+import { taskFailer } from "../../../src/workflow-kit/task.js";
+import type { AnyTask } from "../../../src/workflow-kit/task.js";
 
 {
 
-
-const VARIABLES: KualiFinalizationVariables_m0 = KualiFinalizationVariablesSchema_m0.parse({
+const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.parse({
   department: "000412 - Housing/Dining/Hospitality",
   payrollTitleCode: "004921",
   payrollTitle: "STDT 2",
@@ -49,8 +42,7 @@ const VARIABLES: KualiFinalizationVariables_m0 = KualiFinalizationVariablesSchem
   observedExistingComments: "",
 });
 
-
-const UNFINALIZED: KualiObservedFinalizationFields_m0 = Object.freeze({
+const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze({
   department: "- - -",
   payrollTitleCode: "",
   payrollTitle: "",
@@ -65,70 +57,68 @@ const UNFINALIZED: KualiObservedFinalizationFields_m0 = Object.freeze({
   timekeeperComments: "",
 });
 
-describe_m0("Kuali separation finalization — the staged-variables fold", () => {
-  it_m0("composes the twelve written fields from nine variables and three ratified assertions", () => {
-    const fields = kualiFinalizationFields_m0(VARIABLES);
-    assert_m0.deepEqual(Object.keys(fields).sort(), [...KUALI_FINALIZATION_FIELD_NAMES_m0].sort());
+describe("Kuali separation finalization — the staged-variables fold", () => {
+  it("composes the twelve written fields from nine variables and three ratified assertions", () => {
+    const fields = kualiFinalizationFields(VARIABLES);
+    assert.deepEqual(Object.keys(fields).sort(), [...KUALI_FINALIZATION_FIELD_NAMES].sort());
 
-    assert_m0.equal(fields.finalPay, "does-not-need-final-pay-student");
-    assert_m0.equal(KUALI_FINALIZATION_ASSERTIONS_m0.finalPay, "does-not-need-final-pay-student");
-    assert_m0.equal(fields.requestAcknowledged, true);
-    assert_m0.equal(fields.submittedTerminationTemplate, true);
-    // The variables pass through untouched — nothing is recomputed at fill time.
-    assert_m0.equal(fields.department, VARIABLES.department);
-    assert_m0.equal(fields.transactionNumber, VARIABLES.transactionNumber);
-    assert_m0.equal(fields.timekeeperComments, VARIABLES.timekeeperComments);
-    // `observedExistingComments` is a REFUSAL input, never a written value.
-    assert_m0.ok(!Object.keys(fields).includes("observedExistingComments"));
+    assert.equal(fields.finalPay, "does-not-need-final-pay-student");
+    assert.equal(KUALI_FINALIZATION_ASSERTIONS.finalPay, "does-not-need-final-pay-student");
+    assert.equal(fields.requestAcknowledged, true);
+    assert.equal(fields.submittedTerminationTemplate, true);
+
+    assert.equal(fields.department, VARIABLES.department);
+    assert.equal(fields.transactionNumber, VARIABLES.transactionNumber);
+    assert.equal(fields.timekeeperComments, VARIABLES.timekeeperComments);
+
+    assert.ok(!Object.keys(fields).includes("observedExistingComments"));
   });
 
-  it_m0("refuses a variable set that could only produce a plausible-but-wrong document", () => {
+  it("refuses a variable set that could only produce a plausible-but-wrong document", () => {
     const bad = (patch: Record<string, unknown>): boolean =>
-      !KualiFinalizationVariablesSchema_m0.safeParse({ ...VARIABLES, ...patch }).success;
-    // Kuali's blank sentinel is an unset field, never a department.
-    assert_m0.ok(bad({ department: "- - -" }));
-    // A padded value would make "what we staged" and "what the page reads back"
-    // unequal by construction, because every read trims.
-    assert_m0.ok(bad({ payrollTitle: " STDT 2" }));
-    // Empty or malformed transaction numbers are refused before the page.
-    assert_m0.ok(bad({ transactionNumber: "" }));
-    assert_m0.ok(bad({ transactionNumber: "pending" }));
-    assert_m0.ok(bad({ terminationEffectiveDate: "2026-06-11" }));
-    assert_m0.ok(bad({ timekeeperComments: "" }));
+      !KualiFinalizationVariablesSchema.safeParse({ ...VARIABLES, ...patch }).success;
 
-    assert_m0.ok(bad({ lastDayWorked: "2026-06-09" }));
-    assert_m0.ok(bad({ separationDate: "" }));
-    assert_m0.ok(bad({ separationDate: "6/10/2026" }));
+    assert.ok(bad({ department: "- - -" }));
+
+
+    assert.ok(bad({ payrollTitle: " STDT 2" }));
+
+    assert.ok(bad({ transactionNumber: "" }));
+    assert.ok(bad({ transactionNumber: "pending" }));
+    assert.ok(bad({ terminationEffectiveDate: "2026-06-11" }));
+    assert.ok(bad({ timekeeperComments: "" }));
+
+    assert.ok(bad({ lastDayWorked: "2026-06-09" }));
+    assert.ok(bad({ separationDate: "" }));
+    assert.ok(bad({ separationDate: "6/10/2026" }));
   });
 
-  it_m0("stages the two date write-backs UNCONDITIONALLY, from the reconciled variables", () => {
+  it("stages the two date write-backs UNCONDITIONALLY, from the reconciled variables", () => {
 
-    const moved = kualiFinalizationFields_m0(VARIABLES);
-    assert_m0.equal(moved.lastDayWorked, VARIABLES.lastDayWorked);
-    assert_m0.equal(moved.separationDate, VARIABLES.separationDate);
+    const moved = kualiFinalizationFields(VARIABLES);
+    assert.equal(moved.lastDayWorked, VARIABLES.lastDayWorked);
+    assert.equal(moved.separationDate, VARIABLES.separationDate);
 
-
-    const unmoved = kualiFinalizationFields_m0(KualiFinalizationVariablesSchema_m0.parse({
+    const unmoved = kualiFinalizationFields(KualiFinalizationVariablesSchema.parse({
       ...VARIABLES,
       lastDayWorked: "06/10/2026",
       separationDate: "06/10/2026",
     }));
-    assert_m0.deepEqual(Object.keys(unmoved), Object.keys(moved));
-    assert_m0.equal(unmoved.lastDayWorked, "06/10/2026");
-    assert_m0.equal(unmoved.separationDate, "06/10/2026");
+    assert.deepEqual(Object.keys(unmoved), Object.keys(moved));
+    assert.equal(unmoved.lastDayWorked, "06/10/2026");
+    assert.equal(unmoved.separationDate, "06/10/2026");
 
-
-    assert_m0.deepEqual(
-      compareKualiFinalizationFields_m0(moved, unmoved).map((entry) => entry.field),
+    assert.deepEqual(
+      compareKualiFinalizationFields(moved, unmoved).map((entry) => entry.field),
       ["lastDayWorked"],
     );
   });
 });
 
-describe_m0("Kuali separation finalization — the read-back comparison", () => {
-  it_m0("is exact on every field and has no tolerance arm", () => {
-    const expected = kualiFinalizationFields_m0(VARIABLES);
-    const landed: KualiObservedFinalizationFields_m0 = {
+describe("Kuali separation finalization — the read-back comparison", () => {
+  it("is exact on every field and has no tolerance arm", () => {
+    const expected = kualiFinalizationFields(VARIABLES);
+    const landed: KualiObservedFinalizationFields = {
       department: expected.department,
       payrollTitleCode: expected.payrollTitleCode,
       payrollTitle: expected.payrollTitle,
@@ -142,26 +132,25 @@ describe_m0("Kuali separation finalization — the read-back comparison", () => 
       finalPay: expected.finalPay,
       timekeeperComments: expected.timekeeperComments,
     };
-    assert_m0.deepEqual(compareKualiFinalizationFields_m0(expected, landed), []);
+    assert.deepEqual(compareKualiFinalizationFields(expected, landed), []);
 
-
-    const nearMisses = compareKualiFinalizationFields_m0(expected, {
+    const nearMisses = compareKualiFinalizationFields(expected, {
       ...landed,
       department: "000412",
       timekeeperComments: expected.timekeeperComments.slice(0, 20),
     });
-    assert_m0.deepEqual(nearMisses.map((entry) => entry.field), ["department", "timekeeperComments"]);
+    assert.deepEqual(nearMisses.map((entry) => entry.field), ["department", "timekeeperComments"]);
   });
 
-  it_m0("names a stale date write-back — §9.14's doc 4524, where the separation date genuinely moved", () => {
+  it("names a stale date write-back — §9.14's doc 4524, where the separation date genuinely moved", () => {
 
-    const expected = kualiFinalizationFields_m0(KualiFinalizationVariablesSchema_m0.parse({
+    const expected = kualiFinalizationFields(KualiFinalizationVariablesSchema.parse({
       ...VARIABLES,
       lastDayWorked: "06/18/2026",
       separationDate: "07/03/2026",
       terminationEffectiveDate: "07/04/2026",
     }));
-    const stillStale = compareKualiFinalizationFields_m0(expected, {
+    const stillStale = compareKualiFinalizationFields(expected, {
       ...UNFINALIZED,
       department: expected.department,
       payrollTitleCode: expected.payrollTitleCode,
@@ -169,7 +158,7 @@ describe_m0("Kuali separation finalization — the read-back comparison", () => 
       requestAcknowledged: expected.requestAcknowledged,
       timekeeperName: expected.timekeeperName,
       lastDayWorked: "06/18/2026",
-      // What the document still holds — the value the write-back replaces.
+
       separationDate: "06/18/2026",
       terminationEffectiveDate: expected.terminationEffectiveDate,
       submittedTerminationTemplate: expected.submittedTerminationTemplate,
@@ -177,35 +166,35 @@ describe_m0("Kuali separation finalization — the read-back comparison", () => 
       finalPay: expected.finalPay,
       timekeeperComments: expected.timekeeperComments,
     });
-    assert_m0.deepEqual(stillStale, [
+    assert.deepEqual(stillStale, [
       { field: "separationDate", expected: "07/03/2026", observed: "06/18/2026" },
     ]);
-    // A blank date control is `<empty>`, distinguishable from a wrong one.
-    const blank = compareKualiFinalizationFields_m0(expected, UNFINALIZED)
+
+    const blank = compareKualiFinalizationFields(expected, UNFINALIZED)
       .filter((entry) => entry.field === "lastDayWorked" || entry.field === "separationDate");
-    assert_m0.deepEqual(blank.map((entry) => entry.observed), ["<empty>", "<empty>"]);
+    assert.deepEqual(blank.map((entry) => entry.observed), ["<empty>", "<empty>"]);
   });
 
-  it_m0("names every disagreeing field, in declaration order, and renders each state distinguishably", () => {
-    const expected = kualiFinalizationFields_m0(VARIABLES);
-    const mismatches = compareKualiFinalizationFields_m0(expected, UNFINALIZED);
-    assert_m0.deepEqual(mismatches.map((entry) => entry.field), [...KUALI_FINALIZATION_FIELD_NAMES_m0]);
+  it("names every disagreeing field, in declaration order, and renders each state distinguishably", () => {
+    const expected = kualiFinalizationFields(VARIABLES);
+    const mismatches = compareKualiFinalizationFields(expected, UNFINALIZED);
+    assert.deepEqual(mismatches.map((entry) => entry.field), [...KUALI_FINALIZATION_FIELD_NAMES]);
     const byField = new Map(mismatches.map((entry) => [entry.field, entry]));
-    // An empty control, an unchecked box and an unselected radio are three
-    // different observations and must not all render as "".
-    assert_m0.equal(byField.get("payrollTitle")?.observed, "<empty>");
-    assert_m0.equal(byField.get("requestAcknowledged")?.observed, "unchecked");
-    assert_m0.equal(byField.get("requestAcknowledged")?.expected, "checked");
-    assert_m0.equal(byField.get("finalPay")?.observed, "<none selected>");
-    assert_m0.equal(byField.get("department")?.observed, "- - -");
+
+
+    assert.equal(byField.get("payrollTitle")?.observed, "<empty>");
+    assert.equal(byField.get("requestAcknowledged")?.observed, "unchecked");
+    assert.equal(byField.get("requestAcknowledged")?.expected, "checked");
+    assert.equal(byField.get("finalPay")?.observed, "<none selected>");
+    assert.equal(byField.get("department")?.observed, "- - -");
   });
 });
 
-describe_m0("Kuali separation finalization — the permanent key and the formKey table", () => {
+describe("Kuali separation finalization — the permanent key and the formKey table", () => {
 
-  it_m0("pins all TWELVE formKeys captured live, and the five the wire check may assert", () => {
+  it("pins all TWELVE formKeys captured live, and the five the wire check may assert", () => {
 
-    assert_m0.deepEqual({ ...KUALI_RRSS_FINALIZATION_FORM_KEYS_m0 }, {
+    assert.deepEqual({ ...KUALI_RRSS_FINALIZATION_FORM_KEYS }, {
       department: "JPYGckVxcf",
       payrollTitleCode: "2FlOeR5pd9",
       payrollTitle: "sVmpq6tG9X",
@@ -219,35 +208,34 @@ describe_m0("Kuali separation finalization — the permanent key and the formKey
       finalPay: "8CXaCSIvx5",
       timekeeperComments: "J_upFRq074",
     });
-    // The to-do list is empty, and it stays DERIVED — a hand-written second list
-    // is one that can disagree with the table it describes.
-    assert_m0.deepEqual(kualiFinalizationFormKeysMissing_m0(), []);
 
-    for (const field of kualiFinalizationFormKeysMissing_m0()) {
-      assert_m0.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED_m0.includes(field));
+
+    assert.deepEqual(kualiFinalizationFormKeysMissing(), []);
+
+    for (const field of kualiFinalizationFormKeysMissing()) {
+      assert.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field));
     }
-    // A date key is not a matching wire value: epoch milliseconds and MM/DD/YYYY need separate assertions.
+
     for (const field of ["lastDayWorked", "separationDate"] as const) {
-      assert_m0.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED_m0.includes(field), field);
+      assert.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field), field);
     }
 
-    assert_m0.equal(KUALI_RRSS_FINALIZATION_FORM_KEYS_m0.timekeeperName, "QGJ63YrCom");
-    assert_m0.notEqual(KUALI_RRSS_FINALIZATION_FORM_KEYS_m0.timekeeperName, "BWmkKqx40");
-    // Every key is distinct: two fields sharing one key would silently make the
-    // wire check assert one field twice and the other never.
-    const keys = Object.values(KUALI_RRSS_FINALIZATION_FORM_KEYS_m0)
+    assert.equal(KUALI_RRSS_FINALIZATION_FORM_KEYS.timekeeperName, "QGJ63YrCom");
+    assert.notEqual(KUALI_RRSS_FINALIZATION_FORM_KEYS.timekeeperName, "BWmkKqx40");
+
+
+    const keys = Object.values(KUALI_RRSS_FINALIZATION_FORM_KEYS)
       .filter((key): key is string => key !== null);
-    assert_m0.equal(new Set(keys).size, keys.length);
+    assert.equal(new Set(keys).size, keys.length);
 
-
-    assert_m0.deepEqual([...KUALI_RRSS_FINALIZATION_WIRE_ASSERTED_m0], [
+    assert.deepEqual([...KUALI_RRSS_FINALIZATION_WIRE_ASSERTED], [
       "payrollTitleCode",
       "payrollTitle",
       "timekeeperName",
       "transactionNumber",
       "timekeeperComments",
     ]);
-    assert_m0.deepEqual(kualiFinalizationWireUnasserted_m0(), [
+    assert.deepEqual(kualiFinalizationWireUnasserted(), [
       "department",
       "requestAcknowledged",
       "lastDayWorked",
@@ -256,11 +244,11 @@ describe_m0("Kuali separation finalization — the permanent key and the formKey
       "submittedTerminationTemplate",
       "finalPay",
     ]);
-    // The two halves partition the field set — a field in neither would be
-    // silently unchecked with nothing naming it.
-    assert_m0.equal(
-      KUALI_RRSS_FINALIZATION_WIRE_ASSERTED_m0.length + kualiFinalizationWireUnasserted_m0().length,
-      Object.keys(KUALI_RRSS_FINALIZATION_FORM_KEYS_m0).length,
+
+
+    assert.equal(
+      KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.length + kualiFinalizationWireUnasserted().length,
+      Object.keys(KUALI_RRSS_FINALIZATION_FORM_KEYS).length,
     );
   });
 });
@@ -268,7 +256,7 @@ describe_m0("Kuali separation finalization — the permanent key and the formKey
 
 {
 
-const TARGET: KualiFinalizationTarget_m1 = KualiFinalizationTargetSchema_m1.parse({
+const TARGET: KualiFinalizationTarget = KualiFinalizationTargetSchema.parse({
   actionId: "0123456789abcdef01234567",
   documentNumber: "4444",
   emplId: "10800000",
@@ -286,7 +274,7 @@ const TARGET: KualiFinalizationTarget_m1 = KualiFinalizationTargetSchema_m1.pars
   },
 });
 
-const MATCH_EXAMPLE = KualiMatchSeparationFinalization_m1.example;
+const MATCH_EXAMPLE = KualiMatchSeparationFinalization.example;
 if (MATCH_EXAMPLE.state !== "present") throw new Error("Kuali match example must carry a present proof");
 
 type KualiOperation =
@@ -316,25 +304,25 @@ function recordingDriver(handlers: Partial<Record<KualiOperation, OperationHandl
     stageSeparationFinalization: (input: unknown) => invoke("stageSeparationFinalization", [input]),
     readSavedSeparationFinalization: (input: unknown) => invoke("readSavedSeparationFinalization", [input]),
     commit: (id: unknown, capability: unknown) => invoke("commit", [id, capability]),
-  } as unknown as KualiRrssDocumentDriver_m1;
+  } as unknown as KualiRrssDocumentDriver;
 
   return { driver, calls };
 }
 
 function invocation(
-  task: AnyTask_m1,
+  task: AnyTask,
   input: unknown,
-  driver: KualiRrssDocumentDriver_m1,
-  mutation?: MutationCapability_m1,
+  driver: KualiRrssDocumentDriver,
+  mutation?: MutationCapability,
 ) {
-  const points: DataPoint_m1[] = [];
+  const points: DataPoint[] = [];
   const ctx = {
     signal: new AbortController().signal,
     log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    fail: taskFailer_m1(task.contract),
-    recordData: (point: DataPoint_m1 | readonly DataPoint_m1[]) => {
-      if (Array.isArray(point)) points.push(...point as readonly DataPoint_m1[]);
-      else points.push(point as DataPoint_m1);
+    fail: taskFailer(task.contract),
+    recordData: (point: DataPoint | readonly DataPoint[]) => {
+      if (Array.isArray(point)) points.push(...point as readonly DataPoint[]);
+      else points.push(point as DataPoint);
     },
     driver,
     ...(mutation === undefined ? {} : { mutation }),
@@ -346,16 +334,12 @@ function invocation(
   };
 }
 
-function _point(direction: "read" | "write", field: string, value: unknown): DataPoint_m1 {
-  return { direction, field, value };
-}
+describe("Kuali task wrappers at their semantic-driver boundary", () => {
 
-describe_m1("Kuali task wrappers at their semantic-driver boundary", () => {
+  describe("stageSeparationFinalizationTask", () => {
 
-  describe_m1("stageSeparationFinalizationTask", () => {
-
-    it_m1("keeps the typed department-option refusal distinct and does not commit", async () => {
-      const refusal = new KualiDepartmentOptionNotOfferedError_m1({
+    it("keeps the typed department-option refusal distinct and does not commit", async () => {
+      const refusal = new KualiDepartmentOptionNotOfferedError({
         documentNumber: TARGET.documentNumber,
         requested: TARGET.variables.department,
         observedOptions: ["- - -", "000413 - Library"],
@@ -363,33 +347,33 @@ describe_m1("Kuali task wrappers at their semantic-driver boundary", () => {
       const { driver, calls } = recordingDriver({
         stageSeparationFinalization: async () => { throw refusal; },
       });
-      const call = invocation(stageSeparationFinalizationTask_m1, TARGET, driver);
+      const call = invocation(stageSeparationFinalizationTask, TARGET, driver);
 
-      await assert_m1.rejects(call.run(), (error: unknown) => error instanceof TaskError_m1
+      await assert.rejects(call.run(), (error: unknown) => error instanceof TaskError
         && error.code === "department-option-not-offered"
         && error.cause === refusal);
-      assert_m1.deepEqual(calls, [{ operation: "stageSeparationFinalization", args: [TARGET] }]);
-      assert_m1.deepEqual(call.points, []);
+      assert.deepEqual(calls, [{ operation: "stageSeparationFinalization", args: [TARGET] }]);
+      assert.deepEqual(call.points, []);
     });
   });
 
-  describe_m1("saveSeparationFinalizationTask", () => {
+  describe("saveSeparationFinalizationTask", () => {
 
-    it_m1("maps Kuali's typed save refusal to the named task refusal", async () => {
-      const refusal = new KualiSaveRefusedError_m1({ documentNumber: TARGET.documentNumber, refusal: "validation error" });
-      const mutationSentinel = Object.freeze({ marker: "unchanged-mutation-capability" }) as unknown as MutationCapability_m1;
+    it("maps Kuali's typed save refusal to the named task refusal", async () => {
+      const refusal = new KualiSaveRefusedError({ documentNumber: TARGET.documentNumber, refusal: "validation error" });
+      const mutationSentinel = Object.freeze({ marker: "unchanged-mutation-capability" }) as unknown as MutationCapability;
       const { driver, calls } = recordingDriver({ commit: async () => { throw refusal; } });
-      const call = invocation(saveSeparationFinalizationTask_m1, TARGET, driver, mutationSentinel);
+      const call = invocation(saveSeparationFinalizationTask, TARGET, driver, mutationSentinel);
 
-      await assert_m1.rejects(call.run(), (error: unknown) => error instanceof TaskError_m1
+      await assert.rejects(call.run(), (error: unknown) => error instanceof TaskError
         && error.code === "save-refused"
         && error.cause === refusal);
-      assert_m1.deepEqual(calls, [{
+      assert.deepEqual(calls, [{
         operation: "commit",
-        args: [KUALI_RRSS_SAVE_BUTTON_m1, mutationSentinel],
+        args: [KUALI_RRSS_SAVE_BUTTON, mutationSentinel],
       }]);
-      assert_m1.equal(calls[0]?.args[1], mutationSentinel);
-      assert_m1.deepEqual(call.points, []);
+      assert.equal(calls[0]?.args[1], mutationSentinel);
+      assert.deepEqual(call.points, []);
     });
   });
 });

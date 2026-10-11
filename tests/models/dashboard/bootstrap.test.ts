@@ -1,15 +1,15 @@
-import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
-import { describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
-import { FrontendBootstrapWireSchema as FrontendBootstrapWireSchema_m0,ServerClockWireSchema as ServerClockWireSchema_m1 } from "../../../src/models/dashboard/bootstrap.js";
-import { runtimeTimeZone as runtimeTimeZone_m1 } from "../../../src/rules/time/clock.js";
-
+import { default as assert } from "node:assert/strict";
+import { describe } from "vitest";
+import { it } from "vitest";
+import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { ServerClockWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { runtimeTimeZone } from "../../../src/rules/time/clock.js";
 
 {
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const NOW = "2026-07-31T17:00:00.000Z";
-
 
 const WORKFLOW_PRIMITIVE = {
   id: "onboarding",
@@ -23,8 +23,8 @@ const WORKFLOW_PRIMITIVE = {
   start: {
     summary: "Look one person up in UCPath and CRM.",
     enqueue: "reject-active",
-    // Keep this non-1 so the wire fixture never makes a guessed default
-    // appear equivalent to a producer-supplied descriptor version.
+
+
     version: 7,
 
     spreadsheetIntake: true,
@@ -68,10 +68,9 @@ const BOOTSTRAP = {
   featureAvailability: [{ feature: "ocr", availability: { state: "available" } }],
 };
 
-describe_m0("dashboard wire primitives", () => {
+describe("dashboard wire primitives", () => {
 
-
-  it_m0("refuses a served chunk harness whose composition is not in the same document", () => {
+  it("refuses a served chunk harness whose composition is not in the same document", () => {
     const composition = {
       ...WORKFLOW_PRIMITIVE,
       id: "separations",
@@ -86,37 +85,37 @@ describe_m0("dashboard wire primitives", () => {
       label: "Separations — Kuali read",
       role: { kind: "chunk-harness", of: "separations", step: "kuali-extraction" },
     };
-    // Both served: the harness's parent is right there, so it parses.
-    assert_m0.equal(
-      FrontendBootstrapWireSchema_m0.safeParse({ ...BOOTSTRAP, workflows: [composition, harness] }).success,
+
+    assert.equal(
+      FrontendBootstrapWireSchema.safeParse({ ...BOOTSTRAP, workflows: [composition, harness] }).success,
       true,
     );
-    // The parent is missing entirely — a dangling `of`.
-    const dangling = FrontendBootstrapWireSchema_m0.safeParse({ ...BOOTSTRAP, workflows: [harness] });
-    assert_m0.equal(dangling.success, false);
-    assert_m0.match(
+
+    const dangling = FrontendBootstrapWireSchema.safeParse({ ...BOOTSTRAP, workflows: [harness] });
+    assert.equal(dangling.success, false);
+    assert.match(
       JSON.stringify(dangling.error?.issues ?? []),
       /separations-kuali-read is served as a chunk harness of separations/,
     );
-    // The parent is served, but is not a composition.
-    assert_m0.equal(
-      FrontendBootstrapWireSchema_m0.safeParse({
+
+    assert.equal(
+      FrontendBootstrapWireSchema.safeParse({
         ...BOOTSTRAP,
         workflows: [{ ...composition, role: { kind: "standalone" } }, harness],
       }).success,
       false,
     );
-    // And the union itself is closed: no fourth kind, and `of` only on the arm
-    // that owns it.
-    assert_m0.equal(
-      FrontendBootstrapWireSchema_m0.safeParse({
+
+
+    assert.equal(
+      FrontendBootstrapWireSchema.safeParse({
         ...BOOTSTRAP,
         workflows: [{ ...WORKFLOW_PRIMITIVE, role: { kind: "sub-workflow" } }],
       }).success,
       false,
     );
-    assert_m0.equal(
-      FrontendBootstrapWireSchema_m0.safeParse({
+    assert.equal(
+      FrontendBootstrapWireSchema.safeParse({
         ...BOOTSTRAP,
         workflows: [{ ...WORKFLOW_PRIMITIVE, role: { kind: "standalone", of: "separations" } }],
       }).success,
@@ -128,14 +127,13 @@ describe_m0("dashboard wire primitives", () => {
 
 {
 
+describe("Activity volume range policy and boundary skeleton", () => {
 
-describe_m1("Activity volume range policy and boundary skeleton", () => {
-
-  it_m1("shares the runtime's resolved IANA zone with the bootstrap clock contract", () => {
-    const timeZone = runtimeTimeZone_m1();
-    assert_m1.equal(timeZone, new Intl.DateTimeFormat().resolvedOptions().timeZone);
-    assert_m1.equal(ServerClockWireSchema_m1.safeParse({ now: "2026-09-26T06:30:00.000Z", zone: timeZone }).success, true);
-    assert_m1.equal(ServerClockWireSchema_m1.safeParse({ now: "2026-09-26T06:30:00.000Z", zone: "Mars/Olympus" }).success, false);
+  it("shares the runtime's resolved IANA zone with the bootstrap clock contract", () => {
+    const timeZone = runtimeTimeZone();
+    assert.equal(timeZone, new Intl.DateTimeFormat().resolvedOptions().timeZone);
+    assert.equal(ServerClockWireSchema.safeParse({ now: "2026-09-26T06:30:00.000Z", zone: timeZone }).success, true);
+    assert.equal(ServerClockWireSchema.safeParse({ now: "2026-09-26T06:30:00.000Z", zone: "Mars/Olympus" }).success, false);
   });
 });
 }

@@ -17,7 +17,6 @@ uuidOf,
 type DashboardWorld
 } from "../../support/helpers/backend/dashboard-harness.js";
 
-/** C completion contract: projection fixtures still carry a valid terminal settlement. */
 function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {
   const lifecycle = RunLifecycleSchema.parse(input.lifecycle ?? {state:"queued"});
   if (lifecycle.state !== "terminal" || !["done","failed"].includes(lifecycle.outcome)) return runRecordBase(input);
@@ -53,7 +52,6 @@ const CLAIM = {
   heartbeatAt: "2026-08-03T17:00:05.000Z",
 } as const;
 
-/** Seeds: queued(1), running(2), done(3), failed(4), queued(5), operation(6)+members(7,8), gated(9). */
 function seedWorld(w: DashboardWorld): void {
   queuedEventOf(w, { seed: 1 });
 
@@ -112,27 +110,7 @@ function seedWorld(w: DashboardWorld): void {
   });
 }
 
-
 describe("the queue row's served facts", () => {
-  /** A terminal-failed run whose failure record authority holds. */
-  function _seedFailed(w: DashboardWorld, seed = 4): void {
-    queuedEventOf(w, { seed });
-    claimEventOf(w, seed);
-    taskEventsOf(w, seed, "searching", "failed");
-    w.writer.emit({
-      t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-      runId: uuidOf(seed), attempt: 1, traceId: traceOf(seed), spanPath: traceOf(seed),
-      outcome: "failed", failureId: uuidOf(seed + 9000),
-    });
-    w.authority.put(runRecordOf({
-      seed,
-      lifecycle: {
-        state: "terminal", outcome: "failed",
-        endedAt: "2026-08-03T17:12:00.000Z", failureId: uuidOf(seed + 9000),
-      },
-      version: 3,
-    }));
-  }
 
   function rowOf(w: DashboardWorld, seed: number) {
     const surface = w.projection.buildDashboardDayWire(DAY).queueSurfaces
@@ -144,15 +122,15 @@ describe("the queue row's served facts", () => {
   it("three distinct absences, and never a fabricated zero", () => {
     const w = world();
     seedWorld(w);
-    // in flight — nothing has settled
+
     const running = rowOf(w, 2).warnings;
     assert.equal(running.state, "absent");
     assert.match(running.state === "absent" ? running.reason : "", /has not produced a terminal result/);
-    // terminal, but no receipt has been derived
+
     const noReceipt = rowOf(w, 3).warnings;
     assert.equal(noReceipt.state, "absent");
     assert.match(noReceipt.state === "absent" ? noReceipt.reason : "", /no evidence receipt has been derived/);
-    // terminal, receipt derived, genuinely no warning
+
     w.authority.receipts.set(uuidOf(3), RunEvidenceReceiptSchema.parse({
       ...receiptWithWarningsOf({ seed: 3, summaries: ["only warning"] }),
       warnings: [],

@@ -1,7 +1,6 @@
 
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
-import { afterEach,describe,it } from "vitest";
+import { describe, it } from "vitest";
 import { WorkerLeaseRecordSchema } from "../../../src/models/run/worker.js";
 import {
 NOW
@@ -9,21 +8,10 @@ NOW
 import {
 WORKFLOW_ID
 } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
 const WORKER_ID = `${WORKFLOW_ID}-worker-1`;
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
 
 const LATER = "2026-07-31T17:05:00.000Z";
-
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
 
 describe("worker leases", () => {
 

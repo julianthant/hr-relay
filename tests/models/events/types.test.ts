@@ -1,40 +1,31 @@
-
-import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
-import { describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
-import {
-SpanNotRunReasonSchema as ExecutorNotRunReasonSchema_m0,
-ExecutorSpanEventSchema as ExecutorSpanEventSchema_m0,
-SpanOutcomeSchema as SpanOutcomeSchema_m0
-} from "../../../src/backend/logs/span-emitter.js";
-import { TimelineNotRunReasonSchema as TimelineNotRunReasonSchema_m0 } from "../../../src/models/dashboard/run-detail.js";
-import {
-NoteWireSchema as NoteWireSchema_m0,
-NoteWireSchema as NoteWireSchema_m1,
-SpanBrowserSystemSchema as SpanBrowserSystemSchema_m0,
-SpanDataClassificationSchema as SpanDataClassificationSchema_m0,
-SpanEventWireSchema as SpanEventWireSchema_m0,
-SpanFieldPathSchema as SpanFieldPathSchema_m0,
-SpanNotRunReasonSchema as SpanNotRunReasonSchema_m0,
-SpanOutcomeWireSchema as SpanOutcomeWireSchema_m0,
-SpanRequeueCauseSchema as SpanRequeueCauseSchema_m0,
-SpanTaskIdSchema as SpanTaskIdSchema_m0,
-projectNoteForOperator as projectNoteForOperator_m1
-} from "../../../src/models/events/types.js";
-import { RequeueCauseSchema as RequeueCauseSchema_m0,RunOutcomeSchema as RunOutcomeSchema_m0 } from "../../../src/models/run/record.js";
-import { TerminalNotRunReasonSchema as TerminalNotRunReasonSchema_m0 } from "../../../src/models/run/result.js";
-import { ContractFieldPathSchema as ContractFieldPathSchema_m0 } from "../../../src/models/task/task-contract.js";
-import {
-CURRENT_DIAGNOSTIC_SAFETY_VERSION as CURRENT_DIAGNOSTIC_SAFETY_VERSION_m1
-} from "../../../src/models/trust/failure.js";
-import { BrowserSystemIdSchema as BrowserSystemIdSchema_m0,TaskIdSchema as TaskIdSchema_m0 } from "../../../src/rules/identity/ids.js";
-import {
-DataClassificationSchema as DataClassificationSchema_m0,
-redactValue as redactValue_m0
-} from "../../../src/rules/redaction/redaction.js";
-
+import { default as assert } from "node:assert/strict";
+import { describe } from "vitest";
+import { it } from "vitest";
+import { SpanNotRunReasonSchema as ExecutorNotRunReasonSchema } from "../../../src/backend/logs/span-emitter.js";
+import { ExecutorSpanEventSchema } from "../../../src/backend/logs/span-emitter.js";
+import { SpanOutcomeSchema } from "../../../src/backend/logs/span-emitter.js";
+import { TimelineNotRunReasonSchema } from "../../../src/models/dashboard/run-detail.js";
+import { NoteWireSchema } from "../../../src/models/events/types.js";
+import { SpanBrowserSystemSchema } from "../../../src/models/events/types.js";
+import { SpanDataClassificationSchema } from "../../../src/models/events/types.js";
+import { SpanEventWireSchema } from "../../../src/models/events/types.js";
+import { SpanFieldPathSchema } from "../../../src/models/events/types.js";
+import { SpanNotRunReasonSchema } from "../../../src/models/events/types.js";
+import { SpanOutcomeWireSchema } from "../../../src/models/events/types.js";
+import { SpanRequeueCauseSchema } from "../../../src/models/events/types.js";
+import { SpanTaskIdSchema } from "../../../src/models/events/types.js";
+import { projectNoteForOperator } from "../../../src/models/events/types.js";
+import { RequeueCauseSchema } from "../../../src/models/run/record.js";
+import { RunOutcomeSchema } from "../../../src/models/run/record.js";
+import { TerminalNotRunReasonSchema } from "../../../src/models/run/result.js";
+import { ContractFieldPathSchema } from "../../../src/models/task/task-contract.js";
+import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../src/models/trust/failure.js";
+import { BrowserSystemIdSchema } from "../../../src/rules/identity/ids.js";
+import { TaskIdSchema } from "../../../src/rules/identity/ids.js";
+import { DataClassificationSchema } from "../../../src/rules/redaction/redaction.js";
+import { redactValue } from "../../../src/rules/redaction/redaction.js";
 
 {
-
 
 const RUN_ID = "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b";
 const ITEM_ID = "9c8b7a6d-5e4f-43a2-9b8c-7d6e5f4a3b2c";
@@ -62,51 +53,51 @@ const QUEUED = {
   configSnapshotId: SNAPSHOT_ID,
 } as const;
 
-describe_m0("span wire leaf parity with the domain vocabulary", () => {
-  it_m0("pins the leaf's restated enums to their domain owners", () => {
-    assert_m0.deepEqual(SpanBrowserSystemSchema_m0.options, BrowserSystemIdSchema_m0.options);
-    assert_m0.deepEqual(SpanRequeueCauseSchema_m0.options, RequeueCauseSchema_m0.options);
-    assert_m0.deepEqual(SpanOutcomeWireSchema_m0.options, SpanOutcomeSchema_m0.options);
+describe("span wire leaf parity with the domain vocabulary", () => {
+  it("pins the leaf's restated enums to their domain owners", () => {
+    assert.deepEqual(SpanBrowserSystemSchema.options, BrowserSystemIdSchema.options);
+    assert.deepEqual(SpanRequeueCauseSchema.options, RequeueCauseSchema.options);
+    assert.deepEqual(SpanOutcomeWireSchema.options, SpanOutcomeSchema.options);
 
-    assert_m0.deepEqual(SpanDataClassificationSchema_m0.options, DataClassificationSchema_m0.options);
-    assert_m0.equal(SpanTaskIdSchema_m0.parse("workflow:separations/match-identity"), "workflow:separations/match-identity");
-    assert_m0.throws(() => SpanTaskIdSchema_m0.parse("Not/A-Task"));
-    assert_m0.throws(() => TaskIdSchema_m0.parse("Not/A-Task"));
-    assert_m0.equal(SpanFieldPathSchema_m0.parse("selection.status"), "selection.status");
-    assert_m0.throws(() => SpanFieldPathSchema_m0.parse("Selection.Status"));
-    assert_m0.throws(() => ContractFieldPathSchema_m0.parse("Selection.Status"));
-    // The run-outcome union is the wire union minus the task-only `skipped`.
-    assert_m0.deepEqual([...RunOutcomeSchema_m0.options, "skipped"].sort(), [...SpanOutcomeWireSchema_m0.options].sort());
+    assert.deepEqual(SpanDataClassificationSchema.options, DataClassificationSchema.options);
+    assert.equal(SpanTaskIdSchema.parse("workflow:separations/match-identity"), "workflow:separations/match-identity");
+    assert.throws(() => SpanTaskIdSchema.parse("Not/A-Task"));
+    assert.throws(() => TaskIdSchema.parse("Not/A-Task"));
+    assert.equal(SpanFieldPathSchema.parse("selection.status"), "selection.status");
+    assert.throws(() => SpanFieldPathSchema.parse("Selection.Status"));
+    assert.throws(() => ContractFieldPathSchema.parse("Selection.Status"));
+
+    assert.deepEqual([...RunOutcomeSchema.options, "skipped"].sort(), [...SpanOutcomeWireSchema.options].sort());
   });
 
-  it_m0("pins ONE not-run vocabulary across the durable result, the span, and the timeline", () => {
+  it("pins ONE not-run vocabulary across the durable result, the span, and the timeline", () => {
 
-    assert_m0.deepEqual(SpanNotRunReasonSchema_m0.options, TerminalNotRunReasonSchema_m0.options);
-    assert_m0.deepEqual(ExecutorNotRunReasonSchema_m0.options, TerminalNotRunReasonSchema_m0.options);
-    assert_m0.deepEqual(TimelineNotRunReasonSchema_m0.options, TerminalNotRunReasonSchema_m0.options);
+    assert.deepEqual(SpanNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
+    assert.deepEqual(ExecutorNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
+    assert.deepEqual(TimelineNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
   });
 
-  it_m0("carries a not-run reason ONLY on a skipped task span", () => {
+  it("carries a not-run reason ONLY on a skipped task span", () => {
     const ended = {
       t: "span.ended", kind: "task", ...BASE, ...RUN_IDENTITY,
       spanPath: `${TRACE}/crm-dates#1`,
     } as const;
-    assert_m0.equal(
-      SpanEventWireSchema_m0.parse({ ...ended, outcome: "skipped", notRunReason: "condition-false" }).t,
+    assert.equal(
+      SpanEventWireSchema.parse({ ...ended, outcome: "skipped", notRunReason: "condition-false" }).t,
       "span.ended",
     );
 
-    assert_m0.equal(SpanEventWireSchema_m0.parse({ ...ended, outcome: "skipped" }).t, "span.ended");
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({ ...ended, outcome: "done", notRunReason: "condition-false" }));
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({ ...ended, outcome: "skipped", notRunReason: "gave-up" }));
-    assert_m0.throws(() => ExecutorSpanEventSchema_m0.parse({
+    assert.equal(SpanEventWireSchema.parse({ ...ended, outcome: "skipped" }).t, "span.ended");
+    assert.throws(() => SpanEventWireSchema.parse({ ...ended, outcome: "done", notRunReason: "condition-false" }));
+    assert.throws(() => SpanEventWireSchema.parse({ ...ended, outcome: "skipped", notRunReason: "gave-up" }));
+    assert.throws(() => ExecutorSpanEventSchema.parse({
       t: "span.ended", kind: "run", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
       outcome: "skipped", notRunReason: "condition-false",
     }));
   });
 });
 
-describe_m0("the transaction fence beat", () => {
+describe("the transaction fence beat", () => {
   const FENCED = {
     t: "transaction.fenced",
     ts: BASE.ts,
@@ -118,48 +109,48 @@ describe_m0("the transaction fence beat", () => {
     taskId: "ucpath/delete-pending-terminations",
   } as const;
 
-  it_m0("round-trips through both strict parity twins", () => {
-    ExecutorSpanEventSchema_m0.parse(FENCED);
-    SpanEventWireSchema_m0.parse({ ...FENCED, pid: BASE.pid });
+  it("round-trips through both strict parity twins", () => {
+    ExecutorSpanEventSchema.parse(FENCED);
+    SpanEventWireSchema.parse({ ...FENCED, pid: BASE.pid });
   });
 
-  it_m0("refuses a missing task role and a fabricated page-data field", () => {
-    assert_m0.throws(() => ExecutorSpanEventSchema_m0.parse({ ...FENCED, taskId: undefined }));
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({ ...FENCED, pid: BASE.pid, points: [] }));
+  it("refuses a missing task role and a fabricated page-data field", () => {
+    assert.throws(() => ExecutorSpanEventSchema.parse({ ...FENCED, taskId: undefined }));
+    assert.throws(() => SpanEventWireSchema.parse({ ...FENCED, pid: BASE.pid, points: [] }));
   });
 });
 
-describe_m0("the observed-log arm", () => {
+describe("the observed-log arm", () => {
   const OBSERVED = {
     t: "data.observed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
     spanPath: `${TRACE}/searching#1.1`,
     nodeId: "searching", taskId: "ucpath/search-person-org", observedAt: BASE.ts,
     points: [{ direction: "read", field: "results", values: [
-      { key: "results", ...redactValue_m0("sensitive-hr", "count", []) },
+      { key: "results", ...redactValue("sensitive-hr", "count", []) },
     ] }],
   } as const;
 
-  it_m0("round-trips through the kernel union and the wire leaf", () => {
-    ExecutorSpanEventSchema_m0.parse(OBSERVED);
-    SpanEventWireSchema_m0.parse({ ...OBSERVED, pid: BASE.pid });
+  it("round-trips through the kernel union and the wire leaf", () => {
+    ExecutorSpanEventSchema.parse(OBSERVED);
+    SpanEventWireSchema.parse({ ...OBSERVED, pid: BASE.pid });
   });
 
-  it_m0("refuses an event with no points — an emission describes an observation that happened", () => {
-    assert_m0.throws(() => ExecutorSpanEventSchema_m0.parse({ ...OBSERVED, points: [] }));
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({ ...OBSERVED, points: [], pid: BASE.pid }));
+  it("refuses an event with no points — an emission describes an observation that happened", () => {
+    assert.throws(() => ExecutorSpanEventSchema.parse({ ...OBSERVED, points: [] }));
+    assert.throws(() => SpanEventWireSchema.parse({ ...OBSERVED, points: [], pid: BASE.pid }));
   });
 
-  it_m0("refuses a raw value where a redacted one belongs", () => {
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({
+  it("refuses a raw value where a redacted one belongs", () => {
+    assert.throws(() => SpanEventWireSchema.parse({
       ...OBSERVED, pid: BASE.pid,
       points: [{ direction: "read", field: "results", values: [{ key: "results", value: "Ada Lovelace" }] }],
     }));
   });
 });
 
-describe_m0("span wire strictness", () => {
-  it_m0("admits only a complete authority-reconstruction marker on a queued root", () => {
-    SpanEventWireSchema_m0.parse({
+describe("span wire strictness", () => {
+  it("admits only a complete authority-reconstruction marker on a queued root", () => {
+    SpanEventWireSchema.parse({
       ...QUEUED,
       repair: {
         kind: "authority-reconstruction",
@@ -170,7 +161,7 @@ describe_m0("span wire strictness", () => {
         priorStreamSha256: HASH,
       },
     });
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({
+    assert.throws(() => SpanEventWireSchema.parse({
       ...QUEUED,
       repair: {
         kind: "authority-reconstruction",
@@ -181,7 +172,7 @@ describe_m0("span wire strictness", () => {
         priorStreamSha256: HASH,
       },
     }));
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({
+    assert.throws(() => SpanEventWireSchema.parse({
       ...QUEUED,
       repair: {
         kind: "authority-reconstruction",
@@ -191,7 +182,7 @@ describe_m0("span wire strictness", () => {
         priorStreamBytes: 0,
       },
     }));
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({
+    assert.throws(() => SpanEventWireSchema.parse({
       ...QUEUED,
       repair: {
         kind: "authority-reconstruction",
@@ -205,49 +196,48 @@ describe_m0("span wire strictness", () => {
     }));
   });
 
-  it_m0("parses the full run.queued identity and refuses unknown keys", () => {
-    SpanEventWireSchema_m0.parse(QUEUED);
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({ ...QUEUED, sneaky: true }));
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({ ...QUEUED, resolvedInstance: { intranet: "prod" } }));
+  it("parses the full run.queued identity and refuses unknown keys", () => {
+    SpanEventWireSchema.parse(QUEUED);
+    assert.throws(() => SpanEventWireSchema.parse({ ...QUEUED, sneaky: true }));
+    assert.throws(() => SpanEventWireSchema.parse({ ...QUEUED, resolvedInstance: { intranet: "prod" } }));
   });
 
-  it_m0("refuses a worker span wearing a run id and a run span wearing none", () => {
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({
+  it("refuses a worker span wearing a run id and a run span wearing none", () => {
+    assert.throws(() => SpanEventWireSchema.parse({
       t: "span.started", kind: "worker", ...BASE, workerId: "w-1", runId: RUN_ID, spanPath: "worker/x/w-1", name: "x",
     }));
     const { runId: _runId, ...withoutRunId } = QUEUED;
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse(withoutRunId));
+    assert.throws(() => SpanEventWireSchema.parse(withoutRunId));
   });
 
-
-  it_m0("refuses every span.patched shape — the retired detail channel is not in the union", () => {
+  it("refuses every span.patched shape — the retired detail channel is not in the union", () => {
     for (const key of ["resolvedName", "selection-status", "runId", "traceId", "contractFingerprint"]) {
-      assert_m0.throws(() => SpanEventWireSchema_m0.parse({
+      assert.throws(() => SpanEventWireSchema.parse({
         t: "span.patched", ...BASE, ...RUN_IDENTITY, updates: [{ key, value: "x" }],
       }));
     }
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({ t: "span.patched", ...BASE, ...RUN_IDENTITY, updates: [] }));
+    assert.throws(() => SpanEventWireSchema.parse({ t: "span.patched", ...BASE, ...RUN_IDENTITY, updates: [] }));
   });
 
-  it_m0("refuses a malformed gate resolution", () => {
-    assert_m0.throws(() => SpanEventWireSchema_m0.parse({
+  it("refuses a malformed gate resolution", () => {
+    assert.throws(() => SpanEventWireSchema.parse({
       t: "gate.resolved", ...BASE, ...RUN_IDENTITY, gate: "approval", resolutionKey: "resolved", resultHash: "short",
     }));
-    SpanEventWireSchema_m0.parse({
+    SpanEventWireSchema.parse({
       t: "gate.resolved", ...BASE, ...RUN_IDENTITY, gate: "approval", resolutionKey: "resolved", resultHash: HASH,
     });
   });
 
-  it_m0("parses run- and worker-addressed notes and refuses unknown keys and levels", () => {
-    NoteWireSchema_m0.parse({ ...BASE, ...RUN_IDENTITY, level: "step", message: "opened person search" });
-    NoteWireSchema_m0.parse({
+  it("parses run- and worker-addressed notes and refuses unknown keys and levels", () => {
+    NoteWireSchema.parse({ ...BASE, ...RUN_IDENTITY, level: "step", message: "opened person search" });
+    NoteWireSchema.parse({
       ...BASE, workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1",
       level: "warn", message: "browser health degraded",
       fields: [{ key: "restarts", kind: "count", value: 2 }],
     });
-    assert_m0.throws(() => NoteWireSchema_m0.parse({ ...BASE, ...RUN_IDENTITY, level: "info", message: "x" }));
-    assert_m0.throws(() => NoteWireSchema_m0.parse({ ...BASE, ...RUN_IDENTITY, level: "step", message: "x", extra: 1 }));
-    assert_m0.throws(() => NoteWireSchema_m0.parse({
+    assert.throws(() => NoteWireSchema.parse({ ...BASE, ...RUN_IDENTITY, level: "info", message: "x" }));
+    assert.throws(() => NoteWireSchema.parse({ ...BASE, ...RUN_IDENTITY, level: "step", message: "x", extra: 1 }));
+    assert.throws(() => NoteWireSchema.parse({
       ...BASE, ...RUN_IDENTITY, level: "step", message: "x",
       fields: [{ key: "raw", kind: "map", value: { open: true } }],
     }));
@@ -257,13 +247,12 @@ describe_m0("span wire strictness", () => {
 
 {
 
-
 const RAW = "ucpath:termination|10812345|2026-08-29";
 
-describe_m1("diagnostic evidence projection", () => {
+describe("diagnostic evidence projection", () => {
 
-  it_m1("serves unstamped and stamped note text", () => {
-    const unstamped = NoteWireSchema_m1.parse({
+  it("serves unstamped and stamped note text", () => {
+    const unstamped = NoteWireSchema.parse({
       ts: "2026-08-29T08:00:00.000Z",
       workflow: "person-lookup",
       pid: 123,
@@ -274,13 +263,13 @@ describe_m1("diagnostic evidence projection", () => {
       traceId: "pl-010101-1000",
       spanPath: "pl-010101-1000/searching#1.1",
     });
-    const current = NoteWireSchema_m1.parse({
+    const current = NoteWireSchema.parse({
       ...unstamped,
-      diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION_m1,
+      diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
       message: "registered source could not be read",
     });
-    assert_m1.deepEqual(projectNoteForOperator_m1(unstamped), unstamped);
-    assert_m1.deepEqual(projectNoteForOperator_m1(current), current);
+    assert.deepEqual(projectNoteForOperator(unstamped), unstamped);
+    assert.deepEqual(projectNoteForOperator(current), current);
   });
 });
 }

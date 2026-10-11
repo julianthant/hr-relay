@@ -1,51 +1,45 @@
-
-import assert_m0 from "node:assert/strict";
-import { afterEach as afterEach_m0,describe as describe_m0,it as it_m0 } from "vitest";
-import { z as z_m0 } from "zod";
-import { stepOmissionGraphView as stepOmissionGraphView_m0 } from "../../../src/backend/runs/start/step-selection.js";
-import { CANONICAL_FIELDS as CANONICAL_FIELDS_m0 } from "../../../src/models/fields/registry.js";
-import { CrmReadOnboardingRecord as CrmReadOnboardingRecord_m0 } from "../../../src/models/systems/crm/read-onboarding-record.js";
-import { SearchPersonOrg as SearchPersonOrg_m0 } from "../../../src/models/systems/ucpath/search-person-org.js";
-import { defineCanonicalInput as defineCanonicalInput_m0 } from "../../../src/models/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS as STANDARD_WORKFLOW_ACTIONS_m0 } from "../../../src/models/workflow/presentation.js";
-import { planStepOmissions as planStepOmissions_m0,type StepOmissionDeclaration as StepOmissionDeclaration_m0 } from "../../../src/models/workflow/step-omission.js";
-import { EidSchema as EidSchema_m0 } from "../../../src/rules/identity/ids.js";
-import { defineWorkflowRole as defineWorkflowRole_m0 } from "../../../src/workflow-kit/validation/module-role.js";
-import { defineWorkflow as defineWorkflow_m0,type WorkflowAuthor as WorkflowAuthor_m0 } from "../../../src/workflow-kit/workflow-definition.js";
-import { compileFixtureWorkflow as compileFixtureWorkflow_m0 } from "../../support/fixtures/workflow-definition-fixtures.js";
-
-import assert_m1 from "node:assert/strict";
-import { describe as describe_m1,it as it_m1 } from "vitest";
-import {
-planStepOmissions as planStepOmissions_m1,
-stepOmissionCascade as stepOmissionCascade_m1,
-type StepOmissionGraphView as StepOmissionGraphView_m1
-} from "../../../src/models/workflow/step-omission.js";
-import { descriptorRuntimeNodes as descriptorRuntimeNodes_m1 } from "../../../src/workflow-kit/workflow.js";
-import { separationsDescriptor as separationsDescriptor_m1 } from "../../support/helpers/registered-workflows.js";
-
+import { default as assert } from "node:assert/strict";
+import { afterEach } from "vitest";
+import { describe } from "vitest";
+import { it } from "vitest";
+import { z } from "zod";
+import { stepOmissionGraphView } from "../../../src/backend/runs/start/step-selection.js";
+import { CANONICAL_FIELDS } from "../../../src/models/fields/registry.js";
+import { CrmReadOnboardingRecord } from "../../../src/models/systems/crm/read-onboarding-record.js";
+import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
+import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
+import { planStepOmissions } from "../../../src/models/workflow/step-omission.js";
+import type { StepOmissionDeclaration } from "../../../src/models/workflow/step-omission.js";
+import { EidSchema } from "../../../src/rules/identity/ids.js";
+import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
+import { defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
+import type { WorkflowAuthor } from "../../../src/workflow-kit/workflow-definition.js";
+import { compileFixtureWorkflow } from "../../support/fixtures/workflow-definition-fixtures.js";
+import { stepOmissionCascade } from "../../../src/models/workflow/step-omission.js";
+import type { StepOmissionGraphView } from "../../../src/models/workflow/step-omission.js";
+import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
+import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 
 {
-
 
 const disposers: (() => void)[] = [];
 const _afterEachFixture0 = () => {
   for (const dispose of disposers.splice(0)) dispose();
 };
 
-const FixtureInput = z_m0.strictObject({ emplId: EidSchema_m0, expectedName: CANONICAL_FIELDS_m0.fullName.schema });
-const FixtureCanonicalInput = defineCanonicalInput_m0(
+const FixtureInput = z.strictObject({ emplId: EidSchema, expectedName: CANONICAL_FIELDS.fullName.schema });
+const FixtureCanonicalInput = defineCanonicalInput(
   FixtureInput,
-  z_m0.strictObject({ emplId: EidSchema_m0, expectedName: CANONICAL_FIELDS_m0.fullName.schema }),
+  z.strictObject({ emplId: EidSchema, expectedName: CANONICAL_FIELDS.fullName.schema }),
   [{ emplId: "10800000", expectedName: "Fixture, Person" }],
 );
-const ReviewResultSchema = z_m0.strictObject({ approved: z_m0.boolean() });
-const FixtureResultSchema = z_m0.strictObject({ verified: z_m0.boolean() });
+const ReviewResultSchema = z.strictObject({ approved: z.boolean() });
+const FixtureResultSchema = z.strictObject({ verified: z.boolean() });
 
-type Author = WorkflowAuthor_m0<typeof FixtureInput>;
+type Author = WorkflowAuthor<typeof FixtureInput>;
 
-/** Rebuilds the CRM verification read as a complete, schema-valid `absent` outcome from the typed flag. */
-const VERIFY_OMISSION: StepOmissionDeclaration_m0 = {
+const VERIFY_OMISSION: StepOmissionDeclaration = {
   form: { fields: [{ key: "verifiedByHand", label: "Verified by hand", kind: "boolean" }] },
   produces: {
     verify: ({ facts, scope }) => {
@@ -59,8 +53,8 @@ const VERIFY_OMISSION: StepOmissionDeclaration_m0 = {
   },
 };
 
-function fixture(id: string, code: string, steps: (author: Author) => ReturnType<Parameters<typeof defineWorkflow_m0<typeof FixtureInput, typeof FixtureResultSchema>>[0]["steps"]>) {
-  return defineWorkflow_m0({
+function fixture(id: string, code: string, steps: (author: Author) => ReturnType<Parameters<typeof defineWorkflow<typeof FixtureInput, typeof FixtureResultSchema>>[0]["steps"]>) {
+  return defineWorkflow({
     id,
     version: 1,
     code,
@@ -72,24 +66,23 @@ function fixture(id: string, code: string, steps: (author: Author) => ReturnType
     inputSubject: "eid",
     surface: { shape: "single" },
     enqueue: "reject-active",
-    actions: STANDARD_WORKFLOW_ACTIONS_m0,
+    actions: STANDARD_WORKFLOW_ACTIONS,
     surfaces: {},
     details: [],
     identity: { matchKey: (input) => `eid:${input.emplId}` },
     presentation: { title: (input) => `EID ${input.emplId}` },
     scenarios: [`${id}/happy`],
-    role: defineWorkflowRole_m0({ kind: "standalone" }),
+    role: defineWorkflowRole({ kind: "standalone" }),
     steps,
   });
 }
 
-
 const gateInsideOmittableStep = fixture("omission-gate-inside-omitted-step", "dg", ({ task, gate, group, result }) => {
-  const search = task({ id: "search", contract: SearchPersonOrg_m0, label: "Search", replay: "checkpoint" }, [], ({ input }) => ({
+  const search = task({ id: "search", contract: SearchPersonOrg, label: "Search", replay: "checkpoint" }, [], ({ input }) => ({
     kind: "by-eid" as const, emplId: input.emplId,
   }));
   const review = gate({ id: "review", label: "Review", statusKey: "awaitingReview", result: ReviewResultSchema }, [search]);
-  const verify = task({ id: "verify", contract: CrmReadOnboardingRecord_m0, label: "Verify", replay: "checkpoint" }, [search, review], ({ input }) => ({
+  const verify = task({ id: "verify", contract: CrmReadOnboardingRecord, label: "Verify", replay: "checkpoint" }, [search, review], ({ input }) => ({
     eid: input.emplId, name: input.expectedName,
   }));
   return {
@@ -101,77 +94,74 @@ const gateInsideOmittableStep = fixture("omission-gate-inside-omitted-step", "dg
   };
 });
 
-describe_m0("definition-time omission completeness", () => {
-afterEach_m0(_afterEachFixture0);
+describe("definition-time omission completeness", () => {
+afterEach(_afterEachFixture0);
 
-
-  it_m0("admits the terminal result as the one reader of an omitted member and compiles the gate-inside-step shape", () => {
-    const compiled = compileFixtureWorkflow_m0(gateInsideOmittableStep);
-    const plan = planStepOmissions_m0(
-      stepOmissionGraphView_m0(compiled.descriptor),
+  it("admits the terminal result as the one reader of an omitted member and compiles the gate-inside-step shape", () => {
+    const compiled = compileFixtureWorkflow(gateInsideOmittableStep);
+    const plan = planStepOmissions(
+      stepOmissionGraphView(compiled.descriptor),
       [{ step: "deciding", facts: { verifiedByHand: true } }],
     );
-    assert_m0.deepEqual(plan.refusals, []);
-    assert_m0.deepEqual([...plan.omitted.entries()], [["review", "deciding"]]);
-    assert_m0.deepEqual([...plan.asserted.keys()], ["verify"]);
+    assert.deepEqual(plan.refusals, []);
+    assert.deepEqual([...plan.omitted.entries()], [["review", "deciding"]]);
+    assert.deepEqual([...plan.asserted.keys()], ["verify"]);
   });
 });
 }
 
 {
 
-
-function graphView(): StepOmissionGraphView_m1 {
+function graphView(): StepOmissionGraphView {
   return {
-    nodes: descriptorRuntimeNodes_m1(separationsDescriptor_m1).map((node) => ({
+    nodes: descriptorRuntimeNodes(separationsDescriptor).map((node) => ({
       id: String(node.id), kind: node.kind, dependsOn: node.dependsOn.map(String),
     })),
-    timeline: separationsDescriptor_m1.timeline,
-    stepOmissions: separationsDescriptor_m1.stepOmissions,
+    timeline: separationsDescriptor.timeline,
+    stepOmissions: separationsDescriptor.stepOmissions,
   };
 }
 
-describe_m1("separations omittable write steps", () => {
+describe("separations omittable write steps", () => {
 
-  it_m1("forces no other step out and blocks on none", () => {
-    const rows = stepOmissionCascade_m1(graphView());
-    assert_m1.deepEqual([...rows.entries()], [
+  it("forces no other step out and blocks on none", () => {
+    const rows = stepOmissionCascade(graphView());
+    assert.deepEqual([...rows.entries()], [
       ["kronos-timecard", { state: "omittable", forces: [] }],
       ["ucpath-transaction", { state: "omittable", forces: [] }],
       ["kuali-finalization", { state: "omittable", forces: [] }],
     ]);
   });
 
-  it_m1("classifies each omission over the real graph: browser reads and transactions omitted, folds asserted", () => {
+  it("classifies each omission over the real graph: browser reads and transactions omitted, folds asserted", () => {
     const view = graphView();
-    const kronos = planStepOmissions_m1(view, [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" } }]);
-    assert_m1.deepEqual(kronos.refusals, []);
-    assert_m1.deepEqual([...kronos.omitted.keys()], ["timecard-search", "timecard"]);
-    assert_m1.deepEqual([...kronos.asserted.keys()], ["dates"]);
+    const kronos = planStepOmissions(view, [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" } }]);
+    assert.deepEqual(kronos.refusals, []);
+    assert.deepEqual([...kronos.omitted.keys()], ["timecard-search", "timecard"]);
+    assert.deepEqual([...kronos.asserted.keys()], ["dates"]);
 
-    const ucpath = planStepOmissions_m1(view, [{ step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Approved" } }]);
-    assert_m1.deepEqual(ucpath.refusals, []);
-    assert_m1.deepEqual([...ucpath.omitted.keys()], ["pending-set", "clear-pending", "file-termination"]);
-    assert_m1.deepEqual([...ucpath.asserted.keys()], ["receipt"]);
+    const ucpath = planStepOmissions(view, [{ step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Approved" } }]);
+    assert.deepEqual(ucpath.refusals, []);
+    assert.deepEqual([...ucpath.omitted.keys()], ["pending-set", "clear-pending", "file-termination"]);
+    assert.deepEqual([...ucpath.asserted.keys()], ["receipt"]);
 
-    const finalization = planStepOmissions_m1(view, [{ step: "kuali-finalization", facts: {} }]);
-    assert_m1.deepEqual(finalization.refusals, []);
-    assert_m1.deepEqual([...finalization.omitted.keys()], ["filing-presence", "finalize-kuali"]);
-    assert_m1.equal(finalization.asserted.size, 0);
+    const finalization = planStepOmissions(view, [{ step: "kuali-finalization", facts: {} }]);
+    assert.deepEqual(finalization.refusals, []);
+    assert.deepEqual([...finalization.omitted.keys()], ["filing-presence", "finalize-kuali"]);
+    assert.equal(finalization.asserted.size, 0);
 
-    const all = planStepOmissions_m1(view, [
+    const all = planStepOmissions(view, [
       { step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" } },
       { step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Approved" } },
       { step: "kuali-finalization", facts: {} },
     ]);
-    assert_m1.deepEqual(all.refusals, []);
+    assert.deepEqual(all.refusals, []);
 
+    const identity = planStepOmissions(view, [{ step: "identity-check", facts: {} }]);
+    assert.deepEqual(identity.refusals.map(({ code }) => code), ["step-not-omittable"]);
 
-    const identity = planStepOmissions_m1(view, [{ step: "identity-check", facts: {} }]);
-    assert_m1.deepEqual(identity.refusals.map(({ code }) => code), ["step-not-omittable"]);
-    // The UCPath approval status is closed to the statuses a receipt may carry.
-    const denied = planStepOmissions_m1(view, [{ step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Denied" } }]);
-    assert_m1.deepEqual(denied.refusals.map(({ code }) => code), ["facts-invalid"]);
+    const denied = planStepOmissions(view, [{ step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Denied" } }]);
+    assert.deepEqual(denied.refusals.map(({ code }) => code), ["facts-invalid"]);
   });
 });
 }
