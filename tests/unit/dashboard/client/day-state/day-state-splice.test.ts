@@ -31,7 +31,7 @@ function surfaceOf(runId: string, rowRevision: number, title: string): Record<st
     dryRun: false,
     priority: "interactive",
     runNumber: { state: "present", value: 1 },
-    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
+    session: { state: "absent", reason: "This fixture has no run session." },
     containment: "root",
     linkedRuns: [],
     facts: { state: "absent", reason: "run is running and has not produced a terminal result" },

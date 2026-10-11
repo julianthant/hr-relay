@@ -71,7 +71,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     dryRun: facts.dryRun,
     priority: "interactive",
     runNumber: { state: "present", value: 1 },
-    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
+    session: { state: "absent", reason: "This fixture has no run session." },
     // A delegated child of a non-operation parent is `linked`: it keeps its own
     // row, so `executeRetry` refusing it is the shape this fixture exercises.
     containment: facts.isChild ? "linked" : "root",
@@ -441,7 +441,8 @@ describe("queue-row action descriptors — every served verb has a command behin
       ActionDescriptorWireSchema.parse({
         kind: "command", command: "resolve-write-absent", key: "x", label: "x",
         intent: "neutral", placement: ["footer"], expectedVersion: 1,
-        writeTarget: { writeIntentId: uuid(4), intentGeneration: 1 },
+        writeTarget: { writeIntentId: uuid(4), intentGeneration: 1, writeAttemptId: uuid(5),
+          bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) },
       }) as Extract<ActionDescriptorWire, { kind: "command" }>,
       { runId: uuid(1), expectedVersion: 1 },
       { actorId: "local-operator", source: "queue" },

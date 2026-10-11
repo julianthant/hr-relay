@@ -36,8 +36,6 @@ import {
 } from "../../../../models/ui/crm-onboarding.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
-const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
-const CRM_SELECTOR_BLOB = "e63530d375478dd330d07460c740f2027dbd7bdd";
 const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json";
 const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/crm/onboarding.live.json";
 const SEARCH_SCENARIO = "ui/crm-onboarding-search-results";
@@ -50,14 +48,7 @@ const SEARCH_LINK_PORT_KEY = "search.resultRowNameLink()";
 const RECORD_FIELD_PORT_KEY = "record.thLabelFollowingTd()";
 const HISTORY_ROWS_PORT_KEY = "onboardingHistory.historyRows()";
 
-const GitBlobSchema = z.string().regex(/^[0-9a-f]{40}$/u);
-const LegacySelectorProvenanceSchema = z.strictObject({
-  commit: z.literal(LEGACY_COMMIT),
-  path: z.literal("src/systems/crm/selectors.ts"),
-  key: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u),
-  sourceLine: z.number().int().positive(),
-  blob: GitBlobSchema,
-});
+const SelectorKeySchema = z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u);
 
 export const CrmLocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("css"), selector: z.string().min(1) }),
@@ -123,7 +114,7 @@ const ElementDefinitionSchema = z.strictObject({
   locator: CrmLocatorRecipeSchema,
   requiredStates: z.array(PageStateIdSchema),
   verification: UiVerificationSchema,
-  provenance: LegacySelectorProvenanceSchema,
+  selectorKey: SelectorKeySchema,
   supersedes: z.array(ElementIdSchema),
 });
 
@@ -189,15 +180,7 @@ function verification(scenario: string, legacyKey: string) {
   };
 }
 
-function provenance(key: string, sourceLine: number) {
-  return {
-    commit: LEGACY_COMMIT,
-    path: "src/systems/crm/selectors.ts" as const,
-    key,
-    sourceLine,
-    blob: CRM_SELECTOR_BLOB,
-  };
-}
+
 
 export const CRM_UI_REGISTRY = deepFreeze(CrmUiRegistrySchema.parse({
   system: "crm",
@@ -240,7 +223,7 @@ export const CRM_UI_REGISTRY = deepFreeze(CrmUiRegistrySchema.parse({
       locator: { kind: "css", selector: "table tbody tr" },
       requiredStates: [CRM_ONBOARDING_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, SEARCH_ROWS_PORT_KEY),
-      provenance: provenance(SEARCH_ROWS_PORT_KEY, 18),
+      selectorKey: SEARCH_ROWS_PORT_KEY,
       supersedes: [],
     },
     {
@@ -259,7 +242,7 @@ export const CRM_UI_REGISTRY = deepFreeze(CrmUiRegistrySchema.parse({
       },
       requiredStates: [CRM_ONBOARDING_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, SEARCH_CELLS_PORT_KEY),
-      provenance: provenance(SEARCH_CELLS_PORT_KEY, 36),
+      selectorKey: SEARCH_CELLS_PORT_KEY,
       supersedes: [],
     },
     {
@@ -278,7 +261,7 @@ export const CRM_UI_REGISTRY = deepFreeze(CrmUiRegistrySchema.parse({
       },
       requiredStates: [CRM_ONBOARDING_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, SEARCH_LINK_PORT_KEY),
-      provenance: provenance(SEARCH_LINK_PORT_KEY, 45),
+      selectorKey: SEARCH_LINK_PORT_KEY,
       supersedes: [],
     },
     {
@@ -297,7 +280,7 @@ export const CRM_UI_REGISTRY = deepFreeze(CrmUiRegistrySchema.parse({
       },
       requiredStates: [CRM_ONBOARDING_RECORD_READY],
       verification: verification(RECORD_SCENARIO, RECORD_FIELD_PORT_KEY),
-      provenance: provenance(RECORD_FIELD_PORT_KEY, 57),
+      selectorKey: RECORD_FIELD_PORT_KEY,
       supersedes: [],
     },
     {
@@ -312,7 +295,7 @@ export const CRM_UI_REGISTRY = deepFreeze(CrmUiRegistrySchema.parse({
       locator: { kind: "css", selector: "table.detailList tr" },
       requiredStates: [CRM_ONBOARDING_HISTORY_READY],
       verification: verification(HISTORY_SCENARIO, HISTORY_ROWS_PORT_KEY),
-      provenance: provenance(HISTORY_ROWS_PORT_KEY, 176),
+      selectorKey: HISTORY_ROWS_PORT_KEY,
       supersedes: [],
     },
   ],
@@ -570,7 +553,7 @@ export function auditCrmUiEvidenceBindings(input: unknown): readonly string[] {
     }
   }
   for (const element of CRM_UI_REGISTRY.elements) {
-    const binding = bindingsByRow.get(portRowKey({ system: "crm", legacyKey: element.provenance.key }));
+    const binding = bindingsByRow.get(portRowKey({ system: "crm", legacyKey: element.selectorKey }));
     if (binding === undefined || binding.canonicalId !== element.id) {
       issues.push(`${element.id} does not resolve to its exact CRM ported row`);
       continue;

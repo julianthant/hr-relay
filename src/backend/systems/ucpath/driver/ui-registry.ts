@@ -79,8 +79,6 @@ import {
 } from "../../../../models/ui/ucpath-ss-smart-hr.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
-const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
-const UCPATH_SELECTOR_BLOB = "695d88fcc7a108f262b91b45eb1b9a276deaf427";
 const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json";
 const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/person-org.live.json";
 const SEARCH_SCENARIO = "ui/ucpath-person-org-search-eid-input";
@@ -128,16 +126,7 @@ const TRANSACTION_COMMENTS_PORT_KEY = "comments.initiatorCommentsTextarea()";
 const SS_EMPLID_PORT_KEY = "ssSmartHRTransactions.emplIdInput()";
 const SS_SEARCH_BUTTON_PORT_KEY = "ssSmartHRTransactions.searchButton()";
 
-const GitBlobSchema = z.string().regex(/^[0-9a-f]{40}$/);
-const LegacySelectorProvenanceSchema = z.strictObject({
-  commit: z.literal(LEGACY_COMMIT),
-  path: z.literal("src/systems/ucpath/selectors.ts"),
-  key: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/),
-  sourceLine: z.number().int().positive(),
-  blob: GitBlobSchema,
-
-  narrowedFromLegacy: z.string().min(1).optional(),
-});
+const SelectorKeySchema = z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/);
 const UiPortContextSchema = z.enum([
   "search-results-view-toggle",
   "employment-instances-view-toggle",
@@ -203,7 +192,7 @@ const ElementDefinitionSchema = z.strictObject({
   locator: LocatorRecipeSchema,
   requiredStates: z.array(PageStateIdSchema),
   verification: UiVerificationSchema,
-  provenance: LegacySelectorProvenanceSchema,
+  selectorKey: SelectorKeySchema,
   portContext: UiPortContextSchema.optional(),
   supersedes: z.array(ElementIdSchema),
 });
@@ -237,7 +226,7 @@ const DriverRootRecipeSchema = z.strictObject({
   kind: z.literal("content-frame"),
   selector: z.literal("#main_target_win0"),
   verification: UiVerificationSchema,
-  provenance: LegacySelectorProvenanceSchema,
+  selectorKey: SelectorKeySchema,
 });
 
 export const UiRegistrySchema = z.strictObject({
@@ -301,16 +290,7 @@ function verification(scenario: string, legacyKey: string) {
   };
 }
 
-function selectorProvenance(key: string, sourceLine: number, narrowedFromLegacy?: string) {
-  return {
-    commit: LEGACY_COMMIT,
-    path: "src/systems/ucpath/selectors.ts" as const,
-    key,
-    sourceLine,
-    blob: UCPATH_SELECTOR_BLOB,
-    ...(narrowedFromLegacy === undefined ? {} : { narrowedFromLegacy }),
-  };
-}
+
 
 
 function receiptVerification(legacyKey: string) {
@@ -340,13 +320,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
     kind: "content-frame",
     selector: "#main_target_win0",
     verification: verification(SEARCH_SCENARIO, "getContentFrame()"),
-    provenance: {
-      commit: LEGACY_COMMIT,
-      path: "src/systems/ucpath/selectors.ts",
-      key: "getContentFrame()",
-      sourceLine: 41,
-      blob: UCPATH_SELECTOR_BLOB,
-    },
+    selectorKey: "getContentFrame()",
   },
   screens: [
     {
@@ -422,7 +396,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "[role=\"link\"][steplabel=\"Person Organizational Summary\"]" },
       requiredStates: [],
       verification: verification(SEARCH_SCENARIO, NAVIGATION_PORT_KEY),
-      provenance: selectorProvenance(NAVIGATION_PORT_KEY, 684),
+      selectorKey: NAVIGATION_PORT_KEY,
       supersedes: [],
     },
     {
@@ -440,7 +414,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#UC_ORG_SUM_VW_EMPLID" },
       requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, INPUT_PORT_KEY),
-      provenance: selectorProvenance(INPUT_PORT_KEY, 908),
+      selectorKey: INPUT_PORT_KEY,
       supersedes: [],
     },
     {
@@ -457,7 +431,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#UC_ORG_SUM_VW_PARTNER_LAST_NAME" },
       requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, LAST_NAME_PORT_KEY),
-      provenance: selectorProvenance(LAST_NAME_PORT_KEY, 915),
+      selectorKey: LAST_NAME_PORT_KEY,
       supersedes: [],
     },
     {
@@ -475,7 +449,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#UC_ORG_SUM_VW_NAME_DISPLAY" },
       requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, GIVEN_NAME_PORT_KEY),
-      provenance: selectorProvenance(GIVEN_NAME_PORT_KEY, 923),
+      selectorKey: GIVEN_NAME_PORT_KEY,
       supersedes: [],
     },
     {
@@ -492,7 +466,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#PTS_CFG_CL_WRK_PTS_SRCH_BTN" },
       requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, SEARCH_BUTTON_PORT_KEY),
-      provenance: selectorProvenance(SEARCH_BUTTON_PORT_KEY, 939),
+      selectorKey: SEARCH_BUTTON_PORT_KEY,
       supersedes: [],
     },
     {
@@ -510,7 +484,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#PTS_CRITTEXT_DISP" },
       requiredStates: [UCPATH_PERSON_ORG_NO_RESULTS],
       verification: verification(RESULTS_SCENARIO, NO_RESULTS_PORT_KEY),
-      provenance: selectorProvenance(NO_RESULTS_PORT_KEY, 1028),
+      selectorKey: NO_RESULTS_PORT_KEY,
       supersedes: [],
     },
     {
@@ -527,7 +501,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "table[id=\"tdgbrPTS_CFG_CL_STD_RSL$0\"]" },
       requiredStates: [UCPATH_PERSON_ORG_RESULTS_READY],
       verification: verification(RESULTS_SCENARIO, RESULTS_GRID_PORT_KEY),
-      provenance: selectorProvenance(RESULTS_GRID_PORT_KEY, 1042),
+      selectorKey: RESULTS_GRID_PORT_KEY,
       supersedes: [],
     },
     {
@@ -547,7 +521,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       },
       requiredStates: [UCPATH_PERSON_ORG_RESULTS_READY],
       verification: verification(RESULTS_SCENARIO, VIEW_ALL_PORT_KEY),
-      provenance: selectorProvenance(VIEW_ALL_PORT_KEY, 1035),
+      selectorKey: VIEW_ALL_PORT_KEY,
       portContext: "search-results-view-toggle",
       supersedes: [],
     },
@@ -569,7 +543,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       },
       requiredStates: [UCPATH_PERSON_ORG_RESULTS_READY],
       verification: verification(RESULTS_SCENARIO, DRILL_IN_PORT_KEY),
-      provenance: selectorProvenance(DRILL_IN_PORT_KEY, 1049),
+      selectorKey: DRILL_IN_PORT_KEY,
       supersedes: [],
     },
     {
@@ -586,7 +560,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#PERSON_NPC_VW_EMPLID" },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, DISPLAY_PORT_KEY),
-      provenance: selectorProvenance(DISPLAY_PORT_KEY, 959),
+      selectorKey: DISPLAY_PORT_KEY,
       supersedes: [],
     },
     {
@@ -604,7 +578,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#PERSON_NAME_NAME" },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, NAME_DISPLAY_PORT_KEY),
-      provenance: selectorProvenance(NAME_DISPLAY_PORT_KEY, 977),
+      selectorKey: NAME_DISPLAY_PORT_KEY,
       supersedes: [],
     },
     {
@@ -622,7 +596,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "table[id^=\"tdgbrPER_ASGN_EMP_VW$\"]" },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, ASSIGNMENTS_GRID_PORT_KEY),
-      provenance: selectorProvenance(ASSIGNMENTS_GRID_PORT_KEY, 989),
+      selectorKey: ASSIGNMENTS_GRID_PORT_KEY,
       supersedes: [],
     },
     {
@@ -642,7 +616,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, VIEW_ALL_PORT_KEY),
-      provenance: selectorProvenance(VIEW_ALL_PORT_KEY, 1035),
+      selectorKey: VIEW_ALL_PORT_KEY,
       portContext: "employment-instances-view-toggle",
       supersedes: [],
     },
@@ -660,7 +634,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "role", role: "button", name: "Return to Search", exact: true },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, RETURN_PORT_KEY),
-      provenance: selectorProvenance(RETURN_PORT_KEY, 1057),
+      selectorKey: RETURN_PORT_KEY,
       supersedes: [],
     },
     {
@@ -679,16 +653,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#UC_SS_TRANSACT_UC_TRANSACT_ID" },
       requiredStates: [UCPATH_SS_SMART_HR_TRANSACTION_READY],
       verification: receiptVerification(RECEIPT_PORT_KEY),
-      provenance: selectorProvenance(
-        RECEIPT_PORT_KEY,
-        1379,
-        "legacy's only transaction-id anchor on this page is the RESULTS-GRID row "
-        + "(tr[id^=trPTS_CFG_CL_STD_RSL] filtered by id, .or(link named id)); the rebuild binds the "
-        + "DETAIL page's display field instead, because the grid is capped at 100 rendered rows out "
-        + "of a server-side maximum of 300 and its default order is by the search key, not recency — "
-        + "so picking 'my' row out of a grid is a guess, while the keyed deep link is exact. The "
-        + "legacy `.or()` link branch is dropped: no view of this page renders the id as a hyperlink",
-      ),
+      selectorKey: RECEIPT_PORT_KEY,
       supersedes: [],
     },
     {
@@ -706,14 +671,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#UC_SS_TRANSACT_APPR_STATUS" },
       requiredStates: [UCPATH_SS_SMART_HR_TRANSACTION_READY],
       verification: receiptVerification(APPROVAL_STATUS_PORT_KEY),
-      provenance: selectorProvenance(
-        APPROVAL_STATUS_PORT_KEY,
-        1329,
-        "legacy's key is the SEARCH FILTER combobox (#UC_SS_TBH_DVW_APPR_STATUS) whose option list "
-        + "supplied the closed status vocabulary; the rebuild binds the DETAIL page's display span "
-        + "(#UC_SS_TRANSACT_APPR_STATUS), which is the authoritative per-transaction value rather "
-        + "than a query input",
-      ),
+      selectorKey: APPROVAL_STATUS_PORT_KEY,
       supersedes: [],
     },
     {
@@ -731,13 +689,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#HR_TBH_WRK_TBH_TMPL_ID" },
       requiredStates: [UCPATH_SMART_HR_SETUP_READY],
       verification: terminationVerification(WIZARD_SCENARIO, TEMPLATE_PORT_KEY),
-      provenance: selectorProvenance(
-        TEMPLATE_PORT_KEY,
-        59,
-        "legacy scopes getByRole(textbox, { name: 'Select Template' }) to the PeopleSoft content "
-        + "frame; the Smart HR wizard renders no iframe at all, so the frame-scoped recipe cannot "
-        + "resolve and the live stable id is bound instead",
-      ),
+      selectorKey: TEMPLATE_PORT_KEY,
       supersedes: [],
     },
     {
@@ -755,14 +707,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#UC_HR_TBH_WRK_TRANSACTION_DATE" },
       requiredStates: [UCPATH_SMART_HR_SETUP_READY],
       verification: terminationVerification(WIZARD_SCENARIO, TRANSACTION_DATE_PORT_KEY),
-      provenance: selectorProvenance(
-        TRANSACTION_DATE_PORT_KEY,
-        66,
-        "legacy names this control 'Effective Date' and scopes it to the content frame; the live "
-        + "wizard labels it Transaction Date and renders no iframe, so the stable id is bound and "
-        + "the semantic id says transaction-date to stop it being confused with the JOB effective "
-        + "date on the next page (#HR_TBH_WRK_JOB_EFFDT), which is a different field",
-      ),
+      selectorKey: TRANSACTION_DATE_PORT_KEY,
       supersedes: [],
     },
     {
@@ -780,11 +725,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#HR_TBH_WRK_TBH_ADD" },
       requiredStates: [UCPATH_SMART_HR_SETUP_READY],
       verification: terminationVerification(WIZARD_SCENARIO, CREATE_TRANSACTION_PORT_KEY),
-      provenance: selectorProvenance(
-        CREATE_TRANSACTION_PORT_KEY,
-        73,
-        "same frame-scoping narrowing as the template input; live exactly one node",
-      ),
+      selectorKey: CREATE_TRANSACTION_PORT_KEY,
       supersedes: [],
     },
     {
@@ -802,12 +743,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#HR_TBH_WRK_DELETE_BTN" },
       requiredStates: [UCPATH_SMART_HR_SETUP_READY],
       verification: terminationVerification(SWEEP_SCENARIO, DELETE_SELECTED_PORT_KEY),
-      provenance: selectorProvenance(
-        DELETE_SELECTED_PORT_KEY,
-        148,
-        "legacy matches the accessible name inside the content frame; live the control is an "
-        + "<input> with the stable id #HR_TBH_WRK_DELETE_BTN on a frameless page",
-      ),
+      selectorKey: DELETE_SELECTED_PORT_KEY,
       supersedes: [],
     },
     {
@@ -826,13 +762,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       requiredStates: [UCPATH_SMART_HR_DETAILS_READY],
       verification: terminationVerification(WIZARD_SCENARIO, SS_EMPLID_PORT_KEY),
       portContext: "smart-hr-wizard-details",
-      provenance: selectorProvenance(
-        SS_EMPLID_PORT_KEY,
-        1307,
-        "legacy fills the WIZARD's Empl ID with the SS Smart HR SEARCH form's key; live they are "
-        + "two different controls (#HR_TBH_WRK_EMPLID_PROMPT2 here, #UC_SS_TBH_DVW_EMPLID on the "
-        + "search form), so the one legacy row binds both by context",
-      ),
+      selectorKey: SS_EMPLID_PORT_KEY,
       supersedes: [],
     },
     {
@@ -850,12 +780,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#HR_TBH_WRK_ACTION_REASON" },
       requiredStates: [UCPATH_SMART_HR_DETAILS_READY],
       verification: terminationVerification(WIZARD_SCENARIO, REASON_CODE_PORT_KEY),
-      provenance: selectorProvenance(
-        REASON_CODE_PORT_KEY,
-        80,
-        "legacy uses getByLabel('Reason Code') inside the content frame; the live control is "
-        + "labelled Action Reason on a frameless page, so the stable id is bound",
-      ),
+      selectorKey: REASON_CODE_PORT_KEY,
       supersedes: [],
     },
     {
@@ -872,12 +797,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#HR_TBH_WRK_TBH_NEXT" },
       requiredStates: [UCPATH_SMART_HR_DETAILS_READY],
       verification: terminationVerification(WIZARD_SCENARIO, CONTINUE_PORT_KEY),
-      provenance: selectorProvenance(
-        CONTINUE_PORT_KEY,
-        86,
-        "legacy's own comment already records the id (HR_TBH_WRK_TBH_NEXT) and its JS fallback "
-        + "submits that exact action; the rebuild binds the id directly on a frameless page",
-      ),
+      selectorKey: CONTINUE_PORT_KEY,
       supersedes: [],
     },
     {
@@ -898,7 +818,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       },
       requiredStates: [UCPATH_SMART_HR_INFORMATION_READY],
       verification: terminationVerification(WIZARD_SCENARIO, OVERRIDE_LDW_PORT_KEY),
-      provenance: selectorProvenance(OVERRIDE_LDW_PORT_KEY, 314),
+      selectorKey: OVERRIDE_LDW_PORT_KEY,
       supersedes: [],
     },
     {
@@ -916,7 +836,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "input[id^=\"HR_TBH_SCR_WRK_TBH_DATE$\"]" },
       requiredStates: [UCPATH_SMART_HR_INFORMATION_READY],
       verification: terminationVerification(WIZARD_SCENARIO, LAST_DATE_WORKED_PORT_KEY),
-      provenance: selectorProvenance(LAST_DATE_WORKED_PORT_KEY, 327),
+      selectorKey: LAST_DATE_WORKED_PORT_KEY,
       supersedes: [],
     },
     {
@@ -933,14 +853,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#HR_TBH_WRK_DESCRLONG_NOTES" },
       requiredStates: [UCPATH_SMART_HR_INFORMATION_READY],
       verification: terminationVerification(WIZARD_SCENARIO, INITIATOR_COMMENTS_PORT_KEY),
-      provenance: selectorProvenance(
-        INITIATOR_COMMENTS_PORT_KEY,
-        286,
-        "legacy's two comment keys are named the OPPOSITE way round to the live labels: its "
-        + "`commentsTextarea` is #HR_TBH_WRK_DESCRLONG_NOTES (live: Initiator Comments) and its "
-        + "`initiatorCommentsTextarea` is #UC_SS_TRANSACT_COMMENTS (live: transaction comments). "
-        + "The ids are bound verbatim and the semantic names follow the live labels",
-      ),
+      selectorKey: INITIATOR_COMMENTS_PORT_KEY,
       supersedes: [],
     },
     {
@@ -957,12 +870,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#UC_SS_TRANSACT_COMMENTS" },
       requiredStates: [UCPATH_SMART_HR_INFORMATION_READY],
       verification: terminationVerification(WIZARD_SCENARIO, TRANSACTION_COMMENTS_PORT_KEY),
-      provenance: selectorProvenance(
-        TRANSACTION_COMMENTS_PORT_KEY,
-        293,
-        "see the initiator-comments note: legacy's two comment key NAMES are swapped relative to "
-        + "the live labels, so the ids are bound verbatim and the semantic names follow the page",
-      ),
+      selectorKey: TRANSACTION_COMMENTS_PORT_KEY,
       supersedes: [],
     },
     {
@@ -980,13 +888,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#HR_TBH_WRK_TBH_SAVE" },
       requiredStates: [UCPATH_SMART_HR_INFORMATION_READY],
       verification: terminationVerification(WIZARD_SCENARIO, SAVE_SUBMIT_PORT_KEY),
-      provenance: selectorProvenance(
-        SAVE_SUBMIT_PORT_KEY,
-        121,
-        "legacy takes .first() of an accessible-name match inside the content frame because the "
-        + "name repeats at the bottom of every tab; the live frameless page carries exactly one "
-        + "#HR_TBH_WRK_TBH_SAVE, so the ambiguity the .first() papered over does not exist",
-      ),
+      selectorKey: SAVE_SUBMIT_PORT_KEY,
       supersedes: [],
     },
     {
@@ -1005,13 +907,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       requiredStates: [UCPATH_SS_SMART_HR_SEARCH_READY],
       verification: terminationVerification(SS_SEARCH_SCENARIO, SS_EMPLID_PORT_KEY),
       portContext: "ss-smart-hr-search",
-      provenance: selectorProvenance(
-        SS_EMPLID_PORT_KEY,
-        1307,
-        "the exact accessible name matches zero live because PeopleSoft appends the operator "
-        + "('Empl ID begins with'); the stable id is bound, and the same legacy key also binds the "
-        + "WIZARD's Page-B Empl ID under a different context",
-      ),
+      selectorKey: SS_EMPLID_PORT_KEY,
       supersedes: [],
     },
     {
@@ -1028,13 +924,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       locator: { kind: "css", selector: "#PTS_CFG_CL_WRK_PTS_SRCH_BTN" },
       requiredStates: [UCPATH_SS_SMART_HR_SEARCH_READY],
       verification: terminationVerification(SS_SEARCH_SCENARIO, SS_SEARCH_BUTTON_PORT_KEY),
-      provenance: selectorProvenance(
-        SS_SEARCH_BUTTON_PORT_KEY,
-        1357,
-        "PeopleSoft reuses this button id across Find-an-Existing-Value forms, so the same "
-        + "SELECTOR also backs ucpath.person-org.search-button on a different screen; the two are "
-        + "distinct elements from distinct legacy keys and neither is a fallback for the other",
-      ),
+      selectorKey: SS_SEARCH_BUTTON_PORT_KEY,
       supersedes: [],
     },
   ],
@@ -1499,12 +1389,12 @@ export function auditUcpathUiEvidenceBindings(input: unknown): readonly string[]
     }
   }
 
-  const rootBinding = bindingsByRow.get(portRowKey({ system: "ucpath", legacyKey: UCPATH_UI_REGISTRY.root.provenance.key }));
+  const rootBinding = bindingsByRow.get(portRowKey({ system: "ucpath", legacyKey: UCPATH_UI_REGISTRY.root.selectorKey }));
   if (!rootBinding || rootBinding.disposition !== "driver-internal") {
     issues.push("UCPath driver root must resolve to its driver-internal port-map row");
   }
   for (const element of UCPATH_UI_REGISTRY.elements) {
-    const binding = bindingsByRow.get(portRowKey({ system: element.system, legacyKey: element.provenance.key }));
+    const binding = bindingsByRow.get(portRowKey({ system: element.system, legacyKey: element.selectorKey }));
     const canonicalIds = binding?.disposition === "ported"
       ? "canonicalBindings" in binding
         ? binding.canonicalBindings.map(({ canonicalId }) => canonicalId)

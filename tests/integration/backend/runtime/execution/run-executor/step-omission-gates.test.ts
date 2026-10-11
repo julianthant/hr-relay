@@ -88,7 +88,7 @@ function fixture(id: string, code: string, steps: (author: Author) => ReturnType
 }
 
 
-const gateInsideOmittableStep = fixture("d313-gate-inside-omitted-step", "dg", ({ task, gate, group, result }) => {
+const gateInsideOmittableStep = fixture("omission-gate-inside-omitted-step", "dg", ({ task, gate, group, result }) => {
   const search = task({ id: "search", contract: SearchPersonOrg, label: "Search", replay: "checkpoint" }, [], ({ input }) => ({
     kind: "by-eid" as const, emplId: input.emplId,
   }));
@@ -107,7 +107,7 @@ const gateInsideOmittableStep = fixture("d313-gate-inside-omitted-step", "dg", (
 
 describe("definition-time omission completeness", () => {
   it("refuses an omittable step whose gate is read from outside the step, naming the mandatory-verifier rule", () => {
-    assert.throws(() => fixture("d313-gate-read-outside", "dgr", ({ task, gate, group, result }) => {
+    assert.throws(() => fixture("omission-gate-read-outside", "dgr", ({ task, gate, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({
         kind: "by-eid" as const, emplId: input.emplId,
       }));
@@ -132,7 +132,7 @@ describe("definition-time omission completeness", () => {
 
   it("refuses an omittable step whose unproduced task is read from outside, and a producer naming a non-member or a gate", () => {
     const unproduced: StepOmissionDeclaration = { form: { fields: [] }, produces: {} };
-    assert.throws(() => fixture("d313-task-read-outside", "dtr", ({ task, group, result }) => {
+    assert.throws(() => fixture("omission-task-read-outside", "dtr", ({ task, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({
         kind: "by-eid" as const, emplId: input.emplId,
       }));
@@ -153,7 +153,7 @@ describe("definition-time omission completeness", () => {
     }), /reads its task entry "verify", which omitting the step leaves unread; rebuild "verify" from the step's omission form/u);
 
     const foreignProducer: StepOmissionDeclaration = { form: { fields: [] }, produces: { search: () => ({}) } };
-    assert.throws(() => fixture("d313-foreign-producer", "dfp", ({ task, group, result }) => {
+    assert.throws(() => fixture("omission-foreign-producer", "dfp", ({ task, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({
         kind: "by-eid" as const, emplId: input.emplId,
       }));
@@ -170,7 +170,7 @@ describe("definition-time omission completeness", () => {
     }), /step "deciding" omission produces "search", which is not an entry of that step/u);
 
     const gateProducer: StepOmissionDeclaration = { form: { fields: [] }, produces: { review: () => ({ approved: true }) } };
-    assert.throws(() => fixture("d313-gate-producer", "dgp", ({ task, gate, group, result }) => {
+    assert.throws(() => fixture("omission-gate-producer", "dgp", ({ task, gate, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({
         kind: "by-eid" as const, emplId: input.emplId,
       }));

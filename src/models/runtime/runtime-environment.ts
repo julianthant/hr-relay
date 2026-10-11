@@ -6,8 +6,7 @@ import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS } from "../config/secrets.js
 
 const EnvironmentKeySchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
 const EnvironmentFamilyPrefixSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
-/** A source path in one of the TWO repositories this inventory spans; both have a `src/`, so legacy-repo paths carry an explicit `legacy:` scheme and unprefixed paths are this repo's. */
-const SourcePathSchema = z.string().regex(/^(?:legacy:)?[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*\.(?:[cm]?[jt]sx?)$/);
+const SourcePathSchema = z.string().regex(/^[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*\.(?:[cm]?[jt]sx?)$/);
 export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
     key: EnvironmentKeySchema,
@@ -66,8 +65,6 @@ const ComputedReaderClosedTargetsSchema = z.strictObject({
 const ComputedReaderBulkTargetSchema = z.strictObject({
   kind: z.literal("bulk-pass-through"),
   boundary: z.enum([
-    "legacy-daemon-child",
-    "legacy-settings-projection",
     "dashboard-child-processes",
     "secure-local-environment-admission",
     "test-command-child",
@@ -91,7 +88,7 @@ export const ComputedEnvironmentReaderSchema = z.strictObject({
   operation: z.literal("read"),
   occurrenceCount: z.number().int().positive(),
   expressionFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  classification: z.enum(["legacy-production", "target-accessor", "target-bootstrap", "test-only"]),
+  classification: z.enum(["target-accessor", "target-bootstrap", "test-only"]),
   owner: SourcePathSchema,
   targets: z.union([ComputedReaderClosedTargetsSchema, ComputedReaderBulkTargetSchema, WorkerProcessMechanicsTargetsSchema]),
 }).superRefine((reader, context) => {
@@ -100,45 +97,10 @@ export const ComputedEnvironmentReaderSchema = z.strictObject({
     context.addIssue({ code: "custom", path: ["targets"], message: "unresolved reader requires closed exact/family targets" });
   }
   if (reader.accessKind === "bulk" && reader.targets.kind !== "bulk-pass-through" && reader.classification !== "target-accessor") {
-    context.addIssue({ code: "custom", path: ["targets"], message: "legacy bulk reader requires an explicit pass-through boundary" });
+    context.addIssue({ code: "custom", path: ["targets"], message: "bulk reader requires an explicit pass-through boundary" });
   }
 });
 
-const CONFIG_ENVIRONMENT_KEYS = [
-  "ANNUAL_DATES_END",
-  "DEBUG_SCREENSHOTS",
-  "HRAUTO_CRM_TEST_URL",
-  "HRAUTO_DAEMON_IDLE_MS",
-  "HRAUTO_DAEMON_IDLE_REPOLL_MS",
-  "HRAUTO_DEFAULT_WORKERS",
-  "HRAUTO_HEALTH_MONITOR_MAX_REFRESH",
-  "HRAUTO_HEALTH_MONITOR_MAX_REOPEN",
-  "HRAUTO_HEALTH_MONITOR_TICK_MS",
-  "HRAUTO_I9_TEST_URL",
-  "HRAUTO_KUALI_TEST_URL",
-  "HRAUTO_NAVIGATION_RETRIES",
-  "HRAUTO_NEW_KRONOS_TEST_URL",
-  "HRAUTO_OLD_KRONOS_TEST_URL",
-  "HRAUTO_ONBASE_TEST_URL",
-  "HRAUTO_SEPARATION_TERMINATION_WINDOW_DAYS",
-  "HRAUTO_SERVICENOW_TEST_URL",
-  "HRAUTO_SHAREPOINT_TEST_URL",
-  "HRAUTO_UCPATH_TEST_URL",
-  "HRAUTO_UKG_NAVIGATION_MS",
-  "HR_AUTOMATION_DUO_WEBAUTHN",
-  "KRONOS_DEFAULT_END_DATE",
-  "KRONOS_DEFAULT_START_DATE",
-  "OCR_BACKOFF_BASE_MS",
-  "OCR_BACKOFF_CAP_MS",
-  "OCR_DISAMBIG_CONCURRENCY",
-  "OCR_MAX_VALIDATION_RETRIES",
-  "OCR_PAGE_CONCURRENCY",
-  "OCR_PAGE_MAX_WAIT_MS",
-  "OCR_SECOND_OPINION_MAX",
-  "OCR_SUGGEST_CONCURRENCY",
-  "OCR_TIER1_PATIENCE_MS",
-  "TIMEKEEPER_NAME",
-] as const;
 
 const SECRET_ENVIRONMENT_SPECS = [
   { key: "UCPATH_USER_ID", classification: "direct-identifier" },
@@ -157,19 +119,15 @@ const PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_GEMINI_MODELS", "OCR_GROQ_MODELS", "OCR_MISTRAL_MODELS",
   "OCR_OPENROUTER_MODELS", "OCR_SAMBANOVA_MODELS",
 ] as const;
-const LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
+const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_GEMINI_MODEL", "OCR_GROQ_MODEL", "OCR_MISTRAL_MODEL",
   "OCR_OPENROUTER_MODEL", "OCR_SAMBANOVA_MODEL",
 ] as const;
 
-const TEST_ONLY_ENVIRONMENT_KEYS = [
-  "HRAUTO_E2E_STUBS", "HRAUTO_LEGACY_REPO", "HR_DRYRUN_DOC_ID", "HR_SOAK_ITERATIONS",
-  "HR_TEARDOWN_SOAK_ITERATIONS", "HR_TEST_HEADED", "PARITY_UPDATE", "SEL_SESSION", "TZ",
-  "__NUMENV_TEST__",
-] as const;
+const TEST_ONLY_ENVIRONMENT_KEYS = ["PARITY_UPDATE", "TZ"] as const;
 
 const INERT_RETIRED_ENVIRONMENT_KEYS = [
-  ...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS,
+  ...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS,
   "CAPTURE_NGROK", "CAPTURE_NGROK_URL", "CAPTURE_PUBLIC_URL",
   "DEBUG", "E2E_DEBUG",
   "HRAUTO_DASHBOARD_ALLOWED_ORIGINS", "HRAUTO_DASHBOARD_ALLOW_LAN",
@@ -193,19 +151,13 @@ export const RETIRED_ENVIRONMENT_KEYS = deepFreeze(
 const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set();
 
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
-  // The guard lane locates the legacy repo it audits. Test-lane only —
-  // no rebuild RUNTIME module may read across the split.
-  HRAUTO_LEGACY_REPO: ["tests/unit/architecture/helpers/guard-files.ts"],
-  HRAUTO_E2E_STUBS: ["legacy:src/core/daemon/client.ts", "legacy:src/core/e2e/stub-workflows.ts", "legacy:src/core/workflow-loaders.ts"],
-  HR_DRYRUN_DOC_ID: ["legacy:tests/live/separations-dryrun.test.ts"],
-  HR_SOAK_ITERATIONS: ["legacy:tests/delegation/concurrency-soak.test.ts"],
-  HR_TEARDOWN_SOAK_ITERATIONS: ["legacy:tests/delegation/daemon-teardown-soak.test.ts"],
-  HR_TEST_HEADED: ["legacy:tests/live/auth.test.ts", "legacy:tests/live/onbase-import.test.ts", "legacy:tests/live/separations-collect.test.ts", "legacy:tests/live/separations-dryrun.test.ts", "legacy:tests/live/session-launch-multi.test.ts"],
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
-  SEL_SESSION: ["duo-autopilot/launch-selector-browser.mjs", "legacy:duo-autopilot/launch-selector-browser.mjs"],
-  TZ: ["legacy:tests/env-bootstrap.ts"],
-  __NUMENV_TEST__: ["legacy:tests/unit/utils/env.test.ts"],
-} as const satisfies Record<(typeof TEST_ONLY_ENVIRONMENT_KEYS)[number], readonly string[]>;
+  TZ: [
+    "tests/integration/backend/runs/projections/run-summary/derivation.test.ts",
+    "tests/integration/backend/storage/events/jsonl-streams/dashboard-perf-fixture-shape.test.ts",
+    "tests/integration/backend/storage/sqlite/migrations/storage-restore-drill.test.ts",
+  ],
+} as const;
 
 export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecSchema.array().parse([
   {
@@ -253,79 +205,9 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
   })),
 ]));
 
-export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilySpecSchema.array().parse([
-  { prefix: "GEMINI_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
-  { prefix: "GROQ_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
-  { prefix: "MISTRAL_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
-  { prefix: "OPEN_ROUTER_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
-  { prefix: "SAMBANOVA_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
-  { prefix: "CEREBRAS_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:scripts/ocr/probe-providers.ts"] },
-  { prefix: "COHERE_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:scripts/ocr/probe-providers.ts"] },
-  { prefix: "OCRSPACE_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:scripts/ocr/probe-providers.ts"] },
-  { prefix: "ZEP_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:scripts/ocr/probe-providers.ts"] },
-]));
+export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilySpecSchema.array().parse([]));
 
-export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
-  { key: "ANNUAL_DATES_END", paths: ["legacy:src/config.ts"] },
-  { key: "CAPTURE_NGROK", paths: ["legacy:src/cli.ts"] },
-  { key: "CAPTURE_NGROK_URL", paths: ["legacy:src/cli.ts"] },
-  { key: "CAPTURE_PUBLIC_URL", paths: ["legacy:src/cli.ts", "legacy:src/tracker/dashboard/hono/app.ts", "legacy:src/tracker/dashboard/hono/routes/capture.ts"] },
-  { key: "DEBUG_SCREENSHOTS", paths: ["legacy:src/systems/new-kronos/navigate.ts", "legacy:src/utils/screenshot.ts"] },
-  { key: "HRAUTO_DASHBOARD_ALLOWED_ORIGINS", paths: ["legacy:src/tracker/dashboard/hono/security.ts"] },
-  { key: "HRAUTO_DASHBOARD_ALLOW_LAN", paths: ["legacy:src/tracker/dashboard/hono/security.ts"] },
-  { key: "HRAUTO_DASHBOARD_DEV_ORIGIN", paths: ["legacy:src/tracker/dashboard/hono/security.ts"] },
-  { key: "HRAUTO_DASHBOARD_HOST", paths: ["legacy:src/tracker/dashboard/hono/security.ts"] },
-  { key: "HRAUTO_DASHBOARD_LAN_PASSWORD", paths: ["legacy:src/tracker/dashboard/hono/security.ts"] },
-  { key: "HRAUTO_E2E_STUBS", paths: ["legacy:src/core/daemon/client.ts", "legacy:src/core/e2e/stub-workflows.ts", "legacy:src/core/workflow-loaders.ts"] },
-  { key: "HRAUTO_ELECTIONS_CSV", paths: ["legacy:src/workflows/kronos-pay-rule/csv-lookup.ts"] },
-  { key: "HRAUTO_NAVIGATION_RETRIES", paths: ["legacy:src/infra/browser/launch.ts"] },
-  { key: "HRAUTO_SEPARATION_TERMINATION_WINDOW_DAYS", paths: ["legacy:src/systems/ucpath/ss-smart-hr.ts"] },
-  { key: "HRAUTO_TRACKER_DIR", paths: ["legacy:src/cli.ts", "legacy:src/config.ts", "legacy:src/core/daemon/daemon.ts", "legacy:src/core/e2e/gates.ts"] },
-  { key: "HR_AUTOMATION_DUO_WEBAUTHN", paths: ["legacy:src/cli-daemon.ts", "legacy:src/cli.ts", "legacy:src/infra/auth/duo-webauthn.ts"] },
-  { key: "HR_AUTOMATION_DUO_WEBAUTHN_CREDENTIAL_PATH", paths: ["legacy:src/infra/auth/duo-webauthn.ts"] },
-  { key: "HR_AUTOMATION_DUO_WEBAUTHN_LOCK_DIR", paths: ["legacy:src/infra/auth/duo-webauthn.ts"] },
-  { key: "HR_AUTOMATION_VOICE_CUES", paths: ["legacy:src/infra/auth/voice-cue.ts"] },
-  { key: "I9_CHECK_TRACKER_PATH", paths: ["legacy:src/config.ts"] },
-  { key: "KRONOS_CALENDAR_BIND_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "KRONOS_CALENDAR_POLL_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "KRONOS_CALENDAR_SETTLE_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "KRONOS_CALENDAR_STEP_TIMEOUT_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "KRONOS_DEFAULT_END_DATE", paths: ["legacy:src/config.ts"] },
-  { key: "KRONOS_DEFAULT_START_DATE", paths: ["legacy:src/config.ts"] },
-  { key: "KRONOS_PICKER_APPLY_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "KRONOS_PICKER_OPEN_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "KRONOS_PICKER_RANGE_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "KRONOS_RANGE_READBACK_POLL_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "KRONOS_RANGE_READBACK_TIMEOUT_MS", paths: ["legacy:src/systems/new-kronos/navigate.ts"] },
-  { key: "OCR_DISAMBIG_CONCURRENCY", paths: ["legacy:src/workflows/ocr/orchestrator.ts"] },
-  { key: "OCR_PAGE_CONCURRENCY", paths: ["legacy:src/services/ocr/per-page.ts"] },
-  { key: "OCR_PAGE_MAX_WAIT_MS", paths: ["legacy:src/services/ocr/per-page.ts"] },
-  { key: "OCR_PROVIDER_ATTEMPT_TIMEOUT_MS", paths: ["legacy:src/services/ocr/per-page.ts"] },
-  { key: "OCR_SECOND_OPINION_MAX", paths: ["legacy:src/workflows/ocr/orchestrator.ts"] },
-  { key: "OCR_SQLITE_DEPENDENCIES", paths: ["legacy:src/workflows/ocr/orchestrator.ts"] },
-  { key: "OCR_SUGGEST_CONCURRENCY", paths: ["legacy:src/workflows/ocr/orchestrator.ts"] },
-  { key: "OCR_TIER1_PATIENCE_MS", paths: ["legacy:src/services/ocr/per-page.ts"] },
-  { key: "OCR_VERIFY_WATCH_TIMEOUT_MS", paths: ["legacy:src/services/ocr/forms/verify.ts"] },
-  { key: "PLAYWRIGHT_BROWSERS_PATH", paths: ["legacy:src/scripts/ops/setup.ts"] },
-  { key: "SEL_SESSION", paths: ["duo-autopilot/launch-selector-browser.mjs", "legacy:duo-autopilot/launch-selector-browser.mjs"] },
-  { key: "TIMEKEEPER_NAME", paths: ["legacy:src/config.ts"] },
-  { key: "UCPATH_PASSWORD", paths: ["legacy:src/utils/env.ts"] },
-  { key: "UCPATH_USER_ID", paths: ["legacy:src/utils/env.ts"] },
-]));
-
-const HISTORICAL_PROVIDER_FAMILIES = [
-  "GEMINI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "OPEN_ROUTER_API_KEY", "SAMBANOVA_API_KEY",
-] as const;
-const PROBE_PROVIDER_FAMILIES = [
-  ...HISTORICAL_PROVIDER_FAMILIES, "CEREBRAS_API_KEY", "COHERE_API_KEY", "OCRSPACE_API_KEY", "ZEP_API_KEY",
-] as const;
-const PROVIDER_MODEL_TARGETS = [...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS] as const;
-const SECRET_EXACT_TARGETS = [
-  "UCPATH_USER_ID",
-  "UCPATH_PASSWORD",
-  "TIMEKEEPER_NAME",
-  "ONBOARDING_ROSTER_URL",
-] as const;
+export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([]));
 
 interface ComputedReaderInput {
   readonly path: string;
@@ -333,7 +215,7 @@ interface ComputedReaderInput {
   readonly accessKind: "unresolved" | "bulk";
   readonly occurrenceCount: number;
   readonly expressionFingerprint: string;
-  readonly classification: "legacy-production" | "target-accessor" | "target-bootstrap" | "test-only";
+  readonly classification: "target-accessor" | "target-bootstrap" | "test-only";
   readonly targets:
     | { readonly kind: "closed-process-mechanics"; readonly exact: readonly (typeof WORKER_PROCESS_MECHANIC_KEYS)[number][] }
     | {
@@ -344,8 +226,6 @@ interface ComputedReaderInput {
   | {
         readonly kind: "bulk-pass-through";
         readonly boundary:
-          | "legacy-daemon-child"
-          | "legacy-settings-projection"
           | "dashboard-child-processes"
           | "secure-local-environment-admission"
           | "test-command-child";
@@ -362,29 +242,8 @@ function computedReader(input: ComputedReaderInput): z.input<typeof ComputedEnvi
   return { ...input, targets, operation: "read", owner: input.path };
 }
 
-const keyPoolTargets = { kind: "closed-targets", exact: [], families: HISTORICAL_PROVIDER_FAMILIES } as const;
-const probePoolTargets = { kind: "closed-targets", exact: [], families: PROBE_PROVIDER_FAMILIES } as const;
 
 export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReaderSchema.array().parse([
-  computedReader({ path: "legacy:scripts/ocr/probe-providers.ts", enclosingSymbol: "readKeys", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "b4215dca8be6208439605ebf023b0d99c8edd39bbc4e770ea89d2f8996b187b9", classification: "legacy-production", targets: probePoolTargets }),
-  computedReader({ path: "legacy:scripts/ocr/probe-providers.ts", enclosingSymbol: "readKeys", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "25f486281cf6b7f139c27ffc95ef10afba8ce6af830997fa88178a9e5d29b11c", classification: "legacy-production", targets: probePoolTargets }),
-  computedReader({ path: "legacy:scripts/ocr/probe-vision.ts", enclosingSymbol: "firstKey", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "b4215dca8be6208439605ebf023b0d99c8edd39bbc4e770ea89d2f8996b187b9", classification: "legacy-production", targets: keyPoolTargets }),
-  computedReader({ path: "legacy:src/core/daemon/registry.ts", enclosingSymbol: "spawnDaemon", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "legacy-production", targets: { kind: "bulk-pass-through", boundary: "legacy-daemon-child", reason: "legacy daemon spawning forwards the inherited environment to its same-runtime child" } }),
-  computedReader({ path: "legacy:src/infra/auth/duo-webauthn.ts", enclosingSymbol: "numericEnv", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["HR_AUTOMATION_DUO_WEBAUTHN_LOCK_STALE_MS", "HR_DUO_FACTOR_TIMEOUT_MS", "HR_DUO_PROMPT_RENDER_GRACE_MS"], families: [] } }),
-  computedReader({ path: "legacy:src/services/llm/text-pool.ts", enclosingSymbol: "readKeys", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "b4215dca8be6208439605ebf023b0d99c8edd39bbc4e770ea89d2f8996b187b9", classification: "legacy-production", targets: keyPoolTargets }),
-  computedReader({ path: "legacy:src/services/llm/text-pool.ts", enclosingSymbol: "readKeys", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "25f486281cf6b7f139c27ffc95ef10afba8ce6af830997fa88178a9e5d29b11c", classification: "legacy-production", targets: keyPoolTargets }),
-  computedReader({ path: "legacy:src/services/ocr/env-keys.ts", enclosingSymbol: "readGeminiKeys", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: [], families: ["GEMINI_API_KEY"] } }),
-  computedReader({ path: "legacy:src/services/ocr/per-page-pool.ts", enclosingSymbol: "readKeys", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "b4215dca8be6208439605ebf023b0d99c8edd39bbc4e770ea89d2f8996b187b9", classification: "legacy-production", targets: keyPoolTargets }),
-  computedReader({ path: "legacy:src/services/ocr/per-page-pool.ts", enclosingSymbol: "readKeys", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "25f486281cf6b7f139c27ffc95ef10afba8ce6af830997fa88178a9e5d29b11c", classification: "legacy-production", targets: keyPoolTargets }),
-  computedReader({ path: "legacy:src/services/ocr/provider-limits.ts", enclosingSymbol: "resolveModelChain", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "f8618e08518953f0787f6591a6e087d798b4798dac003e95d637590497b72844", classification: "legacy-production", targets: { kind: "closed-targets", exact: PROVIDER_MODEL_TARGETS, families: [] } }),
-  computedReader({ path: "legacy:src/services/ocr/provider-limits.ts", enclosingSymbol: "resolveModelChain", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "0dab717481bea1e33b1fc7c3fd365e3ff2cd4abe9bc81fa35e6667fba7ebafab", classification: "legacy-production", targets: { kind: "closed-targets", exact: LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS, families: [] } }),
-  computedReader({ path: "legacy:src/tracker/dashboard/hono/routes/settings.ts", enclosingSymbol: "has", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "a867d2208d468f7a765a91bf4f0e8e80a42cf8ad76951a648d0452a61ff40f86", classification: "legacy-production", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
-  computedReader({ path: "legacy:src/tracker/settings/store.ts", enclosingSymbol: "applyOperatorSettingsToEnv", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "legacy-production", targets: { kind: "bulk-pass-through", boundary: "legacy-settings-projection", reason: "legacy settings projects its closed override schema into the same-runtime environment" } }),
-  computedReader({ path: "legacy:src/utils/env.ts", enclosingSymbol: "numEnv", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "a867d2208d468f7a765a91bf4f0e8e80a42cf8ad76951a648d0452a61ff40f86", classification: "legacy-production", targets: { kind: "closed-targets", exact: [...CONFIG_ENVIRONMENT_KEYS, ...INERT_RETIRED_ENVIRONMENT_KEYS], families: [] } }),
-  computedReader({ path: "legacy:src/utils/log.ts", enclosingSymbol: "envBool", accessKind: "unresolved", occurrenceCount: 2, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["DEBUG", "E2E_DEBUG"], families: [] } }),
-  computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointListHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
-  computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "queueSharePointDownloadJob", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
-  computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointRosterDownloadHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "assertNoMigratedEnvironmentKeys", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: RETIRED_ENVIRONMENT_KEYS, families: [] } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...RETIRED_ENVIRONMENT_KEYS, HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-process-mechanics", exact: WORKER_PROCESS_MECHANIC_KEYS } }),
@@ -397,8 +256,8 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
 
 export const RuntimeEnvironmentRegistrySchema = z.strictObject({
   exact: z.array(RuntimeEnvironmentExactSpecSchema).min(1),
-  families: z.array(RuntimeEnvironmentFamilySpecSchema).min(1),
-  exactReaderOwners: z.array(ExactEnvironmentReaderOwnerSchema).min(1),
+  families: z.array(RuntimeEnvironmentFamilySpecSchema),
+  exactReaderOwners: z.array(ExactEnvironmentReaderOwnerSchema),
   computedReaders: z.array(ComputedEnvironmentReaderSchema).min(1),
 });
 
@@ -489,10 +348,6 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   for (const reader of registry.computedReaders) {
     if (reader.classification === "target-accessor" && reader.path !== "src/models/config/secrets.ts") {
       violations.push(`target computed reader must be owned by src/models/config/secrets.ts: ${reader.path}`);
-    }
-    // Legacy production readers require legacy: paths; unprefixed paths belong to this repository.
-    if (reader.classification === "legacy-production" && !reader.path.startsWith("legacy:")) {
-      violations.push(`legacy computed reader must carry the legacy: scheme: ${reader.path}`);
     }
     if (reader.classification === "target-bootstrap") {
       const isDashboardLauncher = reader.path === "scripts/dev/dashboard.ts"

@@ -50,7 +50,7 @@ describe("the provenance bar uses the demo's identity wording", () => {
     runNumber: { state: "present", value: 12 },
     containment: "root",
     linkedRuns: [],
-    session: { state: "absent", reason: "this fixture predates D269 session grouping" },
+    session: { state: "absent", reason: "This fixture has no run session." },
     facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
     startedAt: OPENED_AT,
     updatedAt: NOW,

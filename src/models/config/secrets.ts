@@ -147,7 +147,7 @@ export function assertNoMigratedEnvironmentKeys(
   if (migrated !== undefined) throw migratedEnvironmentRefusal(migrated);
 }
 
-/** Test-target inputs are no longer protected Settings; their retired environment names are refused by name so an operator is pointed at the ignored private config. */
+/** Test-target environment names refuse before secret access; values belong in the ignored private config. */
 const RETIRED_TEST_TARGET_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(RETIRED_TEST_TARGET_ENVIRONMENT_KEYS);
 export function retiredTestTargetEnvironmentRefusal(key: string): string {
   return `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json, so remove it`;

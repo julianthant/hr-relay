@@ -52,10 +52,8 @@ export const UcpathCreateTermination = defineTaskContract({
       recoveryAbsence: {
         kind: "operator-only",
         reason:
-          "no propagation window has been measured for a UCPath Smart HR submit reaching the SS Smart "
-          + "HR search page: the controlled real commit is still open, waiting on the operator-named "
-          + "canary (separations.md §4f2). A guessed `minSinceFenceMs` on a real termination is exactly "
-          + "the unverified constant D128 forbids, so a post-fence absence parks for a human.",
+          "UCPath Smart HR submission propagation to search has no measured window; "
+          + "post-fence absence requires operator resolution.",
       },
     },
   },

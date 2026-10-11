@@ -1,8 +1,7 @@
 # Current codebase structure
 
 This is the canonical map of the current checked-in implementation homes and dependency direction.
-The assigned brief owns acceptance and final test accounting. Older path diagrams and source-pinned
-excerpts retain their original revision names.
+The assigned brief owns acceptance and final test accounting.
 
 ## Repository and script folders
 
@@ -104,7 +103,7 @@ tests/
 ├── perf/
 ├── support/
 │   ├── fixtures/{dashboard,documents,dry-run,integration,preflight}/
-│   ├── helpers/{architecture,archive-transfer,backend,dashboard,database-foundation,failure-resolution,integration,storage,trust}/
+│   ├── helpers/{architecture,backend,dashboard,database-foundation,failure-resolution,integration,storage,trust}/
 │   └── processes/
 ├── types/
 └── unit/
@@ -116,7 +115,7 @@ tests/
 Architecture fixtures/helpers are colocated under dashboard, logs, models, runs, runtime, storage,
 support, systems and tooling owners. Unit and integration tests follow the same source-family split
 as production code. Shared fixtures, helpers and child-process entrypoints stay under
-`tests/support/`; helpers build fresh native authority and expose its actual timeline, claim and profile ports. Archive and old-format conversion fixtures are absent. Intake integration and parity both use `fixtures/dashboard/fixture-intake-authority.ts`. `scenario/` remains retired. The desktop parity suite remains the screenshot/accessibility
+`tests/support/`; helpers build fresh native authority and expose its actual timeline, claim and profile ports. Archive and old-format conversion fixtures are absent. Activity integration and parity share `fixtures/dashboard/fixture-activity.ts`; intake shares `fixtures/dashboard/fixture-intake-authority.ts`. The desktop parity suite remains the screenshot/accessibility
 contract; its reference files are not refreshed to make wiring pass. Role-derived path helpers do
 not imply current files or coverage. Exact test move counts and retirement dispositions remain with
 the owning evidence records.
@@ -130,7 +129,13 @@ evidence remains checked in. Current selector binding inputs live beside their a
 inventories are outside the repository in task evidence. Provenance-only architecture guards and
 phone-capture/obsolete-upgrade retirement guards are absent. Current field-registry, runtime-dependency,
 operational-isolation and semantic evidence assertions remain with their existing architecture owners.
+Semantic registries keep current selector keys and verified fixture/live evidence bindings. Port commit,
+path and blob records belong in task evidence. Runtime environment inventories describe only current
+repository readers; production isolation remains in `config/runtime-isolation.json`.
 The retained field audit helper is `tests/architecture/models/helpers/canonical-field-registry-audit.ts`.
+Receipt composition tests live in `tests/integration/backend/runs/provenance/evidence-receipt/evidence-receipt-composition.test.ts`;
+step omission gate proofs live in `tests/integration/backend/runtime/execution/run-executor/step-omission-gates.test.ts`.
+Unused earlier receipt-composition snapshots are absent; current receipts derive from complete native evidence.
 The ignored `config/test-data.local.json` remains private local test input.
 
 ## Deferred work and evidence

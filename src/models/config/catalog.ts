@@ -122,12 +122,12 @@ export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(65
 });
 
 export const SETTINGS_CATALOG = deepFreeze(SettingsCatalogSchema.parse(CATALOG_ROWS));
-/** The two retired test-target canary environment names; their catalog rows are gone, so the refusal is pinned here by name. */
+/** Test-target canary environment names are explicitly refused. */
 export const RETIRED_TEST_TARGET_ENVIRONMENT_KEYS = deepFreeze([
   "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
   "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
 ] as const);
-/** The migration edges own these names, including the five retired singular model spellings. */
+/** Environment names explicitly refused by the current configuration boundary. */
 export const RETIRED_ROUTE_ENVIRONMENT_KEYS = deepFreeze([
   "HRAUTO_KUALI_TEST_URL", "HRAUTO_NEW_KRONOS_TEST_URL", "HRAUTO_CRM_TEST_URL",
   "HRAUTO_ONBASE_TEST_URL", "HRAUTO_UCPATH_TEST_URL", "HRAUTO_I9_TEST_URL",

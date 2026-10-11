@@ -49,8 +49,6 @@ import {
 } from "../../../../models/ui/new-kronos-timecard.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
-const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
-const NEW_KRONOS_SELECTOR_BLOB = "4143290c85acf70d0730ad4c1c97b243bbd74208";
 const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json";
 const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json";
 const SEARCH_SCENARIO = "ui/new-kronos-employee-search";
@@ -58,16 +56,7 @@ const TIMECARD_SCENARIO = "ui/new-kronos-timecard-read";
 
 const VERIFIED_AT = "2026-08-12";
 
-const GitBlobSchema = z.string().regex(/^[0-9a-f]{40}$/u);
-const LegacySelectorProvenanceSchema = z.strictObject({
-  commit: z.literal(LEGACY_COMMIT),
-  path: z.literal("src/systems/new-kronos/selectors.ts"),
-  key: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u),
-  sourceLine: z.number().int().positive(),
-  blob: GitBlobSchema,
-  /** A silent narrowing is indistinguishable from a transcription error. */
-  narrowedFromLegacy: z.string().min(1).optional(),
-});
+const SelectorKeySchema = z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u);
 
 // WFD search can render top-level or in its portal iframe depending on navigation.
 export const NewKronosLocatorContextSchema = z.enum(["search-panel", "page"]);
@@ -138,7 +127,7 @@ const ElementDefinitionSchema = z.strictObject({
   locator: NewKronosLocatorRecipeSchema,
   requiredStates: z.array(PageStateIdSchema),
   verification: UiVerificationSchema,
-  provenance: LegacySelectorProvenanceSchema,
+  selectorKey: SelectorKeySchema,
   supersedes: z.array(ElementIdSchema),
 });
 
@@ -211,16 +200,7 @@ function verification(scenario: string, legacyKey: string) {
   };
 }
 
-function provenance(key: string, sourceLine: number, narrowedFromLegacy?: string) {
-  return {
-    commit: LEGACY_COMMIT,
-    path: "src/systems/new-kronos/selectors.ts" as const,
-    key,
-    sourceLine,
-    blob: NEW_KRONOS_SELECTOR_BLOB,
-    ...(narrowedFromLegacy === undefined ? {} : { narrowedFromLegacy }),
-  };
-}
+
 
 export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse({
   system: "new-kronos",
@@ -255,8 +235,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "role-exact-name", context: "page", role: "button", name: "Employee Search", exact: true },
       requiredStates: [],
       verification: verification(SEARCH_SCENARIO, "navbar.employeeSearchButton()"),
-      provenance: provenance("navbar.employeeSearchButton()", 48,
-        "legacy takes .first() on the role match; the live navbar renders exactly one, so the port refuses a count other than one"),
+      selectorKey: "navbar.employeeSearchButton()",
       supersedes: [],
     },
     {
@@ -277,7 +256,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       },
       requiredStates: [],
       verification: verification(SEARCH_SCENARIO, "search.searchInput()"),
-      provenance: provenance("search.searchInput()", 69),
+      selectorKey: "search.searchInput()",
       supersedes: [],
     },
     {
@@ -292,7 +271,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "role-exact-name", context: "search-panel", role: "button", name: "Search", exact: true },
       requiredStates: [],
       verification: verification(SEARCH_SCENARIO, "search.searchSubmitButton()"),
-      provenance: provenance("search.searchSubmitButton()", 76),
+      selectorKey: "search.searchSubmitButton()",
       supersedes: [],
     },
     {
@@ -307,7 +286,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "exact-text", context: "search-panel", text: NEW_KRONOS_NO_RESULTS_SENTINEL },
       requiredStates: [NEW_KRONOS_SEARCH_NO_RESULTS],
       verification: verification(SEARCH_SCENARIO, "search.noResultsText()"),
-      provenance: provenance("search.noResultsText()", 83),
+      selectorKey: "search.noResultsText()",
       supersedes: [],
     },
     {
@@ -322,8 +301,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "css", context: "search-panel", selector: "[role='menuitemradio']" },
       requiredStates: [NEW_KRONOS_SEARCH_RESULTS_READY],
       verification: verification(SEARCH_SCENARIO, "search.firstResultSlat()"),
-      provenance: provenance("search.firstResultSlat()", 119,
-        "legacy takes .first(); this port reads EVERY slat because the row itself carries \"Name <name> ID <eid>\" (its aria-label live 2026-08-12; the interpolated text of its krn-slats-tabular-data card live 2026-08-27, the aria-label being a feature-toggle-gated binding that was absent), which is the whole candidate list D194 requires. The row renders in stages and is read only once that text is interpolated (§9.28). search.resultEmployeeId()'s getByText(eid) is deliberately NOT ported — a bare EID text match can hit the search box's own echo of the query"),
+      selectorKey: "search.firstResultSlat()",
       supersedes: [],
     },
     {
@@ -338,7 +316,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "role-exact-name", context: "search-panel", role: "checkbox", name: "Select Item", exact: true },
       requiredStates: [NEW_KRONOS_SEARCH_RESULTS_READY],
       verification: verification(SEARCH_SCENARIO, "search.firstResultCheckbox()"),
-      provenance: provenance("search.firstResultCheckbox()", 96),
+      selectorKey: "search.firstResultCheckbox()",
       supersedes: [],
     },
     {
@@ -359,7 +337,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       },
       requiredStates: [],
       verification: verification(SEARCH_SCENARIO, "search.closeButton()"),
-      provenance: provenance("search.closeButton()", 135),
+      selectorKey: "search.closeButton()",
       supersedes: [],
     },
     {
@@ -374,8 +352,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "dom-id", context: "search-panel", domId: "goToDropdownButton" },
       requiredStates: [NEW_KRONOS_SEARCH_RESULTS_READY],
       verification: verification(SEARCH_SCENARIO, "goToMenu.goToButtonOnPage()"),
-      provenance: provenance("goToMenu.goToButtonOnPage()", 157,
-        "legacy chains #goToDropdownButton .or(.quick-find-content role=button /go to/i) .first(), and mints a SECOND key goToMenu.goToButtonInFrame() (:169) for the same control in the other context; the live id resolves to exactly one node in whichever context hosts the panel, so the fallback arm and the duplicate key are both dropped and the driver refuses a count other than one"),
+      selectorKey: "goToMenu.goToButtonOnPage()",
       supersedes: [],
     },
     {
@@ -390,8 +367,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "role-exact-name", context: "search-panel", role: "option", name: "Timecard", exact: true },
       requiredStates: [NEW_KRONOS_SEARCH_RESULTS_READY],
       verification: verification(SEARCH_SCENARIO, "goToMenu.timecardItem()"),
-      provenance: provenance("goToMenu.timecardItem()", 192,
-        "legacy unions frame/page x option/menuitem behind an anchored regex; live the menu renders role=option in the panel's own context only, with the COMPLETE option list Timecard/Schedule/People/Reports, and the exact-name match counts exactly one"),
+      selectorKey: "goToMenu.timecardItem()",
       supersedes: [],
     },
     {
@@ -406,8 +382,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "css", context: "page", selector: ".emp-nav-id" },
       requiredStates: [NEW_KRONOS_TIMECARD_READY],
       verification: verification(TIMECARD_SCENARIO, "timecard.loadedEmployeeId()"),
-      provenance: provenance("timecard.loadedEmployeeId()", 231,
-        "legacy takes .first(); the live timecard renders exactly one .emp-nav-id and this is the wrong-person control (S37), so a second match must refuse rather than pick"),
+      selectorKey: "timecard.loadedEmployeeId()",
       supersedes: [],
     },
     {
@@ -422,8 +397,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "css", context: "page", selector: "button.select-timeframe-button" },
       requiredStates: [NEW_KRONOS_TIMECARD_READY],
       verification: verification(TIMECARD_SCENARIO, "timecard.payPeriodTriggerButton()"),
-      provenance: provenance("timecard.payPeriodTriggerButton()", 239,
-        "legacy matches role=button by the name regex /Pay Period|Schedule Period|^\\d+\\/\\d+\\/\\d+/ and takes .first(); live that matches TWO nodes — the icon-only trigger and #_timeFrame, which is itself a button — so .first() was masking an ambiguity. The port anchors on the trigger's own class, counted live at exactly one"),
+      selectorKey: "timecard.payPeriodTriggerButton()",
       supersedes: [],
     },
     {
@@ -438,8 +412,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "dom-id", context: "page", domId: "_timeFrame" },
       requiredStates: [NEW_KRONOS_TIMECARD_READY],
       verification: verification(TIMECARD_SCENARIO, "timecard.payPeriodLabel()"),
-      provenance: provenance("timecard.payPeriodLabel()", 259,
-        "legacy unions #_timeFrame with .selected-timeframe and takes .first(); live they are the SAME node, so the union is dropped for the id"),
+      selectorKey: "timecard.payPeriodLabel()",
       supersedes: [],
     },
     {
@@ -454,7 +427,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "role-exact-name", context: "page", role: "button", name: "Select range", exact: true },
       requiredStates: [NEW_KRONOS_TIMECARD_READY],
       verification: verification(TIMECARD_SCENARIO, "timecard.selectRangeButton()"),
-      provenance: provenance("timecard.selectRangeButton()", 273),
+      selectorKey: "timecard.selectRangeButton()",
       supersedes: [],
     },
     {
@@ -469,7 +442,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "dom-id", context: "page", domId: "startDateTimeInput" },
       requiredStates: [NEW_KRONOS_TIMECARD_READY],
       verification: verification(TIMECARD_SCENARIO, "timecard.startDateInput()"),
-      provenance: provenance("timecard.startDateInput()", 283),
+      selectorKey: "timecard.startDateInput()",
       supersedes: [],
     },
     {
@@ -484,7 +457,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "dom-id", context: "page", domId: "endDateTimeInput" },
       requiredStates: [NEW_KRONOS_TIMECARD_READY],
       verification: verification(TIMECARD_SCENARIO, "timecard.endDateInput()"),
-      provenance: provenance("timecard.endDateInput()", 291),
+      selectorKey: "timecard.endDateInput()",
       supersedes: [],
     },
     {
@@ -499,7 +472,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       locator: { kind: "role-exact-name", context: "page", role: "button", name: "Apply", exact: true },
       requiredStates: [NEW_KRONOS_TIMECARD_READY],
       verification: verification(TIMECARD_SCENARIO, "timecard.applyButton()"),
-      provenance: provenance("timecard.applyButton()", 330),
+      selectorKey: "timecard.applyButton()",
       supersedes: [],
     },
   ],
@@ -769,7 +742,7 @@ export function auditNewKronosUiEvidenceBindings(input: unknown): readonly strin
     }
   }
   for (const element of NEW_KRONOS_UI_REGISTRY.elements) {
-    const binding = bindingsByRow.get(portRowKey({ system: "new-kronos", legacyKey: element.provenance.key }));
+    const binding = bindingsByRow.get(portRowKey({ system: "new-kronos", legacyKey: element.selectorKey }));
     if (binding === undefined || binding.canonicalId !== element.id) {
       issues.push(`${element.id} does not resolve to its exact New Kronos ported row`);
       continue;

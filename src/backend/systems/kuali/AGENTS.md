@@ -37,8 +37,8 @@ Task names, effects, and schemas are in the source and the generated store catal
 - Before finalization changes: the workflow's task evidence §4e/§4g and §9.39; the exact fields
   and assertions are in `src/models/ui/kuali-separation-finalization.ts`.
 - Before locator, wire, or timing changes: `driver/interpreter.ts` and `driver/ui-registry.ts`
-  carry the implementation, verified encodings, and port provenance; consult the migration's dated
-  verification entries. Keep commit/source provenance in ported code.
+  carry the implementation and verified encodings. Record port commit and source paths in the
+  assigned task's evidence folder.
 - Before task/driver boundary changes: `docs/rebuild/reference/task-contract.md` and
   `docs/rebuild/reference/stores.md` (derived catalog; code wins).
 - Before repeating a known failure: search [LESSONS.md](LESSONS.md) for the seam and read the matching
