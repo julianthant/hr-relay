@@ -273,7 +273,7 @@ describe("test-data ownership", () => {
     assert.deepEqual(observed, [], "cross-tier code must use shared fixture homes");
     assert.equal(isUnitTest("tests/backend/helper.test.js"), true);
     assert.equal(isUnitTest("tests/support/helpers/helper.test.ts"), true);
-    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/parity/reference.spec.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
+    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/parity/reference.test.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
       assert.equal(isUnitTest(path), false, path);
     }
     assert.equal(importsFromText("tests/backend/composition.integration.test.ts", 'import "../models/helper.test.js";')[0]?.resolved, "tests/models/helper.test.js");

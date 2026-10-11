@@ -16,7 +16,7 @@ describe("suite size by configured project", () => {
         "tests/types/flow-graph.integration.test.ts",
         "tests/perf/dashboard-fixture.integration.test.ts",
         "tests/architecture/tooling/guard.test.ts",
-        "tests/parity/reference.spec.ts",
+        "tests/parity/reference.test.ts",
         "tests/perf/benchmark.ts",
         "tests/support/helpers/helper.ts",
         "tests/types/flow-graph.typecheck.ts",
