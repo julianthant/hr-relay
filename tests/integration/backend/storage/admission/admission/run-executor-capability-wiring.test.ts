@@ -1,5 +1,6 @@
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
-import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { DatabaseSync } from "node:sqlite";
+import { testWorkerPorts, testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -13,8 +14,6 @@ import { defineServiceStore, defineTaskStoreRegistry } from "../../../../../../s
 import { defineTask } from "../../../../../../src/workflow-kit/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";
 import { executeClaimedRun, type RunExecutorDependencies, type RunProviderWiring } from "../../../../../../src/backend/runtime/execution/run-executor.js";
-import { defaultRuntimePaths } from "../../../../../../src/backend/app/config/runtime-paths.js";
-import { ConfigSchema } from "../../../../../../src/models/config/schema.js";
 import { defineTaskContract } from "../../../../../../src/models/task/task-contract.js";
 import { FingerprintSchema, IsoInstantSchema, ScenarioIdSchema, TraceIdSchema, taskId } from "../../../../../../src/rules/identity/ids.js";
 import type { RunRecord } from "../../../../../../src/models/run/record.js";
@@ -25,7 +24,7 @@ import { createContentAddressedArtifactWriter } from "../../../../../../src/back
 import { createDeterministicProviderHarness } from "../../../../../../src/backend/processing/providers/deterministic-provider.js";
 import type { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/index.js";
 import { HASH_A, NOW } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import { happySessionHarness, ManualScheduler, openAuthorityHarness, recordingEmitter, recordingLogger, sessionManagerFor } from "../../../../../support/helpers/phase1f-executor-harness.js";
 
 const disposers: (() => void)[] = [];
@@ -219,6 +218,7 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor) {
       parsed: {
         schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"),
         value: { name: "Battistessa, Johnnie" },
+        protectedBindings: [],
       },
       ingressSchemaHash: HASH_A,
     },
@@ -252,40 +252,17 @@ function wiringHarness(
   return { authority, emitter, deps };
 }
 
-function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): {
+function claim(authority: ReturnType<typeof openAuthorityHarness>, descriptor: AnyWorkflowDescriptor): {
   run: RunRecord;
   claim: { workerId: string; claimGeneration: number };
 } {
-  const claimed = database.authority.runs.claimNext({
-    workflow: descriptor.id,
-    workerId: WORKER_ID,
-    now: new Date("2026-08-03T09:00:00.000Z").toISOString(),
-  });
-  if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
-  return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration } };
-}
-
-/** The run's retained snapshot: `QUEUED_RUN`'s envelope ids, current provider timeout settings. */
-function seedSnapshot(database: AuthorityDatabase): void {
-  const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths() });
-  const config = ConfigSchema.parse({
-    ...defaults,
-    providers: {
-      ...defaults.providers,
-      geocodeCensus: {
-        timeoutMs: 30_000,
-      },
-    },
-  });
-  database.authority.configSnapshots.insert({
-    configSnapshotId: QUEUED_RUN.envelope.configSnapshotId,
-    revision: 1,
-    fingerprint: QUEUED_RUN.envelope.configFingerprint,
-    capturedAt: IsoInstantSchema.parse(NOW),
-    capturedBy: "local-operator",
-    config,
-    provenance: {},
-  });
+  const { database, clock, path } = authority;
+  const ports = testWorkerPorts(database, clock, { path, descriptor, poolIndex: 1 });
+  const slot = database.authority.workerSlots.list(descriptor.id).find(candidate => candidate.poolIndex === 1);
+  if (slot === undefined) throw new Error("fixture native worker slot absent");
+  const claimed = ports.claimNext({ commandId: sequentialIdFactory("c").uuid(), workflow: descriptor.id, workerId: slot.workerId });
+  if (claimed.state !== "applied") throw new Error(`claim outcome was ${claimed.state}`);
+  return { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration } };
 }
 
 function admissionIdFactory() {
@@ -323,7 +300,7 @@ describe("executor capability wiring refusals", () => {
     const harness = wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(providersDescriptor));
-    const claimed = claim(database, providersDescriptor);
+    const claimed = claim(harness.authority, providersDescriptor);
 
     const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "failed");
@@ -336,7 +313,7 @@ describe("executor capability wiring refusals", () => {
     const harness = wiringHarness(artifactsDescriptor, registryFor(artifactsOnlyTask));
     const { database } = harness.authority;
     database.authority.runs.enqueue(queuedRunFor(artifactsDescriptor));
-    const claimed = claim(database, artifactsDescriptor);
+    const claimed = claim(harness.authority, artifactsDescriptor);
 
     const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "failed");
@@ -348,8 +325,6 @@ describe("executor capability wiring refusals", () => {
   it("refuses provider admission when the run's retained config snapshot is absent", async () => {
     const adapter = createDeterministicProviderHarness("geocode.census", []);
     const harness = wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
-    // Fully wired against the REAL repositories; only the snapshot row is
-    // missing — the refusal must name the unreadable snapshot, not crash.
     const { database } = harness.authority;
     const deps: RunExecutorDependencies = {
       ...harness.deps,
@@ -361,13 +336,20 @@ describe("executor capability wiring refusals", () => {
       }),
     };
     database.authority.runs.enqueue(queuedRunFor(providersDescriptor));
-    const claimed = claim(database, providersDescriptor);
+    const claimed = claim(harness.authority, providersDescriptor);
 
-    const outcome = await executeClaimedRun(deps, { ...claimed, signal: SIGNAL });
-    assert.equal(outcome.state, "failed");
-    const failure = terminalFailure(database);
-    assert.equal(failure.nodeId, "extract");
-    assert.match(failure.summary, /retained config snapshot .+ is absent from authority/u);
+    const raw = new DatabaseSync(harness.authority.path);
+    try {
+      const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name='settings_snapshots_retained'").get();
+      if (typeof trigger?.sql !== "string") throw new Error("fixture immutable snapshot trigger missing");
+      raw.exec("PRAGMA foreign_keys=OFF");
+      raw.exec("DROP TRIGGER settings_snapshots_retained");
+      try { raw.prepare("DELETE FROM settings_snapshots WHERE id=?").run(claimed.run.envelope.configSnapshotId); }
+      finally { raw.exec(trigger.sql); }
+    } finally { raw.close(); }
+    await assert.rejects(executeClaimedRun(deps, { ...claimed, signal: SIGNAL }), /settings-snapshot-missing/u);
+    const unchanged = new DatabaseSync(harness.authority.path, { readOnly: true });
+    try { assert.equal(unchanged.prepare("SELECT state FROM runs WHERE id=?").get(claimed.run.envelope.runId)?.state, "claimed"); } finally { unchanged.close(); }
     assert.equal(adapter.calls().length, 0);
   });
 });
@@ -401,9 +383,8 @@ describe("executor capability wiring, wired", () => {
       }),
       artifacts,
     };
-    seedSnapshot(database);
     database.authority.runs.enqueue(queuedRunFor(wiredDescriptor));
-    const claimed = claim(database, wiredDescriptor);
+    const claimed = claim(harness.authority, wiredDescriptor);
 
     const outcome = await executeClaimedRun(deps, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "done");

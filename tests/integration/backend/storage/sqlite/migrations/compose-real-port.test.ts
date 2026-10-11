@@ -1,3 +1,7 @@
+import { spawnSync } from "node:child_process";
+import { SettingsCurrentRecordSchema } from "../../../../../../src/models/config/settings-current.js";
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../../support/helpers/admission-fixture.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
@@ -50,9 +54,8 @@ import {
   ExplorerWorkflowOverrideSchema,
 } from "../../../../../../src/models/dashboard/explorer.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/admission-fixture.js";
-import { SQLITE_MIGRATIONS } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import {
-  RuntimeProcessLockFileSchema,
+  readRuntimeProcessLock,
   WorkerProcessLockFileSchema,
 } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { explorerEditCommandFingerprint } from "../../../../../../src/models/dashboard/explorer-override.js";
@@ -176,7 +179,7 @@ function protectedUcpathSettingsCommand(
 }
 
 function readPersistedSettings(repoRoot: string, clock: ReturnType<typeof manualClock>) {
-  const database = AuthorityDatabase.open({ path: join(repoRoot, ".tracker", "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+  const database = AuthorityDatabase.open({ path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
   try { return readSettings(database.authority); } finally { database.close(); }
 }
 
@@ -284,7 +287,6 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     mkdirSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot), { recursive: true });
     const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
-    const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
     const primary = new Error("injected preflight clock failure");
     const baseClock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const clock = { ...baseClock, monotonicMs: () => { throw primary; } };
@@ -296,7 +298,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       repoRoot,
     }), (error: unknown) => error instanceof AggregateError && error.errors.includes(primary));
 
-    const lock = JSON.parse(readFileSync(lockPath, "utf8")) as Record<string, unknown>;
+    const lock = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
+    assert.ok(lock);
     assert.equal(typeof lock.releasedAt, "string", "the server record releases after startup cleanup closes authority");
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "startup-unwind-test" }, baseClock);
     try {
@@ -310,7 +313,6 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-listen-unwind-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
     const primary = new Error("injected HTTP listen failure");
 
     await assert.rejects(composeDashboardRuntime({
@@ -320,7 +322,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       httpServerStarter: async () => { throw primary; },
     }), (error: unknown) => error === primary);
 
-    const lock = JSON.parse(readFileSync(lockPath, "utf8")) as Record<string, unknown>;
+    const lock = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
+    assert.ok(lock);
     assert.equal(typeof lock.releasedAt, "string");
     const database = AuthorityDatabase.open({
       path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
@@ -341,10 +344,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     await initial.stop();
     const raw = new DatabaseSync(path);
     try {
-      raw.prepare(`UPDATE app_settings SET record_json = json_set(
-        json_set(record_json, '$.saved', NULL), '$.active.settingsRevision', 2
-      ) WHERE record_key = 'current'`).run();
-      raw.prepare("UPDATE app_settings SET command_id = NULL, audit_id = NULL WHERE record_key = 'current'").run();
+      raw.exec("DELETE FROM settings");
     } finally {
       raw.close();
     }
@@ -355,7 +355,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       env: {},
       repoRoot,
     }), /settings-current-missing-with-history/u);
-    const lock = JSON.parse(readFileSync(join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json"), "utf8")) as Record<string, unknown>;
+    const lock = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
+    assert.ok(lock);
     assert.equal(typeof lock.releasedAt, "string");
   });
 
@@ -413,96 +414,51 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(existsSync(lockPath), false, "a non-virgin settings family blocks before process-lock admission");
   });
 
-  it("archives a crashed server by birth identity and retains worker-orphan evidence for recovery", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-orphan-recovery-"));
+  it("recovers after genuine abandoned server custody and retains dead worker evidence", async () => {
+    const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-compose-crash-")));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    installationAdmission(repoRoot);
     const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
-    const serverLockPath = join(processLockRoot, "server.lock.json");
-    const authorityPath = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
-    mkdirSync(dirname(authorityPath), { recursive: true });
-    AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: "crash-recovery-fixture" }, clock).close();
-    const identityPlatform = process.platform as "linux" | "darwin" | "win32";
-    const crashedServer = RuntimeProcessLockFileSchema.parse({
-      schemaVersion: 2,
-      name: "server",
-      pid: process.pid,
-      processIdentity: { platform: identityPlatform, startToken: "previous-server-birth" },
-      acquisitionId: "11111111-1111-4111-8111-111111111111",
-      generation: 4,
-      acquiredAt: clock.now().toISOString(),
-      releasedAt: null,
-    });
-    if (crashedServer.schemaVersion !== 2) throw new Error("expected-version-2-crash-record");
-    mkdirSync(processLockRoot, { recursive: true });
-    writeFileSync(serverLockPath, `${JSON.stringify(crashedServer)}\n`);
-
-    const recovered = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0,
-      env: {},
-      clock,
-      repoRoot,
-    });
-    const singletonHistory = join(processLockRoot, "singleton-history", "server");
-    const initialHistory = readdirSync(singletonHistory).filter((name) => name.endsWith(".lock.json"));
-    assert.equal(initialHistory.length, 1, "the stale owner record is archived before a new owner is admitted");
-    const archived = JSON.parse(readFileSync(join(singletonHistory, initialHistory[0] ?? ""), "utf8")) as Record<string, unknown>;
-    assert.equal(archived.acquisitionId, crashedServer.acquisitionId);
-    assert.equal(archived.releasedAt, null, "crash evidence retains its unreleased state");
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const abandon = (worker: boolean) => {
+      const modulePath = join(process.cwd(), "src/backend/storage/sqlite/runtime-process-locks.ts");
+      const code = `import { acquireRuntimeProcessLock } from ${JSON.stringify(modulePath)}; const root=${JSON.stringify(processLockRoot)}; const server=acquireRuntimeProcessLock({processLockRoot:root,name:"server",pid:process.pid}); if(${String(worker)})acquireRuntimeProcessLock({processLockRoot:root,name:"workers",workerId:"orphan-worker",pid:process.pid}); console.log(server.acquisitionId); process.exit(23);`;
+      const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", code], { cwd: process.cwd(), encoding: "utf8", timeout: 10_000 });
+      assert.equal(child.status, 23, child.stderr);
+      const record = readRuntimeProcessLock(processLockRoot, "server");
+      assert.ok(record); assert.equal(record.acquisitionId, child.stdout.trim());
+      assert.equal(record.releasedAt, null);
+      const claim = join(processLockRoot, "server-claims", `${String(record.generation)}.claim.json`);
+      return { record, claim, bytes: readFileSync(claim) };
+    };
+    const crashed = abandon(false);
+    const recovered = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, clock, repoRoot });
+    assert.deepEqual(readFileSync(crashed.claim), crashed.bytes);
     await recovered.stop();
-
-    const orphanDirectory = join(processLockRoot, "workers");
-    mkdirSync(orphanDirectory, { recursive: true });
-    const orphan = WorkerProcessLockFileSchema.parse({
-      schemaVersion: 3,
-      name: "workers",
-      workerId: "orphan-worker",
-      pid: process.pid,
-      processIdentity: { platform: identityPlatform, startToken: "previous-worker-birth" },
-      acquisitionId: "22222222-2222-4222-8222-222222222222",
-      acquiredAt: clock.now().toISOString(),
-      releasedAt: null,
-    });
-    const orphanPath = join(orphanDirectory, `${orphan.acquisitionId}.lock.json`);
-    const orphanBytes = `${JSON.stringify(orphan)}\n`;
-    writeFileSync(orphanPath, orphanBytes);
-    const releasedServer = RuntimeProcessLockFileSchema.parse(JSON.parse(readFileSync(serverLockPath, "utf8")));
-    writeFileSync(serverLockPath, `${JSON.stringify({
-      ...releasedServer,
-      processIdentity: { platform: identityPlatform, startToken: "another-prior-server-birth" },
-      releasedAt: null,
-    })}\n`);
-
-    const recoveredWithOrphan = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0,
-      env: {},
-      clock,
-      repoRoot,
-    });
+    const stopped = readRuntimeProcessLock(processLockRoot, "server");
+    assert.ok(stopped); assert.equal(stopped.pid, process.pid); assert.equal(typeof stopped.releasedAt, "string");
+    const secondCrash = abandon(true);
+    const orphanFiles = readdirSync(join(processLockRoot, "workers")).filter(name => name.endsWith(".lock.json"));
+    assert.equal(orphanFiles.length, 1);
+    const orphanPath = join(processLockRoot, "workers", orphanFiles[0] ?? "");
+    const orphan = WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(orphanPath, "utf8")));
+    assert.ok("workerId" in orphan); assert.equal(orphan.workerId, "orphan-worker"); assert.equal(orphan.releasedAt, null);
+    const orphanBytes = readFileSync(orphanPath);
+    const second = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, clock, repoRoot });
     try {
-      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(recoveredWithOrphan.port)}` });
-      const readiness = await client.readiness();
+      const readiness = await createDashboardClient({ baseUrl: `http://127.0.0.1:${String(second.port)}` }).readiness();
       assert.equal(readiness.state, "present");
       if (readiness.state === "present") {
-        const orphanCheck = readiness.checks.find(({ id }) => id === "process.orphans");
-        assert.equal(orphanCheck?.verdict, "warning");
-        assert.match(orphanCheck?.detail ?? "", /1 unreleased dead process owner record/u);
+        const check = readiness.checks.find(({ id }) => id === "process.orphans");
+        assert.equal(check?.verdict, "warning"); assert.match(check?.detail ?? "", /1 unreleased dead process owner record/u);
       }
-    } finally {
-      await recoveredWithOrphan.stop();
-    }
-
-    assert.equal(readFileSync(orphanPath, "utf8"), orphanBytes, "startup preserves the unknown worker's orphan record");
-    const historyRecords = readdirSync(singletonHistory)
-      .filter((name) => name.endsWith(".lock.json"))
-      .map((name) => JSON.parse(readFileSync(join(singletonHistory, name), "utf8")) as Record<string, unknown>);
-    assert.ok(historyRecords.some((record) => record.acquisitionId === crashedServer.acquisitionId && record.releasedAt === null));
-    const current = JSON.parse(readFileSync(serverLockPath, "utf8")) as Record<string, unknown>;
-    assert.equal(current.pid, process.pid, "the recovered owner released its own lock after database cleanup");
-    assert.equal(typeof current.releasedAt, "string");
+    } finally { await second.stop(); }
+    assert.deepEqual(readFileSync(orphanPath), orphanBytes);
+    assert.deepEqual(readFileSync(crashed.claim), crashed.bytes);
+    assert.deepEqual(readFileSync(secondCrash.claim), secondCrash.bytes);
+    const current = readRuntimeProcessLock(processLockRoot, "server");
+    assert.ok(current); assert.equal(current.pid, process.pid); assert.equal(typeof current.releasedAt, "string");
   });
 
   it("refuses a newer authority under the current build before settings opens or config resolution", async () => {
@@ -516,6 +472,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const path = join(stateRoot, "state.db");
     AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "m9-floor-fixture" }).close();
     const admission = installationAdmission(repoRoot);
+    const artifactBefore = statSync(artifactRoot);
     const newer = new DatabaseSync(path);
     newer.exec("PRAGMA user_version=2");
     newer.close();
@@ -554,10 +511,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
           0, "M9: zero settings-family readFileSync calls before downgrade refusal");
         assert.equal(resolveSpy.mock.calls.length, 0, "M9: zero resolveConfigWithProvenance calls before downgrade refusal");
         assert.equal(vi.mocked(mkdirSync).mock.calls.filter(([target]) => target === stateRoot).length,
-          0, "native schema refusal precedes runtime directory mutation");
+          1, "native open verifies its admitted existing directory before schema refusal");
         assert.equal(vi.mocked(openSync).mock.calls.filter(([target]) => target === artifactRoot).length,
-          0, "native schema refusal precedes artifact-root acquisition");
-        assert.equal(statSync(artifactRoot).mode & 0o777, 0o700);
+          1, "native open validates its admitted artifact directory before schema refusal");
+        const artifactAfter = statSync(artifactRoot);
+        assert.equal(artifactAfter.mode & 0o777, 0o700);
+        for (const key of ["dev", "ino", "mode", "mtimeMs", "ctimeMs"] as const) assert.equal(artifactAfter[key], artifactBefore[key], `artifact directory ${key} unchanged`);
         assert.equal(existsSync(lockPath), false, "native schema refusal acquires no server process record");
         assert.deepEqual(readFileSync(path), before);
       } finally {
@@ -566,89 +525,23 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }
   });
 
-  it("releases its acquired server process record when a pre-floor authority refuses open", async () => {
-    const version = 29;
-    const repoRoot = mkdtempSync(join(tmpdir(), `hrauto-compose-open-v${String(version)}-`));
+  it.each([29, CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("releases the acquired server process record after unsupported native authority %s refuses open", async version => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-unsupported-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-    mkdirSync(stateRoot, { recursive: true });
-    const path = join(stateRoot, "state.db");
-    const legacy = new DatabaseSync(path);
-    legacy.exec("BEGIN EXCLUSIVE");
-    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 29)) {
-      for (const statement of migration.statements) legacy.exec(statement);
-    }
-    legacy.prepare(`
-      INSERT INTO authority_meta (
-        singleton_id, schema_version, authority_generation, updated_at,
-        migration_owner, migration_started_at
-      ) VALUES (1, ?, 0, ?, NULL, NULL)
-    `).run(version, "2026-08-28T12:00:00.000Z");
-    legacy.exec("PRAGMA application_id = 1217249861");
-    legacy.exec(`PRAGMA user_version = ${String(version)}`);
-    legacy.exec("COMMIT");
-    legacy.close();
-
-    await assert.rejects(
-      composeDashboardRuntime({ admission: fixtureAdmission(repoRoot),
-        isolation: rebuildRuntimeIsolation,
-        backendPortOverride: 0,
-        env: {},
-        clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
-        repoRoot,
-      }),
-      /upgrade-required \{ schemaVersion: 29, floor: 46 \}/u,
-    );
-    const releasedRecord = JSON.parse(readFileSync(
-      join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json"),
-      "utf8",
-    )) as Record<string, unknown>;
-    assert.equal(releasedRecord.releasedAt, "2026-08-28T12:00:00.000Z");
-    const unchanged = new DatabaseSync(path, { readOnly: true });
-    try {
-      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), version);
-    } finally {
-      unchanged.close();
-    }
-  });
-
-  it("releases its acquired server process record when a valid authority is marked ahead of this build", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), `hrauto-compose-open-v${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}-`));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-    mkdirSync(stateRoot, { recursive: true });
-    const path = join(stateRoot, "state.db");
-    AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "future-schema-fixture" }).close();
     installationAdmission(repoRoot);
-    const futureVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;
+    const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
+    AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "unsupported-schema-fixture" }).close();
     const raw = new DatabaseSync(path);
-    raw.exec(`UPDATE database_state SET schema_version = ${String(futureVersion)} WHERE singleton_id = 1`);
-    raw.exec(`PRAGMA user_version = ${String(futureVersion)}`);
-    raw.close();
-
-    await assert.rejects(
-      composeDashboardRuntime({
-        isolation: rebuildRuntimeIsolation,
-        backendPortOverride: 0,
-        env: {},
-        clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
-        repoRoot,
-      }),
-      new RegExp(`authority schema ${String(futureVersion)} is newer than supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`, "u"),
-    );
-    const releasedRecord = JSON.parse(readFileSync(
-      join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json"),
-      "utf8",
-    )) as Record<string, unknown>;
-    assert.equal(releasedRecord.releasedAt, "2026-08-28T12:00:00.000Z");
+    try { raw.exec(`UPDATE database_states SET schema_version=${String(version)} WHERE id=1; PRAGMA user_version=${String(version)}`); } finally { raw.close(); }
+    const before = readFileSync(path);
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    await assert.rejects(composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot, clock }), new RegExp(`authority schema ${String(version)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`, "u"));
+    const released = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
+    assert.ok(released); assert.equal(released.pid, process.pid); assert.equal(released.releasedAt, "2026-08-28T12:00:00.000Z");
+    assert.deepEqual(readFileSync(path), before);
     const unchanged = new DatabaseSync(path, { readOnly: true });
-    try {
-      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), futureVersion);
-    } finally {
-      unchanged.close();
-    }
+    try { assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), version); } finally { unchanged.close(); }
   });
 
   it("serves the exact editable settings command schema hash", async () => {
@@ -744,15 +637,10 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       migrationOwner: "unit-test",
     });
     try {
-      const started = database.authority.workerLeases.start({
-        workerId: "person-lookup-worker-1",
-        workflow: "person-lookup",
-        browserSystems: ["crm", "ucpath"],
-        processId: 4242,
-        requestedBy: "local-operator",
-        now: "2026-08-28T12:00:01.000Z",
-      });
-      assert.equal(started.state, "started");
+      testWorkerPorts(database, manualClock(new Date("2026-08-28T12:00:00.000Z")), { path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), descriptor: personLookupDescriptor, poolIndex: 1 });
+      const started = database.authority.workerLeases.get("person-lookup-worker-1");
+      assert.ok(started);
+      assert.equal(started.processId, process.pid);
     } finally {
       database.close();
     }
@@ -812,7 +700,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it.each(["GET", "validate"] as const)("serves one SQLite snapshot and no historical file reads per Explorer %s request", async operation => {
     const fixture = committedExplorer(); journalExplorer(fixture);
     for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "inert historical bytes");
-    const sql = observeExplorerSnapshot(join(fixture.repoRoot, ".tracker", "state.db"));
+    const sql = observeExplorerSnapshot(join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"));
     const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
     try {
@@ -839,7 +727,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it.each(["GET", "validate"] as const)("keeps the captured Explorer %s view across a concurrent commit and sees it on the next request", async operation => {
     const fixture = committedExplorer(); journalExplorer(fixture);
     let committed: (() => void) | undefined;
-    observeExplorerSnapshot(join(fixture.repoRoot, ".tracker", "state.db"), () => committed?.());
+    observeExplorerSnapshot(join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), () => committed?.());
     const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
     try {
@@ -850,7 +738,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       const audit = CommandAuditRecordSchema.parse({ ...explorerAudit(request), auditId: "88888888-8888-4888-8888-888888888888",
         result: { state: "applied", commandId: request.commandId, affectedTargets: [{ family: "explorer", workflowId: request.target.workflowId, revision: 2 }] },
         versionChanges: [{ target: { family: "explorer", workflowId: request.target.workflowId, revision: 2 }, before: 1, after: 2 }] });
-      const writer = AuthorityDatabase.open({ path: join(fixture.repoRoot, ".tracker", "state.db"), busyTimeoutMs: 250, migrationOwner: "concurrent-explorer" });
+      const writer = AuthorityDatabase.open({ path: join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "concurrent-explorer" });
       try {
         let crossed = false;
         committed = () => {
@@ -898,7 +786,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-retired-settings-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const authorityPath = join(repoRoot, ".tracker", "state.db");
+    const authorityPath = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
     mkdirSync(dirname(authorityPath), { recursive: true });
     AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: "retired-settings-fixture" }).close();
     const path = join(repoRoot, ".tracker", "settings", "settings.json");
@@ -928,6 +816,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         clock,
         corruption,
         activateRuntime: false,
+        admission: installationAdmission(repoRoot),
       });
 
       await assert.rejects(async () => {
@@ -939,10 +828,15 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
           repoRoot,
         });
         await runtime.stop();
-      }, corruption.expected);
+      }, corruption.id === "command-envelope" ? /command-row-identity-mismatch/u : /command-audit-settlement-mismatch/u);
 
-      const database = AuthorityDatabase.open({ path: join(repoRoot, ".tracker", "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-      try { assert.deepEqual(database.authority.settingsCurrent.get(), fixture.record); } finally { database.close(); }
+      const raw = new DatabaseSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), { readOnly: true });
+      try {
+        const row = raw.prepare("SELECT payload_json FROM settings WHERE id='current'").get();
+        assert.equal(typeof row?.payload_json, "string");
+        if (typeof row?.payload_json !== "string") throw new Error("fixture settings row missing");
+        assert.deepEqual(SettingsCurrentRecordSchema.parse(Reflect.get(JSON.parse(row.payload_json), "saved")), fixture.record);
+      } finally { raw.close(); }
     },
   );
 
@@ -1077,7 +971,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       "first-synthetic-protected-value",
     ));
     assert.equal(first.state, "applied");
-    const protectedPath = join(repoRoot, ".tracker", "credentials", "protected.json");
+    const protectedPath = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "credentials", "protected.json");
     const committedBytes = readFileSync(protectedPath);
 
     await runtime.stop();

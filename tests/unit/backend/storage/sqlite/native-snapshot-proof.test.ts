@@ -2,7 +2,7 @@ import { readAppSettings } from "../../../../../src/backend/storage/sqlite/setti
 import { SettingsCurrentRecordSchema } from "../../../../../src/models/config/settings-current.js";
 import { CommandRequestSchema,CommandAuditRecordSchema,deriveSettingsCommandFingerprint } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint,derivePersistedSettingsFingerprint } from "../../../../../src/models/config/settings.js";
-import { mkdtempSync,realpathSync,rmSync,mkdirSync } from "node:fs";
+import { mkdtempSync,realpathSync,rmSync,mkdirSync,copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -28,6 +28,8 @@ const cleanups:(()=>void)[]=[];
 afterEach(()=>{effects.credentials=0;effects.browsers=0;for(const cleanup of cleanups.splice(0))cleanup();});
 function fixture() {
   const root=realpathSync(mkdtempSync(join(tmpdir(),"relay-native-snapshot-"))),stateRoot=join(root,rebuildRuntimeIsolation.stateRoot);
+  copyFileSync("package.json",join(root,"package.json"));
+  mkdirSync(join(root,rebuildRuntimeIsolation.processLockRoot),{recursive:true,mode:0o700});
   mkdirSync(stateRoot,{recursive:true,mode:0o700});const path=join(stateRoot,"state.db");
   const admission=RuntimeAdmission.syntheticFixture(path),clock=capturedInstantClock(NOW);
   const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,

@@ -1,3 +1,9 @@
+import { readSettings } from "../../../../../../src/backend/runtime/settings/settings-runtime.js";
+import { admitProtectedInput } from "../../../../../../src/backend/runs/start/protected-input.js";
+import { ProtectedInputBindingSchema } from "../../../../../../src/models/write-safety/protected-input.js";
+import { ProtectedStoreRecordSchema } from "../../../../../../src/models/config/protected-settings.js";
+import { protectedSecretSource } from "../../../../../support/helpers/protected-secret-source.js";
+import { separationsKualiFinalizationDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { healthyRuntimePreflightRunners } from "../../../../../support/fixtures/preflight-seams.js";
 import { createCredentialStore } from "../../../../../support/helpers/synthetic-storage-admission.js";
@@ -87,6 +93,13 @@ function spanTextFromAuthority(
   } finally {
     database.close();
   }
+}
+
+function injectSnapshotFault(raw: DatabaseSync, triggerName: "settings_snapshots_immutable" | "settings_snapshots_retained", fault: () => void) {
+  const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name=?").get(triggerName);
+  if (typeof trigger?.sql !== "string") throw new Error("fixture snapshot protection missing");
+  raw.exec(`DROP TRIGGER ${triggerName}`);
+  try { fault(); } finally { raw.exec(trigger.sql); }
 }
 
 function selectedSettingsFixture(
@@ -189,7 +202,11 @@ function composedSessions(clock: TestClock, displayedEidAfterStage?: string) {
     },
     kuali: () => createDeterministicKualiDriver(world, clock),
   });
-  return { sessions, world, filingWorld };
+  const factory = sessions.factory;
+  return { sessions: { ...sessions, factory: { async open(input: Parameters<typeof factory.open>[0]) {
+    const resource = await factory.open(input);
+    return { ...resource, screenshot: () => Promise.resolve({ state: "unavailable" as const, reason: "verification-failed" as const, sessionId: resource.sessionId, pageVersion: 0, observedAt: clock.now().toISOString() }) };
+  } } }, world, filingWorld };
 }
 
 const PREVIEW_RECEIPT_VERIFICATION = [
@@ -247,6 +264,16 @@ const NAME_ONLY_FINALIZATION_INPUT =
     emplIdSource: "name-resolved",
     documentEid: { state: "absent", reason: "name-only composition fixture" },
   });
+
+function admittedFinalization(input: typeof NAME_ONLY_FINALIZATION_INPUT) {
+  const source = protectedSecretSource({ timekeeperName: input.timekeeperName });
+  const signer = ProtectedStoreRecordSchema.parse(source.read()).entries.timekeeperName;
+  if (signer === undefined) throw new Error("fixture protected signer missing");
+  const binding = ProtectedInputBindingSchema.parse({ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: signer.valueId });
+  const admitted = admitProtectedInput(separationsKualiFinalizationDescriptor, [input], source, undefined, [binding])[0];
+  if (admitted === undefined) throw new Error("fixture protected admission missing");
+  return { canonicalInput: admitted.admitted, protectedBindings: admitted.bindings };
+}
 
 const TEST_MANIFEST = parseDryRunScenarioManifest({
   scenarioId: "separations-kuali-finalization/dry-run",
@@ -379,7 +406,7 @@ function admissionFixture(
     request: {
       manifest: TEST_MANIFEST,
       scenarioCase,
-      canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
+      ...admittedFinalization(NAME_ONLY_FINALIZATION_INPUT),
     },
   };
 }
@@ -564,7 +591,7 @@ describe("dry-run scenario production composition boundary", () => {
     const started = await runtime.start({
       manifest: TEST_MANIFEST,
       scenarioCase,
-      canonicalInput,
+      ...admittedFinalization(canonicalInput),
     });
 
     const database = AuthorityDatabase.open(
@@ -626,7 +653,7 @@ describe("dry-run scenario production composition boundary", () => {
     const fixture = admissionFixture();
     fixture.activate();
     const file = createCredentialStore({
-      stateRoot: join(fixture.root, ".tracker"),
+      stateRoot: join(fixture.root, rebuildRuntimeIsolation.stateRoot),
     });
     journalProtectedSettings(fixture.database, file, {
       timekeeperName: { set: "Synthetic Admission Operator" },
@@ -669,7 +696,7 @@ describe("dry-run scenario production composition boundary", () => {
     const fixture = admissionFixture();
     fixture.activate();
     const file = createCredentialStore({
-      stateRoot: join(fixture.root, ".tracker"),
+      stateRoot: join(fixture.root, rebuildRuntimeIsolation.stateRoot),
     });
     journalProtectedSettings(fixture.database, file, {
       timekeeperName: { set: "Synthetic Admission Operator" },
@@ -786,21 +813,32 @@ describe("dry-run scenario production composition boundary", () => {
   });
 
   it("refuses absent activation before any start effects and leaves Settings at the absent baseline", async () => {
-    const fixture = admissionFixture();
-    const before = startEffects(fixture.path);
-    await assert.rejects(
-      fixture.runtime.start(fixture.request),
-      /runtime config has no dashboard-activated generation/,
-    );
-    assert.deepEqual(startEffects(fixture.path), before);
-    assert.equal(fixture.database.authority.runtimeConfig.get(), undefined);
-    assert.equal(fixture.file.read().revision, 1);
-    assert.equal(fixture.database.authority.settingsCurrent.get(), undefined);
-    assert.equal(existsSync(join(fixture.root, ".tracker", "settings")), false);
-    await assert.rejects(
-      fixture.runtime.collectEvidence("11111111-1111-4111-8111-111111111111"),
-      /dry-run evidence collection ran before start/,
-    );
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-virgin-"));
+    roots.push(root);
+    mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { recursive: true });
+    writeFileSync(join(root, "package.json"), readFileSync(join(process.cwd(), "package.json")));
+    const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
+    const path = join(root, rebuildRuntimeIsolation.stateRoot, "state.db");
+    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "virgin-activation-proof" }, clock);
+    databases.push(database);
+    assert.equal(readSettings(database.authority).revision, 1);
+    assert.equal(database.authority.runtimeConfig.get(), undefined);
+    assert.equal(database.authority.runtimeConfig.hasHistory(), false);
+    const scenarioCase = TEST_MANIFEST.cases[0];
+    assert.ok(scenarioCase);
+    const runtime = createProductionDryRunScenarioRuntime({
+      admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
+      preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, repoRoot: root, env: {}, clock, ids: sequentialIdFactory("d"),
+      drainWorker: () => Promise.reject(new Error("absent activation must not drain")),
+    });
+    const before = startEffects(path);
+    await assert.rejects(runtime.start({ manifest: TEST_MANIFEST, scenarioCase, ...admittedFinalization(NAME_ONLY_FINALIZATION_INPUT) }), /runtime config has no dashboard-activated generation/u);
+    assert.deepEqual(startEffects(path), before);
+    assert.equal(database.authority.runtimeConfig.get(), undefined);
+    assert.equal(readSettings(database.authority).revision, 1);
+    assert.equal(database.authority.settingsCurrent.get(), undefined);
+    assert.equal(existsSync(join(root, ".tracker", "settings")), false);
+    await assert.rejects(runtime.collectEvidence("11111111-1111-4111-8111-111111111111"), /dry-run evidence collection ran before start/u);
   });
 
   it("activates changed Settings while refusing a duplicate start without rewriting the admitted run", async () => {
@@ -1067,13 +1105,11 @@ describe("dry-run scenario production composition boundary", () => {
     try {
       raw.exec("PRAGMA foreign_keys = OFF");
       afterSettingsRead = () => {
-        raw
-          .prepare("DELETE FROM settings_snapshots WHERE record_key = ?")
-          .run(active.configSnapshotId);
+        injectSnapshotFault(raw, "settings_snapshots_retained", () => { raw.prepare("DELETE FROM settings_snapshots WHERE id = ?").run(active.configSnapshotId); });
       };
       await assert.rejects(
         fixture.runtime.start(fixture.request),
-        /active runtime config generation 2 does not bind exact snapshot/,
+        /settings-snapshot-missing/u,
       );
       before = startEffects(fixture.path);
       assert.ok(
@@ -1081,7 +1117,7 @@ describe("dry-run scenario production composition boundary", () => {
         "the real start admission refused the missing snapshot",
       );
       assert.deepEqual(startEffects(fixture.path), before);
-      assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+      assert.throws(() => fixture.database.authority.runtimeConfig.get(), /settings-snapshot-missing/u);
     } finally {
       raw.close();
     }
@@ -1093,25 +1129,22 @@ describe("dry-run scenario production composition boundary", () => {
     const { active } = fixture.activate();
     const raw = new DatabaseSync(fixture.path);
     try {
-      raw
-        .prepare(
-          "UPDATE settings_snapshots SET record_json = json_set(record_json, '$.fingerprint', ?) WHERE record_key = ?",
-        )
-        .run("f".repeat(64), active.configSnapshotId);
+      injectSnapshotFault(raw, "settings_snapshots_immutable", () => { raw.prepare("UPDATE settings_snapshots SET fingerprint=?, payload_json=json_set(payload_json, '$.fingerprint', ?) WHERE id=?").run("f".repeat(64), "f".repeat(64), active.configSnapshotId); });
     } finally {
       raw.close();
     }
     const before = startEffects(fixture.path);
     await assert.rejects(
       fixture.runtime.start(fixture.request),
-      /app-settings-snapshot-binding failed for 1 row\(s\)/,
+      /config-snapshot-fingerprint-mismatch/u,
     );
     assert.deepEqual(startEffects(fixture.path), before);
-    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.throws(() => fixture.database.authority.runtimeConfig.get(), /config-snapshot-fingerprint-mismatch/u);
   });
 
   it("rolls back outer start commit failure without publishing a scenario identity", async () => {
-    const fixture = admissionFixture();
+    let injectCommitFailure: (() => void) | undefined;
+    const fixture = admissionFixture({}, () => injectCommitFailure?.());
     fixture.apply({ browser: { headless: false } });
     const { active } = fixture.activate();
     const before = startEffects(fixture.path);
@@ -1120,8 +1153,8 @@ describe("dry-run scenario production composition boundary", () => {
     try {
       // A real SQLite failure at the outer commit's metadata write, after the
       // start audit exists. No transaction counts or mocked kernel are involved.
-      raw.exec(`CREATE TRIGGER refuse_start_commit BEFORE UPDATE ON database_state
-        WHEN EXISTS (SELECT 1 FROM command_audits WHERE json_extract(record_json, '$.request.family') = 'start')
+      injectCommitFailure = () => raw.exec(`CREATE TRIGGER refuse_start_commit BEFORE UPDATE ON database_states
+        WHEN EXISTS (SELECT 1 FROM command_audits WHERE json_extract(payload_json, '$.request.family') = 'start')
         BEGIN SELECT RAISE(ABORT, 'synthetic outer start commit refusal'); END`);
       await assert.rejects(
         fixture.runtime.start(fixture.request),
@@ -1135,11 +1168,13 @@ describe("dry-run scenario production composition boundary", () => {
         /dry-run evidence collection ran before start/,
       );
       raw.exec("DROP TRIGGER refuse_start_commit");
+      injectCommitFailure = undefined;
       const started = await fixture.runtime.start(fixture.request);
       const run = fixture.database.authority.runs.get(started.runId);
       assert.equal(run?.envelope.configSnapshotId, active.configSnapshotId);
       assert.equal(run?.envelope.configFingerprint, active.configFingerprint);
     } finally {
+      raw.exec("DROP TRIGGER IF EXISTS refuse_start_commit");
       raw.close();
     }
   });
@@ -1186,7 +1221,7 @@ describe("dry-run scenario production composition boundary", () => {
     const started = await runtime.start({
       manifest: TEST_MANIFEST,
       scenarioCase,
-      canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
+      ...admittedFinalization(NAME_ONLY_FINALIZATION_INPUT),
     });
     await runtime.drain(TEST_MANIFEST.workflow);
     await runtime.resolveGate({
@@ -1307,7 +1342,7 @@ describe("dry-run scenario production composition boundary", () => {
     const started = await runtime.start({
       manifest: TEST_MANIFEST,
       scenarioCase,
-      canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
+      ...admittedFinalization(NAME_ONLY_FINALIZATION_INPUT),
     });
     await runtime.drain(TEST_MANIFEST.workflow);
 
@@ -1344,10 +1379,10 @@ describe("dry-run scenario production composition boundary", () => {
     try {
       assert.deepEqual(
         {
-          intents: raw.prepare("SELECT count(*) AS n FROM run_operations").get()
+          intents: raw.prepare("SELECT count(*) AS n FROM write_intents").get()
             ?.n,
           attempts: raw
-            .prepare("SELECT count(*) AS n FROM run_operation_attempts")
+            .prepare("SELECT count(*) AS n FROM write_attempts")
             .get()?.n,
           confirmations: raw
             .prepare(
@@ -1405,7 +1440,7 @@ describe("dry-run scenario production composition boundary", () => {
     const started = await runtime.start({
       manifest: FAILED_TEST_MANIFEST,
       scenarioCase,
-      canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
+      ...admittedFinalization(NAME_ONLY_FINALIZATION_INPUT),
     });
     await runtime.drain(FAILED_TEST_MANIFEST.workflow);
     await runtime.resolveGate({
@@ -1646,7 +1681,7 @@ describe("dry-run scenario target dispatch", () => {
       reRead: {
         ordinal: 2,
         reason:
-          "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained.",
+          "Operator-requested second read-only rehearsal with repaired pending-set observation.",
       },
     });
 
