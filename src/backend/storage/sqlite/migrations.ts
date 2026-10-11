@@ -572,6 +572,9 @@ CREATE TRIGGER artifacts_extracted_immutable BEFORE UPDATE ON artifacts
 WHEN OLD.kind='extracted'
 BEGIN SELECT RAISE(ABORT,'artifacts-extracted-immutable'); END;
 
+CREATE TRIGGER worker_pools_retained BEFORE DELETE ON worker_pools
+BEGIN SELECT RAISE(ABORT,'worker-pools-retained'); END;
+
 CREATE TRIGGER run_batches_retained
         BEFORE DELETE ON "run_batches"
         BEGIN SELECT RAISE(ABORT,'run-batches-retained'); END;

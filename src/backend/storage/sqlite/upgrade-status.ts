@@ -1,5 +1,5 @@
 import type { Clock } from "../../../rules/time/clock.js";
-import { withAuthorityDatabaseReadOnly } from "./backup-inspection.js";
+import { withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { AuthorityUpgradeRecordSchema } from "../../../models/config/authority.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import type { RuntimeAdmission } from "../admission/admission.js";

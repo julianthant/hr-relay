@@ -42,7 +42,7 @@ import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type Con
 import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
-import { withAuthorityDatabaseReadOnly } from "./backup-inspection.js";
+import { withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { TimelinePageRequestSchema } from "../../../models/events/timeline.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";

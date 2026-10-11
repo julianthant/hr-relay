@@ -1,6 +1,10 @@
-import { closeSync, constants, fstatSync, lstatSync, mkdtempSync, openSync, readSync, rmSync, writeSync, type BigIntStats } from "node:fs";
+import { z } from "zod";
+import { DatabaseSync } from "node:sqlite";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { requireDatabaseSourcePath } from "./recovery-admission.js";
+import { closeSync, constants, existsSync, statSync, fstatSync, lstatSync, mkdtempSync, openSync, readSync, rmSync, writeSync, type BigIntStats } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 function identity(stats: BigIntStats): string {
   return [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
@@ -83,4 +87,33 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
     dispose();
     throw error;
   }
+}
+
+export function openReadOnlyDatabase(path: string, busyTimeoutMs: number): DatabaseSync {
+  return new DatabaseSync(path, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    timeout: z.number().int().positive().parse(busyTimeoutMs),
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+}
+
+
+export function withAuthorityDatabaseReadOnly<Result>(admission:RuntimeAdmission,pathInput:string,read:(database:DatabaseSync)=>Result,busyTimeoutMs=250):Result {
+ const path=resolve(pathInput);
+ requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
+ requireDatabaseSourcePath(path);
+ if(!existsSync(path)||statSync(path).size===0)throw new Error("authority-backup-source-missing");
+ const snapshot=createReadonlyAuthoritySnapshot(path);
+ let database:DatabaseSync;
+ try {database=openReadOnlyDatabase(snapshot.path,busyTimeoutMs);} catch(error){snapshot.dispose();throw error;}
+ let open=false;
+ try { database.exec("PRAGMA query_only=ON; BEGIN");open=true;const result=read(database);database.exec("COMMIT");open=false;return result; }
+ finally {try{if(open)database.exec("ROLLBACK");}finally{try{database.close();}finally{try{snapshot.assertUnchanged();}finally{snapshot.dispose();}}} }
 }

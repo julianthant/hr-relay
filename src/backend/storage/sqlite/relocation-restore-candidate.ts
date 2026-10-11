@@ -10,7 +10,7 @@ import { CommandAuditRecordSchema, StorageRelocationCommandRequestSchema } from 
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import type { StorageRelocationPlanView } from "../../../rules/commands/commands.js";
-import { withAuthorityDatabaseReadOnly } from "./backup-inspection.js";
+import { withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import type { VerifiedBackup } from "./backup-service.js";
