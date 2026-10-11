@@ -734,15 +734,6 @@ type PreviousWithMtime = Readonly<{
   modifiedMs: number;
 }>;
 
-function backupInvalidCause(_error: unknown) {
-  return StorageHealthCauseSchema.parse({
-    code: "backup-invalid",
-    summary: "The selected backup could not be authenticated as a complete readable recovery source. Check its manifest, identity, databases and retained files.",
-  });
-}
-
-
-
 async function inspectCandidates(
   admission: RuntimeAdmission,
   directory: string,
@@ -810,13 +801,16 @@ async function inspectCandidates(
           generationGap,
         }),
       });
-    } catch (error) {
+    } catch {
       candidates.push({
         modifiedMs,
         candidate: RestoreCandidateSchema.parse({
           state: "invalid",
           manifestFileName,
-          cause: backupInvalidCause(error),
+          cause: StorageHealthCauseSchema.parse({
+            code: "backup-invalid",
+            summary: "The selected backup could not be authenticated as a complete readable recovery source. Check its manifest, identity, databases and retained files.",
+          }),
         }),
       });
     }

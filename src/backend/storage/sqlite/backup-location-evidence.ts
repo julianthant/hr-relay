@@ -28,9 +28,8 @@ export function classifyBackupLocationOrigin(
 export async function verifyBackupLocationEvidence(admission: RuntimeAdmission,
   activeAuthorityPath: string, manifestPath: string) {
   requireDatabaseSourcePath(manifestPath);
-  const classify = (identity: string) => classifyBackupLocationOrigin(admission, activeAuthorityPath, identity);
   const manifest = parseBackupManifestFile(manifestPath);
-  const origin = classify(manifest.sourceDatabaseIdentity);
+  const origin = classifyBackupLocationOrigin(admission, activeAuthorityPath, manifest.sourceDatabaseIdentity);
   const verified = await verifyBackupManifestAtPath(admission, manifestPath, manifest.sourceDatabaseIdentity);
   return { verified, origin, selection: "single-database" as const };
 }
