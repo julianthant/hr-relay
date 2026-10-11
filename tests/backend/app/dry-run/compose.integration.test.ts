@@ -1,183 +1,20 @@
+import { createDryRunCompositionTestWorld } from "../../../support/helpers/backend/dry-run-composition-world.js";
 import assert from "node:assert/strict";
-import {
-mkdirSync,
-mkdtempSync,
-readFileSync,
-rmSync,
-writeFileSync
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import {
-composeDryRunScenarioCommand,
-resolveDryRunScenarioTarget,
-} from "../../../../src/backend/app/dry-run/compose.js";
-import {
-TEST_TARGET_REGISTRY
-} from "../../../../src/backend/app/registries/test-target-registry.js";
+import { composeDryRunScenarioCommand, resolveDryRunScenarioTarget } from "../../../../src/backend/app/dry-run/compose.js";
+import { TEST_TARGET_REGISTRY } from "../../../../src/backend/app/registries/test-target-registry.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { parseDryRunScenarioManifest } from "../../../../src/models/trust/dry-run-scenario.js";
 import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import {
-manualClock
-} from "../../../../src/rules/time/clock.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { testDataInputSource } from "../../../support/helpers/test-data/test-data-source.js";
 
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
+const { roots, databases, TEST_MANIFEST, CHAIN_READY_MANIFEST } = createDryRunCompositionTestWorld();
 
-const PREVIEW_RECEIPT_VERIFICATION = [
-  { obligation: "node.job-summary", verdict: "verified", mandatory: false },
-  { obligation: "node.name-search", verdict: "verified", mandatory: false },
-  {
-    obligation: "node.department-option",
-    verdict: "verified",
-    mandatory: true,
-  },
-  { obligation: "node.comparison", verdict: "verified", mandatory: false },
-  {
-    obligation: "node.identity-approval",
-    verdict: "verified",
-    mandatory: false,
-  },
-  { obligation: "node.approval", verdict: "verified", mandatory: true },
-  { obligation: "node.filing-presence", verdict: "verified", mandatory: false },
-  { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
-  {
-    obligation: "completion.terminal-result",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "write.timekeeper-matches-request",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "identity.eid-agrees-across-sources",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "write.document-matches-request",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "write.transaction-matches-request",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "write.proof-is-a-read-back",
-    verdict: "absent",
-    mandatory: true,
-  },
-] as const;
-
-const TEST_MANIFEST = parseDryRunScenarioManifest({
-  scenarioId: "separations-kuali-finalization/dry-run",
-  workflow: "separations-kuali-finalization",
-  arm: "dry-run-preview",
-  transactionNode: "finalize-kuali",
-  recordedBy: "unit composition fixture",
-  cases: [
-    {
-      caseId: "ordinary",
-      subjectLabel: "finalization-canary",
-      subjectKind: "ordinary",
-      why: "the composition fixture exercises the ordinary declaration",
-      nodesReached: [
-        "job-summary",
-        "name-search",
-        "department-option",
-        "comparison",
-        "identity-approval",
-        "approval",
-        "filing-presence",
-        "finalize-kuali",
-      ],
-      nodesExcluded: [],
-      checkpoints: [
-        "job-summary",
-        "name-search",
-        "department-option",
-        "comparison",
-        "approval",
-        "filing-presence",
-      ].map((node) => ({
-        node,
-        attempt: 1,
-        keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"],
-      })),
-      gateResults: [
-        {
-          gate: "identity-approval",
-          decision: "approved",
-          resolvedBy: "local-operator",
-        },
-      ],
-      durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
-      receipt: {
-        result: "partial",
-        confidence: "unknown",
-        verification: PREVIEW_RECEIPT_VERIFICATION,
-      },
-      terminal: {
-        lifecycle: "done",
-        resultSchema: "RunDryRunPreviewResultSchema",
-        kind: "dry-run-preview",
-        externalCommit: "none",
-        stoppedAtNodeId: "finalize-kuali",
-      },
-      preview: { outcome: "would-prepare", subject: "match", staged: true },
-    },
-  ],
-});
-
-
-const CHAIN_READY_MANIFEST = parseDryRunScenarioManifest({
-  scenarioId: "separations/dry-run",
-  workflow: "separations",
-  arm: "dry-run-preview",
-  transactionNode: "clear-pending",
-  recordedBy: "unit composition fixture",
-  cases: [
-    {
-      caseId: "full-chain-dry-run",
-      subjectLabel: "finalization-canary",
-      subjectKind: "full-chain-dry-run",
-      why: "the composition fixture exercises the chain's ready arm",
-      nodesReached: ["resolve-action", "clear-pending"],
-      nodesExcluded: ["finalize-kuali"],
-      checkpoints: [],
-      gateResults: [],
-      durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
-      receipt: {
-        result: "partial",
-        confidence: "unknown",
-        verification: [
-          {
-            obligation: "completion.terminal-result",
-            verdict: "unknown",
-            mandatory: true,
-          },
-        ],
-      },
-      terminal: {
-        lifecycle: "done",
-        resultSchema: "RunDryRunPreviewResultSchema",
-        kind: "dry-run-preview",
-        externalCommit: "none",
-        stoppedAtNodeId: "clear-pending",
-      },
-      preview: { outcome: "already-present", proofSource: "live-probe" },
-    },
-  ],
-});
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();

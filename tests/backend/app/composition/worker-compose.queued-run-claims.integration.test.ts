@@ -1,14 +1,11 @@
+import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
-
-import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
-
+import { fixtureAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
@@ -17,24 +14,19 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
-import { observeProcessIdentity, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-
+import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AppSettingsSchema } from "../../../../src/models/config/app-settings.js";
 import { SETTINGS_SCHEMA_HASH, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import type { PositiveInt } from "../../../../src/rules/identity/ids.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS, persistCorruptJournaledSettings } from "../../../support/fixtures/integration/settings-runtime-corruption-fixtures.js";
-
 import { RUN_ID, WORKFLOW_ID, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { settingsSetOperations } from "../../../support/fixtures/settings-operation-fixtures.js";
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
-import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { happySessionHarness, personLookupQueuedRun, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const roots: string[] = [];
-const openDatabases: AuthorityDatabase[] = [];
+const { roots, openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, fixtureProcessIdentityObserver, composeInput } = createWorkerCompositionTestWorld();
+
 
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
@@ -44,93 +36,7 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
   }
 });
-
-const NOW = "2026-08-03T09:00:00.000Z";
-const POOL_INDEX_1 = PositiveIntSchema.parse(1);
 const POOL_INDEX_2 = PositiveIntSchema.parse(2);
-
-function repoRootWithState(): { repoRoot: string; stateRoot: string } {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-worker-compose-"));
-  roots.push(repoRoot);
-  const stateRoot = installationAdmission(repoRoot).stateRoot;
-  writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
-  return { repoRoot, stateRoot };
-}
-
-/** Open the SAME database path the composition will, seed it, and close. */
-function seedQueuedRun(
-  stateRoot: string,
-  clock: TestClock,
-  run: Record<string, unknown>,
-  resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }),
-): void {
-  const database = AuthorityDatabase.open(
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
-  );
-  try {
-    const parsedRun = RunRecordSchema.parse(run);
-    const configSnapshotId = parsedRun.envelope.configSnapshotId;
-    database.withAuthorityTransaction((repositories) => {
-      const snapshot = {
-        configSnapshotId,
-        revision: 1,
-        fingerprint: resolved.fingerprint,
-        capturedAt: clock.now().toISOString(),
-        capturedBy: "local-operator",
-        config: resolved.config,
-        provenance: resolved.provenance,
-      };
-      if (repositories.runtimeConfig.get() === undefined) {
-        repositories.runtimeConfig.initialize(snapshot);
-      } else if (repositories.configSnapshots.get(configSnapshotId) === undefined) repositories.configSnapshots.insert(snapshot);
-      assert.equal(repositories.runs.enqueue({
-        ...parsedRun,
-        envelope: { ...parsedRun.envelope, configFingerprint: resolved.fingerprint },
-      }).state, "inserted");
-    });
-  } finally {
-    database.close();
-  }
-}
-
-function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
-  const database = AuthorityDatabase.open(
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
-  );
-  openDatabases.push(database);
-  return database;
-}
-
-function ensureBaselineRuntimeConfig(repoRoot: string, clock: TestClock): void {
-  const database = AuthorityDatabase.open(
-    {
-      path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
-      busyTimeoutMs: 250,
-      migrationOwner: "unit-test",
-    },
-    clock,
-  );
-  try {
-    database.withAuthorityTransaction((repositories) => {
-      if (repositories.runtimeConfig.get() !== undefined) return;
-      const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, { stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(repoRoot, rebuildRuntimeIsolation.artifactRoot) });
-      const configSnapshotId = "66666666-6666-4666-8666-666666666666";
-      repositories.runtimeConfig.initialize({
-        configSnapshotId,
-        revision: 1,
-        fingerprint: resolved.fingerprint,
-        capturedAt: clock.now().toISOString(),
-        capturedBy: "local-operator",
-        config: resolved.config,
-        provenance: resolved.provenance,
-      });
-    });
-  } finally {
-    database.close();
-  }
-}
 
 function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
   patch = settingsSetOperations(patch);
@@ -205,50 +111,6 @@ function journalWorkerSettings(
   const result = executeSettingsCommand({ authority: database, clock, ids: sequentialIdFactory("4"),
     settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }), createCredentialStore({ stateRoot })) }, persisted.command);
   assert.equal(result.state, "applied");
-}
-
-function fixtureProcessIdentityObserver(pid: number) {
-  return pid === process.pid
-    ? observeProcessIdentity(pid)
-    : {
-        state: "alive" as const,
-        identity: { platform: "darwin" as const, startToken: `synthetic-${String(pid)}` },
-      };
-}
-
-function composeInput(options: Readonly<{
-  repoRoot: string;
-  clock: TestClock;
-  sessions: SessionFactoryHarness;
-  poolIndex: PositiveInt;
-  processId?: number;
-  args?: readonly string[];
-  stopSignal?: AbortSignal;
-  lines?: string[];
-}>) {
-  ensureBaselineRuntimeConfig(options.repoRoot, options.clock);
-  return {
-    preflightRunnerFactory: healthyRuntimePreflightRunners,
-    isolation: rebuildRuntimeIsolation,
-    args: options.args ?? [WORKFLOW_ID, "--pool-index", String(options.poolIndex), "--drain"],
-    env: {},
-    clock: options.clock,
-    ids: { uuid: randomUUID },
-    admission: fixtureAdmission(options.repoRoot),
-    repoRoot: options.repoRoot,
-    processId: options.processId ?? 4242,
-    processIdentityObserver: fixtureProcessIdentityObserver,
-    sessionFactory: options.sessions.factory,
-    duoCeremony: fixtureDuoCeremonyGates(options.clock),
-    stopSignal: options.stopSignal ?? new AbortController().signal,
-    // Long enough that no scheduled beat fires during a test; the boot beat is
-    // synchronous, so the lease/sweep path is still exercised.
-    heartbeatIntervalMs: 600_000,
-    sweepIntervalMs: 600_000,
-    write: (line: string): void => {
-      options.lines?.push(line);
-    },
-  } as const;
 }
 
 function assertStoppedWorkerProcessRecord(repoRoot: string, clock: TestClock, generation = 3): void {

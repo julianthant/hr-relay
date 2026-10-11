@@ -1,24 +1,19 @@
-
-
+import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
-
 import { testWorkerPorts } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
-import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
-
 import assert from "node:assert/strict";
-import { copyFileSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
-import { composeDashboardRuntime as composeProductionDashboardRuntime, productionWorkerLaunch, type DashboardComposeInput, type DashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { productionWorkerLaunch } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
-
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
@@ -26,35 +21,11 @@ import { explorerEditCommandFingerprint } from "../../../../../src/models/dashbo
 import { ExplorerEditApplyRequestSchema, ExplorerWorkflowOverrideSchema } from "../../../../../src/models/dashboard/explorer.js";
 import { CommandAuditRecordSchema, CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-const cleanups: (() => Promise<void> | void)[] = [];
+const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture } = createDashboardPortTestWorld();
 
-async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
-  return composeProductionDashboardRuntime({
-    ...input,
-    admission: input.admission ?? installationAdmission(input.repoRoot ?? process.cwd()),
-    backendPortOverride: 0,
-    frontendPortOverride: 0,
-  });
-}
-
-function readRuntimeSettingsRevision(repoRoot: string) {
-  const database = AuthorityDatabase.open({
-    path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
-    busyTimeoutMs: 250,
-    migrationOwner: "unit-test",
-  });
-  try {
-    const active = database.authority.runtimeConfig.get();
-    assert.ok(active, "the composed dashboard must have an active runtime config");
-    return active.settingsRevision;
-  } finally {
-    database.close();
-  }
-}
 
 function settingsCommand(
   commandId: string,
@@ -102,16 +73,6 @@ function protectedUcpathSettingsCommand(
       },
     },
   });
-}
-
-function readPersistedSettings(repoRoot: string, clock: ReturnType<typeof manualClock>) {
-  const database = AuthorityDatabase.open({ path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-  try { return readSettings(database.authority); } finally { database.close(); }
-}
-
-function copyRuntimePackageFixture(repoRoot: string): void {
-  copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
-  copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
 }
 
 vi.mock("node:fs", async (importOriginal) => {

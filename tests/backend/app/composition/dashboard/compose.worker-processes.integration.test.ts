@@ -1,11 +1,9 @@
+import { createDashboardChildTestWorld, type RealChildRecord } from "../../../../support/helpers/backend/dashboard-child-world.js";
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
-
 import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
 import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
-
 import assert from "node:assert/strict";
-import { spawn as spawnChildProcess, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -13,42 +11,15 @@ import { composeWorkerProcessControl } from "../../../../../src/backend/app/comp
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { createCommandKernel, type CommandKernel, type CommandKernelDependencies, type WorkerPoolRuntimeSeam } from "../../../../../src/backend/runs/commands/command-kernel.js";
 import { createTimeoutDeadlineScheduler } from "../../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
-import { type WorkerPoolMember } from "../../../../../src/backend/runtime/workers/worker-loop.js";
-import type { WorkerProcessSpawner } from "../../../../../src/backend/runtime/workers/worker-supervisor.js";
-import { WorkerProcessLockFileSchema } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemClock, type Clock } from "../../../../../src/rules/time/clock.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../../support/fixtures/intake-kernel-seams.js";
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-function servedControlBasis(database: AuthorityDatabase, workerId: string) {
-  const lease = database.authority.workerLeases.get(workerId);
-  assert.ok(lease?.controlRevision, "the fixture must serve a real control basis");
-  return { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision };
-}
-const PL = WorkflowIdSchema.parse("person-lookup");
-const plMember = (index: number): WorkerPoolMember => {
-  const poolIndex = PositiveIntSchema.parse(index);
-  return { workflowId: PL, poolIndex, ordinal: poolIndex, membershipRevision: PositiveIntSchema.parse(1), workerId: WorkerIdSchema.parse(`person-lookup-worker-${String(index)}`) };
-};
+const { stubLaunch, servedControlBasis, PL, plMember, STUB_CLI_PATH, required, roots, openDatabases, cleanups, liveRealChildren, nextCommandId, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase } = createDashboardChildTestWorld();
+
 const PL_1 = plMember(1);
 const PL_2 = plMember(2);
-
-const STUB_CLI_PATH = join(process.cwd(), "tests", "support", "processes", "worker-stub-cli.ts");
-const REPO_ROOT = process.cwd();
-
-function required<T>(value: T | undefined, what: string): T {
-  if (value === undefined) throw new Error(`the proof expected ${what} to exist`);
-  return value;
-}
-
-/* ── shared cleanup: kill every child even on failure, then sweep roots ──── */
-
-const roots: string[] = [];
-const openDatabases: AuthorityDatabase[] = [];
-const cleanups: (() => Promise<void> | void)[] = [];
-const liveRealChildren: ChildProcess[] = [];
 
 afterEach(async () => {
   // Run every cleanup stage despite failures so signal escalation, database close and root cleanup still execute.
@@ -83,25 +54,6 @@ afterEach(async () => {
     throw new AggregateError(errors, `afterEach cleanup failed (${String(errors.length)} error(s))`);
   }
 }, 30_000);
-
-/* ── shared command plumbing ─────────────────────────────────────────────── */
-
-let commandSequence = 0;
-function nextCommandId(): string {
-  commandSequence += 1;
-  const tail = String(commandSequence).padStart(4, "0");
-  return `eeeeeeee-${tail}-4000-8000-${tail}00000000`;
-}
-
-function envelope(clock: Clock, commandId = nextCommandId()) {
-  return {
-    commandId,
-    requestedAt: clock.now().toISOString(),
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "worker-browser",
-  } as const;
-}
 
 /** One pool-effect boundary crossing, in door order. */
 interface PoolEffectEvent {
@@ -198,107 +150,6 @@ function assertUnacknowledged(database: AuthorityDatabase, commandId: string): v
   );
 }
 
-interface RealChildRecord {
-  readonly member: WorkerPoolMember;
-  readonly command: string;
-  readonly argv: readonly string[];
-  readonly pid: number | undefined;
-  readonly child: ChildProcess;
-  readonly output: string[];
-  exited: boolean;
-}
-
-/** The production spawn adapter shape, over a REAL child, with observation. */
-function realStubSpawner(records: RealChildRecord[]): WorkerProcessSpawner {
-  return (request) => {
-    const child = spawnChildProcess(request.command, [...request.args], {
-      cwd: request.cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    liveRealChildren.push(child);
-    const output: string[] = [];
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => output.push(chunk));
-    child.stderr?.on("data", (chunk: string) => output.push(`STDERR ${chunk}`));
-    const record: RealChildRecord = {
-      member: request.member,
-      command: request.command,
-      argv: request.args,
-      pid: child.pid,
-      child,
-      output,
-      exited: false,
-    };
-    records.push(record);
-    return Object.freeze({
-      pid: child.pid,
-      kill: (signal: "SIGTERM" | "SIGKILL"): boolean => child.kill(signal),
-      onExit: (listener: (code: number | null, signal: string | null) => void): void => {
-        child.on("exit", (code, signal) => {
-          record.exited = true;
-          listener(code, signal);
-        });
-      },
-      onError: (listener: (error: Error) => void): void => {
-        child.on("error", (error) => {
-          listener(error);
-        });
-      },
-    });
-  };
-}
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-    throw error;
-  }
-}
-
-async function waitFor(
-  predicate: () => boolean,
-  what: string,
-  diagnostics: () => string,
-  timeoutMs = 20_000,
-): Promise<void> {
-  const deadline = systemClock.monotonicMs() + timeoutMs;
-  while (!predicate()) {
-    if (systemClock.monotonicMs() > deadline) {
-      throw new Error(`timed out after ${String(timeoutMs)}ms waiting for ${what}\n${diagnostics()}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
-
-/** Every worker process-lock record under `<lockRoot>/workers`, by worker id. */
-function workerLockRecords(lockRoot: string): Map<string, { releasedAt: string | null }> {
-  const directory = join(lockRoot, "workers");
-  const records = new Map<string, { releasedAt: string | null }>();
-  if (!existsSync(directory)) return records;
-  for (const name of readdirSync(directory)) {
-    if (!name.endsWith(".lock.json") || name.startsWith(".")) continue;
-    const parsed = WorkerProcessLockFileSchema.parse(
-      JSON.parse(readFileSync(join(directory, name), "utf8")),
-    );
-    assert.equal(parsed.name, "workers");
-    if (!("workerId" in parsed)) throw new Error("unbound-worker-process-lock");
-    records.set(parsed.workerId, { releasedAt: parsed.releasedAt });
-  }
-  return records;
-}
-
-function reportW5Phase(
-  proof: "two-child-door" | "runtime-shutdown",
-  phase: "startup" | "spawn-and-birth" | "graceful-stop" | "shutdown" | "teardown",
-  state: "begin" | "complete",
-): void {
-  process.stdout.write(`[r3b:w5:${proof}] ${phase}:${state}\n`);
-}
-
 describe("real processes: two children supervised concurrently through the composed kernel door", () => {
   interface RealHarness {
     readonly database: AuthorityDatabase;
@@ -332,12 +183,7 @@ describe("real processes: two children supervised concurrently through the compo
       database,
       clock: systemClock,
       scheduler: createTimeoutDeadlineScheduler(systemClock),
-      launch: {
-      environment: {},
-        command: launchCommandOverride ?? process.execPath,
-        prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot, "synthetic"]),
-        cwd: REPO_ROOT,
-      },
+      launch: stubLaunch(dbPath, lockRoot, "synthetic", launchCommandOverride ?? process.execPath),
       spawn: realStubSpawner(records),
       birth: { pollMs: 50, timeoutMs: 30_000 },
       onFault: (error) => {

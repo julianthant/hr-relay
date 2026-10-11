@@ -1,59 +1,15 @@
-import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
-
+import { createPoolRuntimeTestWorld } from "../../../support/helpers/backend/pool-runtime-world.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { afterEach,describe,it } from "vitest";
-import {
-createWorkerPoolRuntimeExecutor
-} from "../../../../src/backend/runtime/workers/worker-loop.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { NOW,UUID_5,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { ITEM_ID,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import {
-openAuthorityHarness
-} from "../../../support/helpers/phase1f-executor-harness.js";
+import { afterEach, describe, it } from "vitest";
+import { createWorkerPoolRuntimeExecutor } from "../../../../src/backend/runtime/workers/worker-loop.js";
+import { NOW, UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { ITEM_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
-const disposers: (() => void)[] = [];
+const { disposers, workerBrowserCommand, admittedAdapterRoster, admitAdapterPlan, OBSERVED_GRACEFUL, STOP_ESCALATION } = createPoolRuntimeTestWorld();
+
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
-
-function workerBrowserCommand(request: unknown) {
-  const parsed = CommandRequestSchema.parse(request);
-  if (parsed.family !== "worker-browser") throw new Error("fixture must be a worker-browser command");
-  return parsed;
-}
-
-function admittedAdapterRoster(workflowId = WORKFLOW_ID) {
-  const authority = openAuthorityHarness();
-  disposers.push(authority.dispose);
-  const command = workerBrowserCommand({ commandId: randomUUID(), requestedBy: "local-operator", requestedAt: NOW,
-    source: "dashboard", family: "worker-browser", type: "plan-worker-count",
-    target: { workflowId, expectedVersion: 0 }, payload: { desiredWorkers: 3 } });
-  if (command.type !== "plan-worker-count") throw new Error("fixture roster command required");
-  const roster = authority.database.withAuthorityTransaction(repositories => {
-    repositories.commands.insert(command);
-    return admitWorkerPoolRoster(repositories, command, NOW);
-  });
-  return { authority, roster, members: roster.selected.map(workerPoolMember) };
-}
-
-function admitAdapterPlan(native: ReturnType<typeof admittedAdapterRoster>, command: ReturnType<typeof workerBrowserCommand>) {
-  if (command.type !== "plan-worker-count") throw new Error("fixture plan command required");
-  return native.authority.database.withAuthorityTransaction(repositories => {
-    repositories.commands.insert(command);
-    return admitWorkerPoolRoster(repositories, command, NOW);
-  });
-}
-
-const OBSERVED_GRACEFUL = [{ stage: "graceful-stop-requested", at: NOW }] as const;
-
-const STOP_ESCALATION = [
-  { stage: "graceful-stop-requested", timeoutMs: 120_000 },
-  { stage: "sigterm-sent", timeoutMs: 30_000 },
-  { stage: "sigkill-sent" },
-] as const;
 
 
 

@@ -1,3 +1,4 @@
+import { createDryRunCompositionTestWorld } from "../../../support/helpers/backend/dry-run-composition-world.js";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,239 +6,24 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-
 import { createProductionDryRunScenarioRuntime } from "../../../../src/backend/app/dry-run/runtime.js";
-
-import { admitProtectedInput } from "../../../../src/backend/runs/start/protected-input.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-
-import { ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
-import { parseDryRunScenarioManifest } from "../../../../src/models/trust/dry-run-scenario.js";
-
-import { ProtectedInputBindingSchema } from "../../../../src/models/write-safety/protected-input.js";
-import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import { SeparationsKualiFinalizationCanonicalInput } from "../../../../src/workflows/separations/steps/kuali-finalization/step.js";
-import { selectedSettingsFixture as sharedSettingsFixture, startEffects } from "../../../support/fixtures/integration/dry-run-admission-fixtures.js";
+import { startEffects } from "../../../support/fixtures/integration/dry-run-admission-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
-
-import { FINALIZATION_RUN_INPUT } from "../../../support/helpers/kuali-finalization-fixtures.js";
-
-import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
-import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
-function spanTextFromAuthority(
-  stateRoot: string,
-  clock: Parameters<typeof AuthorityDatabase.open>[1],
-): string {
-  const database = AuthorityDatabase.open(
-    {
-      path: join(stateRoot, "state.db"),
-      busyTimeoutMs: 500,
-      migrationOwner: "scenario-timeline-read",
-    },
-    clock,
-  );
-  try {
-    return database.authority.timelineEvents
-      .page({})
-      .flatMap((record) =>
-        record.payload.kind === "span"
-          ? [JSON.stringify(record.payload.event)]
-          : [],
-      )
-      .join("\n");
-  } finally {
-    database.close();
-  }
-}
+const { roots, databases, spanTextFromAuthority, selectedSettingsFixture, NAME_ONLY_FINALIZATION_INPUT, admittedFinalization, TEST_MANIFEST, admissionFixture } = createDryRunCompositionTestWorld();
+
 
 function injectSnapshotFault(raw: DatabaseSync, triggerName: "settings_snapshots_immutable" | "settings_snapshots_retained", fault: () => void) {
   const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name=?").get(triggerName);
   if (typeof trigger?.sql !== "string") throw new Error("fixture snapshot protection missing");
   raw.exec(`DROP TRIGGER ${triggerName}`);
   try { fault(); } finally { raw.exec(trigger.sql); }
-}
-
-function selectedSettingsFixture(
-  root: string,
-  clock: TestClock,
-  env: NodeJS.ProcessEnv = {},
-) {
-  return sharedSettingsFixture(root, clock, env, databases);
-}
-
-const PREVIEW_RECEIPT_VERIFICATION = [
-  { obligation: "node.job-summary", verdict: "verified", mandatory: false },
-  { obligation: "node.name-search", verdict: "verified", mandatory: false },
-  {
-    obligation: "node.department-option",
-    verdict: "verified",
-    mandatory: true,
-  },
-  { obligation: "node.comparison", verdict: "verified", mandatory: false },
-  {
-    obligation: "node.identity-approval",
-    verdict: "verified",
-    mandatory: false,
-  },
-  { obligation: "node.approval", verdict: "verified", mandatory: true },
-  { obligation: "node.filing-presence", verdict: "verified", mandatory: false },
-  { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
-  {
-    obligation: "completion.terminal-result",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "write.timekeeper-matches-request",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "identity.eid-agrees-across-sources",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "write.document-matches-request",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "write.transaction-matches-request",
-    verdict: "unknown",
-    mandatory: true,
-  },
-  {
-    obligation: "write.proof-is-a-read-back",
-    verdict: "absent",
-    mandatory: true,
-  },
-] as const;
-
-const NAME_ONLY_FINALIZATION_INPUT =
-  SeparationsKualiFinalizationCanonicalInput.parse({
-    ...FINALIZATION_RUN_INPUT,
-    emplIdSource: "name-resolved",
-    documentEid: { state: "absent", reason: "name-only composition fixture" },
-  });
-
-function admittedFinalization(input: typeof NAME_ONLY_FINALIZATION_INPUT) {
-  const source = protectedSecretSource({ timekeeperName: input.timekeeperName });
-  const signer = ProtectedStoreRecordSchema.parse(source.read()).entries.timekeeperName;
-  if (signer === undefined) throw new Error("fixture protected signer missing");
-  const binding = ProtectedInputBindingSchema.parse({ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: signer.valueId });
-  const admitted = admitProtectedInput(separationsKualiFinalizationDescriptor, [input], source, undefined, [binding])[0];
-  if (admitted === undefined) throw new Error("fixture protected admission missing");
-  return { canonicalInput: admitted.admitted, protectedBindings: admitted.bindings };
-}
-
-const TEST_MANIFEST = parseDryRunScenarioManifest({
-  scenarioId: "separations-kuali-finalization/dry-run",
-  workflow: "separations-kuali-finalization",
-  arm: "dry-run-preview",
-  transactionNode: "finalize-kuali",
-  recordedBy: "unit composition fixture",
-  cases: [
-    {
-      caseId: "ordinary",
-      subjectLabel: "finalization-canary",
-      subjectKind: "ordinary",
-      why: "the composition fixture exercises the ordinary declaration",
-      nodesReached: [
-        "job-summary",
-        "name-search",
-        "department-option",
-        "comparison",
-        "identity-approval",
-        "approval",
-        "filing-presence",
-        "finalize-kuali",
-      ],
-      nodesExcluded: [],
-      checkpoints: [
-        "job-summary",
-        "name-search",
-        "department-option",
-        "comparison",
-        "approval",
-        "filing-presence",
-      ].map((node) => ({
-        node,
-        attempt: 1,
-        keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"],
-      })),
-      gateResults: [
-        {
-          gate: "identity-approval",
-          decision: "approved",
-          resolvedBy: "local-operator",
-        },
-      ],
-      durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
-      receipt: {
-        result: "partial",
-        confidence: "unknown",
-        verification: PREVIEW_RECEIPT_VERIFICATION,
-      },
-      terminal: {
-        lifecycle: "done",
-        resultSchema: "RunDryRunPreviewResultSchema",
-        kind: "dry-run-preview",
-        externalCommit: "none",
-        stoppedAtNodeId: "finalize-kuali",
-      },
-      preview: { outcome: "would-prepare", subject: "match", staged: true },
-    },
-  ],
-});
-
-function admissionFixture(
-  env: NodeJS.ProcessEnv = {},
-  afterSettingsRead?: () => void,
-) {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-admission-"));
-  roots.push(root);
-  mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { recursive: true });
-  writeFileSync(
-    join(root, "package.json"),
-    readFileSync(join(process.cwd(), "package.json"), "utf8"),
-  );
-  const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
-  const settings = selectedSettingsFixture(root, clock, env);
-  const scenarioCase = TEST_MANIFEST.cases[0];
-  assert.ok(scenarioCase);
-  const runtime = createProductionDryRunScenarioRuntime({
-    admission: RuntimeAdmission.syntheticRoots(
-      join(root, rebuildRuntimeIsolation.stateRoot),
-      join(root, rebuildRuntimeIsolation.artifactRoot),
-    ),
-    preflightRunnerFactory: healthyRuntimePreflightRunners,
-    ...(afterSettingsRead === undefined ? {} : { afterSettingsRead }),
-    isolation: rebuildRuntimeIsolation,
-    repoRoot: root,
-    env,
-    clock,
-    ids: sequentialIdFactory("d"),
-    drainWorker: () =>
-      Promise.reject(new Error("admission proof must not drain a worker")),
-  });
-  return {
-    root,
-    clock,
-    ...settings,
-    runtime,
-    request: {
-      manifest: TEST_MANIFEST,
-      scenarioCase,
-      ...admittedFinalization(NAME_ONLY_FINALIZATION_INPUT),
-    },
-  };
 }
 
 afterEach(() => {

@@ -1,48 +1,39 @@
+import { createDryRunCompositionTestWorld } from "../../../support/helpers/backend/dry-run-composition-world.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
-
 import assert from "node:assert/strict";
-import { mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import {
-createProductionDryRunScenarioRuntime,
-LIVE_READ_ADMITTED_NODE_KINDS,
-liveReadGraphRefusal,
-} from "../../../../src/backend/app/dry-run/runtime.js";
-import { DryRunScenarioEvidenceSchema,evaluateDryRunScenarioEvidence } from "../../../../src/backend/runs/start/dry-run-scenario-runner.js";
+import { createProductionDryRunScenarioRuntime, LIVE_READ_ADMITTED_NODE_KINDS, liveReadGraphRefusal } from "../../../../src/backend/app/dry-run/runtime.js";
+import { DryRunScenarioEvidenceSchema, evaluateDryRunScenarioEvidence } from "../../../../src/backend/runs/start/dry-run-scenario-runner.js";
 import { parseDryRunScenarioManifest } from "../../../../src/models/trust/dry-run-scenario.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { GraphNodeKindSchema } from "../../../../src/models/workflow/graph.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import { DelegationEdgeIdSchema,ItemIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { DelegationEdgeIdSchema, ItemIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
-import { defineWorkflowDescriptor,workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js";
+import { defineWorkflowDescriptor, workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
 import { selectedSettingsFixture } from "../../../support/fixtures/integration/dry-run-admission-fixtures.js";
-import { HASH_A,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
-import {
-EXECUTOR_EID,
-healthyCrmDriver,
-healthyUcpathDriver,
-sessionFactoryHarness,
-} from "../../../support/helpers/phase1f-executor-harness.js";
-import { personLookupDescriptor,separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { EXECUTOR_EID, healthyCrmDriver, healthyUcpathDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { personLookupDescriptor, separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { evaluateT1bManifest } from "../../../support/helpers/t1b-manifests.js";
+
+const { roots, databases } = createDryRunCompositionTestWorld();
+
 
 
 const PERSON_LOOKUP_LIVE_READ = evaluateT1bManifest(process.cwd(), "tests/support/fixtures/dry-run/person-lookup-manifest.ts");
 const SEPARATIONS_DRY_RUN = evaluateT1bManifest(process.cwd(), "tests/support/fixtures/dry-run/separations-manifest.ts");
-
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
