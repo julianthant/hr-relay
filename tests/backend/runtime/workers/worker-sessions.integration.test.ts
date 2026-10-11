@@ -1,53 +1,38 @@
-import { hostConfigFacts as hostConfigFacts_m0 } from "../../../../src/models/config/host-display.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 
-import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
-import { chmodSync as chmodSync_m0,mkdirSync as mkdirSync_m0,mkdtempSync as mkdtempSync_m0,rmSync as rmSync_m0,writeFileSync as writeFileSync_m0 } from "node:fs";
-import { tmpdir as tmpdir_m0 } from "node:os";
-import { join as join_m0 } from "node:path";
-import type { BrowserContext as BrowserContext_m0,Worker as Worker_m0 } from "playwright";
-import { describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
-import { resolveConfigWithProvenance as resolveConfigWithProvenance_m0 } from "../../../../src/backend/app/config/resolve.js";
-import { rebuildRuntimeIsolation as rebuildRuntimeIsolation_m0 } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { taskStoreRegistry as taskStoreRegistry_m0,taskStoreRegistry as taskStoreRegistry_m1 } from "../../../../src/backend/app/registries/task-registry.js";
-import {
-BrowserProfileAdmissionSchema as BrowserProfileAdmissionSchema_m0,
-PlaywrightWorkerSessionFactory as PlaywrightWorkerSessionFactory_m0,
-type BrowserDeadlineScheduler as BrowserDeadlineScheduler_m0,
-type PersistentContextLauncher as PersistentContextLauncher_m0
-} from "../../../../src/backend/runtime/browser/browser-session-factory.js";
-import type { BrowserSystemBindings as BrowserSystemBindings_m0 } from "../../../../src/backend/runtime/browser/system-bindings.js";
-import type { MonotonicDeadlineScheduler as MonotonicDeadlineScheduler_m1 } from "../../../../src/backend/runtime/scheduling/deadline-scheduler.js";
-import type {
-BrowserSessionCloseProof as BrowserSessionCloseProof_m1,
-WorkerBrowserSessionFactory as WorkerBrowserSessionFactory_m1,
-WorkerSessionEvent as WorkerSessionEvent_m1
-} from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { WorkerSessionManager as WorkerSessionManager_m0,WorkerSessionManager as WorkerSessionManager_m1 } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import type {
-AuthenticatedApplicationVerifier as AuthenticatedApplicationVerifier_m0,
-AuthenticationProbe as AuthenticationProbe_m0,
-AuthenticationVerificationContext as AuthenticationVerificationContext_m0
-} from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import type { Config as Config_m0 } from "../../../../src/models/config/schema.js";
-import type { ProtectedSecretSource as ProtectedSecretSource_m0 } from "../../../../src/models/config/secrets.js";
-import { BrowserSessionIdSchema as BrowserSessionIdSchema_m1,FingerprintSchema as FingerprintSchema_m0,FingerprintSchema as FingerprintSchema_m1,WorkerIdSchema as WorkerIdSchema_m0,WorkerIdSchema as WorkerIdSchema_m1,WorkflowIdSchema as WorkflowIdSchema_m0,WorkflowIdSchema as WorkflowIdSchema_m1 } from "../../../../src/rules/identity/ids.js";
-import type { TestClock as TestClock_m1 } from "../../../../src/rules/time/clock.js";
-import { manualClock as manualClock_m0,manualClock as manualClock_m1 } from "../../../../src/rules/time/clock.js";
-import type { RunBrowserScreenshotCapture as RunBrowserScreenshotCapture_m1 } from "../../../../src/workflow-kit/diagnostics.js";
-import { fixtureDuoCeremonyGates as fixtureDuoCeremonyGates_m0,fixtureDuoCeremonyGates as fixtureDuoCeremonyGates_m1 } from "../../../support/helpers/duo-ceremony-fixtures.js";
-import { FIXTURE_SESSION_ACQUIRE_MS as FIXTURE_SESSION_ACQUIRE_MS_m0,FIXTURE_SESSION_ACQUIRE_MS as FIXTURE_SESSION_ACQUIRE_MS_m1,ManualScheduler as ManualScheduler_m0,ManualScheduler as ManualScheduler_m1 } from "../../../support/helpers/phase1f-executor-harness.js";
-import { protectedSecretSource as protectedSecretSource_m0 } from "../../../support/helpers/protected-secret-source.js";
-
+import { default as assert } from "node:assert/strict";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { type BrowserContext, type Worker } from "playwright";
+import { describe, it } from "vitest";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
+import { BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
+import { type BrowserSystemBindings } from "../../../../src/backend/runtime/browser/system-bindings.js";
+import { type MonotonicDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/deadline-scheduler.js";
+import { type BrowserSessionCloseProof, type WorkerBrowserSessionFactory, type WorkerSessionEvent } from "../../../../src/backend/runtime/workers/worker-sessions.js";
+import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
+import { type AuthenticatedApplicationVerifier, type AuthenticationProbe, type AuthenticationVerificationContext } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { type Config } from "../../../../src/models/config/schema.js";
+import { type ProtectedSecretSource } from "../../../../src/models/config/secrets.js";
+import { BrowserSessionIdSchema, FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { type TestClock } from "../../../../src/rules/time/clock.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { type RunBrowserScreenshotCapture } from "../../../../src/workflow-kit/diagnostics.js";
+import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
+import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 
 {
 
-
-const CLOCK = manualClock_m0(new Date("2026-08-03T09:00:00.000Z"));
-const WORKER_ID = WorkerIdSchema_m0.parse("person-lookup-worker-1");
-const FINGERPRINT = FingerprintSchema_m0.parse("ab".repeat(32));
+const CLOCK = manualClock(new Date("2026-08-03T09:00:00.000Z"));
+const WORKER_ID = WorkerIdSchema.parse("person-lookup-worker-1");
+const FINGERPRINT = FingerprintSchema.parse("ab".repeat(32));
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
 
-const NEVER_SCHEDULER: BrowserDeadlineScheduler_m0 = {
+const NEVER_SCHEDULER: BrowserDeadlineScheduler = {
   schedule: () => ({ cancel: () => undefined }),
 };
 
@@ -88,12 +73,11 @@ function fakePage(options: Readonly<{ url?: string; refuseClose?: boolean }> = {
   return page;
 }
 
-
 function verifierFor(options: Readonly<{ authenticated?: boolean; reason?: string }> = {}) {
   const seen: string[] = [];
   return {
     seen: () => Object.freeze([...seen]),
-    verify: async (context: AuthenticationVerificationContext_m0): Promise<AuthenticationProbe_m0> => {
+    verify: async (context: AuthenticationVerificationContext): Promise<AuthenticationProbe> => {
       const url = context.page.url();
       seen.push(url);
       if (options.authenticated === false) {
@@ -113,7 +97,7 @@ function verifierFor(options: Readonly<{ authenticated?: boolean; reason?: strin
 }
 
 interface FakeContextHarness {
-  readonly launcher: PersistentContextLauncher_m0;
+  readonly launcher: PersistentContextLauncher;
   readonly launches: () => readonly Readonly<Record<string, unknown>>[];
   readonly page: FakePage;
   readonly contextClosed: () => boolean;
@@ -123,7 +107,7 @@ function fakeLauncher(options: Readonly<{
   page?: FakePage;
   emitCloseEvent?: boolean;
   hangOnClose?: boolean;
-  serviceWorker?: Worker_m0;
+  serviceWorker?: Worker;
 }> = {}): FakeContextHarness {
   const page = options.page ?? fakePage();
   const launches: Readonly<Record<string, unknown>>[] = [];
@@ -147,9 +131,9 @@ function fakeLauncher(options: Readonly<{
     launcher: {
       observeProcess: (_directory, pid = 123) => ({ pid, observation: closed ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "fixture-process" } } }),
       async launch(input) {
-        mkdirSync_m0(input.profileDirectory, { recursive: true, mode: 0o700 });
+        mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
         launches.push({ ...input });
-        return context as unknown as BrowserContext_m0;
+        return context as unknown as BrowserContext;
       },
     },
     launches: () => Object.freeze([...launches]),
@@ -162,8 +146,8 @@ function fakeLauncher(options: Readonly<{
 function recordingBindings(options: Readonly<{
   onLogin?: (context: { credentials: Readonly<{ userId: string; password: string }>; label: string; instance: string }) => void;
   fail?: Error;
-  verify?: AuthenticatedApplicationVerifier_m0;
-}> = {}): BrowserSystemBindings_m0 {
+  verify?: AuthenticatedApplicationVerifier;
+}> = {}): BrowserSystemBindings {
   return {
     ucpath: {
       system: "ucpath",
@@ -183,56 +167,56 @@ function recordingBindings(options: Readonly<{
 }
 
 // Confine every browser-factory filesystem effect to the test root.
-function withTempRuntime(body: (input: Readonly<{ config: Config_m0; root: string }>) => void | Promise<void>): Promise<void> {
-  const root = mkdtempSync_m0(join_m0(tmpdir_m0(), "hrauto-browser-factory-"));
-  const extensionDir = join_m0(root, "duo-autopilot");
-  const credential = join_m0(root, "duo-webauthn.json");
-  const profileRoot = join_m0(root, "profiles");
-  mkdirSync_m0(extensionDir, { recursive: true });
-  writeFileSync_m0(join_m0(extensionDir, "manifest.json"), "{}\n");
-  writeFileSync_m0(credential, "{\"credentials\":[]}\n");
-  chmodSync_m0(credential, 0o600);
-  const base = resolveConfigWithProvenance_m0({}, hostConfigFacts_m0({}), CLOCK).config;
-  const config: Config_m0 = {
+function withTempRuntime(body: (input: Readonly<{ config: Config; root: string }>) => void | Promise<void>): Promise<void> {
+  const root = mkdtempSync(join(tmpdir(), "hrauto-browser-factory-"));
+  const extensionDir = join(root, "duo-autopilot");
+  const credential = join(root, "duo-webauthn.json");
+  const profileRoot = join(root, "profiles");
+  mkdirSync(extensionDir, { recursive: true });
+  writeFileSync(join(extensionDir, "manifest.json"), "{}\n");
+  writeFileSync(credential, "{\"credentials\":[]}\n");
+  chmodSync(credential, 0o600);
+  const base = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
+  const config: Config = {
     ...base,
     features: { ...base.features, duoWebAuthn: false },
     paths: { ...base.paths, browserProfileRoot: profileRoot, duoExtensionDir: extensionDir, duoCredential: credential },
   };
   return Promise.resolve(body({ config, root })).finally(() => {
-    rmSync_m0(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   });
 }
 
 function factoryFor(
-  config: Config_m0,
+  config: Config,
   harness: FakeContextHarness,
-  bindings: BrowserSystemBindings_m0,
-  scheduler: BrowserDeadlineScheduler_m0 = NEVER_SCHEDULER,
-  protectedSecrets: ProtectedSecretSource_m0 = protectedSecretSource_m0({
+  bindings: BrowserSystemBindings,
+  scheduler: BrowserDeadlineScheduler = NEVER_SCHEDULER,
+  protectedSecrets: ProtectedSecretSource = protectedSecretSource({
     ucpathUserId: "fixture-user",
     ucpathPassword: "fixture-value",
   }),
-  Factory: typeof PlaywrightWorkerSessionFactory_m0 = PlaywrightWorkerSessionFactory_m0,
-): PlaywrightWorkerSessionFactory_m0 {
+  Factory: typeof PlaywrightWorkerSessionFactory = PlaywrightWorkerSessionFactory,
+): PlaywrightWorkerSessionFactory {
   return new Factory({
     config,
     protectedSecrets,
-    isolation: rebuildRuntimeIsolation_m0,
+    isolation: rebuildRuntimeIsolation,
     clock: CLOCK,
     scheduler,
     slotOrdinal: () => 1,
     newSessionId: () => SESSION_ID,
-    admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema_m0.parse({ ...input, profileRevision: 7, resetRequired: false })),
+    admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7, resetRequired: false })),
     bindings,
     launcher: harness.launcher,
   });
 }
 
-const WORKFLOW_ID = WorkflowIdSchema_m0.parse("person-lookup");
+const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
 
-describe_m0("worker browser session factory", () => {
+describe("worker browser session factory", () => {
 
-  it_m0("poisons the manager's ownership when a failed setup cannot prove closure", async () => {
+  it("poisons the manager's ownership when a failed setup cannot prove closure", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher({ emitCloseEvent: false });
       const factory = factoryFor(
@@ -240,22 +224,22 @@ describe_m0("worker browser session factory", () => {
         harness,
         recordingBindings(),
         NEVER_SCHEDULER,
-        protectedSecretSource_m0(),
+        protectedSecretSource(),
       );
-      const manager = new WorkerSessionManager_m0({
+      const manager = new WorkerSessionManager({
         workerId: WORKER_ID,
         workflowId: WORKFLOW_ID,
-        stores: taskStoreRegistry_m0,
+        stores: taskStoreRegistry,
         // The store's provider rejects (no credential); cleanup then cannot be
         // proven because this context never announces its close.
         factory,
         clock: CLOCK,
-        scheduler: new ManualScheduler_m0(CLOCK),
-        acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS_m0,
-        duoCeremony: fixtureDuoCeremonyGates_m0(CLOCK),
+        scheduler: new ManualScheduler(CLOCK),
+        acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+        duoCeremony: fixtureDuoCeremonyGates(CLOCK),
       });
       manager.bindRunConfigFingerprint(FINGERPRINT);
-      await assert_m0.rejects(
+      await assert.rejects(
         manager.withDriver(
           { system: "ucpath", access: "read", session: "reuse-worker" },
           "prod",
@@ -268,8 +252,8 @@ describe_m0("worker browser session factory", () => {
           && error.errors.some((failure: unknown) => failure instanceof Error
             && /never emitted its context close event/.test(failure.message)),
       );
-      assert_m0.deepEqual(manager.activeSystems(), ["ucpath"], "an unprovable cleanup stays owned");
-      await assert_m0.rejects(
+      assert.deepEqual(manager.activeSystems(), ["ucpath"], "an unprovable cleanup stays owned");
+      await assert.rejects(
         manager.withDriver(
           { system: "ucpath", access: "read", session: "reuse-worker" },
           "prod",
@@ -285,12 +269,11 @@ describe_m0("worker browser session factory", () => {
 
 {
 
-
-const WORKER_ID = WorkerIdSchema_m1.parse("worker-session-fixture");
-const WORKFLOW_ID = WorkflowIdSchema_m1.parse("person-lookup");
+const WORKER_ID = WorkerIdSchema.parse("worker-session-fixture");
+const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
 const SIGNAL = new AbortController().signal;
-const RUN_FINGERPRINT = FingerprintSchema_m1.parse("1".repeat(64));
-const OTHER_FINGERPRINT = FingerprintSchema_m1.parse("2".repeat(64));
+const RUN_FINGERPRINT = FingerprintSchema.parse("1".repeat(64));
+const OTHER_FINGERPRINT = FingerprintSchema.parse("2".repeat(64));
 
 function sessionFactory(options: Readonly<{
   resetFailureAt?: number;
@@ -301,7 +284,7 @@ function sessionFactory(options: Readonly<{
   // The fake login waits for abort, reproducing a driver that never responds.
   loginHangs?: boolean;
 }> = {}): Readonly<{
-  factory: WorkerBrowserSessionFactory_m1;
+  factory: WorkerBrowserSessionFactory;
   opens: () => number;
   logins: () => number;
   resets: () => number;
@@ -317,7 +300,7 @@ function sessionFactory(options: Readonly<{
     factory: {
       async open(input) {
         opens += 1;
-        const sessionId = BrowserSessionIdSchema_m1.parse(
+        const sessionId = BrowserSessionIdSchema.parse(
           `00000000-0000-4000-8000-${String(opens).padStart(12, "0")}`,
         );
         return {
@@ -362,7 +345,7 @@ function sessionFactory(options: Readonly<{
             resets += 1;
             if (resets === options.resetFailureAt) throw new Error("injected reset failure");
           },
-          async close(): Promise<BrowserSessionCloseProof_m1> {
+          async close(): Promise<BrowserSessionCloseProof> {
             closes += 1;
             if (closes === options.closeFailureAt) throw new Error("injected close failure");
             return {
@@ -388,24 +371,24 @@ function sessionFactory(options: Readonly<{
 
 function manager(
   harness: ReturnType<typeof sessionFactory>,
-  events: WorkerSessionEvent_m1[] = [],
+  events: WorkerSessionEvent[] = [],
   options: {
-    clock?: TestClock_m1;
-    scheduler?: MonotonicDeadlineScheduler_m1;
-    browserScreenshotCapture?: RunBrowserScreenshotCapture_m1;
+    clock?: TestClock;
+    scheduler?: MonotonicDeadlineScheduler;
+    browserScreenshotCapture?: RunBrowserScreenshotCapture;
     captureBrowserScreenshots?: boolean;
   } = {},
-): WorkerSessionManager_m1 {
-  const clock = options.clock ?? manualClock_m1(new Date("2026-08-02T18:00:00.000Z"));
-  const sessions = new WorkerSessionManager_m1({
+): WorkerSessionManager {
+  const clock = options.clock ?? manualClock(new Date("2026-08-02T18:00:00.000Z"));
+  const sessions = new WorkerSessionManager({
     workerId: WORKER_ID,
     workflowId: WORKFLOW_ID,
-    stores: taskStoreRegistry_m1,
+    stores: taskStoreRegistry,
     factory: harness.factory,
     clock,
-    scheduler: options.scheduler ?? new ManualScheduler_m1(clock),
-    acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS_m1,
-    duoCeremony: fixtureDuoCeremonyGates_m1(clock),
+    scheduler: options.scheduler ?? new ManualScheduler(clock),
+    acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: fixtureDuoCeremonyGates(clock),
     onEvent: (event) => events.push(event),
     ...(options.browserScreenshotCapture === undefined
       ? { browserScreenshotCapture: { capture: async () => undefined } }
@@ -428,11 +411,11 @@ const UCPATH_REUSE = {
   session: "reuse-worker" as const,
 };
 
-describe_m1("worker browser sessions", () => {
+describe("worker browser sessions", () => {
 
-  it_m1("proves an authored fresh boundary closes before starting the replacement", async () => {
+  it("proves an authored fresh boundary closes before starting the replacement", async () => {
     const harness = sessionFactory();
-    const events: WorkerSessionEvent_m1[] = [];
+    const events: WorkerSessionEvent[] = [];
     const sessions = manager(harness, events);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "first");
     await sessions.withDriver(
@@ -441,172 +424,170 @@ describe_m1("worker browser sessions", () => {
       SIGNAL,
       async () => "second",
     );
-    assert_m1.equal(harness.opens(), 2);
+    assert.equal(harness.opens(), 2);
     const relevant = events.filter(({ type }) => type !== "browser-session:reset");
-    assert_m1.deepEqual(relevant.map(({ type }) => type), [
+    assert.deepEqual(relevant.map(({ type }) => type), [
       "browser-session:start",
       "browser-session:close",
       "browser-session:start",
     ]);
-    assert_m1.equal(
+    assert.equal(
       relevant[1]?.type === "browser-session:close" ? relevant[1].reason : undefined,
       "fresh-boundary",
     );
-    assert_m1.notEqual(relevant[0]?.sessionId, relevant[2]?.sessionId);
+    assert.notEqual(relevant[0]?.sessionId, relevant[2]?.sessionId);
   });
 
-  it_m1("requires a bound run config fingerprint before any driver lease", async () => {
+  it("requires a bound run config fingerprint before any driver lease", async () => {
     const harness = sessionFactory();
-    const sessions = new WorkerSessionManager_m1({
+    const sessions = new WorkerSessionManager({
       workerId: WORKER_ID,
       workflowId: WORKFLOW_ID,
-      stores: taskStoreRegistry_m1,
+      stores: taskStoreRegistry,
       factory: harness.factory,
-      clock: manualClock_m1(new Date("2026-08-02T18:00:00.000Z")),
-      scheduler: new ManualScheduler_m1(manualClock_m1(new Date("2026-08-02T18:00:00.000Z"))),
-      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS_m1,
-      duoCeremony: fixtureDuoCeremonyGates_m1(),
+      clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+      scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(),
     });
-    await assert_m1.rejects(
+    await assert.rejects(
       sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
       /requires the claimed run's bound config fingerprint/,
     );
-    assert_m1.equal(harness.opens(), 0);
+    assert.equal(harness.opens(), 0);
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
-    assert_m1.throws(
+    assert.throws(
       () => sessions.bindRunConfigFingerprint(OTHER_FINGERPRINT),
       /already has a bound run config fingerprint/,
     );
     sessions.releaseRunConfigFingerprint();
-    assert_m1.throws(
+    assert.throws(
       () => sessions.releaseRunConfigFingerprint(),
       /no bound run config fingerprint to release/,
     );
   });
 
-  it_m1("reuses only on an exact fingerprint match and proves the boundary on drift", async () => {
+  it("reuses only on an exact fingerprint match and proves the boundary on drift", async () => {
     const harness = sessionFactory();
-    const events: WorkerSessionEvent_m1[] = [];
+    const events: WorkerSessionEvent[] = [];
     const sessions = manager(harness, events);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "first");
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "same-run-reuse");
-    assert_m1.equal(harness.opens(), 1);
-
+    assert.equal(harness.opens(), 1);
 
     sessions.releaseRunConfigFingerprint();
     sessions.bindRunConfigFingerprint(OTHER_FINGERPRINT);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "next-run");
-    assert_m1.equal(harness.opens(), 2);
-    assert_m1.equal(harness.logins(), 2);
+    assert.equal(harness.opens(), 2);
+    assert.equal(harness.logins(), 2);
     const relevant = events.filter(({ type }) => type !== "browser-session:reset");
-    assert_m1.deepEqual(relevant.map(({ type }) => type), [
+    assert.deepEqual(relevant.map(({ type }) => type), [
       "browser-session:start",
       "browser-session:close",
       "browser-session:start",
     ]);
-    assert_m1.equal(
+    assert.equal(
       relevant[1]?.type === "browser-session:close" ? relevant[1].reason : undefined,
       "fresh-boundary",
     );
-    assert_m1.notEqual(relevant[0]?.sessionId, relevant[2]?.sessionId);
+    assert.notEqual(relevant[0]?.sessionId, relevant[2]?.sessionId);
   });
 
-  it_m1("treats a changed resolved instance as identity drift, not silent reuse", async () => {
+  it("treats a changed resolved instance as identity drift, not silent reuse", async () => {
     const harness = sessionFactory();
-    const events: WorkerSessionEvent_m1[] = [];
+    const events: WorkerSessionEvent[] = [];
     const sessions = manager(harness, events);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "prod-run");
     sessions.releaseRunConfigFingerprint();
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     await sessions.withDriver(UCPATH_REUSE, "test", SIGNAL, async () => "test-run");
-    assert_m1.equal(harness.opens(), 2);
+    assert.equal(harness.opens(), 2);
     const closes = events.filter((event) => event.type === "browser-session:close");
-    assert_m1.deepEqual(closes.map((event) => event.reason), ["fresh-boundary"]);
+    assert.deepEqual(closes.map((event) => event.reason), ["fresh-boundary"]);
   });
 
-  it_m1("treats a changed browser presentation as identity drift, not silent reuse", async () => {
+  it("treats a changed browser presentation as identity drift, not silent reuse", async () => {
     const harness = sessionFactory();
-    const events: WorkerSessionEvent_m1[] = [];
+    const events: WorkerSessionEvent[] = [];
     const sessions = manager(harness, events);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "headless-run");
     sessions.releaseRunConfigFingerprint();
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, "headed");
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "headed-run");
-    assert_m1.equal(harness.opens(), 2);
-    assert_m1.deepEqual(
+    assert.equal(harness.opens(), 2);
+    assert.deepEqual(
       events.filter((event) => event.type === "browser-session:close").map((event) => event.reason),
       ["fresh-boundary"],
     );
   });
 
-  it_m1("admits a legacy headless resource only at the configured default, never for a headed run", async () => {
+  it("admits a legacy headless resource only at the configured default, never for a headed run", async () => {
     const harness = sessionFactory();
-    const legacy: WorkerBrowserSessionFactory_m1 = {
+    const legacy: WorkerBrowserSessionFactory = {
       async open(input) {
         const resource = await harness.factory.open(input);
         const { browserMode: _browserMode, ...withoutMode } = resource;
         return withoutMode;
       },
     };
-    const sessions = new WorkerSessionManager_m1({
+    const sessions = new WorkerSessionManager({
       workerId: WORKER_ID,
       workflowId: WORKFLOW_ID,
-      stores: taskStoreRegistry_m1,
+      stores: taskStoreRegistry,
       factory: legacy,
-      clock: manualClock_m1(new Date("2026-08-02T18:00:00.000Z")),
-      scheduler: new ManualScheduler_m1(manualClock_m1(new Date("2026-08-02T18:00:00.000Z"))),
-      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS_m1,
-      duoCeremony: fixtureDuoCeremonyGates_m1(),
+      clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+      scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "legacy-headless");
     sessions.releaseRunConfigFingerprint();
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, "headed");
-    await assert_m1.rejects(
+    await assert.rejects(
       sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
       /mismatched launch options/,
     );
-    assert_m1.equal(harness.opens(), 2, "headed identity drift must force a fresh acquisition before refusing its missing echo");
+    assert.equal(harness.opens(), 2, "headed identity drift must force a fresh acquisition before refusing its missing echo");
   });
 
-  it_m1("refuses a factory resource that echoes a different fingerprint", async () => {
+  it("refuses a factory resource that echoes a different fingerprint", async () => {
     const harness = sessionFactory();
-    const forging: WorkerBrowserSessionFactory_m1 = {
+    const forging: WorkerBrowserSessionFactory = {
       async open(input) {
         const resource = await harness.factory.open(input);
         return { ...resource, configFingerprint: OTHER_FINGERPRINT };
       },
     };
-    const sessions = new WorkerSessionManager_m1({
+    const sessions = new WorkerSessionManager({
       workerId: WORKER_ID,
       workflowId: WORKFLOW_ID,
-      stores: taskStoreRegistry_m1,
+      stores: taskStoreRegistry,
       factory: forging,
-      clock: manualClock_m1(new Date("2026-08-02T18:00:00.000Z")),
-      scheduler: new ManualScheduler_m1(manualClock_m1(new Date("2026-08-02T18:00:00.000Z"))),
-      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS_m1,
-      duoCeremony: fixtureDuoCeremonyGates_m1(),
+      clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
+      scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
-    await assert_m1.rejects(
+    await assert.rejects(
       sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
       /mismatched launch options/,
     );
   });
 });
 
-
-describe_m1("bounded browser-session acquisition", () => {
+describe("bounded browser-session acquisition", () => {
   const UCPATH_NEED = { system: "ucpath", access: "read", session: "reuse-worker" } as const;
 
-  it_m1("poison-closes a session whose non-cooperative login lands after the bound expired", async () => {
+  it("poison-closes a session whose non-cooperative login lands after the bound expired", async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
     const base = sessionFactory();
 
-    const stubborn: WorkerBrowserSessionFactory_m1 = {
+    const stubborn: WorkerBrowserSessionFactory = {
       async open(input) {
         const resource = await base.factory.open(input);
         return {
@@ -620,69 +601,68 @@ describe_m1("bounded browser-session acquisition", () => {
         };
       },
     };
-    const clock = manualClock_m1(new Date("2026-08-02T18:00:00.000Z"));
-    const scheduler = new ManualScheduler_m1(clock);
-    const events: WorkerSessionEvent_m1[] = [];
-    const sessions = new WorkerSessionManager_m1({
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const events: WorkerSessionEvent[] = [];
+    const sessions = new WorkerSessionManager({
       workerId: WORKER_ID,
       workflowId: WORKFLOW_ID,
-      stores: taskStoreRegistry_m1,
+      stores: taskStoreRegistry,
       factory: stubborn,
       clock,
       scheduler,
-      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS_m1,
-      duoCeremony: fixtureDuoCeremonyGates_m1(clock),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
 
     const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => "must not run");
-    const rejection = assert_m1.rejects(lease, /timeouts\.sessionAcquireMs bound/);
+    const rejection = assert.rejects(lease, /timeouts\.sessionAcquireMs bound/);
     await new Promise((resolve) => setImmediate(resolve));
     scheduler.pending()[0].fire();
     await rejection;
 
-
     release?.();
     for (let tick = 0; tick < 5; tick += 1) await new Promise((resolve) => setImmediate(resolve));
-    assert_m1.deepEqual(sessions.activeSystems(), []);
-    assert_m1.deepEqual(
+    assert.deepEqual(sessions.activeSystems(), []);
+    assert.deepEqual(
       events.filter((event) => event.type === "browser-session:close").map((event) => event.reason),
       ["poisoned"],
     );
   });
 
-  it_m1("lets an abandoned acquisition run its OWN proven cleanup when it is cooperative", async () => {
+  it("lets an abandoned acquisition run its OWN proven cleanup when it is cooperative", async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
     const base = sessionFactory();
-    const slowOpen: WorkerBrowserSessionFactory_m1 = {
+    const slowOpen: WorkerBrowserSessionFactory = {
       async open(input) {
         const resource = await base.factory.open(input);
         await gate;
         return resource;
       },
     };
-    const clock = manualClock_m1(new Date("2026-08-02T18:00:00.000Z"));
-    const scheduler = new ManualScheduler_m1(clock);
-    const events: WorkerSessionEvent_m1[] = [];
-    const sessions = new WorkerSessionManager_m1({
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const events: WorkerSessionEvent[] = [];
+    const sessions = new WorkerSessionManager({
       workerId: WORKER_ID,
       workflowId: WORKFLOW_ID,
-      stores: taskStoreRegistry_m1,
+      stores: taskStoreRegistry,
       factory: slowOpen,
       clock,
       scheduler,
-      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS_m1,
-      duoCeremony: fixtureDuoCeremonyGates_m1(clock),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
 
     const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => "must not run");
-    const rejection = assert_m1.rejects(lease, /timeouts\.sessionAcquireMs bound/);
+    const rejection = assert.rejects(lease, /timeouts\.sessionAcquireMs bound/);
     await new Promise((resolve) => setImmediate(resolve));
     scheduler.pending()[0].fire();
     await rejection;
@@ -691,25 +671,25 @@ describe_m1("bounded browser-session acquisition", () => {
     for (let tick = 0; tick < 5; tick += 1) await new Promise((resolve) => setImmediate(resolve));
     // The provider refuses to authenticate under an aborted signal, so
     // `#openAndLogin` proved its own close; nothing is left owned or leaked.
-    assert_m1.deepEqual(sessions.activeSystems(), []);
-    assert_m1.deepEqual(
+    assert.deepEqual(sessions.activeSystems(), []);
+    assert.deepEqual(
       events.filter((event) => event.type === "browser-session:close").map((event) => event.reason),
       ["login-failed"],
     );
   });
 
-  it_m1("refuses to be built without a positive acquisition bound", () => {
+  it("refuses to be built without a positive acquisition bound", () => {
     const harness = sessionFactory();
-    const clock = manualClock_m1(new Date("2026-08-02T18:00:00.000Z"));
-    assert_m1.throws(() => new WorkerSessionManager_m1({
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    assert.throws(() => new WorkerSessionManager({
       workerId: WORKER_ID,
       workflowId: WORKFLOW_ID,
-      stores: taskStoreRegistry_m1,
+      stores: taskStoreRegistry,
       factory: harness.factory,
       clock,
-      scheduler: new ManualScheduler_m1(clock),
+      scheduler: new ManualScheduler(clock),
       acquireDeadlineMs: 0,
-      duoCeremony: fixtureDuoCeremonyGates_m1(clock),
+      duoCeremony: fixtureDuoCeremonyGates(clock),
     }));
   });
 });

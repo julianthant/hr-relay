@@ -1,33 +1,31 @@
-import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
-import { mkdtempSync as mkdtempSync_m1,realpathSync as realpathSync_m1,rmSync as rmSync_m1 } from "node:fs";
-import { tmpdir as tmpdir_m1 } from "node:os";
-import { join as join_m1 } from "node:path";
-import { DatabaseSync as DatabaseSync_m1 } from "node:sqlite";
-import { afterEach as afterEach_m1,describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
-import { manualClock as manualClock_m1 } from "../../../../src/rules/time/clock.js";
-import { CONFIG_SNAPSHOT as CONFIG_SNAPSHOT_m1 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN as QUEUED_RUN_m1 } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { cleanReceiptOf as cleanReceiptOf_m0,uuidOf as uuidOf_m0 } from "../../../support/helpers/backend/dashboard-harness.js";
-import { failure as failure_m0,foundationFixture as foundationFixture_m0,terminalizeFixtureFailure as terminalizeFixtureFailure_m0 } from "../../../support/helpers/database-foundation/fixtures.js";
-import { AuthorityDatabase as AuthorityDatabase_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
-
+import { default as assert } from "node:assert/strict";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, describe, it } from "vitest";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { cleanReceiptOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { failure as failure_m0, foundationFixture, terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 {
 
-
-function insertReceipt(f: ReturnType<typeof foundationFixture_m0>, seed: number) {
-  const run = f.createRun(uuidOf_m0(seed));
+function insertReceipt(f: ReturnType<typeof foundationFixture>, seed: number) {
+  const run = f.createRun(uuidOf(seed));
   const failed = {
     ...failure_m0(),
-    failureId: uuidOf_m0(seed + 9000),
+    failureId: uuidOf(seed + 9000),
     runId: run.envelope.runId,
     traceId: run.envelope.traceId,
     workflowId: run.envelope.workflow,
     attempt: run.envelope.attempt,
   };
-  assert_m0.equal(terminalizeFixtureFailure_m0(f, run, failed).state, "applied");
+  assert.equal(terminalizeFixtureFailure(f, run, failed).state, "applied");
   return f.db.authority.evidenceReceipts.insert({
-    ...cleanReceiptOf_m0({ seed, workflow: run.envelope.workflow }),
+    ...cleanReceiptOf({ seed, workflow: run.envelope.workflow }),
     traceId: run.envelope.traceId,
     descriptorFingerprint: run.envelope.contractFingerprint,
     configFingerprint: run.envelope.configFingerprint,
@@ -37,16 +35,16 @@ function insertReceipt(f: ReturnType<typeof foundationFixture_m0>, seed: number)
   });
 }
 
-describe_m0("evidence receipt repository", () => {
-  it_m0("filters multiple real SQLite receipt rows by exact run with stable cardinality", () => {
-    const f = foundationFixture_m0();
+describe("evidence receipt repository", () => {
+  it("filters multiple real SQLite receipt rows by exact run with stable cardinality", () => {
+    const f = foundationFixture();
     try {
       const seeds = [503, 501, 502] as const;
       const inserted = seeds.map(seed => insertReceipt(f, seed));
-      const reads = seeds.map(seed => f.db.authority.evidenceReceipts.listByRun(uuidOf_m0(seed)));
+      const reads = seeds.map(seed => f.db.authority.evidenceReceipts.listByRun(uuidOf(seed)));
 
-      assert_m0.deepEqual(reads.map((receipts) => receipts.length), [1, 1, 1]);
-      assert_m0.deepEqual(
+      assert.deepEqual(reads.map((receipts) => receipts.length), [1, 1, 1]);
+      assert.deepEqual(
         reads.map(([receipt]) => receipt?.receiptId),
         inserted.map(receipt => receipt.record.receiptId),
       );
@@ -55,22 +53,22 @@ describe_m0("evidence receipt repository", () => {
     }
   });
 
-  it_m0("returns no receipt for a well-formed absent run in populated SQLite authority", () => {
-    const f = foundationFixture_m0();
+  it("returns no receipt for a well-formed absent run in populated SQLite authority", () => {
+    const f = foundationFixture();
     try {
       insertReceipt(f, 504);
-      const receipts = f.db.authority.evidenceReceipts.listByRun(uuidOf_m0(505));
+      const receipts = f.db.authority.evidenceReceipts.listByRun(uuidOf(505));
 
-      assert_m0.deepEqual(receipts, []);
+      assert.deepEqual(receipts, []);
     } finally {
       f.dispose();
     }
   });
 
-  it_m0("refuses a list read whose run id is not exact", () => {
-    const f = foundationFixture_m0();
+  it("refuses a list read whose run id is not exact", () => {
+    const f = foundationFixture();
     try {
-      assert_m0.throws(
+      assert.throws(
         () => f.db.authority.evidenceReceipts.listByRun("not-a-run-id"),
         /run id must be a UUID/,
       );
@@ -82,7 +80,6 @@ describe_m0("evidence receipt repository", () => {
 }
 
 {
-
 
 const NOW = "2026-08-25T12:00:00.000Z";
 const HASH = "a".repeat(64);
@@ -119,78 +116,77 @@ const NOT_STARTED_BLOCKED_RESULT = {
 };
 
 function databasePath(): string {
-  const root = mkdtempSync_m1(join_m1(realpathSync_m1(tmpdir_m1()), "hrauto-dry-run-result-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-dry-run-result-"));
   roots.push(root);
-  return join_m1(root, "authority.sqlite");
+  return join(root, "authority.sqlite");
 }
 
-function openDatabase(path = databasePath()): AuthorityDatabase_m1 {
-  const database = AuthorityDatabase_m1.open(
+function openDatabase(path = databasePath()): AuthorityDatabase {
+  const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "dry-run-result-test" },
-    manualClock_m1(new Date(NOW)),
+    manualClock(new Date(NOW)),
   );
-  if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT_m1);
+  if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   return database;
 }
 
 const _afterEachFixture0 = () => {
-  for (const root of roots.splice(0)) rmSync_m1(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
-describe_m1("dry-run scenario result authority repository", () => {
-afterEach_m1(_afterEachFixture0);
+describe("dry-run scenario result authority repository", () => {
+afterEach(_afterEachFixture0);
 
-
-  it_m1("rejects a started result whose trace does not identify its dry-run record", () => {
+  it("rejects a started result whose trace does not identify its dry-run record", () => {
     const database = openDatabase();
     database.authority.runs.enqueue({
-      ...QUEUED_RUN_m1,
-      envelope: { ...QUEUED_RUN_m1.envelope, dryRun: true },
+      ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, dryRun: true },
     });
 
-    assert_m1.throws(
+    assert.throws(
       () => database.authority.dryRunScenarioResults.insert({
         ...STARTED_MET_RESULT,
         scenarioId: "person-lookup/dry-run",
-        workflow: QUEUED_RUN_m1.envelope.workflow,
+        workflow: QUEUED_RUN.envelope.workflow,
         execution: {
           state: "started",
-          runId: QUEUED_RUN_m1.envelope.runId,
+          runId: QUEUED_RUN.envelope.runId,
           traceId: "pl-170000-9999",
         },
       }),
       /does not match its dry-run execution/,
     );
-    assert_m1.deepEqual(database.authority.dryRunScenarioResults.list(), []);
+    assert.deepEqual(database.authority.dryRunScenarioResults.list(), []);
     database.close();
   });
 
-  it_m1("treats exact replay as idempotent and rejects identity reuse with different content", () => {
+  it("treats exact replay as idempotent and rejects identity reuse with different content", () => {
     const database = openDatabase();
     const inserted = database.authority.dryRunScenarioResults.insert(NOT_STARTED_BLOCKED_RESULT);
     const generationAfterInsert = database.getMeta().authorityGeneration;
 
     const replayed = database.authority.dryRunScenarioResults.insert(NOT_STARTED_BLOCKED_RESULT);
 
-    assert_m1.equal(inserted.state, "inserted");
-    assert_m1.equal(replayed.state, "existing");
-    assert_m1.equal(database.getMeta().authorityGeneration, generationAfterInsert);
-    assert_m1.throws(
+    assert.equal(inserted.state, "inserted");
+    assert.equal(replayed.state, "existing");
+    assert.equal(database.getMeta().authorityGeneration, generationAfterInsert);
+    assert.throws(
       () => database.authority.dryRunScenarioResults.insert({
         ...NOT_STARTED_BLOCKED_RESULT,
         wallTimeMs: 1,
       }),
       /already exists with different content/,
     );
-    assert_m1.equal(database.getMeta().authorityGeneration, generationAfterInsert);
+    assert.equal(database.getMeta().authorityGeneration, generationAfterInsert);
     database.close();
   });
 
-  it_m1("rejects resolved subject values before any payload_json is written", () => {
+  it("rejects resolved subject values before any payload_json is written", () => {
     const path = databasePath();
     const database = openDatabase(path);
 
-    assert_m1.throws(() => database.authority.dryRunScenarioResults.insert({
+    assert.throws(() => database.authority.dryRunScenarioResults.insert({
       ...NOT_STARTED_BLOCKED_RESULT,
       subjectValue: "10873698",
       assertions: [{
@@ -198,24 +194,24 @@ afterEach_m1(_afterEachFixture0);
         detail: "resolved EID 10873698",
       }],
     }));
-    const raw = new DatabaseSync_m1(path, { readOnly: true });
+    const raw = new DatabaseSync(path, { readOnly: true });
     const row = raw.prepare(`
       SELECT count(*) AS count FROM dryrun_results
       WHERE instr(payload_json, '10873698') > 0
     `).get();
-    assert_m1.equal(row?.count, 0);
+    assert.equal(row?.count, 0);
     raw.close();
     database.close();
   });
 
-  it_m1("refuses raw SQL updates to recorded evidence", () => {
+  it("refuses raw SQL updates to recorded evidence", () => {
     const path = databasePath();
     const database = openDatabase(path);
     database.authority.dryRunScenarioResults.insert(NOT_STARTED_BLOCKED_RESULT);
     database.close();
-    const raw = new DatabaseSync_m1(path);
+    const raw = new DatabaseSync(path);
 
-    assert_m1.throws(
+    assert.throws(
       () => raw.prepare("UPDATE dryrun_results SET subject_label = ? WHERE id = ?")
         .run("rewritten-canary", NOT_STARTED_BLOCKED_RESULT.resultId),
       /retained-evidence-immutable/u,
@@ -223,14 +219,14 @@ afterEach_m1(_afterEachFixture0);
     raw.close();
   });
 
-  it_m1("refuses raw SQL deletion of recorded evidence", () => {
+  it("refuses raw SQL deletion of recorded evidence", () => {
     const path = databasePath();
     const database = openDatabase(path);
     database.authority.dryRunScenarioResults.insert(NOT_STARTED_BLOCKED_RESULT);
     database.close();
-    const raw = new DatabaseSync_m1(path);
+    const raw = new DatabaseSync(path);
 
-    assert_m1.throws(
+    assert.throws(
       () => raw.prepare("DELETE FROM dryrun_results WHERE id = ?")
         .run(NOT_STARTED_BLOCKED_RESULT.resultId),
       /owner-deletion-required/u,
@@ -238,11 +234,11 @@ afterEach_m1(_afterEachFixture0);
     raw.close();
   });
 
-  it_m1("fails boot when a raw insert contains a record that violates the strict boundary", () => {
+  it("fails boot when a raw insert contains a record that violates the strict boundary", () => {
     const path = databasePath();
     const database = openDatabase(path);
     database.close();
-    const raw = new DatabaseSync_m1(path);
+    const raw = new DatabaseSync(path);
     const corrupted = {
       ...NOT_STARTED_BLOCKED_RESULT,
       resultId: "66666666-6666-4666-8666-666666666666",
@@ -260,7 +256,7 @@ afterEach_m1(_afterEachFixture0);
     );
     raw.close();
 
-    assert_m1.throws(
+    assert.throws(
       () => openDatabase(path),
       /authority table dryrun_results failed native record validation/,
     );

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import { EXPLORER_SOURCE_ROOT } from "../../../src/backend/runs/queries/explorer.js";
 import { buildUiTaskLinks } from "../../../src/backend/systems/ui-task-links.js";
 import { type ExplorerNodeWire } from "../../../src/models/dashboard/explorer.js";
@@ -12,12 +12,6 @@ import { explorerAuthorityFixture } from "../../support/fixtures/explorer-author
 import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
 
 const FIRST = "11111111-1111-4111-8111-111111111111";
-
-function untouched(f: ReturnType<typeof explorerAuthorityFixture>) {
-  assert.deepEqual(f.database.authority.explorerOverrides.readAll(), []);
-  assert.equal(f.database.authority.commands.get(FIRST), undefined);
-  assert.equal(f.database.authority.commandAudits.findByCommand(FIRST), undefined);
-}
 
 describe("Explorer registered graph and service acceptance", () => {
   it("matches each runtime dependency, condition and dry-run boundary and resolves all printed sources", () => {
@@ -67,7 +61,9 @@ describe("Explorer registered graph and service acceptance", () => {
         }
       }
       assert.ok(conditional > 0 && transactions > 0, "must exercise actual conditional and transaction nodes");
-      untouched(f);
+      assert.deepEqual(f.database.authority.explorerOverrides.readAll(), []);
+      assert.equal(f.database.authority.commands.get(FIRST), undefined);
+      assert.equal(f.database.authority.commandAudits.findByCommand(FIRST), undefined);
     } finally { f.dispose(); }
   });
 });

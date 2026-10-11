@@ -5,11 +5,11 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import readXlsxFile from "read-excel-file/node";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import { CrossDateSearchPageSchema } from "../../../../../src/models/dashboard/search.js";
-import { DashboardStreamEnvelopeSchema,type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
-import { RunRecordSchema,type RunRecord } from "../../../../../src/models/run/record.js";
+import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
+import { RunRecordSchema, type RunRecord } from "../../../../../src/models/run/record.js";
 import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
@@ -399,7 +399,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
     assert.equal(h.hub.subscriberCount(), 1);
 
-
     const runs = Array.from({ length: 6 }, (_, index) => {
       const runId = `9e8d7c6b-5a49-4382-9170-2f3e4d5c6c0${String(index)}`;
       h.database.authority.runs.enqueue(personLookupQueuedRun({
@@ -428,5 +427,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 });
 
-import { OPERATOR_JSON_HEADERS,activityPeople,currentSeparationsRun,disposeHttpRouteHarness,harness,json,persistCurrentSeparationsEvidence,projectCurrentSeparationsRuns,seedCurrentSeparationsRun } from "../../../../support/helpers/backend/http-route-harness.js";
+import { OPERATOR_JSON_HEADERS, activityPeople, currentSeparationsRun, disposeHttpRouteHarness, harness, json, persistCurrentSeparationsEvidence, projectCurrentSeparationsRuns, seedCurrentSeparationsRun } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

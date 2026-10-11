@@ -1,33 +1,17 @@
 
 import assert from "node:assert/strict";
-import { mkdirSync,rmSync,writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { separationsKualiFinalizationModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import { deterministicUuid } from "../../../../src/backend/runs/lifecycle/support.js";
-import {
-buildRunSection,
-createRunNoteScanCache,
-type RunDetailQueryDeps,
-type RunNoteScanEntry,
-} from "../../../../src/backend/runs/queries/run-detail.js";
+import { buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps, type RunNoteScanEntry } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { type RunRecord } from "../../../../src/models/run/record.js";
-import {
-AT,
-claimEventOf,
-instantOffsetOf,
-makeWorld,
-queuedEventOf,
-runEndedEventOf,
-runRecordOf,
-traceOf,
-uuidOf,
-type DashboardWorld
-} from "../../../support/helpers/backend/dashboard-harness.js";
+
+import { AT, claimEventOf, instantOffsetOf, makeWorld, queuedEventOf, runEndedEventOf, runRecordOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
@@ -53,8 +37,6 @@ function terminalDone(w: DashboardWorld, seed: number, over: Record<string, unkn
     version: 3,
   }));
 }
-
-
 
 describe("a logs GET opens only its run partitions", () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
@@ -144,15 +126,6 @@ describe("a logs GET opens only its run partitions", () => {
     assert.deepEqual(section.payload.notes.map((note) => note.message), ["note 0", "note 1"]);
   });
 
-  /* ── the producer half of the same contract ───────────────────────────── */
-
-  /** The authority record `terminalDone` seeded — what a note PRODUCER holds. */
-  function _authorityOf(w: DashboardWorld): RunRecord {
-    const authority = w.authority.getRun(uuidOf(1));
-    assert.ok(authority !== undefined);
-    return authority;
-  }
-
   it("serves an empty page, not a throw, for a run whose workflow wrote no notes", () => {
     const w = world();
     terminalDone(w, 1);
@@ -162,8 +135,6 @@ describe("a logs GET opens only its run partitions", () => {
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.notes, []);
   });
-
-
 
   function observedDepsOf(
     w: DashboardWorld,
@@ -544,17 +515,7 @@ describe("a logs GET opens only its run partitions", () => {
   });
 });
 
-
-
 describe("native logs snapshot scans a run once", () => {
-  function _depsOf(w: DashboardWorld): RunDetailQueryDeps {
-    return { timeline: w.timeline, runReader: w.runReader,
-      stateRoot: w.stateRoot,
-      projection: w.projection,
-      authority: w.authority,
-      descriptors: { resolve: () => personLookupDescriptor },
-    };
-  }
 
   it("serves one run from one scan and a second run from its own", () => {
     // The cache OBJECT's keying, which is the half `buildRunSection` cannot

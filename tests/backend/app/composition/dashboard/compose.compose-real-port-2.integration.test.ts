@@ -1,55 +1,28 @@
-import { fixtureAdmission,installationAdmission,releaseAdmissionFixture,releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import {
-copyFileSync,
-cpSync,
-existsSync,
-fsyncSync,
-mkdirSync,
-mkdtempSync,
-openSync,
-readFileSync,
-realpathSync,
-rmSync,
-statSync,
-writeFileSync
-} from "node:fs";
+import { copyFileSync, cpSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it,vi } from "vitest";
+
+import { afterEach, describe, it, vi } from "vitest";
 import { writeDashboardBuildIdentity } from "../../../../../src/backend/app/composition/dashboard/build-identity.js";
-import {
-composeDashboardRuntime as composeProductionDashboardRuntime,
-type DashboardComposeInput,
-type DashboardRuntime
-} from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
+import { composeDashboardRuntime as composeProductionDashboardRuntime, type DashboardComposeInput, type DashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
-import {
-createDashboardClient,
-type DashboardClient,
-type SubscriptionState,
-} from "../../../../../src/dashboard/client/index.js";
+import { createDashboardClient, type DashboardClient, type SubscriptionState } from "../../../../../src/dashboard/client/index.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
-import {
-SETTINGS_SCHEMA_HASH,
-deriveSettingsPatchFingerprint,
-} from "../../../../../src/models/config/settings.js";
-import {
-ProtectedSettingsCommandRequestSchema
-} from "../../../../../src/rules/commands/commands.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
+import { ProtectedSettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
-
 
 async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
   return composeProductionDashboardRuntime({
@@ -138,43 +111,6 @@ afterEach(async () => {
 });
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
-
-  function _observeExplorerSnapshot(authorityPath: string, onCommit?: () => void) {
-    const statements: string[] = [];
-    const expectedPath = realpathSync(authorityPath);
-    let readingExplorer = false;
-    const reader: { connection?: DatabaseSync } = {};
-    const compose = explorerComposition.composeExplorer;
-    vi.spyOn(explorerComposition, "composeExplorer").mockImplementation((input) => {
-      const composed = compose(input);
-      const snapshot = <Result,>(read: () => Result): Result => {
-        assert.equal(readingExplorer, false);
-        readingExplorer = true;
-        try { return read(); }
-        finally { readingExplorer = false; }
-      };
-      assert.ok(composed.routes.explorer.overrides);
-      assert.ok(composed.routes.explorerEdits);
-      const readAll = composed.routes.explorer.overrides.readAll;
-      const validate = composed.routes.explorerEdits.validate;
-      return { ...composed, routes: {
-        explorer: { ...composed.routes.explorer, overrides: {
-          readAll: () => snapshot(() => readAll()),
-        } },
-        explorerEdits: { validate: (draft) => snapshot(() => validate(draft)) },
-      } };
-    });
-    const execute = Reflect.get(DatabaseSync.prototype, "exec");
-    vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
-      if (readingExplorer && reader.connection === undefined && sql === "BEGIN"
-        && this.location() === expectedPath) reader.connection = this;
-      const tagged = readingExplorer && this === reader.connection;
-      if (tagged) statements.push(sql);
-      Reflect.apply(execute, this, [sql]);
-      if (tagged && sql === "COMMIT") onCommit?.();
-    });
-    return statements;
-  }
 
   it("refuses persisted protected write-id reuse after a dashboard restart", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-protected-write-id-"));

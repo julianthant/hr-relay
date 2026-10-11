@@ -1,32 +1,32 @@
-import { GateIdSchema,RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { GateIdSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { testRunService,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { installationAdmission,releaseAdmissionFixture,releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
+import { testRunService, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync,writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { personLookupModule } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { createGateSourceRuntime,type GateSourceDelivery,type GateSourceEnvelope,type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
+import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope, type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
 import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import { PositiveIntSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import { manualClock,type TestClock } from "../../../../src/rules/time/clock.js";
+import { PositiveIntSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN,RUN_ID,WORKFLOW_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKFLOW_ID, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/admission-fixture.js";
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
-import { ManualScheduler,recordingLogger,recordingTimelineEmitter,happySessionHarness as sourceSessionHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { ManualScheduler, recordingLogger, recordingTimelineEmitter, happySessionHarness as sourceSessionHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -298,21 +298,4 @@ function sourceGateQueuedRun(descriptor: ReturnType<typeof sourceGateDescriptor>
       ingressSchemaHash: deriveSchemaHash(SOURCE_GATE_INPUT, "input"),
     },
   };
-}
-
-let commandSequence = 0;
-function nextCommandId(): string {
-  commandSequence += 1;
-  const tail = String(commandSequence).padStart(4, "0");
-  return `cccccccc-${tail}-4000-8000-${tail}00000000`;
-}
-
-function _envelope(commandId = nextCommandId()) {
-  return {
-    commandId,
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "worker-browser",
-  } as const;
 }

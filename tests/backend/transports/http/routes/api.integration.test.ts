@@ -1,9 +1,9 @@
 
 import assert from "node:assert/strict";
-import { existsSync,readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { RequestIdentityRefusedError } from "../../../../../src/backend/runs/commands/refusals.js";
 import { UUID_4 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -64,5 +64,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   ] as const;
 });
 
-import { assertHttpFaultOnly,disposeHttpRouteHarness,faultAuthoritySnapshot,harness,json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { assertHttpFaultOnly, disposeHttpRouteHarness, faultAuthoritySnapshot, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

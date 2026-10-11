@@ -1,23 +1,13 @@
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { RunLifecycleSchema,RunRecordSchema } from "../../../../src/models/run/record.js";
+import { RunLifecycleSchema, RunRecordSchema } from "../../../../src/models/run/record.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
-import { HASH_A,HASH_B,UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-claimEventOf,
-DAY,
-makeWorld,
-queuedEventOf as queuedEventBase,
-runRecordOf as runRecordBase,
-taskEventsOf,
-traceOf,
-uuidOf,
-type DashboardWorld
-} from "../../../support/helpers/backend/dashboard-harness.js";
+
+import { claimEventOf, DAY, makeWorld, queuedEventOf as queuedEventBase, runRecordOf as runRecordBase, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 /** C completion contract: projection fixtures still carry a valid terminal settlement. */
 function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {
@@ -85,35 +75,12 @@ describe("THE run/queue projection", () => {
     const step = row.pipeline.find((entry) => entry.id === "cross-verify");
     assert.equal(step?.state, "done");
 
-
     const detail = buildRunDetail({ runReader: w.runReader, stateRoot: w.stateRoot, timeline: w.timeline, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } }, uuidOf(1));
     const crossVerify = detail.timeline.events.filter((event) => event.label === "cross-verify");
     assert.equal(crossVerify.length, 2);
     assert.equal(new Set(detail.timeline.events.map((event) => event.noteId)).size, detail.timeline.events.length);
     assert.deepEqual(crossVerify.map((event) => event.state), ["cancelled", "done"]);
   });
-
-
-
-  /** A raw stream line as ANOTHER process would append it — no writer, no apply. */
-  function _rawQueuedLineOf(w: DashboardWorld, seed: number, workflow: string): string {
-    return JSON.stringify({
-      t: "run.queued", kind: "run", pid: 777,
-      ts: w.clock.now().toISOString(),
-      workflow,
-      runId: uuidOf(seed), attempt: 1,
-      traceId: traceOf(seed), spanPath: traceOf(seed),
-      itemId: uuidOf(seed + 5000),
-      shape: "single", priority: "interactive", dryRun: false,
-      actorId: "local-operator",
-      title: `raw #${String(seed)}`,
-      descriptorVersion: 1,
-      contractFingerprint: HASH_A,
-      resolvedInstance: { ucpath: "prod" },
-      configFingerprint: HASH_B,
-      configSnapshotId: UUID_4,
-    });
-  }
 
   it("folds another SQLite connection's task spans — the run enqueued after boot gets its timeline", () => {
 

@@ -1,24 +1,14 @@
 
-import assert_m0 from "node:assert/strict";
-import type { Locator as Locator_m0,Page as Page_m0 } from "playwright";
-import { describe as describe_m0,it as it_m0 } from "vitest";
-import { createNewKronosTimecardDriver as createNewKronosTimecardDriver_m0 } from "../../../../../src/backend/systems/new-kronos/driver/interpreter.js";
-import { NEW_KRONOS_SEARCH_QUERY_LABEL as NEW_KRONOS_SEARCH_QUERY_LABEL_m0 } from "../../../../../src/models/ui/new-kronos-timecard.js";
-import { manualClock as manualClock_m0 } from "../../../../../src/rules/time/clock.js";
+import assert from "node:assert/strict";
+import { type Locator, type Page } from "playwright";
+import { describe, it } from "vitest";
+import { createNewKronosTimecardDriver } from "../../../../../src/backend/systems/new-kronos/driver/interpreter.js";
+import { NEW_KRONOS_SEARCH_QUERY_LABEL } from "../../../../../src/models/ui/new-kronos-timecard.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
 
-import assert_m1 from "node:assert/strict";
-import type { Locator as Locator_m1,Page as Page_m1 } from "playwright";
-import { describe as describe_m1,it as it_m1 } from "vitest";
-import { createNewKronosTimecardDriver as createNewKronosTimecardDriver_m1 } from "../../../../../src/backend/systems/new-kronos/driver/interpreter.js";
-import {
-NEW_KRONOS_NO_RESULTS_SENTINEL as NEW_KRONOS_NO_RESULTS_SENTINEL_m1,
-NEW_KRONOS_SEARCH_QUERY_LABEL as NEW_KRONOS_SEARCH_QUERY_LABEL_m1
-} from "../../../../../src/models/ui/new-kronos-timecard.js";
-import { manualClock as manualClock_m1 } from "../../../../../src/rules/time/clock.js";
-
+import { NEW_KRONOS_NO_RESULTS_SENTINEL } from "../../../../../src/models/ui/new-kronos-timecard.js";
 
 {
-
 
 const EMPLOYEE_ID = "10776990";
 const DISPLAY_NAME = "Kou, Nathan";
@@ -28,7 +18,6 @@ const APPLY_BOUNDARY_MARKER =
 
 /** One `Name <name> ID <eid>` row, already fully rendered — search rendering fidelity is not this seam's concern. */
 const COMPLETE_SLAT_TEXT = `\n  Name  ${DISPLAY_NAME}\n  ID  ${EMPLOYEE_ID}\n`;
-
 
 class FakeField {
   value: string;
@@ -42,7 +31,7 @@ class FakeField {
     afterDay: string;
     afterYear: string;
   }>> = [];
-  private clock: ReturnType<typeof manualClock_m0> | null = null;
+  private clock: ReturnType<typeof manualClock> | null = null;
   private selectionStart = 0;
   private selectionEnd = 0;
 
@@ -55,7 +44,7 @@ class FakeField {
   }
 
   // Advance test time past the settle bound so wrong readback refuses without wall-clock delay.
-  bindClock(clock: ReturnType<typeof manualClock_m0>): void {
+  bindClock(clock: ReturnType<typeof manualClock>): void {
     this.clock = clock;
   }
 
@@ -149,7 +138,7 @@ function unscripted(key: string, method: string): never {
   );
 }
 
-function genericLocator(key: string, handler: Handler | undefined): Locator_m0 {
+function genericLocator(key: string, handler: Handler | undefined): Locator {
   const h = handler ?? {};
   const locator = {
     count: () => (h.count ? h.count() : unscripted(key, "count")),
@@ -162,16 +151,16 @@ function genericLocator(key: string, handler: Handler | undefined): Locator_m0 {
     evaluateAll: (fn: (elements: readonly unknown[], arg: unknown) => unknown, arg: unknown) =>
       (h.evaluateAll ? h.evaluateAll(fn, arg) : unscripted(key, "evaluateAll")),
   };
-  return locator as unknown as Locator_m0;
+  return locator as unknown as Locator;
 }
 
 /** A frame root that is simply never present: every count() is 0, nothing else is ever called on it. */
 function emptyFrameRoot() {
-  const empty = (key: string): Locator_m0 => genericLocator(key, { count: () => Promise.resolve(0) });
+  const empty = (key: string): Locator => genericLocator(key, { count: () => Promise.resolve(0) });
   return {
-    getByRole: (role: string, options: Readonly<{ name?: string }>): Locator_m0 => empty(`role:${role}:${options.name ?? ""}`),
-    getByText: (text: string): Locator_m0 => empty(`text:${text}`),
-    locator: (selector: string): Locator_m0 => empty(`css:${selector}`),
+    getByRole: (role: string, options: Readonly<{ name?: string }>): Locator => empty(`role:${role}:${options.name ?? ""}`),
+    getByText: (text: string): Locator => empty(`text:${text}`),
+    locator: (selector: string): Locator => empty(`css:${selector}`),
   };
 }
 
@@ -180,7 +169,7 @@ interface Script {
   readonly endField: FakeField;
 }
 
-function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock_m0>): Page_m0 {
+function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>): Page {
   script.startField.bindClock(clock);
   script.endField.bindClock(clock);
   let selectionRegistered = false;
@@ -193,7 +182,7 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock_m
 
   const handlers = new Map<string, Handler>([
     ["role:button:Employee Search", { count: () => Promise.resolve(1), click: () => Promise.resolve() }],
-    [`role:textbox:${NEW_KRONOS_SEARCH_QUERY_LABEL_m0}`, {
+    [`role:textbox:${NEW_KRONOS_SEARCH_QUERY_LABEL}`, {
       count: () => Promise.resolve(1),
       fill: () => Promise.resolve(),
     }],
@@ -219,7 +208,7 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock_m
   ]);
 
   /** The single search-result slat: always fully rendered, on the FIRST poll. */
-  const slatLocator = (): Locator_m0 => {
+  const slatLocator = (): Locator => {
     const base = genericLocator(`css:${SLAT_SELECTOR}`, {
       count: () => Promise.resolve(1),
       evaluateAll: (fn, arg) => Promise.resolve(fn([{
@@ -230,20 +219,20 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock_m
     });
     const slat = {
       ...base,
-      nth: (): Locator_m0 => slat,
-      getByRole: (role: string, options: Readonly<{ name?: string }>): Locator_m0 => {
+      nth: (): Locator => slat,
+      getByRole: (role: string, options: Readonly<{ name?: string }>): Locator => {
         if (role !== "checkbox" || options.name !== "Select Item") {
           unscripted(`slat.getByRole(${role})`, "getByRole");
         }
         return {
           check: () => { selectionRegistered = true; return Promise.resolve(); },
-        } as unknown as Locator_m0;
+        } as unknown as Locator;
       },
-    } as unknown as Locator_m0;
+    } as unknown as Locator;
     return slat;
   };
 
-  const fieldLocator = (key: string): Locator_m0 => {
+  const fieldLocator = (key: string): Locator => {
     const field = fieldFor(key);
     if (field === undefined) unscripted(key, "resolve");
     return {
@@ -253,18 +242,18 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock_m
       pressSequentially: (value: string) => field.pressSequentially(value),
       inputValue: () => field.inputValue(),
       press: (key: string) => field.press(key),
-    } as unknown as Locator_m0;
+    } as unknown as Locator;
   };
 
   const rootSurface = () => ({
-    getByRole: (role: string, options: Readonly<{ name?: string }>): Locator_m0 => {
+    getByRole: (role: string, options: Readonly<{ name?: string }>): Locator => {
       const key = `role:${role}:${options.name ?? ""}`;
       if (role === "option" && options.name === "Timecard") return genericLocator(key, handlers.get(key));
       if (role === "button" || role === "textbox") return genericLocator(key, handlers.get(key));
       unscripted(key, "getByRole");
     },
-    getByText: (text: string): Locator_m0 => unscripted(`text:${text}`, "getByText"),
-    locator: (selector: string): Locator_m0 => {
+    getByText: (text: string): Locator => unscripted(`text:${text}`, "getByText"),
+    locator: (selector: string): Locator => {
       const key = `css:${selector}`;
       if (selector === SLAT_SELECTOR) return slatLocator();
       if (selector === "#startDateTimeInput" || selector === "#endDateTimeInput") return fieldLocator(key);
@@ -277,13 +266,13 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock_m
     frameLocator: () => emptyFrameRoot(),
     url: () => "https://ucsd-sso.prd.mykronos.com/wfd/timekeeping#/timecard",
   };
-  return page as unknown as Page_m0;
+  return page as unknown as Page;
 }
 
 function driveTimecardRead(script: Script): Promise<unknown> {
-  const clock = manualClock_m0(new Date("2026-08-27T18:00:00.000Z"));
+  const clock = manualClock(new Date("2026-08-27T18:00:00.000Z"));
   const page = fakeTimecardPage(script, clock);
-  const driver = createNewKronosTimecardDriver_m0(page, clock);
+  const driver = createNewKronosTimecardDriver(page, clock);
   return driver.readSeparationTimecard({
     employeeId: EMPLOYEE_ID,
     rangeStart: "6/1/2026",
@@ -291,25 +280,25 @@ function driveTimecardRead(script: Script): Promise<unknown> {
   });
 }
 
-describe_m0("setRangeField — only the final calendar-day read-back proves the masked overtype (u29)", () => {
-  it_m0("types the start/end/start re-proof through the whole public visit", async () => {
+describe("setRangeField — only the final calendar-day read-back proves the masked overtype (u29)", () => {
+  it("types the start/end/start re-proof through the whole public visit", async () => {
     const startField = new FakeField("08/27/2026");
     const endField = new FakeField("08/27/2026");
 
-    await assert_m0.rejects(
+    await assert.rejects(
       driveTimecardRead({ startField, endField }),
       (error: unknown) => {
-        assert_m0.ok(error instanceof Error);
+        assert.ok(error instanceof Error);
         // Reaching the Apply-button marker proves start, end, and the start
         // re-proof all completed — never a "could not set" range-field refusal.
-        assert_m0.equal(error.message, APPLY_BOUNDARY_MARKER);
+        assert.equal(error.message, APPLY_BOUNDARY_MARKER);
         return true;
       },
     );
 
-    assert_m0.equal(startField.value, "06/01/2026", "the start field settles on exactly the wanted calendar day");
-    assert_m0.equal(endField.value, "08/12/2026", "the end field settles on exactly the wanted calendar day");
-    assert_m0.deepEqual(startField.maskTransitions, [
+    assert.equal(startField.value, "06/01/2026", "the start field settles on exactly the wanted calendar day");
+    assert.equal(endField.value, "08/12/2026", "the end field settles on exactly the wanted calendar day");
+    assert.deepEqual(startField.maskTransitions, [
       {
         requested: "6/1/2026",
         before: "08/27/2026",
@@ -325,31 +314,31 @@ describe_m0("setRangeField — only the final calendar-day read-back proves the 
         afterYear: "06/01/2026",
       },
     ], "the live 0..2 mask path sets start and then re-proves it after end");
-    assert_m0.deepEqual(endField.maskTransitions, [{
+    assert.deepEqual(endField.maskTransitions, [{
       requested: "8/12/2026",
       before: "08/27/2026",
       afterMonth: "08/27/2026",
       afterDay: "08/12/2026",
       afterYear: "08/12/2026",
     }]);
-    assert_m0.deepEqual(
+    assert.deepEqual(
       startField.log,
       ["select-all", "type:6/1/2026", "select-all", "type:6/1/2026"],
       "the start field is set once and then re-proved after the end field",
     );
-    assert_m0.deepEqual(endField.log, ["select-all", "type:8/12/2026"]);
+    assert.deepEqual(endField.log, ["select-all", "type:8/12/2026"]);
   });
 
-  it_m0("refuses a silently failed select-all by the final read-back with its prior value", async () => {
+  it("refuses a silently failed select-all by the final read-back with its prior value", async () => {
     const startField = new FakeField("11/20/2026", true);
     const endField = new FakeField("11/20/2026");
 
-    await assert_m0.rejects(
+    await assert.rejects(
       driveTimecardRead({ startField, endField }),
       (error: unknown) => {
-        assert_m0.ok(error instanceof Error);
-        assert_m0.equal(error.name, "NewKronosDriverError");
-        assert_m0.equal(
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, "NewKronosDriverError");
+        assert.equal(
           error.message,
           "[new-kronos] could not set the timecard start date to 6/1/2026 — prior value "
           + '"11/20/2026"; the field last read "11/20/2626" after 8000ms; '
@@ -359,14 +348,13 @@ describe_m0("setRangeField — only the final calendar-day read-back proves the 
       },
     );
 
-    assert_m0.deepEqual(startField.pressSequentiallyCalls, ["6/1/2026"]);
-    assert_m0.equal(endField.pressSequentiallyCalls.length, 0, "the final start refusal stops before the end field");
+    assert.deepEqual(startField.pressSequentiallyCalls, ["6/1/2026"]);
+    assert.equal(endField.pressSequentiallyCalls.length, 0, "the final start refusal stops before the end field");
   });
 });
 }
 
 {
-
 
 /** The card the identity text lives in — driver-internal, asserted by the fake. */
 const TABULAR_DATA_SELECTOR = "krn-slats-tabular-data";
@@ -427,12 +415,11 @@ function fakeElement(slat: FakeSlat): unknown {
 }
 
 interface FakePage {
-  readonly page: Page_m1;
+  readonly page: Page;
   readonly polls: () => number;
 }
 
-
-function fakeSearchPage(script: FakeSearchScript, clock: ReturnType<typeof manualClock_m1>): FakePage {
+function fakeSearchPage(script: FakeSearchScript, clock: ReturnType<typeof manualClock>): FakePage {
   let pollIndex = -1;
   let frameSlatCounted = false;
 
@@ -460,7 +447,7 @@ function fakeSearchPage(script: FakeSearchScript, clock: ReturnType<typeof manua
     if (frameMissing(root)) return 0;
     if (key === `role:button:Employee Search`) return root === "top" ? 1 : 0;
     if (root !== script.panelRoot) return 0;
-    if (key === `role:textbox:${NEW_KRONOS_SEARCH_QUERY_LABEL_m1}`) return 1;
+    if (key === `role:textbox:${NEW_KRONOS_SEARCH_QUERY_LABEL}`) return 1;
     if (key === "role:button:Search") return 1;
     if (key === "css:#goToDropdownButton") return 1;
     // The panel is not open when the driver's opening `closeSearchPanel` probes for the
@@ -470,7 +457,7 @@ function fakeSearchPage(script: FakeSearchScript, clock: ReturnType<typeof manua
 
   let selectionRegistered = false;
 
-  const locatorFor = (root: "frame" | "top", key: string, index: number | null): Locator_m1 => {
+  const locatorFor = (root: "frame" | "top", key: string, index: number | null): Locator => {
     const isFrameSlat = key === `css:${SLAT_SELECTOR}` && root === "frame";
     const isSlat = key === `css:${SLAT_SELECTOR}`;
     const guardFrame = (method: string): void => {
@@ -516,23 +503,23 @@ function fakeSearchPage(script: FakeSearchScript, clock: ReturnType<typeof manua
         selectionRegistered = true;
         return Promise.resolve();
       },
-      nth: (at: number): Locator_m1 => locatorFor(root, key, at),
-      getByRole: (role: string, options: Readonly<{ name?: string }>): Locator_m1 =>
+      nth: (at: number): Locator => locatorFor(root, key, at),
+      getByRole: (role: string, options: Readonly<{ name?: string }>): Locator =>
         locatorFor(root, `role:${role}:${options.name ?? ""}`, index),
     };
-    return locator as unknown as Locator_m1;
+    return locator as unknown as Locator;
   };
 
   const rootSurface = (root: "frame" | "top") => ({
-    getByRole: (role: string, options: Readonly<{ name?: string }>): Locator_m1 =>
+    getByRole: (role: string, options: Readonly<{ name?: string }>): Locator =>
       locatorFor(root, `role:${role}:${options.name ?? ""}`, null),
-    getByText: (text: string): Locator_m1 => locatorFor(root, `text:${text}`, null),
-    locator: (selector: string): Locator_m1 => locatorFor(root, `css:${selector}`, null),
+    getByText: (text: string): Locator => locatorFor(root, `text:${text}`, null),
+    locator: (selector: string): Locator => locatorFor(root, `css:${selector}`, null),
   });
 
   const page = { ...rootSurface("top"), frameLocator: () => rootSurface("frame") };
 
-  return { page: page as unknown as Page_m1, polls: () => pollIndex + 1 };
+  return { page: page as unknown as Page, polls: () => pollIndex + 1 };
 }
 
 const RESOLVED_COUNTERS = Object.freeze(["Total [1]", "Selected [0]"]);
@@ -542,17 +529,17 @@ function driverFor(script: FakeSearchScript): {
   search: (searchTimeoutMs: number) => Promise<unknown>;
   polls: () => number;
 } {
-  const clock = manualClock_m1(new Date("2026-08-27T18:00:00.000Z"));
+  const clock = manualClock(new Date("2026-08-27T18:00:00.000Z"));
   const fake = fakeSearchPage(script, clock);
-  const driver = createNewKronosTimecardDriver_m1(fake.page, clock);
+  const driver = createNewKronosTimecardDriver(fake.page, clock);
   return {
     search: (searchTimeoutMs) => driver.searchEmployee({ employeeId: "10776990", searchTimeoutMs }),
     polls: fake.polls,
   };
 }
 
-describe_m1("the Employee Search poll — the interpreter half of the render-complete read (§9.28)", () => {
-  it_m1("(d) reads the TOP-LEVEL rows when the portal frame is absent, instead of dying on evaluateAll", async () => {
+describe("the Employee Search poll — the interpreter half of the render-complete read (§9.28)", () => {
+  it("(d) reads the TOP-LEVEL rows when the portal frame is absent, instead of dying on evaluateAll", async () => {
 
     const { search, polls } = driverFor({
       portalFrame: false,
@@ -565,7 +552,7 @@ describe_m1("the Employee Search poll — the interpreter half of the render-com
 
     const read = await search(20_000);
 
-    assert_m1.deepEqual(read, {
+    assert.deepEqual(read, {
       state: "resolved",
       query: "10776990",
       totalCount: 1,
@@ -575,10 +562,10 @@ describe_m1("the Employee Search poll — the interpreter half of the render-com
       panelContext: "top-level",
       observedAt: "2026-08-27T18:00:00.000Z",
     });
-    assert_m1.equal(polls(), 1, "the completed row is accepted on the first poll");
+    assert.equal(polls(), 1, "the completed row is accepted on the first poll");
   });
 
-  it_m1("(a) keeps polling through the mid-render stages and resolves the row once it completes", async () => {
+  it("(a) keeps polling through the mid-render stages and resolves the row once it completes", async () => {
     const { search, polls } = driverFor({
       portalFrame: true,
       panelRoot: "frame",
@@ -590,7 +577,7 @@ describe_m1("the Employee Search poll — the interpreter half of the render-com
 
     const read = await search(20_000);
 
-    assert_m1.deepEqual(read, {
+    assert.deepEqual(read, {
       state: "resolved",
       query: "10776990",
       totalCount: 1,
@@ -600,10 +587,10 @@ describe_m1("the Employee Search poll — the interpreter half of the render-com
       panelContext: "portal-frame",
       observedAt: "2026-08-27T18:00:00.000Z",
     });
-    assert_m1.equal(polls(), 3, "two hydrating polls, then the completed read");
+    assert.equal(polls(), 3, "two hydrating polls, then the completed read");
   });
 
-  it_m1("(b) refuses BY NAME when the bound elapses with rows still mid-render", async () => {
+  it("(b) refuses BY NAME when the bound elapses with rows still mid-render", async () => {
     const { search } = driverFor({
       portalFrame: true,
       panelRoot: "frame",
@@ -613,24 +600,24 @@ describe_m1("the Employee Search poll — the interpreter half of the render-com
       totalsAfterSelect: SELECTED_COUNTERS,
     });
 
-    await assert_m1.rejects(
+    await assert.rejects(
       search(1_000),
       (error: unknown) => {
-        assert_m1.ok(error instanceof Error);
-        assert_m1.equal(error.name, "NewKronosDriverError");
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, "NewKronosDriverError");
 
-        assert_m1.match(error.message, /rendered 2 result row\(s\) but 1 of them never completed/u);
-        assert_m1.match(error.message, /krn-slats-tabular-data/u);
-        assert_m1.match(error.message, /last observed \[""\]/u);
-        assert_m1.match(error.message, /refusing to read rows whose subjects are unknown/u);
+        assert.match(error.message, /rendered 2 result row\(s\) but 1 of them never completed/u);
+        assert.match(error.message, /krn-slats-tabular-data/u);
+        assert.match(error.message, /last observed \[""\]/u);
+        assert.match(error.message, /refusing to read rows whose subjects are unknown/u);
         // Never `no-signal`: the search DID answer.
-        assert_m1.doesNotMatch(error.message, /no-signal/u);
+        assert.doesNotMatch(error.message, /no-signal/u);
         return true;
       },
     );
   });
 
-  it_m1("(c) rows that vanish again leave nothing hydrating, so the elapsed bound is `no-signal`", async () => {
+  it("(c) rows that vanish again leave nothing hydrating, so the elapsed bound is `no-signal`", async () => {
     const { search } = driverFor({
       portalFrame: true,
       panelRoot: "frame",
@@ -642,11 +629,11 @@ describe_m1("the Employee Search poll — the interpreter half of the render-com
 
     const read = await search(1_000);
 
-    assert_m1.deepEqual(read, {
+    assert.deepEqual(read, {
       state: "no-signal",
       query: "10776990",
       reason: "neither an Employee Search result row nor WFD's own "
-        + `"${NEW_KRONOS_NO_RESULTS_SENTINEL_m1}" sentinel surfaced in either render context `
+        + `"${NEW_KRONOS_NO_RESULTS_SENTINEL}" sentinel surfaced in either render context `
         + "— the search did not answer",
       waitedMs: 1_200,
       observedAt: "2026-08-27T18:00:00.000Z",

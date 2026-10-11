@@ -1,31 +1,12 @@
 
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it } from "vitest";
-import {
-buildRunSection,
-createRunNoteScanCache,
-type RunDetailQueryDeps,
-type RunNoteScanEntry,
-} from "../../../../src/backend/runs/queries/run-detail.js";
+
+import { afterEach, describe, it } from "vitest";
+import { buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps, type RunNoteScanEntry } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import type { RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
-import {
-AT,
-claimEventOf,
-cleanReceiptOf,
-instantOffsetOf,
-makeWorld,
-queuedEventOf,
-receiptWithWarningsOf,
-runEndedEventOf,
-runRecordOf,
-traceOf,
-uuidOf,
-type DashboardWorld,
-} from "../../../support/helpers/backend/dashboard-harness.js";
+import { AT, claimEventOf, cleanReceiptOf, instantOffsetOf, makeWorld, queuedEventOf, receiptWithWarningsOf, runEndedEventOf, runRecordOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
@@ -51,7 +32,6 @@ function terminalDone(w: DashboardWorld, seed: number, over: Record<string, unkn
     version: 3,
   }));
 }
-
 
 function countAuthorityReads<Result>(
   w: DashboardWorld,
@@ -99,8 +79,6 @@ function countAuthorityReads<Result>(
     w.authority.getReceipt = original.getReceipt;
   }
 }
-
-
 
 describe("member preview slices before joining", () => {
   /** A group of `members` members, each titled so the preview can be read. */
@@ -173,8 +151,6 @@ describe("member preview slices before joining", () => {
     });
   });
 });
-
-
 
 describe("a row reads its evidence receipt once", () => {
   it("reads the receipt exactly once for a terminal row", () => {
@@ -290,53 +266,8 @@ describe("a row reads its evidence receipt once", () => {
   });
 });
 
-
-
 describe("a logs GET opens only its run partitions", () => {
   const _DAY_MS = 24 * 60 * 60 * 1000;
-
-  function _depsOf(w: DashboardWorld): RunDetailQueryDeps {
-    return { timeline: w.timeline, runReader: w.runReader,
-      stateRoot: w.stateRoot,
-      projection: w.projection,
-      authority: w.authority,
-      descriptors: { resolve: () => personLookupDescriptor },
-    };
-  }
-
-  /** `count` note lines for a run, written by the REAL writer at the clock's day. */
-  function emitNotes(w: DashboardWorld, seed: number, count: number, from = 0): void {
-    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
-    for (let index = 0; index < count; index += 1) {
-      notes.emitNote({
-        workflow: "person-lookup",
-        address: { runId: uuidOf(seed), attempt: 1, traceId: traceOf(seed), spanPath: traceOf(seed) },
-        level: "step",
-        message: `note ${String(from + index)}`,
-      });
-    }
-  }
-
-  function _poison(w: DashboardWorld, date: string): void {
-    const seed = date === "2026-08-03" ? 1 : date < "2026-08-03" ? 100 : 101;
-    if (seed !== 1 && w.authority.getRun(uuidOf(100)) === undefined) {
-      for (const foreignSeed of [100, 101]) { terminalDone(w, foreignSeed); emitNotes(w, foreignSeed, 1); }
-    }
-    const raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
-    try { const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get(); assert.equal(typeof trigger?.sql, "string"); raw.exec("DROP TRIGGER timeline_events_immutable; PRAGMA ignore_check_constraints=ON"); raw.prepare("UPDATE timeline_events SET payload_json='{}' WHERE run_id=? AND kind='note'").run(uuidOf(seed)); raw.exec(String(trigger?.sql)); }
-    finally { raw.close(); }
-  }
-
-  /* ── the producer half of the same contract ───────────────────────────── */
-
-  /** The authority record `terminalDone` seeded — what a note PRODUCER holds. */
-  function _authorityOf(w: DashboardWorld): RunRecord {
-    const authority = w.authority.getRun(uuidOf(1));
-    assert.ok(authority !== undefined);
-    return authority;
-  }
-
-
 
   function observedDepsOf(
     w: DashboardWorld,
@@ -406,20 +337,6 @@ describe("a logs GET opens only its run partitions", () => {
     });
   }
 
-  function _fencedEvent(w: DashboardWorld, at: string): void {
-    w.writer.emit({
-      t: "transaction.fenced",
-      ts: at,
-      workflow: "person-lookup",
-      runId: uuidOf(1),
-      attempt: 1,
-      traceId: traceOf(1),
-      spanPath: `${traceOf(1)}/searching#1.1`,
-      node: "searching",
-      taskId: "ucpath/search-person-org",
-    });
-  }
-
   it("serves a completed browser action as a concise Logs line", () => {
     const w = world();
     terminalDone(w, 1);
@@ -482,8 +399,6 @@ describe("a logs GET opens only its run partitions", () => {
   });
 });
 
-
-
 describe("native logs snapshot scans a run once", () => {
   function depsOf(w: DashboardWorld): RunDetailQueryDeps {
     return { timeline: w.timeline, runReader: w.runReader,
@@ -493,7 +408,6 @@ describe("native logs snapshot scans a run once", () => {
       descriptors: { resolve: () => personLookupDescriptor },
     };
   }
-
 
   it("scans once across a whole page walk, and every page is the same list", () => {
     const w = world();

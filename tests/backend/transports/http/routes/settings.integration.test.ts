@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
 
@@ -54,5 +54,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   ] as const;
 });
 
-import { OPERATOR_JSON_HEADERS,disposeHttpRouteHarness,harness,json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

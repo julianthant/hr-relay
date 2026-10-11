@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { StorageDoctorWireSchema } from "../../../../../src/models/dashboard/storage.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -98,5 +98,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   ] as const;
 });
 
-import { disposeHttpRouteHarness,harness,json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { activityReportCsv } from "../../../../../src/backend/runs/queries/activity-export.js";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import { activityReportCaveats } from "../../../../../src/models/dashboard/activity.js";
@@ -51,7 +51,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     }]);
     assert.equal(report.terminalRuns, 0);
     assert.equal(report.durations.medianMs.state, "absent");
-
 
     const halfRange = await h.app.request(`/api/v1/reports/activity?from=${DAY}`);
     assert.equal(halfRange.ok, false);
@@ -118,5 +117,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   ] as const;
 });
 
-import { OPERATOR_JSON_HEADERS,disposeHttpRouteHarness,harness,json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

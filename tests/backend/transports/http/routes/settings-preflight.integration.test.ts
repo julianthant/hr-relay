@@ -1,7 +1,7 @@
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
-import { PreflightRerunCommandResultSchema,requiredPreflightChecks } from "../../../../../src/models/preflight/preflight.js";
+import { afterEach, describe, it } from "vitest";
+import { PreflightRerunCommandResultSchema, requiredPreflightChecks } from "../../../../../src/models/preflight/preflight.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
@@ -287,5 +287,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   ] as const;
 });
 
-import { HASH_B,disposeHttpRouteHarness,harness,json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { HASH_B, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

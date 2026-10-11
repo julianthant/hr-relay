@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { afterEach,describe,expect,it,vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
@@ -68,5 +68,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 });
 
-import { disposeHttpRouteHarness,harness,json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

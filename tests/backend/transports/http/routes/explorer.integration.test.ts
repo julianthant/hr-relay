@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { afterEach,describe,expect,it,vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
@@ -62,5 +62,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 });
 
-import { OPERATOR_JSON_HEADERS,disposeHttpRouteHarness,harness,json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

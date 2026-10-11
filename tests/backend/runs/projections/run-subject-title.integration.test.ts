@@ -1,19 +1,10 @@
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { describe, it } from "vitest";
 import { resolveSubjectTitle } from "../../../../src/backend/runs/projections/run-subject-title.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
-import { HASH_A,HASH_B,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-uuidOf,
-type DashboardWorld
-} from "../../../support/helpers/backend/dashboard-harness.js";
-
-const worlds: DashboardWorld[] = [];
-
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+import { HASH_A, HASH_B, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 /** A `searching` checkpoint holding whatever the run is said to have resolved. */
 function searchingCheckpoint(seed: number, selection: unknown): unknown {
