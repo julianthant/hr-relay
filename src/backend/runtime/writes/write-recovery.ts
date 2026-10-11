@@ -240,7 +240,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
           + "the target state is unknown and only a typed resolution may release it",
         protectedReason(
           "recovery-probe-exception",
-          "probe",
+          "exception",
           error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
         ),
       );
@@ -270,7 +270,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
           + "proof does not satisfy the declared completion schema; a present we cannot validate is indeterminate, not done",
           protectedReason(
             "recovery-present-proof-schema-failure",
-            "proof",
+            "exception",
             error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
           ),
         );

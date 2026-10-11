@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import {
   createWriteRecoveryService,
   createWriteResolutionExecutor,
@@ -58,6 +58,7 @@ import {
   WriteFixtureProofSchema,
   writeFixtureDescriptor,
   writeFixtureDescriptorAfterUnrelatedEdit,
+  writeFixtureDocumentDescriptor,
   writeFixtureDescriptorWithMovedKey,
   writeFixtureQueuedRun,
   writeFixtureSaveDescriptor,
@@ -167,12 +168,12 @@ function ownBindingProof() {
 }
 
 
-function parkedAttemptingWrite(h: Harness, taskIdValue = "ucpath/submit-write-fixture"): {
+function parkedAttemptingWrite(h: Harness, taskIdValue = "ucpath/submit-write-fixture", queued: unknown = writeFixtureQueuedRun()): {
   run: RunRecord;
   writeIntentId: string;
 } {
   const now = h.clock.now().toISOString();
-  assert.equal(h.database.authority.runs.enqueue(writeFixtureQueuedRun()).state, "inserted");
+  assert.equal(h.database.authority.runs.enqueue(queued).state, "inserted");
   const claimed = h.database.authority.runs.claimNext({
     workflow: WRITE_FIXTURE_WORKFLOW_ID,
     workerId: WRITE_FIXTURE_WORKER_ID,
@@ -388,6 +389,66 @@ describe("ref write-safety §4 recovery matrix", () => {
     assert.ok(run && run.lifecycle.state === "queued");
   });
 
+  for (const failure of ["throwing probe", "invalid present proof"] as const) {
+    it(`parks a protected-input ${failure} without retaining secret exception detail or retrying`, async () => {
+      const h = harness();
+      const protectedValue = "PRIVATE_DOCUMENT_RECOVERY_CANARY";
+      const exceptionValue = "PRIVATE_EXCEPTION_RECOVERY_CANARY";
+      const { run, writeIntentId } = parkedAttemptingWrite(h, undefined, {
+        ...writeFixtureQueuedRun(),
+        input: {
+          raw: { eid: WRITE_FIXTURE_EID, documentNumber: protectedValue },
+          parsed: {
+            schemaHash: deriveSchemaHash(writeFixtureDocumentDescriptor.canonicalInput, "output"),
+            value: { eid: WRITE_FIXTURE_EID, documentNumber: protectedValue },
+            protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
+              name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: UUID_7 }],
+          },
+          ingressSchemaHash: deriveSchemaHash(writeFixtureDocumentDescriptor.input, "input"),
+        },
+      });
+      assert.equal(run.input.parsed.protectedBindings.length, 1);
+      const parseProof = WriteFixtureProofSchema.parse.bind(WriteFixtureProofSchema);
+      const proofConversion = failure === "invalid present proof"
+        ? vi.spyOn(WriteFixtureProofSchema, "parse")
+          .mockImplementation(() => parseProof({ transactionId: exceptionValue }))
+        : undefined;
+      h.world.probeResults.push(failure === "throwing probe" ? new Error(exceptionValue)
+        : { state: "present", proof: { transactionId: "T654321", documentNumber: protectedValue } });
+      try {
+        const decision = await h.recovery.recover({ descriptor: writeFixtureDocumentDescriptor, writeIntentId, signal: SIGNAL });
+        assert.equal(decision.state, "parked");
+        if (decision.state !== "parked") throw new Error("expected parked recovery");
+        assert.equal(decision.code, failure === "throwing probe" ? "unknown" : "present-proof-invalid");
+        const intent = intentByKey(h.database);
+        assert.ok(intent?.status === "parked");
+        assert.equal(intent.authorityReason?.code, failure === "throwing probe"
+          ? "recovery-probe-exception" : "recovery-present-proof-schema-failure");
+        assert.equal(intent.authorityReason?.evidence.kind, "exception");
+        assert.match(intent.authorityReason?.evidence.digest ?? "", /^[a-f0-9]{64}$/u);
+        const attempt = h.database.authority.writeAttempts.get(UUID_5);
+        assert.ok(attempt?.outcome.state === "parked");
+        assert.equal(attempt.outcome.code, decision.code);
+        assert.deepEqual(attempt.outcome.authorityReason, intent.authorityReason);
+        assert.deepEqual(attempt.bindingProof, ownBindingProof());
+        assert.equal(attempt.generation, 1);
+        const visibleEvidence = JSON.stringify({ decision, intent, attempt });
+        for (const secret of [protectedValue, exceptionValue, WRITE_FIXTURE_KEY, WRITE_FIXTURE_EID]) {
+          assert.equal(JSON.stringify(decision).includes(secret), false);
+          assert.equal(JSON.stringify(intent.authorityReason).includes(secret), false);
+        }
+        assert.equal(visibleEvidence.includes(exceptionValue), false);
+        assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+        assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID), undefined);
+        assert.deepEqual(h.world.events, ["probe"]);
+        await assert.rejects(h.recovery.recover({ descriptor: writeFixtureDocumentDescriptor, writeIntentId, signal: SIGNAL }), /typed operator resolutions/u);
+        assert.deepEqual(h.world.events, ["probe"], "UNKNOWN recovery never retries the probe or write");
+      } finally {
+        proofConversion?.mockRestore();
+      }
+    });
+  }
+
   it("parks ambiguous, unknown, and throwing probes — never absent, never retry", async () => {
     for (const [result, code, authorityCode] of [
       [ambiguousProbeVerdict(WRITE_FIXTURE_NOW), "ambiguous", "recovery-probe-ambiguous"],
@@ -413,7 +474,7 @@ describe("ref write-safety §4 recovery matrix", () => {
         assert.equal(persisted.message.includes(WRITE_FIXTURE_KEY), false);
         assert.equal(persisted.message.includes(WRITE_FIXTURE_EID), false);
         assert.equal(persisted.authorityReason?.code, authorityCode);
-        assert.equal(persisted.authorityReason?.evidence.kind, "probe");
+        assert.equal(persisted.authorityReason?.evidence.kind, result instanceof Error ? "exception" : "probe");
         assert.match(persisted.authorityReason?.evidence.digest ?? "", /^[a-f0-9]{64}$/u);
       }
     }
