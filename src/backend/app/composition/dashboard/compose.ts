@@ -323,8 +323,9 @@ function ensureOwnerOnlyDirectory(path: string, label: string): void {
   mkdirSync(path, { recursive: true, mode: 0o700 });
   const handle = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try {
-    if (!fstatSync(handle).isDirectory()) throw new Error(`${label} is not a directory`);
-    fchmodSync(handle, 0o700);
+    const directory = fstatSync(handle);
+    if (!directory.isDirectory()) throw new Error(`${label} is not a directory`);
+    if ((directory.mode & 0o7777) !== 0o700) fchmodSync(handle, 0o700);
     const permissions = fstatSync(handle).mode & 0o7777;
     if (permissions !== 0o700) {
       throw new Error(`${label} permissions are ${permissions.toString(8)}, expected 700`);

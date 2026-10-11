@@ -968,11 +968,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         context.signal,
         `${commitContract.id} subject observation`,
       );
-    } catch (error) {
+    } catch {
+      // Subject-read exceptions can contain protected values; retain the named refusal.
       throw new Error(
         `${commitContract.id}: subject observation ${subject.observe} failed on the staged page — `
         + "zero fence, zero click; inspect the bound observation and driver diagnostics",
-        { cause: error },
       );
     }
     const observedText = z.string().min(1).parse(observedRaw);
@@ -1672,7 +1672,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       const key = IdempotencyKeySchema.parse(raw);
       if (seen.has(key)) {
         throw new Error(
-          `${commitContract.id} declares duplicate current/retired permanent key material; refusing an ambiguous compatibility policy`,
+          `${commitContract.id} declares duplicate current/retired permanent key material; refusing an ambiguous permanent-key policy`,
         );
       }
       seen.add(key);

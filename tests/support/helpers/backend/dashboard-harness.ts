@@ -82,7 +82,7 @@ export interface AuthorityFake {
   put(record: RunRecord): void;
   putCheckpoint(record: RunCheckpointRecord): void;
   latestCheckpoint(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
-  /** 2i-B: the durable inbox rows the day wire serves, keyed by actor. */
+  /** Durable inbox rows keyed by actor. */
   readonly notifications: NotificationRecord[];
   listNotifications(actorId: string): readonly NotificationRecord[];
   listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];

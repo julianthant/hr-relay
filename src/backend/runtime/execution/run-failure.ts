@@ -108,7 +108,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
     summary,
     ...(input.error instanceof Error ? { debug: failureDebugDetails(input.error) } : {}),
     transient,
-    /** Phase-1 read/control nodes; transaction failures are the sequencer's. */
+    // Transaction failures are owned by the sequencer.
     writeState: "not-attempted",
     ...(taskError?.subject === undefined || hasProtectedTransactionInput(run)
       ? {}

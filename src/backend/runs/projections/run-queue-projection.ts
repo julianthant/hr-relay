@@ -132,7 +132,7 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
-    /** 2i-B: the durable inbox rows the day wire serves. */
+    /** Durable inbox rows served by day. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
