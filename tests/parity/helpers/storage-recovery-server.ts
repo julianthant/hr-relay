@@ -18,7 +18,7 @@ import { registerStorageRoutes } from "../../../src/backend/transports/http/rout
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
 import { acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
-import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle, acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 export async function storageRecoveryTarget() {
   const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "parity-native-restore-")));
@@ -107,7 +107,7 @@ export async function storageRecoveryTarget() {
   const doctorOptions = {stateRootTrustAnchor: repoRoot, stateRoot: root, authorityPath,
     backupDirectory: join(root, "backups", "authority"), busyTimeoutMs: 500};
   const readDoctor = () => doctorAuthorityStorage(acquireDiagnostic(), doctorOptions, clock);
-  let server: Server | undefined, shell: FixtureServer | undefined, lock: RuntimeProcessLockHandle | undefined;
+  let server: Server | undefined, shell: FixtureServer | undefined;
   let baseUrl: string | undefined;
   const requests: {method: string; path: string}[] = [];
   const stop = async () => {
@@ -116,7 +116,7 @@ export async function storageRecoveryTarget() {
       await new Promise<void>((yes, no) => server?.close(error => error ? no(error) : yes())); server = undefined;
     }
     await shell?.close(); shell = undefined;
-    lock?.release(); lock = undefined; baseUrl = undefined;
+    baseUrl = undefined;
     try { diagnosticAdmission?.release(); }
     finally { diagnosticAdmission = undefined; restoreHandle?.release(); restoreHandle = undefined; }
   };
@@ -125,7 +125,11 @@ export async function storageRecoveryTarget() {
     assertParityBundleIsCurrent();
     // This diagnostic host intentionally works while normal writable startup refuses the marker.
     const admission = acquireDiagnostic();
-    lock = acquireRuntimeProcessLock({processLockRoot, name: "server", pid: process.pid}, clock);
+    if (restoreHandle !== undefined) {
+      admission.assertExclusive();
+      assert.throws(() => acquireRuntimeProcessLock({processLockRoot, name: "server", pid: process.pid}, clock),
+        /runtime process start refused until restore exits/u);
+    }
     try {
       shell = await startFixtureServer({distDir: PARITY_DIST_DIR, bundle: {proof: "working-tree"}});
       const app: DashboardApp = new Hono();

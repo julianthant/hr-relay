@@ -25,7 +25,7 @@ import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { intakeFixtureDescriptor, intakeFixtureProjection } from "../intake-workflow-fixture.js";
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import type { ParityBundleProof } from "../../../integration/dashboard/client/fixtures/helpers/bundle.js";
+import type { ParityBundleProof } from "../../../parity/helpers/bundle.js";
 
 export const INTAKE_CSV = "Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n";
 export function createIntakeAuthority() {
@@ -104,7 +104,7 @@ export function createIntakeAuthority() {
 
 export async function startIntakeAuthorityServer(input: { distDir: string; bundle: ParityBundleProof }) {
   const [{DEFAULT_DASHBOARD_PROFILE},{startFixtureServer}]=await Promise.all([import("./fixture-profile.js"),
-    import("../../../integration/dashboard/client/fixtures/helpers/fixture-bff.js")]);
+    import("../../../parity/helpers/fixture-bff.js")]);
   const template = DEFAULT_DASHBOARD_PROFILE.bootstrap.workflows.map(workflow => WorkflowBootstrapPrimitiveSchema.parse(workflow)).find(workflow => workflow.start?.spreadsheetIntake === true);
   if (template === undefined) throw new Error("Intake browser fixture has no spreadsheet entry template");
   const profile = { ...DEFAULT_DASHBOARD_PROFILE, bootstrap: FrontendBootstrapWireSchema.parse({ ...DEFAULT_DASHBOARD_PROFILE.bootstrap,
