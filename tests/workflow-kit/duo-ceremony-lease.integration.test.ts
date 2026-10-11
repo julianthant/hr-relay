@@ -82,12 +82,12 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.equal(second.holder.holder.system, "ucpath");
     assert.equal(second.holder.expiresAt, at(TTL_MS));
     assert.equal(second.holder.generation, 1);
-    // The SAME worker re-asking is also refused: a lease is per ceremony, not per worker.
+
     const again = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "crm", now: at(2_000), ttlMs: TTL_MS,
     });
     assert.equal(again.state, "held");
-    // A DIFFERENT credential is a different lease.
+
     const other = database.authority.duoCeremonyLeases.acquire({
       credentialKey: OTHER_CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(2_000), ttlMs: TTL_MS,
     });
@@ -109,7 +109,7 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.equal(released.lease.releasedAt, at(20_000));
     assert.equal(released.lease.generation, 1);
     assert.throws(() => assertDuoCeremonyLeaseToken(first.token), /retired/);
-    // A second release of the same token is a programming error, loud.
+
     assert.throws(
       () => database.authority.duoCeremonyLeases.release({ token: first.token, now: at(21_000) }),
       /retired/,
@@ -132,7 +132,7 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     });
     assert.equal(first.state, "acquired");
     if (first.state !== "acquired") return;
-    // One millisecond BEFORE expiry is still held.
+
     const early = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(TTL_MS - 1), ttlMs: TTL_MS,
     });

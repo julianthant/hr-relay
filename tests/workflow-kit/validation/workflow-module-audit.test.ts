@@ -41,7 +41,6 @@ function fixtureContract(id: string, title: string) {
 const READ_ONE = fixtureContract("read-role-one", "Read one");
 const READ_TWO = fixtureContract("read-role-two", "Read two");
 
-/** A two-node graph whose node ids are the strings a harness might mistake for step keys. */
 function descriptorNamed(
   id: string,
   code: string,
@@ -117,7 +116,6 @@ describe("auditWorkflowModuleRoles — a harness's step", () => {
     assert.match(violations[0] ?? "", /it declares: kuali-extraction/);
   });
 
-
   it("refuses ANY step of a composition that declared no timeline", () => {
     const composition = descriptorNamed("role-fixture-none", "rfn");
     for (const step of ["kuali-extraction", "identity-check"]) {
@@ -132,7 +130,6 @@ describe("auditWorkflowModuleRoles — a harness's step", () => {
     }
   });
 });
-
 
 describe("auditWorkflowModuleRoles — two harnesses cannot share one step", () => {
   const composition = descriptorNamed("role-fixture-declared", "rfd", [
@@ -175,7 +172,6 @@ describe("auditWorkflowModuleRoles — two harnesses cannot share one step", () 
       [],
     );
   });
-
 
   it("reports the collision even when the shared step is not declared", () => {
     const noTimeline = descriptorNamed("role-fixture-none", "rfn");

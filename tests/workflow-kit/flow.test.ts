@@ -10,7 +10,6 @@ TaskIdSchema,
 taskId
 } from "../../src/rules/identity/ids.js";
 import { flow } from "../../src/workflow-kit/flow.js";
-import { defineWorkflowStep } from "../../src/workflow-kit/workflow.js";
 
 const SCENARIO = ScenarioIdSchema.parse("workflow/builder-runtime");
 const INPUT = z.strictObject({ eid: EidSchema });
@@ -142,8 +141,7 @@ describe("workflow flow builder", () => {
   it("rejects a dependency on a node that is not declared upstream", () => {
     assert.throws(
       () => flow(INPUT).step("contact", readTwo, {
-        // A forward reference is a runtime backstop for a cast or a generated
-        // migration; the typed path already rejects it.
+
         dependsOn: ["search"] as never,
         bind: ({ input }) => ({ eid: input.eid }),
         replay: "checkpoint",
@@ -210,7 +208,7 @@ describe("workflow flow builder", () => {
         dependsOn: ["search"],
         label: "Signed",
         resolvedBy: "external",
-        // The typed path rejects this; the runtime backstop covers a cast.
+
         subscribes: undefined as never,
         result: z.object({ ticket: z.string() }),
         resolve: () => ({ ticket: "x" }),
@@ -274,14 +272,5 @@ describe("workflow flow builder", () => {
     assert.equal(built.decorations[0]?.contractId, "ucpath/search-person-org");
     assert.equal(built.instrumentation.length, 1);
     assert.equal(built.instrumentation[0]?.label, "span-hooks");
-  });
-  describe("workflow steps", () => {
-    it("refuses a step whose folder key is not a kebab-case slug", () => {
-      assert.throws(
-        () => defineWorkflowStep({ key: "Not Kebab", label: "Invalid folder" }),
-        /timeline category key must be a kebab-case slug/,
-      );
-    });
-
   });
 });

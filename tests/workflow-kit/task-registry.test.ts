@@ -23,32 +23,6 @@ const INPUT = z.strictObject({ value: z.string().min(1) });
 const OUTPUT = z.strictObject({ value: z.string().min(1) });
 const FIXTURE_DRIVER = declareDriverFor<UcpathPersonOrgDriver>()("ucpath", "semantic-ready");
 
-function fixtureReadContract() {
-  return defineTaskContract({
-    id: taskId("ucpath/search-store-fixture"),
-    title: "Search store fixture",
-    effect: "read",
-    input: INPUT,
-    output: OUTPUT,
-    errorCodes: ["fixture-missing"] as const,
-    subject: { kind: "none", reason: "registry resolution fixture" },
-    scenarios: [SCENARIO],
-    freshness: { defaultMaxAgeMs: 0 },
-    provenance: { default: "live" },
-    example: { value: "fixture" },
-  });
-}
-
-function fixtureReadTask() {
-  const contract = fixtureReadContract();
-  return defineTask(FIXTURE_DRIVER, contract, {
-    sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
-    async run({ input }) {
-      return input;
-    },
-  });
-}
-
 describe("task, store, session, and provider registration seams", () => {
   it("declares all nine browser stores with wired worker authentication and OnBase-only exclusivity", async () => {
     const expected = [
@@ -86,7 +60,25 @@ describe("task, store, session, and provider registration seams", () => {
   })
 
   it("binds tasks to exact effects/sessions and resolves corpus references in the store registry", () => {
-    const task = fixtureReadTask();
+    const contract = defineTaskContract({
+      id: taskId("ucpath/search-store-fixture"),
+      title: "Search store fixture",
+      effect: "read",
+      input: INPUT,
+      output: OUTPUT,
+      errorCodes: ["fixture-missing"] as const,
+      subject: { kind: "none", reason: "registry resolution fixture" },
+      scenarios: [SCENARIO],
+      freshness: { defaultMaxAgeMs: 0 },
+      provenance: { default: "live" },
+      example: { value: "fixture" },
+    });
+    const task = defineTask(FIXTURE_DRIVER, contract, {
+      sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
+      async run({ input }) {
+        return input;
+      },
+    });
     const session = createDeterministicSessionProvider("ucpath", ["logged-in"]).provider;
     const store = defineBrowserStore(
       "ucpath",

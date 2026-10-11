@@ -125,7 +125,6 @@ const POLICY: DelegationPolicy = {
 };
 const childItemId = (): ItemId => ItemIdSchema.parse("00000000-0000-4000-8000-000000000001");
 
-/** A graph with one of every path-bearing node kind. */
 function graphNodes(): readonly RuntimeFlowNode[] {
   const built = flow(INPUT)
     .step("search", read, {
