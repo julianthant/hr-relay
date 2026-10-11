@@ -36,8 +36,7 @@ The roadmap site, planning/history/findings/status/handoff folders and decision 
 scripts, the roadmap binding guard and its fixtures, and the generated-site interaction test are
 also absent: `tests/architecture/tooling/roadmap-doc-binding.test.ts`,
 `tests/architecture/tooling/fixtures/roadmap-binding/` and
-`tests/unit/tooling/roadmap/roadmap-ui.test.ts`. Task receipts and retained worktree evidence live outside the repository under
-the evidence root named in root `AGENTS.md`.
+`tests/unit/tooling/roadmap/roadmap-ui.test.ts`. Briefs, task receipts and retained worktree evidence live in the gitignored `.work/` folder.
 
 ## Source tree and ownership
 

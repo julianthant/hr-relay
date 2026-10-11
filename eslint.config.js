@@ -48,7 +48,7 @@ const typeAwareTuning = {
 };
 
 export default ts.config(
-  { ignores: ["dist", "node_modules", "coverage", "duo-autopilot"] },
+  { ignores: ["dist", "node_modules", "coverage", "duo-autopilot", ".work"] },
   js.configs.recommended,
   ...ts.configs.recommended,
   ...ts.configs.recommendedTypeChecked,
