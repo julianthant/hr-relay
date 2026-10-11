@@ -563,8 +563,14 @@ async function provisionDuoSession(credentials: readonly z.infer<typeof DuoCrede
   await session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   await session.set({ duoCredentials: credentials });
   const stored: unknown = await session.get("duoCredentials");
-  if (stored === null || typeof stored !== "object" || !("duoCredentials" in stored)
-    || JSON.stringify(stored.duoCredentials) !== JSON.stringify(credentials)) throw new Error("duo-session-provisioning-unverified");
+  const copies: unknown = stored !== null && typeof stored === "object" && "duoCredentials" in stored ? stored.duoCredentials : undefined;
+  if (!Array.isArray(copies) || copies.length !== credentials.length) throw new Error("duo-session-provisioning-unverified");
+  // Chrome storage returns object keys sorted, so compare field by field.
+  for (const [index, original] of credentials.entries()) {
+    const copy: unknown = copies[index];
+    if (copy === null || typeof copy !== "object" || Object.keys(copy).length !== Object.keys(original).length) throw new Error("duo-session-provisioning-unverified");
+    for (const [key, value] of Object.entries(original)) if (Reflect.get(copy, key) !== value) throw new Error("duo-session-provisioning-unverified");
+  }
 }
 
 interface ContextLifecycle {

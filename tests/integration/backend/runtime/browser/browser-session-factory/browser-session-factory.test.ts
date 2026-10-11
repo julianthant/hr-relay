@@ -668,15 +668,17 @@ describe("required profile custody admission", () => {
       } finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
-  it("provisions Duo from the runtime-compiled source in an isolated extension scope", async () => {
+  it("provisions Duo from the runtime-compiled source in an isolated scope whose storage sorts keys", async () => {
     await withTempRuntime(async ({ config }) => {
       const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
       const runtime = await tsImport("../../../../../../src/backend/runtime/browser/browser-session-factory.ts", import.meta.url) as
         typeof import("../../../../../../src/backend/runtime/browser/browser-session-factory.js");
       let stored: unknown;
+      const sortedKeys = (value: object) => Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
       const chrome = { storage: { local: { get: () => ({}) },
-        session: { setAccessLevel: () => undefined, set: (value: unknown) => { stored = value; }, get: () => stored } } };
+        session: { setAccessLevel: () => undefined, set: (value: unknown) => { stored = value; },
+          get: () => ({ duoCredentials: (stored as { duoCredentials: object[] }).duoCredentials.map(sortedKeys) }) } } };
       const serviceWorker = { url: () => `chrome-extension://${"a".repeat(32)}/src/background.js`,
         evaluate: (operation: (credentials: unknown) => Promise<void>, credentials: unknown) =>
           runInNewContext(`(${operation.toString()})(credentials)`, { chrome, credentials }) as Promise<void>,
