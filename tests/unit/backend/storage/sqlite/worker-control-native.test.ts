@@ -29,7 +29,7 @@ function fixture() {
 }
 describe("native worker control custody", () => {
   it("requires a genuine command before durable effect admission and keeps scalar phase/audit consistent", () => {
-    const f = fixture(); expect(() => f.controls.admit(f.record)).toThrow(/FOREIGN KEY/u);
+    const f = fixture(); expect(() => f.controls.admit(f.record)).toThrow(/worker-control-command-binding-mismatch/u);
     expect(f.controls.list()).toEqual([]);
     insertNativeCommand(f.db,f.request);
     const admitted = f.controls.admit(f.record); expect(f.controls.admit(f.record)).toEqual(admitted);
@@ -44,7 +44,7 @@ describe("native worker control custody", () => {
   });
   it("requires exact positive profile custody and preserves a closed browser observation", () => {
     const f = fixture();
-    const observation = { workerId: f.slot.workerId,leaseGeneration:1,sessionId:UUID_3,system:"ucpath",configFingerprint:HASH_A,
+    const observation = { workerId: f.slot.workerId,leaseGeneration:1,sessionId:UUID_3,system:"ucpath",configFingerprint:HASH_A,signInFingerprint:HASH_A,
       browserMode:"headed",profileRevision:7,acceptDownloads:false,exclusive:false,health:"authenticated",openedAt:NOW,observedAt:NOW };
     f.controls.observe(observation);
     expect(() => f.controls.observe({ ...observation,profileRevision:8 })).toThrow(/identity-conflict/u);

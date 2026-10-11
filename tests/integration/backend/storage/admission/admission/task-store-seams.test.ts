@@ -2,7 +2,7 @@ import { RuntimeAdmission } from "../../../../../../src/backend/storage/admissio
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -167,6 +167,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       assert.throws(() => RuntimeAdmission.syntheticRoots(join(workspaceAlias, ".tracker"), join(workspaceAlias, ".tracker/data/artifacts")),
         /unsafe synthetic fixture ancestor/);
 
+      await mkdir(join(workspace, ".tracker"));
       await symlink(outside, join(workspace, ".tracker/data"), "dir");
       assert.throws(() => RuntimeAdmission.syntheticRoots(join(workspace, ".tracker/data"), join(workspace, ".tracker/data/artifacts")),
         /unsafe synthetic fixture ancestor/);

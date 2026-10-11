@@ -316,7 +316,7 @@ describe("a logs GET opens only its run partitions", () => {
 
   /** `count` note lines for a run, written by the REAL writer at the clock's day. */
   function emitNotes(w: DashboardWorld, seed: number, count: number, from = 0): void {
-    const notes = createNoteTimelineWriter({ repository: w.timeline, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     for (let index = 0; index < count; index += 1) {
       notes.emitNote({
         workflow: "person-lookup",
@@ -752,7 +752,7 @@ describe("a logs GET opens only its run partitions", () => {
     terminalDone(w, 1);
     const authority = w.authority.getRun(uuidOf(1));
     assert.ok(authority !== undefined);
-    const notes = createNoteTimelineWriter({ repository: w.timeline, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     notes.emitRunAction({
       workflow: "person-lookup",
       address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
@@ -767,7 +767,7 @@ describe("a logs GET opens only its run partitions", () => {
   it("serves classified note values in Logs", () => {
     const w = world();
     terminalDone(w, 1);
-    const notes = createNoteTimelineWriter({ repository: w.timeline, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     notes.emitNote({
       workflow: "person-lookup",
       address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
@@ -939,7 +939,7 @@ describe("native logs snapshot scans a run once", () => {
   it("scans once across a whole page walk, and every page is the same list", () => {
     const w = world();
     terminalDone(w, 1);
-    const notes = createNoteTimelineWriter({ repository: w.timeline, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     for (let index = 0; index < 450; index += 1) {
       notes.emitNote({
         workflow: "person-lookup",
@@ -991,7 +991,7 @@ describe("native logs snapshot scans a run once", () => {
   it("re-reads the corpus on EVERY call when no cache is handed in", () => {
     const w = world();
     terminalDone(w, 1);
-    const notes = createNoteTimelineWriter({ repository: w.timeline, clock: w.clock, pid: 4242 });
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     const emit = (message: string): void => {
       notes.emitNote({
         workflow: "person-lookup",

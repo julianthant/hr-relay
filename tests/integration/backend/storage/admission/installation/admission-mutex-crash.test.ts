@@ -97,7 +97,7 @@ it("refuses an empty canonical lock immediately and archives its empty custody w
   expect(String(failure)).toContain("storage recover-admission --empty");
   expect(wait).not.toHaveBeenCalled();
   wait.mockRestore();
-  const restore = locks.acquireRuntimeRestoreAdmission({ processLockRoot: join(root, ".tracker", "locks"), pid: process.pid });
+  const restore = locks.acquireRuntimeRestoreAdmission({ processLockRoot: join(root, ".tracker/data", "locks"), pid: process.pid });
   try {
     const result = recoverAbandonedAdmissionMutex(root, restore, "empty");
     expect(existsSync(path)).toBe(false);
@@ -119,7 +119,7 @@ it.each(["lease", "journal", "server", "workers"])("preserves empty lock custody
     schemaVersion: 1, admissionId: randomUUID(), mode: "shared", pid: process.pid, processIdentity: current.identity,
   }), { mode: 0o600 });
   if (condition === "journal") writeFileSync(join(control, "journal.json"), "{}", { mode: 0o600 });
-  const restore = locks.acquireRuntimeRestoreAdmission({ processLockRoot: join(root, ".tracker", "locks"), pid: process.pid });
+  const restore = locks.acquireRuntimeRestoreAdmission({ processLockRoot: join(root, ".tracker/data", "locks"), pid: process.pid });
   try {
     if (condition === "server" || condition === "workers") {
       const original = locks.observeRuntimeLockSnapshot;

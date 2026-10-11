@@ -62,7 +62,7 @@ it("admits and releases simultaneous installed children after a live mutex holde
     import { randomUUID } from "node:crypto";
     const { observeProcessIdentity } = await import(${JSON.stringify(locksUrl)});
     const root = process.argv[1];
-    const mutex = join(root, ".runtime-control", "admission-mutex");
+    const mutex = join(root, ".tracker/control", "admission-mutex");
     mkdirSync(mutex, { mode: 0o700 });
     const observed = observeProcessIdentity(process.pid);
     if (observed.state !== "alive") throw new Error("holder identity unavailable");
@@ -101,7 +101,7 @@ function initializedRoot(): string {
 }
 it.each(["live", "empty", "malformed", "unknown"] as const)("preserves %s owner custody without attempting abandoned-owner recovery", condition => {
   const root = initializedRoot();
-  const mutex = join(root, ".runtime-control", "admission-mutex");
+  const mutex = join(root, ".tracker/control", "admission-mutex");
   mkdirSync(mutex, { mode: 0o700 });
   if (condition !== "empty") {
     const observation = processLocks.observeProcessIdentity(process.pid);
@@ -118,11 +118,11 @@ it.each(["live", "empty", "malformed", "unknown"] as const)("preserves %s owner 
   else if (condition === "malformed") assert.throws(() => acquireEntrypointAdmission(root, "shared"), SyntaxError);
   else assert.throws(() => acquireEntrypointAdmission(root, "shared"), AdmissionMutexBusyError);
   assert.deepEqual(readdirSync(mutex).map(name => ({ name, bytes: readFileSync(join(mutex, name)) })), before);
-  assert.equal(existsSync(join(root, ".runtime-control", "admission-mutex-recovery")), false);
+  assert.equal(existsSync(join(root, ".tracker/control", "admission-mutex-recovery")), false);
 });
 it("propagates non-EEXIST mutex mkdir failures without translating them to busy", () => {
   const root = initializedRoot();
-  const mutex = join(root, ".runtime-control", "admission-mutex");
+  const mutex = join(root, ".tracker/control", "admission-mutex");
   const failure = Object.assign(new Error("injected mkdir access failure"), { code: "EACCES" });
   vi.mocked(filesystem.mkdirSync).mockImplementationOnce(() => { throw failure; });
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
@@ -135,9 +135,9 @@ it("refuses symlink mutex custody and preserves an immediate exclusive lease con
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), /installation lease busy/u);
   admission.release();
   const target = initializedRoot();
-  symlinkSync(join(target, ".runtime-control"), join(root, ".runtime-control", "admission-mutex"));
+  symlinkSync(join(target, ".tracker/control"), join(root, ".tracker/control", "admission-mutex"));
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), /unsafe directory/u);
-  assert.equal(existsSync(join(target, ".runtime-control", "installation.json")), true);
+  assert.equal(existsSync(join(target, ".tracker/control", "installation.json")), true);
 });
 
 it("propagates installation lstat access failure instead of treating the path as absent", () => {

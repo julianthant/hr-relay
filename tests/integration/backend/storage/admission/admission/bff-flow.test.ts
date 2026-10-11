@@ -66,6 +66,7 @@ import { createSoloRequestIdentityCheckpoint } from "../../../../../../src/backe
 import type { RequestIdentityCheckpoint } from "../../../../../../src/backend/transports/http/request-identity.js";
 import { RequestIdentityRefusedError } from "../../../../../../src/backend/runs/commands/refusals.js";
 import type { ArtifactBytesQueryDeps } from "../../../../../../src/backend/runs/queries/artifact-bytes.js";
+import { deriveDiagnosticContentDigest } from "../../../../../../src/models/trust/diagnostic-capture.js";
 import { createDiagnosticCaptureService } from "../../../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { activityReportCsv } from "../../../../../../src/backend/runs/queries/activity-export.js";
 import { activityReportCaveats } from "../../../../../../src/models/dashboard/activity.js";
@@ -2158,7 +2159,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ] as const;
     const automaticBundles: DiagnosticBundle[] = [];
     for (const automaticCase of automaticCases) {
-      automaticBundles.push(await automaticCapture.prepare({
+      const prepared = await automaticCapture.prepare({
         trigger: automaticCase.trigger,
         runId: plannedRun.runId,
         failureId: "00000000-0000-4000-8000-0000000000f1",
@@ -2166,7 +2167,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         descriptorFingerprint: fixtureDescriptor.contractFingerprint,
         fields: [],
         attachments: [sharedAttachment],
-      }));
+      });
+      automaticCapture.discard(prepared);
+      const attachments = first.attachments;
+      automaticBundles.push(DiagnosticBundleSchema.parse({ ...prepared, attachments,
+        contentDigest: deriveDiagnosticContentDigest({ runId: prepared.runId, origin: prepared.origin,
+          capturedAt: prepared.createdAt, configFingerprint: prepared.configFingerprint,
+          descriptorFingerprint: prepared.descriptorFingerprint, redaction: prepared.redaction, attachments }) }));
     }
     syntheticBundles.push(...automaticBundles);
     const firstAttachment = first.attachments[0];

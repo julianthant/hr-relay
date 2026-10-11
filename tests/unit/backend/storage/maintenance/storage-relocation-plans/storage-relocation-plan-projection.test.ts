@@ -18,7 +18,7 @@ const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0
 const WORKSPACE = "/tmp/hr-storage-plan-projection";
 const EPOCH: StorageRelocationEpoch = {
   installationId: uuid(1), generation: 0,
-  stateRoot: `${WORKSPACE}/.tracker`, artifactRoot: `${WORKSPACE}/.tracker/artifacts`,
+  stateRoot: `${WORKSPACE}/.tracker/data`, artifactRoot: `${WORKSPACE}/.tracker/data/artifacts`,
 };
 const NOW = "2026-10-01T12:00:00.000Z";
 const ZERO_FINGERPRINT = FingerprintSchema.parse("0".repeat(64));

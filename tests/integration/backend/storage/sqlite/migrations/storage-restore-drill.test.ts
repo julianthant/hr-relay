@@ -1,4 +1,4 @@
-import { withAuthorityDatabaseReadOnly } from "../../../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { withAuthorityDatabaseReadOnly } from "../../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { runRecordFromRow } from "../../../../../../src/backend/storage/sqlite/run-record-row.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../../../src/backend/storage/sqlite/native-record-row.js";
 import { timelineEventFromRow } from "../../../../../../src/backend/storage/sqlite/timeline-repository.js";

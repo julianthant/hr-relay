@@ -372,6 +372,7 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt
       parsed: {
         schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"),
         value: { name: "Battistessa, Johnnie" },
+        protectedBindings: [],
       },
       ingressSchemaHash: HASH_A,
     },
