@@ -103,7 +103,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "acf5a4a69c79f23e28c290d521060ce5ed0bd1fa2286638ccfe9aa3f2b5f6639",
+    "sha256": "94d4a879d2ff657978eb68e5034feb8244d621fcf5f4f65e0312c3c8d4135749",
     "reason": "Only ENOENT denotes an absent optional sidecar; a missing main database throws, unsafe or changed inputs throw, and failed construction disposes only its private snapshot before rethrowing."
   },
   {

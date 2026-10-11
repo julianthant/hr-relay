@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DatabaseSync } from "node:sqlite";
+import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { existsSync, statSync, lstatSync, mkdtempSync, rmSync, type BigIntStats } from "node:fs";
@@ -122,7 +123,7 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
     }
     const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", copySnapshotScript, path,
       JSON.stringify(sources.map(source => ({ path: source.path, suffix: source.suffix,
-        expected: source.stats === undefined ? null : identity(source.stats) })))], { encoding: "utf8", maxBuffer: 64 * 1024, env: { ...process.env, NODE_OPTIONS: "" } });
+        expected: source.stats === undefined ? null : identity(source.stats) })))], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
     const copyFailed = () => new Error("authority-readonly-snapshot-copy-failed", {
       cause: copy.error ?? { status: copy.status, signal: copy.signal },
     });
