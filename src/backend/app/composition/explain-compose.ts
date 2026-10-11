@@ -167,4 +167,3 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   };
   return buildExplainRunView(evidence);
 }
-
