@@ -39,7 +39,6 @@ import {
   UUID_4,
 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../support/fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../../support/fixtures/intake-kernel-seams.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 
@@ -79,7 +78,7 @@ function createHarness(): {
   const kernel = createCommandKernel({
     lifecycle,
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
+
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
@@ -95,12 +94,7 @@ function createHarness(): {
       resolveAbsent: () => { throw new Error("unused in test"); },
       resolvePresent: () => { throw new Error("unused in test"); },
     },
-    workerRuntime: {
-      planWorkerCount: () => { throw new Error("unused in test"); },
-      spawnWorker: () => { throw new Error("unused in test"); },
-      refreshBrowser: () => { throw new Error("unused in test"); },
-      reopenBrowser: () => { throw new Error("unused in test"); },
-    },
+    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("worker runtime is not wired in this fixture"); }, spawnPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, refreshPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, reopenPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, stopPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, pausePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, resumePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); } } },
   });
 
   return { database, kernel, clock, lifecycle };

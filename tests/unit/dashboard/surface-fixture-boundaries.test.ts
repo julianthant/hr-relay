@@ -16,7 +16,6 @@ import { SCENES as detail } from "../../parity/helpers/reference-detail-scenes.j
 import { SCENES as start } from "../../parity/helpers/reference-start-scenes.js";
 import { SCENES as intake } from "../../parity/helpers/reference-intake-scenes.js";
 import { SCENES as explorer } from "../../parity/helpers/reference-explorer-scenes.js";
-import { SCENES as archive } from "../../parity/helpers/reference-archive-scenes.js";
 import { SCENES as activity } from "../../parity/helpers/reference-activity-scenes.js";
 import { SCENES as settingsScenes } from "../../parity/helpers/reference-settings-scenes.js";
 
@@ -50,8 +49,8 @@ describe("released surface fixtures", () => {
   });
 
   it("partitions the accepted default reference scenes exactly once", () => {
-    const ids = [shell, detail, start, intake, explorer, archive, activity, settingsScenes].flatMap(scenes => scenes.map(scene => scene.id));
+    const ids = [shell, detail, start, intake, explorer, activity, settingsScenes].flatMap(scenes => scenes.map(scene => scene.id));
     assert.equal(new Set(ids).size, ids.length);
-    assert.deepEqual(ids.toSorted(), ["queue-day", "run-open-gate", "run-failed", "run-running", "run-done", "run-queued", "run-parked-write", "run-group", "run-member", "start-run", "intake-mapping", "intake-review", "intake-manifest", "intake-rerun", "explorer-graph", "explorer-transaction", "catalog-search", "archive-ledger", "archive-run", "activity-report", "activity-report-unavailable", "settings"].toSorted());
+    assert.deepEqual(ids.toSorted(), ["queue-day", "run-open-gate", "run-failed", "run-running", "run-done", "run-queued", "run-parked-write", "run-group", "run-member", "start-run", "intake-mapping", "intake-review", "intake-manifest", "intake-rerun", "explorer-graph", "explorer-transaction", "catalog-search", "activity-report", "activity-report-unavailable", "settings"].toSorted());
   });
 });

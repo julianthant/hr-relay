@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
-import { mergeSettingsPatch, SettingsPatchSchema } from "../../../../../src/models/config/settings.js";
+import { mergeSettingsPatch } from "../../../../../src/models/config/settings.js";
 import { fixtureSettingsDocument } from "../../../../support/fixtures/dashboard/fixture-settings.js";
 import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
 import { draftError, patchFromSettingsDraft, settingsLeaves } from "../../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
@@ -209,12 +209,12 @@ describe("typed Settings catalog controls", () => {
     const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
     assert.match(mounted.host.textContent ?? "", /did not include|unavailable/u);
   });
-  it("preserves text, zero/nonzero integers, booleans, routes, complete budgets", () => {
+  it("preserves text, zero/nonzero integers, booleans, routes and provider timeouts", () => {
     const document = fixtureSettingsDocument(); const leaves = settingsLeaves(document);
     for (const [path, raw, value] of [
       ["actor.label", "New label", "New label"], ["ocr.pageConcurrency", "0", 0], ["timeouts.taskMs", "42", 42_000], ["browser.headless", "false", false],
       ["paths.downloadsDir", "/tmp/new-downloads", "/tmp/new-downloads"], ["urls.kuali.prod", { entry: "https://test.example/entry" }, { entry: "https://test.example/entry" }],
-      ["providers.geocodeCensus", { timeoutMs: "100", concurrency: "2", requestsPerMinute: "3", dailyRequestLimit: "4", costLimitUsdMicros: "0" }, { timeoutMs: 100, concurrency: 2, requestsPerMinute: 3, dailyRequestLimit: 4, costLimitUsdMicros: 0 }],
+      ["providers.geocodeCensus", { timeoutMs: "100" }, { timeoutMs: 100 }],
     ] as const) {
       assert.deepEqual(patchFromSettingsDraft(leaves, { [path]: { kind: "set", raw } }), { [path]: { set: value } });
     }
@@ -222,7 +222,6 @@ describe("typed Settings catalog controls", () => {
       const leaf = leaves.find(candidate => candidate.path === path); assert.ok(leaf);
       assert.ok(draftError(leaf, { kind: "set", raw }));
     }
-    assert.equal(SettingsPatchSchema.safeParse({ "providers.geocodeCensus": { set: { concurrency: 2 } } }).success, false);
   });
   it("binds one required job-end-date leaf to the current fiscal year and preserves older values", () => {
     const document = fixtureSettingsDocument();

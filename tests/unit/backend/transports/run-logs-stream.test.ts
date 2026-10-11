@@ -7,7 +7,7 @@ import { compositeEventStreamBody } from "../../../../src/backend/transports/htt
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
-import type { EventStreamFileCursor } from "../../../../src/backend/storage/events/jsonl-streams.js";
+import type { TimelineCursor } from "../../../../src/backend/storage/events/timeline-reader.js";
 import type { RunLogTail } from "../../../../src/backend/logs/run-log-stream.js";
 
 const RUN = "11111111-1111-4111-8111-111111111111";
@@ -370,13 +370,13 @@ describe("confirmed run log composite stream", () => {
     } as unknown as RunQueueProjection;
     const authority = { envelope: { runId: RUN, traceId: "fpo-120000-0002",
       contractFingerprint: HASH, attempt: 1 } } as RunRecord;
-    const firstCursor = new Map<string, EventStreamFileCursor>([
-      ["notes/onboarding/2026-10-02.jsonl", { bytesConsumed: 64, linesConsumed: 2 }],
+    const firstCursor = new Map<string, TimelineCursor>([
+      ["timeline", { bytesConsumed: 64, linesConsumed: 2 }],
     ]);
-    const secondCursor = new Map<string, EventStreamFileCursor>([
-      ["notes/onboarding/2026-10-02.jsonl", { bytesConsumed: 96, linesConsumed: 3 }],
+    const secondCursor = new Map<string, TimelineCursor>([
+      ["timeline", { bytesConsumed: 96, linesConsumed: 3 }],
     ]);
-    const emptyCursor = new Map<string, EventStreamFileCursor>();
+    const emptyCursor = new Map<string, TimelineCursor>();
     const tails: RunLogTail[] = [
       { events: [], cursors: emptyCursor, pruned: false, parsedLines: 0, bytesRead: 0, hasMore: false },
       { events: [], cursors: emptyCursor, pruned: false, parsedLines: 0, bytesRead: 0, hasMore: false },
@@ -386,7 +386,7 @@ describe("confirmed run log composite stream", () => {
         pruned: false, parsedLines: 1, bytesRead: 32, hasMore: false },
       { events: [], cursors: secondCursor, pruned: false, parsedLines: 0, bytesRead: 0, hasMore: false },
     ];
-    const tailInputs: ReadonlyMap<string, EventStreamFileCursor>[] = [];
+    const tailInputs: ReadonlyMap<string, TimelineCursor>[] = [];
     const snapshots: RunRecord[] = [];
     let tailCalls = 0;
     let authorityReads = 0;

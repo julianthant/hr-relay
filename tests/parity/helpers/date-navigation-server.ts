@@ -33,7 +33,6 @@ export function seedDateNavigation(database: AuthorityDatabase, sourceRunId: str
         traceId: `pl-100000-${String(i).padStart(4, "0")}`, enqueuedAt: at },
       lifecycle: { state: "queued" }, version: 1, claimGeneration: 0, createdAt: at, updatedAt: at }));
   }
-  database.refreshRunSummaries();
   database.readRunSummaries = () => { throw new Error("date-proof-whole-history-forbidden"); };
 }
 

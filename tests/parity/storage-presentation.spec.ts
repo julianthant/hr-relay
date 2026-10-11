@@ -14,7 +14,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     const interrupted = StorageDoctorWireSchema.parse({ ...FIXTURE_STORAGE_DOCTOR,
-      recovery: { state: "interrupted", findings: [{ marker: "lifecycle-restore", state: "interrupted" }] },
+      recovery: { state: "interrupted", findings: [{ marker: "authority-restore", state: "interrupted" }] },
       counts: { state: "available", values: { pendingCommands: 3, unresolvedWriteIntents: 2, leases: 4, providerReservations: 1, artifactOutbox: 5 } },
       protectedSettings: { state: "available", entries: ProtectedSettingsNameSchema.options.map((name, index) => ({ name, present: index === 0 })) },
       authorityUpgrades: { state: "available", phases: [{ phase: "settled", fromSchemaVersion: 26, toSchemaVersion: 27, recordedAt: FIXTURE_STORAGE_DOCTOR.checkedAt }] },
@@ -50,7 +50,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(pending.locator(".ds-result-row-side")).toHaveText("3");
       await expect(surface.locator(".diagnostic-storage-table,.diagnostic-storage-row-disclosure")).toHaveCount(0);
       await expect(primary.locator(".ds-result-row button")).toHaveCount(0);
-      expect(await surface.innerText()).not.toMatch(/Run history|Schema v27|record-digest|span_stream|00000000|lifecycle-restore|Showing the last completed/u);
+      expect(await surface.innerText()).not.toMatch(/Run history|Schema v27|record-digest|span_stream|00000000|authority-restore|Showing the last completed/u);
       const stamp = surface.getByRole("group", { name: "Data store summary", exact: true }).locator("time");
       await expect(stamp).toHaveAttribute("dateTime", interrupted.checkedAt);
       for (const row of await primary.getByRole("listitem").all()) {
@@ -68,10 +68,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press("Enter");
       await expect(details).toHaveAttribute("aria-expanded", "true");
       await expect(details).toBeFocused();
-      await expect(surface.getByRole("region", { name: "Recovery diagnostics", exact: true })).toContainText("lifecycle-restore: interrupted");
+      await expect(surface.getByRole("region", { name: "Recovery diagnostics", exact: true })).toContainText("authority-restore: interrupted");
       await page.keyboard.press("Space");
       await expect(details).toHaveAttribute("aria-expanded", "false");
-      expect(await surface.innerText()).not.toMatch(/lifecycle-restore/u);
+      expect(await surface.innerText()).not.toMatch(/authority-restore/u);
       await expect(pending).toContainText("Accepted actions that have not finished.");
       await expect(pending.locator(".ds-badge")).toHaveCount(0);
       await primary.getByRole("button", { name: "Update history", exact: true }).click();
