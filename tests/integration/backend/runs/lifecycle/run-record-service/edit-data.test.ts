@@ -1,23 +1,18 @@
-import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import type { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { z } from "zod";
 import { flow } from "../../../../../../src/workflow-kit/flow.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../../../src/workflow-kit/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";
 import { applyCheckpointPatches } from "../../../../../../src/backend/runtime/checkpoints/checkpoint-patch.js";
-import { createCommandKernel, type CommandKernel } from "../../../../../../src/backend/runs/commands/command-kernel.js";
 import {
   executeClaimedRun,
   type RunExecutorDependencies,
 } from "../../../../../../src/backend/runtime/execution/run-executor.js";
-import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../../../../../src/models/task/task-contract.js";
 import { ScenarioIdSchema, TraceIdSchema, taskId } from "../../../../../../src/rules/identity/ids.js";
 import type { RunRecord } from "../../../../../../src/models/run/record.js";
@@ -32,7 +27,6 @@ import {
   STANDARD_WORKFLOW_ACTIONS,
   WorkflowCapabilitiesSchema,
 } from "../../../../../../src/models/workflow/presentation.js";
-import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { HASH_A, NOW } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,
@@ -48,8 +42,6 @@ import {
   recordingLogger,
   sessionManagerFor,
 } from "../../../../../support/helpers/phase1f-executor-harness.js";
-import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -222,69 +214,6 @@ describe("applyCheckpointPatches", () => {
 
 /* ── 2. the kernel save ──────────────────────────────────────────────────── */
 
-let commandSequence = 0;
-function nextCommandId(): string {
-  commandSequence += 1;
-  const tail = String(commandSequence).padStart(4, "0");
-  return `cccccccc-${tail}-4000-8000-${tail}00000000`;
-}
-
-function editCommand(runId: string, expectedVersion: number, patches: readonly unknown[]) {
-  return {
-    commandId: nextCommandId(),
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "run",
-    type: "edit-checkpoint",
-    target: { runId, expectedVersion },
-    payload: { patches },
-  };
-}
-
-function kernelHarness(descriptor: AnyWorkflowDescriptor): {
-  database: AuthorityDatabase;
-  kernel: CommandKernel;
-} {
-  const clock = manualClock(new Date(NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-edit-data-"));
-  disposers.push(() => rmSync(root, { recursive: true, force: true }));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "edit-data-test" },
-    clock,
-  );
-  disposers.push(() => database.close());
-  const kernel = createCommandKernel({
-    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
-    appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
-    intakeParser: UNWIRED_INTAKE_PARSER,
-    intakeProjections: NO_INTAKE_PROJECTIONS,
-    authority: {
-      withAuthorityTransaction: (work) => database.withAuthorityTransaction(
-        (repositories) => work(repositories),
-      ),
-    },
-    clock,
-    ids: sequentialIdFactory("e"),
-    descriptors: {
-      resolve: (workflowId) => (workflowId === String(descriptor.id) ? descriptor : undefined),
-    },
-    writeResolution: {
-      resolvePresent: () => { throw new Error("unused"); },
-      resolveAbsent: () => { throw new Error("unused"); },
-    },
-    workerRuntime: {
-      planWorkerCount: () => { throw new Error("unused"); },
-      spawnWorker: () => { throw new Error("unused"); },
-      refreshBrowser: () => { throw new Error("unused"); },
-      reopenBrowser: () => { throw new Error("unused"); },
-    },
-  });
-  return { database, kernel };
-}
-
 function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt = 1, injected?: readonly unknown[]) {
   return {
     ...QUEUED_RUN,
@@ -300,7 +229,7 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt
     },
     input: {
       raw: { name: "Battistessa, Johnnie" },
-      parsed: {
+      parsed: { protectedBindings: [],
         schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"),
         value: { name: "Battistessa, Johnnie" },
       },
@@ -308,25 +237,6 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt
     },
   };
 }
-
-describe("checkpoint saves are unavailable", () => {
-  it.each([
-    { version: 1, patch: PATCH },
-    { version: 2, patch: PATCH },
-    { version: 1, patch: { ...PATCH, fieldPath: "disposition" } },
-    { version: 1, patch: { ...PATCH, value: "not-an-eid" } },
-  ])("refuses the retired command regardless of former field/CAS eligibility: %j", ({ version, patch }) => {
-    const descriptor = editDescriptor();
-    const { database, kernel } = kernelHarness(descriptor);
-    database.authority.runs.enqueue(queuedRunFor(descriptor));
-    database.authority.runCheckpoints.insert(REPLAYED);
-    const before = database.authority.runs.get(RUN_ID);
-    const generation = database.getMeta().authorityGeneration;
-    assert.throws(() => kernel.execute(editCommand(RUN_ID, version, [patch])));
-    assert.deepEqual(database.authority.runs.get(RUN_ID), before);
-    assert.equal(database.getMeta().authorityGeneration, generation);
-  });
-});
 
 /* ── 3. the executor consume ─────────────────────────────────────────────── */
 

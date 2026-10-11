@@ -1,18 +1,17 @@
 
 import assert from "node:assert/strict";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../../src/backend/app/config/runtime-isolation.js";
-import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
-import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../../src/models/config/protected-settings-legacy.js";
+
+
 import { TEST_DATA_USAGE } from "../../../../../../src/backend/runs/provenance/test-data-usage.js";
-import { readTestDataLocalConfig, testDataLocalPath } from "../../../../../../src/backend/app/registries/test-data.js";
+import { testDataLocalPath } from "../../../../../../src/backend/app/registries/test-data.js";
 import { composeTestDataCommand, type TestDataComposeDependencies } from "../../../../../support/helpers/synthetic-storage-admission.js";
 
 const REPO_ROOT = process.cwd();
-const VALUE_DOC = "d0000000-0000-4000-8000-000000000001";
 const VALUE_EID = "d0000000-0000-4000-8000-000000000002";
 const SYNTHETIC_DOCUMENT = "4000001";
 const SYNTHETIC_EID = "10000001";
@@ -31,33 +30,8 @@ function checkout(): string {
   mkdirSync(join(root, "tests", "support", "fixtures", "documents"), { recursive: true });
   cpSync(join(REPO_ROOT, "config", "test-data.json"), join(root, "config", "test-data.json"));
   cpSync(join(REPO_ROOT, "tests", "support", "fixtures", "documents", "synthetic-sample.pdf"), join(root, "tests", "support", "fixtures", "documents", "synthetic-sample.pdf"));
-  mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { mode: 0o700 });
+  mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { mode: 0o700, recursive: true });
   return root;
-}
-
-function writeLegacyCredentials(root: string): string {
-  const directory = join(root, rebuildRuntimeIsolation.stateRoot, "credentials");
-  mkdirSync(directory, { mode: 0o700 });
-  const path = join(directory, "protected.json");
-  const request = {
-    commandId: "11111111-1111-4111-8111-111111111111", commandFingerprint: "1".repeat(64), expectedRevision: 1,
-    protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", updatedAt: NOW,
-    entries: { separationsKualiFinalizationCanaryDocumentNumber: { set: SYNTHETIC_DOCUMENT }, personLookupCanaryEid: { set: SYNTHETIC_EID } },
-  };
-  const document = {
-    schemaVersion: 1,
-    record: { schemaVersion: 1, revision: 2, protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH,
-      entries: {
-        separationsKualiFinalizationCanaryDocumentNumber: { valueId: VALUE_DOC, value: SYNTHETIC_DOCUMENT, updatedAt: NOW },
-        personLookupCanaryEid: { valueId: VALUE_EID, value: SYNTHETIC_EID, updatedAt: NOW },
-      },
-      lastApplied: { commandId: request.commandId, commandFingerprint: request.commandFingerprint, expectedRevision: 1,
-        protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, writeId: request.writeId } },
-    history: [{ request, setValueIds: { separationsKualiFinalizationCanaryDocumentNumber: VALUE_DOC, personLookupCanaryEid: VALUE_EID } }],
-  };
-  writeFileSync(path, `${canonicalJsonStringify(document)}\n`, { mode: 0o600 });
-  chmodSync(path, 0o600);
-  return path;
 }
 
 async function run(root: string, args: readonly string[]) {
@@ -162,64 +136,5 @@ describe("cli test-data", () => {
     assert.equal(corrupt.exitCode, 2);
     assert.deepEqual(Object.keys(corrupt.report).sort(), ["command", "shared", "status"]);
     assert.equal((corrupt.report.shared as { state: string }).state, "invalid");
-  });
-
-  it("migrate --plan writes nothing; migrate converts the synthetic credential document into the private file, then is idempotent", async () => {
-    const root = checkout();
-    const credentialPath = writeLegacyCredentials(root);
-    const legacyBytes = readFileSync(credentialPath, "utf8");
-
-    const plan = await run(root, ["migrate", "--from-credentials", "--plan", "--json"]);
-    noValues(plan.report);
-    assert.equal(plan.exitCode, 0);
-    assert.equal(plan.report.command, "test-data migrate");
-    assert.equal(plan.report.status, "planned");
-    assert.equal(readFileSync(credentialPath, "utf8"), legacyBytes);
-    assert.equal(existsSync(testDataLocalPath(root)), false);
-
-    const apply = await run(root, ["migrate", "--from-credentials", "--json"]);
-    noValues(apply.report);
-    assert.equal(apply.exitCode, 0);
-    assert.equal(apply.report.status, "converted");
-    assert.deepEqual(apply.report.source, { path: "credentials/protected.json", state: "current", revision: 3, historyLength: 1,
-      retiredEntries: ["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"] });
-    const local = readTestDataLocalConfig(testDataLocalPath(root));
-    assert.equal(local.state, "valid");
-    if (local.state !== "valid") throw new Error("expected the private file");
-    assert.deepEqual(Object.keys(local.config.inputs).sort(), ["personLookupCanaryEid", "separationsKualiFinalizationCanaryDocumentNumber"]);
-    assert.equal(local.config.inputs.personLookupCanaryEid?.valueId, VALUE_EID);
-    assert.equal((JSON.parse(readFileSync(credentialPath, "utf8")) as { schemaVersion: unknown }).schemaVersion, 2);
-
-    const again = await run(root, ["migrate", "--from-credentials", "--json"]);
-    assert.equal(again.exitCode, 0);
-    assert.equal(again.report.status, "already-converted");
-
-    // The converted checkout is now ready by name for both arms without any Settings entry.
-    const ready = await run(root, ["check", "--json", "--subject", "finalization-canary", "--workflow", "separations"]);
-    assert.equal(ready.exitCode, 0);
-    assert.deepEqual(ready.report.subjects, [{ label: "finalization-canary", workflow: "separations", state: "ready" }]);
-  });
-
-  it("migrate refuses with exit 1 on a conflicting destination and reports nothing to migrate for an absent store", async () => {
-    const absent = checkout();
-    const nothing = await run(absent, ["migrate", "--from-credentials", "--json"]);
-    assert.equal(nothing.exitCode, 0);
-    assert.equal(nothing.report.status, "nothing-to-migrate");
-    assert.equal(existsSync(testDataLocalPath(absent)), false);
-
-    const root = checkout();
-    const credentialPath = writeLegacyCredentials(root);
-    const legacyBytes = readFileSync(credentialPath, "utf8");
-    const conflict = `${JSON.stringify({ schemaVersion: 1, inputs: {
-      personLookupCanaryEid: { valueId: VALUE_EID, value: "10000002", updatedAt: NOW },
-    }, files: {} })}\n`;
-    writeFileSync(testDataLocalPath(root), conflict, { mode: 0o600 });
-    const refused = await run(root, ["migrate", "--from-credentials", "--json"]);
-    noValues(refused.report);
-    assert.equal(refused.exitCode, 1);
-    assert.equal(refused.report.status, "refused");
-    assert.match(String(refused.report.reason), /different entry for personLookupCanaryEid/u);
-    assert.equal(readFileSync(credentialPath, "utf8"), legacyBytes);
-    assert.equal(readFileSync(testDataLocalPath(root), "utf8"), conflict);
   });
 });

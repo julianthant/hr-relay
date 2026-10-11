@@ -1,6 +1,7 @@
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
-import { createRuntimeVersionChanges } from "../../../src/backend/runs/archive/archive-runtime-version-changes.js";
+import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
+import { randomUUID } from "node:crypto";
 
 import assert from "node:assert/strict";
 import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
@@ -19,14 +20,13 @@ import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
 import { COMMAND_FIXTURES, HASH_B, NOW, UUID_2, UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../support/fixtures/archive-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
 
 function withoutReadOnlyHistoryFacade(content: string): string {
   const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
   const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
   const readonlyImport = source.statements.some(node => ts.isImportDeclaration(node)
-    && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "../compatibility/backup-inspection.js"
+    && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "./backup-inspection.js"
     && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
     && node.importClause.namedBindings.elements.some(binding => binding.name.text === "withAuthorityDatabaseReadOnly" && binding.propertyName === undefined));
   if (!readonlyImport) return content;
@@ -50,7 +50,7 @@ function withoutReadOnlyHistoryFacade(content: string): string {
   }
   inspect(source);
   if (unsafe || admittedReads !== 1
-    || !compact(source).includes('constcopyAdmission=admission.verifiedReadOnlyCopy(backupPath,input.verifiedBackup.manifest.sha256,"authority");')
+    || !compact(source).includes('constcopyAdmission=admission.verifiedReadOnlyCopy(backupPath,input.verifiedBackup.manifest.sha256);')
     || !compact(source).includes('finally{copyAdmission.release();}')) return content;
   const functions = source.statements.filter(ts.isFunctionDeclaration).filter(node => node.name?.text === "readHistory");
   if (functions.length !== 1) return content;
@@ -59,10 +59,10 @@ function withoutReadOnlyHistoryFacade(content: string): string {
     || fn.type?.getText(source) !== "StorageRelocationHistoryRepositories" || fn.body?.statements.length !== 5) return content;
   const [commands, audits, index, fold, result] = fn.body.statements;
   const reads = [
-    [commands, "commands", "SELECT record_key, family, record_json FROM commands WHERE family = 'storage-relocation' OR json_extract(record_json, '$.family') = 'storage-relocation' ORDER BY rowid",
-      'constrow=CommandRow.parse(raw);constrequest=StorageRelocationCommandRequestSchema.parse(JSON.parse(row.record_json));if(row.record_key!==request.commandId||row.family!==request.family)refuse("commandstoragekeymismatch");returnrequest;'],
-    [audits, "audits", "SELECT audit.record_key, audit.command_id, audit.record_json FROM command_audits AS audit JOIN commands AS command ON command.record_key = audit.command_id WHERE command.family = 'storage-relocation' ORDER BY audit.rowid",
-      'constrow=AuditRow.parse(raw);constaudit=CommandAuditRecordSchema.parse(JSON.parse(row.record_json));if(row.record_key!==audit.auditId||row.command_id!==audit.request.commandId)refuse("auditstoragekeymismatch");returnaudit;'],
+    [commands, "commands", "SELECT * FROM commands WHERE family='storage-relocation' ORDER BY rowid",
+      'StorageRelocationCommandRequestSchema.parse(commandFromRow(raw))'],
+    [audits, "audits", "SELECT audit.* FROM command_audits AS audit JOIN commands AS command ON command.id=audit.command_id WHERE command.family='storage-relocation' ORDER BY audit.rowid",
+      'CommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits",raw))'],
   ] as const;
   for (const [statement, name, sql, mapping] of reads) {
     if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0
@@ -72,13 +72,13 @@ function withoutReadOnlyHistoryFacade(content: string): string {
     if (declaration.name.getText(source) !== name || map === undefined || !ts.isCallExpression(map)
       || !ts.isPropertyAccessExpression(map.expression) || map.expression.name.text !== "map" || map.arguments.length !== 1
       || !ts.isArrowFunction(map.arguments[0]) || compact(map.arguments[0].parameters[0]) !== "raw"
-      || !ts.isBlock(map.arguments[0].body) || compact(map.arguments[0].body).slice(1, -1) !== mapping) return content;
+      || compact(map.arguments[0].body) !== mapping) return content;
     const all = map.expression.expression;
     if (!ts.isCallExpression(all) || all.arguments.length !== 0 || !ts.isPropertyAccessExpression(all.expression)
       || all.expression.name.text !== "all") return content;
     const prepare = all.expression.expression;
     if (!ts.isCallExpression(prepare) || compact(prepare.expression) !== "database.prepare" || prepare.arguments.length !== 1
-      || !ts.isNoSubstitutionTemplateLiteral(prepare.arguments[0])
+      || !ts.isStringLiteralLike(prepare.arguments[0])
       || prepare.arguments[0].text.replace(/\s+/gu, " ").trim() !== sql) return content;
   }
   if (compact(index) !== 'constbyCommand=newMap<string,(typeofaudits)[number]>();'
@@ -150,7 +150,7 @@ const EXPECTED_ACTIVE = {
     "retry",
 
     "restart",
-    "cancel", "bump", "rename", "archive",
+    "cancel", "bump", "rename",
 
     "delete",
     "resolve-write-present", "resolve-write-absent",
@@ -167,7 +167,6 @@ const EXPECTED_ACTIVE = {
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
 
-  "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
 
@@ -175,7 +174,6 @@ const EXPECTED_DEFERRED = {
   intake: [],
   settings: [],
   "storage-relocation": [],
-  "version-archive": [],
   run: [],
   notification: [],
 } as const;
@@ -198,6 +196,7 @@ afterEach(() => {
 type RepositoryWrap = (repositories: AuthorityRepositories) => AuthorityRepositories;
 
 interface GuardHarness {
+  readonly path: string;
   readonly database: AuthorityDatabase;
   readonly kernel: CommandKernel;
   readonly clock: ReturnType<typeof manualClock>;
@@ -221,9 +220,7 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-    runtimeVersionChanges: createRuntimeVersionChanges({ database, clock, ids: sequentialIdFactory("r"), archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS }),
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
+    configIdentity: database.authority.runtimeConfig.get()!,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: {
@@ -240,12 +237,15 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       resolvePresent: seamFailure("resolve-write-present"),
       resolveAbsent: seamFailure("resolve-write-absent"),
     },
-    workerRuntime: {
-      planWorkerCount: seamFailure("plan-worker-count"),
-      spawnWorker: seamFailure("spawn-worker"),
-      refreshBrowser: seamFailure("refresh-browser"),
-      reopenBrowser: seamFailure("reopen-browser"),
-    },
+    workerRuntime: { pool: {
+      planPoolWorkerCount: async () => seamFailure("plan-worker-count")(),
+      spawnPoolWorker: async () => seamFailure("spawn-worker")(),
+      refreshPoolBrowser: async () => seamFailure("refresh-browser")(),
+      reopenPoolBrowser: async () => seamFailure("reopen-browser")(),
+      stopPoolWorker: async () => seamFailure("stop-worker")(),
+      pausePoolWorker: async () => seamFailure("pause-worker")(),
+      resumePoolWorker: async () => seamFailure("resume-worker")(),
+    } },
     settings: {
       validateRequest: (command) => command.type === "apply-settings" && command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
         ? { state: "rejected", code: "schema-mismatch", message: "guard fixture uses a noncurrent settings schema" } : undefined,
@@ -270,7 +270,7 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       }),
     },
   });
-  return { database, kernel, clock, plannerIds: sequentialIdFactory("f") };
+  return { path: join(root, "guard.sqlite"), database, kernel, clock, plannerIds: sequentialIdFactory("f") };
 }
 
 let guardCommandSequence = 0;
@@ -290,8 +290,8 @@ function createFixturePlan(harness: GuardHarness) {
       dryRun: false,
       priority: "bulk",
       shape: "single",
-      configFingerprint: HASH_B,
-      configSnapshotId: UUID_4,
+      configFingerprint: harness.database.authority.runtimeConfig.get()!.configFingerprint,
+      configSnapshotId: harness.database.authority.runtimeConfig.get()!.configSnapshotId,
       plannedBy: "local-operator",
     },
   );
@@ -336,12 +336,12 @@ describe("control-command-single-path", () => {
     const source = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/relocation-restore-candidate.ts"), "utf8");
     assert.ok(!withoutReadOnlyHistoryFacade(source).includes("commandAudits"));
     for (const bad of [
-      source.replace("SELECT audit.record_key", "DELETE audit.record_key"),
-      source.replace(".all().map((raw)", ".run().map((raw)"),
+      source.replace("SELECT audit.*", "DELETE audit.*"),
+      source.replace(".all().map(raw", ".run().map(raw"),
       source.replace("byCommand.get(commandId)", "database.exec(commandId)"),
       source.replace("return {\n    commands:", 'database.exec("DELETE FROM command_audits"); return {\n    commands:'),
       source.replace("withAuthorityDatabaseReadOnly(copyAdmission, backupPath", "withAuthorityDatabaseReadOnly(input.admission, backupPath"),
-      source.replace('from "../compatibility/backup-inspection.js"', 'from "./forged-readonly.js"'),
+      source.replace('from "./backup-inspection.js"', 'from "./forged-readonly.js"'),
       `${source}\nfunction arbitrary(repo: any) { repo.commandAudits.insert({}); }`,
       `${source}\nconst forged = { commandAudits: { findByCommand: () => undefined } };`,
     ]) assert.ok(withoutReadOnlyHistoryFacade(bad).includes("commandAudits"), "mutating or unrelated audit authority must remain visible");
@@ -356,8 +356,10 @@ describe("control-command-single-path", () => {
     const settingsAuditReaders = new Map([
       ["src/backend/runtime/settings/settings-runtime.ts", 1],
       ["src/backend/storage/maintenance/storage-relocation-plans.ts", 1],
-      ["src/backend/storage/compatibility/d331-protected-journal.ts", 1],
       ["src/backend/storage/sqlite/backup-service.ts", 0],
+      ["src/backend/runs/lifecycle/run-record-service.ts", 1],
+      ["src/backend/runs/recovery/span-root-repair.ts", 1],
+      ["src/models/events/confirmed-operation.ts", 1],
     ]);
     const violations: string[] = [];
     let kernelDefinitions = 0;
@@ -371,7 +373,8 @@ describe("control-command-single-path", () => {
         if (expectedSettingsAuditReads !== undefined && token === "commandAudits") {
           const auditUses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
           if (auditUses.length !== expectedSettingsAuditReads
-            || auditUses.some((use) => use !== (path === "src/backend/runtime/settings/settings-runtime.ts" ? "commandAudits.findSettingsHistory" : "commandAudits.findByCommand"))) {
+            || auditUses.some((use) => use !== (path === "src/backend/runtime/settings/settings-runtime.ts" ? "commandAudits.findSettingsHistory"
+              : path === "src/backend/runs/lifecycle/run-record-service.ts" || path === "src/models/events/confirmed-operation.ts" ? "commandAudits.get" : "commandAudits.findByCommand"))) {
             violations.push(
               `${path} may only authenticate settings through exactly ${String(expectedSettingsAuditReads)} `
               + "commandAudits.findByCommand reads",
@@ -395,29 +398,30 @@ describe("control-command-single-path", () => {
   it("carries a version or immutability binding on every wire arm's target", () => {
     const versionless: string[] = [];
     for (const fixture of CURRENT_COMMAND_FIXTURES) {
-      const request = CommandRequestSchema.parse(fixture);
+      const parsed = CommandRequestSchema.parse(fixture);
+      const request = parsed.family === "worker-browser" && "workflowId" in parsed.target
+        ? { ...parsed, target: { ...parsed.target, workflowId: "fixture-graph" } } : parsed;
       const target: Record<string, unknown> = request.target;
       const carries = "expectedVersion" in target || "expectedRevision" in target
-        || "archiveFingerprint" in target || "reviewFingerprint" in target || "scope" in target;
+        || "scope" in target;
       if (!carries) versionless.push(`${request.family}/${request.type}`);
     }
     assert.deepEqual(versionless, []);
   });
 
-  it("dispatches every command family/action: active arms execute and unavailable arms have zero effects", () => {
+  it("dispatches every command family/action: active arms execute and unavailable arms have zero effects", async () => {
     const harness = createHarness();
     const seen: string[] = [];
     for (const fixture of CURRENT_COMMAND_FIXTURES) {
-      const request = CommandRequestSchema.parse(fixture);
+      const parsed = CommandRequestSchema.parse(fixture);
+      const request = parsed.family === "worker-browser" && "workflowId" in parsed.target
+        ? { ...parsed, target: { ...parsed.target, workflowId: "fixture-graph" } } : parsed;
       const key = `${request.family}/${request.type}`;
       seen.push(key);
       const generationBefore = harness.database.getMeta().authorityGeneration;
-      const result = CommandResultSchema.parse(harness.kernel.execute(structuredClone(fixture)));
-      if (request.type === "relaunch-archived-run") {
-        assert.equal(result.state, "rejected", key);
-        assert.equal(harness.database.getMeta().authorityGeneration, generationBefore, key);
-        assert.equal(harness.database.authority.commands.get(request.commandId), undefined, key);
-      } else if (DEFERRED_KEYS.has(key) || request.family === "storage-relocation") {
+      const result = CommandResultSchema.parse(request.family === "worker-browser"
+        ? await harness.kernel.executeWorkerPool(structuredClone(request)) : harness.kernel.execute(structuredClone(request)));
+      if (DEFERRED_KEYS.has(key) || request.family === "storage-relocation") {
         assert.equal(result.state, "rejected", key);
         if (result.state !== "rejected") continue;
         assert.equal(result.code, "capability-unavailable", key);
@@ -434,13 +438,15 @@ describe("control-command-single-path", () => {
     }
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
       actions.map((action) => `${family}/${action}`));
-    assert.deepEqual([...new Set(seen)].sort(), [...registry, "version-archive/relaunch-archived-run"].sort(), "the fixture corpus must cover every active and historical family/action");
+    assert.deepEqual([...new Set(seen)].sort(), [...registry].sort(), "the fixture corpus must cover every current family/action");
   });
 
 
   it("CASes every run verb against the caller's version — presentation included", () => {
     const harness = createHarness();
-    assert.equal(harness.database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
+    assert.equal(harness.database.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
+      configFingerprint: harness.database.authority.runtimeConfig.get()!.configFingerprint,
+      configSnapshotId: harness.database.authority.runtimeConfig.get()!.configSnapshotId } }).state, "inserted");
     const base = {
       requestedAt: NOW,
       requestedBy: "local-operator",
@@ -537,13 +543,21 @@ describe("control-command-single-path", () => {
     const harness = createHarness();
     const plan = createFixturePlan(harness);
     const runId = singleAppliedRunId(harness.kernel.execute(startCommandFor(plan)));
+    const slot = harness.database.withAuthorityTransaction(repositories => {
+      const member = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: "fixture-graph", poolIndex: 1,
+        expectedPoolVersion: 0, processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: harness.path,
+        processLockRoot: join(harness.path, "..", "locks"), now: NOW }, randomUUID());
+      assert.equal(repositories.workerLeases.start({ workerId: member.workerId, workflow: "fixture-graph", browserSystems: [],
+        processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
+      return member;
+    });
     const claimed = harness.database.authority.runs.claimNext({
-      workflow: "fixture-graph", workerId: "worker-1", now: NOW,
+      workflow: "fixture-graph", workerId: slot.workerId, now: NOW,
     });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") return;
-    const claim = { workerId: "worker-1", claimGeneration: claimed.run.claimGeneration };
-    const live = { workerId: "worker-1", claimedAt: NOW, heartbeatAt: NOW };
+    const claim = { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration };
+    const live = { workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW };
     let version: number = claimed.run.version;
     for (const state of ["validating", "running"] as const) {
       assert.equal(harness.database.authority.runs.transition({

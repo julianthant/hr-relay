@@ -21,7 +21,7 @@ import {
   RunRecordSchema,
   type RunRecord,
 } from "../../../../../../src/models/run/record.js";
-import { deriveCheckpointOutputDigest } from "../../../../../../src/models/run/result.js";
+import { deriveCheckpointOutputDigest, deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema } from "../../../../../../src/models/run/result.js";
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../../../../src/rules/separations/identity-approval.js";
 import { evidenceLeaves } from "../../../../../../src/models/trust/evidence-classification.js";
@@ -256,7 +256,7 @@ async function parkApproveAndReclaim(value: FinalizationHarness) {
     schemaHash: deriveSchemaHash(IdentityApprovalResultSchema, "output"),
     value: approval,
   };
-  const gateInsert = value.database.authority.gateResults.insert({
+  const gateInsert = value.database.authority.gateResults.insert({ nodeId: GATE_NODE,
     runId: FINALIZATION_RUN_ID,
     gateId: GATE_NODE,
     commandId: UUID_7,
@@ -569,10 +569,13 @@ describe("current Kuali finalization transaction is terminal evidence", () => {
       undefined,
       "the sequencer wrote the row; only the executor read was mutated",
     );
-    assert.equal(
-      value.database.authority.runResults.get(FINALIZATION_RUN_ID),
-      undefined,
-    );
+    const terminal = value.database.authority.runResults.get(FINALIZATION_RUN_ID);
+    assert.ok(terminal && failure);
+    const retainedFailure = RunTerminalEvidenceResultSchema.parse(terminal.result.value);
+    assert.equal(retainedFailure.kind, "failed-evidence");
+    if (retainedFailure.kind !== "failed-evidence") throw new Error("terminal failure evidence missing");
+    assert.equal(retainedFailure.authorization.failureId, failure.failureId);
+    assert.equal(retainedFailure.failureDigest, deriveTerminalFailureDigest(failure));
   });
 
   it("does not accept a sequencer-only settlement that bypasses the executor", async () => {

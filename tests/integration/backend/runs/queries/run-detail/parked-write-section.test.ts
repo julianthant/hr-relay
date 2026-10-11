@@ -380,7 +380,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     seed(w);
     const served = parkedSection(w);
 
-    const normalize = (payload: typeof served, intent: WriteIntentRecord): unknown => {
+    const normalize = (payload: typeof served | typeof FIXTURE_PARKED_WRITE, intent: WriteIntentRecord): unknown => {
       if (intent.status !== "parked") throw new Error("fixture intent is not parked");
       for (const action of payload.actions) {
         assert.equal(action.kind, "command");

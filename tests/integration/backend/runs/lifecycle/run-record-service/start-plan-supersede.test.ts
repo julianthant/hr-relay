@@ -5,7 +5,6 @@ import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-stor
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createCommandKernel } from "../../../../../../src/backend/runs/commands/command-kernel.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { launchHarness, launchDescriptor } from "../../../../../support/fixtures/run-launch-fixtures.js";
@@ -54,7 +53,7 @@ describe("start-specific supersede review is atomic", () => {
     assert.equal(JSON.stringify({ first: h.fresh(first), second: h.fresh(second), roots: h.queueRoots }), before);
     assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
   });
-  it("historical unconsumed plans without review basis stay readable but require replanning", () => {
+  it("unconsumed plans without review basis stay readable but require replanning", () => {
     const h = setup(); const wire = h.proposal(); const record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
     const planned = record.planned.map(({ supersedeTargets: _targets, ...entry }) => entry);
     const old = StartPlanRecordSchema.parse({ ...record, startPlanId: h.planIds.uuid(), planned,
@@ -63,22 +62,21 @@ describe("start-specific supersede review is atomic", () => {
     const result = h.kernel.execute(h.command({ ...wire, startPlanId: old.startPlanId, fingerprints: { ...wire.fingerprints, inputFingerprint: old.inputFingerprint } }));
     assert.ok(result.state === "rejected"); assert.equal(result.code, "replan-required"); assert.equal(h.queueRoots.length, 0);
   });
-  it("reopens and replays an accepted historical plan without a supersede review basis", async () => {
+  it("reopens and replays an accepted plan without a supersede review basis", async () => {
 
     const h = launchHarness("reject-active"); cleanup.push(h.dispose);
     const plan = h.proposal(); assert.equal(plan.planned[0].supersedeTargets, undefined);
     const command = h.command(plan); const accepted = h.kernel.execute(command); assert.equal(accepted.state, "applied");
-    const root = mkdtempSync(join(tmpdir(), "launch-historical-")); const path = join(root, "authority.sqlite");
+    const root = mkdtempSync(join(tmpdir(), "launch-replay-")); const path = join(root, "authority.sqlite");
     await h.database.onlineBackupTo(path);
     const reopened = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "launch-replay-proof" }, h.clock);
     try {
       const descriptor = launchDescriptor("supersede-active");
       const lifecycle = new RunRecordService({ database: reopened, clock: h.clock, ids: h.lifecycleIds, publishQueued: () => { throw new Error("replay published new work"); } });
-      const unused = () => { throw new Error("historical replay invoked a runtime operation"); };
       const kernel = createCommandKernel({ lifecycle, authority: reopened, clock: h.clock, ids: h.ids, appVersion: "0.1.0",
-        descriptors: { resolve: () => descriptor }, archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS, configIdentity: UNSTORED_CONFIG_IDENTITY,
+        descriptors: { resolve: () => descriptor }, configIdentity: UNSTORED_CONFIG_IDENTITY,
         intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-        workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused }, writeResolution: h.resolution });
+        workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } }, writeResolution: h.resolution });
       const before = JSON.stringify({ meta: reopened.getMeta(), runs: reopened.authority.runs.listByWorkflow(descriptor.id), plan: reopened.authority.startPlans.get(plan.startPlanId) });
       assert.deepEqual(kernel.execute(command), { ...accepted, state: "already-applied" });
       assert.equal(JSON.stringify({ meta: reopened.getMeta(), runs: reopened.authority.runs.listByWorkflow(descriptor.id), plan: reopened.authority.startPlans.get(plan.startPlanId) }), before);

@@ -5,7 +5,6 @@ import { createCommandKernel } from "../../../../../../src/backend/runs/commands
 import { createStartPlanService } from "../../../../../../src/backend/runs/commands/start-plan-service.js";
 import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 import { singleAppliedRunId } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import { settingsFixture } from "../../../../../support/helpers/backend/settings-activation-fixture.js";
 
@@ -13,13 +12,11 @@ it("refuses stale reviewed plans atomically, freshly confirms current settings a
   const f = settingsFixture();
   try {
     const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
-    const kernel = createCommandKernel({ lifecycle: f.service, appVersion: "0.1.0", archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-      configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+    const kernel = createCommandKernel({ lifecycle: f.service, appVersion: "0.1.0", configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       authority: f.database, clock: f.clock, ids: { uuid: randomUUID }, descriptors,
       explorerEdits: { apply: () => { throw new Error("unused explorer"); } },
       writeResolution: { resolvePresent: () => { throw new Error("unused write"); }, resolveAbsent: () => { throw new Error("unused write"); } },
-      workerRuntime: { planWorkerCount: () => ({ state: "accepted", workerIds: ["settings-worker"] }),
-        spawnWorker: () => ({ state: "accepted" }), refreshBrowser: () => ({ state: "accepted" }), reopenBrowser: () => ({ state: "accepted" }) },
+      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
     });
     const planner = createStartPlanService({ authority: f.database, authorityRead: f.database, descriptors,
       clock: f.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, configFingerprint: f.snapshot.fingerprint,

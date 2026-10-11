@@ -124,7 +124,7 @@ describe("start planning", () => {
     const value=plan.planned[0].input.value;const raw=plan.planned[0].rawInput;
     assert.ok(value!==null && typeof value === "object" && !Array.isArray(value));
     assert.ok(raw!==null && typeof raw === "object" && !Array.isArray(raw));
-    assert.equal(value.timekeeperName,"Synthetic signer");
+    assert.equal(Reflect.get(value, "timekeeperName"),"Synthetic signer");
     assert.equal(Object.hasOwn(raw,"timekeeperName"),false);
   });
   it("planning reserves no lifecycle identity", () => {

@@ -1,4 +1,4 @@
-import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,7 +11,7 @@ import {
 } from "../../../src/rules/write-safety/write-safety.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import {
-  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
+  ATOMIC_WRITE_COMMIT,
   IDEMPOTENCY_KEY,
   IDEMPOTENCY_KEY_DIGEST,
   NOW,
@@ -23,8 +23,6 @@ import {
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-
-const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const CLOCK = manualClock(new Date(NOW));
 const roots: string[] = [];
@@ -86,12 +84,13 @@ afterEach(() => {
 
 describe("permanent system-scoped write keys", () => {
   it("keeps a committed key permanent across a later sequential starter", () => {
-    const database = open(authorityPath());
+    const path = authorityPath();
+    const database = open(path);
     assert.equal(database.authority.writeIntents.fenceAttempt({
       intent: WRITE_INTENT_ATTEMPTING,
       attempt: WRITE_ATTEMPT,
     }).state, "fenced");
-    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT);
+    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
     database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     const generationAfterCommit = database.getMeta().authorityGeneration;
 

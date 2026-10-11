@@ -5,8 +5,7 @@ import { afterEach, describe, it, vi } from "vitest";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
 
 import { buildTrustSection, buildRunGate } from "../../../../../../src/backend/runs/queries/run-trust.js";
-import { createNoteJsonlWriter } from "../../../../../../src/backend/storage/events/note-jsonl-writer.js";
-import { readEventStreamLines } from "../../../../../../src/backend/storage/events/jsonl-streams.js";
+import { createNoteTimelineWriter } from "../../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createNotificationInbox } from "../../../../../../src/backend/runs/notifications/inbox.js";
 import { readGateParks } from "../../../../../../src/backend/app/composition/dashboard/trust.js";
 import { explainRunFrom } from "../../../../../../src/backend/app/composition/explain-compose.js";
@@ -26,7 +25,7 @@ function inbox(value: ReturnType<typeof trustWorld>) {
     ids: { uuid: () => uuidOf(id++) }, actorId: "local-operator" });
 }
 
-describe("2.6.1-1 canonical trust linkage", () => {
+describe("canonical trust linkage", () => {
   it("serves a real derived receipt and Explain by run or trace without any span fold", () => {
     const f = fixture();
     testWorkerPorts(f.database, f.world.clock, { path: join(f.world.stateRoot, "trust.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
@@ -41,7 +40,7 @@ describe("2.6.1-1 canonical trust linkage", () => {
 
   it("keeps no-fold log pages immutable and refuses retained lines after canonical deletion", () => {
     const f = fixture(); const run = f.create(1); const id = run.envelope.runId;
-    const writer = createNoteJsonlWriter({ stateRoot: f.world.stateRoot, clock: f.world.clock, pid: 999 });
+    const writer = createNoteTimelineWriter({ repository: f.database.authority.timelineEvents, clock: f.world.clock, pid: 999 });
     const append = (message: string) => writer.emitNote({ workflow: run.envelope.workflow,
       address: { runId: id, traceId: run.envelope.traceId, spanPath: run.envelope.traceId, attempt: run.envelope.attempt },
       level: "step", message });
@@ -57,11 +56,12 @@ describe("2.6.1-1 canonical trust linkage", () => {
     assert.equal(second.section, "logs"); if (second.section !== "logs") throw new Error("wrong section");
     assert.ok(second.payload.rows);
     assert.equal(second.payload.rows.length, 1);
-    const source = readEventStreamLines(f.world.stateRoot, "notes").map(line => line.text);
+    const source = f.database.authority.timelineEvents.page({ runId: run.envelope.runId });
+    assert.equal(source.filter(row => row.payload.kind === "note").length, 202);
     const terminal = f.cancel(run, 2);
     assert.equal(f.service.delete({ commandId: uuidOf(3), runId: id, expectedVersion: terminal.version }).state, "deleted");
     assert.throws(() => buildTrustSection(f.deps, id, "logs", cursor.value), /deleted/);
-    assert.deepEqual(readEventStreamLines(f.world.stateRoot, "notes").map(line => line.text), source);
+    assert.deepEqual(f.database.authority.timelineEvents.page({ runId: run.envelope.runId }), []);
     assert.throws(() => buildTrustSection(f.deps, uuidOf(88), "logs"), /absent/);
   });
 

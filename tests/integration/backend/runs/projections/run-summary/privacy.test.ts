@@ -14,7 +14,7 @@ it("refuses each canonical identity mismatch with a sanitized error",()=>{
 });
 it("serializes only safe Queue facts and aggregate Activity values",()=>{
   const f=foundationFixture();try{
-    f.db.refreshRunSummaries();
+    
     const queue=queryQueueSummaries(f.db,{limit:10});
     const report=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:f.run.createdAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
     const serialized=JSON.stringify({queue,report});
@@ -41,7 +41,7 @@ it("deduplicates people across days and computes the lower selected median, matc
       seedSeparationsRunAuthority(f.db,f.path,run,result);
       identities.set(run.envelope.runId,deriveCanonicalPerson(run,result));world.authority.put(run);
     }
-    f.db.refreshRunSummaries();
+    
     const expected=world.projection.buildActivityReportWire("2026-09-08","2026-09-09");
     const report=queryActivitySummaries(f.db,{from:"2026-09-08",to:"2026-09-09",generatedAt:expected.generatedAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>expected.ledger}});
     assert.deepEqual(report.people,{state:"present",distinct:1,evidenceRows:6});

@@ -220,7 +220,7 @@ const CATEGORIES: NonNullable<RunDetailDescriptorView["timeline"]> = [
 
 function detailOf(w: DashboardWorld, timeline?: NonNullable<RunDetailDescriptorView["timeline"]>, seed = 1) {
   return buildRunDetail(
-    { runReader: w.runReader,
+    { runReader: w.runReader, timeline: w.timeline,
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
@@ -375,7 +375,7 @@ function checkpointOf(
     itemId: uuidOf(1 + 5000),
     nodeId: input.nodeId,
     attempt: input.attempt ?? 8,
-    ...(input.claimGeneration === undefined ? {} : { claimGeneration: input.claimGeneration }),
+    claimGeneration: input.claimGeneration ?? 1,
     runId: uuidOf(input.runSeed),
     output: { schemaHash: HASH_A, value: { value: "on file" } },
     descriptorVersion: 1,
@@ -415,17 +415,6 @@ describe("a replayed node is not a node that never ran", () => {
       state: "replayed",
       replayedFrom: { attempt: 8, claimGeneration: 2 },
     }]);
-  });
-
-  it("omits a claim generation absent from the stored row rather than fabricating 1", () => {
-    const w = world();
-    seedRun(w);
-    ranFor(w, "comparison", 3_000);
-    checkpointOf(w, { nodeId: "timecard", runSeed: 2, attempt: 3 });
-    terminal(w, "done");
-
-    const kronos = detailOf(w, CATEGORIES).timeline.steps?.find((step) => step.label === "Kronos timecard");
-    assert.deepEqual(kronos?.members.at(0)?.replayedFrom, { attempt: 3 });
   });
 
   it("leaves a node with NEITHER span nor checkpoint exactly as it was", () => {
