@@ -1,3 +1,5 @@
+import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
@@ -18,11 +20,12 @@ function fixture() {
   let cancellations = 0;
   const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
   const id = randomUUID();
+  const configFingerprint = FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config)));
   const events: unknown[] = [];
   const deps: ProviderClientDependencies = {
     execution: { runId: id, attempt: 1, nodeId: "search", taskId: "normalization/read-contact-advice" },
-    configSnapshotId: id, configFingerprint: hash,
-    configSnapshot: { configSnapshotId: id, revision: 1, fingerprint: hash, config, provenance: {}, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" },
+    configSnapshotId: id, configFingerprint,
+    configSnapshot: { configSnapshotId: id, revision: 1, fingerprint: configFingerprint, config, provenance: {}, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" },
     adapters: { "geocode.census": { capability: "geocode.census", invoke: async () => produced } },
     clock, idFactory: { next: randomUUID }, runSignal: controller.signal,
     deadlineScheduler: { schedule(_at, fire) { expired = fire; return { cancel() { cancellations++; } }; } },

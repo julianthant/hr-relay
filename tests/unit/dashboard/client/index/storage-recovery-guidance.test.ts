@@ -177,7 +177,7 @@ it("preserves unavailable credentials, upgrade history and counts beside corrupt
   const report = StorageDoctorWireSchema.parse({...HEALTHY,
     authority: {state: "degraded", cause}, counts: {state: "unavailable", cause},
     authorityUpgrades: {state: "unavailable", cause}, protectedSettings: {state: "unavailable", cause},
-    recovery: {state: "interrupted", findings: [{marker: "lifecycle-restore", state: "interrupted"}]}});
+    recovery: {state: "interrupted", findings: [{marker: "authority-restore", state: "interrupted"}]}});
   const dom = await mountDoctor(report);
   assert.match(dom.textContent ?? "", /Data store unavailable/u);
   assert.doesNotMatch(dom.textContent ?? "", /Data store available/u);

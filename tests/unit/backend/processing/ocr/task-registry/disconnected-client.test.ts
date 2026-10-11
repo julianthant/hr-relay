@@ -1,3 +1,5 @@
+import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createProviderClient, type ProviderClientDependencies } from "../../../../../../src/backend/processing/providers/provider-client.js";
@@ -8,7 +10,7 @@ it("constructs disconnected OCR without budget or effects and preserves snapshot
   const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
   assert.deepEqual(Object.keys(config.providers).sort(), ["geocodeCensus", "geocodeNominatim"]);
   const snapshotId = "00000000-0000-4000-8000-000000000001";
-  const fingerprint = "a".repeat(64);
+  const fingerprint = sha256Hex(canonicalJsonStringify(config));
   const effects = new Proxy({}, { get() { throw new Error("disconnected OCR touched an effect"); } });
   const dependencies = {
     execution: { runId: snapshotId, attempt: 1, nodeId: "extract", taskId: "ocr/extract-form-page" },

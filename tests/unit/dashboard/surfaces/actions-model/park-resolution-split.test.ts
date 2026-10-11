@@ -16,7 +16,7 @@ const ACTIONS = z.array(ActionDescriptorWireSchema).parse([
     command: "resolve-write-present",
     expectedVersion: 4,
     confirm: { title: "Record it as present", body: "Settles this write.", confirmLabel: "Record present", tone: "neutral" },
-    writeTarget: { writeIntentId: "3f2a6c18-4b21-4d7e-9a55-1c0e8b7d4f30", intentGeneration: 2 },
+    writeTarget: { writeIntentId: "3f2a6c18-4b21-4d7e-9a55-1c0e8b7d4f30", intentGeneration: 2, writeAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) },
   },
   {
     key: "resolve-write-absent",
@@ -28,7 +28,7 @@ const ACTIONS = z.array(ActionDescriptorWireSchema).parse([
     command: "resolve-write-absent",
     expectedVersion: 4,
     confirm: { title: "Record it as absent", body: "Unlocks a second submit.", confirmLabel: "Record absent", tone: "destructive" },
-    writeTarget: { writeIntentId: "3f2a6c18-4b21-4d7e-9a55-1c0e8b7d4f30", intentGeneration: 2 },
+    writeTarget: { writeIntentId: "3f2a6c18-4b21-4d7e-9a55-1c0e8b7d4f30", intentGeneration: 2, writeAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) },
   },
   {
     key: "cancel",
@@ -56,7 +56,7 @@ const ACTIONS = z.array(ActionDescriptorWireSchema).parse([
     command: "resolve-write-absent",
     expectedVersion: 4,
     confirm: { title: "Record it as absent", body: "Unlocks a second submit.", confirmLabel: "Record absent", tone: "destructive" },
-    writeTarget: { writeIntentId: "3f2a6c18-4b21-4d7e-9a55-1c0e8b7d4f30", intentGeneration: 2 },
+    writeTarget: { writeIntentId: "3f2a6c18-4b21-4d7e-9a55-1c0e8b7d4f30", intentGeneration: 2, writeAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) },
   },
 ]);
 
