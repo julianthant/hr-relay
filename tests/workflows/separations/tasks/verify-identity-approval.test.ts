@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
-import { EidSchema,FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { describe, it } from "vitest";
+import { EidSchema, FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { IdentityEvidencePacketSchema } from "../../../../src/rules/separations/identity-evidence.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { verifyIdentityApprovalTask } from "../../../../src/workflows/separations/tasks/verify-identity-approval.js";
@@ -24,24 +24,6 @@ function taskContext() {
     },
   };
   return { ctx: ctx as never, records };
-}
-
-function assertRecordedOutput(records: readonly DataPoint[], output: object): void {
-  const entries = Object.entries(output);
-  assert.deepEqual(records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
-    direction: "read",
-    field,
-  })));
-  assert.deepEqual(Object.fromEntries(records.map(({ field, value }) => [field, value])), output);
-}
-
-function assertExpectedOutput(
-  records: readonly DataPoint[],
-  output: object,
-  expected: object,
-): void {
-  assert.deepEqual(output, expected);
-  assertRecordedOutput(records, expected);
 }
 
 const APPROVAL_EID = EidSchema.parse("10873698");
@@ -99,10 +81,6 @@ const APPROVAL_PACKET_DIGEST = FingerprintSchema.parse(
   "0377fa1d08d77585e03e2f6d9b5f2e8e312d849db69e5ffa18925a7beb8c5797",
 );
 
-async function expectRefusal(run: () => Promise<unknown>, code: string): Promise<void> {
-  await assert.rejects(run, (error: unknown) => error instanceof TaskRefusal && error.code === code);
-}
-
 describe("separations workflow task wrappers", () => {
 
   it("verifies a sealed supplied-EID packet and refuses a moved digest", async () => {
@@ -111,7 +89,7 @@ describe("separations workflow task wrappers", () => {
       input: { packet: APPROVAL_PACKET, evidenceDigest: APPROVAL_PACKET_DIGEST },
       ctx: success.ctx,
     });
-    assertExpectedOutput(success.records, output, {
+    const expected = {
       documentNumber: "4510",
       approved: {
         authority: "machine-verification",
@@ -122,16 +100,23 @@ describe("separations workflow task wrappers", () => {
         nameTier: "same",
       },
       jobs: APPROVAL_PACKET_JOBS,
-    });
+    };
+    assert.deepEqual(output, expected);
+    const entries = Object.entries(expected);
+    assert.deepEqual(success.records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
+      direction: "read",
+      field,
+    })));
+    assert.deepEqual(Object.fromEntries(success.records.map(({ field, value }) => [field, value])), expected);
 
     const refusal = taskContext();
-    await expectRefusal(() => verifyIdentityApprovalTask.impl.run({
+    await assert.rejects(() => verifyIdentityApprovalTask.impl.run({
       input: {
         packet: APPROVAL_PACKET,
         evidenceDigest: FingerprintSchema.parse("f".repeat(64)),
       },
       ctx: refusal.ctx,
-    }), "identity-approval-evidence-moved");
+    }), (error: unknown) => error instanceof TaskRefusal && error.code === "identity-approval-evidence-moved");
     assert.deepEqual(refusal.records, []);
   });
 });

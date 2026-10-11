@@ -1,67 +1,57 @@
+import assert from "node:assert/strict";
+import { describe, expect, it } from "vitest";
+import { STEP_PROOF_DESCRIPTORS } from "../../src/backend/app/registries/step-proof-modules.js";
+import { SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../src/backend/app/registries/workflow-registry.js";
+import { WORKFLOW_DESCRIPTORS } from "../../src/workflows/descriptor-registry.js";
 
-import assert_m0 from "node:assert/strict";
-import { describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
-import { STEP_PROOF_DESCRIPTORS as STEP_PROOF_DESCRIPTORS_m1 } from "../../src/backend/app/registries/step-proof-modules.js";
-import { SERVER_REGISTRY as SERVER_REGISTRY_m1,WORKFLOW_MODULES as WORKFLOW_MODULES_m1,workflowModuleOf as workflowModuleOf_m1 } from "../../src/backend/app/registries/workflow-registry.js";
-import { WORKFLOW_DESCRIPTORS as WORKFLOW_DESCRIPTORS_m0,WORKFLOW_DESCRIPTORS as WORKFLOW_DESCRIPTORS_m1 } from "../../src/workflows/descriptor-registry.js";
+describe("the declared active-run policy, as the modal states it", () => {
 
+  it("no registered workflow declares supersede-active", () => {
 
-{
-
-
-describe_m0("the declared active-run policy, as the modal states it", () => {
-
-  it_m0("no registered workflow declares supersede-active", () => {
-
-    assert_m0.deepEqual(
-      WORKFLOW_DESCRIPTORS_m0.filter((descriptor) => descriptor.enqueue === "supersede-active").map((d) => d.id),
+    assert.deepEqual(
+      WORKFLOW_DESCRIPTORS.filter((descriptor) => descriptor.enqueue === "supersede-active").map((d) => d.id),
       [],
     );
   });
 });
 
-describe_m0("the descriptor prose the modal draws", () => {
-  it_m0("finds a summary on every registered workflow, and treats absence as legal anyway", () => {
+describe("the descriptor prose the modal draws", () => {
+  it("finds a summary on every registered workflow, and treats absence as legal anyway", () => {
 
-    for (const descriptor of WORKFLOW_DESCRIPTORS_m0) {
-      assert_m0.equal(typeof descriptor.summary, "string", `${descriptor.id} declares no summary`);
-      assert_m0.ok((descriptor.summary ?? "").trim().length > 0);
+    for (const descriptor of WORKFLOW_DESCRIPTORS) {
+      assert.equal(typeof descriptor.summary, "string", `${descriptor.id} declares no summary`);
+      assert.ok((descriptor.summary ?? "").trim().length > 0);
     }
   });
 
-  it_m0("has exactly one start method kind, which is why no method tabs are drawn", () => {
+  it("has exactly one start method kind, which is why no method tabs are drawn", () => {
 
-    assert_m0.deepEqual(
-      WORKFLOW_DESCRIPTORS_m0.filter((descriptor) => descriptor.surfaces.uploadRun !== undefined).map((d) => d.id),
+    assert.deepEqual(
+      WORKFLOW_DESCRIPTORS.filter((descriptor) => descriptor.surfaces.uploadRun !== undefined).map((d) => d.id),
       [],
     );
   });
 });
-}
 
-{
-
-
-
-describe_m1("workflow descriptor registry", () => {
-  it_m1("registers only operator workflows", () => {
-    expect_m1(WORKFLOW_DESCRIPTORS_m1.map(({ id }) => String(id))).toEqual([
+describe("workflow descriptor registry", () => {
+  it("registers only operator workflows", () => {
+    expect(WORKFLOW_DESCRIPTORS.map(({ id }) => String(id))).toEqual([
       "person-lookup",
       "separations",
     ]);
-    expect_m1(WORKFLOW_MODULES_m1.map(({ descriptor }) => String(descriptor.id))).toEqual([
+    expect(WORKFLOW_MODULES.map(({ descriptor }) => String(descriptor.id))).toEqual([
       "person-lookup",
       "separations",
     ]);
-    expect_m1(Object.keys(SERVER_REGISTRY_m1)).toEqual(["person-lookup", "separations"]);
-    for (const descriptor of STEP_PROOF_DESCRIPTORS_m1) {
-      expect_m1(() => workflowModuleOf_m1(descriptor.id)).toThrow(/not registered/u);
+    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations"]);
+    for (const descriptor of STEP_PROOF_DESCRIPTORS) {
+      expect(() => workflowModuleOf(descriptor.id)).toThrow(/not registered/u);
     }
   });
 
-  it_m1("keeps separations steps inside its one timeline", () => {
-    const separations = WORKFLOW_DESCRIPTORS_m1[1];
-    expect_m1(separations?.timeline.map(({ key, label }) => [key, label])).toEqual([
+  it("keeps separations steps inside its one timeline", () => {
+    const separations = WORKFLOW_DESCRIPTORS[1];
+    expect(separations?.timeline.map(({ key, label }) => [key, label])).toEqual([
       ["kuali-extraction", "Kuali extraction"],
       ["identity-check", "Identity check"],
       ["job-summary", "Job summary"],
@@ -71,4 +61,3 @@ describe_m1("workflow descriptor registry", () => {
     ]);
   });
 });
-}

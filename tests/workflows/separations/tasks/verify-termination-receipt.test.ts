@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import type { UcpathTerminationProof } from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
@@ -28,24 +28,6 @@ function taskContext() {
   return { ctx: ctx as never, records };
 }
 
-function assertRecordedOutput(records: readonly DataPoint[], output: object): void {
-  const entries = Object.entries(output);
-  assert.deepEqual(records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
-    direction: "read",
-    field,
-  })));
-  assert.deepEqual(Object.fromEntries(records.map(({ field, value }) => [field, value])), output);
-}
-
-function assertExpectedOutput(
-  records: readonly DataPoint[],
-  output: object,
-  expected: object,
-): void {
-  assert.deepEqual(output, expected);
-  assertRecordedOutput(records, expected);
-}
-
 function terminationProof(overrides: Partial<UcpathTerminationProof> = {}): UcpathTerminationProof {
   return {
     kind: "ucpath-termination",
@@ -59,10 +41,6 @@ function terminationProof(overrides: Partial<UcpathTerminationProof> = {}): Ucpa
   };
 }
 
-async function expectRefusal(run: () => Promise<unknown>, code: string): Promise<void> {
-  await assert.rejects(run, (error: unknown) => error instanceof TaskRefusal && error.code === code);
-}
-
 describe("separations workflow task wrappers", () => {
 
   it("records a settled receipt pair and refuses a denied transaction", async () => {
@@ -74,20 +52,27 @@ describe("separations workflow task wrappers", () => {
     };
     const success = taskContext();
     const output = await verifyTerminationReceiptTask.impl.run({ input, ctx: success.ctx });
-    assertExpectedOutput(success.records, output, {
+    const expected = {
       transactionNumber: "T009000001",
       approvalStatus: "Pending",
       effectiveDate: "06/20/2026",
       emplId: EID,
       displayedName: NAME,
       disposition: "committed",
-    });
+    };
+    assert.deepEqual(output, expected);
+    const entries = Object.entries(expected);
+    assert.deepEqual(success.records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
+      direction: "read",
+      field,
+    })));
+    assert.deepEqual(Object.fromEntries(success.records.map(({ field, value }) => [field, value])), expected);
 
     const refusal = taskContext();
-    await expectRefusal(() => verifyTerminationReceiptTask.impl.run({
+    await assert.rejects(() => verifyTerminationReceiptTask.impl.run({
       input: { ...input, proof: terminationProof({ approvalStatus: "Denied" }) },
       ctx: refusal.ctx,
-    }), "termination-not-in-effect");
+    }), (error: unknown) => error instanceof TaskRefusal && error.code === "termination-not-in-effect");
     assert.deepEqual(refusal.records, []);
   });
 });

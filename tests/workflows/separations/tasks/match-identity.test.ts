@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import type { UcpathPersonSelection } from "../../../../src/models/systems/ucpath/search-person-org.js";
-import type { UcpathJobRow,UcpathJobSummary } from "../../../../src/models/ui/ucpath-job-summary.js";
+import type { UcpathJobRow, UcpathJobSummary } from "../../../../src/models/ui/ucpath-job-summary.js";
 import { UcpathJobSummarySchema } from "../../../../src/models/ui/ucpath-job-summary.js";
-import { EidSchema,IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { matchIdentityTask } from "../../../../src/workflows/separations/tasks/match-identity.js";

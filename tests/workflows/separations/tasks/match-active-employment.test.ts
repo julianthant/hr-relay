@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
-import type { UcpathJobRow,UcpathJobSummary } from "../../../../src/models/ui/ucpath-job-summary.js";
+import { describe, it } from "vitest";
+import type { UcpathJobRow, UcpathJobSummary } from "../../../../src/models/ui/ucpath-job-summary.js";
 import { UcpathJobSummarySchema } from "../../../../src/models/ui/ucpath-job-summary.js";
-import { EidSchema,IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { matchActiveEmploymentTask } from "../../../../src/workflows/separations/tasks/match-active-employment.js";
 
@@ -30,24 +30,6 @@ function taskContext() {
     },
   };
   return { ctx: ctx as never, records };
-}
-
-function assertRecordedOutput(records: readonly DataPoint[], output: object): void {
-  const entries = Object.entries(output);
-  assert.deepEqual(records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
-    direction: "read",
-    field,
-  })));
-  assert.deepEqual(Object.fromEntries(records.map(({ field, value }) => [field, value])), output);
-}
-
-function assertExpectedOutput(
-  records: readonly DataPoint[],
-  output: object,
-  expected: object,
-): void {
-  assert.deepEqual(output, expected);
-  assertRecordedOutput(records, expected);
 }
 
 function cell(value: string) {
@@ -93,10 +75,6 @@ function jobSummary(rows: readonly UcpathJobRow[] = [jobRow()], emplId = EID): U
   });
 }
 
-async function expectRefusal(run: () => Promise<unknown>, code: string): Promise<void> {
-  await assert.rejects(run, (error: unknown) => error instanceof TaskRefusal && error.code === code);
-}
-
 describe("separations workflow task wrappers", () => {
   it("records selected employment facts and keeps the named refusal", async () => {
     const success = taskContext();
@@ -104,7 +82,7 @@ describe("separations workflow task wrappers", () => {
       input: { documentNumber: DOCUMENT, jobSummary: jobSummary() },
       ctx: success.ctx,
     });
-    assertExpectedOutput(success.records, output, {
+    const expected = {
       rowIndex: 0,
       emplRecord: "0",
       hrStatus: "Active",
@@ -115,16 +93,23 @@ describe("separations workflow task wrappers", () => {
       payrollTitle: "STDT 2",
       effectiveDate: cell("07/01/2025"),
       rowCount: 1,
-    });
+    };
+    assert.deepEqual(output, expected);
+    const entries = Object.entries(expected);
+    assert.deepEqual(success.records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
+      direction: "read",
+      field,
+    })));
+    assert.deepEqual(Object.fromEntries(success.records.map(({ field, value }) => [field, value])), expected);
 
     const refusal = taskContext();
-    await expectRefusal(() => matchActiveEmploymentTask.impl.run({
+    await assert.rejects(() => matchActiveEmploymentTask.impl.run({
       input: {
         documentNumber: DOCUMENT,
         jobSummary: jobSummary([jobRow({ hrStatus: "Terminated" })]),
       },
       ctx: refusal.ctx,
-    }), "no-active-employment");
+    }), (error: unknown) => error instanceof TaskRefusal && error.code === "no-active-employment");
     assert.deepEqual(refusal.records, []);
   });
 });

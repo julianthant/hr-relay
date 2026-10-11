@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../src/rules/separations/termination-type.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { matchTerminationTypeTask } from "../../../../src/workflows/separations/tasks/match-termination-type.js";
@@ -27,28 +27,6 @@ function taskContext() {
   return { ctx: ctx as never, records };
 }
 
-function assertRecordedOutput(records: readonly DataPoint[], output: object): void {
-  const entries = Object.entries(output);
-  assert.deepEqual(records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
-    direction: "read",
-    field,
-  })));
-  assert.deepEqual(Object.fromEntries(records.map(({ field, value }) => [field, value])), output);
-}
-
-function assertExpectedOutput(
-  records: readonly DataPoint[],
-  output: object,
-  expected: object,
-): void {
-  assert.deepEqual(output, expected);
-  assertRecordedOutput(records, expected);
-}
-
-async function expectRefusal(run: () => Promise<unknown>, code: string): Promise<void> {
-  await assert.rejects(run, (error: unknown) => error instanceof TaskRefusal && error.code === code);
-}
-
 describe("separations workflow task wrappers", () => {
 
   it("records the termination mapping and refuses a blank selected type", async () => {
@@ -61,23 +39,30 @@ describe("separations workflow task wrappers", () => {
       },
       ctx: success.ctx,
     });
-    assertExpectedOutput(success.records, output, {
+    const expected = {
       terminationType: "Graduated/No longer a Student",
       classification: "involuntary",
       template: "UC_INVOL_TERM",
       reasonCode: "No Longer Student",
       observedOptionCount: 17,
-    });
+    };
+    assert.deepEqual(output, expected);
+    const entries = Object.entries(expected);
+    assert.deepEqual(success.records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
+      direction: "read",
+      field,
+    })));
+    assert.deepEqual(Object.fromEntries(success.records.map(({ field, value }) => [field, value])), expected);
 
     const refusal = taskContext();
-    await expectRefusal(() => matchTerminationTypeTask.impl.run({
+    await assert.rejects(() => matchTerminationTypeTask.impl.run({
       input: {
         documentNumber: DOCUMENT,
         terminationType: { state: "absent", reason: "the control was empty" },
         observedOptions: [...KUALI_TERMINATION_TYPE_OPTIONS],
       },
       ctx: refusal.ctx,
-    }), "blank-termination-type");
+    }), (error: unknown) => error instanceof TaskRefusal && error.code === "blank-termination-type");
     assert.deepEqual(refusal.records, []);
   });
 });

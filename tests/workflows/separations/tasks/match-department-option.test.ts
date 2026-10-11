@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { matchDepartmentOptionTask } from "../../../../src/workflows/separations/tasks/match-department-option.js";
 
@@ -26,24 +26,6 @@ function taskContext() {
   return { ctx: ctx as never, records };
 }
 
-function assertRecordedOutput(records: readonly DataPoint[], output: object): void {
-  const entries = Object.entries(output);
-  assert.deepEqual(records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
-    direction: "read",
-    field,
-  })));
-  assert.deepEqual(Object.fromEntries(records.map(({ field, value }) => [field, value])), output);
-}
-
-function assertExpectedOutput(
-  records: readonly DataPoint[],
-  output: object,
-  expected: object,
-): void {
-  assert.deepEqual(output, expected);
-  assertRecordedOutput(records, expected);
-}
-
 function cell(value: string) {
   return { state: "present" as const, value };
 }
@@ -57,10 +39,6 @@ const LIVE_DEPARTMENT_OPTIONS = [
   "000719 -  Supply Chain Services",
 ];
 
-async function expectRefusal(run: () => Promise<unknown>, code: string): Promise<void> {
-  await assert.rejects(run, (error: unknown) => error instanceof TaskRefusal && error.code === code);
-}
-
 describe("separations workflow task wrappers", () => {
 
   it("records the exact department option and refuses an option the control did not offer", async () => {
@@ -72,19 +50,26 @@ describe("separations workflow task wrappers", () => {
     };
     const success = taskContext();
     const output = await matchDepartmentOptionTask.impl.run({ input, ctx: success.ctx });
-    assertExpectedOutput(success.records, output, {
+    const expected = {
       option: "000412 - Housing/Dining/Hospitality",
       departmentCode: "000412",
       optionDescription: "Housing/Dining/Hospitality",
       ucpathDepartment: "HOUSING/DINING/HOSPITALITY",
       observedOptionCount: 6,
-    });
+    };
+    assert.deepEqual(output, expected);
+    const entries = Object.entries(expected);
+    assert.deepEqual(success.records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
+      direction: "read",
+      field,
+    })));
+    assert.deepEqual(Object.fromEntries(success.records.map(({ field, value }) => [field, value])), expected);
 
     const refusal = taskContext();
-    await expectRefusal(() => matchDepartmentOptionTask.impl.run({
+    await assert.rejects(() => matchDepartmentOptionTask.impl.run({
       input: { ...input, deptId: cell("000999") },
       ctx: refusal.ctx,
-    }), "department-code-not-offered");
+    }), (error: unknown) => error instanceof TaskRefusal && error.code === "department-code-not-offered");
     assert.deepEqual(refusal.records, []);
   });
 });

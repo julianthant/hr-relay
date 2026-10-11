@@ -1,12 +1,11 @@
-
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import { ReadSeparationDatesOutputSchema } from "../../../src/models/workflows/separations/read-separation-dates.js";
 import { VerifyIdentityApprovalOutputSchema } from "../../../src/models/workflows/separations/verify-identity-approval.js";
 import { VerifyTerminationReceiptOutputSchema } from "../../../src/models/workflows/separations/verify-termination-receipt.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { SeparationPlanSchema } from "../../../src/rules/separations/separation-dates.js";
-import { KRONOS_TIMECARD_OMISSION,SeparationsResultSchema,UCPATH_TRANSACTION_OMISSION } from "../../../src/workflows/separations/workflow.js";
+import { KRONOS_TIMECARD_OMISSION, SeparationsResultSchema, UCPATH_TRANSACTION_OMISSION } from "../../../src/workflows/separations/workflow.js";
 import { CURRENT_SEPARATIONS_RESULT } from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { COMPOSITION_SCOPE_OUTPUTS } from "../../support/helpers/separations-composition-fixtures.js";
@@ -49,8 +48,6 @@ describe("separations omittable write steps", () => {
       /invalid input|expected object|Required|undefined/iu,
     );
 
-    // The composition fixture's `jobs` is deliberately partial; the receipt
-    // producer parses the whole approval output, so build a complete one.
     const approval = VerifyIdentityApprovalOutputSchema.parse({
       documentNumber: COMPOSITION_SCOPE_OUTPUTS.approval.documentNumber,
       approved: COMPOSITION_SCOPE_OUTPUTS.approval.approved,

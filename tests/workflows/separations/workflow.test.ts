@@ -1,132 +1,85 @@
-import { describe as describe_m0,describe as describe_m1,expect as expect_m0,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
-import { z as z_m0 } from "zod";
-import { WORKFLOW_MODULES as WORKFLOW_MODULES_m1 } from "../../../src/backend/app/registries/workflow-registry.js";
-import { STANDARD_WORKFLOW_ACTIONS as STANDARD_WORKFLOW_ACTIONS_m0 } from "../../../src/models/workflow/presentation.js";
-import { StepOmissionsSchema as StepOmissionsSchema_m1,planStepOmissions as planStepOmissions_m1 } from "../../../src/models/workflow/step-omission.js";
-import { defineWorkflowRole as defineWorkflowRole_m0 } from "../../../src/workflow-kit/validation/module-role.js";
-import type { WorkflowAuthor as WorkflowAuthor_m0,WorkflowDefinitionSpec as WorkflowDefinitionSpec_m0 } from "../../../src/workflow-kit/workflow-definition.js";
-import {
-defineWorkflow as defineWorkflow_m0
-} from "../../../src/workflow-kit/workflow-definition.js";
-import { workflowProjections as workflowProjections_m1 } from "../../../src/workflow-kit/workflow.js";
-import {
-PersonLookupCanonicalInput as PersonLookupCanonicalInput_m0,
-PersonLookupInput as PersonLookupInput_m0
-} from "../../../src/workflows/person-lookup/workflow.js";
-import { actionNode as actionNode_m0 } from "../../../src/workflows/separations/workflow.js";
-import { personLookupDescriptor as personLookupDescriptor_m1,separationsDescriptor as separationsDescriptor_m1,separationsModule as separationsModule_m1 } from "../../support/helpers/registered-workflows.js";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
+import { StepOmissionsSchema, planStepOmissions } from "../../../src/models/workflow/step-omission.js";
+import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
+import { defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
+import { workflowProjections } from "../../../src/workflow-kit/workflow.js";
+import { PersonLookupCanonicalInput, PersonLookupInput } from "../../../src/workflows/person-lookup/workflow.js";
+import { actionNode } from "../../../src/workflows/separations/workflow.js";
+import { separationsDescriptor, separationsModule } from "../../support/helpers/registered-workflows.js";
 
+describe("workflow definition compiler", () => {
 
-{
-
-
-type Author = WorkflowAuthor_m0<typeof PersonLookupInput_m0>;
-type Authored = ReturnType<WorkflowDefinitionSpec_m0<typeof PersonLookupInput_m0, z_m0.ZodType>["steps"]>;
-
-/** A minimal person-lookup-shaped definition whose only variable part is its graph. */
-function fixtureWorkflow(id: string, steps: (author: Author) => Authored) {
-  return defineWorkflow_m0({
-    id,
-    version: 1,
-    code: "fx",
-    label: "Fixture",
-    icon: "Search",
-    category: "search",
-    input: PersonLookupInput_m0,
-    canonicalInput: PersonLookupCanonicalInput_m0,
-    inputSubject: "eid",
-    surface: { shape: "single" },
-    enqueue: "reject-active",
-    actions: STANDARD_WORKFLOW_ACTIONS_m0,
-    surfaces: {},
-    details: [],
-    identity: { matchKey: () => "fixture" },
-    presentation: { title: () => "Fixture" },
-    scenarios: ["person-lookup/happy-by-eid"],
-    role: defineWorkflowRole_m0({ kind: "standalone" }),
-    steps,
-  });
-}
-
-describe_m0("workflow definition compiler", () => {
-
-  it_m0("keeps a step-owned identity bound to its exact owning step object", () => {
-    expect_m0(() => fixtureWorkflow("foreign-step", ({ task, result }) => {
-      const action = task(actionNode_m0, [], () => ({ documentNumber: "4510" }));
-      return {
-        steps: [[{ key: "kuali-extraction", label: "Kuali extraction" }, [action]]],
-        result: result(z_m0.string(), [], () => "done"),
-      };
+  it("keeps a step-owned identity bound to its exact owning step object", () => {
+    expect(() => defineWorkflow({
+      id: "foreign-step",
+      version: 1,
+      code: "fx",
+      label: "Fixture",
+      icon: "Search",
+      category: "search",
+      input: PersonLookupInput,
+      canonicalInput: PersonLookupCanonicalInput,
+      inputSubject: "eid",
+      surface: { shape: "single" },
+      enqueue: "reject-active",
+      actions: STANDARD_WORKFLOW_ACTIONS,
+      surfaces: {},
+      details: [],
+      identity: { matchKey: () => "fixture" },
+      presentation: { title: () => "Fixture" },
+      scenarios: ["person-lookup/happy-by-eid"],
+      role: defineWorkflowRole({ kind: "standalone" }),
+      steps: ({ task, result }) => {
+        const action = task(actionNode, [], () => ({ documentNumber: "4510" }));
+        return {
+          steps: [[{ key: "kuali-extraction", label: "Kuali extraction" }, [action]]],
+          result: result(z.string(), [], () => "done"),
+        };
+      },
     })).toThrow(/same key but distinct step objects/u);
   });
 });
-}
 
-{
+describe("workflow definition public equivalence characterization", () => {
 
-
-const nodeGraph = (descriptor: typeof personLookupDescriptor_m1 | typeof separationsDescriptor_m1) =>
-  descriptor.nodes.map((node) => {
-    const when = "when" in node ? node.when : undefined;
-    return {
-      id: String(node.id),
-      kind: node.kind,
-      dependsOn: node.dependsOn.map(String),
-      ...(when === undefined ? {} : { when }),
-      ...(node.kind === "transaction" ? { dryRun: node.dryRun } : {}),
-    };
-  });
-
-const timeline = (descriptor: typeof personLookupDescriptor_m1 | typeof separationsDescriptor_m1) =>
-  descriptor.timeline.map((group) => ({
-    key: group.key,
-    label: group.label,
-    nodes: group.nodes.map((node) => ({ id: String(node.id), label: node.label })),
-  }));
-
-const steps = (descriptor: typeof personLookupDescriptor_m1 | typeof separationsDescriptor_m1) =>
-  workflowProjections_m1(descriptor).steps.map(({ key, nodeId, label, kind, taskId, conditional }) => ({
-    key,
-    nodeId: String(nodeId),
-    label,
-    kind,
-    ...(taskId === undefined ? {} : { taskId: String(taskId) }),
-    conditional,
-  }));
-
-describe_m1("workflow definition public equivalence characterization", () => {
-
-  it_m1("keeps separations' public descriptor, module stores, declared timeline, and registry value", () => {
-    expect_m1({
+  it("keeps separations' public descriptor, module stores, declared timeline, and registry value", () => {
+    expect({
       descriptor: {
-        id: String(separationsDescriptor_m1.id),
-        version: separationsDescriptor_m1.version,
-        code: separationsDescriptor_m1.code,
-        label: separationsDescriptor_m1.label,
-        summary: separationsDescriptor_m1.summary,
-        icon: separationsDescriptor_m1.icon,
-        category: separationsDescriptor_m1.category,
-        surface: separationsDescriptor_m1.surface,
-        enqueue: separationsDescriptor_m1.enqueue,
-        actions: separationsDescriptor_m1.actions,
-        capabilities: separationsDescriptor_m1.capabilities,
-        verdicts: separationsDescriptor_m1.verdicts,
-        surfaces: separationsDescriptor_m1.surfaces,
-        details: separationsDescriptor_m1.details,
-        subjectProjection: separationsDescriptor_m1.subjectProjection,
-        timelineDeclared: separationsDescriptor_m1.timelineDeclared,
-        timeline: timeline(separationsDescriptor_m1),
-        stepOmissions: separationsDescriptor_m1.stepOmissions.map(({ step, form, produces }) => ({
+        id: String(separationsDescriptor.id),
+        version: separationsDescriptor.version,
+        code: separationsDescriptor.code,
+        label: separationsDescriptor.label,
+        summary: separationsDescriptor.summary,
+        icon: separationsDescriptor.icon,
+        category: separationsDescriptor.category,
+        surface: separationsDescriptor.surface,
+        enqueue: separationsDescriptor.enqueue,
+        actions: separationsDescriptor.actions,
+        capabilities: separationsDescriptor.capabilities,
+        verdicts: separationsDescriptor.verdicts,
+        surfaces: separationsDescriptor.surfaces,
+        details: separationsDescriptor.details,
+        subjectProjection: separationsDescriptor.subjectProjection,
+        timelineDeclared: separationsDescriptor.timelineDeclared,
+        timeline: separationsDescriptor.timeline.map((group) => ({
+          key: group.key,
+          label: group.label,
+          nodes: group.nodes.map((node) => ({ id: String(node.id), label: node.label })),
+        })),
+        stepOmissions: separationsDescriptor.stepOmissions.map(({ step, form, produces }) => ({
           step,
           form,
           produces: Object.keys(produces),
         })),
       },
       module: {
-        role: separationsModule_m1.role,
-        stores: separationsModule_m1.stores.map((store) => ({ kind: store.kind, namespace: store.namespace })),
+        role: separationsModule.role,
+        stores: separationsModule.stores.map((store) => ({ kind: store.kind, namespace: store.namespace })),
       },
-      registryIndex: WORKFLOW_MODULES_m1.indexOf(separationsModule_m1),
+      registryIndex: WORKFLOW_MODULES.indexOf(separationsModule),
     }).toEqual({
       descriptor: {
         id: "separations",
@@ -183,46 +136,62 @@ describe_m1("workflow definition public equivalence characterization", () => {
         subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
         timelineDeclared: true,
         timeline: [
-          { key: "kuali-extraction", label: "Kuali extraction", nodes: [
-            { id: "resolve-action", label: "Kuali Action" }, { id: "document", label: "Separation Document" },
-            { id: "plan", label: "Separation Plan" }, { id: "termination-type", label: "Termination Type" },
-          ] },
-          { key: "identity-check", label: "Identity check", nodes: [
-            { id: "name-search", label: "Name Search" }, { id: "subject", label: "Separation Subject" },
-            { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
-            { id: "approval", label: "Approval Check" },
-          ] },
-          { key: "job-summary", label: "Job summary", nodes: [
-            { id: "job-summary", label: "Job Summary" }, { id: "employment", label: "Employment" },
-            { id: "department-option", label: "Department Option" },
-          ] },
-          { key: "kronos-timecard", label: "Kronos timecard", nodes: [
-            { id: "timecard-search", label: "Timecard Search" }, { id: "timecard", label: "Timecard" },
-            { id: "dates", label: "Reconciled Dates" },
-          ] },
-          { key: "ucpath-transaction", label: "UCPath transaction", nodes: [
-            { id: "pending-set", label: "Read Exact Pending Set" }, { id: "clear-pending", label: "Clear Pending Terminations" },
-            { id: "file-termination", label: "File Termination" }, { id: "receipt", label: "Termination Receipt" },
-          ] },
-          { key: "kuali-finalization", label: "Kuali finalization", nodes: [
-            { id: "filing-presence", label: "Verify Current UCPath Filing" }, { id: "finalize-kuali", label: "Finalize Kuali Document" },
-          ] },
+          {
+            key: "kuali-extraction", label: "Kuali extraction", nodes: [
+              { id: "resolve-action", label: "Kuali Action" }, { id: "document", label: "Separation Document" },
+              { id: "plan", label: "Separation Plan" }, { id: "termination-type", label: "Termination Type" },
+            ]
+          },
+          {
+            key: "identity-check", label: "Identity check", nodes: [
+              { id: "name-search", label: "Name Search" }, { id: "subject", label: "Separation Subject" },
+              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
+              { id: "approval", label: "Approval Check" },
+            ]
+          },
+          {
+            key: "job-summary", label: "Job summary", nodes: [
+              { id: "job-summary", label: "Job Summary" }, { id: "employment", label: "Employment" },
+              { id: "department-option", label: "Department Option" },
+            ]
+          },
+          {
+            key: "kronos-timecard", label: "Kronos timecard", nodes: [
+              { id: "timecard-search", label: "Timecard Search" }, { id: "timecard", label: "Timecard" },
+              { id: "dates", label: "Reconciled Dates" },
+            ]
+          },
+          {
+            key: "ucpath-transaction", label: "UCPath transaction", nodes: [
+              { id: "pending-set", label: "Read Exact Pending Set" }, { id: "clear-pending", label: "Clear Pending Terminations" },
+              { id: "file-termination", label: "File Termination" }, { id: "receipt", label: "Termination Receipt" },
+            ]
+          },
+          {
+            key: "kuali-finalization", label: "Kuali finalization", nodes: [
+              { id: "filing-presence", label: "Verify Current UCPath Filing" }, { id: "finalize-kuali", label: "Finalize Kuali Document" },
+            ]
+          },
         ],
         stepOmissions: [
           {
             step: "kronos-timecard",
-            form: { fields: [
-              { key: "lastDayWorked", label: "Last day worked", help: "The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.", kind: "us-date" },
-              { key: "separationDate", label: "Separation date", help: "The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.", kind: "us-date" },
-            ] },
+            form: {
+              fields: [
+                { key: "lastDayWorked", label: "Last day worked", help: "The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.", kind: "us-date" },
+                { key: "separationDate", label: "Separation date", help: "The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.", kind: "us-date" },
+              ]
+            },
             produces: ["dates"],
           },
           {
             step: "ucpath-transaction",
-            form: { fields: [
-              { key: "transactionNumber", label: "UCPath transaction number", help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.", kind: "text" },
-              { key: "approvalStatus", label: "Approval status", help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.", kind: "enum", values: ["Approved", "Manually Processed", "Pending"] },
-            ] },
+            form: {
+              fields: [
+                { key: "transactionNumber", label: "UCPath transaction number", help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.", kind: "text" },
+                { key: "approvalStatus", label: "Approval status", help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.", kind: "enum", values: ["Approved", "Manually Processed", "Pending"] },
+              ]
+            },
             produces: ["receipt"],
           },
           { step: "kuali-finalization", form: { fields: [] }, produces: [] },
@@ -241,10 +210,10 @@ describe_m1("workflow definition public equivalence characterization", () => {
     });
   });
 
-  it_m1("keeps separations' node graph, omission plan, gate, and derived projections", () => {
-    const projections = workflowProjections_m1(separationsDescriptor_m1);
+  it("keeps separations' node graph, omission plan, gate, and derived projections", () => {
+    const projections = workflowProjections(separationsDescriptor);
     const omission = (requested: unknown) => {
-      const plan = planStepOmissions_m1(separationsDescriptor_m1, StepOmissionsSchema_m1.parse(requested));
+      const plan = planStepOmissions(separationsDescriptor, StepOmissionsSchema.parse(requested));
       return {
         asserted: [...plan.asserted].map(([node, entry]) => ({ node, step: entry.step })),
         omitted: [...plan.omitted],
@@ -252,14 +221,30 @@ describe_m1("workflow definition public equivalence characterization", () => {
       };
     };
 
-    expect_m1({
-      graph: nodeGraph(separationsDescriptor_m1),
+    expect({
+      graph: separationsDescriptor.nodes.map((node) => {
+        const when = "when" in node ? node.when : undefined;
+        return {
+          id: String(node.id),
+          kind: node.kind,
+          dependsOn: node.dependsOn.map(String),
+          ...(when === undefined ? {} : { when }),
+          ...(node.kind === "transaction" ? { dryRun: node.dryRun } : {}),
+        };
+      }),
       omissions: {
         kronos: omission([{ step: "kronos-timecard", facts: { lastDayWorked: "08/02/2026", separationDate: "08/02/2026" } }]),
         ucpath: omission([{ step: "ucpath-transaction", facts: { transactionNumber: "T123456", approvalStatus: "Approved" } }]),
         kuali: omission([{ step: "kuali-finalization", facts: {} }]),
       },
-      steps: steps(separationsDescriptor_m1),
+      steps: workflowProjections(separationsDescriptor).steps.map(({ key, nodeId, label, kind, taskId, conditional }) => ({
+        key,
+        nodeId: String(nodeId),
+        label,
+        kind,
+        ...(taskId === undefined ? {} : { taskId: String(taskId) }),
+        conditional,
+      })),
       gates: projections.gates,
       systems: projections.systems,
       requires: projections.requires,
@@ -337,4 +322,3 @@ describe_m1("workflow definition public equivalence characterization", () => {
     });
   });
 });
-}

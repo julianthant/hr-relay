@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import type { UcpathPersonSelection } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
@@ -30,24 +30,6 @@ function taskContext() {
   return { ctx: ctx as never, records };
 }
 
-function assertRecordedOutput(records: readonly DataPoint[], output: object): void {
-  const entries = Object.entries(output);
-  assert.deepEqual(records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
-    direction: "read",
-    field,
-  })));
-  assert.deepEqual(Object.fromEntries(records.map(({ field, value }) => [field, value])), output);
-}
-
-function assertExpectedOutput(
-  records: readonly DataPoint[],
-  output: object,
-  expected: object,
-): void {
-  assert.deepEqual(output, expected);
-  assertRecordedOutput(records, expected);
-}
-
 const nameSelection: UcpathPersonSelection = {
   status: "resolved",
   selected: {
@@ -60,10 +42,6 @@ const nameSelection: UcpathPersonSelection = {
   },
   candidateEids: [EID],
 };
-
-async function expectRefusal(run: () => Promise<unknown>, code: string): Promise<void> {
-  await assert.rejects(run, (error: unknown) => error instanceof TaskRefusal && error.code === code);
-}
 
 describe("separations workflow task wrappers", () => {
 
@@ -78,15 +56,22 @@ describe("separations workflow task wrappers", () => {
       },
       ctx: success.ctx,
     });
-    assertExpectedOutput(success.records, output, {
+    const expected = {
       emplId: EID,
       emplIdSource: "document-eid",
       searchedName: NAME,
       candidateCount: 1,
-    });
+    };
+    assert.deepEqual(output, expected);
+    const entries = Object.entries(expected);
+    assert.deepEqual(success.records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
+      direction: "read",
+      field,
+    })));
+    assert.deepEqual(Object.fromEntries(success.records.map(({ field, value }) => [field, value])), expected);
 
     const refusal = taskContext();
-    await expectRefusal(() => matchSeparationSubjectTask.impl.run({
+    await assert.rejects(() => matchSeparationSubjectTask.impl.run({
       input: {
         documentNumber: DOCUMENT,
         employeeName: NAME,
@@ -99,7 +84,7 @@ describe("separations workflow task wrappers", () => {
         },
       },
       ctx: refusal.ctx,
-    }), "subject-not-resolvable");
+    }), (error: unknown) => error instanceof TaskRefusal && error.code === "subject-not-resolvable");
     assert.deepEqual(refusal.records, []);
   });
 });

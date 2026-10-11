@@ -1,16 +1,12 @@
-import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
-import { describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
-import { ReadOnboardingRecordOutputSchema as ReadOnboardingRecordOutputSchema_m1 } from "../../../../src/models/systems/crm/read-onboarding-record.js";
-import { UcpathCandidateSchema as UcpathCandidateSchema_m1 } from "../../../../src/models/systems/ucpath/search-person-org.js";
-import { EidSchema as EidSchema_m0,EidSchema as EidSchema_m1 } from "../../../../src/rules/identity/ids.js";
-import { directIdentifierDisplay as directIdentifierDisplay_m1 } from "../../../../src/rules/redaction/redaction.js";
-import type { DataPoint as DataPoint_m1 } from "../../../../src/rules/workflow/task-provenance.js";
-import { DataPointSchema as DataPointSchema_m1 } from "../../../../src/rules/workflow/task-provenance.js";
-import { readActiveStatusTask as readActiveStatusTask_m0,readActiveStatusTask as readActiveStatusTask_m1 } from "../../../../src/workflows/person-lookup/tasks/read-active-status.js";
-
-
-{
-
+import assert from "node:assert/strict";
+import { describe, it } from "vitest";
+import { ReadOnboardingRecordOutputSchema } from "../../../../src/models/systems/crm/read-onboarding-record.js";
+import { UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
+import { EidSchema } from "../../../../src/rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../src/rules/redaction/redaction.js";
+import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
+import { DataPointSchema } from "../../../../src/rules/workflow/task-provenance.js";
+import { readActiveStatusTask } from "../../../../src/workflows/person-lookup/tasks/read-active-status.js";
 
 class TaskRefusal extends Error {
   constructor(readonly code: string, message: string) {
@@ -18,9 +14,9 @@ class TaskRefusal extends Error {
   }
 }
 
-it_m0("names inconsistent UCPath and CRM identities without recording output facts", async () => {
-  const expectedEid = EidSchema_m0.parse("10873698");
-  const otherEid = EidSchema_m0.parse("10001573");
+it("names inconsistent UCPath and CRM identities without recording output facts", async () => {
+  const expectedEid = EidSchema.parse("10873698");
+  const otherEid = EidSchema.parse("10001573");
   const records: unknown[] = [];
   const refusals: TaskRefusal[] = [];
   const ctx = {
@@ -34,7 +30,7 @@ it_m0("names inconsistent UCPath and CRM identities without recording output fac
     recordData: (input: unknown): void => { records.push(input); },
   };
 
-  await assert_m0.rejects(readActiveStatusTask_m0.impl.run({
+  await assert.rejects(readActiveStatusTask.impl.run({
     input: {
       person: {
         results: [{
@@ -68,16 +64,12 @@ it_m0("names inconsistent UCPath and CRM identities without recording output fac
     ctx,
   }), (error: unknown) => error instanceof TaskRefusal && error.code === "inconsistent-inputs");
 
-  assert_m0.deepEqual(refusals, [new TaskRefusal(
+  assert.deepEqual(refusals, [new TaskRefusal(
     "inconsistent-inputs",
     `person-lookup active-status received UCPath EID ${expectedEid} but CRM EID ${otherEid}`,
   )]);
-  assert_m0.deepEqual(records, []);
+  assert.deepEqual(records, []);
 });
-}
-
-{
-
 
 const signal = new AbortController().signal;
 
@@ -91,17 +83,15 @@ const fail = (_code: string, message: string): never => {
   throw new Error(message);
 };
 
-const failedTaskDataPoints: DataPoint_m1[] = [];
-
-const recordData = (input: DataPoint_m1 | readonly DataPoint_m1[]): void => {
+const recordData = (input: DataPoint | readonly DataPoint[]): void => {
   for (const point of Array.isArray(input) ? input : [input]) {
-    failedTaskDataPoints.push(DataPointSchema_m1.parse(point));
+    DataPointSchema.parse(point);
   }
 };
 
 const commonCtx = { signal, log, fail, recordData };
 
-const candidate = UcpathCandidateSchema_m1.parse({
+const candidate = UcpathCandidateSchema.parse({
   emplId: "10873698",
   name: "Battistessa, Johnnie",
   department: "Housing Dining Hospitality",
@@ -110,7 +100,7 @@ const candidate = UcpathCandidateSchema_m1.parse({
   hdh: true,
 });
 
-const crmRecord = ReadOnboardingRecordOutputSchema_m1.parse({
+const crmRecord = ReadOnboardingRecordOutputSchema.parse({
   state: "found",
   record: {
     recordId: "ONB-40213",
@@ -122,9 +112,9 @@ const crmRecord = ReadOnboardingRecordOutputSchema_m1.parse({
 
 if (crmRecord.state !== "found") throw new Error("CRM found-record fixture did not parse as found");
 
-describe_m1("Person Lookup task implementations", () => {
-  it_m1("keeps genuine unresolved and inactive outcomes distinct", async () => {
-    const unresolved = await readActiveStatusTask_m1.impl.run({
+describe("Person Lookup task implementations", () => {
+  it("keeps genuine unresolved and inactive outcomes distinct", async () => {
+    const unresolved = await readActiveStatusTask.impl.run({
       input: {
         person: {
           results: [],
@@ -140,10 +130,10 @@ describe_m1("Person Lookup task implementations", () => {
       },
       ctx: commonCtx,
     });
-    assert_m1.equal(unresolved.state, "undetermined");
+    assert.equal(unresolved.state, "undetermined");
 
-    const terminated = UcpathCandidateSchema_m1.parse({ ...candidate, employeeStatus: "terminated" });
-    const inactive = await readActiveStatusTask_m1.impl.run({
+    const terminated = UcpathCandidateSchema.parse({ ...candidate, employeeStatus: "terminated" });
+    const inactive = await readActiveStatusTask.impl.run({
       input: {
         person: {
           results: [terminated],
@@ -158,13 +148,13 @@ describe_m1("Person Lookup task implementations", () => {
       },
       ctx: commonCtx,
     });
-    assert_m1.equal(inactive.state, "inactive");
+    assert.equal(inactive.state, "inactive");
   })
 
-  it_m1("checks an absent CRM EID before returning the non-HDH outcome", async () => {
-    const nonHdh = UcpathCandidateSchema_m1.parse({ ...candidate, hdh: false });
-    await assert_m1.rejects(
-      readActiveStatusTask_m1.impl.run({
+  it("checks an absent CRM EID before returning the non-HDH outcome", async () => {
+    const nonHdh = UcpathCandidateSchema.parse({ ...candidate, hdh: false });
+    await assert.rejects(
+      readActiveStatusTask.impl.run({
         input: {
           person: {
             results: [nonHdh],
@@ -176,15 +166,14 @@ describe_m1("Person Lookup task implementations", () => {
           },
           crm: {
             state: "absent",
-            queriedEid: EidSchema_m1.parse("10001573"),
+            queriedEid: EidSchema.parse("10001573"),
             reason: "no record for the wrong person",
           },
           keepNonHdh: false,
         },
         ctx: commonCtx,
       }),
-      new RegExp(`UCPath EID ${directIdentifierDisplay_m1("10873698")} but CRM EID ${directIdentifierDisplay_m1("10001573")}`),
+      new RegExp(`UCPath EID ${directIdentifierDisplay("10873698")} but CRM EID ${directIdentifierDisplay("10001573")}`),
     );
   })
 });
-}

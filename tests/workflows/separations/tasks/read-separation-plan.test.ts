@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
-import { DateOnlySchema,IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import { describe, it } from "vitest";
+import { DateOnlySchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { readSeparationPlanTask } from "../../../../src/workflows/separations/tasks/read-separation-plan.js";
 
@@ -29,24 +29,6 @@ function taskContext() {
   return { ctx: ctx as never, records };
 }
 
-function assertRecordedOutput(records: readonly DataPoint[], output: object): void {
-  const entries = Object.entries(output);
-  assert.deepEqual(records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
-    direction: "read",
-    field,
-  })));
-  assert.deepEqual(Object.fromEntries(records.map(({ field, value }) => [field, value])), output);
-}
-
-function assertExpectedOutput(
-  records: readonly DataPoint[],
-  output: object,
-  expected: object,
-): void {
-  assert.deepEqual(output, expected);
-  assertRecordedOutput(records, expected);
-}
-
 function formDate(raw: string) {
   const [month, day, year] = raw.split("/");
   return {
@@ -54,10 +36,6 @@ function formDate(raw: string) {
     raw,
     value: DateOnlySchema.parse(year + "-" + month + "-" + day),
   };
-}
-
-async function expectRefusal(run: () => Promise<unknown>, code: string): Promise<void> {
-  await assert.rejects(run, (error: unknown) => error instanceof TaskRefusal && error.code === code);
 }
 
 describe("separations workflow task wrappers", () => {
@@ -72,20 +50,27 @@ describe("separations workflow task wrappers", () => {
     };
     const success = taskContext();
     const output = await readSeparationPlanTask.impl.run({ input, ctx: success.ctx });
-    assertExpectedOutput(success.records, output, {
+    const expected = {
       documentNumber: DOCUMENT,
       employeeName: NAME,
       kualiLastDayWorked: "06/12/2026",
       kualiSeparationDate: "06/12/2026",
       asOfDate: "08/14/2026",
       timecardWindow: { start: "05/12/2026", end: "07/12/2026" },
-    });
+    };
+    assert.deepEqual(output, expected);
+    const entries = Object.entries(expected);
+    assert.deepEqual(success.records.map(({ direction, field }) => ({ direction, field })), entries.map(([field]) => ({
+      direction: "read",
+      field,
+    })));
+    assert.deepEqual(Object.fromEntries(success.records.map(({ field, value }) => [field, value])), expected);
 
     const refusal = taskContext();
-    await expectRefusal(() => readSeparationPlanTask.impl.run({
+    await assert.rejects(() => readSeparationPlanTask.impl.run({
       input: { ...input, employeeName: { state: "absent", reason: "the control was empty" } },
       ctx: refusal.ctx,
-    }), "employee-name-absent");
+    }), (error: unknown) => error instanceof TaskRefusal && error.code === "employee-name-absent");
     assert.deepEqual(refusal.records, []);
   });
 });
