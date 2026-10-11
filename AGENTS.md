@@ -34,8 +34,11 @@ The repository holds only the current version. No compatibility readers, old mig
 - A change deletes the code it replaces. No shims, parallel old and new paths, commented-out code or
   unused exports.
 - Add a layer only when it has a second real use. Prefer one cohesive module over many tiny files.
-- Tests mirror source once under tests/: drop src/; keep full paths for scripts/, duo-autopilot/ and root configs.
-  Unit <module>.test.ts and integration <module>.integration.test.ts sit together; split files over about 800 lines by topic. Architecture/parity/perf/types stay in their own trees; fixtures and helpers live in tests/support/.
+- Tests mirror source once under tests/: drop src/; keep full paths for scripts/,
+  duo-autopilot/ and root configs.
+  Unit <module>.test.ts and integration <module>.integration.test.ts sit together;
+  split files over about 800 lines by topic. Architecture/parity/perf/types stay in
+  their own trees; fixtures and helpers live in tests/support/.
   Delete tests for behavior that no longer exists.
 - Add a guard only to prevent a real, recurring mistake, and record its reason in
   `docs/rebuild/guard-inventory.json`.
