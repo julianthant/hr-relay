@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { testRunService } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,11 +9,10 @@ import { afterEach, describe, it, vi } from "vitest";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
-import { createSpanJsonlWriter } from "../../../../../../src/backend/storage/events/span-jsonl-writer.js";
 import { doctorAuthorityStorage, summarizeSpanAuthorityReconciliation } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../../../../src/models/dashboard/storage.js";
-import { NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6, UUID_7 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6, UUID_7 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import { DAY, makeWorld, queuedEventOf, uuidOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
 
@@ -29,7 +29,7 @@ function currentRun(runId = UUID_1, itemId = UUID_4, traceId = "pl-120000-0000")
     envelope: {
       ...QUEUED_RUN.envelope,
       runId, itemId, traceId, priority: "interactive", dryRun: true,
-      resolvedInstance: { ucpath: "test" }, configSnapshotId: UUID_6,
+      resolvedInstance: { ucpath: "prod" }, configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint,
     },
   });
 }
@@ -43,6 +43,7 @@ function fixture(
   const authorityPath = join(root, "state.db");
   const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "span-authority-test" }, clock);
   try {
+    database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     for (const run of runs) database.authority.runs.enqueue(run);
     after?.(database);
   } finally {
@@ -56,8 +57,10 @@ function fixture(
       try { createTimelineEmitter({ repository: writer.authority.timelineEvents, clock, pid: 4242 }).emit(event); }
       finally { writer.close(); }
     },
-    retiredFile: (event: Readonly<Record<string, unknown>>) =>
-      createSpanJsonlWriter({ stateRoot: root, clock, pid: 4242 }).emit(event),
+    retiredFile: (event: Readonly<Record<string, unknown>>) => {
+      mkdirSync(join(root, "spans"), { recursive: true });
+      writeFileSync(join(root, "spans", "person-lookup-2026-07-31.jsonl"), JSON.stringify(event));
+    },
     read: async () => (await doctorAuthorityStorage({
       stateRootTrustAnchor: root, stateRoot: root, authorityPath,
       backupDirectory: join(root, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
@@ -135,16 +138,18 @@ describe("storage doctor span/authority reconciliation", () => {
     const inspect = ProductionAuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(ProductionAuthorityDatabase);
     const spy = vi.spyOn(ProductionAuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementation((...args) => {
       const raw = new DatabaseSync(f.authorityPath);
-      const row = raw.prepare("SELECT cursor,record_json FROM timeline_events ORDER BY cursor DESC LIMIT 1").get();
+      const row = raw.prepare("SELECT cursor,payload_json FROM timeline_events ORDER BY cursor DESC LIMIT 1").get();
       assert.ok(row);
-      const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_never_updated'").get();
+      const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get();
       assert.equal(typeof trigger?.sql, "string");
       try {
-        raw.exec("DROP TRIGGER timeline_events_never_updated");
-        raw.prepare("UPDATE timeline_events SET record_json=json_set(record_json,'$.payload.event.name','Replacement') WHERE cursor=?").run(row.cursor);
+        raw.exec("DROP TRIGGER timeline_events_immutable; PRAGMA ignore_check_constraints=ON");
+        raw.prepare("UPDATE timeline_events SET payload_json=json_set(payload_json,'$.payload.event.name','Replacement') WHERE cursor=?").run(row.cursor);
+        raw.exec(String(trigger?.sql));
         return inspect(...args);
       } finally {
-        raw.prepare("UPDATE timeline_events SET record_json=? WHERE cursor=?").run(row.record_json, row.cursor);
+        raw.exec("DROP TRIGGER IF EXISTS timeline_events_immutable");
+        raw.prepare("UPDATE timeline_events SET payload_json=? WHERE cursor=?").run(row.payload_json, row.cursor);
         raw.exec(String(trigger?.sql));
         raw.close();
       }
@@ -171,7 +176,7 @@ describe("storage doctor span/authority reconciliation", () => {
     const f = fixture([currentRun(), currentRun(UUID_2, UUID_5, "pl-120001-0000")]);
     f.emit(rootEvent());
     const raw = new DatabaseSync(f.authorityPath);
-    try { raw.prepare("UPDATE workflow_runs SET record_json = '{}' WHERE record_key = ?").run(UUID_1); }
+    try { raw.prepare("UPDATE runs SET envelope_json = '{}' WHERE id = ?").run(UUID_1); }
     finally { raw.close(); }
     const report = await f.read();
     assert.equal(report.state, "degraded");
@@ -195,8 +200,8 @@ describe("storage doctor span/authority reconciliation", () => {
     f.emit(rootEvent());
     const raw = new DatabaseSync(f.authorityPath);
     try {
-      raw.exec("DROP TRIGGER timeline_events_never_updated; PRAGMA ignore_check_constraints=ON");
-      raw.prepare("UPDATE timeline_events SET record_json = ?").run(JSON.stringify({ private: "DO-NOT-PRINT" }));
+      raw.exec("DROP TRIGGER timeline_events_immutable; PRAGMA ignore_check_constraints=ON");
+      raw.prepare("UPDATE timeline_events SET payload_json = ?").run(JSON.stringify({ private: "DO-NOT-PRINT" }));
     } finally { raw.close(); }
     const report = await f.read();
     assert.equal(report.state, "unavailable");
@@ -207,7 +212,10 @@ describe("storage doctor span/authority reconciliation", () => {
   it("names duplicate run.queued roots instead of reconciling the run-id set", async () => {
     const f = fixture();
     f.emit(rootEvent());
-    f.emit(rootEvent());
+    const raw = new DatabaseSync(f.authorityPath);
+    try {
+      raw.prepare("INSERT INTO timeline_events (id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,operation_id,operation_generation,confirmed_at,system,payload_json) SELECT ?,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,operation_id,operation_generation,confirmed_at,system,json_set(payload_json,'$.eventId',?,'$.cursor',cursor+1) FROM timeline_events LIMIT 1").run(UUID_7, UUID_7);
+    } finally { raw.close(); }
     const report = await f.read();
     assert.equal(report.state, "degraded");
     if (report.state !== "degraded") throw new Error("duplicate roots must degrade");
@@ -370,7 +378,7 @@ describe("storage doctor span/authority reconciliation", () => {
     mkdirSync(join(f.root, "spans"));
     const raw = new DatabaseSync(f.authorityPath);
     try {
-      raw.prepare("UPDATE workflow_runs SET record_json = '{}' WHERE record_key = ?").run(UUID_1);
+      raw.prepare("UPDATE runs SET envelope_json = '{}' WHERE id = ?").run(UUID_1);
     } finally {
       raw.close();
     }
@@ -391,7 +399,8 @@ describe("storage doctor span/authority reconciliation", () => {
         now: NOW,
       });
       if (terminal.state !== "applied") throw new Error("delete fixture could not terminalize its run");
-      database.authority.runs.delete({ runId: run.envelope.runId, origin: "queue", commandId, now: NOW });
+      const deleted = testRunService(database, clock).delete({ runId: run.envelope.runId, commandId, expectedVersion: terminal.run.version });
+      assert.equal(deleted.state, "deleted");
     };
   }
 

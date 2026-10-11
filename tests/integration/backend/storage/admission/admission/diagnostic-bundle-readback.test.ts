@@ -37,7 +37,7 @@ import { HASH_A, HASH_B, NOW } from "../../../../../support/fixtures/phase1c-con
 import { personLookupQueuedRun } from "../../../../../support/helpers/phase1f-executor-harness.js";
 import { RUN_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 
-const ARTIFACT_ROOT = ".tracker/artifacts";
+const ARTIFACT_ROOT = ".tracker/data/artifacts";
 const JSON_BYTES = Uint8Array.from([0x5b, 0x5d]);
 
 interface Fixture {

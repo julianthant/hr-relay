@@ -302,7 +302,7 @@ function tempArtifactWriter(): ContentAddressedArtifactWriter {
   const workspaceRoot = mkdtempSync(join(tmpdir(), "hrauto-wiring-artifacts-"));
   disposers.push(() => rmSync(workspaceRoot, { recursive: true, force: true }));
   return createContentAddressedArtifactWriter({
-    admission: RuntimeAdmission.syntheticRoots(join(workspaceRoot, ".tracker"), join(workspaceRoot, ".tracker/artifacts")),
+    admission: RuntimeAdmission.syntheticRoots(join(workspaceRoot, ".tracker"), join(workspaceRoot, ".tracker/data/artifacts")),
   });
 }
 

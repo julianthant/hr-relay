@@ -134,7 +134,7 @@ function outboxRow(database: AuthorityDatabase, input: Readonly<{
 }
 
 function projectorFor(database: AuthorityDatabase, root: string, clock: Readonly<{ now: () => Date }>) {
-  const artifacts = createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts"))});
+  const artifacts = createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts"))});
   artifactReadiness.push(artifacts.ready);
   return createArtifactSinkProjector({
     authority: database.authority,

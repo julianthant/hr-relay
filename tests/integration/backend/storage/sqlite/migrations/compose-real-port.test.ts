@@ -68,7 +68,6 @@ import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
   persistCorruptJournaledSettings,
 } from "../../../../../support/fixtures/integration/settings-runtime-corruption-fixtures.js";
-import { withAuthorityBuildVariant } from "../../../../../support/fixtures/authority-build-variant.js";
 import { settingsSetOperations } from "../../../../../support/fixtures/settings-operation-fixtures.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -506,20 +505,24 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(typeof current.releasedAt, "string");
   });
 
-  it("refuses the current authority under the pre-floor build before settings opens or config resolution", async () => {
+  it("refuses a newer authority under the current build before settings opens or config resolution", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v31-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     const artifactRoot = join(repoRoot, rebuildRuntimeIsolation.artifactRoot);
     const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
-    mkdirSync(stateRoot, { recursive: true });
+    mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
     const path = join(stateRoot, "state.db");
     AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "m9-floor-fixture" }).close();
+    const admission = installationAdmission(repoRoot);
+    const newer = new DatabaseSync(path);
+    newer.exec("PRAGMA user_version=2");
+    newer.close();
     const before = readFileSync(path);
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), CURRENT_AUTHORITY_SCHEMA_VERSION);
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 2);
       assert.notEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name = 'database_upgrades'").get(), undefined);
     } finally {
       raw.close();
@@ -529,20 +532,18 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     mkdirSync(join(stateRoot, "settings"), { recursive: true, mode: 0o700 });
     writeFileSync(join(stateRoot, "settings", "settings.json"), "{}", { mode: 0o600 });
 
-    await withAuthorityBuildVariant("current-29", async () => {
-      const build = await import("../../../../../../src/backend/storage/sqlite/migrations.js");
-      assert.equal(build.CURRENT_AUTHORITY_SCHEMA_VERSION, 29);
+    {
       const resolver = await import("../../../../../../src/backend/app/config/resolve.js");
       const resolveSpy = vi.spyOn(resolver, "resolveConfigWithProvenance");
-      const { composeDashboardRuntime: composeOlderBuild } = await import("../../../../../../src/backend/app/composition/dashboard/compose.js");
+      const { composeDashboardRuntime: composeCurrentBuild } = await import("../../../../../../src/backend/app/composition/dashboard/compose.js");
       vi.mocked(readFileSync).mockClear();
       vi.mocked(openSync).mockClear();
       vi.mocked(mkdirSync).mockClear();
       try {
-        await assert.rejects(composeOlderBuild({ admission: (await import("../../../../../../src/backend/storage/admission/admission.js")).RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot),
+        await assert.rejects(composeCurrentBuild({ admission,
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), new RegExp(`authority schema ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)} is newer than supported 29`, "u"));
+        }), new RegExp(`authority schema 2 does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`, "u"));
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))
@@ -552,21 +553,17 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         assert.equal(vi.mocked(readFileSync).mock.calls.filter(([target]) => isSettingsPath(target)).length,
           0, "M9: zero settings-family readFileSync calls before downgrade refusal");
         assert.equal(resolveSpy.mock.calls.length, 0, "M9: zero resolveConfigWithProvenance calls before downgrade refusal");
-        assert.ok(vi.mocked(mkdirSync).mock.calls.some(([target]) => target === stateRoot),
-          "M9: state-root mkdir precedes the refused authority open");
-        assert.ok(vi.mocked(openSync).mock.calls.some(([target]) => target === artifactRoot),
-          "M9: artifact-root directory check precedes the refused authority open");
+        assert.equal(vi.mocked(mkdirSync).mock.calls.filter(([target]) => target === stateRoot).length,
+          0, "native schema refusal precedes runtime directory mutation");
+        assert.equal(vi.mocked(openSync).mock.calls.filter(([target]) => target === artifactRoot).length,
+          0, "native schema refusal precedes artifact-root acquisition");
         assert.equal(statSync(artifactRoot).mode & 0o777, 0o700);
-        const released = JSON.parse(readFileSync(lockPath, "utf8")) as Record<string, unknown>;
-        assert.equal(released.acquiredAt, "2026-08-28T12:00:00.000Z");
-        assert.equal(released.releasedAt, "2026-08-28T12:00:00.000Z");
+        assert.equal(existsSync(lockPath), false, "native schema refusal acquires no server process record");
         assert.deepEqual(readFileSync(path), before);
       } finally {
         resolveSpy.mockRestore();
       }
-    });
-    assert.notEqual((await import("../../../../../../src/backend/storage/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 29,
-      "the isolated pre-floor build substitution must not escape its callback");
+    }
   });
 
   it("releases its acquired server process record when a pre-floor authority refuses open", async () => {

@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -11,7 +11,7 @@ import {
   summarizeBackupHealth,
 } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { NOW, UUID_7 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { initializeSyntheticSettingsBackupRoot } from "../../../../../support/helpers/integration/settings-backup-fixture.js";
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -22,7 +22,7 @@ const MAX_AGE_MS = 45 * 60 * 1000;
 
 function world() {
   const clock = manualClock(new Date(NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-backup-summary-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-backup-summary-"));
   disposers.push(() => rmSync(root, { recursive: true, force: true }));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 1000, migrationOwner: "summary-test" },
@@ -30,7 +30,7 @@ function world() {
   );
   disposers.push(() => database.close());
   const directory = join(root, "backups", "authority");
-  initializeSyntheticSettingsBackupRoot(root);
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const service = new AuthorityBackupService(database, { directory }, clock);
   const options = { backupDirectory: directory, maxBackupAgeMs: MAX_AGE_MS };
   return { clock, database, directory, service, options };

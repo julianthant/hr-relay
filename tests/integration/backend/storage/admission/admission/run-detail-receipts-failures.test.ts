@@ -24,7 +24,7 @@ function fixture() {
   const captures = {
     authority: f.database.authority.diagnosticBundles,
     artifactReader: createServerVerifiedArtifactReader({
-      admission: RuntimeAdmission.syntheticRoots(join(f.world.stateRoot, ".tracker"), join(f.world.stateRoot, ".tracker/artifacts")),
+      admission: RuntimeAdmission.syntheticRoots(join(f.world.stateRoot, ".tracker"), join(f.world.stateRoot, ".tracker/data/artifacts")),
     }),
   };
   const bundle = (seed: number, origin: DiagnosticBundle["origin"], runId = run.envelope.runId) => {

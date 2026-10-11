@@ -146,3 +146,5 @@ ordered worker streaming and its read/replay adapters remain Phase 4. The fronte
 step-result presentation and capture association remain Phase 5; the v1 event carries no screenshot
 artifact. `config/snapshot.ts` owns strictly current immutable snapshots: every current required leaf is present, stored reads apply no live defaults, and historical generation reconstruction is absent. There is no `models/logs/` package. A desktop/Electron shell remains future work and has no
 placeholder folder.
+
+Current native store tests cover baseline opening and version refusal (`storage/sqlite/migrations/native-baseline.test.ts`), maintenance custody (`storage/admission/admission/native-maintenance-capability.test.ts`), bounded transaction selection and retained deletion evidence (`storage/sqlite/transaction-history/`), and same-item retries (`runs/queries/item-attempt-history/`).

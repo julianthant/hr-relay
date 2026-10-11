@@ -126,7 +126,7 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
     :composeActivity({database,clock,descriptors,ledger,timeZone:"UTC"});
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
-  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts"))});
+  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts"))});
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
     search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));

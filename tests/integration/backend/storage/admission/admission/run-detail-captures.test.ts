@@ -1,6 +1,6 @@
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
-import {captureArchiveReport,genericArchiveSection} from "../../../../../../src/backend/storage/archive/report-capture.js";
-import {transferArchiveReport} from "../../../../../../src/backend/storage/archive/archive-transfer.js";
 
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -21,7 +21,7 @@ import { CaptureListSchema } from "../../../../../../src/models/dashboard/run-de
 import { createServerVerifiedArtifactReader } from "../../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { deriveDiagnosticContentDigest } from "../../../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../../../../src/models/trust/diagnostic.js";
-import { FingerprintSchema, DiagnosticBundleIdSchema, FailureIdSchema, RunIdSchema } from "../../../../../../src/rules/identity/ids.js";
+import { DiagnosticBundleIdSchema, FailureIdSchema, RunIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
 import { DiagnosticBundleCorruptError, SectionUnavailableError, TargetNotFoundError } from "../../../../../../src/backend/runs/commands/refusals.js";
 import {
@@ -60,7 +60,7 @@ function writeArtifactEnvelope(
   bytes: Uint8Array,
   storedRef: ArtifactRef = ref,
 ): void {
-  const artifactRoot = join(workspaceRoot, ".tracker", "artifacts");
+  const artifactRoot = join(workspaceRoot, "artifacts");
   mkdirSync(artifactRoot, { recursive: true });
   writeFileSync(join(artifactRoot, `${ref.sha256}.artifact`), JSON.stringify({
     ref: storedRef,
@@ -94,23 +94,25 @@ function harness() {
     migrationOwner: "run-detail-captures-test",
   }, world.clock);
   cleanups.push(() => database.close());
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const run = world.authority.getRun(uuidOf(1));
   assert.ok(run);
   database.authority.runs.enqueue({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
     schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output") } }, envelope: {
     ...run.envelope, contractFingerprint: personLookupDescriptor.contractFingerprint,
   } });
+  testWorkerPorts(database, world.clock, { path: join(world.stateRoot, "capture-authority.db"), descriptor: personLookupDescriptor, poolIndex: 1 });
   writeArtifactEnvelope(world.stateRoot, refOf(ATTACHMENT), BYTES);
   const sourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    admission: RuntimeAdmission.syntheticRoots(join(world.stateRoot, ".tracker"), join(world.stateRoot, ".tracker/artifacts")),
+    admission: RuntimeAdmission.syntheticRoots(world.stateRoot, join(world.stateRoot, "artifacts")),
     observeIo: (kind, bytes) => {
       if (kind === "source-read") sourceReads.push(bytes);
     },
   });
   const captures = { authority: database.authority.diagnosticBundles, artifactReader };
   const deps: RunDetailQueryDeps = { runReader: sqliteRunReader(database, world.clock),
-    stateRoot: world.stateRoot, projection: world.projection,
+    stateRoot: world.stateRoot, timeline: database.authority.timelineEvents, projection: world.projection,
     authority: { ...world.authority, getRun: (id) => database.authority.runs.get(id) },
     descriptors: { resolve: () => undefined }, captures,
   };
@@ -122,14 +124,16 @@ function harness() {
     sourceReads,
     world,
     removeArtifact: (ref: ArtifactRef) =>
-      rmSync(join(world.stateRoot, ".tracker", "artifacts", `${ref.sha256}.artifact`)),
+      rmSync(join(world.stateRoot, "artifacts", `${ref.sha256}.artifact`)),
     writeArtifact: (ref: ArtifactRef, bytes: Uint8Array, storedRef: ArtifactRef = ref) =>
       writeArtifactEnvelope(world.stateRoot, ref, bytes, storedRef),
   };
 }
 
 function recordFailure(database: AuthorityDatabase): void {
-  const workerId = "capture-test-worker";
+  const slot = database.authority.workerSlots.list("person-lookup").find(row => row.poolIndex === 1 && row.retiredAt === null);
+  assert.ok(slot);
+  const workerId = slot.workerId;
   const claimed = database.authority.runs.claimNext({ workflow: "person-lookup", workerId, now: NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("capture fixture was not claimed");
@@ -159,7 +163,7 @@ function recordFailure(database: AuthorityDatabase): void {
 }
 
 describe("run capture authority", () => {
-  it("requires a live membership for generic bytes while preserving shared artifacts across archive and deletion", async () => {
+  it("requires a live membership for generic bytes while preserving shared artifacts across terminal deletion", async () => {
     const h = harness();
     const queued = h.database.authority.runs.get(uuidOf(1)); assert.ok(queued);
     h.database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope,
@@ -181,14 +185,6 @@ describe("run capture authority", () => {
     const failure = buildTrustSection({ ...h.deps, trust }, uuidOf(1), "failure");
     assert.equal(failure.section, "failure");
     if (failure.section !== "failure" || failure.payload.state !== "available") throw new Error("failure evidence missing");
-    const storage=service.lifecycleStorage();
-    const report=captureArchiveReport({snapshot:storage.capture(uuidOf(1)),transferId:uuidOf(81),capturedAt:h.world.clock.now().toISOString(),
-      sections:[genericArchiveSection("Failure",failure.payload.value)],files:[{digest:FingerprintSchema.parse(ATTACHMENT.digest),byteLength:ATTACHMENT.byteLength,mediaType:ATTACHMENT.mediaType,name:"accessibility-excerpt",artifactIds:[ATTACHMENT.artifactId]}]});
-    for(const file of report.content.files)storage.retainFile(file,BYTES);
-    assert.ok(transferArchiveReport(storage,report,run.run.version));
-    const frozen=canonicalJsonStringify(storage.readReport(uuidOf(1)));
-    await assert.rejects(prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId), TargetNotFoundError);
-    assert.deepEqual(storage.readFile(uuidOf(1),ATTACHMENT.digest).bytes,BYTES);
     h.database.authority.diagnosticBundles.insert(bundleOf(62,
       { kind: "operator-request", requestedBy: "local-operator" }, { runId: uuidOf(2) }));
     h.database.authority.runs.enqueue({...queued,envelope:{...queued.envelope,runId:uuidOf(3),itemId:uuidOf(6003),traceId:"pl-010101-0003"}});
@@ -201,9 +197,8 @@ describe("run capture authority", () => {
         ? { ...row, attachment: { ...row.attachment, digest: conflicting.attachments[0]?.digest } } : row),
     } }, ATTACHMENT.artifactId), /shared artifact metadata disagrees/);
     const shared = await prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId); await shared.lease.dispose();
-    assert.equal(canonicalJsonStringify(storage.readReport(uuidOf(1))), frozen);
-    assert.equal(service.deleteArchived({ commandId: uuidOf(82), runId: uuidOf(1),
-      archiveFingerprint: report.digest }).state, "deleted");
+    assert.equal(service.delete({ commandId: uuidOf(82), runId: uuidOf(1),
+      expectedVersion: run.run.version }).state, "deleted");
     const retained = await prepareLiveDiagnosticArtifactLease(deps, ATTACHMENT.artifactId); await retained.lease.dispose();
     assert.equal(h.database.authority.diagnosticBundles.get(first.bundleId), undefined);
     await h.artifactReader.verify(refOf(ATTACHMENT));
@@ -275,12 +270,13 @@ describe("run capture authority", () => {
     assert.equal(CaptureListSchema.safeParse({ runId: uuidOf(301), artifacts: [] }).success, false);
   });
 
-  it("keeps synchronous archive-shaped details field-absent while live reads name capture absence", async () => {
+  it("keeps synchronous details field-absent while live reads name capture absence", async () => {
     const world = makeWorld();
     const runId = uuidOf(301);
     queuedEventOf(world, { seed: 301 });
     const deps = { runReader: world.runReader,
       stateRoot: world.stateRoot,
+      timeline: world.timeline,
       projection: world.projection,
       authority: world.authority,
       descriptors: { resolve: () => undefined },

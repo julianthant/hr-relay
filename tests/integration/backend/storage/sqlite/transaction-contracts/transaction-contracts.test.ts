@@ -17,14 +17,14 @@ describe("F shared transactional storage contracts",()=>{
    assert.throws(()=>second.authority.artifactSinkHeads.record({...head,lastOutboxId:id(2)}),/generation-conflict/u);
    assert.deepEqual(second.authority.artifactOutbox.listPending().map(r=>r.outboxId),[id(2)]);
    assert.equal(a.generatedArtifacts.get("sink:xlsx-retention")?.state,"pending");
-   const raw=new DatabaseSync(f.path);try{assert.throws(()=>raw.exec("UPDATE generated_artifacts SET version=version+1,record_json=json_set(record_json,'$.version',version+1,'$.updates[0].record.payload.value','rewritten')"),/evidence is immutable/u);assert.throws(()=>raw.exec("DELETE FROM generated_artifacts"),/evidence is retained/u);}finally{raw.close();}
+   const raw=new DatabaseSync(f.path);try{assert.throws(()=>raw.exec("UPDATE artifacts SET version=version+1,payload_json=json_set(payload_json,'$.version',version+1,'$.updates[0].record.payload.value','rewritten')"),/generated-artifact-evidence-immutable/u);assert.throws(()=>raw.exec("DELETE FROM artifacts WHERE kind='generated'"),/artifact-evidence-retained/u);}finally{raw.close();}
   }finally{second.close();f.dispose();}
  });
  it("rolls annotation and generation back on audit failure, fences competing writes and retains immutable UNKNOWN evidence",()=>{
   const f=foundationFixture();const raw=new DatabaseSync(f.path);
   try{
    const record=failure();terminalizeFixtureFailure(f,f.run,record);
-   const original=raw.prepare("SELECT record_json FROM run_failures WHERE record_key=?").get(record.failureId)?.record_json;
+   const original=raw.prepare("SELECT payload_json FROM run_failures WHERE id=?").get(record.failureId)?.payload_json;
    const request={runId:record.runId,failureId:record.failureId,expectedVersion:1,resolution:{status:"resolved",version:2,by:"local-operator",at:NOW,note:"synthetic annotation"}};
    const generation=f.db.getMeta().authorityGeneration;
    assert.throws(()=>f.db.withAuthorityTransaction(a=>{a.failureResolution.update(request);throw new Error("audit-write-fault");}),/audit-write-fault/u);
@@ -38,9 +38,9 @@ describe("F shared transactional storage contracts",()=>{
     second.authority.failureResolution.update({...request,expectedVersion:2,resolution:{status:"unresolved",version:3}});
    }finally{second.close();}
    assert.deepEqual(f.db.authority.failureResolution.read(record.runId,record.failureId)?.resolution,{status:"unresolved",version:3});
-   assert.equal(raw.prepare("SELECT record_json FROM run_failures WHERE record_key=?").get(record.failureId)?.record_json,original);
+   assert.equal(raw.prepare("SELECT payload_json FROM run_failures WHERE id=?").get(record.failureId)?.payload_json,original);
    assert.equal(f.db.authority.failures.get(record.failureId)?.writeState,"unknown");
-   assert.throws(()=>raw.prepare("UPDATE run_failures SET record_json='{}',resolution_version=resolution_version+1,resolution_json=json_set(resolution_json,'$.version',resolution_version+1) WHERE record_key=?").run(record.failureId),/immutable/u);
+   assert.throws(()=>raw.prepare("UPDATE run_failures SET payload_json='{}',resolution_version=resolution_version+1,resolution_json=json_set(resolution_json,'$.version',resolution_version+1) WHERE id=?").run(record.failureId),/immutable/u);
    assert.throws(()=>f.db.authority.failureResolution.update({...request,runId:id(99)}),/version-conflict/u);
   }finally{raw.close();f.dispose();}
  });

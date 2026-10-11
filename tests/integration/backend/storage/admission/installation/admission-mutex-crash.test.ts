@@ -67,7 +67,7 @@ it.each(["prepared", "released"])("cleans an actual killed child's %s folder wit
   const root = fixture();
   const child = await pausedChild(root, window);
   await kill(child);
-  const control = join(root, ".runtime-control");
+  const control = join(root, ".tracker/control");
   expect(existsSync(join(control, "admission-mutex"))).toBe(false);
   expect(readdirSync(control).some(name => name.startsWith(".admission-mutex-"))).toBe(true);
   acquireEntrypointAdmission(root, "shared").release();
@@ -76,7 +76,7 @@ it.each(["prepared", "released"])("cleans an actual killed child's %s folder wit
 it("preserves a live temporary folder before owner publication and cleans it only after death", async () => {
   const root = fixture();
   const child = await pausedChild(root, "pre-owner");
-  const control = join(root, ".runtime-control");
+  const control = join(root, ".tracker/control");
   const name = readdirSync(control).find(entry => entry.startsWith(".admission-mutex-tmp-"));
   expect(name).toBeDefined();
   acquireEntrypointAdmission(root, "shared").release();
@@ -87,7 +87,7 @@ it("preserves a live temporary folder before owner publication and cleans it onl
 });
 it("refuses an empty canonical lock immediately and archives its empty custody with a receipt", () => {
   const root = fixture();
-  const path = join(root, ".runtime-control", "admission-mutex");
+  const path = join(root, ".tracker/control", "admission-mutex");
   mkdirSync(path, { mode: 0o700 });
   const wait = vi.spyOn(Atomics, "wait");
   let failure: unknown;
@@ -101,7 +101,7 @@ it("refuses an empty canonical lock immediately and archives its empty custody w
   try {
     const result = recoverAbandonedAdmissionMutex(root, restore, "empty");
     expect(existsSync(path)).toBe(false);
-    expect(readdirSync(join(root, ".runtime-control", "admission-mutex-recovery", result.acquisitionId))).toEqual([]);
+    expect(readdirSync(join(root, ".tracker/control", "admission-mutex-recovery", result.acquisitionId))).toEqual([]);
     const receipt: unknown = JSON.parse(readFileSync(result.receiptPath, "utf8"));
     expect(receipt).toMatchObject({ custody: "empty", acquisitionId: result.acquisitionId });
     expect(receipt).not.toHaveProperty("pid");
@@ -110,7 +110,7 @@ it("refuses an empty canonical lock immediately and archives its empty custody w
 });
 it.each(["lease", "journal", "server", "workers"])("preserves empty lock custody when %s blocks recovery", condition => {
   const root = fixture();
-  const control = join(root, ".runtime-control");
+  const control = join(root, ".tracker/control");
   const path = join(control, "admission-mutex");
   mkdirSync(path, { mode: 0o700 });
   const current = locks.observeProcessIdentity(process.pid);
@@ -138,7 +138,7 @@ it.each(["lease", "journal", "server", "workers"])("preserves empty lock custody
 
 it("retries acquisition when an observed empty canonical folder disappears during inspection", async () => {
   const root = fixture();
-  const path = join(root, ".runtime-control", "admission-mutex");
+  const path = join(root, ".tracker/control", "admission-mutex");
   mkdirSync(path, { mode: 0o700 });
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
   let removed = false;
@@ -156,7 +156,7 @@ it("preserves a temporary folder when exact birth identity observation fails", (
   const observed = locks.observeProcessIdentity(process.pid);
   if (observed.state !== "alive") throw new Error("current identity unavailable");
   const digest = createHash("sha256").update(canonicalJsonStringify(observed.identity)).digest("hex");
-  const path = join(root, ".runtime-control", `.admission-mutex-tmp-${process.pid}-${digest}-${randomUUID()}`);
+  const path = join(root, ".tracker/control", `.admission-mutex-tmp-${process.pid}-${digest}-${randomUUID()}`);
   mkdirSync(path, { mode: 0o700 });
   const failure = new Error("identity observation unavailable");
   vi.spyOn(locks, "observeProcessIdentity").mockImplementation(() => { throw failure; });
@@ -166,7 +166,7 @@ it("preserves a temporary folder when exact birth identity observation fails", (
 it("cleans a pre-owner folder for a reused PID using exact birth identity", () => {
   const root = fixture();
   const digest = createHash("sha256").update(canonicalJsonStringify({ platform: process.platform, startToken: "previous-process" })).digest("hex");
-  const path = join(root, ".runtime-control", `.admission-mutex-tmp-${process.pid}-${digest}-${randomUUID()}`);
+  const path = join(root, ".tracker/control", `.admission-mutex-tmp-${process.pid}-${digest}-${randomUUID()}`);
   mkdirSync(path, { mode: 0o700 });
   acquireEntrypointAdmission(root, "shared").release();
   expect(existsSync(path)).toBe(false);
@@ -176,7 +176,7 @@ it("preserves a remnant whose complete owner disagrees with its process identity
   const current = locks.observeProcessIdentity(process.pid);
   if (current.state !== "alive") throw new Error("current identity unavailable");
   const acquisitionId = randomUUID();
-  const path = join(root, ".runtime-control", `.admission-mutex-tmp-${process.pid}-${"0".repeat(64)}-${acquisitionId}`);
+  const path = join(root, ".tracker/control", `.admission-mutex-tmp-${process.pid}-${"0".repeat(64)}-${acquisitionId}`);
   mkdirSync(path, { mode: 0o700 });
   const ownerPath = join(path, "owner.json");
   const bytes = JSON.stringify({ schemaVersion: 1, acquisitionId, phase: "admitting", pid: process.pid, processIdentity: current.identity });

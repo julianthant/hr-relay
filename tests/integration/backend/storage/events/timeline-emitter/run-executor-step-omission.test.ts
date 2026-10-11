@@ -1,3 +1,4 @@
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { timelineCheckpointReference } from "../../../../../../src/models/events/timeline.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -21,7 +22,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../../../../src/models/workflow
 import type { StepOmissionDeclaration } from "../../../../../../src/models/workflow/step-omission.js";
 import type { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/index.js";
 import { HASH_A, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   happySessionHarness,
   ManualScheduler,
@@ -204,6 +205,7 @@ const registry = defineTaskStoreRegistry([defineServiceStore("ocr", { fixture: f
 function harnessFor(descriptor: AnyWorkflowDescriptor) {
   const authority = openAuthorityHarness();
   disposers.push(authority.dispose);
+  testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor, poolIndex: 1 });
   const emitter = {
     emitter: createTimelineEmitter({ repository: authority.database.authority.timelineEvents, clock: authority.clock }),
     events: () => authority.database.authority.timelineEvents.page({}).flatMap((record) =>
@@ -238,7 +240,7 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, stepOmissions?: readonl
     },
     input: {
       raw: { name: "Battistessa, Johnnie" },
-      parsed: { schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: { name: "Battistessa, Johnnie" } },
+      parsed: { protectedBindings: [], schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: { name: "Battistessa, Johnnie" } },
       ingressSchemaHash: HASH_A,
     },
   };
@@ -260,7 +262,7 @@ function secondRunFor(descriptor: AnyWorkflowDescriptor, startAt?: string) {
     },
     input: {
       raw: { name: "Battistessa, Johnnie" },
-      parsed: { schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: { name: "Battistessa, Johnnie" } },
+      parsed: { protectedBindings: [], schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: { name: "Battistessa, Johnnie" } },
       ingressSchemaHash: HASH_A,
     },
   };
@@ -270,13 +272,15 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
   run: RunRecord;
   claim: { workerId: string; claimGeneration: number };
 } {
+  const workerId = database.authority.workerSlots.list(descriptor.id).find(slot => slot.retiredAt === null)?.workerId;
+  assert.ok(workerId);
   const claimed = database.authority.runs.claimNext({
     workflow: descriptor.id,
-    workerId: WORKER_ID,
+    workerId,
     now: new Date("2026-09-01T09:00:00.000Z").toISOString(),
   });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
-  return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration } };
+  return { run: claimed.run, claim: { workerId, claimGeneration: claimed.run.claimGeneration } };
 }
 
 
@@ -298,6 +302,7 @@ function resolveApprovalGate(harness: ReturnType<typeof harnessFor>, parkedRun: 
   database.authority.gateResults.insert({
     runId: RUN_ID,
     gateId: "approval",
+    nodeId: "approve",
     commandId: "cccccccc-0000-4000-8000-000000000000",
     expectedVersion: parkedRun.version,
     resolvedBy: "local-operator",

@@ -138,7 +138,7 @@ function exportHarness(label: string) {
     clock,
     database,
     artifacts: createContentAddressedArtifactWriter({
-      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
+      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
     }),
     close: () => {
       database.close();
@@ -213,7 +213,7 @@ describe("operator XLSX export service", () => {
       migrationOwner: "operator-xlsx-test",
     }, clock);
     const artifacts = createContentAddressedArtifactWriter({
-      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
+      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
     });
     try {
       const service = createOperatorXlsxExportService({
@@ -302,7 +302,7 @@ describe("operator XLSX export service", () => {
       migrationOwner: "operator-xlsx-foreign-test",
     }, clock);
     const artifacts = createContentAddressedArtifactWriter({
-      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
+      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
     });
     try {
       const service = createOperatorXlsxExportService({

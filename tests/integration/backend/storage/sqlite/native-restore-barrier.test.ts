@@ -37,11 +37,11 @@ it("keeps the owned restoring journal after process death and absent staging unt
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) });
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60000 }); proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
-    const service = new OfflineAuthorityRestoreService(admission, { authorityPath: path, suspectDirectory: join(state, "suspects"),
+    const service = new OfflineAuthorityRestoreService(admission, { authorityPath: path, suspectDirectory: join(state, "backups", "suspects"),
       processLockRoot, busyTimeoutMs: 250, stoppedProofMaxAgeMs: 60000 }, async () => {}, undefined,
       { copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source);
-        const journal = JSON.parse(readFileSync(join(root, ".runtime-control", "journal.json"), "utf8"));
+        const journal = JSON.parse(readFileSync(join(root, ".tracker", "control", "journal.json"), "utf8"));
         process.send({ state: "barrier-held", operationId: journal.restore.operationId, stagedPath: source, manifestPath });
         const wait = new Int32Array(new SharedArrayBuffer(4)); for (;;) Atomics.wait(wait, 0, 0, 1000);
       } });
@@ -55,7 +55,7 @@ it("keeps the owned restoring journal after process death and absent staging unt
     child.once("exit", code => reject(new Error(`restore child exited ${String(code)}: ${output}`)));
   });
   assert.equal(message.state, "barrier-held");
-  const journalPath = join(root, ".runtime-control", "journal.json"), before = readFileSync(journalPath);
+  const journalPath = join(root, ".tracker", "control", "journal.json"), before = readFileSync(journalPath);
   const exited = new Promise<void>(resolve => child.once("exit", () => resolve())); child.kill("SIGKILL"); await exited;
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), /unfinished restoring/u);
   assert.deepEqual(readFileSync(journalPath), before);

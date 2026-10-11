@@ -9,6 +9,7 @@ import { createTimelineRepository } from "../../../../../src/backend/storage/sql
 import { timelineCheckpointReference } from "../../../../../src/models/events/timeline.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { RunDeleteInputSchema } from "../../../../../src/models/run/deleted-run.js";
+import type { RunId } from "../../../../../src/rules/identity/ids.js";
 import { RunCheckpointRecordSchema, checkpointRecordKey } from "../../../../../src/models/workflow/checkpoint.js";
 import { deriveCheckpointOutputDigest } from "../../../../../src/models/run/result.js";
 import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
@@ -39,7 +40,7 @@ function fixture(withParent = false) {
   db.prepare("INSERT INTO run_checkpoints VALUES(?,?,?,?,?,?,?,?,?,?)").run(checkpointRecordKey(checkpoint),checkpoint.runId,checkpoint.workflowId,
     checkpoint.itemId,checkpoint.nodeId,checkpoint.attempt,1,deriveCheckpointOutputDigest(checkpoint.output),canonicalJsonStringify(checkpoint),NOW);
   const input = (cascadeRunIds = [run.envelope.runId]) => RunDeleteInputSchema.parse({runId:run.envelope.runId,origin:"queue",commandId:UUID_1,now:NOW,cascadeRunIds});
-  const prepare = (cascadeRunIds?: string[]) => prepareNativeRunDeletion(db,run,input(cascadeRunIds),()=>{throw new Error("no fixture files");});
+  const prepare = (cascadeRunIds?: RunId[]) => prepareNativeRunDeletion(db,run,input(cascadeRunIds),()=>{throw new Error("no fixture files");});
   const transaction = <T>(work:()=>T) => {db.exec("BEGIN IMMEDIATE");try {const value=work();db.exec("COMMIT");return value;}catch(error){db.exec("ROLLBACK");throw error;}};
   const replay = () => {
     const peer = parent ?? RunRecordSchema.parse({...run,envelope:{...run.envelope,runId:UUID_5,attempt:2}});

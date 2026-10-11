@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
 import { StartPlanRecordSchema,derivePlannedInputFingerprint } from "../../../../../../src/models/run/start-plan.js";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -56,7 +57,7 @@ function fixture(ambiguous=false) {
   const lifecycle=new RunRecordService({database,clock,ids:sequentialIdFactory("a"),publishQueued:()=>undefined});
   const unused=()=>{throw new Error("unrequested runtime effect");};
   const kernel=createCommandKernel({authority:database,lifecycle,clock,ids,appVersion:"0.1.0",descriptors,
-    configIdentity:UNSTORED_CONFIG_IDENTITY,intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
+    writeResolution:{resolvePresent:unused,resolveAbsent:unused},configIdentity:UNSTORED_CONFIG_IDENTITY,intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
     workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
       stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}}});
   const planner=createStartPlanService({authority:database,authorityRead:database,descriptors,clock,ids:sequentialIdFactory("b"),
@@ -68,7 +69,7 @@ function fixture(ambiguous=false) {
       original.ingressSchemaHash,original.canonicalInputSchemaHash,original.rerun,original.stepOmissions);
     const admitted=StartPlanRecordSchema.parse({...original,startPlanId:ids.uuid(),planned,inputFingerprint});
     assert.equal(database.authority.startPlans.create(admitted).state,"inserted");
-    plan={...plan,startPlanId:admitted.startPlanId,planned:[...plan.planned,...plan.planned],fingerprints:{...plan.fingerprints,inputFingerprint}};
+    plan={...plan,startPlanId:admitted.startPlanId,planned:[...plan.planned,...plan.planned],fingerprints:{...plan.fingerprints,inputFingerprint:FingerprintSchema.parse(inputFingerprint)}};
   }
   const result=kernel.execute({commandId:UUID_1,requestedAt:NOW,requestedBy:"local-operator",source:"dashboard",family:"start",type:"start-run",
     target:{workflowId:descriptor.id,startPlanId:plan.startPlanId,expectedVersion:plan.expectedVersion},payload:plan.fingerprints});
@@ -171,6 +172,8 @@ describe("offline missing run.queued recovery", () => {
         ...QUEUED_RUN,
         envelope: {
           ...QUEUED_RUN.envelope,
+          configSnapshotId: f.run.envelope.configSnapshotId,
+          configFingerprint: f.run.envelope.configFingerprint,
           runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
           itemId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
           traceId: "pl-170001-aaaa",

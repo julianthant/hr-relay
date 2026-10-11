@@ -4,6 +4,7 @@ import { SQLITE_MIGRATIONS } from "../../../../../src/backend/storage/sqlite/mig
 import { createRunSearchIndex, runSearchIndexFromRow } from "../../../../../src/backend/storage/sqlite/run-search-index.js";
 import { runRecordColumns, runRecordFromRow } from "../../../../../src/backend/storage/sqlite/run-record-row.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
+import { RunSearchPublicationSchema } from "../../../../../src/models/dashboard/search-index.js";
 import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 
 const databases: DatabaseSync[] = [];
@@ -23,7 +24,7 @@ function fixture() {
   };
   const publish = () => {
     db.prepare("UPDATE database_states SET authority_generation=authority_generation+1,search_generation=NULL,search_state='invalid'").run();
-    index.publishChanges(1, QUEUED_RUN.createdAt, { state: "published", sourceGeneration: 0, afterRun: null, rowCount: 0 });
+    index.publishChanges(1, QUEUED_RUN.createdAt, RunSearchPublicationSchema.parse({ state: "published", sourceGeneration: 0, afterRun: null, rowCount: 0 }));
   };
   return { db, index, add, publish };
 }
@@ -58,8 +59,8 @@ describe("native one-row search", () => {
     const row = f.db.prepare("SELECT * FROM run_search WHERE run_id=?").get(id);
     expect(() => runSearchIndexFromRow({ ...row,actor_id:"forged-actor" },run)).toThrow(/corrupt/u);
     expect(() => runSearchIndexFromRow({ ...row,systems_json:'["kuali"]' },run)).toThrow(/corrupt/u);
-    expect(() => runSearchIndexFromRow(row,{ ...run,version:run.version+1 })).toThrow(/corrupt/u);
-    expect(runSearchIndexFromRow(row,{ ...run,version:run.version+1 },false).sourceVersion).toBe(run.version);
+    expect(() => runSearchIndexFromRow(row,RunRecordSchema.parse({ ...run,version:run.version+1 }))).toThrow(/corrupt/u);
+    expect(runSearchIndexFromRow(row,RunRecordSchema.parse({ ...run,version:run.version+1 }),false).sourceVersion).toBe(run.version);
     f.db.exec("UPDATE database_states SET search_state='invalid',search_generation=NULL");
     expect(() => f.index.search(query,1)).toThrow(/rebuild-required/u);
   });

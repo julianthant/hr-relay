@@ -1,12 +1,12 @@
-import { historicalArchiveAuthority } from "../../../../../support/helpers/integration/historical-archive-authority.js";
-import { CanonicalRelaunchRequestSchema } from "../../../../../../src/backend/storage/sqlite/run-store-contracts.js";
+import { settingsFixture } from "../../../../../support/helpers/backend/settings-activation-fixture.js";
+import { deriveTerminalFailureDigest } from "../../../../../../src/models/run/result.js";
 import { selectRunRuntime } from "../../../../../../src/backend/runs/settings/run-settings.js";
 import { makeWorld } from "../../../../../support/helpers/backend/dashboard-harness.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../../src/rules/identity/ids.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../../../src/backend/runs/commands/run-queued-span.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { on } from "node:events";
@@ -17,7 +17,6 @@ import { z } from "zod";
 import { afterEach, describe, it } from "vitest";
 import { CreateRunRequestSchema, RunRecordService, lifecycleCommandId, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied, type CreateRunRequest } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
-import { planRuntimeVersionTransition } from "../../../../../../src/models/archive/runtime-version.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../../../../src/models/write-safety/protected-input.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import {
@@ -26,28 +25,19 @@ import {
   RunLifecycleCommandRecordSchema,
 } from "../../../../../../src/rules/commands/commands.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../../../../src/models/config/runtime-generation.js";
-import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
 import { deriveWriteBindingProofDigest } from "../../../../../../src/rules/write-safety/write-safety.js";
 import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
-import {
-  archivedRunContentDigest,
-  archivedRunReferenceFingerprint,
-  ArchivedRunContentSchema,
-  ArchivedRunRecordSchema,
-  VersionBumpApplicationSchema,
-} from "../../../../../../src/models/archive/model.js";
 import {
   AuthorityDatabase,
   type AuthorityLifecycleHooks,
   type AuthorityTerminalizationHooks,
 } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { createSpanJsonlWriter } from "../../../../../../src/backend/storage/events/span-jsonl-writer.js";
 import { doctorAuthorityStorage } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_1, UUID_5, UUID_6 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { QUEUED_RUN, RUN_SESSION, RUN_SESSION_ID, WORKER_ID, WORKFLOW_ID } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-import { ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../../../../../support/fixtures/archive-fixtures.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -55,12 +45,11 @@ afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 function fixture(
   terminalizationHooks?: AuthorityTerminalizationHooks,
   lifecycleHooks?: AuthorityLifecycleHooks,
-  historical = false,
 ) {
-  const root = mkdtempSync(join(tmpdir(), "run-record-service-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "run-record-service-"));
   cleanups.push(() => rmSync(root, { recursive: true }));
   const clock = manualClock(new Date(NOW));
-  const database = historical ? historicalArchiveAuthority(join(root, "state.db"), clock) : AuthorityDatabase.open(
+  const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), migrationOwner: "unit-test", busyTimeoutMs: 250 },
     clock,
     undefined,
@@ -68,13 +57,8 @@ function fixture(
     lifecycleHooks,
   );
   cleanups.push(() => database.close());
-  database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
-  const active = database.authority.runtimeConfig.activate({
-    settingsRevision: 1, settingsFingerprint: HASH_A,
-    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
-    configFingerprint: CONFIG_SNAPSHOT.fingerprint,
-    activatedAt: NOW,
-  });
+  const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  testWorkerPorts(database,clock,{path:join(root,"state.db"),descriptor:personLookupDescriptor,poolIndex:1});
   const runtimeConfig = RuntimeConfigClaimTokenSchema.parse({
     generation: active.generation, settingsRevision: active.settingsRevision,
     settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint,
@@ -110,83 +94,11 @@ function created(service: RunRecordService, request: CreateRunRequest) {
   return outcome.run;
 }
 
-
-function historicalRelaunch(service: RunRecordService, database: AuthorityDatabase, input: unknown) {
-  const request = CanonicalRelaunchRequestSchema.parse(input);
-  const run = created(service, { ...request.create, commandId: lifecycleCommandId("historical-fixture", request.commandId) });
-  const safe = valueFreeProtectedData(request, retainedRunProtectedBindings({ envelope: { workflow: request.create.workflow }, input: request.create.input }));
-  const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId: request.commandId,
-    operation: "relaunch", requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0relaunch\0${canonicalJsonStringify(safe)}`),
-    fence: { kind: "none" }, recordedAt: NOW });
-  database.withAuthorityTransaction(repositories => {
-    repositories.lifecycleJournal.insertCommand(command);
-    repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: command.commandId, request: command,
-      result: { kind: "run", runId: run.envelope.runId, appliedVersion: run.version }, completedAt: NOW });
-  });
-  return { state: "applied" as const, run };
-}
-
 describe("protected canonical command fingerprints", () => {
-  it("retains safe historical archive identity for relaunch/delete replay after source deletion", () => {
-    const exercise = (emplId: string) => {
-      const f = fixture(undefined, undefined, true);
-      const request = { ...f.request, descriptorVersion: personLookupDescriptor.version,
-        contractFingerprint: personLookupDescriptor.contractFingerprint,
-        input: { ...f.request.input, raw: { emplId }, parsed: { ...f.request.input.parsed,
-          value: { emplId }, protectedBindings: [{ kind: "test-data-local" as const,
-            inputPath: "emplId" as const, name: "personLookupCanaryEid" as const,
-            sourceId: "10000000-0000-4000-8000-000000000001" }] } } };
-      const source = created(f.service, request);
-      const terminal = requireLifecycleApplied(f.service.transition({ commandId: UUID_5,
-        runId: source.envelope.runId, expectedVersion: source.version,
-        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }));
-      const { contentDigest: _mismatchDigest, ...mismatchContent } = archivedRecord(terminal);
-      mismatchContent.input = { ...mismatchContent.input, raw: { emplId, memo: "unbound extra fact" } };
-      const mismatchArchive = { ...mismatchContent,
-        contentDigest: FingerprintSchema.parse(sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify(mismatchContent)}`)) };
-      const beforeRefusal = f.database.getMeta().authorityGeneration;
-      assert.deepEqual(f.service.archive({ commandId: "83000000-0000-4000-8000-000000000003",
-        expectedVersion: terminal.version, archive: mismatchArchive }),
-      { state: "refused", refusal: { reason: "schema-mismatch", digest: archivedRunReferenceFingerprint(mismatchArchive) } });
-      assert.equal(f.database.getMeta().authorityGeneration, beforeRefusal);
-      const archived = archiveRun(f.service, f.database, terminal, UUID_6, true).archive;
-      const { commandId: _commandId, ...create } = request;
-      const relaunch = { commandId: "83000000-0000-4000-8000-000000000001",
-        archivedRunId: source.envelope.runId, archiveFingerprint: archivedRunReferenceFingerprint(archived),
-        relaunchedBy: "local-operator", create };
-      assert.equal(historicalRelaunch(f.service, f.database, relaunch).state, "applied");
-      const deletion = { commandId: "83000000-0000-4000-8000-000000000002",
-        runId: source.envelope.runId, archiveFingerprint: archivedRunReferenceFingerprint(archived) };
-      assert.equal(f.service.deleteArchived(deletion).state, "deleted");
-      assert.equal(f.database.authority.archivedRuns.get(source.envelope.runId), undefined);
-      const generation = f.database.getMeta().authorityGeneration;
-      assert.equal(f.service.deleteArchived(deletion).state, "applied-already");
-      assert.equal(f.service.relaunch(relaunch, personLookupDescriptor).state, "applied-already");
-      assert.deepEqual(f.service.deleteArchived({ ...deletion, archiveFingerprint: HASH_A }),
-        { state: "refused", refusal: { reason: "replay-divergent" } });
-      assert.deepEqual(f.service.relaunch({ ...relaunch, archiveFingerprint: HASH_A }, personLookupDescriptor),
-        { state: "refused", refusal: { reason: "replay-divergent" } });
-      assert.deepEqual(f.service.relaunch({ ...relaunch, create: { ...create, priority: "interactive" } }, personLookupDescriptor),
-        { state: "refused", refusal: { reason: "replay-divergent" } });
-      assert.equal(f.database.getMeta().authorityGeneration, generation);
-      const fingerprints = [relaunch.commandId, deletion.commandId].map((commandId) => {
-        const journal = f.database.authority.lifecycleJournal.getCommand(commandId);
-        assert.ok(journal && "requestFingerprint" in journal);
-        assert.equal(JSON.stringify(journal).includes(archived.contentDigest), false);
-        assert.equal(JSON.stringify(journal).includes(emplId), false);
-        return journal.requestFingerprint;
-      });
-      return { fingerprints, privateDigest: archived.contentDigest };
-    };
-    const first = exercise("10812345");
-    const rotated = exercise("10854321");
-    assert.notEqual(first.privateDigest, rotated.privateDigest);
-    assert.deepEqual(first.fingerprints, rotated.fingerprints);
-  });
 
-  it("binds protected input identity and safe facts across create and archive journals", () => {
+  it("binds protected input identity and safe facts in current create journals", () => {
     const journals = (emplId: string, memo = "ordinary fact", sourceId = "10000000-0000-4000-8000-000000000001") => {
-      const f = fixture(undefined, undefined, true);
+      const f = fixture();
       const request = { ...f.request, input: { ...f.request.input, raw: { emplId, memo },
         parsed: { ...f.request.input.parsed, value: { emplId, memo }, protectedBindings: [{
           kind: "test-data-local" as const, inputPath: "emplId" as const, name: "personLookupCanaryEid" as const, sourceId }] } } };
@@ -198,8 +110,10 @@ describe("protected canonical command fingerprints", () => {
       const terminal = requireLifecycleApplied(f.service.transition({ commandId: UUID_5,
         runId: run.envelope.runId, expectedVersion: run.version,
         lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }));
-      archiveRun(f.service, f.database, terminal, UUID_6);
-      return [request.commandId, UUID_6].map((commandId) => {
+      const deletion={runId:terminal.envelope.runId,expectedVersion:terminal.version,commandId:UUID_6};
+      assert.equal(f.service.delete(deletion).state,"deleted");
+      assert.equal(f.service.delete(deletion).state,"applied-already");
+      return [request.commandId].map((commandId) => {
         const journal = f.database.authority.lifecycleJournal.getCommand(commandId);
         assert.ok(journal && "requestFingerprint" in journal);
         return journal.requestFingerprint;
@@ -215,89 +129,6 @@ describe("protected canonical command fingerprints", () => {
     });
   });
 });
-
-function archivedRecord(run: RunRecord) {
-  if (run.lifecycle.state !== "terminal") throw new Error("archive fixture requires a terminal run");
-  const { contentDigest: _digest, ...template } = ARCHIVED_RUN;
-  const status = run.lifecycle.outcome === "interrupted" ? "blocked"
-    : run.lifecycle.outcome === "failed" ? "failed"
-      : run.lifecycle.outcome === "done" ? "done" : "cancelled";
-  const detailOutcome = run.lifecycle.outcome === "interrupted"
-    ? { state: "absent" as const, reason: "run interrupted; ref write-safety recovery will requeue or settle it" }
-    : {
-        state: "terminal" as const,
-        result: run.lifecycle.outcome === "done" ? run.envelope.dryRun ? "partial" as const : "verified-done" as const
-          : run.lifecycle.outcome === "failed" ? "failed" as const : "cancelled" as const,
-        completedAt: run.lifecycle.endedAt,
-        ...(run.lifecycle.outcome === "done" && run.envelope.dryRun ? { rehearsal: true as const } : {}),
-      };
-  const content = ArchivedRunContentSchema.parse({
-    ...template,
-    runId: run.envelope.runId,
-    workflowId: run.envelope.workflow,
-    traceId: run.envelope.traceId,
-    archivedIdentity: {
-      workflowId: run.envelope.workflow,
-      descriptorVersion: run.envelope.descriptorVersion,
-      contractFingerprint: run.envelope.contractFingerprint,
-    },
-    input: run.input,
-    row: {
-      ...template.row,
-      runId: run.envelope.runId,
-      itemId: run.envelope.itemId,
-      workflowId: run.envelope.workflow,
-      traceId: run.envelope.traceId,
-      attempt: run.envelope.attempt,
-      descriptorVersion: run.envelope.descriptorVersion,
-      descriptorHash: run.envelope.contractFingerprint,
-      configFingerprint: run.envelope.configFingerprint,
-      dryRun: run.envelope.dryRun,
-      priority: run.envelope.priority,
-      runNumber: run.runNumber === undefined
-        ? { state: "absent", reason: "historical run had no ordinal" }
-        : { state: "present", value: run.runNumber },
-      rowRevision: run.version,
-      status,
-      endedAt: { state: "present", value: run.lifecycle.endedAt },
-    },
-    detail: {
-      ...template.detail,
-      runId: run.envelope.runId,
-      rowRevision: run.version,
-      header: {
-        ...template.detail.header,
-        runId: run.envelope.runId,
-        traceId: run.envelope.traceId,
-        workflowId: run.envelope.workflow,
-        status,
-        attempt: run.envelope.attempt,
-      },
-      outcome: detailOutcome,
-    },
-  });
-  return ArchivedRunRecordSchema.parse({
-    ...content,
-    contentDigest: archivedRunContentDigest(content),
-  });
-}
-
-function archiveRun(service: RunRecordService, database: AuthorityDatabase, run: RunRecord, commandId: string, historicalDigest = false) {
-  database.authority.versionPlans.insert(VERSION_PLAN_ROW);
-  database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
-    ...VERSION_BUMP_APPLICATION,
-    archivedRunIds: [run.envelope.runId],
-  }));
-  const archive = archivedRecord(run);
-  if (historicalDigest) {
-    const { contentDigest: _contentDigest, ...content } = archive;
-    archive.contentDigest = FingerprintSchema.parse(sha256Hex(`hrauto:archived-run:v1\0${canonicalJsonStringify(content)}`));
-  }
-  const outcome = service.archive({ commandId, expectedVersion: run.version, archive });
-  assert.equal(outcome.state, "applied");
-  if (outcome.state !== "applied") throw new Error("archive refused");
-  return { archive, run: outcome.run };
-}
 
 function runningRun(service: RunRecordService, request: CreateRunRequest, runtimeConfig: unknown) {
   const run = created(service, {
@@ -392,6 +223,7 @@ function lifecycleCommand(
     kind: "run-lifecycle",
     commandId,
     operation,
+    request: fingerprintInput,
     requestFingerprint: sha256Hex(
       `hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(fingerprintInput)}`,
     ),
@@ -423,74 +255,6 @@ function raceConnection(data: unknown) {
 }
 
 describe("canonical run-record service", () => {
-  it("stamps the published workflow minor version on later runs while leaving other workflows at 1.0", () => {
-    const { service, request, database } = fixture();
-    const baseline = database.registerRuntimeVersionWorkflows([WORKFLOW_ID, "other-workflow"]);
-    const scope = { kind: "workflows" as const, workflowIds: [WORKFLOW_ID] };
-    const planned = planRuntimeVersionTransition(baseline.state, scope);
-    const review = database.reviewRuntimeVersionTransition(scope);
-    const changeId = "10000000-0000-4000-8000-000000000097";
-    const claimed = database.claimRuntimeVersionTransition({ changeId, expectedRevision: baseline.revision,
-      workflowIds: planned.affectedWorkflowIds, after: planned.after, expectedMembershipDigest: review.review.membershipDigest });
-    database.publishRuntimeVersionTransition({ changeId, expectedRevision: claimed.revision, next: planned.after });
-    const changed = created(service, request);
-    assert.deepEqual(changed.runtimeVersion, {
-      dashboard: { major: 1, minor: 0 }, workflow: { major: 1, minor: 1 },
-    });
-    const other = created(service, { ...request, commandId: UUID_6, workflow: "other-workflow" });
-    assert.deepEqual(other.runtimeVersion, {
-      dashboard: { major: 1, minor: 0 }, workflow: { major: 1, minor: 0 },
-    });
-  });
-
-  it("stamps new runs and fences only workflows in a claimed version change", () => {
-    const { service, request, database, published } = fixture();
-    const baseline = database.registerRuntimeVersionWorkflows([WORKFLOW_ID, "other-workflow"]);
-    const first = created(service, request);
-    assert.deepEqual(first.runtimeVersion, {
-      dashboard: { major: 1, minor: 0 }, workflow: { major: 1, minor: 0 },
-    });
-    const planned = planRuntimeVersionTransition(baseline.state, {
-      kind: "workflows", workflowIds: [WORKFLOW_ID],
-    });
-    const blockedReview = database.reviewRuntimeVersionTransition({ kind: "workflows", workflowIds: [WORKFLOW_ID] });
-    assert.deepEqual(blockedReview.review.blockers.map(row => row.runId), [first.envelope.runId]);
-    assert.throws(() => database.claimRuntimeVersionTransition({
-      changeId: "10000000-0000-4000-8000-000000000099",
-      expectedRevision: baseline.revision,
-      workflowIds: planned.affectedWorkflowIds,
-      after: planned.after,
-      expectedMembershipDigest: blockedReview.review.membershipDigest,
-    }), /active-blockers/u);
-    const terminal = service.transition({ commandId: UUID_5, runId: first.envelope.runId,
-      expectedVersion: first.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
-    assert.equal(terminal.state, "applied");
-    const review = database.reviewRuntimeVersionTransition({ kind: "workflows", workflowIds: [WORKFLOW_ID] });
-    assert.deepEqual(review.review.candidates.map(row => row.runId), [first.envelope.runId]);
-    assert.throws(() => database.claimRuntimeVersionTransition({
-      changeId: "10000000-0000-4000-8000-000000000099",
-      expectedRevision: baseline.revision,
-      workflowIds: planned.affectedWorkflowIds,
-      after: planned.after,
-      expectedMembershipDigest: blockedReview.review.membershipDigest,
-    }), /review-stale/u);
-    database.claimRuntimeVersionTransition({
-      changeId: "10000000-0000-4000-8000-000000000099",
-      expectedRevision: baseline.revision,
-      workflowIds: planned.affectedWorkflowIds,
-      after: planned.after,
-      expectedMembershipDigest: review.review.membershipDigest,
-    });
-    const before = database.getMeta().authorityGeneration;
-    assert.deepEqual(service.create({ ...request, commandId: "10000000-0000-4000-8000-000000000098" }),
-      { state: "refused", refusal: { reason: "policy-refused" } });
-    assert.equal(database.getMeta().authorityGeneration, before);
-    assert.equal(published.length, 1);
-    const other = created(service, { ...request, commandId: UUID_6, workflow: "other-workflow" });
-    assert.deepEqual(other.runtimeVersion, first.runtimeVersion);
-    assert.equal(published.length, 2);
-    assert.equal(service.read(first.envelope.runId).state, "present");
-  });
 
   it("#1 reserves distinct monotonically increasing item and workflow ordinals", () => {
     const { service, request, database, published } = fixture();
@@ -688,18 +452,6 @@ describe("canonical run-record service", () => {
     assert.equal(renewed.run.lifecycle.state, "claimed");
   });
 
-  it("permits archived source deletion while relaunch lineage remains", () => {
-    const { root } = fixture();
-    const raw = new DatabaseSync(join(root, "state.db"), { readOnly: true });
-    try {
-      const rows = z.array(z.strictObject({ id: z.number(), seq: z.number(), table: z.string(),
-        from: z.string(), to: z.string(), on_update: z.string(), on_delete: z.string(), match: z.string(),
-      })).parse(raw.prepare("PRAGMA foreign_key_list(archive_relaunches)").all());
-      assert.deepEqual(rows.filter((row) => row.from === "archived_run_id"), [],
-        "archived source removal retains descendant lineage; the source FK prevents it");
-    } finally { raw.close(); }
-  });
-
   it("#5 a generation advance refuses the next claim without invalidating the held claim", () => {
     const { service, request, runtimeConfig, database, clock } = fixture();
     const run = created(service, request);
@@ -845,85 +597,6 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("re-enqueues an operator-confirmed-absent write at its mandatory continuation node", () => {
-    const { service, request, runtimeConfig } = fixture();
-    const running = runningRun(service, request, runtimeConfig);
-    const parked = service.workerTransition({
-      commandId: "83000000-0000-4000-8000-000000000009",
-      runId: running.envelope.runId,
-      claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      lifecycle: {
-        state: "parked-write",
-        writeIntentId: "83000000-0000-4000-8000-000000000099",
-        intentGeneration: 1,
-        parkedAt: NOW,
-        code: "operator-required",
-        message: "check whether the external write landed",
-      },
-    });
-    assert.equal(parked.state, "applied");
-    if (parked.state !== "applied") throw new Error("write park refused");
-
-    const resumed = service.transition({
-      commandId: "83000000-0000-4000-8000-000000000010",
-      runId: running.envelope.runId,
-      expectedVersion: parked.run.version,
-      lifecycle: { state: "queued" },
-      writeResolution: "resolve-write-absent",
-      startAt: "commit-person",
-    });
-
-    assert.equal(resumed.state, "applied");
-    if (resumed.state !== "applied") throw new Error("confirmed-absent resume refused");
-    assert.equal(resumed.run.lifecycle.state, "queued");
-    assert.equal(resumed.run.envelope.startAt, "commit-person");
-    assert.equal(resumed.run.version, parked.run.version + 1);
-  });
-
-  it("re-enqueues an operator-confirmed-present write at its mandatory continuation node", () => {
-    const { service, request, runtimeConfig } = fixture();
-    const running = runningRun(service, request, runtimeConfig);
-    const parked = service.workerTransition({
-      commandId: "83000000-0000-4000-8000-000000000011",
-      runId: running.envelope.runId,
-      claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      lifecycle: {
-        state: "parked-write",
-        writeIntentId: "83000000-0000-4000-8000-000000000098",
-        intentGeneration: 1,
-        parkedAt: NOW,
-        code: "operator-required",
-        message: "check whether the external write landed",
-      },
-    });
-    assert.equal(parked.state, "applied");
-    if (parked.state !== "applied") throw new Error("write park refused");
-    const resolution = {
-      commandId: "83000000-0000-4000-8000-000000000012",
-      runId: running.envelope.runId,
-      expectedVersion: parked.run.version,
-      lifecycle: { state: "queued" as const },
-      writeResolution: "resolve-write-present" as const,
-      startAt: "verify-person",
-    };
-
-    const resumed = service.transition(resolution);
-
-    assert.equal(resumed.state, "applied");
-    if (resumed.state !== "applied") throw new Error("confirmed-present resume refused");
-    assert.equal(resumed.run.lifecycle.state, "queued");
-    assert.equal(resumed.run.envelope.startAt, "verify-person");
-    assert.equal(resumed.run.version, parked.run.version + 1);
-    const replay = service.transition(resolution);
-    assert.equal(replay.state, "applied-already");
-    if (replay.state !== "applied-already" || !("run" in replay)) throw new Error("write resolution did not replay");
-    assert.equal(replay.run.version, resumed.run.version);
-    assert.deepEqual(service.transition({ ...resolution, startAt: "commit-person" }), {
-      state: "refused",
-      refusal: { reason: "replay-divergent" },
-    });
-  });
-
   it("refuses to re-enqueue a parked write without a resolution continuation", () => {
     const { service, request, runtimeConfig, database } = fixture();
     const running = runningRun(service, request, runtimeConfig);
@@ -1000,7 +673,11 @@ describe("canonical run-record service", () => {
     if (applied.state !== "applied") throw new Error("terminalize refused");
     assert.equal(applied.run.version, running.version + 1);
     assert.equal(normal.database.authority.failures.listByRun(running.envelope.runId).length, 1);
-    assert.equal(normal.database.authority.runResults.get(running.envelope.runId), undefined);
+    const evidence=normal.database.authority.runResults.get(running.envelope.runId);
+    assert.ok(evidence);
+    assert.equal(evidence.runId,running.envelope.runId);
+    const persistedFailure=normal.database.authority.failures.get(UUID_6);assert.ok(persistedFailure);
+    assert.deepEqual(evidence.result.value,{kind:"failed-evidence",authorization:request.terminal.authorization,failureDigest:deriveTerminalFailureDigest(persistedFailure)});
     assert.ok(normal.database.authority.runs.get(running.envelope.runId)?.completion);
     const replayGeneration = normal.database.getMeta().authorityGeneration;
     const replay = normal.service.terminalize(request, personLookupDescriptor);
@@ -1157,7 +834,8 @@ describe("canonical run-record service", () => {
 
   it("#10 journals only request commitments and returns the current version on exact replay", () => {
     const { service, request, database } = fixture();
-    const run = created(service, request);
+    const protectedRequest={...request,input:{...request.input,parsed:{...request.input.parsed,protectedBindings:[{kind:"test-data-local" as const,inputPath:"emplId" as const,name:"personLookupCanaryEid" as const,sourceId:UUID_6}]}}};
+    const run = created(service, protectedRequest);
     const first = service.transition({
       commandId: "85000000-0000-4000-8000-000000000001",
       runId: run.envelope.runId,
@@ -1230,14 +908,14 @@ describe("canonical run-record service", () => {
     try {
       auditOnlySqlite.exec("PRAGMA foreign_keys = OFF");
       auditOnlySqlite.prepare(`
-        INSERT INTO command_audits (record_key, command_id, record_json, created_at)
+        INSERT INTO command_audits (id, command_id, payload_json, created_at)
         VALUES (?, ?, ?, ?)
       `).run(audit.auditId, audit.request.commandId, canonicalJsonStringify(audit), audit.completedAt);
     } finally {
       auditOnlySqlite.close();
     }
     const auditOnlyGeneration = auditOnly.database.getMeta().authorityGeneration;
-    assert.throws(() => auditOnly.service.create(auditOnly.request), /has an audit without its command/u);
+    assert.throws(() => auditOnly.service.create(auditOnly.request), /command-audit-settlement-mismatch/u);
     assert.equal(auditOnly.database.getMeta().authorityGeneration, auditOnlyGeneration);
 
     const mismatched = fixture();
@@ -1247,7 +925,8 @@ describe("canonical run-record service", () => {
       operation: "claim-next",
       requestFingerprint: HASH_A,
     });
-    mismatched.database.withAuthorityTransaction(({ lifecycleJournal }) => {
+    const mismatchedGeneration = mismatched.database.getMeta().authorityGeneration;
+    assert.throws(()=>mismatched.database.withAuthorityTransaction(({ lifecycleJournal }) => {
       lifecycleJournal.insertCommand(matchedCommand);
       lifecycleJournal.insertAudit({
         kind: "run-lifecycle",
@@ -1256,9 +935,9 @@ describe("canonical run-record service", () => {
         result: { kind: "run", runId: UUID_5, appliedVersion: 1 },
         completedAt: NOW,
       });
-    });
-    const mismatchedGeneration = mismatched.database.getMeta().authorityGeneration;
-    assert.throws(() => mismatched.service.create(mismatched.request), /has a mismatched audit/u);
+    }),/command-audit-request-mismatch/u);
+    assert.equal(mismatched.database.authority.lifecycleJournal.getCommand(matchedCommand.commandId),undefined);
+    assert.equal(mismatched.database.authority.lifecycleJournal.findAuditByCommand(matchedCommand.commandId),undefined);
     assert.equal(mismatched.database.getMeta().authorityGeneration, mismatchedGeneration);
   });
 
@@ -1351,7 +1030,7 @@ describe("canonical run-record service", () => {
     const running = runningRun(f.service, f.request, f.runtimeConfig);
     const raw = new DatabaseSync(join(f.root, "state.db"));
     try {
-      raw.exec("CREATE TRIGGER injected_gate_event BEFORE INSERT ON timeline_events WHEN json_extract(NEW.record_json, '$.payload.event.t') = 'gate.opened' BEGIN SELECT RAISE(ABORT, 'injected gate event'); END");
+      raw.exec("CREATE TRIGGER injected_gate_event BEFORE INSERT ON timeline_events WHEN json_extract(NEW.payload_json, '$.payload.event.t') = 'gate.opened' BEGIN SELECT RAISE(ABORT, 'injected gate event'); END");
       const before = f.database.getMeta();
       const events = f.database.authority.timelineEvents.page({});
       const commandId = "83000000-0000-4000-8000-000000000007";
@@ -1476,155 +1155,9 @@ describe("canonical run-record service", () => {
     }).length, 1);
   });
 
-  it("preserves historical relaunch replay and lineage when the archived source is deleted", () => {
-    const { service, request, database, runtimeConfig } = fixture(undefined, undefined, true);
-    const source = created(service, {
-      ...request,
-      descriptorVersion: personLookupDescriptor.version,
-      contractFingerprint: personLookupDescriptor.contractFingerprint,
-    });
-    const terminal = service.transition({
-      commandId: "81000000-0000-4000-8000-000000000001",
-      runId: source.envelope.runId,
-      expectedVersion: source.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    assert.equal(terminal.state, "applied");
-    if (terminal.state !== "applied") throw new Error("terminal transition refused");
-    const archived = archiveRun(
-      service,
-      database,
-      terminal.run,
-      "81000000-0000-4000-8000-000000000002",
-    );
-    const archivedBytes = database.authority.archivedRuns.get(source.envelope.runId);
-    assert.ok(archivedBytes !== undefined);
-    const generation = database.getMeta().authorityGeneration;
-    assert.equal(service.archive({
-      commandId: "81000000-0000-4000-8000-000000000003",
-      expectedVersion: terminal.run.version,
-      archive: archived.archive,
-    }).state, "applied-already");
-    assert.equal(database.getMeta().authorityGeneration, generation);
-    assert.deepEqual(database.authority.archivedRuns.get(source.envelope.runId), archivedBytes);
-    const { contentDigest: _originalDigest, ...originalArchiveContent } = archived.archive;
-    const changedArchiveContent = ArchivedRunContentSchema.parse({
-      ...originalArchiveContent, archivedAt: "2026-01-02T00:00:00.000Z",
-    });
-    assert.deepEqual(service.archive({
-      commandId: "81000000-0000-4000-8000-000000000004",
-      expectedVersion: terminal.run.version,
-      archive: { ...changedArchiveContent, contentDigest: archivedRunContentDigest(changedArchiveContent) },
-    }), { state: "refused", refusal: { reason: "already-archived" } });
-    assert.deepEqual(database.authority.archivedRuns.get(source.envelope.runId), archivedBytes);
-
-    const { commandId: _createCommandId, ...relaunchCreate } = {
-      ...request,
-      descriptorVersion: personLookupDescriptor.version,
-      contractFingerprint: personLookupDescriptor.contractFingerprint,
-      runtimeConfig,
-    };
-    const mismatchGeneration = database.getMeta().authorityGeneration;
-    assert.deepEqual(service.relaunch({
-      commandId: "81000000-0000-4000-8000-000000000005",
-      archivedRunId: source.envelope.runId,
-      archiveFingerprint: HASH_A,
-      relaunchedBy: "local-operator",
-      create: relaunchCreate,
-    }, personLookupDescriptor), {
-      state: "refused",
-      refusal: { reason: "invalid-state" },
-    });
-    assert.equal(database.getMeta().authorityGeneration, mismatchGeneration);
-
-    const relaunched = historicalRelaunch(service, database, {
-      commandId: "81000000-0000-4000-8000-000000000006",
-      archivedRunId: source.envelope.runId,
-      archiveFingerprint: archivedRunReferenceFingerprint(archived.archive),
-      relaunchedBy: "local-operator",
-      create: relaunchCreate,
-    });
-    assert.equal(relaunched.state, "applied");
-    if (relaunched.state !== "applied") throw new Error("relaunch refused");
-    assert.equal(relaunched.run.envelope.retryOf, undefined);
-    assert.equal(relaunched.run.envelope.itemId, source.envelope.itemId);
-    assert.equal("archiveRelaunches" in database.authority, false);
-    assert.ok(database.authority.runs.get(relaunched.run.envelope.runId));
-
-    const wrongDeleteGeneration = database.getMeta().authorityGeneration;
-    assert.deepEqual(service.deleteArchived({
-      commandId: "81000000-0000-4000-8000-000000000007",
-      runId: source.envelope.runId,
-      archiveFingerprint: HASH_A,
-    }), { state: "refused", refusal: { reason: "schema-mismatch", digest: HASH_A } });
-    assert.equal(database.getMeta().authorityGeneration, wrongDeleteGeneration);
-    const deleteRequest = {
-      commandId: "81000000-0000-4000-8000-000000000008",
-      runId: source.envelope.runId,
-      archiveFingerprint: archivedRunReferenceFingerprint(archived.archive),
-    };
-    assert.equal(service.deleteArchived(deleteRequest).state, "deleted");
-    assert.equal(service.read(source.envelope.runId).state, "deleted");
-    assert.equal(service.deleteArchived(deleteRequest).state, "applied-already");
-    assert.deepEqual(service.deleteArchived({
-      ...deleteRequest,
-      commandId: "81000000-0000-4000-8000-000000000011",
-    }), { state: "refused", refusal: { reason: "tombstoned" } });
-    assert.ok(database.authority.runs.get(relaunched.run.envelope.runId));
-
-    const relaunchedTerminal = service.transition({
-      commandId: "81000000-0000-4000-8000-000000000009",
-      runId: relaunched.run.envelope.runId,
-      expectedVersion: relaunched.run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    assert.equal(relaunchedTerminal.state, "applied");
-    if (relaunchedTerminal.state !== "applied") throw new Error("relaunch settle refused");
-    assert.equal(service.delete({
-      commandId: "81000000-0000-4000-8000-000000000010",
-      runId: relaunched.run.envelope.runId,
-      expectedVersion: relaunchedTerminal.run.version,
-    }).state, "deleted");
-    const replayedRelaunch = service.relaunch({
-      commandId: "81000000-0000-4000-8000-000000000006",
-      archivedRunId: source.envelope.runId,
-      archiveFingerprint: archivedRunReferenceFingerprint(archived.archive),
-      relaunchedBy: "local-operator",
-      create: relaunchCreate,
-    }, personLookupDescriptor);
-    assert.equal(replayedRelaunch.state, "applied-already");
-    assert.ok("tombstone" in replayedRelaunch);
-    if (!("tombstone" in replayedRelaunch)) throw new Error("relaunch replay lost the deleted target tombstone");
-    assert.equal(replayedRelaunch.tombstone.runId, relaunched.run.envelope.runId);
-    assert.equal(replayedRelaunch.appliedVersion, relaunched.run.version);
-    assert.equal("archiveRelaunches" in database.authority, false);
-    assert.deepEqual(service.read("81000000-0000-4000-8000-000000000099"), {
-      state: "absent",
-      runId: "81000000-0000-4000-8000-000000000099",
-    });
-  });
-
   it("#20 returns every closed existence arm", () => {
-    const { service, request, database } = fixture(undefined, undefined, true);
+    const { service, request } = fixture();
     const live = created(service, request);
-    const archiveSource = created(service, {
-      ...request,
-      commandId: "88000000-0000-4000-8000-000000000001",
-      matchKey: "existence-archived",
-    });
-    const archiveTerminal = service.transition({
-      commandId: "88000000-0000-4000-8000-000000000002",
-      runId: archiveSource.envelope.runId,
-      expectedVersion: archiveSource.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    if (archiveTerminal.state !== "applied") throw new Error("existence archive setup refused");
-    const archived = archiveRun(
-      service,
-      database,
-      archiveTerminal.run,
-      "88000000-0000-4000-8000-000000000003",
-    );
     const deletedSource = created(service, {
       ...request,
       commandId: "88000000-0000-4000-8000-000000000004",
@@ -1651,11 +1184,6 @@ describe("canonical run-record service", () => {
       runId: "88000000-0000-4000-8000-000000000099",
     });
     assert.deepEqual(service.read(live.envelope.runId), { state: "present", disposition: "live", run: live });
-    assert.deepEqual(service.read(archiveSource.envelope.runId), {
-      state: "present",
-      disposition: "archived",
-      run: archived.run,
-    });
     assert.deepEqual(service.read(deletedSource.envelope.runId), { state: "deleted", tombstone });
   });
 
@@ -1712,14 +1240,11 @@ describe("canonical run-record service", () => {
     if (outcome.state !== "deleted" || !("tombstones" in outcome)) throw new Error("tree delete refused");
     assert.deepEqual(outcome.tombstones.map((entry) => entry.runId),
       [...members.map((member) => member.envelope.runId), anchor.envelope.runId]);
-    assert.deepEqual(deleteSteps, [...members, anchor].flatMap((run) => [
-      { runId: run.envelope.runId, step: "tombstone" },
-      { runId: run.envelope.runId, step: "cascade-complete" },
-      { runId: run.envelope.runId, step: "tally-settled" },
-    ]));
+    const deletionOrder=["tombstone","delegation_dependencies","run_delegations","diagnostic_files","diagnostic_snapshots","run_receipts","run_results","run_failures","timeline_events","gate_results","run_checkpoints","dryrun_results","run_search","runs","cascade-complete"];
+    assert.deepEqual(deleteSteps, [...members, anchor].flatMap(run=>deletionOrder.map(step=>({runId:run.envelope.runId,step}))));
     for (const tombstone of outcome.tombstones) {
       assert.deepEqual(database.authority.deletedRuns.get(tombstone.runId), tombstone);
-      assert.deepEqual(tombstone.removed, [{ table: "timeline_events", rows: 2 }, { table: "workflow_runs", rows: 1 }]);
+      assert.deepEqual(tombstone.removed, [{ table: "run_results", rows: 1 }, { table: "timeline_events", rows: 2 }, { table: "run_search", rows: 1 }, { table: "runs", rows: 1 }]);
       assert.equal(tombstone.tallyVersion, 3);
     }
     assert.equal(database.getMeta().authorityGeneration, beforeDelete + 1);
@@ -1867,7 +1392,7 @@ describe("canonical run-record service", () => {
     assert.deepEqual(database.authority.gateResults.listByRun(source.envelope.runId), []);
     assert.deepEqual(database.authority.gateResults.listByRun(peer.envelope.runId), [peerGate]);
     assert.deepEqual(database.authority.deletedRuns.get(source.envelope.runId)?.removed
-      .filter((entry) => entry.table === "checkpoint_payloads"), [{ table: "checkpoint_payloads", rows: 1 }]);
+      .filter((entry) => entry.table === "gate_results"), [{ table: "gate_results", rows: 1 }]);
     assert.equal(service.transition({
       commandId: "e0000000-0000-4000-8000-000000000003",
       runId: source.envelope.runId,
@@ -1893,41 +1418,6 @@ describe("canonical run-record service", () => {
     assert.equal(service.read(run.envelope.runId).state, "deleted");
   });
 
-  it("reads historical NULL ordinals without inventing a spent value", () => {
-    const { service, request, database, root } = fixture();
-
-    const run = created(service, request);
-    service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
-    const historical = {
-      runId: run.envelope.runId, workflow: WORKFLOW_ID, traceId: run.envelope.traceId,
-      origin: "queue", commandId: UUID_1, deletedAt: NOW, removed: [{ table: "workflow_runs", rows: 1 }],
-    };
-    const raw = new DatabaseSync(join(root, "state.db"));
-    try {
-      raw.prepare(`INSERT INTO deleted_runs
-        (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
-         item_id, attempt, run_number, ordinal_source)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 'unknown')`)
-        .run(historical.runId, WORKFLOW_ID, historical.traceId, "queue", UUID_1, NOW, JSON.stringify(historical), NOW);
-      raw.prepare("DELETE FROM timeline_events WHERE run_id = ?").run(historical.runId);
-      raw.prepare("DELETE FROM workflow_runs WHERE record_key = ?").run(historical.runId);
-    } finally { raw.close(); }
-    const before = database.getMeta().authorityGeneration;
-    const answer = service.read(historical.runId);
-    assert.equal(answer.state, "deleted");
-    if (answer.state !== "deleted") throw new Error("historical tombstone did not read forward");
-    assert.equal(answer.tombstone.attempt, null);
-    assert.equal(answer.tombstone.runNumber, null);
-    assert.equal(answer.tombstone.itemId, null);
-    assert.equal(answer.tombstone.ordinalSource, "unknown");
-    assert.equal(database.getMeta().authorityGeneration, before);
-    const next = created(service, { ...request, commandId: "f0000000-0000-4000-8000-000000000003" });
-    assert.equal(next.envelope.attempt, 1);
-    assert.equal(next.runNumber, 1);
-    assert.deepEqual(service.read(historical.runId), answer);
-  });
-
   it("#17 session membership alone permits deletion and preserves the session", () => {
     const { service, request, database } = fixture();
     database.authority.runSessions.insert(RUN_SESSION);
@@ -1950,14 +1440,14 @@ describe("canonical run-record service", () => {
     const countTasks = () => {
       const sqlite = new DatabaseSync(authorityPath, { readOnly: true });
       try {
-        return (sqlite.prepare("SELECT count(*) AS count FROM workflow_runs").get() as { count: number }).count;
+        return (sqlite.prepare("SELECT count(*) AS count FROM runs").get() as { count: number }).count;
       } finally {
         sqlite.close();
       }
     };
     assert.equal(countTasks(), 0);
     assert.deepEqual(service.read(runId), { state: "absent", runId });
-    createSpanJsonlWriter({ stateRoot: root, clock, pid: 4242 }).emit({
+    writeFileSync(join(root,"unowned-span.jsonl"),JSON.stringify({
       t: "run.queued", kind: "run", ts: NOW,
       workflow: request.workflow, runId, attempt: 1, traceId, spanPath: traceId,
       itemId: UUID_6, shape: request.shape, priority: request.priority, dryRun: request.dryRun,
@@ -1967,7 +1457,7 @@ describe("canonical run-record service", () => {
       resolvedInstance: request.resolvedInstance,
       configFingerprint: request.configFingerprint,
       configSnapshotId: request.configSnapshotId,
-    });
+    })+"\n");
     const doctor = await doctorAuthorityStorage({
       stateRootTrustAnchor: root,
       stateRoot: root,
@@ -1982,7 +1472,7 @@ describe("canonical run-record service", () => {
   });
 
   it("table-class coverage drives every public service method and generation class", () => {
-    const { service, request, runtimeConfig, database } = fixture(undefined, undefined, true);
+    const { service, request, runtimeConfig, database } = fixture();
     const covered = new Set<string>();
     let commandSequence = 100;
     const commandId = () => `99000000-0000-4000-8000-${String(commandSequence++).padStart(12, "0")}`;
@@ -2004,7 +1494,6 @@ describe("canonical run-record service", () => {
     const source = sourceResult.run;
     assert.deepEqual(measure("withRunTreeSnapshot", 0, () => service.withRunTreeSnapshot([source.envelope.runId], runs => runs.map(run => run.envelope.runId))), [source.envelope.runId]);
     measure("read", 0, () => service.read(source.envelope.runId));
-    assert.ok(measure("lifecycleStorage", 0, () => service.lifecycleStorage()));
     measure("list", 0, () => service.list({ disposition: "live", limit: 10 }));
     const terminal = measure("transition", 1, () => service.transition({
       commandId: commandId(), runId: source.envelope.runId, expectedVersion: source.version,
@@ -2031,37 +1520,6 @@ describe("canonical run-record service", () => {
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
     });
     if (settledRestart.state !== "applied") throw new Error("coverage restart setup refused");
-
-    database.authority.versionPlans.insert(VERSION_PLAN_ROW);
-    database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
-      ...VERSION_BUMP_APPLICATION,
-      archivedRunIds: [source.envelope.runId],
-    }));
-    const archive = archivedRecord(terminal.run);
-    const archived = measure("archive", 1, () => service.archive({
-      commandId: commandId(), expectedVersion: terminal.run.version, archive,
-    }));
-    if (archived.state !== "applied") throw new Error("coverage archive refused");
-    const { commandId: _ignored, ...relaunchCreate } = {
-      ...request,
-      descriptorVersion: personLookupDescriptor.version,
-      contractFingerprint: personLookupDescriptor.contractFingerprint,
-    };
-    const historicalRequest = { commandId: commandId(), archivedRunId: source.envelope.runId,
-      archiveFingerprint: archivedRunReferenceFingerprint(archive), relaunchedBy: "local-operator", create: relaunchCreate };
-    const relaunched = historicalRelaunch(service, database, historicalRequest);
-    assert.equal(measure("relaunch", 0, () => service.relaunch(historicalRequest, personLookupDescriptor)).state, "applied-already");
-    if (relaunched.state !== "applied") throw new Error("coverage relaunch refused");
-    const settledRelaunch = service.transition({
-      commandId: commandId(), runId: relaunched.run.envelope.runId,
-      expectedVersion: relaunched.run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    if (settledRelaunch.state !== "applied") throw new Error("coverage delete setup refused");
-    const deletedArchive = measure("deleteArchived", 1, () => service.deleteArchived({
-      commandId: commandId(), runId: source.envelope.runId, archiveFingerprint: archivedRunReferenceFingerprint(archive),
-    }));
-    assert.equal(deletedArchive.state, "deleted");
 
     const workerRun = created(service, {
       ...request,
@@ -2118,8 +1576,8 @@ describe("canonical run-record service", () => {
     if (requeued.state !== "applied") throw new Error("coverage requeue refused");
 
     const deleted = measure("delete", 1, () => service.delete({
-      commandId: commandId(), runId: relaunched.run.envelope.runId,
-      expectedVersion: settledRelaunch.run.version,
+      commandId: commandId(), runId: source.envelope.runId,
+      expectedVersion: terminal.run.version,
     }));
     assert.equal(deleted.state, "deleted");
     const purged = measure("purge", 1, () => service.purge({
@@ -2293,45 +1751,41 @@ it("competing connections cannot accept conflicting failure settlements", async 
 });
 
 
-describe("F repaired settings selection", () => {
-  for (const operation of ["retry", "restart"] as const) {
-    it(`${operation} selects active settings and preserves source and journal replay`, () => {
-      const f = fixture();
-      const source = created(f.service, { ...f.request,
-        contractFingerprint: personLookupDescriptor.contractFingerprint });
-      const terminal = requireLifecycleApplied(f.service.transition({ commandId: UUID_5,
-        runId: source.envelope.runId, expectedVersion: source.version,
-        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }));
-      f.database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT,
-        configSnapshotId: UUID_6, fingerprint: HASH_C });
-      f.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
-        configSnapshotId: UUID_6, configFingerprint: HASH_C, activatedAt: NOW });
-      const request = { commandId: "83000000-0000-4000-8000-000000000091",
-        runId: terminal.envelope.runId, expectedVersion: terminal.version,
-        runtimeConfig: selectRunRuntime(f.database.authority) };
-      const next = requireLifecycleApplied(f.service[operation](request, personLookupDescriptor));
-      assert.equal(next.envelope.configSnapshotId, UUID_6);
-      assert.equal(next.envelope.configFingerprint, HASH_C);
-      assert.deepEqual(next.input, terminal.input);
-      assert.deepEqual(f.database.authority.runs.get(terminal.envelope.runId), terminal);
-      f.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
-        configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
-      assert.deepEqual(requireLifecycleApplied(f.service[operation](request, personLookupDescriptor)), next);
-    });
-  }
+describe("current settings selection",()=>{
+  for(const operation of ["retry","restart"] as const)it(`${operation} selects active settings and preserves source and journal replay`,()=>{
+    const f=settingsFixture();
+    try{
+      const source=f.create(),terminal=requireLifecycleApplied(f.service.transition({commandId:UUID_5,
+        runId:source.envelope.runId,expectedVersion:source.version,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:NOW}}));
+      assert.equal(f.save({"timeouts.taskMs":{set:90000}}).state,"applied");
+      const selected=f.database.authority.runtimeConfig.get();assert.ok(selected);
+      const request={commandId:"83000000-0000-4000-8000-000000000091",runId:terminal.envelope.runId,
+        expectedVersion:terminal.version,runtimeConfig:selectRunRuntime(f.database.authority)};
+      const next=requireLifecycleApplied(f.service[operation](request,personLookupDescriptor));
+      assert.equal(next.envelope.configSnapshotId,selected.configSnapshotId);
+      assert.equal(next.envelope.configFingerprint,selected.configFingerprint);
+      assert.notEqual(next.envelope.configSnapshotId,terminal.envelope.configSnapshotId);
+      assert.deepEqual(next.input,terminal.input);
+      assert.deepEqual(f.database.authority.runs.get(terminal.envelope.runId),terminal);
+      assert.equal(f.save({"timeouts.taskMs":{clear:true}}).state,"applied");
+      const generation=f.database.getMeta().authorityGeneration;
+      assert.deepEqual(requireLifecycleApplied(f.service[operation](request,personLookupDescriptor)),next);
+      assert.equal(f.database.getMeta().authorityGeneration,generation);
+    }finally{f.close();}
+  });
 });
 
-
-it("F direct creation selects current settings while exact replay retains the original snapshot", () => {
- const f = fixture();
- f.database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT, configSnapshotId: UUID_6, fingerprint: HASH_C });
- f.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
-  configSnapshotId: UUID_6, configFingerprint: HASH_C, activatedAt: NOW });
- const request = { ...f.request, runtimeConfig: selectRunRuntime(f.database.authority) };
- const next = created(f.service, request);
- assert.equal(next.envelope.configSnapshotId, UUID_6);
- assert.equal(next.envelope.configFingerprint, HASH_C);
- f.database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: HASH_A,
-  configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
- assert.deepEqual(requireLifecycleApplied(f.service.create(request)), next);
+it("direct creation selects current settings while exact replay retains the original snapshot",()=>{
+  const f=settingsFixture();
+  try{
+    assert.equal(f.save({"timeouts.taskMs":{set:90000}}).state,"applied");
+    const selected=f.database.authority.runtimeConfig.get();assert.ok(selected);
+    const request=f.request(),next=created(f.service,request);
+    assert.equal(next.envelope.configSnapshotId,selected.configSnapshotId);
+    assert.equal(next.envelope.configFingerprint,selected.configFingerprint);
+    assert.equal(f.save({"timeouts.taskMs":{clear:true}}).state,"applied");
+    const generation=f.database.getMeta().authorityGeneration;
+    assert.deepEqual(requireLifecycleApplied(f.service.create(request)),next);
+    assert.equal(f.database.getMeta().authorityGeneration,generation);
+  }finally{f.close();}
 });

@@ -12,7 +12,7 @@ import { foundationFixture, update, id, NOW } from "../../../../../support/helpe
 
 async function fixture() {
   const f = foundationFixture();
-  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/artifacts")) });
+  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/data/artifacts")) });
   await artifacts.ready;
   const path = join(f.root, "retention.xlsx");
   const make = (db = f.db, fault?: (point: PublicationFaultPoint) => void | Promise<void>, settlementFault?: ArtifactSinkProjectorOptions["fault"], destination = path) => createArtifactSinkProjector({
@@ -177,7 +177,7 @@ describe("G ordered publication and durable intent", () => {
     try {
       const old = await f.seed();
       f.db.authority.artifactOutbox.insert(update(2));
-      const objectPath = join(f.root, ".tracker/artifacts", `${old.ref.sha256}.artifact`);
+      const objectPath = join(f.root, ".tracker/data/artifacts", `${old.ref.sha256}.artifact`);
       const object = readFileSync(objectPath);
       if (damage === "missing") rmSync(objectPath); else writeFileSync(objectPath, "corrupt");
       await assert.rejects(f.make().projectOutbox([id(2)]));
@@ -198,7 +198,7 @@ describe("G ordered publication and durable intent", () => {
       const old = await f.seed(); f.db.authority.artifactOutbox.insert(update(2)); await f.make().projectOutbox([id(2)]);
       assert.deepEqual(await f.read(old.ref), old.bytes);
       assert.deepEqual(f.file().versions[0], { state: "verified", artifact: old.ref });
-      const storedPath = join(f.root, ".tracker/artifacts", `${old.ref.sha256}.artifact`);
+      const storedPath = join(f.root, ".tracker/data/artifacts", `${old.ref.sha256}.artifact`);
       const stored = readFileSync(storedPath); writeFileSync(storedPath, "corrupt");
       await assert.rejects(f.read(old.ref));
       writeFileSync(storedPath, stored); assert.deepEqual(await f.read(old.ref), old.bytes);
