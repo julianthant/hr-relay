@@ -34,7 +34,7 @@ import {
 FIXTURE_INTAKE_MAPPING,
 FIXTURE_INTAKE_RERUN,
 FIXTURE_INTAKE_VALIDATED,
-} from "../../../parity/helpers/fixture-intake.js";
+} from "../../../support/fixtures/dashboard/fixture-intake.js";
 
 describe("rejection review uses the demo's one vocabulary and one eligibility door", () => {
   it("pins every visible label in the table, editors, review acknowledgement and Well summaries", () => {

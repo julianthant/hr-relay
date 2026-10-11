@@ -5,7 +5,7 @@ import { idempotencyKeyDigestReference } from "../../../../src/rules/redaction/r
 import { buildFixtureIdentityGate } from "../fixture-gate.js";
 import { at,uuidOf } from "../fixture-identity.js";
 import { FIXTURE_IDS } from "../fixture-queue.js";
-import { sectionResponse } from "./section-wire.js";
+import { sectionResponse } from "../../../support/fixtures/dashboard/run-detail/section-wire.js";
 
 const GATE_NODE_ID = "identity-approval";
 

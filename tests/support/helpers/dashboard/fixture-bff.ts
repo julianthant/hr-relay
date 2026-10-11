@@ -28,7 +28,7 @@ import { registerFixtureSettingsRoutes } from "../../../parity/helpers/fixture-s
 import { registerFixtureShellRoutes } from "../../../parity/helpers/fixture-shell-routes.js";
 import { registerFixtureStartRoutes } from "../../../parity/helpers/fixture-start-routes.js";
 import { registerFixtureStorageRoutes } from "../../../parity/helpers/fixture-storage-routes.js";
-import { wireError } from "../../../parity/helpers/fixture-wire-error.js";
+import { wireError } from "../../fixtures/dashboard/fixture-wire-error.js";
 
 
 export function fixtureHelloEnvelope(profile: FixtureDashboardProfile = DEFAULT_DASHBOARD_PROFILE): DashboardStreamEnvelope {

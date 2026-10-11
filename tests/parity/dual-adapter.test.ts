@@ -9,7 +9,7 @@ import { startFixtureServer,type FixtureServer } from "../support/helpers/dashbo
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { startSeededServer,type SeededServer } from "./helpers/seeded-bff.js";
-import { SEEDED_DAY } from "./helpers/seeded-identity.js";
+import { SEEDED_DAY } from "../support/helpers/dashboard/served-fixtures/seeded-identity.js";
 
 let fixture: FixtureServer;
 let seeded: SeededServer;

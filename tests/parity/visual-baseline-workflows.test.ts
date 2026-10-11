@@ -6,7 +6,7 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
-import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
+import { FIXTURE_INTAKE_IDS } from "../support/fixtures/dashboard/fixture-intake.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 import { attachPresentationReference } from "./helpers/presentation-reference.js";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";

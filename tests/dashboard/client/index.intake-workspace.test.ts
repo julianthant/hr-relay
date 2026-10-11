@@ -8,7 +8,7 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { IntakeWorkspace } from "../../../src/dashboard/surfaces/intake/intake.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
-import { FIXTURE_INTAKE_VALIDATED } from "../../parity/helpers/fixture-intake.js";
+import { FIXTURE_INTAKE_VALIDATED } from "../../support/fixtures/dashboard/fixture-intake.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });

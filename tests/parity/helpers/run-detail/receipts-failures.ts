@@ -1,7 +1,7 @@
 import { at,traceOf } from "../fixture-identity.js";
 import { FIXTURE_IDS } from "../fixture-queue.js";
 import { FIXTURE_DIAGNOSTIC_BUNDLE } from "../fixture-diagnostic.js";
-import { sectionResponse } from "./section-wire.js";
+import { sectionResponse } from "../../../support/fixtures/dashboard/run-detail/section-wire.js";
 
 const RECEIPT_MISSING = {
   state: "missing",

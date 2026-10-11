@@ -18,7 +18,7 @@ FIXTURE_SECTIONS,
 import {
 FIXTURE_INTAKE_MAPPING,
 FIXTURE_INTAKE_VALIDATED,
-} from "../../../parity/helpers/fixture-intake.js";
+} from "../../fixtures/dashboard/fixture-intake.js";
 import {
 fixtureHealthEnvelope,
 fixtureHelloEnvelope,

@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { test } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
+import { FIXTURE_INTAKE_IDS } from "../support/fixtures/dashboard/fixture-intake.js";
 test("intake-review accessibility receipt", { annotation: [{ type: "required-a11y-evidence", description: "intake-reference-review.a11y.yml" }] }, async ({ page }) => {
   await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.validated });
   const snapshot = await page.locator("body").ariaSnapshot();

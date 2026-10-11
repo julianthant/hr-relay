@@ -4,7 +4,7 @@ import { NodeIdSchema } from "../../../../src/rules/identity/ids.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { at, CONTRACT_FINGERPRINT, uuidOf } from "../fixture-identity.js";
 import { FIXTURE_IDS } from "../fixture-queue.js";
-import { sectionResponse } from "./section-wire.js";
+import { sectionResponse } from "../../../support/fixtures/dashboard/run-detail/section-wire.js";
 
 type DataEntrySeed = Readonly<{
   label: string;

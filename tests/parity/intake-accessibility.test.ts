@@ -7,7 +7,7 @@ import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
+import { FIXTURE_INTAKE_IDS } from "../support/fixtures/dashboard/fixture-intake.js";
 
 const VIEWPORTS = [
   { name: "1440x900", width: 1440, height: 900 },

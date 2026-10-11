@@ -16,7 +16,7 @@ type DashboardBuildIdentity,
 
 // The checkout root, the same depth as the build-identity import above: the
 // bundle, its identity stamp and the build input digest all live under it.
-export const PARITY_REPO_ROOT = resolve(import.meta.dirname, "../../../../../../");
+export const PARITY_REPO_ROOT = resolve(import.meta.dirname, "../../../../../");
 export const PARITY_DIST_DIR = join(PARITY_REPO_ROOT, "dist", "dashboard");
 export const PARITY_BUILD_SCRIPT = "web:build";
 export const PARITY_BUNDLE_STAMP_FILE = DASHBOARD_BUILD_IDENTITY_FILE;

@@ -6,7 +6,7 @@ import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { wireError } from "./helpers/fixture-wire-error.js";
+import { wireError } from "../support/fixtures/dashboard/fixture-wire-error.js";
 import { attachPresentationReference } from "./helpers/presentation-reference.js";
 
 async function menu(page: Page, info: TestInfo, label: RegExp, state: string) {

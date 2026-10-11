@@ -6,7 +6,7 @@ import { FIXTURE_EDITABLE_SETTINGS,FIXTURE_SETTINGS_FACTS,FIXTURE_STORAGE_DOCTOR
 import { registerFixtureExplorerRoutes } from "../../parity/helpers/fixture-explorer-routes.js";
 import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
 import { registerFixtureIntakeRoutes } from "../../parity/helpers/fixture-intake-routes.js";
-import { FIXTURE_INTAKE_IDS } from "../../parity/helpers/fixture-intake.js";
+import { FIXTURE_INTAKE_IDS } from "../../support/fixtures/dashboard/fixture-intake.js";
 import { registerFixtureSettingsRoutes } from "../../parity/helpers/fixture-settings-routes.js";
 import * as settings from "../../parity/helpers/fixture-settings.js";
 import { registerFixtureStorageRoutes } from "../../parity/helpers/fixture-storage-routes.js";

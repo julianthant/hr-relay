@@ -21,7 +21,7 @@ import { createTimelineEmitter } from "../../../src/backend/storage/events/timel
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
-import { CONFIG_FINGERPRINT,CONFIG_SNAPSHOT_ID,CONTRACT_FINGERPRINT,FAILURE_FINGERPRINT,INGRESS_SCHEMA_HASH,SEEDED_AT,SEEDED_NOW,WORKFLOW_ID } from "./seeded-identity.js";
+import { CONFIG_FINGERPRINT,CONFIG_SNAPSHOT_ID,CONTRACT_FINGERPRINT,FAILURE_FINGERPRINT,INGRESS_SCHEMA_HASH,SEEDED_AT,SEEDED_NOW,WORKFLOW_ID } from "../../support/helpers/dashboard/served-fixtures/seeded-identity.js";
 
 
 /* ── deterministic identities ────────────────────────────────────────────── */

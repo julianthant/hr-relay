@@ -36,7 +36,7 @@ import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures
 import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../support/fixtures/preflight-seams.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
-import { CONFIG_FINGERPRINT, CONFIG_SNAPSHOT_ID, CONTRACT_FINGERPRINT, SEEDED_APP_VERSION } from "./seeded-identity.js";
+import { CONFIG_FINGERPRINT, CONFIG_SNAPSHOT_ID, CONTRACT_FINGERPRINT, SEEDED_APP_VERSION } from "../../support/helpers/dashboard/served-fixtures/seeded-identity.js";
 import { uuidOf } from "./seeded-lifecycle.js";
 /** Real service composition; HTTP lifetime and disposable authority custody stay with the caller. */
 export function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices }: {

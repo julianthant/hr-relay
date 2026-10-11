@@ -18,7 +18,7 @@ import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operato
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { assertServedBundle,type ParityBundleProof } from "./bundle.js";
-import { CONTRACT_FINGERPRINT,SEEDED_APP_VERSION,SEEDED_AT,SEEDED_DAY,WORKFLOW_ID } from "./seeded-identity.js";
+import { CONTRACT_FINGERPRINT,SEEDED_APP_VERSION,SEEDED_AT,SEEDED_DAY,WORKFLOW_ID } from "../../support/helpers/dashboard/served-fixtures/seeded-identity.js";
 import { seed } from "./seeded-lifecycle.js";
 import { composeSeededServices } from "./seeded-services.js";
 
@@ -236,4 +236,4 @@ export async function startSeededServer(
     },
   });
 }
-export { SEEDED_APP_VERSION,SEEDED_AT,SEEDED_DAY,SEEDED_NOW } from "./seeded-identity.js";
+export { SEEDED_APP_VERSION,SEEDED_AT,SEEDED_DAY,SEEDED_NOW } from "../../support/helpers/dashboard/served-fixtures/seeded-identity.js";

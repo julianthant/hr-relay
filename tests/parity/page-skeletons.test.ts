@@ -4,7 +4,7 @@ import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureProviderSettings } from "./helpers/fixture-provider-settings.js";
-import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
+import { FIXTURE_INTAKE_IDS } from "../support/fixtures/dashboard/fixture-intake.js";
 
 async function bounds(locator: Locator) {
   return locator.evaluateAll(nodes => nodes.map(node => {

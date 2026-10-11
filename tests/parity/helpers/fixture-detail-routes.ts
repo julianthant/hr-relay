@@ -9,7 +9,7 @@ FIXTURE_RUN_CAPTURE_REFS,
 FIXTURE_RUN_CAPTURE_SECTIONS,
 runCaptureFixtureBytes
 } from "./fixture-run-captures.js";
-import { wireError } from "./fixture-wire-error.js";
+import { wireError } from "../../support/fixtures/dashboard/fixture-wire-error.js";
 import { FIXTURE_DAY, uuidOf } from "./fixture-identity.js";
 export function registerFixtureDetailRoutes({ app, runCaptureEvidence, diagnostic }: { app: Hono; runCaptureEvidence: boolean; diagnostic: Omit<ReturnType<typeof restrictedJpegDiagnosticFixture>, "screenshotBytes"> & { screenshotBytes: Uint8Array } }): void {
 

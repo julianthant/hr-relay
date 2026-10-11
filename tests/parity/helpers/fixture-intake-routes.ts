@@ -1,9 +1,9 @@
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/models/intake/wire.js";
 import { CANONICAL_FIELDS } from "../../../src/models/fields/registry.js";
 import { redactValue } from "../../../src/rules/redaction/redaction.js";
-import { wireError } from "./fixture-wire-error.js";
+import { wireError } from "../../support/fixtures/dashboard/fixture-wire-error.js";
 import { Hono } from "hono";
-import { FIXTURE_INTAKE_MAPPING,FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
+import { FIXTURE_INTAKE_MAPPING,FIXTURE_INTAKE_SESSIONS } from "../../support/fixtures/dashboard/fixture-intake.js";
 export function fixtureIntakePresentation(session: IntakeSessionWire): IntakeSessionWire {
   if (session.validation.state !== "validated") return session;
   const rejected = session.validation.rejected.map(reject => {

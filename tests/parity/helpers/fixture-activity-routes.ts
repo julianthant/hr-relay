@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { selectionDownload } from "../../../src/backend/runs/exports/selection-download.js";
-import { wireError } from "./fixture-wire-error.js";
+import { wireError } from "../../support/fixtures/dashboard/fixture-wire-error.js";
 import { Hono } from "hono";
 import {
 activityReportCsv,

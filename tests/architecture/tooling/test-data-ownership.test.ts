@@ -73,8 +73,8 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
 ] as const;
 const PROCESS_ENTRYPOINTS = [
-  { file: "worker-browser-control-cli.ts", consumers: ["tests/backend/runtime/workers/worker-supervisor.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts", "tests/parity/helpers/session-runtime.ts"] },
-  { file: "worker-stub-cli.ts", consumers: ["tests/backend/app/composition/dashboard/compose.worker-pool-parallel-proof.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-pool-parallel-proof-2.integration.test.ts"] },
+  { file: "worker-browser-control-cli.ts", consumers: ["tests/backend/runtime/workers/worker-supervisor.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts"] },
+  { file: "worker-stub-cli.ts", consumers: ["tests/backend/app/composition/dashboard/compose.worker-processes.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-pool-parallel-proof-2.integration.test.ts"] },
   { file: "run-record-race-worker.ts", consumers: ["tests/backend/runs/lifecycle/run-record-service.service-2.integration.test.ts", "tests/backend/runs/lifecycle/run-record-service.service-3.integration.test.ts"] },
   { file: "runtime-lock-contender.ts", consumers: ["tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts"] },
 ] as const;

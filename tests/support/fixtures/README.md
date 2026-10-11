@@ -1,48 +1,152 @@
-# Shared test fixtures (D341)
+# Shared test support
 
-One discoverable interface for synthetic inputs shared by unit, integration and architecture
-tests. Pure data fixtures stay free of private input, credentials, databases and browsers. Existing
-resource harnesses run only when a caller invokes them. `tests/scenario/` and `tests/parity/` were
-retired on 2026-10-02; retained fixtures are inputs to current tests, not evidence those suites
-remain or that visual acceptance was repeated. Future scenario-test design is operator-led.
-The architecture guard `tests/architecture/tooling/test-data-ownership.test.ts` enforces this map.
+This catalogue lists every shared non-test module in `tests/support/`. Fixtures contain synthetic data; resource harnesses allocate only when explicitly called. Tests of support modules sit beside them. `tests/parity/` retains the desktop screenshot contract.
 
-## Ownership map
+`config/test-data.json` owns tracked public subjects, named files and synthetic ranges through `src/backend/app/registries/test-data.ts`. Private `config/test-data.local.json` inputs are accessed through the opaque runtime input source and never shared fixtures. Preserve ranges, clocks and dataset sizes.
 
-| Location | What lives there | Who imports it |
-| --- | --- | --- |
-| `config/test-data.json` | Tracked shared test data: public subject registry, named file declarations, synthetic sample ranges. Loaded through `src/backend/app/registries/test-data.ts`. | Runtime test-data checks and current tests |
-| `config/test-data.local.json` (ignored) | Private per-checkout inputs by name; the template is `config/test-data.local.example.json`. | Runtime only, through the opaque input source; never shared fixtures |
-| `tests/support/fixtures/documents/synthetic-sample.pdf` | Minimal synthetic PDF declared as `synthetic-sample-pdf`; proves path resolution and readable bytes. | `tests/unit/test-data-config.test.ts`, `test-data check --file` |
-| `tests/support/fixtures/*.ts` | Data fixtures shared across tiers: contract inputs (`phase1c-contract-fixtures`), run records (`phase1f-run-fixtures`, `receipt-run-fixtures`, `run-lifecycle-fixtures`), operator commands (`operator-command-fixtures`), image inputs (`diagnostic-image-fixtures`, `image-geometry`), intake (`intake-workflow-fixture`), the `*-seams` modules. | Unit, integration and architecture tests |
-| `tests/support/fixtures/*.ts` moved from unit | Shared deterministic inputs: `advisory-prompt-fixtures`, `authority-build-variant`, `cross-date-search-corpus`, `dcc4-superseded-migration`, `ledger-projection-fixtures`, `plan1-browser-operation`, `plan1-operation-workflows`, `plan1-separation-operation`, `rerun-values-fixtures`, `run-launch-fixtures`, `settings-operation-fixtures`, `source-bound-read-fixtures`, `start-step-omission-fixtures`, `workflow-definition-fixtures`, `write-sequencer-fixtures`. | Unit and integration callers as applicable |
-| Existing shared seam fixtures | `descriptor-fixtures`, `explorer-authority`, `explorer-timeline-wire`, `run-operations`. | Unit, architecture and integration callers |
-| `tests/support/helpers/*.ts` | Behavioral harnesses shared by current tests: executor harness (`phase1f-executor-harness`), composition builders (`separations-composition-fixtures`, `ucpath-termination-fixtures`, `kuali-finalization-fixtures`, `duo-ceremony-fixtures`), synthetic protected-store source (`protected-secret-source`), `registered-workflows`, `t1b-manifests`, and `canonical-run-reader` (injected SQLite reader and explicit in-memory unit fake). | Unit, integration and architecture tests |
-| `tests/support/helpers/*.ts` moved from unit | `timeline-write-fixture`. | Unit and integration callers |
-| Exact shared resource harness exceptions | `tests/support/fixtures/preflight/corpus.ts` injects browser/process/storage faults; `tests/support/helpers/synthetic-storage-admission.ts` admits real test databases and credential-store adapters through synthetic roots; `tests/support/helpers/storage/transaction-history-fixture.ts` builds explicit historical SQLite fixtures when invoked; `tests/support/helpers/backend/dashboard-harness.ts` opens a synthetic timeline database only inside its fixture function. | Architecture and integration callers only |
-| `tests/integration/**/fixtures/` and `helpers/` | Real SQLite, filesystem, authority and composition harnesses colocated with integration proofs, including the synthetic private input source `test-data-source`. | Integration tests |
-| `tests/unit/<owner>/fixtures/` | Unit-only immutable fixtures and local fakes, including the frozen pre-D309 receipt input under Runs evidence. | Their owning unit tests only |
-| `tests/support/helpers/dashboard/`, `tests/support/helpers/architecture/`, `tests/support/helpers/trust/` | Shared capture, descriptor and trust-wire fixtures at their consumer homes. | Unit, architecture and integration callers as applicable |
-| `tests/architecture/helpers/` | Architecture guard inputs and scanners. | Architecture guards only |
+`tests/architecture/tooling/test-data-ownership.test.ts` owns import-purity and resource capability exceptions. Shared admission helpers bind database and credential fixtures to exact synthetic installation roots; release admission before removing roots. Credential factories stay inside deferred function bodies. `preflight/corpus` uses Chromium only for launch-refusal spies in its explicit executor. Proxy construction does not open databases. Executable process fixtures cannot be imported; their exact consumers are recorded in the ownership guard.
 
-## Rules
-
-- Keep case-specific assertions, behavioural helpers and violation fixtures at their owning test.
-- Preserve synthetic ranges, clocks and dataset sizes when moving a fixture; a move is not a rewrite.
-- A new cross-tier fixture lands here with a row in this table; a unit-only one stays under `tests/unit/`.
-- Synthetic values never resemble real identifiers. Sample ranges come from `config/test-data.json`.
-
-`../helpers/admission-fixture.ts` owns disposable installation admissions for runtime composition tests. It uses the current entrypoint initializer and read-only verifier, renews admission after a composed runtime releases it, and binds database and credential fixtures to the exact installation roots. Release fixture admission before removing its root. Direct storage fixtures retain explicit temp-root synthetic admissions.
-
-`../helpers/synthetic-database-admission.ts` contains the temp-path AuthorityDatabase and ArchiveDatabase proxies without importing server command compositions. Dashboard harnesses use this narrow helper; `synthetic-storage-admission.ts` reexports the same proxies alongside its broader command adapters.
-
-Recorded credential factory imports in `admission-fixture` and `synthetic-storage-admission` remain inside deferred function bodies; their producers are function declarations. `preflight/corpus` imports `chromium` only to install launch-refusal spies inside its explicit executor. The ownership guard rejects eager calls, aliases, namespace imports, unlisted symbols and eager callbacks. Creating proxy objects at import does not open their databases.
-
-The shared admission helpers `admission-fixture` and `synthetic-database-admission` preserve
-explicit synthetic authority. Credential factory capabilities in `admission-fixture` and
-`synthetic-storage-admission` run only when the fixture function is called; AST controls refuse
-eager calls, aliases, namespaces and unlisted symbols. Executable child entrypoints live in
-`tests/support/processes/` (`runtime-lock-contender`, `worker-stub-cli`, `worker-browser-control-cli`)
-and cannot be imported. Their exact consumers remain recorded by the ownership guard.
+Parity and served dashboard BFFs retain separate corpus and build authority: `tests/parity/helpers/bundle.ts` validates `dist/parity-dashboard`; `helpers/dashboard/served-fixtures/bundle.ts` validates `dist/dashboard`. Their distinct data and route graphs remain separate.
 
 `../helpers/dashboard/run-start-dialog-harness.ts` supplies per-caller Run Start DOM setup and cleanup for the dialog and omitted-step unit suites; importing it performs no DOM setup.
+
+## Module catalogue
+
+Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed inputs or fixture authority; modules under `helpers/` build harnesses or support fixture consumers; `processes/` contains executable child entrypoints.
+
+| Module | Concept |
+| --- | --- |
+| `fixtures/advisory-prompt-fixtures.ts` | advisory prompt fixtures |
+| `fixtures/cross-date-search-corpus.ts` | cross date search corpus |
+| `fixtures/dashboard/diagnostic-jpeg-fixture.ts` | diagnostic jpeg fixture |
+| `fixtures/dashboard/fixture-activity.ts` | fixture activity |
+| `fixtures/dashboard/fixture-bootstrap.ts` | fixture bootstrap |
+| `fixtures/dashboard/fixture-day.ts` | fixture day |
+| `fixtures/dashboard/fixture-detail.ts` | fixture detail |
+| `fixtures/dashboard/fixture-diagnostic.ts` | fixture diagnostic |
+| `fixtures/dashboard/fixture-explorer.ts` | fixture explorer |
+| `fixtures/dashboard/fixture-gate.ts` | fixture gate |
+| `fixtures/dashboard/fixture-identity.ts` | fixture identity |
+| `fixtures/dashboard/fixture-intake-authority.ts` | fixture intake authority |
+| `fixtures/dashboard/fixture-intake.ts` | fixture intake |
+| `fixtures/dashboard/fixture-notifications.ts` | fixture notifications |
+| `fixtures/dashboard/fixture-operation-authority.ts` | fixture operation authority |
+| `fixtures/dashboard/fixture-profile.ts` | fixture profile |
+| `fixtures/dashboard/fixture-queue.ts` | fixture queue |
+| `fixtures/dashboard/fixture-run-captures.ts` | fixture run captures |
+| `fixtures/dashboard/fixture-settings.ts` | fixture settings |
+| `fixtures/dashboard/fixture-start.ts` | fixture start |
+| `fixtures/dashboard/fixture-storage.ts` | fixture storage |
+| `fixtures/dashboard/fixture-wire-error.ts` | fixture wire error |
+| `fixtures/dashboard/run-detail/context-data.ts` | context data |
+| `fixtures/dashboard/run-detail/gates-park.ts` | gates park |
+| `fixtures/dashboard/run-detail/logs-captures.ts` | logs captures |
+| `fixtures/dashboard/run-detail/receipts-failures.ts` | receipts failures |
+| `fixtures/dashboard/run-detail/section-wire.ts` | section wire |
+| `fixtures/dashboard/run-detail/timeline.ts` | timeline |
+| `fixtures/dashboard-stream-seams.ts` | dashboard stream seams |
+| `fixtures/descriptor-fixtures.ts` | descriptor fixtures |
+| `fixtures/diagnostic-image-fixtures.ts` | diagnostic image fixtures |
+| `fixtures/dry-run/person-lookup-manifest.ts` | person lookup manifest |
+| `fixtures/dry-run/separations-manifest.ts` | separations manifest |
+| `fixtures/explorer-authority.ts` | explorer authority |
+| `fixtures/explorer-seams.ts` | explorer seams |
+| `fixtures/image-geometry.ts` | image geometry |
+| `fixtures/intake-kernel-seams.ts` | intake kernel seams |
+| `fixtures/intake-workflow-fixture.ts` | intake workflow fixture |
+| `fixtures/integration/activity-person-pseudonym-fixtures.ts` | activity person pseudonym fixtures |
+| `fixtures/integration/dry-run-admission-fixtures.ts` | dry run admission fixtures |
+| `fixtures/integration/settings-runtime-corruption-fixtures.ts` | settings runtime corruption fixtures |
+| `fixtures/integration/source-bound-fixtures.ts` | source bound fixtures |
+| `fixtures/ledger-projection-fixtures.ts` | ledger projection fixtures |
+| `fixtures/operator-command-fixtures.ts` | operator command fixtures |
+| `fixtures/phase1c-contract-fixtures.ts` | phase1c contract fixtures |
+| `fixtures/phase1f-run-fixtures.ts` | phase1f run fixtures |
+| `fixtures/plan1-browser-operation.ts` | plan1 browser operation |
+| `fixtures/plan1-operation-workflows.ts` | plan1 operation workflows |
+| `fixtures/plan1-separation-operation.ts` | plan1 separation operation |
+| `fixtures/preflight/corpus.ts` | corpus |
+| `fixtures/preflight/runtime-fixture.ts` | runtime fixture |
+| `fixtures/preflight/served-runtime.ts` | served runtime |
+| `fixtures/preflight-seams.ts` | preflight seams |
+| `fixtures/receipt-run-fixtures.ts` | receipt run fixtures |
+| `fixtures/rerun-values-fixtures.ts` | rerun values fixtures |
+| `fixtures/run-launch-fixtures.ts` | run launch fixtures |
+| `fixtures/run-lifecycle-fixtures.ts` | run lifecycle fixtures |
+| `fixtures/run-operations.ts` | run operations |
+| `fixtures/settings-operation-fixtures.ts` | settings operation fixtures |
+| `fixtures/source-bound-read-fixtures.ts` | source bound read fixtures |
+| `fixtures/start-step-omission-fixtures.ts` | start step omission fixtures |
+| `fixtures/workflow/step-omission-terminal-fixtures.ts` | step omission terminal fixtures |
+| `fixtures/workflow-definition-fixtures.ts` | workflow definition fixtures |
+| `fixtures/write-sequencer-fixtures.ts` | write sequencer fixtures |
+| `helpers/admission-fixture.ts` | admission fixture |
+| `helpers/backend/cross-date-search-harness.ts` | cross date search harness |
+| `helpers/backend/dashboard-harness.ts` | dashboard harness |
+| `helpers/backend/failure-resolution-peer.ts` | failure resolution peer |
+| `helpers/backend/http-route-harness.ts` | http route harness |
+| `helpers/backend/served-database-surfaces-fixtures.ts` | served database surfaces fixtures |
+| `helpers/backend/settings-activation-fixture.ts` | settings activation fixture |
+| `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |
+| `helpers/browser/fake-login-page.ts` | fake login page |
+| `helpers/canonical-run-reader.ts` | canonical run reader |
+| `helpers/dashboard/fixture-bff.ts` | fixture bff |
+| `helpers/dashboard/run-start-dialog-harness.ts` | run start dialog harness |
+| `helpers/dashboard/served-fixtures/bundle.ts` | bundle |
+| `helpers/dashboard/served-fixtures/date-navigation-server.ts` | date navigation server |
+| `helpers/dashboard/served-fixtures/diagnostic-gallery-origin.ts` | diagnostic gallery origin |
+| `helpers/dashboard/served-fixtures/fixture-activity-routes.ts` | fixture activity routes |
+| `helpers/dashboard/served-fixtures/fixture-bff.ts` | fixture bff |
+| `helpers/dashboard/served-fixtures/fixture-detail-routes.ts` | fixture detail routes |
+| `helpers/dashboard/served-fixtures/fixture-explorer-routes.ts` | fixture explorer routes |
+| `helpers/dashboard/served-fixtures/fixture-intake-routes.ts` | fixture intake routes |
+| `helpers/dashboard/served-fixtures/fixture-queue-routes.ts` | fixture queue routes |
+| `helpers/dashboard/served-fixtures/fixture-settings-routes.ts` | fixture settings routes |
+| `helpers/dashboard/served-fixtures/fixture-shell-routes.ts` | fixture shell routes |
+| `helpers/dashboard/served-fixtures/fixture-start-routes.ts` | fixture start routes |
+| `helpers/dashboard/served-fixtures/fixture-storage-routes.ts` | fixture storage routes |
+| `helpers/dashboard/served-fixtures/seeded-bff.ts` | seeded bff |
+| `helpers/dashboard/served-fixtures/seeded-identity.ts` | seeded identity |
+| `helpers/dashboard/served-fixtures/seeded-lifecycle.ts` | seeded lifecycle |
+| `helpers/dashboard/served-fixtures/seeded-services.ts` | seeded services |
+| `helpers/dashboard/settings-harness.tsx` | settings harness |
+| `helpers/database-foundation/fixtures.ts` | fixtures |
+| `helpers/duo-ceremony-fixtures.ts` | duo ceremony fixtures |
+| `helpers/failure-resolution/fixtures.ts` | fixtures |
+| `helpers/geocode/nominatim-client.ts` | nominatim client |
+| `helpers/geocode/nominatim-election.ts` | nominatim election |
+| `helpers/integration/journaled-protected-settings.ts` | journaled protected settings |
+| `helpers/integration/storage-recovery-fixture.ts` | storage recovery fixture |
+| `helpers/kuali-finalization-fixtures.ts` | kuali finalization fixtures |
+| `helpers/phase1f-executor-harness.ts` | phase1f executor harness |
+| `helpers/protected-secret-source.ts` | protected secret source |
+| `helpers/registered-workflows.ts` | registered workflows |
+| `helpers/separations-composition-fixtures.ts` | separations composition fixtures |
+| `helpers/storage/native-authority/retained-database-fixture.ts` | retained database fixture |
+| `helpers/storage/storage-relocation-fixture.ts` | storage relocation fixture |
+| `helpers/storage/transaction-history-fixture.ts` | transaction history fixture |
+| `helpers/synthetic-database-admission.ts` | synthetic database admission |
+| `helpers/synthetic-storage-admission.ts` | synthetic storage admission |
+| `helpers/t1b-manifests.ts` | t1b manifests |
+| `helpers/test-data/test-data-source.ts` | test data source |
+| `helpers/timeline-write-fixture.ts` | timeline write fixture |
+| `helpers/trust/trust-wire-fixtures.ts` | trust wire fixtures |
+| `processes/run-record-race-worker.ts` | run record race worker |
+| `processes/runtime-lock-contender.ts` | runtime lock contender |
+| `processes/worker-browser-control-cli.ts` | worker browser control cli |
+| `processes/worker-stub-cli.ts` | worker stub cli |
+
+## File fixtures
+
+- `fixtures/documents/synthetic-sample.pdf`
+- `fixtures/integration/run-completion/schema40-success.json`
+- `fixtures/preflight/environment-doctor.json`
+- `fixtures/spreadsheet/color-filtered-roster.xlsx`
+- `fixtures/storage/native-authority/migrated-database-renames.json`
+- `fixtures/storage/native-authority/migrated-operations.json`
+- `fixtures/storage/native-authority/migrated-provider.json`
+- `fixtures/storage/native-authority/migrated-settlement.json`
+- `fixtures/storage/native-authority/migrated-timeline.json`
+- `fixtures/storage/native-authority/migrated-tombstones.json`
+- `fixtures/storage/native-authority/schema40-failure.json`
+- `helpers/dashboard/color-filtered-roster.xlsx`
