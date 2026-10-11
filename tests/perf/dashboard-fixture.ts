@@ -2,7 +2,7 @@ import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.j
 import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildRunResult } from "../../src/backend/runs/lifecycle/run-result.js";
@@ -639,7 +639,7 @@ function seedNotes(context: SeedContext, tally: SeedTally): number {
 
 
 export function seedDashboardPerfFixture(): PerfFixture {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-perf-dashboard-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-perf-dashboard-"));
   const stateRoot = join(root, "state");
   const clock = manualClock(new Date(`${PERF_FIXTURE_PROFILE.day}T09:00:00.000-07:00`));
   const database = AuthorityDatabase.open(
