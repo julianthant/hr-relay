@@ -89,7 +89,7 @@ function reportRealPortPhase(
   phase: "startup" | "request" | "teardown",
   state: "begin" | "complete",
 ): void {
-  process.stdout.write(`[r3a:compose-real-port] ${phase}:${state}\n`);
+  process.stdout.write(`[compose-real-port] ${phase}:${state}\n`);
 }
 
 function readRuntimeSettingsRevision(repoRoot: string) {
@@ -462,7 +462,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("refuses a newer authority under the current build before settings opens or config resolution", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v31-"));
+    const repoRoot = mkdtempSync(join(tmpdir(), "relay-compose-newer-authority-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
@@ -470,7 +470,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
     mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
     const path = join(stateRoot, "state.db");
-    AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "m9-floor-fixture" }).close();
+    AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "native-schema-refusal-fixture" }).close();
     const admission = installationAdmission(repoRoot);
     const artifactBefore = statSync(artifactRoot);
     const newer = new DatabaseSync(path);
@@ -506,10 +506,10 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))
             || value.startsWith(join(stateRoot, "settings") + "/"));
         assert.equal(vi.mocked(openSync).mock.calls.filter(([target]) => isSettingsPath(target)).length,
-          0, "M9: zero settings-family openSync calls before downgrade refusal");
+          0, "zero settings-family openSync calls before downgrade refusal");
         assert.equal(vi.mocked(readFileSync).mock.calls.filter(([target]) => isSettingsPath(target)).length,
-          0, "M9: zero settings-family readFileSync calls before downgrade refusal");
-        assert.equal(resolveSpy.mock.calls.length, 0, "M9: zero resolveConfigWithProvenance calls before downgrade refusal");
+          0, "zero settings-family readFileSync calls before downgrade refusal");
+        assert.equal(resolveSpy.mock.calls.length, 0, "zero resolveConfigWithProvenance calls before downgrade refusal");
         assert.equal(vi.mocked(mkdirSync).mock.calls.filter(([target]) => target === stateRoot).length,
           1, "native open verifies its admitted existing directory before schema refusal");
         assert.equal(vi.mocked(openSync).mock.calls.filter(([target]) => target === artifactRoot).length,
@@ -697,9 +697,9 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     return statements;
   }
 
-  it.each(["GET", "validate"] as const)("serves one SQLite snapshot and no historical file reads per Explorer %s request", async operation => {
+  it.each(["GET", "validate"] as const)("serves one SQLite snapshot without unrelated file reads per Explorer %s request", async operation => {
     const fixture = committedExplorer(); journalExplorer(fixture);
-    for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "inert historical bytes");
+    for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "unrelated bytes");
     const sql = observeExplorerSnapshot(join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"));
     const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
@@ -946,7 +946,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.deepEqual(plan.refused, []);
   });
 
-  it("refuses historical protected write-id reuse after a dashboard restart", async () => {
+  it("refuses persisted protected write-id reuse after a dashboard restart", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-protected-write-id-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));

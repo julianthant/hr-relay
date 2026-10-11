@@ -459,7 +459,7 @@ afterEach(() => {
 });
 
 describe("dry-run scenario production composition boundary", () => {
-  it("persists a blocked v16 row without constructing browser/runtime services", async () => {
+  it("persists a blocked result without constructing browser/runtime services", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-cli-"));
     roots.push(root);
     mkdirSync(join(root, "config"), { recursive: true });
