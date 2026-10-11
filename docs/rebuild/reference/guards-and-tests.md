@@ -1699,10 +1699,6 @@ admission and have import/consumer coverage. This planning amendment changes no 
 
 The following strict-reader implementation binding remains applicable after retirement.
 
-Strict historical-backup readers `backup-inspection.ts`, `d331-settings-current.ts`,
-`d331-settings-root.ts` and `d331-protected-journal.ts` under `src/infra/compat/` remain after
-adapter expiry. Immutable journal grammar in `src/domain/commands-history.ts` and
-`src/domain/config/settings-v29-schema.ts` also remains: neither is a runtime settings fallback.
 The SQLite implementation boundary now includes the private historical backup and stopped
 conversion adapters; no server/core/domain module receives a raw connection or imports
 `node:sqlite`. `sqlite-authority-boundary.test.ts` enumerates that closed implementation set and

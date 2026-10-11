@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
-import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
+import { STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import { ScenarioIdSchema } from "../../../src/rules/identity/ids.js";
 import {
@@ -36,7 +36,7 @@ function fullClaims(pointIds: readonly string[]): readonly ScenarioCoverageClaim
 
 function productionScenarioReferences(): readonly string[] {
   return [...new Set([
-    ...[...DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS].flatMap((descriptor) => [
+    ...[...DESCRIPTORS, ...STEP_PROOF_DESCRIPTORS].flatMap((descriptor) => [
       ...descriptor.scenarios.map(String),
       ...workflowProjections(descriptor).contracts.flatMap((contract) =>
         contract.scenarios.map(String)),

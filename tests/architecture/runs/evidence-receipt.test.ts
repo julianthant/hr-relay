@@ -31,7 +31,7 @@ import { RedactedFieldSchema, retainLocalEvidenceValue } from "../../../src/rule
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
+import { STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
 
 import { separationsKualiFinalizationDescriptor } from "../../support/helpers/registered-workflows.js";
 import { separationsIdentityCheckDescriptor } from "../../support/helpers/registered-workflows.js";
@@ -53,7 +53,7 @@ import {
 } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
-const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS];
+const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...STEP_PROOF_DESCRIPTORS];
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();

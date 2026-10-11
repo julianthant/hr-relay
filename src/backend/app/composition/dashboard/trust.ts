@@ -1,7 +1,7 @@
 import {
   DESCRIPTORS,
 } from "../../registries/workflow-registry.js";
-import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../registries/step-proof-modules.js";
+import { STEP_PROOF_DESCRIPTORS } from "../../registries/step-proof-modules.js";
 
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
@@ -14,7 +14,7 @@ import { createReceiptService } from "../../../runs/trust/receipt-service.js";
 
 export function createTrustReadDependencies(input: { database: AuthorityDatabase; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader>; reader: Pick<RunRecordService, "read" | "list"> }) {
   const { database, artifactReader, reader } = input;
-  return { trust: createReceiptService({ database, descriptors: [...DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS], runReader: reader }), captures: { runReader: reader, authority: database.authority.diagnosticBundles, artifactReader }, diagnosticBundles: { runReader: reader, authority: database.authority.diagnosticBundles, artifactReader } };
+  return { trust: createReceiptService({ database, descriptors: [...DESCRIPTORS, ...STEP_PROOF_DESCRIPTORS], runReader: reader }), captures: { runReader: reader, authority: database.authority.diagnosticBundles, artifactReader }, diagnosticBundles: { runReader: reader, authority: database.authority.diagnosticBundles, artifactReader } };
 }
 
 export { readGateParks } from "./notifications.js";

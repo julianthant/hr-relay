@@ -1,7 +1,7 @@
 import {
   WORKFLOW_MODULES,
 } from "../../registries/workflow-registry.js";
-import { historicalStepProofModuleOf } from "../../registries/step-proof-modules.js";
+import { stepProofModuleOf } from "../../registries/step-proof-modules.js";
 
 import {
   AuthorityDatabase,
@@ -36,7 +36,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
       resolve: (workflowId) => {
 
         const module = WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId)
-          ?? historicalStepProofModuleOf(workflowId);
+          ?? stepProofModuleOf(workflowId);
         if (module === undefined) return undefined;
         const { descriptor } = module;
         return {

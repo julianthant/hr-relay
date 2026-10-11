@@ -42,7 +42,7 @@ import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
 import { DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../registries/workflow-registry.js";
-import { historicalStepProofDescriptorOf } from "../../registries/step-proof-modules.js";
+import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
 import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../runs/commands/command-kernel.js";
 import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
@@ -654,7 +654,7 @@ async function composeDashboardRuntimeStartup(
   };
 
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
-  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? historicalStepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
+  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
   const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
