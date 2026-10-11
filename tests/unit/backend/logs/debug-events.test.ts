@@ -29,6 +29,35 @@ describe("bounded native debug events", () => {
     assert.equal(JSON.stringify(records).includes("CANARY"), false);
     assert.equal(records[0].recordedAt, AT.toISOString());
   });
+  it("redacts quoted and nested credentials in every diagnostic text field before append", () => {
+    const { records, repository } = fixture();
+    const credentials = JSON.stringify({ token: "QUOTED_TOKEN_SECRET", nested: {
+      password: 'ESCAPED_PASSWORD_SECRET "quote"\nsecond line', cookie: "COOKIE_SECRET",
+      privateKey: { raw: "NESTED_KEY_SECRET" }, challenge: ["CHALLENGE_SECRET"], signature: "SIGNATURE_SECRET" }, name: "Ada" });
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+    writer.emit({ category: "client", phase: "failed", correlationId: "owned", pinned: true,
+      message: credentials, stack: `Error context ${credentials} {"password":"MULTILINE_SECRET\nSECOND_LINE_SECRET"} {"\\u0074oken":"ESCAPED_KEY_SECRET"}`,
+      route: "https://example.test/path?unlabelled=ROUTE_SECRET#FRAGMENT_SECRET",
+      release: '{"token":"RELEASE_SECRET"}', surface: '{"password":"SURFACE_SECRET"}', code: '{"cookie":"CODE_SECRET"}' });
+    assert.equal(records.length, 1);
+    const stored = JSON.stringify(records);
+    for (const secret of ["QUOTED_TOKEN_SECRET", "ESCAPED_PASSWORD_SECRET", "COOKIE_SECRET", "NESTED_KEY_SECRET", "CHALLENGE_SECRET", "SIGNATURE_SECRET", "ROUTE_SECRET", "FRAGMENT_SECRET", "RELEASE_SECRET", "SURFACE_SECRET", "CODE_SECRET", "MULTILINE_SECRET", "SECOND_LINE_SECRET", "ESCAPED_KEY_SECRET"]) assert.equal(stored.includes(secret), false, secret);
+    const payload = records[0].payload; assert.equal(payload.kind, "debug");
+    if (payload.kind !== "debug") throw new Error("debug event expected");
+    assert.equal(payload.event.correlationId, "owned"); assert.equal(payload.event.pinned, true);
+    assert.equal(payload.event.route, "https://example.test/path"); assert.ok(payload.event.message?.includes("Ada"));
+    writer.emit({ category: "http", phase: "failed", correlationId: "second", route: "/api/run?unlabelled=RELATIVE_SECRET#fragment" });
+    assert.equal(JSON.stringify(records).includes("RELATIVE_SECRET"), false);
+  });
+  it("refuses credential-bearing identities without changing their correlation or retaining bytes", () => {
+    const { records, repository } = fixture();
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+    const event = { category: "client", phase: "failed", correlationId: "owned" };
+    assert.throws(() => writer.emit({ ...event, correlationId: "token=IDENTITY_SECRET" }), /debug-identity-contains-credential-material/u);
+    assert.throws(() => writer.emit({ ...event, cursor: '{"cookie":"CURSOR_SECRET"}' }), /debug-identity-contains-credential-material/u);
+    assert.throws(() => writer.emit(event, { kind: "client", clientId: "token=CLIENT_SECRET" }), /debug-identity-contains-credential-material/u);
+    assert.equal(records.length, 0);
+  });
   it("rejects body/header fields and oversized events before append", () => {
     const { records, repository } = fixture();
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });

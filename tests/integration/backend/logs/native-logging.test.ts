@@ -25,6 +25,24 @@ function fixture(path = ":memory:") {
   return { database, repository };
 }
 describe("native logging authority", () => {
+  it("redacts quoted credential payloads and routes in the actual native writer", () => {
+    const { database, repository } = fixture();
+    try {
+      const message = JSON.stringify({ password: 'NATIVE_PASSWORD_SECRET "quoted"\nsecond line', nested: { cookie: "NATIVE_COOKIE_SECRET", token: ["NATIVE_TOKEN_SECRET"] }, employee: "Ada" });
+      const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+      const input = { category: "client", phase: "failed", correlationId: "native-redaction", message,
+        stack: `Error ${message}`, route: "/run?unlabelled=NATIVE_ROUTE_SECRET#fragment", pinned: true };
+      assert.equal(writer.emit(input).state, "inserted");
+      assert.equal(writer.emit(input).state, "existing");
+      const rows = repository.page({}); assert.equal(rows.length, 1);
+      const payload = rows[0].payload; assert.equal(payload.kind, "debug");
+      if (payload.kind !== "debug") throw new Error("debug event expected");
+      assert.equal(payload.event.route, "/run"); assert.equal(payload.event.pinned, true);
+      assert.equal(payload.event.correlationId, "native-redaction"); assert.ok(payload.event.message?.includes("Ada"));
+      const stored = JSON.stringify(database.prepare("SELECT payload_json FROM timeline_events").all());
+      for (const secret of ["NATIVE_PASSWORD_SECRET", "NATIVE_COOKIE_SECRET", "NATIVE_TOKEN_SECRET", "NATIVE_ROUTE_SECRET"]) assert.equal(stored.includes(secret), false, secret);
+    } finally { database.close(); }
+  });
   it("stores strict notes once in SQLite with no secrets and reads them from the same home", () => {
     const { database, repository } = fixture();
     try {

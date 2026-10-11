@@ -10,8 +10,14 @@ export function createDebugEventWriter(deps: { repository: TimelineRepository; c
   return Object.freeze({
     emit(input: unknown, scope: TimelineAppend["scope"] = { kind: "transport", connectionId: "local" }) {
       const event = DebugEventSchema.parse({ ...Object.fromEntries(Object.entries(input as Record<string, unknown>).filter(([, value]) => value !== undefined)), build: deps.build, pid: process.pid });
-      const safe = { ...event, ...(event.message === undefined ? {} : { message: sanitizeDebugText(event.message) }),
-        ...(event.stack === undefined ? {} : { stack: sanitizeDebugText(event.stack) }) };
+      for (const identity of [event.correlationId, event.cursor, scope.kind === "client" ? scope.clientId : scope.kind === "transport" ? scope.connectionId : undefined]) {
+        if (identity !== undefined && sanitizeDebugText(identity) !== identity) throw new Error("debug-identity-contains-credential-material");
+      }
+      const safe = DebugEventSchema.parse(Object.fromEntries(Object.entries(event).map(([key, value]) => {
+        if (typeof value !== "string" || key === "correlationId" || key === "cursor") return [key, value];
+        const text = sanitizeDebugText(value);
+        return [key, key === "route" ? text.split(/[?#]/u)[0] : text];
+      })));
       const limits = { session: 32, duo: 16, worker: 32, http: 64, sse: 8, client: 64, boot: 64 };
       if (Buffer.byteLength(JSON.stringify(safe)) > limits[safe.category] * 1024) throw new Error("debug-event-size-exceeded");
       const now = deps.clock.now();
