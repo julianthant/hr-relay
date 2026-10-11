@@ -94,7 +94,6 @@ function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.bac
   writeFileSync(join(bundleRoot, "index.html"), '<!doctype html><html><body><script type="module" src="/assets/app.js"></script></body></html>\n');
   writeFileSync(join(bundleRoot, "assets", "app.js"), `/* ${"x".repeat(16 * 1024 * 1024)} */\n`);
   writeDashboardBuildIdentity({ repoRoot: root, distDir: bundleRoot });
-  mkdirSync(join(root, "config"), { recursive: true });
   cpSync(join(REPO_ROOT, "config", "test-data.json"), join(root, "config", "test-data.json"));
   symlinkSync(join(REPO_ROOT, "node_modules"), join(root, "node_modules"), "dir");
   mkdirSync(join(root, "scripts", "dev"), { recursive: true });

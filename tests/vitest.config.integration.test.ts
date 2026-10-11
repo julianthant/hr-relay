@@ -5,14 +5,6 @@ import { describe,it } from "vitest";
 import vitestConfig,{ REBUILD_TEST_EXEC_ARGV } from "../vitest.config.js";
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
-function inheritedProjectPassWithNoTests(config: unknown): boolean | undefined {
-  return (config as { readonly test?: { readonly passWithNoTests?: boolean } }).test?.passWithNoTests;
-}
-
-function inheritedProjectExecArgv(config: unknown): readonly string[] | undefined {
-  return (config as { readonly test?: { readonly execArgv?: readonly string[] } }).test?.execArgv;
-}
-
 function namedArchitectureProject(config: unknown): {
   readonly include?: readonly string[];
   readonly exclude?: readonly string[];
@@ -33,15 +25,15 @@ function namedArchitectureProject(config: unknown): {
 
 describe("architecture project empty collection", () => {
   it("explicitly refuses an empty architecture project instead of inheriting a permissive default", () => {
-    assert.equal(inheritedProjectPassWithNoTests(vitestConfig), false);
-    assert.deepEqual(inheritedProjectExecArgv(vitestConfig), REBUILD_TEST_EXEC_ARGV);
+    assert.equal(vitestConfig.test?.passWithNoTests, false);
+    assert.deepEqual(vitestConfig.test?.execArgv, REBUILD_TEST_EXEC_ARGV);
     assert.deepEqual(
       REBUILD_TEST_EXEC_ARGV,
       ["--no-experimental-webstorage"],
       "Node test workers must disable process-global web storage rather than emit an uncontrolled warning",
     );
     assert.notEqual(
-      inheritedProjectPassWithNoTests({ test: { passWithNoTests: true } }),
+      ({ test: { passWithNoTests: true } }).test.passWithNoTests,
       false,
       "the control must distinguish the permissive empty-suite setting",
     );
