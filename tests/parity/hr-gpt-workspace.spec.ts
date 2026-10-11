@@ -4,7 +4,7 @@ import Excel from 'exceljs';
 import { expect, test } from '@playwright/test';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
-import { startFixtureServer } from './helpers/fixture-bff.js';
+import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 import { FIXTURE_DAY } from './helpers/fixture-identity.js';
 import { chooseSelect } from './helpers/select-choice.js';
 

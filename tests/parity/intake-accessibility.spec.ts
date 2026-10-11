@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { expect,test,type Locator,type Page } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
-import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
 

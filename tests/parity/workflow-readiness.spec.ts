@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 import { SettingsFactsWireSchema } from '../../src/models/dashboard/settings.js';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
-import { startFixtureServer } from './helpers/fixture-bff.js';
+import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 import { FIXTURE_SETTINGS_FACTS } from './helpers/fixture-settings.js';
 import { chooseSelect } from './helpers/select-choice.js';
 

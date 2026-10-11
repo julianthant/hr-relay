@@ -3,7 +3,7 @@ import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { PARITY_THEMES, installTheme } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 import { dismissWorkflowWindowOverQueue } from "./helpers/reference-harness.js";

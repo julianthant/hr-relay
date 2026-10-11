@@ -6,7 +6,7 @@ import { validateShortcutPreferences } from "../../src/dashboard/surfaces/settin
 import { mergeSettingsPatch } from "../../src/models/config/settings.js";
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 

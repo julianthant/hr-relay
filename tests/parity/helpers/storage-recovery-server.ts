@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { runOfflineAuthorityRestoreRecovery } from "../../../src/backend/app/composition/storage-compose.js";
-import { createFixtureBff, startFixtureServer, type FixtureServer } from "./fixture-bff.js";
+import { createFixtureBff, startFixtureServer, type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { assertParityBundleIsCurrent, PARITY_DIST_DIR, readBundleStamp } from "./bundle.js";
 import { registerStorageRoutes } from "../../../src/backend/transports/http/routes/storage.js";
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";

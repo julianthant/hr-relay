@@ -88,32 +88,28 @@ retain runtime workflow IDs and the existing task/store namespace semantics.
 
 ## Tests, support and evidence
 
-The reviewed architecture owner map is:
+Tests mirror their asserted source module. Source paths under `src/` drop that prefix; scripts and other repository source paths retain their full path.
 
 ```text
 tests/
 ├── architecture/{app,dashboard,logs,models,processing,runs,runtime,storage,support,systems,tooling,workflow-kit}/
-├── integration/
-│   ├── backend/{app,logs,processing,runs,runtime,storage,systems,transports}/
-│   ├── dashboard/{app,client,state,surfaces}/
-│   ├── tooling/{dashboard-launcher,scripts,test-runner,workflow-builder}/
-│   └── workflows/separations/
+├── backend/{app,logs,processing,runs,runtime,storage,systems,transports}/
+├── dashboard/{app,client,ds,lib,state,surfaces}/
+├── duo-autopilot/src/
+├── {models,rules,scripts,workflow-kit,workflows}/
 ├── parity/
 ├── perf/
-├── support/
-│   ├── fixtures/{dashboard,documents,dry-run,integration,preflight}/
-│   ├── helpers/{architecture,backend,dashboard,database-foundation,failure-resolution,integration,storage,trust}/
-│   └── processes/
+├── support/{fixtures,helpers,processes}/
 ├── types/
-└── unit/
-    ├── backend/{app,logs,processing,runs,runtime,storage,systems,transports}/
-    ├── dashboard/{app,client,ds,lib,state,surfaces}/
-    └── {models,rules,tooling,workflow-kit,workflows}/
+├── cli.test.ts
+├── vite.dashboard.config.test.ts
+└── vitest.config.integration.test.ts
 ```
 
+Unit files use `.test.ts`; integration files use `.integration.test.ts` beside them. Large module groups use topic suffixes. Helper contract tests live beside their helper in `tests/support/`; type-input contract tests live beside their input in `tests/types/`.
+
 Architecture fixtures/helpers are colocated under dashboard, logs, models, runs, runtime, storage,
-support, systems and tooling owners. Unit and integration tests follow the same source-family split
-as production code. Shared fixtures, helpers and child-process entrypoints stay under
+support, systems and tooling owners. Unit and integration tests share the same module paths as production code. Shared fixtures, helpers and child-process entrypoints stay under
 `tests/support/`; helpers build fresh native authority and expose its actual timeline, claim and profile ports. Archive and old-format conversion fixtures are absent. Activity integration and parity share `fixtures/dashboard/fixture-activity.ts`; intake shares `fixtures/dashboard/fixture-intake-authority.ts`. The desktop parity suite remains the screenshot/accessibility
 contract; its reference files are not refreshed to make wiring pass. Role-derived path helpers do
 not imply current files or coverage. Exact test move counts and retirement dispositions remain with
@@ -132,8 +128,8 @@ Semantic registries keep current selector keys and verified fixture/live evidenc
 path and blob records belong in task evidence. Runtime environment inventories describe only current
 repository readers; production isolation remains in `config/runtime-isolation.json`.
 The retained field audit helper is `tests/architecture/models/helpers/canonical-field-registry-audit.ts`.
-Receipt composition tests live in `tests/integration/backend/runs/provenance/evidence-receipt/evidence-receipt-composition.test.ts`;
-step omission gate proofs live in `tests/integration/backend/runtime/execution/run-executor/step-omission-gates.test.ts`.
+Receipt composition tests live in `tests/backend/runs/provenance/evidence-receipt.evidence-receipt-composition.integration.test.ts`;
+step omission gate proofs live in `tests/backend/runtime/execution/run-executor.step-omission-gates.integration.test.ts`.
 Unused earlier receipt-composition snapshots are absent; current receipts derive from complete native evidence.
 The ignored `config/test-data.local.json` remains private local test input.
 

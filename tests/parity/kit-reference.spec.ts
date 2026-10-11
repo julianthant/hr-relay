@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { captureParityPair } from "./helpers/capture.js";
-import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");

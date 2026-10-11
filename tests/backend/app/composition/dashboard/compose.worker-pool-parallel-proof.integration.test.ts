@@ -1,0 +1,1034 @@
+import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
+import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
+import { releaseAdmissionFixture,releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+
+import assert from "node:assert/strict";
+import { spawn as spawnChildProcess,type ChildProcess } from "node:child_process";
+import { existsSync,mkdirSync,mkdtempSync,readdirSync,readFileSync,realpathSync,rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach,describe,it } from "vitest";
+import {
+composeWorkerProcessControl
+} from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import {
+createCommandKernel,
+type CommandKernel,
+type CommandKernelDependencies,
+type WorkerPoolRuntimeSeam,
+} from "../../../../../src/backend/runs/commands/command-kernel.js";
+import { createTimeoutDeadlineScheduler } from "../../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
+import { type WorkerPoolMember } from "../../../../../src/backend/runtime/workers/worker-loop.js";
+import type {
+SpawnedWorkerHandle,
+WorkerProcessSpawner,
+WorkerProcessSpawnRequest,
+} from "../../../../../src/backend/runtime/workers/worker-supervisor.js";
+import { WorkerProcessLockFileSchema } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { PositiveIntSchema,WorkerIdSchema,WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
+import { manualClock,systemClock,type Clock,type TestClock } from "../../../../../src/rules/time/clock.js";
+import {
+NO_INTAKE_PROJECTIONS,
+UNWIRED_INTAKE_PARSER,
+} from "../../../../support/fixtures/intake-kernel-seams.js";
+import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
+import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
+import { ManualScheduler } from "../../../../support/helpers/phase1f-executor-harness.js";
+
+function servedControlBasis(database: AuthorityDatabase, workerId: string) {
+  const lease = database.authority.workerLeases.get(workerId);
+  assert.ok(lease?.controlRevision, "the fixture must serve a real control basis");
+  return { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision };
+}
+
+const NOW = "2026-08-26T09:00:00.000Z";
+const PL = WorkflowIdSchema.parse("person-lookup");
+const SEP = WorkflowIdSchema.parse("separations");
+const plMember = (index: number): WorkerPoolMember => {
+  const poolIndex = PositiveIntSchema.parse(index);
+  return { workflowId: PL, poolIndex, ordinal: poolIndex, membershipRevision: PositiveIntSchema.parse(1), workerId: WorkerIdSchema.parse(`person-lookup-worker-${String(index)}`) };
+};
+const PL_1 = plMember(1);
+const PL_2 = plMember(2);
+
+const STUB_CLI_PATH = join(process.cwd(), "tests", "support", "processes", "worker-stub-cli.ts");
+const REPO_ROOT = process.cwd();
+
+function required<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`the proof expected ${what} to exist`);
+  return value;
+}
+
+/* ── shared cleanup: kill every child even on failure, then sweep roots ──── */
+
+const roots: string[] = [];
+const openDatabases: AuthorityDatabase[] = [];
+const cleanups: (() => Promise<void> | void)[] = [];
+const liveRealChildren: ChildProcess[] = [];
+
+afterEach(async () => {
+  // Run every cleanup stage despite failures so signal escalation, database close and root cleanup still execute.
+  const errors: unknown[] = [];
+  for (const cleanup of cleanups.splice(0).reverse()) {
+    try {
+      await cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  for (const child of liveRealChildren.splice(0)) {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
+  for (const database of openDatabases.splice(0)) {
+    try {
+      database.close();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  releaseAdmissionFixtures();
+  for (const root of roots.splice(0)) {
+    try {
+      releaseAdmissionFixture(root);
+      rmSync(root, { recursive: true, force: true });
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, `afterEach cleanup failed (${String(errors.length)} error(s))`);
+  }
+}, 30_000);
+
+/* ── shared command plumbing ─────────────────────────────────────────────── */
+
+let commandSequence = 0;
+function nextCommandId(): string {
+  commandSequence += 1;
+  const tail = String(commandSequence).padStart(4, "0");
+  return `eeeeeeee-${tail}-4000-8000-${tail}00000000`;
+}
+
+function envelope(clock: Clock, commandId = nextCommandId()) {
+  return {
+    commandId,
+    requestedAt: clock.now().toISOString(),
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "worker-browser",
+  } as const;
+}
+
+/** One pool-effect boundary crossing, in door order. */
+interface PoolEffectEvent {
+  readonly commandId: string;
+  readonly type: string;
+  readonly phase: "enter" | "exit";
+  readonly seq: number;
+  readonly atMonotonicMs: number;
+}
+
+function eventOf(events: readonly PoolEffectEvent[], commandId: string, phase: "enter" | "exit"): PoolEffectEvent {
+  return required(
+    events.find((event) => event.commandId === commandId && event.phase === phase),
+    `a pool-effect ${phase} event for command ${commandId}`,
+  );
+}
+
+
+function instrumentPool(
+  pool: WorkerPoolRuntimeSeam,
+  clock: Clock,
+  events: PoolEffectEvent[],
+): WorkerPoolRuntimeSeam {
+  let seq = 0;
+  const record = (commandId: string, type: string, phase: "enter" | "exit"): void => {
+    seq += 1;
+    events.push({ commandId, type, phase, seq, atMonotonicMs: clock.monotonicMs() });
+  };
+  const wrap = <Method extends keyof WorkerPoolRuntimeSeam>(method: Method): WorkerPoolRuntimeSeam[Method] =>
+    async (context: Parameters<WorkerPoolRuntimeSeam[Method]>[0]) => {
+      record(context.command.commandId, context.command.type, "enter");
+      try {
+        return await pool[method](context);
+      } finally {
+        record(context.command.commandId, context.command.type, "exit");
+      }
+    };
+  return {
+    planPoolWorkerCount: wrap("planPoolWorkerCount"),
+    spawnPoolWorker: wrap("spawnPoolWorker"),
+    stopPoolWorker: wrap("stopPoolWorker"),
+    pausePoolWorker: wrap("pausePoolWorker"),
+    resumePoolWorker: wrap("resumePoolWorker"),
+    refreshPoolBrowser: wrap("refreshPoolBrowser"),
+    reopenPoolBrowser: wrap("reopenPoolBrowser"),
+  };
+}
+
+function kernelOver(
+  database: AuthorityDatabase,
+  clock: Clock,
+  pool: WorkerPoolRuntimeSeam,
+): CommandKernel {
+  const dependencies: CommandKernelDependencies = {
+    lifecycle: new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
+    appVersion: "0.1.0",
+    configIdentity: (() => { const active = database.authority.runtimeConfig.get(); assert.ok(active); return {configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId}; })(),
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
+    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+    clock,
+    ids: sequentialIdFactory("f"),
+    descriptors: {
+      resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
+    },
+    writeResolution: {
+      resolvePresent: () => {
+        throw new Error("unused in this suite");
+      },
+      resolveAbsent: () => {
+        throw new Error("unused in this suite");
+      },
+    },
+    workerRuntime: { pool },
+  };
+  return createCommandKernel(dependencies);
+}
+
+/** Journal truth: an applied command has its row and its applied audit; a refusal has neither. */
+function assertJournaled(database: AuthorityDatabase, commandId: string): void {
+  assert.notEqual(database.authority.commands.get(commandId), undefined, `command ${commandId} journal row`);
+  assert.equal(
+    database.authority.commandAudits.findByCommand(commandId)?.result.state,
+    "applied",
+    `command ${commandId} audit`,
+  );
+}
+function assertUnacknowledged(database: AuthorityDatabase, commandId: string): void {
+  assert.notEqual(database.authority.commands.get(commandId), undefined, `command ${commandId} retains admission`);
+  assert.equal(database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
+  assert.equal(
+    database.authority.commandAudits.findByCommand(commandId),
+    undefined,
+    `command ${commandId} must not audit`,
+  );
+}
+
+
+
+class FakeWorkerChild implements SpawnedWorkerHandle {
+  readonly pid: number | undefined;
+  readonly signalsSent: string[] = [];
+  readonly #killResult: boolean;
+  #exitListeners: ((code: number | null, signal: string | null) => void)[] = [];
+  #errorListeners: ((error: Error) => void)[] = [];
+
+  constructor(pid: number | undefined, killResult = true) {
+    this.pid = pid;
+    this.#killResult = killResult;
+  }
+
+  kill(signal: "SIGTERM" | "SIGKILL"): boolean {
+    this.signalsSent.push(signal);
+    return this.#killResult;
+  }
+
+  onExit(listener: (code: number | null, signal: string | null) => void): void {
+    this.#exitListeners.push(listener);
+  }
+
+  onError(listener: (error: Error) => void): void {
+    this.#errorListeners.push(listener);
+  }
+
+  emitExit(code: number | null, signal: string | null): void {
+    for (const listener of this.#exitListeners) listener(code, signal);
+  }
+
+  emitError(error: Error): void {
+    for (const listener of this.#errorListeners) listener(error);
+  }
+}
+
+interface SoakHarness {
+  readonly database: AuthorityDatabase;
+  readonly clock: TestClock;
+  readonly scheduler: ManualScheduler;
+  readonly kernel: CommandKernel;
+  readonly control: ReturnType<typeof composeWorkerProcessControl>;
+  readonly children: FakeWorkerChild[];
+  readonly spawnRequests: WorkerProcessSpawnRequest[];
+  readonly faults: Error[];
+  readonly events: PoolEffectEvent[];
+}
+
+interface SoakHarnessOptions {
+  /** Per-worker fake-child behavior; default is a healthy signalable child. */
+  readonly childFor?: (member: WorkerPoolMember, pid: number) => FakeWorkerChild;
+
+  readonly interceptPool?: (
+    pool: WorkerPoolRuntimeSeam,
+    edges: Readonly<{ database: AuthorityDatabase; clock: TestClock }>,
+  ) => WorkerPoolRuntimeSeam;
+}
+
+function openSoakHarness(options?: SoakHarnessOptions): SoakHarness {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-soak-"));
+  roots.push(root);
+  const clock = manualClock(new Date(NOW));
+  const database = AuthorityDatabase.open(
+    { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    clock,
+  );
+  seedSyntheticRuntimeConfig(database);
+  openDatabases.push(database);
+  const scheduler = new ManualScheduler(clock, 0);
+  const children: FakeWorkerChild[] = [];
+  const spawnRequests: WorkerProcessSpawnRequest[] = [];
+  const faults: Error[] = [];
+  const events: PoolEffectEvent[] = [];
+  let nextPid = 7000;
+  const control = composeWorkerProcessControl({
+    profileRoot: join(root, "browsers"), processLockRoot: join(root, "locks"),
+    database,
+    clock,
+    scheduler,
+    launch: {
+      environment: {},
+      command: "/usr/bin/fake-worker-node",
+      prefixArgs: Object.freeze(["--import", "tsx", "src/cli.ts"]),
+      cwd: root,
+    },
+    spawn: (request) => {
+      spawnRequests.push(request);
+      nextPid += 1;
+      const child = options?.childFor === undefined
+        ? new FakeWorkerChild(nextPid)
+        : options.childFor(request.member, nextPid);
+      children.push(child);
+      return child;
+    },
+    birth: { pollMs: 250, timeoutMs: 10_000 },
+    onFault: (error) => {
+      faults.push(error);
+    },
+  });
+  cleanups.push(() => {
+    control.supervisor.close();
+  });
+  const intercepted = options?.interceptPool === undefined
+    ? control.workerRuntime.pool
+    : options.interceptPool(control.workerRuntime.pool, { database, clock });
+  const kernel = kernelOver(database, clock, instrumentPool(intercepted, clock, events));
+  return { database, clock, scheduler, kernel, control, children, spawnRequests, faults, events };
+}
+
+const settleMicrotasks = async (): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+function fireBirthPoll(harness: SoakHarness): void {
+  for (const entry of harness.scheduler.pending()) entry.fire();
+}
+
+/** Prove the last-spawned fake child's birth the way the real worker CLI does. */
+function proveBirth(harness: SoakHarness, member: WorkerPoolMember): void {
+  const child = required(harness.children.at(-1), "a spawned fake child");
+  const pid = required(child.pid, "the fake child's pid");
+  assert.equal(harness.database.authority.workerLeases.start({
+    workerId: member.workerId,
+    workflow: member.workflowId,
+    browserSystems: member.workflowId === PL ? ["crm", "ucpath"] : ["ucpath"],
+    processId: pid,
+    requestedBy: "local-operator",
+    now: harness.clock.now().toISOString(),
+  }).state, "started");
+  fireBirthPoll(harness);
+}
+
+function currentMember(harness: SoakHarness, workflow: string, poolIndex: number) {
+  const slot = harness.database.authority.workerSlots.list(workflow).find(value => value.poolIndex === poolIndex && value.retiredAt === null);
+  return workerPoolMember(required(slot, "current admitted worker slot"));
+}
+
+async function planFixture(harness: SoakHarness, workflow: string, desiredWorkers = 1) {
+  const planned = await harness.kernel.executeWorkerPool({ ...envelope(harness.clock), type: "plan-worker-count",
+    target: { workflowId: workflow, expectedVersion: harness.database.authority.workerPools.get(workflow)?.version ?? 0 },
+    payload: { desiredWorkers } });
+  assert.equal(planned.state, "applied");
+  return currentMember(harness, workflow, 1);
+}
+
+describe("soak: overlapping command sequences over the composed pool door (deterministic)", () => {
+  it(
+    "serializes SAME-workflow commands, interleaves DIFFERENT workflows, and every acknowledgement is truthful",
+    async () => {
+      const harness = openSoakHarness();
+
+      // ── plan up, both workflows, driven concurrently ────────────────────
+      const planPlId = nextCommandId();
+      const planSepId = nextCommandId();
+      const planPl = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, planPlId),
+        type: "plan-worker-count",
+        target: { workflowId: PL, expectedVersion: 0 },
+        payload: { desiredWorkers: 2 },
+      });
+      const planSep = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, planSepId),
+        type: "plan-worker-count",
+        target: { workflowId: SEP, expectedVersion: 0 },
+        payload: { desiredWorkers: 1 },
+      });
+      const [planPlResult, planSepResult] = await Promise.all([planPl, planSep]);
+      assert.equal(planPlResult.state, "applied");
+      assert.equal(planSepResult.state, "applied");
+      const PL_1 = currentMember(harness, PL, 1);
+      const PL_2 = currentMember(harness, PL, 2);
+      const SEP_1 = currentMember(harness, SEP, 1);
+      assert.equal(harness.database.authority.workerPools.get(PL)?.desiredWorkers, 2);
+      assert.equal(harness.database.authority.workerPools.get(SEP)?.desiredWorkers, 1);
+
+      // ── DIFFERENT workflows interleave: SEP-1's whole spawn lands INSIDE
+      //    PL-1's still-open birth window ───────────────────────────────────
+      const spawnPl1Id = nextCommandId();
+      const spawnPl1 = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, spawnPl1Id),
+        type: "spawn-worker",
+        target: { workflowId: PL, expectedVersion: 1 },
+        payload: { workerId: PL_1.workerId },
+      });
+      await settleMicrotasks();
+      const spawnSep1Id = nextCommandId();
+      const spawnSep1 = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, spawnSep1Id),
+        type: "spawn-worker",
+        target: { workflowId: SEP, expectedVersion: 1 },
+        payload: { workerId: SEP_1.workerId },
+      });
+      await settleMicrotasks();
+      proveBirth(harness, SEP_1);
+      assert.equal((await spawnSep1).state, "applied");
+      // PL-1 is STILL awaiting birth while SEP-1 settled end to end.
+      const pl1Child = required(harness.children[0], "PL-1's child");
+      const pl1Pid = required(pl1Child.pid, "PL-1's pid");
+      assert.equal(harness.database.authority.workerLeases.start({
+        workerId: PL_1.workerId, workflow: PL, browserSystems: ["crm", "ucpath"], processId: pl1Pid,
+        requestedBy: "local-operator", now: harness.clock.now().toISOString(),
+      }).state, "started");
+      fireBirthPoll(harness);
+      assert.equal((await spawnPl1).state, "applied");
+      assert.ok(
+        eventOf(harness.events, spawnSep1Id, "enter").seq > eventOf(harness.events, spawnPl1Id, "enter").seq
+        && eventOf(harness.events, spawnSep1Id, "exit").seq < eventOf(harness.events, spawnPl1Id, "exit").seq,
+        `SEP-1's spawn effect must nest inside PL-1's: ${JSON.stringify(harness.events)}`,
+      );
+
+      // ── SAME workflow serializes: a pause issued during PL-2's in-flight
+      //    spawn must not even ENTER the door until that spawn exits ────────
+      harness.clock.advanceWall(1_000);
+      const spawnPl2Id = nextCommandId();
+      const spawnPl2 = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, spawnPl2Id),
+        type: "spawn-worker",
+        target: { workflowId: PL, expectedVersion: 1 },
+        payload: { workerId: PL_2.workerId },
+      });
+      await settleMicrotasks();
+      const pausePl1Id = nextCommandId();
+      const pausePl1 = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, pausePl1Id),
+        type: "pause-worker",
+        target: { workerId: PL_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
+        reason: "w5 soak pause",
+      });
+      await settleMicrotasks();
+      // Queued behind the same-workflow spawn: no effect entered, no durable
+      // directive, no journal row — the acknowledgement has not been minted.
+      assert.equal(harness.events.some((event) => event.commandId === pausePl1Id), false);
+      assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.control.directive, "run");
+      assert.equal(harness.database.authority.commands.get(pausePl1Id), undefined);
+      proveBirth(harness, PL_2);
+      assert.equal((await spawnPl2).state, "applied");
+      assert.equal((await pausePl1).state, "applied");
+      assert.ok(
+        eventOf(harness.events, pausePl1Id, "enter").seq > eventOf(harness.events, spawnPl2Id, "exit").seq,
+        "the pause may enter the door only after the same-workflow spawn exits",
+      );
+      const pausedAt = harness.clock.now().toISOString();
+      assert.deepEqual(harness.database.authority.workerLeases.get(PL_1.workerId)?.control, {
+        directive: "pause", requestedAt: pausedAt, requestedBy: "local-operator", reason: "w5 soak pause",
+      });
+      const resumePl1Id = nextCommandId();
+      assert.equal((await harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, resumePl1Id),
+        type: "resume-worker",
+        target: { workerId: PL_1.workerId, expectedVersion: 2, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
+      })).state, "applied");
+      assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.control.directive, "run");
+
+      // ── scale PL down to 1 while SEP still works, then stop SEP — driven
+      //    concurrently across the two workflows ────────────────────────────
+      harness.clock.advanceWall(1_000);
+      const scaleDownAt = harness.clock.now().toISOString();
+      const shrinkPlId = nextCommandId();
+      const stopSepId = nextCommandId();
+      const shrinkPl = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, shrinkPlId),
+        type: "plan-worker-count",
+        target: { workflowId: PL, expectedVersion: 1 },
+        payload: { desiredWorkers: 1 },
+      });
+      const stopSep = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, stopSepId),
+        type: "stop-worker",
+        target: { workerId: SEP_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, SEP_1.workerId) },
+        reason: "sep teardown",
+      });
+      await settleMicrotasks();
+      const retiring = required(harness.database.authority.workerLeases.get(PL_2.workerId), "retiring PL-2 lease");
+      assert.equal(retiring.control.directive, "stop");
+      assert.equal(harness.database.authority.workerLeases.reportLifecycle({ workerId: PL_2.workerId,
+        leaseGeneration: retiring.leaseGeneration, lifecycle: { state: "stopped", startedAt: retiring.lifecycle.startedAt,
+          stoppedAt: scaleDownAt, reason: "operator" }, now: scaleDownAt }).state, "applied");
+      required(harness.children[2], "PL-2 child").emitExit(0, null);
+      await settleMicrotasks();
+      const [shrinkResult, stopSepResult] = await Promise.all([shrinkPl, stopSep]);
+      assert.equal(shrinkResult.state, "applied");
+      assert.equal(stopSepResult.state, "applied");
+
+      assert.deepEqual(harness.database.authority.workerLeases.get(PL_2.workerId)?.control, {
+        directive: "stop", requestedAt: scaleDownAt, requestedBy: "local-operator",
+      });
+      assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.control.directive, "run");
+      assert.equal(harness.database.authority.workerPools.get(PL)?.desiredWorkers, 1);
+      assert.equal(harness.database.authority.workerPools.get(PL)?.version, 2);
+      assert.equal(harness.control.supervisor.memberEvidence(PL_2)?.state, "exited");
+      assert.notEqual(harness.database.authority.workerSlots.get(PL_2.workerId)?.retiredAt, null);
+      assert.deepEqual(harness.database.authority.workerLeases.get(SEP_1.workerId)?.control, {
+        directive: "stop", requestedAt: scaleDownAt, requestedBy: "local-operator", reason: "sep teardown",
+      });
+
+      // ── stop the last member, then the children die and close() is empty ─
+      const stopPl1Id = nextCommandId();
+      assert.equal((await harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, stopPl1Id),
+        type: "stop-worker",
+        target: { workerId: PL_1.workerId, expectedVersion: 3, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
+        reason: "pl teardown",
+      })).state, "applied");
+      for (const member of [PL_1, SEP_1]) {
+        const lease = required(harness.database.authority.workerLeases.get(member.workerId), "stopping lease");
+        assert.equal(lease.control.directive, "stop");
+        assert.equal(harness.database.authority.workerLeases.reportLifecycle({ workerId: member.workerId,
+          leaseGeneration: lease.leaseGeneration, lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt,
+            stoppedAt: harness.clock.now().toISOString(), reason: "operator" }, now: harness.clock.now().toISOString() }).state, "applied");
+      }
+      required(harness.children[0], "PL-1 child").emitExit(0, null);
+      required(harness.children[1], "SEP-1 child").emitExit(0, null);
+      for (const member of [PL_1, PL_2, SEP_1]) {
+        const evidence = harness.control.supervisor.memberEvidence(member);
+        assert.equal(evidence?.state, "exited", member.workerId);
+        if (evidence?.state !== "exited") throw new Error("unreachable");
+        assert.equal(evidence.outcome, "stopped", member.workerId);
+        assert.equal(evidence.reportedBy, "os", member.workerId);
+      }
+      assert.deepEqual(harness.control.supervisor.close(), []);
+      const closedCommand = { ...envelope(harness.clock), type: "spawn-worker",
+        target: { workflowId: PL, expectedVersion: 2 }, payload: { workerId: PL_1.workerId } };
+      const closed = await harness.kernel.executeWorkerPool(closedCommand);
+      assert.equal(closed.state, "rejected");
+      if (closed.state === "rejected") assert.match(closed.message, /this worker supervisor is closed; a shutting-down supervisor acknowledges nothing/);
+      assert.equal(harness.database.authority.workerControls.get(closedCommand.commandId)?.phase.state, "refused");
+      assert.equal(harness.database.authority.commandAudits.findByCommand(closedCommand.commandId)?.result.state, "rejected");
+
+      // ── truthfulness sweep: every applied command journaled + audited ────
+      for (const commandId of [
+        planPlId, planSepId, spawnPl1Id, spawnSep1Id, spawnPl2Id,
+        pausePl1Id, resumePl1Id, shrinkPlId, stopSepId, stopPl1Id,
+      ]) {
+        assertJournaled(harness.database, commandId);
+      }
+      assert.deepEqual(harness.faults, []);
+    },
+  );
+
+  it("a spawn ENOENT surfaces typed with retained admission while the sibling workflow's in-flight spawn still lands", async () => {
+    const harness = openSoakHarness();
+    const SEP_1 = await planFixture(harness, SEP);
+    const PL_1 = await planFixture(harness, PL);
+    const spawnSepId = nextCommandId();
+    const spawnSep = harness.kernel.executeWorkerPool({
+      ...envelope(harness.clock, spawnSepId),
+      type: "spawn-worker",
+      target: { workflowId: SEP, expectedVersion: 1 },
+      payload: { workerId: SEP_1.workerId },
+    });
+    const spawnSepRejected = assert.rejects(spawnSep, /process errored before proving its lease birth: spawn ENOENT; the unproved child was killed/);
+    await settleMicrotasks();
+    const spawnPlId = nextCommandId();
+    const spawnPl = harness.kernel.executeWorkerPool({
+      ...envelope(harness.clock, spawnPlId),
+      type: "spawn-worker",
+      target: { workflowId: PL, expectedVersion: 1 },
+      payload: { workerId: PL_1.workerId },
+    });
+    await settleMicrotasks();
+    // The OS refuses SEP-1's launch while PL-1's spawn is mid-flight.
+    required(harness.children[0], "SEP-1 child").emitError(new Error("spawn ENOENT"));
+    await spawnSepRejected;
+    proveBirth(harness, PL_1);
+    assert.equal((await spawnPl).state, "applied");
+    assertUnacknowledged(harness.database, spawnSepId);
+    assertJournaled(harness.database, spawnPlId);
+    assert.equal(harness.database.authority.workerLeases.get(SEP_1.workerId), undefined);
+    const sepEvidence = harness.control.supervisor.memberEvidence(SEP_1);
+    assert.equal(sepEvidence?.state, "exited");
+    if (sepEvidence?.state !== "exited") throw new Error("unreachable");
+    assert.equal(sepEvidence.outcome, "crashed");
+    assert.equal(sepEvidence.reportedBy, "supervisor");
+  });
+
+  it("an undelivered escalation SIGTERM reaches the fault sink and records NO stage that did not happen", async () => {
+    const harness = openSoakHarness({
+      childFor: (_member, pid) => new FakeWorkerChild(pid, false),
+    });
+    const PL_1 = await planFixture(harness, PL);
+    const spawnId = nextCommandId();
+    const spawn = harness.kernel.executeWorkerPool({
+      ...envelope(harness.clock, spawnId),
+      type: "spawn-worker",
+      target: { workflowId: PL, expectedVersion: 1 },
+      payload: { workerId: PL_1.workerId },
+    });
+    await settleMicrotasks();
+    proveBirth(harness, PL_1);
+    assert.equal((await spawn).state, "applied");
+    const stopAt = harness.clock.now().toISOString();
+    const stopId = nextCommandId();
+    assert.equal((await harness.kernel.executeWorkerPool({
+      ...envelope(harness.clock, stopId),
+      type: "stop-worker",
+      target: { workerId: PL_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
+      reason: "w5 wedge",
+    })).state, "applied");
+
+    harness.clock.advanceMonotonic(120_000);
+    for (const entry of harness.scheduler.pending()) entry.fire();
+    assert.equal(harness.faults.length, 1);
+    assert.match(
+      required(harness.faults[0], "the wedged-stop fault").message,
+      /escalation SIGTERM was not delivered and the child has not reported exit; the stop is wedged/,
+    );
+    // The evidence records ONLY the stage that actually happened.
+    const evidence = harness.control.supervisor.memberEvidence(PL_1);
+    assert.equal(evidence?.state, "stopping");
+    if (evidence?.state !== "stopping") throw new Error("unreachable");
+    assert.deepEqual(evidence.observedStop, [{ stage: "graceful-stop-requested", at: stopAt }]);
+
+    assert.equal(harness.scheduler.pending().length, 0);
+    assertJournaled(harness.database, stopId);
+  });
+
+  it("a worker that dies before supervisor admission is durably refused without a stop effect", async () => {
+    const harness = openSoakHarness({
+      interceptPool: (pool, edges) => ({
+        ...pool,
+        stopPoolWorker: async (context) => {
+
+          const lease = required(
+            edges.database.authority.workerLeases.get(PL_1.workerId),
+            "PL-1's lease",
+          );
+          const now = edges.clock.now().toISOString();
+          assert.equal(edges.database.authority.workerLeases.reportLifecycle({
+            workerId: PL_1.workerId,
+            leaseGeneration: lease.leaseGeneration,
+            lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: now, reason: "crashed" },
+            now,
+          }).state, "applied");
+          return pool.stopPoolWorker(context);
+        },
+      }),
+    });
+    const PL_1 = await planFixture(harness, PL);
+    const spawnId = nextCommandId();
+    const spawn = harness.kernel.executeWorkerPool({
+      ...envelope(harness.clock, spawnId),
+      type: "spawn-worker",
+      target: { workflowId: PL, expectedVersion: 1 },
+      payload: { workerId: PL_1.workerId },
+    });
+    await settleMicrotasks();
+    proveBirth(harness, PL_1);
+    assert.equal((await spawn).state, "applied");
+
+    const stopId = nextCommandId();
+    const result = await harness.kernel.executeWorkerPool({
+      ...envelope(harness.clock, stopId), type: "stop-worker",
+      target: { workerId: PL_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, PL_1.workerId) }, reason: "w5 refused",
+    });
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.match(result.message, /worker-control-basis-changed-before-effect/);
+    assert.equal(harness.database.authority.workerControls.get(stopId)?.phase.state, "refused");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(stopId)?.result.state, "rejected");
+    assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.lifecycle.state, "stopped");
+    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(stopId)?.versionChanges, []);
+    assert.equal(harness.control.supervisor.memberEvidence(PL_1)?.state, "running");
+
+  });
+});
+
+
+
+interface RealChildRecord {
+  readonly member: WorkerPoolMember;
+  readonly command: string;
+  readonly argv: readonly string[];
+  readonly pid: number | undefined;
+  readonly child: ChildProcess;
+  readonly output: string[];
+  exited: boolean;
+}
+
+/** The production spawn adapter shape, over a REAL child, with observation. */
+function realStubSpawner(records: RealChildRecord[]): WorkerProcessSpawner {
+  return (request) => {
+    const child = spawnChildProcess(request.command, [...request.args], {
+      cwd: request.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    liveRealChildren.push(child);
+    const output: string[] = [];
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => output.push(chunk));
+    child.stderr?.on("data", (chunk: string) => output.push(`STDERR ${chunk}`));
+    const record: RealChildRecord = {
+      member: request.member,
+      command: request.command,
+      argv: request.args,
+      pid: child.pid,
+      child,
+      output,
+      exited: false,
+    };
+    records.push(record);
+    return Object.freeze({
+      pid: child.pid,
+      kill: (signal: "SIGTERM" | "SIGKILL"): boolean => child.kill(signal),
+      onExit: (listener: (code: number | null, signal: string | null) => void): void => {
+        child.on("exit", (code, signal) => {
+          record.exited = true;
+          listener(code, signal);
+        });
+      },
+      onError: (listener: (error: Error) => void): void => {
+        child.on("error", (error) => {
+          listener(error);
+        });
+      },
+    });
+  };
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  what: string,
+  diagnostics: () => string,
+  timeoutMs = 20_000,
+): Promise<void> {
+  const deadline = systemClock.monotonicMs() + timeoutMs;
+  while (!predicate()) {
+    if (systemClock.monotonicMs() > deadline) {
+      throw new Error(`timed out after ${String(timeoutMs)}ms waiting for ${what}\n${diagnostics()}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+/** Every worker process-lock record under `<lockRoot>/workers`, by worker id. */
+function workerLockRecords(lockRoot: string): Map<string, { releasedAt: string | null }> {
+  const directory = join(lockRoot, "workers");
+  const records = new Map<string, { releasedAt: string | null }>();
+  if (!existsSync(directory)) return records;
+  for (const name of readdirSync(directory)) {
+    if (!name.endsWith(".lock.json") || name.startsWith(".")) continue;
+    const parsed = WorkerProcessLockFileSchema.parse(
+      JSON.parse(readFileSync(join(directory, name), "utf8")),
+    );
+    assert.equal(parsed.name, "workers");
+    if (!("workerId" in parsed)) throw new Error("unbound-worker-process-lock");
+    records.set(parsed.workerId, { releasedAt: parsed.releasedAt });
+  }
+  return records;
+}
+
+function reportW5Phase(
+  proof: "two-child-door" | "runtime-shutdown",
+  phase: "startup" | "spawn-and-birth" | "graceful-stop" | "shutdown" | "teardown",
+  state: "begin" | "complete",
+): void {
+  process.stdout.write(`[r3b:w5:${proof}] ${phase}:${state}\n`);
+}
+
+describe("real processes: two children supervised concurrently through the composed kernel door", () => {
+  interface RealHarness {
+    readonly database: AuthorityDatabase;
+    readonly kernel: CommandKernel;
+    readonly control: ReturnType<typeof composeWorkerProcessControl>;
+    readonly records: RealChildRecord[];
+    readonly faults: Error[];
+    readonly events: PoolEffectEvent[];
+    readonly lockRoot: string;
+    readonly dbPath: string;
+  }
+
+  function openRealHarness(launchCommandOverride?: string): RealHarness {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-real-"));
+    roots.push(root);
+    const stateRoot = join(root, ".tracker");
+    const dbPath = join(stateRoot, "state.db");
+    const lockRoot = join(stateRoot, "locks");
+    mkdirSync(stateRoot, { recursive: true });
+    const database = AuthorityDatabase.open(
+      { path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "unit-test" },
+      systemClock,
+    );
+    seedSyntheticRuntimeConfig(database);
+  openDatabases.push(database);
+    const records: RealChildRecord[] = [];
+    const faults: Error[] = [];
+    const events: PoolEffectEvent[] = [];
+    const control = composeWorkerProcessControl({
+      profileRoot: join(stateRoot, "browsers"), processLockRoot: lockRoot,
+      database,
+      clock: systemClock,
+      scheduler: createTimeoutDeadlineScheduler(systemClock),
+      launch: {
+      environment: {},
+        command: launchCommandOverride ?? process.execPath,
+        prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot, "synthetic"]),
+        cwd: REPO_ROOT,
+      },
+      spawn: realStubSpawner(records),
+      birth: { pollMs: 50, timeoutMs: 30_000 },
+      onFault: (error) => {
+        faults.push(error);
+      },
+    });
+    cleanups.push(() => {
+      control.supervisor.close();
+    });
+    const kernel = kernelOver(database, systemClock, instrumentPool(control.workerRuntime.pool, systemClock, events));
+    return { database, kernel, control, records, faults, events, lockRoot, dbPath };
+  }
+
+  it(
+    "spawns worker 1 and worker 2 as real children, proves both births via durable leases, and stops both — exact identities, no cross-talk",
+    async () => {
+      reportW5Phase("two-child-door", "startup", "begin");
+      const harness = openRealHarness();
+      const childOutput = (): string => harness.records.map((record) =>
+        `${record.member.workerId}: ${record.output.join("")}`).join("\n");
+      reportW5Phase("two-child-door", "startup", "complete");
+
+      reportW5Phase("two-child-door", "spawn-and-birth", "begin");
+      const planId = nextCommandId();
+      assert.equal((await harness.kernel.executeWorkerPool({
+        ...envelope(systemClock, planId),
+        type: "plan-worker-count",
+        target: { workflowId: PL, expectedVersion: 0 },
+        payload: { desiredWorkers: 2 },
+      })).state, "applied");
+
+      // Both spawns in flight together through the one composed door.
+      const spawn1Id = nextCommandId();
+      const spawn2Id = nextCommandId();
+      const submitAtMs = systemClock.monotonicMs();
+      const spawn1 = harness.kernel.executeWorkerPool({
+        ...envelope(systemClock, spawn1Id),
+        type: "spawn-worker",
+        target: { workflowId: PL, expectedVersion: 1 },
+        payload: { workerId: PL_1.workerId },
+      });
+      const spawn2 = harness.kernel.executeWorkerPool({
+        ...envelope(systemClock, spawn2Id),
+        type: "spawn-worker",
+        target: { workflowId: PL, expectedVersion: 1 },
+        payload: { workerId: PL_2.workerId },
+      });
+      const [result1, result2] = await Promise.all([
+        spawn1.then((result) => ({ result, ackMs: systemClock.monotonicMs() - submitAtMs })),
+        spawn2.then((result) => ({ result, ackMs: systemClock.monotonicMs() - submitAtMs })),
+      ]);
+      assert.deepEqual(result1.result, {
+        state: "applied",
+        commandId: spawn1Id,
+        affectedTargets: [{ family: "worker-browser", workerId: PL_1.workerId }],
+      });
+      assert.deepEqual(result2.result, {
+        state: "applied",
+        commandId: spawn2Id,
+        affectedTargets: [{ family: "worker-browser", workerId: PL_2.workerId }],
+      });
+
+      // EXACT pool identities: derivation, argv, lease ownership — both ways.
+      assert.equal(PL_1.workerId, "person-lookup-worker-1");
+      assert.equal(PL_2.workerId, "person-lookup-worker-2");
+      assert.equal(harness.records.length, 2);
+      const record1 = required(harness.records.find((record) => record.member.workerId === PL_1.workerId), "child 1");
+      const record2 = required(harness.records.find((record) => record.member.workerId === PL_2.workerId), "child 2");
+      for (const [record, index] of [[record1, 1], [record2, 2]] as const) {
+        assert.equal(record.command, process.execPath);
+        assert.deepEqual([...record.argv], [
+          "--import", "tsx", STUB_CLI_PATH, harness.dbPath, harness.lockRoot, "synthetic",
+          "worker", "person-lookup", "--pool-index", String(index),
+          "--worker-id", record.member.workerId, "--ordinal", String(record.member.ordinal),
+          "--membership-revision", String(record.member.membershipRevision), "--launch-command-id", index === 1 ? spawn1Id : spawn2Id,
+        ]);
+      }
+      const pid1 = required(record1.pid, "child 1 pid");
+      const pid2 = required(record2.pid, "child 2 pid");
+      assert.notEqual(pid1, pid2);
+
+      const lease1 = required(harness.database.authority.workerLeases.get(PL_1.workerId), "lease 1");
+      const lease2 = required(harness.database.authority.workerLeases.get(PL_2.workerId), "lease 2");
+      assert.equal(lease1.workflow, PL);
+      assert.equal(lease1.processId, pid1);
+      assert.equal(lease2.workflow, PL);
+      assert.equal(lease2.processId, pid2);
+      // Both children are supervised CONCURRENTLY: alive at the same instant,
+      // both owned as running by the one supervisor.
+      assert.equal(pidAlive(pid1) && pidAlive(pid2), true, childOutput());
+      assert.equal(harness.control.supervisor.memberEvidence(PL_1)?.state, "running");
+      assert.equal(harness.control.supervisor.memberEvidence(PL_2)?.state, "running");
+
+      // The W3b mutex under real time: same-workflow spawn effects are
+      // disjoint and FIFO; the handoff gap is the serialization overhead.
+      const spawn1Exit = eventOf(harness.events, spawn1Id, "exit");
+      const spawn2Enter = eventOf(harness.events, spawn2Id, "enter");
+      assert.ok(spawn2Enter.seq > spawn1Exit.seq, "spawn 2 must enter the door only after spawn 1 exits");
+      const handoffGapMs = spawn2Enter.atMonotonicMs - spawn1Exit.atMonotonicMs;
+      const birth1Ms = spawn1Exit.atMonotonicMs - eventOf(harness.events, spawn1Id, "enter").atMonotonicMs;
+      const birth2Ms = eventOf(harness.events, spawn2Id, "exit").atMonotonicMs - spawn2Enter.atMonotonicMs;
+      reportW5Phase("two-child-door", "spawn-and-birth", "complete");
+
+      // Concurrent stops: both settle applied; the durable directive instant
+      // IS the observed graceful stage instant for each member.
+      reportW5Phase("two-child-door", "graceful-stop", "begin");
+      const stop1Id = nextCommandId();
+      const stop2Id = nextCommandId();
+      const stopSubmitMs = systemClock.monotonicMs();
+      const [stop1Result, stop2Result] = await Promise.all([
+        harness.kernel.executeWorkerPool({
+          ...envelope(systemClock, stop1Id),
+          type: "stop-worker",
+          target: { workerId: PL_1.workerId, expectedVersion: lease1.version, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
+          reason: "w5 stop",
+        }),
+        harness.kernel.executeWorkerPool({
+          ...envelope(systemClock, stop2Id),
+          type: "stop-worker",
+          target: { workerId: PL_2.workerId, expectedVersion: lease2.version, controlBasis: servedControlBasis(harness.database, PL_2.workerId) },
+          reason: "w5 stop",
+        }),
+      ]);
+      const stopsAckMs = systemClock.monotonicMs() - stopSubmitMs;
+      assert.equal(stop1Result.state, "applied");
+      assert.equal(stop2Result.state, "applied");
+      await waitFor(
+        () => harness.control.supervisor.memberEvidence(PL_1)?.state === "exited"
+          && harness.control.supervisor.memberEvidence(PL_2)?.state === "exited",
+        "both real children to observe their durable stop directives and exit",
+        childOutput,
+      );
+      const exitObservedMs = systemClock.monotonicMs() - stopSubmitMs;
+      for (const member of [PL_1, PL_2]) {
+        const evidence = harness.control.supervisor.memberEvidence(member);
+        assert.equal(evidence?.state, "exited");
+        if (evidence?.state !== "exited") throw new Error("unreachable");
+        assert.equal(evidence.outcome, "stopped");
+        assert.equal(evidence.reportedBy, "os");
+        assert.equal(evidence.exitCode, 0);
+        const graceful = required(evidence.observedStop[0], `${member.workerId} graceful stage`);
+        const lease = required(harness.database.authority.workerLeases.get(member.workerId), "stopped lease");
+        assert.deepEqual(lease.control, {
+          directive: "stop",
+          requestedAt: graceful.at,
+          requestedBy: "local-operator",
+          reason: "w5 stop",
+        });
+        assert.equal(lease.lifecycle.state, "stopped");
+      }
+      // The real children released their process locks on the way out, and no
+      // process outlives the proof: PID liveness says both are gone.
+      await waitFor(() => !pidAlive(pid1) && !pidAlive(pid2), "both child pids to die", childOutput);
+      const locks = workerLockRecords(harness.lockRoot);
+      assert.notEqual(required(locks.get(PL_1.workerId), "PL-1 worker lock").releasedAt, null);
+      assert.notEqual(required(locks.get(PL_2.workerId), "PL-2 worker lock").releasedAt, null);
+      reportW5Phase("two-child-door", "graceful-stop", "complete");
+      reportW5Phase("two-child-door", "teardown", "begin");
+      assert.deepEqual(harness.control.supervisor.close(), []);
+      assert.deepEqual(harness.faults, []);
+      for (const commandId of [planId, spawn1Id, spawn2Id, stop1Id, stop2Id]) {
+        assertJournaled(harness.database, commandId);
+      }
+      reportW5Phase("two-child-door", "teardown", "complete");
+
+      process.stdout.write(`Measured two-child kernel door: ${JSON.stringify({
+        spawn1AckMs: Math.round(result1.ackMs),
+        spawn2AckMs: Math.round(result2.ackMs),
+        birth1EffectMs: Math.round(birth1Ms),
+        birth2EffectMs: Math.round(birth2Ms),
+        sameWorkflowHandoffGapMs: Math.round(handoffGapMs * 100) / 100,
+        concurrentStopsAckMs: Math.round(stopsAckMs),
+        stopToObservedExitMs: Math.round(exitObservedMs),
+      })}\n`);
+    },
+    120_000,
+  );
+
+  it(
+    "a REAL spawn ENOENT rejects typed with retained admission and no fabricated pid",
+    async () => {
+      const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-enoent-"));
+      roots.push(root);
+      const harness = openRealHarness(join(root, "no-such-node-binary"));
+      assert.equal((await harness.kernel.executeWorkerPool({ ...envelope(systemClock), type: "plan-worker-count",
+        target: { workflowId: PL, expectedVersion: 0 }, payload: { desiredWorkers: 1 } })).state, "applied");
+      const spawnId = nextCommandId();
+      await assert.rejects(
+        () => harness.kernel.executeWorkerPool({
+          ...envelope(systemClock, spawnId),
+          type: "spawn-worker",
+          target: { workflowId: PL, expectedVersion: 1 },
+          payload: { workerId: PL_1.workerId },
+        }),
+        /process errored before proving its lease birth: .*ENOENT.*; the child has no pid to kill/,
+      );
+      assertUnacknowledged(harness.database, spawnId);
+      assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId), undefined);
+      const evidence = harness.control.supervisor.memberEvidence(PL_1);
+      assert.equal(evidence?.state, "exited");
+      if (evidence?.state !== "exited") throw new Error("unreachable");
+      assert.equal(evidence.outcome, "crashed");
+      assert.equal(evidence.reportedBy, "supervisor");
+    },
+    60_000,
+  );
+});

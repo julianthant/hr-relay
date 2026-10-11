@@ -153,9 +153,9 @@ const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set();
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   TZ: [
-    "tests/integration/backend/runs/projections/run-summary/derivation.test.ts",
-    "tests/integration/backend/storage/events/jsonl-streams/dashboard-perf-fixture-shape.test.ts",
-    "tests/integration/backend/storage/sqlite/migrations/storage-restore-drill.test.ts",
+    "tests/backend/runs/projections/run-summary.derivation.integration.test.ts",
+    "tests/perf/dashboard-fixture.integration.test.ts",
+    "tests/backend/storage/sqlite/offline-restore.integration.test.ts",
   ],
 } as const;
 

@@ -20,7 +20,7 @@ import { descriptorSetHash } from "../../../src/backend/app/composition/dashboar
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
-import { createFixtureBff } from "./fixture-bff.js";
+import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { assertServedBundle, PARITY_DIST_DIR } from "./bundle.js";
 
 export async function startRunRerunServer() {

@@ -3,7 +3,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { previewScenarios } from "../../src/dashboard/surfaces/run-detail/logs/log-fixture.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";

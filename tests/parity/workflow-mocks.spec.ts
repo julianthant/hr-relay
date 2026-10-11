@@ -9,7 +9,7 @@ import { manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../
 import { seedMockRuns, mockOcrReadSteps, mockSelectableSteps, initialMockDraft } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./helpers/fixture-start.js";
 
@@ -119,7 +119,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
           await rail.getByRole("button", { name: flow.label, exact: true }).click();
           const sample = seedMockRuns().find(run => run.workflowId === flow.id)!;
-          await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: new RegExp(`^${sample.subject.replaceAll(".", "\\.")} —`, "u") }).click();
+          await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: new RegExp(`^${sample.subject.replaceAll("./", "\\.")} —`, "u") }).click();
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
           await expect(logs.getByRole("heading", { level: 2 })).toHaveText(sample.subject);
           if (flow.methods[0] === "delegated") await expect(logs).toContainText("Read Section 2 signer");

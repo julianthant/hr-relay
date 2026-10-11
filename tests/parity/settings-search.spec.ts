@@ -2,7 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 import { buildSettingsNav } from "../../src/dashboard/surfaces/settings/settings-model.js";
 import { settingsSearchIndex } from "../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";

@@ -6,7 +6,7 @@ import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { failOnPageErrors } from "./helpers/reference-harness.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
 
 test("a status-filtered item keeps sibling attempts and opens the exact selected run", {

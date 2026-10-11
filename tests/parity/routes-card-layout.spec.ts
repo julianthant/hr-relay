@@ -2,7 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Routes keeps each system in one expanded card @ ${theme.attribute}-${width}`, async ({ page }, _info) => {

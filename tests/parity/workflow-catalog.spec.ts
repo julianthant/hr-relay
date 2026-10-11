@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./helpers/fixture-start.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
 

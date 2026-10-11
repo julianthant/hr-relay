@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { OCR_DOCUMENT_FIXTURES } from "../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
@@ -36,7 +36,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await attachShellA11y(page, info, queueEvidence);
       for (const doc of OCR_DOCUMENT_FIXTURES) {
-        await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll(".", "\\.")} —`, "u") }).click();
+        await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll("./", "\\.")} —`, "u") }).click();
         await logs.getByRole("button", { name: `Records ${doc.records.length}`, exact: true }).click();
         const editor = logs.getByRole("region", { name: "OCR records", exact: true });
         const body = editor.locator('[aria-label="Record review cards"]');

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { routeUrl } from "./helpers/app-driver.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH, FIXTURE_NOW } from "./helpers/fixture-identity.js";
 import { ProtectedSettingsNameSchema } from "../../src/models/config/protected-settings.js";
 import { StorageDoctorWireSchema } from "../../src/models/dashboard/storage.js";

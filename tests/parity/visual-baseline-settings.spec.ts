@@ -6,7 +6,7 @@ import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } f
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
 import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";

@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
-import { startFixtureServer } from './helpers/fixture-bff.js';
+import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidenceName = `duration-${theme.attribute}-${width}.a11y.yml`;

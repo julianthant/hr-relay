@@ -2,7 +2,7 @@
 import { expect, test, type Locator } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureProviderSettings } from "./helpers/fixture-provider-settings.js";
 import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
 

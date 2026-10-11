@@ -1,7 +1,7 @@
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";

@@ -45,9 +45,9 @@ import { testRunLifecycle, testRunService, testWorkerPorts } from "../run-lifecy
 import { openAuthorityHarness, sessionManagerFor, ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../helpers/phase1f-executor-harness.js";
 import { plan1Parent, plan1Workflows, Plan1Input, Plan1CanonicalInput } from "../plan1-operation-workflows.js";
 import { fixtureBuildManifest } from "../workflow-definition-fixtures.js";
-import { PARITY_DIST_DIR } from "../../../integration/dashboard/client/fixtures/helpers/bundle.js";
+import { PARITY_DIST_DIR } from "../../helpers/dashboard/served-fixtures/bundle.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
-import { startFixtureServer } from "../../../integration/dashboard/client/fixtures/helpers/fixture-bff.js";
+import { startFixtureServer } from "../../helpers/dashboard/served-fixtures/fixture-bff.js";
 
 /** Local-only executor fixture; measured Explorer, Logs and source routes are production code. */
 export async function startOperationAuthorityServer(mode: "local" | "browser" | "separation" | "separation-failed" | "separation-ambiguous" = "local", native?: Readonly<{ driver: FictionalFormDriver; screenshot(): Promise<Readonly<{ bytes: Uint8Array; width: number; height: number }>> }>) {

@@ -2,7 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { startFixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_STORAGE_DOCTOR } from "./helpers/fixture-storage.js";
 import { StorageDoctorWireSchema } from "../../src/models/dashboard/storage.js";
 import { ProtectedSettingsNameSchema } from "../../src/models/config/protected-settings.js";

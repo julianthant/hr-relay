@@ -5,7 +5,7 @@ import { RunDetailSectionResponseSchema } from "../../src/models/dashboard/run-d
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { readA11yTree } from "./helpers/capture.js";
-import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { startSeededServer,type SeededServer } from "./helpers/seeded-bff.js";

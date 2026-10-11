@@ -1,7 +1,7 @@
 import { expect,test,type Page } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { ensureParityBundle,PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
+import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { PARITY_THEMES,installTheme } from "./helpers/capture.js";

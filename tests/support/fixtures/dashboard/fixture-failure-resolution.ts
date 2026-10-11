@@ -1,8 +1,8 @@
 /** D-local fixture: unchanged shell corpus; actual HTTP admission, kernel and durable failure reads. */
 import { createServer,request as proxyRequest } from "node:http";
 import { resolutionApp,resolutionCommand,resolutionFixture,resolutionPeer } from "../../helpers/failure-resolution/fixtures.js";
-import type { ParityBundleProof } from "../../../integration/dashboard/client/fixtures/helpers/bundle.js";
-import { startFixtureServer } from "../../../integration/dashboard/client/fixtures/helpers/fixture-bff.js";
+import type { ParityBundleProof } from "../../helpers/dashboard/served-fixtures/bundle.js";
+import { startFixtureServer } from "../../helpers/dashboard/served-fixtures/fixture-bff.js";
 import { FIXTURE_IDS } from "./fixture-queue.js";
 
 export async function startFailureResolutionServer(input: { distDir: string; bundle: ParityBundleProof }) {

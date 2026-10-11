@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { importSpreadsheet } from '../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
-import { startFixtureServer } from './helpers/fixture-bff.js';
+import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const captures = ['advanced-settings', 'xlsx-columns', 'xlsx-imported'];
@@ -38,7 +38,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goForward(); await expect(page).toHaveURL(/settings=routes/u);
       await page.reload(); await expect(advanced.getByRole('link', { name: 'Routes', exact: true })).toHaveAttribute('aria-current', 'page');
       await page.getByRole('link', { name: 'Spreadsheets', exact: true }).click();
-      await page.getByLabel('Open XLSX or CSV', { exact: true }).setInputFiles(new URL('../unit/dashboard/fixtures/color-filtered-roster.xlsx', import.meta.url).pathname);
+      await page.getByLabel('Open XLSX or CSV', { exact: true }).setInputFiles(new URL('../support/fixtures/spreadsheet/color-filtered-roster.xlsx', import.meta.url).pathname);
       const dialog = page.getByRole('dialog', { name: 'Choose spreadsheet columns', exact: true });
       await expect(dialog).toBeVisible(); await expect(page.getByText('Spreadsheet unavailable', { exact: true })).toHaveCount(0);
       for (const [letter, field] of [['A', 'fullName'], ['B', 'eid'], ['C', 'personalEmail']]) {

@@ -24,7 +24,7 @@ import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { PARITY_DIST_DIR } from "./bundle.js";
-import { fixtureHelloEnvelope, fixtureSnapshotEnvelope, fixtureHealthEnvelope, startFixtureServer } from "./fixture-bff.js";
+import { fixtureHelloEnvelope, fixtureSnapshotEnvelope, fixtureHealthEnvelope, startFixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 
 function unexpected(): never { throw new Error("Explorer acceptance reached an unrelated effect"); }
 
