@@ -153,6 +153,8 @@ describe("redaction surface scan — the declaration audit", () => {
 
   it("holds exact membership for current operation, action, display and notification leaves", () => {
     const currentLeaves = [
+      "durable/failure-record|debug.stack",
+      "durable/failure-record|debug.causes[]",
       "wire/operation-source|structure.definition.invocations[].label",
       "wire/run-detail-section|payload.confirmedActions[].action.value.consumed.value",
       "wire/run-detail-section|payload.confirmedActions[].durableProof.checkpointNodeId",
@@ -382,6 +384,7 @@ describe("redaction surface scan — the declaration audit", () => {
 
 const CANARY_FAILURE = FailureRecordSchema.parse({
   ...MAXIMAL_FAILURE,
+  debug: { stack: `Error: ${REDACTION_CANARIES.cookie}`, causes: [`Cause: ${REDACTION_CANARIES.ssn}`], originalBytes: 0, omittedBytes: 0 },
   summary: `search failed for ${REDACTION_CANARIES.personName} (SSN ${REDACTION_CANARIES.ssn}, DOB ${REDACTION_CANARIES.dob})`,
   subject: {
     expected: {
@@ -474,6 +477,9 @@ function openDatabase(): AuthorityDatabase {
 describe("redaction surface scan — the canary sweep (ref clock-config-secrets §6)", () => {
   it("plants a sentinel in every free-text leaf the failure record has", () => {
 
+    assert.ok(CANARY_FAILURE.debug);
+    assert.deepEqual(canariesIn(CANARY_FAILURE.debug.stack ?? ""), ["cookie"]);
+    assert.deepEqual(canariesIn(CANARY_FAILURE.debug.causes.join("\n")), ["ssn"]);
     const planted = canariesIn(canonicalJsonStringify(CANARY_FAILURE));
     for (const name of ["personName", "ssn", "dob", "cookie", "storageState", "credentialPath", "privateKey", "emplId"] as const) {
       assert.ok(planted.includes(name), `the ${name} canary never reached the failure record`);

@@ -26,7 +26,7 @@ function withoutReadOnlyHistoryFacade(content: string): string {
   const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
   const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
   const readonlyImport = source.statements.some(node => ts.isImportDeclaration(node)
-    && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "./backup-inspection.js"
+    && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "./readonly-authority-snapshot.js"
     && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
     && node.importClause.namedBindings.elements.some(binding => binding.name.text === "withAuthorityDatabaseReadOnly" && binding.propertyName === undefined));
   if (!readonlyImport) return content;
@@ -341,7 +341,7 @@ describe("control-command-single-path", () => {
       source.replace("byCommand.get(commandId)", "database.exec(commandId)"),
       source.replace("return {\n    commands:", 'database.exec("DELETE FROM command_audits"); return {\n    commands:'),
       source.replace("withAuthorityDatabaseReadOnly(copyAdmission, backupPath", "withAuthorityDatabaseReadOnly(input.admission, backupPath"),
-      source.replace('from "./backup-inspection.js"', 'from "./forged-readonly.js"'),
+      source.replace('from "./readonly-authority-snapshot.js"', 'from "./forged-readonly.js"'),
       `${source}\nfunction arbitrary(repo: any) { repo.commandAudits.insert({}); }`,
       `${source}\nconst forged = { commandAudits: { findByCommand: () => undefined } };`,
     ]) assert.ok(withoutReadOnlyHistoryFacade(bad).includes("commandAudits"), "mutating or unrelated audit authority must remain visible");

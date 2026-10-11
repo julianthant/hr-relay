@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import type { BrowserProfileAuthority } from "../../../src/backend/app/composition/worker/run-resources.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
@@ -23,7 +24,8 @@ const [root, marker, ...args] = process.argv.slice(2);
 if (root === undefined || marker !== "worker") throw new Error("fixture-worker-arguments");
 const admission = acquireEntrypointAdmission(root, "shared");
 const base = resolveConfigWithProvenance({}, hostConfigFacts({}), systemClock, admission).config;
-const config = ConfigSchema.parse({ ...base, browser: { ...base.browser, headless: true },
+assert.equal(base.paths.browserProfileRoot, join(admission.stateRoot, "browsers"));
+const config = ConfigSchema.parse({ ...base, paths: { ...base.paths, browserProfileRoot: join(admission.stateRoot, "browsers") }, browser: { ...base.browser, headless: true },
   features: { ...base.features, duoWebAuthn: false } });
 const contexts = new Set<BrowserContext>();
 const trace = (event: Record<string, unknown>) => appendFileSync(join(root,`browser-${String(process.pid)}.jsonl`),`${JSON.stringify(event)}\n`);

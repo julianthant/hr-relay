@@ -357,13 +357,18 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
 
   it("keeps override writes inside the command transaction with strict SQL readback and audit binding", () => {
     const repository = read("src/backend/storage/sqlite/explorer-overrides.ts");
+    const migrations = read("src/backend/storage/sqlite/migrations.ts");
     const database = read("src/backend/storage/sqlite/authority-database.ts");
     const kernel = read("src/backend/runs/commands/command-kernel.ts");
     const service = read("src/backend/runs/commands/explorer-edit-service.ts");
     const violations = (source: string): string[] => [
-      "REFERENCES commands(record_key)", "ExplorerWorkflowOverrideSchema.parse", "assertExplorerOverrideEvidence",
+      "ExplorerWorkflowOverrideSchema.parse", "assertExplorerOverrideEvidence",
       "explorer-override-command-transaction-required", "Explorer override readback differs",
     ].filter(token => !source.includes(token));
+    const foreignKey = "command_id TEXT NOT NULL REFERENCES commands(id)";
+    const explorerTable = migrations.slice(migrations.indexOf("CREATE TABLE explorer_overrides"), migrations.indexOf("CREATE TABLE", migrations.indexOf("CREATE TABLE explorer_overrides") + 1));
+    assert.ok(explorerTable.includes(foreignKey));
+    assert.equal(explorerTable.replace(foreignKey, "").includes(foreignKey), false);
     assert.deepEqual(violations(repository), []);
     for (const token of violations("")) assert.deepEqual(violations(repository.replaceAll(token, "")), [token]);
     assert.match(database, /if \(this\.#explorerOverridesDirty\) validateExplorerOverrides\(this\.#database\)/u);

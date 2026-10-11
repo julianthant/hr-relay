@@ -2,6 +2,11 @@
  * New code and direct negative controls remain unexcepted. */
 export const REVIEWED_CATCH_DEFAULTS = [
   {
+      "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
+      "sha256": "f29f3b2441fd4ba24295b36ee5f02072bbcf0347897f30f2b23b6a0e483fafa4",
+      "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes) or an already absent captured file; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate."
+  },
+  {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
     "sha256": "49601acbb8a74282f8659ddfc6944cea015ebdd4a722fa7e97735e2be2639bcd",
     "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
@@ -93,12 +98,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "230af37129c20fd40bef947074e9e2fbf16a445be9c4948918a9be72edee89f6",
+    "sha256": "ace82d569ba3e33f30b5bde3faa11e05aeea083ee5858b77c9c72e739b5ce2e7",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "71a9d87deedad9df9e19c2f756d627a34cb7e14f916a2ffb7dedf48bd1e080c2",
+    "sha256": "8b3b428656d5dbee34257a1f5126a8316c504812dd7869f2d9dcf02ae36ee091",
     "reason": "Only ENOENT denotes an absent optional sidecar; a missing main database throws, unsafe or changed inputs throw, and failed construction disposes only its private snapshot before rethrowing."
   },
   {

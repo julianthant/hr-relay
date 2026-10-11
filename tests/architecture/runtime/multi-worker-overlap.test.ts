@@ -1,4 +1,3 @@
-import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 // Use distinct worker ids over shared authority; composed single-workflow workers share a lease identity.
 import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
@@ -36,7 +35,6 @@ afterEach(() => {
 
 function sharedAuthority(): AuthorityHarness {
   const authority = openAuthorityHarness();
-  authority.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   disposers.push(authority.dispose);
   return authority;
 }

@@ -1604,6 +1604,10 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/diagnostic-bundle", path: "contents[].mediaType", origin: "repository-authored" },
   { surface: "wire/diagnostic-bundle", path: "redaction.warnings[]", origin: "repository-authored" },
 
+  { surface: "durable/failure-record", path: "debug.stack", origin: "external-text",
+    exception: "Thrown Error stack is processed by failureDebugDetails in src/backend/runtime/execution/run-failure.ts using sanitizeDebugText before failure terminalization writes durable authority; credentials and regulated identifiers are removed." },
+  { surface: "durable/failure-record", path: "debug.causes[]", origin: "external-text",
+    exception: "Thrown cause messages are processed by failureDebugDetails in src/backend/runtime/execution/run-failure.ts using sanitizeDebugText before failure terminalization writes durable authority; credentials and regulated identifiers are removed." },
   { surface: "durable/failure-record", path: "causeChain[].summary", origin: "external-text",
     exception: "each cause's own thrown message, same reason as `summary` and dropped by the same advisory declaration." },
   { surface: "durable/failure-record", path: "page.titleRedacted", origin: "declared-redacted" },

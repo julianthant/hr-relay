@@ -154,7 +154,18 @@ function exactBindingArgument(
 function hasExactAdmissionParameter(source: ts.SourceFile, runner: ts.FunctionDeclaration,
   importerFile: string, admissionFile: string): boolean {
   if (runner.parameters.length === 0) return true;
-  if (runner.parameters.length !== 1 || runner.body === undefined) return false;
+  if (![1, 2].includes(runner.parameters.length) || runner.body === undefined) return false;
+  if (runner.parameters.length === 2) {
+    const custody = runner.parameters[1];
+    const compact = ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Unspecified, custody, source).replace(/\s+/gu, "");
+    if (compact !== "takeInitialCustody?:()=>RuntimeProcessLockHandle|undefined") return false;
+    const custodyImport = source.statements.some(statement => ts.isImportDeclaration(statement)
+      && statement.importClause?.isTypeOnly === true && ts.isStringLiteral(statement.moduleSpecifier)
+      && moduleResolvesTo(importerFile, statement.moduleSpecifier.text, resolve(admissionFile, "..", "..", "sqlite", "runtime-process-locks.ts"))
+      && statement.importClause.namedBindings !== undefined && ts.isNamedImports(statement.importClause.namedBindings)
+      && statement.importClause.namedBindings.elements.some(element => element.name.text === "RuntimeProcessLockHandle" && element.propertyName === undefined));
+    if (!custodyImport) return false;
+  }
   const parameter = runner.parameters[0];
   if (parameter === undefined || !ts.isIdentifier(parameter.name) || parameter.name.text !== "admission"
     || parameter.initializer !== undefined || parameter.questionToken !== undefined

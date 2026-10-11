@@ -1,3 +1,4 @@
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -155,6 +156,7 @@ function orderingHarness(): OrderingHarness {
     { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "subject-fence-guard" },
     clock,
   );
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
   const sessions = writeFixtureSessions(world);

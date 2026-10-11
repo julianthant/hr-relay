@@ -42,6 +42,24 @@ function allowedArchiveSectionSql(relative: string, node: ts.Node): boolean {
   }
   return false;
 }
+function allowedNativeDeletionSql(relative: string, node: ts.Node): boolean {
+  if (relative !== "src/backend/storage/sqlite/native-run-deletion.ts" || !ts.isStringLiteralLike(node)
+    || node.text !== "INSERT INTO deleted_runs VALUES(?,?,?,?,?,?,?,?,?,?,?)") return false;
+  for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
+    if (ts.isFunctionDeclaration(parent)) return parent.name?.text === "executeNativeRunDeletion";
+  }
+  return false;
+}
+function nativeDeletionSqlFixture(path: string, functionName: string, sql: string): boolean {
+  const source = ts.createSourceFile(path, `function ${functionName}() { database.prepare(${JSON.stringify(sql)}); }`, ts.ScriptTarget.Latest, true);
+  let accepted = false;
+  const visit = (node: ts.Node): void => {
+    if (ts.isStringLiteralLike(node)) accepted = allowedNativeDeletionSql(path, node);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return accepted;
+}
 function collectAudit(): readonly string[] {
   const roots = gitVisibleFiles(["src"]).filter((path) => /\.tsx?$/u.test(path));
   const extras = new Map(["sql", "mutator", "view"].map((kind) => [resolve(REPO_ROOT, `src/core/guard-fixtures/${kind}.ts`),
@@ -83,7 +101,7 @@ function collectAudit(): readonly string[] {
       const report = (arm: string) => violations.push(`${relative}:${arm}:${node.getText().slice(0, 100)}`);
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
         && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:workflow_runs|tasks|workflow_workers|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
-        && !allowedArchiveSectionSql(relative, node) && !allowedCompletionSql(relative, node)) report("sql");
+        && !allowedArchiveSectionSql(relative, node) && !allowedCompletionSql(relative, node) && !allowedNativeDeletionSql(relative, node)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
       const signature = ts.isCallExpression(node) && mayCallMutator(node.expression)
         ? checker.getResolvedSignature(node)?.declaration : undefined;
@@ -105,6 +123,14 @@ function audit(fixtures = false): readonly string[] {
   return fixtures ? auditSnapshot : auditSnapshot.filter((entry) => !entry.startsWith("src/core/guard-fixtures/"));
 }
 describe("no-lifecycle-sql-outside-the-adapter", () => {
+  it("admits native tombstone SQL only at its exact deletion owner", () => {
+    const path = "src/backend/storage/sqlite/native-run-deletion.ts";
+    const sql = "INSERT INTO deleted_runs VALUES(?,?,?,?,?,?,?,?,?,?,?)";
+    assert.equal(nativeDeletionSqlFixture(path, "executeNativeRunDeletion", sql), true);
+    assert.equal(nativeDeletionSqlFixture("src/backend/transports/http/forged.ts", "executeNativeRunDeletion", sql), false);
+    assert.equal(nativeDeletionSqlFixture(path, "forgedDeletion", sql), false);
+    assert.equal(nativeDeletionSqlFixture(path, "executeNativeRunDeletion", "DELETE FROM deleted_runs"), false);
+  });
   it("admits only exact frozen-section SQL in its stopped converter", () => {
     const check = (sql: string, path: string, name: string) => {
       const source = ts.createSourceFile(path, `function ${name}() { db.prepare(${JSON.stringify(sql)}); }`, ts.ScriptTarget.Latest, true);

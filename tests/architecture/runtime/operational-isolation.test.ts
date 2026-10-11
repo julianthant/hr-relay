@@ -174,7 +174,17 @@ describe("operational isolation", () => {
       write(root, "src/backend/storage/admission/admission.ts", "export interface RuntimeAdmission { assertLive(): void; }\n");
       write(root, "src/cli.ts", admitted);
       assert.deepEqual(fixtureViolations(root), []);
+      const custody = 'import type { RuntimeProcessLockHandle } from "./backend/storage/sqlite/runtime-process-locks.js";\n'
+        + admitted.replace('admission: RuntimeAdmission', 'admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined');
+      write(root, "src/backend/storage/sqlite/runtime-process-locks.ts", "export interface RuntimeProcessLockHandle { release(): void; }\n");
+      write(root, "src/cli.ts", custody);
+      assert.deepEqual(fixtureViolations(root), []);
       for (const invalid of [
+        custody.replace('takeInitialCustody?', 'otherCustody?'),
+        custody.replace('RuntimeProcessLockHandle | undefined', 'unknown'),
+        custody.replace('./backend/storage/sqlite/runtime-process-locks.js', './wrong-locks.js'),
+        custody.replace('takeInitialCustody?:', 'takeInitialCustody:'),
+        custody.replace('import type { RuntimeProcessLockHandle }', 'import type { Other as RuntimeProcessLockHandle }'),
         admitted.replace('admission: RuntimeAdmission', 'arbitrary: RuntimeAdmission'),
         admitted.replace('admission: RuntimeAdmission', 'admission: unknown'),
         admitted.replace('admission: RuntimeAdmission', 'admission: RuntimeAdmission, extra: unknown'),
