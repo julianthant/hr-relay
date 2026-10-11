@@ -10,24 +10,17 @@ import type { EditableSettingsLeafWire as EditableSettingsLeafWire_m1 } from "..
 import { fixtureSettingsDocument as fixtureSettingsDocument_m1 } from "../../../../parity/helpers/fixture-settings.js";
 import { mountSettingsHarness as mountSettingsHarness_m0,syntheticSettingsAuthority as syntheticSettingsAuthority_m0 } from '../../../../support/helpers/dashboard/settings-harness.js';
 
-
 {
-
 
 const cleanups: (() => void)[] = [];
 const _afterEachFixture0 = () => { vi.useRealTimers(); for (const close of cleanups.splice(0).reverse()) close(); };
-async function setup() {
-  const authority = syntheticSettingsAuthority_m0(); cleanups.push(authority.close);
-  const mounted = await mountSettingsHarness_m0(authority); cleanups.push(mounted.close);
-  vi.useFakeTimers();
-  return { ...mounted, authority };
-}
 describe_m0('confirmed Settings feedback through the current editor', () => {
 afterEach_m0(_afterEachFixture0);
 
-
   it_m0('names atomic route saves with their visible system label', async () => {
-    const { controller, notices } = await setup();
+    const authority = syntheticSettingsAuthority_m0(); cleanups.push(authority.close);
+    const { controller, notices, close } = await mountSettingsHarness_m0(authority); cleanups.push(close);
+    vi.useFakeTimers();
     const leaf = controller().leaves.find(candidate => candidate.path === 'urls.crm.prod');
     assert_m0(leaf && typeof leaf.effectiveValue === 'object' && !Array.isArray(leaf.effectiveValue));
     const raw = settingInput_m0(leaf); assert_m0.notEqual(typeof raw, 'string');
@@ -43,7 +36,6 @@ afterEach_m0(_afterEachFixture0);
 }
 
 {
-
 
 const performance = fixtureSettingsDocument_m1().sections.find(section => section.id === "performance");
 if (performance === undefined) throw new Error("performance fixture section missing");

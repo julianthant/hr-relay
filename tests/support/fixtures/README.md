@@ -44,3 +44,5 @@ explicit synthetic authority. Credential factory capabilities in `admission-fixt
 eager calls, aliases, namespaces and unlisted symbols. Executable child entrypoints live in
 `tests/support/processes/` (`runtime-lock-contender`, `worker-stub-cli`, `worker-browser-control-cli`)
 and cannot be imported. Their exact consumers remain recorded by the ownership guard.
+
+`../helpers/dashboard/run-start-dialog-harness.ts` supplies per-caller Run Start DOM setup and cleanup for the dialog and omitted-step unit suites; importing it performs no DOM setup.

@@ -1,396 +1,29 @@
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
-
 import assert from "node:assert/strict";
-import { act,createElement,type ReactElement } from "react";
-import { createRoot,type Root } from "react-dom/client";
-import { afterEach,describe,it } from "vitest";
-import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
-import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { act, createElement, useState } from "react";
+import { afterEach, describe, it, onTestFinished, vi } from "vitest";
+import { StartPlanRequestSchema as StartPlanSubmissionSchema, type StartPlanWire as StartPlanResponse, StartPlanWireSchema as StartPlanResponseSchema } from "../../../../src/models/dashboard/start-plan.js";
+import { type CommandResult } from "../../../../src/rules/commands/commands.js";
+import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
+import { type DashboardClient, createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
-import { RunStartDialog,type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { type RunStartWorkflow, RunStartSurfaces } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import {
-StartPlanWireSchema as StartPlanResponseSchema,
-StartPlanRequestSchema as StartPlanSubmissionSchema,
-type StartPlanWire as StartPlanResponse,
-} from "../../../../src/models/dashboard/start-plan.js";
-import { CommandResultSchema,type CommandResult } from "../../../../src/rules/commands/commands.js";
-import { FIXTURE_BOOTSTRAP,FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../parity/helpers/fixture-day.js";
+import { createRoot, type Root } from "react-dom/client";
+import { type AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
+import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
+import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { seedMockRuns } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 
-// jsdom lacks overlay measurement APIs; these stubs supply capabilities without asserting geometry.
-class MeasurementFreeResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
+{
+const { cleanup, openDialog, stubClient, WORKFLOW_ID, TYPED, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName } = createRunStartDialogHarness();
 
-class ZeroDOMRect {
-  readonly x = 0;
-  readonly y = 0;
-  readonly width = 0;
-  readonly height = 0;
-  readonly top = 0;
-  readonly left = 0;
-  readonly right = 0;
-  readonly bottom = 0;
-  static fromRect(): ZeroDOMRect {
-    return new ZeroDOMRect();
-  }
-  toJSON(): Readonly<Record<string, number>> {
-    return { x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 };
-  }
-}
-
-Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
-Reflect.set(globalThis, "DOMRect", ZeroDOMRect);
-Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-
-const ACTOR_ID = "local-operator";
-const WORKFLOW_ID = "person-lookup";
-/** the descriptor's own first example, so the parser cannot refuse it */
-const TYPED = "10873698";
-const HASH = "a".repeat(64);
-
-
-const WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.workflows).map(
-  (entry): RunStartWorkflow => {
-    const start = entry.start;
-    return {
-      workflowId: String(entry.id),
-      label: entry.label,
-      categoryId: entry.categoryId,
-      role: entry.role,
-      ...(entry.code === undefined ? {} : { code: entry.code }),
-      ...(start.summary === undefined ? {} : { summary: start.summary }),
-      enqueue: start.enqueue,
-      version: start.version,
-      steps: start.steps,
-      inputRun:
-        start.inputRun === undefined
-          ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
-          : { state: "present", surface: start.inputRun },
-      spreadsheetIntake: start.spreadsheetIntake,
-    };
-  },
-);
-
-/** parsed through the real wire schema, so a fixture cannot outlive its contract */
-function planResponse(startPlanId: string): StartPlanResponse {
-  return StartPlanResponseSchema.parse({
-    wireVersion: 1,
-    startPlanId,
-    workflowId: WORKFLOW_ID,
-    expectedVersion: 4,
-    expiresAt: "2026-08-26T21:47:03.000Z",
-    dryRun: false,
-    priority: "interactive",
-    plannedBy: ACTOR_ID,
-    configSnapshotId: "c0000000-0000-4000-8000-000000000001",
-    fingerprints: {
-      descriptorFingerprint: HASH,
-      configFingerprint: HASH,
-      ingressSchemaHash: HASH,
-      canonicalInputSchemaHash: HASH,
-      inputFingerprint: HASH,
-    },
-    planned: [{
-      logicalKey: "entry:1",
-      title: "Ada Lovelace",
-      subtitle: "E1234567",
-      matchKey: "eid:E1234567",
-    }],
-    refused: [],
-  });
-}
-
-const APPLIED: CommandResult = CommandResultSchema.parse({
-  state: "applied",
-  commandId: "3a000000-0000-4000-8000-000000000001",
-  affectedTargets: [{
-    family: "start",
-    workflowId: WORKFLOW_ID,
-    startPlanId: "5a000000-0000-4000-8000-000000000001",
-    expectedVersion: 4,
-  }],
-});
-
-const CONFLICT: CommandResult = CommandResultSchema.parse({
-  state: "conflict",
-  commandId: "3a000000-0000-4000-8000-000000000002",
-  currentVersion: 7,
-  message: "The start plan was built against version 4.",
-});
-
-
-function stubClient(served: Partial<DashboardClient>): DashboardClient {
-  const handler: ProxyHandler<Partial<DashboardClient>> = {
-    get(target, property): unknown {
-      const impl: unknown = Reflect.get(target, property);
-      if (impl === undefined) {
-        throw new Error(
-          `the Run Modal reached for client.${String(property)}, which this case does not serve`,
-        );
-      }
-      return impl;
-    },
-  };
-  return new Proxy(served, handler) as DashboardClient;
-}
-
-let mounted: Root | undefined;
-
-// Flush one settlement microtask inside act so React reports no out-of-scope state update.
-async function settle(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-  });
-}
-
-afterEach(async () => {
-  window.sessionStorage.clear();
-  const root = mounted;
-  mounted = undefined;
-  if (root !== undefined) {
-    await act(async () => {
-      root.unmount();
-    });
-  }
-  document.body.replaceChildren();
-});
-
-async function render(element: ReactElement): Promise<void> {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  mounted = root;
-  await act(async () => {
-    root.render(element);
-  });
-}
-
-interface OpenDialog {
-  /** the typed-input box, present on Input and restored after every exit */
-  readonly typedInput: () => HTMLTextAreaElement;
-
-  readonly fill: (label: string, next: string) => Promise<void>;
-  /** whether a control the dialog draws is currently disabled */
-  readonly disabled: (name: string) => boolean;
-  /** the stage the rail says is current */
-  readonly stage: () => string;
-  readonly text: () => string;
-  readonly press: (name: string) => Promise<void>;
-  readonly type: (next: string) => Promise<void>;
-  readonly choosePriority: (next: string) => Promise<void>;
-  readonly chooseBrowserMode: (next: string) => Promise<void>;
-  readonly drop: (file: File) => Promise<void>;
-}
-
-function buttons(): HTMLButtonElement[] {
-  return [...document.body.querySelectorAll("button")];
-}
-
-function buttonName(button: HTMLButtonElement): string {
-  const explicit = button.getAttribute("aria-label");
-  if (explicit !== null) return explicit;
-  const labelledBy = button.getAttribute("aria-labelledby");
-  if (labelledBy !== null) {
-    return labelledBy.split(/\s+/u)
-      .map((id) => document.getElementById(id)?.textContent ?? "")
-      .join(" ")
-      .trim();
-  }
-  return (button.textContent ?? "").trim();
-}
-
-// Use the native value setter to bypass React tracking before dispatching input.
-function typeInto(node: HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement, next: string): void {
-  const prototype = node instanceof HTMLSelectElement
-    ? HTMLSelectElement.prototype
-    : node instanceof HTMLInputElement
-      ? HTMLInputElement.prototype
-      : HTMLTextAreaElement.prototype;
-  const descriptor: { set?: (this: unknown, value: string) => void } | undefined =
-    Object.getOwnPropertyDescriptor(prototype, "value");
-  const setter = descriptor?.set;
-  if (setter === undefined) {
-    throw new Error(`this environment has no native value setter for <${node.tagName.toLowerCase()}>`);
-  }
-  setter.call(node, next);
-  node.dispatchEvent(new Event(node instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
-}
-
-
-const closed: boolean[] = [];
-const intakeHandoffs: { workflowId: string; intakeSessionId: string }[] = [];
-
-async function openDialog(
-  client: DashboardClient,
-  catalogue: Readonly<{ workflows: readonly RunStartWorkflow[]; panelWorkflowId: string }> = {
-    workflows: WORKFLOWS,
-    panelWorkflowId: WORKFLOW_ID,
-  },
-  onApplied: (workflowId: string) => void = () => undefined,
-): Promise<OpenDialog> {
-  intakeHandoffs.length = 0; closed.length = 0;
-  await render(createElement(DashboardClientProvider, {
-    client,
-    children: createElement(RunStartDialog, {
-      open: true,
-      onOpenChange: next => closed.push(next),
-      catalog: buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows)),
-      panelWorkflowId: catalogue.panelWorkflowId,
-      actorId: ACTOR_ID,
-      onApplied,
-      onOpenIntake: (workflowId: string, intakeSessionId: string) => {
-        intakeHandoffs.push({ workflowId, intakeSessionId });
-      },
-    }),
-  }));
-
-  const typedInput = (): HTMLTextAreaElement => {
-    const box = document.body.querySelector("textarea");
-    if (box === null) throw new Error("the Run Modal drew no typed-input box");
-    return box;
-  };
-
-  const stage = (): string => {
-    const current = document.body.querySelector('[aria-current="step"]');
-    if (current === null) throw new Error("the stage rail names no current stage");
-    return (current.textContent ?? "").replace(/^\d+/u, "").trim();
-  };
-
-  const press = async (name: string): Promise<void> => {
-    const action = name === "Continue" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
-    const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === action);
-    const matches = visibleMatches.length > 0
-      ? visibleMatches
-      : buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
-    const only = matches[0];
-    if (matches.length !== 1 || only === undefined) {
-      throw new Error(
-        `expected exactly one control named "${name}", found ${String(matches.length)} among `
-        + `[${buttons().map((button) => JSON.stringify(buttonName(button))).join(", ")}]`,
-      );
-    }
-    // jsdom click does not move focus; focus the control before testing its handoff.
-    only.focus();
-    await act(async () => {
-      only.click();
-    });
-    await settle();
-  };
-
-  const type = async (next: string): Promise<void> => {
-    const box = typedInput();
-    await act(async () => {
-      typeInto(box, next);
-    });
-  };
-
-
-  const chooseRadio = async (name: string, value: string) => {
-    const radio = document.querySelector<HTMLInputElement>(`input[type="radio"][name^="${name}-"][value="${value}"]`);
-    assert.ok(radio, `missing ${name}: ${value}`);
-    await act(async () => radio.click());
-  };
-  const choosePriority = (value: string) => chooseRadio("Priority", value);
-  const chooseBrowserMode = (value: string) => chooseRadio("Browser mode", value);
-
-  // jsdom has no DataTransfer; install FileList on the Dropzone input.
-  const drop = async (file: File): Promise<void> => {
-    const input = document.body.querySelector('input[type="file"]');
-    if (!(input instanceof HTMLInputElement)) {
-      throw new Error("the spreadsheet arm drew no file input");
-    }
-    Object.defineProperty(input, "files", {
-      configurable: true,
-      value: { 0: file, length: 1, item: (index: number) => (index === 0 ? file : null) },
-    });
-    await act(async () => {
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await settle();
-    await settle();
-  };
-
-
-  const fill = async (label: string, next: string): Promise<void> => {
-    const found = [...document.body.querySelectorAll("label")]
-      .filter((candidate) => (candidate.textContent ?? "").trim() === label);
-    const only = found[0];
-    if (found.length !== 1 || only === undefined) {
-      throw new Error(`expected exactly one control labelled "${label}", found ${String(found.length)}`);
-    }
-    const control = document.getElementById(only.htmlFor);
-    if (control instanceof HTMLButtonElement && control.getAttribute("role") === "combobox") {
-      await act(async () => control.click());
-      const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.dataset.value === next);
-      assert.ok(option, `the "${label}" choice has no option ${next}`);
-      await act(async () => option.click());
-      return;
-    }
-    if (!(control instanceof HTMLInputElement
-      || control instanceof HTMLSelectElement
-      || control instanceof HTMLTextAreaElement)) {
-      throw new Error(`the "${label}" label names ${only.htmlFor}, which is not a form control`);
-    }
-    await act(async () => {
-      typeInto(control, next);
-      // React maps `onBlur` onto the BUBBLING `focusout`; a non-bubbling
-      // `blur` reaches no React handler and would silently prove nothing.
-      control.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-    });
-  };
-
-  const disabled = (name: string): boolean => {
-    const found = buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
-    const only = found[0];
-    if (found.length !== 1 || only === undefined) {
-      throw new Error(`expected exactly one control named "${name}", found ${String(found.length)}`);
-    }
-    return only.disabled || only.getAttribute("data-disabled") !== null;
-  };
-
-  return {
-    typedInput,
-    fill,
-    disabled,
-    stage,
-    text: () => (document.body.textContent ?? "").replace(/\s+/gu, " "),
-    press,
-    type,
-    choosePriority,
-    chooseBrowserMode,
-    drop,
-  };
-}
-
-// Compare presence as a boolean; formatting a jsdom node can exhaust the assertion budget.
-function planIsDrawn(): boolean {
-  return document.body.querySelector("#run-start-confirm") !== null;
-}
-
-/** the whole happy path, up to a settled `applied` banner */
-async function reachResult(): Promise<OpenDialog> {
-  const dialog = await openDialog(stubClient({
-    submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
-    executeCommand: async () => CONFLICT,
-  }));
-  await dialog.type(TYPED);
-  await dialog.press("Continue");
-  assert.equal(dialog.stage(), "Options");
-  await dialog.press("Continue");
-  assert.equal(dialog.stage(), "Confirm");
-  await dialog.press("Start 1 run");
-  assert.equal(dialog.stage(), "Confirm");
-  return dialog;
-}
-
-// ---------------------------------------------------------------------------
 
 it("reveals the launched workflow after an applied start", async () => {
+  onTestFinished(cleanup);
   const revealed: string[] = [];
   const client = stubClient({
     submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
@@ -409,6 +42,7 @@ it("reveals the launched workflow after an applied start", async () => {
 });
 
 it("keeps the current view after a refused start", async () => {
+  onTestFinished(cleanup);
   const revealed: string[] = [];
   const dialog = await openDialog(stubClient({
     submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
@@ -422,6 +56,8 @@ it("keeps the current view after a refused start", async () => {
 });
 
 describe("a settlement that arrives after the request moved is DROPPED", () => {
+  afterEach(cleanup);
+
   it("does not land a plan for text the operator has already edited away", async () => {
 
     let release: ((plan: StartPlanResponse) => void) | undefined;
@@ -440,7 +76,6 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     const settlePlan = release;
     assert.ok(settlePlan !== undefined, "the dialog never called submitStartPlan");
 
-    // The operator keeps typing while the round-trip is open.
     await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
@@ -487,6 +122,8 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
 });
 
 describe("a plan outlives nothing that shaped it, in the dialog", () => {
+  afterEach(cleanup);
+
   it("drops the plan when a run control moves under it", async () => {
 
     const dialog = await openDialog(stubClient({
@@ -519,6 +156,8 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
 });
 
 describe("keeps optional steps and removes only the per-start destination", () => {
+  afterEach(cleanup);
+
   it("keeps Options and the separate Steps screen while omitting destination controls", async () => {
     let submitted: unknown;
     const dialog = await openDialog(stubClient({
@@ -576,6 +215,8 @@ describe("keeps optional steps and removes only the per-start destination", () =
 });
 
 describe("browser presentation is an immutable Run Options choice", () => {
+  afterEach(cleanup);
+
   it("offers both modes, defaults to headed with screenshots on, and submits an explicit override", async () => {
     let submitted: unknown;
     const dialog = await openDialog(stubClient({ submitStartPlan: async (input) => {
@@ -602,6 +243,8 @@ describe("browser presentation is an immutable Run Options choice", () => {
 });
 
 describe("the compact confirmation keeps the exact input basis", () => {
+  afterEach(cleanup);
+
   it("summarizes what was typed after the result settles", async () => {
     const dialog = await reachResult();
     assert.ok(dialog.text().includes(TYPED));
@@ -620,6 +263,8 @@ describe("the compact confirmation keeps the exact input basis", () => {
 });
 
 describe("every exit from a settled banner returns the form to Input", () => {
+  afterEach(cleanup);
+
   it("Close resets the stage with the result, and puts focus back in the box", async () => {
 
     const dialog = await reachResult();
@@ -654,9 +299,9 @@ describe("every exit from a settled banner returns the form to Input", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
 describe("spreadsheet registration stays outside Run", () => {
+  afterEach(cleanup);
+
   it("keeps typed Input as the start method without import tabs", async () => {
     const dialog = await openDialog(stubClient({}));
     assert.equal(document.querySelectorAll('[role="tab"]').length, 0);
@@ -701,8 +346,11 @@ describe("spreadsheet registration stays outside Run", () => {
     assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
   });
 });
+}
 
-
+{
+type OpenDialog = Awaited<ReturnType<typeof openDialog>>;
+const { cleanup, openDialog, stubClient, ACTOR_ID, HASH } = createRunStartDialogHarness();
 
 
 const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
@@ -729,7 +377,6 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
 
 const SEPARATIONS = Object.freeze({ workflows: SEPARATIONS_WORKFLOWS, panelWorkflowId: "separations" });
 
-/** the descriptor's own first example, so the parser cannot refuse it */
 const DOCUMENT = "4502";
 
 function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
@@ -761,7 +408,6 @@ function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
   });
 }
 
-/** walk to the Steps screen with Customize steps on */
 async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
   const dialog = await openDialog(client, SEPARATIONS);
   await dialog.type(typed);
@@ -773,17 +419,17 @@ async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Pro
 }
 
 describe("an omittable step draws its own form when it is left out", () => {
+  afterEach(cleanup);
+
   it("draws nothing while the step is included, and the step's declared fields once it is not", async () => {
-    // The mutation: draw the form for every omittable step rather than for the
-    // omitted ones. It leaves the fields on screen before the checkbox moves.
+
     const dialog = await openSteps(stubClient({}));
     assert.ok(!dialog.text().includes("Last day worked"), "an included step already asked for facts");
 
     await dialog.press("Kronos timecard");
     assert.ok(dialog.text().includes("Last day worked"), "omitting the step drew no form");
     assert.ok(dialog.text().includes("Separation date"));
-    // the DECLARED help line, verbatim — a form drawn without it would leave
-    // the operator guessing what the fact means
+
     assert.ok(dialog.text().includes("The employee's last physical day of work, MM/DD/YYYY"));
     assert.ok(dialog.text().includes("5 / 6 included"));
   });
@@ -798,8 +444,7 @@ describe("an omittable step draws its own form when it is left out", () => {
   });
 
   it("draws an enum as a choice with NO pre-selected value", async () => {
-    // The mutation: seed the select with `values[0]`. It would assert
-    // "Approved" about a real person the operator never chose.
+
     const dialog = await openSteps(stubClient({}));
     await dialog.press("UCPath transaction");
     const label = [...document.body.querySelectorAll("label")]
@@ -819,9 +464,10 @@ describe("an omittable step draws its own form when it is left out", () => {
 });
 
 describe("Confirm is not reachable while an omitted step's form does not parse", () => {
+  afterEach(cleanup);
+
   it("holds the Steps stage, draws the declared refusal, and never asks the server", async () => {
-    // The mutation: let `advance` submit regardless. The dialog would send a
-    // date the descriptor's own schema refuses and land on the server's 400.
+
     let asked = 0;
     const dialog = await openSteps(stubClient({
       submitStartPlan: async () => {
@@ -847,8 +493,10 @@ describe("Confirm is not reachable while an omitted step's form does not parse",
 });
 
 describe("the request carries the operator's omissions", () => {
+  afterEach(cleanup);
+
   it("sends one entry per omitted step, in timeline order, with the typed facts", async () => {
-    // The mutation: send `stepOmissions` unconditionally, or drop the facts.
+
     let submitted: unknown;
     const dialog = await openSteps(stubClient({
       submitStartPlan: async (input) => {
@@ -875,8 +523,6 @@ describe("the request carries the operator's omissions", () => {
       "an omitted step was still selected",
     );
 
-    // The operator's own confirmation names the step and every field LABEL it
-    // asserted, with the value typed into it.
     const confirmed = dialog.text();
     assert.ok(confirmed.includes("Omitted: Kronos timecard, UCPath transaction"), confirmed);
     assert.ok(confirmed.includes("Last day worked: 06/30/2026"));
@@ -901,9 +547,10 @@ describe("the request carries the operator's omissions", () => {
 });
 
 describe("a plan that omits a different set cannot be started", () => {
+  afterEach(cleanup);
+
   it("refuses Start and says which set each side named", async () => {
-    // The mutation: trust `plan.omittedSteps`. The operator would authorise a
-    // run that keeps a step they omitted, or omits one they kept.
+
     const dialog = await openSteps(stubClient({
       submitStartPlan: async () => separationsPlan(["kuali-finalization"]),
     }));
@@ -933,9 +580,10 @@ describe("a plan that omits a different set cannot be started", () => {
 });
 
 describe("typed facts describe ONE subject", () => {
+  afterEach(cleanup);
+
   it("does not offer an omission for a box that would create several runs", async () => {
-    // The mutation: ignore the entry count. The dialog would send facts about
-    // one person for a plan that asserts them for two.
+
     const dialog = await openSteps(stubClient({}), "4502; 4510");
     assert.equal(
       dialog.disabled("Kronos timecard"),
@@ -945,7 +593,6 @@ describe("typed facts describe ONE subject", () => {
     assert.ok(dialog.text().includes("this run would create 2"), dialog.text());
   });
 });
-
 
 const CASCADING_SEPARATIONS = Object.freeze({
   panelWorkflowId: "separations",
@@ -960,6 +607,8 @@ const CASCADING_SEPARATIONS = Object.freeze({
 });
 
 describe("a forced step is unchecked and LOCKED while the choice that forces it stands", () => {
+  afterEach(cleanup);
+
   it("names the forced step up front, drags it out, locks it, and puts it back", async () => {
 
     let submitted: unknown;
@@ -974,7 +623,6 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     await dialog.press("Customize steps");
     await dialog.press("Continue");
 
-    // named BEFORE the press, so the choice is not a surprise
     assert.ok(dialog.text().includes("Also omits: UCPath transaction"));
     assert.equal(dialog.disabled("UCPath transaction"), false);
 
@@ -983,7 +631,6 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     assert.equal(dialog.disabled("UCPath transaction"), true, "the forced row stayed pressable");
     assert.ok(dialog.text().includes("Omitted with Kronos timecard."));
 
-    // pressing the locked row changes nothing
     await dialog.press("UCPath transaction");
     assert.ok(dialog.text().includes("4 / 6 included"));
 
@@ -1002,3 +649,41 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     assert.equal(dialog.disabled("UCPath transaction"), false);
   });
 });
+}
+
+{
+Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
+let root: Root | undefined;
+
+async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); return host; }
+const button = (name: string) => { const found = [...document.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === name); assert(found, name); return found; };
+const press = async (name: string) => act(async () => button(name).click());
+describe('mounted frontend reliability contracts', () => {
+  afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it('keeps mock rerun stages under the mock form when its routed dialog mounts or restores', async () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    const runs = seedMockRuns(), source = runs.find(run => run.workflowId === 'onboarding'); assert(source);
+    const previewLaunch = { workflowId: source.workflowId, source }, catalog = buildWorkflowCatalog([]);
+    const requests: string[] = [];
+    const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async url => { requests.push(String(url)); throw new Error('Unexpected backend request'); } });
+    let current: AppRouteState;
+    function Harness() {
+      const [route, setRoute] = useState<AppRouteState>({ start: true, view: { launchStage: 'Steps' } }); current = route;
+      return createElement(ViewNavigationProvider, { route, setRoute, children: createElement(DashboardClientProvider, { client, children: createElement(ToastProvider, { children: createElement(RunStartSurfaces, {
+        catalog, open: true, onOpenChange: () => {}, panelWorkflowId: previewLaunch.workflowId, actorId: 'local-operator', previewLaunch, previewRuns: runs,
+        onSubmitPreview: () => {}, onOpenIntake: () => { throw new Error('Unexpected intake'); },
+      }) }) }) });
+    }
+    await mount(createElement(Harness));
+    assert.match(document.body.textContent ?? '', /Choose what to run again/u);
+    assert.equal(current!.view?.launchStage, 'Steps');
+    await press('Continue'); assert.match(document.body.textContent ?? '', /Values for the new run/u);
+    assert.equal(current!.view?.launchStage, 'Values');
+    await press('Back'); assert.equal(current!.view?.launchStage, 'Steps');
+    await press('Continue'); await press('Continue'); await press('Preview plan');
+    assert.match(document.body.textContent ?? '', /Review the plan/u); assert.equal(current!.view?.launchStage, 'Confirm');
+    assert.deepEqual(requests, [], 'a local mock rerun must not ask a served planner to reconcile its stage');
+  });
+});
+}

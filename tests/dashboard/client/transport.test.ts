@@ -6,20 +6,9 @@ import { DashboardClientError } from "../../../src/dashboard/client/index.js";
 import { createDashboardTransport } from "../../../src/dashboard/client/transport.js";
 const HASH_D = "d".repeat(64);
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-}
-
-function hello(cursor: string): Record<string, unknown> {
-  return { type: "hello", wireVersion: 1, descriptorHash: HASH_D, projectionGeneration: 7, cursor };
-}
-
 async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
-
-/* ── openStream's three endings, at the transport seam ───────────────────── */
-
 
 describe("openStream endings", () => {
   it("rejects with the NETWORK kind when the response body errors mid-read", async () => {
@@ -40,9 +29,8 @@ describe("openStream endings", () => {
     const messages: string[] = [];
     const stream = transport.openStream("/events/v1", { onMessage: (message) => messages.push(message.data) });
     await tick();
-    // A block arrives, and only THEN does the body fail — the drop this
-    // subscription exists to survive, not a request that never started.
-    controller!.enqueue(encoder.encode(`data: ${JSON.stringify(hello("pc:1"))}\n\n`));
+
+    controller!.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "hello", wireVersion: 1, descriptorHash: HASH_D, projectionGeneration: 7, cursor: "pc:1" })}\n\n`));
     await tick();
     assert.equal(messages.length, 1);
     controller!.error(new Error("connection reset by peer"));
@@ -57,12 +45,12 @@ describe("openStream endings", () => {
   it("rejects with the HTTP kind when the server refuses the stream", async () => {
     const transport = createDashboardTransport({
       baseUrl: "http://bff.test",
-      fetchImpl: () => Promise.resolve(jsonResponse(503, {
+      fetchImpl: () => Promise.resolve(new Response(JSON.stringify({
         state: "error",
         code: "PROJECTION_DEGRADED",
         message: "the day projection is unavailable",
         retryable: true,
-      })),
+      }), { status: 503, headers: { "content-type": "application/json" } })),
     });
     const stream = transport.openStream("/events/v1", { onMessage: () => undefined });
     const failure = await stream.done.then(() => undefined, (reason: unknown) => reason);
@@ -77,7 +65,7 @@ describe("openStream endings", () => {
   });
 
   it("RESOLVES done when the client closes a live stream", async () => {
-    // A real fetch abort errors its open body; model that settlement in the fake.
+
     let bodyController: ReadableStreamDefaultController<Uint8Array>;
     const body = new ReadableStream<Uint8Array>({
       start(c): void {

@@ -4,12 +4,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe,it } from 'vitest';
 import { ActivityDurations } from '../../../../src/dashboard/surfaces/activity/activity-duration.js';
 import { ACTIVITY_SAMPLE_RANGE,activitySample } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
-import type { ActivityWorkflow } from '../../../../src/dashboard/surfaces/activity/activity-view-model.js';
-
-function workflow(id: string, totalSeconds: number | null, measured: number, unmeasured = 0): ActivityWorkflow {
-  return { id, label: id, completed: measured + unmeasured, total: measured + unmeasured, failed: 0, outstanding: 0,
-    successfulTiming: { totalSeconds, measured, unmeasured } };
-}
 
 describe('workflow duration comparisons', () => {
   it('renders readable exact averages and timing coverage without savings controls', () => {
@@ -32,7 +26,7 @@ describe('workflow duration comparisons', () => {
     const data = activitySample(ACTIVITY_SAMPLE_RANGE, 'normal');
     assert.equal(data.state, 'loaded'); if (data.state !== 'loaded') return;
     const html = renderToStaticMarkup(createElement(ActivityDurations, {
-      report: { ...data.report, workflows: [workflow('Partial readback', null, 2)] },
+      report: { ...data.report, workflows: [{ id: 'Partial readback', label: 'Partial readback', completed: 2, total: 2, failed: 0, outstanding: 0, successfulTiming: { totalSeconds: null, measured: 2, unmeasured: 0 } }] },
     }));
     assert(html.includes('2 of 2 completed runs timed'));
     assert(html.includes('Unavailable'));

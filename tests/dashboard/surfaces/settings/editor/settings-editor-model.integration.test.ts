@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
-import { SettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
-import { mountSettingsHarness,settingsAction,syntheticSettingsAuthority } from "../../support/helpers/dashboard/settings-harness.js";
+import { SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
+import { mountSettingsHarness,settingsAction,syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
