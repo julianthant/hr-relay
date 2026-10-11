@@ -94,7 +94,7 @@ const READ_VERIFIED_AT = "2026-08-14";
 const SelectorKeySchema = z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u);
 
 // Kuali DOM refs change on reload; exact accessible names avoid neighboring workflow-advancing controls.
-export const KualiLocatorRecipeSchema = z.discriminatedUnion("kind", [
+const KualiLocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("role-exact-name"),
     role: z.enum(["textbox", "button", "combobox", "checkbox", "radio"]),
@@ -110,7 +110,7 @@ export const KualiLocatorRecipeSchema = z.discriminatedUnion("kind", [
 ]);
 export type KualiLocatorRecipe = z.infer<typeof KualiLocatorRecipeSchema>;
 
-export const KualiStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
+const KualiStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   /** `…/build/space/<space>/actions/<actionId>` — which redirects to `…/view`. */
   z.strictObject({ kind: z.literal("action-view-url"), space: z.string().regex(/^[0-9a-f]{24}$/u) }),
 
@@ -122,7 +122,7 @@ export const KualiStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("element"), element: ElementIdSchema }),
 ]);
 
-export const KualiObservationRecipeSchema = z.discriminatedUnion("kind", [
+const KualiObservationRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("input-value"),
     element: ElementIdSchema,
@@ -201,7 +201,7 @@ const ObservationDefinitionSchema = z.strictObject({
   verification: UiVerificationSchema,
 });
 
-export const KualiUiRegistrySchema = z.strictObject({
+const KualiUiRegistrySchema = z.strictObject({
   system: z.literal("kuali"),
   screens: z.array(ScreenDefinitionSchema).min(1),
   elements: z.array(ElementDefinitionSchema).min(1),
@@ -209,9 +209,8 @@ export const KualiUiRegistrySchema = z.strictObject({
   observations: z.array(ObservationDefinitionSchema).min(1),
   scenarios: z.array(UiVerificationScenarioSchema).min(1),
 });
-export type KualiUiRegistry = z.infer<typeof KualiUiRegistrySchema>;
 
-export const KualiUiRegistryPortBindingSchema = z.strictObject({
+const KualiUiRegistryPortBindingSchema = z.strictObject({
   system: z.literal("kuali"),
   legacyKey: z.string().min(1),
   disposition: z.literal("ported"),

@@ -50,7 +50,7 @@ const HISTORY_ROWS_PORT_KEY = "onboardingHistory.historyRows()";
 
 const SelectorKeySchema = z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u);
 
-export const CrmLocatorRecipeSchema = z.discriminatedUnion("kind", [
+const CrmLocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("css"), selector: z.string().min(1) }),
   z.strictObject({
     kind: z.literal("row-cells"),
@@ -69,7 +69,7 @@ export const CrmLocatorRecipeSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const CrmStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
+const CrmStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("url-path"),
     path: z.enum([
@@ -86,7 +86,7 @@ export const CrmStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("element"), element: ElementIdSchema }),
 ]);
 
-export const CrmObservationRecipeSchema = z.strictObject({
+const CrmObservationRecipeSchema = z.strictObject({
   kind: z.literal("labeled-field"),
   element: z.literal(CRM_ONBOARDING_RECORD_FIELD_VALUE),
   label: z.literal("UCPath Employee ID"),
@@ -143,7 +143,7 @@ const ObservationDefinitionSchema = z.strictObject({
   verification: UiVerificationSchema,
 });
 
-export const CrmUiRegistrySchema = z.strictObject({
+const CrmUiRegistrySchema = z.strictObject({
   system: z.literal("crm"),
   screens: z.array(ScreenDefinitionSchema).min(1),
   elements: z.array(ElementDefinitionSchema).min(1),
@@ -152,7 +152,7 @@ export const CrmUiRegistrySchema = z.strictObject({
   scenarios: z.array(UiVerificationScenarioSchema).min(1),
 });
 
-export const CrmUiRegistryPortBindingSchema = z.strictObject({
+const CrmUiRegistryPortBindingSchema = z.strictObject({
   system: z.literal("crm"),
   legacyKey: z.string().min(1),
   disposition: z.literal("ported"),
@@ -420,7 +420,6 @@ export const CRM_UI_REGISTRY = deepFreeze(CrmUiRegistrySchema.parse({
   ],
 }));
 
-export type CrmUiRegistry = z.infer<typeof CrmUiRegistrySchema>;
 
 export function auditCrmUiRegistry(registryInput: unknown = CRM_UI_REGISTRY): readonly string[] {
   const result = CrmUiRegistrySchema.safeParse(registryInput);

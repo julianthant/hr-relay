@@ -43,7 +43,7 @@ const SearchRowSchema = z.strictObject({
   recordId: z.string().min(1),
   recordUrl: z.url(),
 });
-export type CrmOnboardingSearchRow = z.infer<typeof SearchRowSchema>;
+type CrmOnboardingSearchRow = z.infer<typeof SearchRowSchema>;
 
 const ExactRecordSchema = SearchRowSchema.extend({
   observedEid: EidSchema,
@@ -154,7 +154,7 @@ async function readRequiredText(locator: Locator, field: string): Promise<string
 }
 
 // CRM search data rows have five cells; the verified two-cell auxiliary row is not data.
-export async function searchCrmOnboardingRows(
+async function searchCrmOnboardingRows(
   page: Page,
   query: string,
 ): Promise<readonly CrmOnboardingSearchRow[]> {
@@ -336,7 +336,7 @@ function plausibleNameRows(
 }
 
 // CRM search is fuzzy; open every plausible record and prove its displayed EID exactly.
-export async function resolveExactCrmOnboardingRecord(
+async function resolveExactCrmOnboardingRecord(
   page: Page,
   input: Readonly<{ eid: string; name?: string }>,
 ): Promise<ExactCrmRecordResolution> {

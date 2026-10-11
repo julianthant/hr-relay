@@ -59,10 +59,10 @@ const VERIFIED_AT = "2026-08-12";
 const SelectorKeySchema = z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u);
 
 // WFD search can render top-level or in its portal iframe depending on navigation.
-export const NewKronosLocatorContextSchema = z.enum(["search-panel", "page"]);
+const NewKronosLocatorContextSchema = z.enum(["search-panel", "page"]);
 
 
-export const NewKronosLocatorRecipeSchema = z.discriminatedUnion("kind", [
+const NewKronosLocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("role-exact-name"),
     context: NewKronosLocatorContextSchema,
@@ -88,9 +88,8 @@ export const NewKronosLocatorRecipeSchema = z.discriminatedUnion("kind", [
     text: z.string().min(1),
   }),
 ]);
-export type NewKronosLocatorRecipe = z.infer<typeof NewKronosLocatorRecipeSchema>;
 
-export const NewKronosStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
+const NewKronosStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("element"), element: ElementIdSchema }),
   /** `…/timekeeping#/timecard` — the route the Go To option lands on. */
   z.strictObject({ kind: z.literal("route"), path: z.string().min(1) }),
@@ -98,7 +97,7 @@ export const NewKronosStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("parsed-range-label"), element: ElementIdSchema }),
 ]);
 
-export const NewKronosObservationRecipeSchema = z.strictObject({
+const NewKronosObservationRecipeSchema = z.strictObject({
   kind: z.literal("element-text"),
   element: ElementIdSchema,
   /** WFD pads header text; every read trims. */
@@ -156,7 +155,7 @@ const ObservationDefinitionSchema = z.strictObject({
   verification: UiVerificationSchema,
 });
 
-export const NewKronosUiRegistrySchema = z.strictObject({
+const NewKronosUiRegistrySchema = z.strictObject({
   system: z.literal("new-kronos"),
   screens: z.array(ScreenDefinitionSchema).min(1),
   elements: z.array(ElementDefinitionSchema).min(1),
@@ -164,9 +163,8 @@ export const NewKronosUiRegistrySchema = z.strictObject({
   observations: z.array(ObservationDefinitionSchema).min(1),
   scenarios: z.array(UiVerificationScenarioSchema).min(1),
 });
-export type NewKronosUiRegistry = z.infer<typeof NewKronosUiRegistrySchema>;
 
-export const NewKronosUiRegistryPortBindingSchema = z.strictObject({
+const NewKronosUiRegistryPortBindingSchema = z.strictObject({
   system: z.literal("new-kronos"),
   legacyKey: z.string().min(1),
   disposition: z.literal("ported"),
@@ -185,7 +183,6 @@ const NewKronosUiEvidenceBindingInputSchema = z.strictObject({
 });
 
 
-export const NEW_KRONOS_APP_HOST = "ucsd-sso.prd.mykronos.com";
 export const NEW_KRONOS_TIMECARD_ROUTE = "/timekeeping#/timecard";
 /** The iframe whose name suffix is session-scoped; only the PREFIX is stable. */
 export const NEW_KRONOS_PORTAL_FRAME_SELECTOR = 'iframe[name^="portal-frame-"]';
