@@ -167,12 +167,19 @@ function emptyFrameRoot() {
 interface Script {
   readonly startField: FakeField;
   readonly endField: FakeField;
+  readonly gridHarvests?: readonly Readonly<{
+    headers: readonly string[];
+    rows: readonly Readonly<{ month: number; day: number; rawDateCell: string; cells: readonly string[] }>[];
+    dateRowCount: number;
+    dataRowCount: number;
+  }>[];
 }
 
 function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>): Page {
   script.startField.bindClock(clock);
   script.endField.bindClock(clock);
   let selectionRegistered = false;
+  let harvestIndex = 0;
 
   const fieldFor = (key: string): FakeField | undefined => {
     if (key === "css:#startDateTimeInput") return script.startField;
@@ -201,9 +208,10 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>)
     ["css:#combo_inptxt", { count: () => Promise.resolve(1), getAttribute: () => Promise.resolve(DISPLAY_NAME) }],
     ["css:button.select-timeframe-button", { count: () => Promise.resolve(1), click: () => Promise.resolve() }],
     ["role:button:Select range", { count: () => Promise.resolve(1), click: () => Promise.resolve() }],
+    ["css:#_timeFrame", { count: () => Promise.resolve(1), textContent: () => Promise.resolve("06/01/2026 - 06/02/2026") }],
     ["role:button:Apply", {
       count: () => Promise.resolve(1),
-      click: () => { throw new Error(APPLY_BOUNDARY_MARKER); },
+      click: () => { if (script.gridHarvests === undefined) throw new Error(APPLY_BOUNDARY_MARKER); return Promise.resolve(); },
     }],
   ]);
 
@@ -265,6 +273,13 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>)
     ...rootSurface(),
     frameLocator: () => emptyFrameRoot(),
     url: () => "https://ucsd-sso.prd.mykronos.com/wfd/timekeeping#/timecard",
+    evaluate: (_fn: unknown, position?: number) => {
+      const geometry = { scrollTop: position ?? 0, scrollHeight: 60, clientHeight: 60 };
+      if (position !== undefined) return Promise.resolve(geometry);
+      const harvest = script.gridHarvests?.[Math.min(harvestIndex++, script.gridHarvests.length - 1)];
+      if (harvest === undefined) throw new Error("unscripted grid harvest");
+      return Promise.resolve({ ...geometry, ...harvest, viewportCount: 2, topRow: "Mon 6/1" });
+    },
   };
   return page as unknown as Page;
 }
@@ -276,9 +291,26 @@ function driveTimecardRead(script: Script): Promise<unknown> {
   return driver.readSeparationTimecard({
     employeeId: EMPLOYEE_ID,
     rangeStart: "6/1/2026",
-    rangeEnd: "8/12/2026",
+    rangeEnd: script.gridHarvests === undefined ? "8/12/2026" : "6/2/2026",
   });
 }
+
+describe("timecard grid structural completeness", () => {
+  const headers = ["Schedule", "In", "Out", "Transfer", "Pay code", "Amount", "Shift", "Daily", "Period", "Absence"];
+  const row = (day: number, cells: readonly string[]) => ({ month: 6, day, rawDateCell: `Mon 6/${String(day)}`, cells });
+  for (const cells of [[], ["", "08:00"]]) {
+    it(`refuses a later date row with ${String(cells.length)} data cells`, async () => {
+      const harvest = { headers, dateRowCount: 2, dataRowCount: cells.length === 0 ? 1 : 2, rows: [row(1, ["", "08:00", "17:00", "", "", "", "", "", "", ""]), row(2, cells)] };
+      await assert.rejects(driveTimecardRead({ startField: new FakeField("08/27/2026"), endField: new FakeField("08/27/2026"), gridHarvests: [harvest] }), /date\/data row counts|cell\(s\) against/u);
+    });
+  }
+  it("refuses headers that change on a grid repaint", async () => {
+    const rows = [row(1, ["", "08:00", "17:00", "", "", "", "", "", "", ""]), row(2, Array<string>(10).fill(""))];
+    const opening = { headers, rows, dateRowCount: 2, dataRowCount: 2 };
+    const repaint = { ...opening, headers: ["In", "Schedule", ...headers.slice(2)] };
+    await assert.rejects(driveTimecardRead({ startField: new FakeField("08/27/2026"), endField: new FakeField("08/27/2026"), gridHarvests: [opening, repaint] }), /headers changed/u);
+  });
+});
 
 describe("setRangeField — only the final calendar-day read-back proves the masked overtype (u29)", () => {
   it("types the start/end/start re-proof through the whole public visit", async () => {
@@ -537,6 +569,15 @@ function driverFor(script: FakeSearchScript): {
     polls: fake.polls,
   };
 }
+
+describe("employee search candidate completeness", () => {
+  for (const rendered of [COMPLETE, { ...COMPLETE, text: "Name Other, Person ID 10800000" }]) {
+    it(`refuses Total [2] with one rendered ${rendered === COMPLETE ? "matching" : "nonmatching"} candidate`, async () => {
+      const { search } = driverFor({ portalFrame: true, panelRoot: "frame", polls: [[rendered]], advanceMsPerPoll: 300, totalsCounters: ["Total [2]", "Selected [0]"], totalsAfterSelect: ["Total [2]", "Selected [1]"] });
+      await assert.rejects(search(1_000), /rendered 1 candidate.*Total.*2.*incomplete/u);
+    });
+  }
+});
 
 describe("the Employee Search poll — the interpreter half of the render-complete read (§9.28)", () => {
   it("(d) reads the TOP-LEVEL rows when the portal frame is absent, instead of dying on evaluateAll", async () => {
