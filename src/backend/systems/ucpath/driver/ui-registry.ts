@@ -78,8 +78,8 @@ import {
 } from "../../../../models/ui/ucpath-ss-smart-hr.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
-const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json";
-const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/person-org.live.json";
+const FIXTURE_EVIDENCE = "tests/support/fixtures/ui/ucpath/person-org.fixture.json";
+const LIVE_EVIDENCE = "tests/support/fixtures/ui/ucpath/person-org.live.json";
 const SEARCH_SCENARIO = "ui/ucpath-person-org-search-eid-input";
 const RESULTS_SCENARIO = "ui/ucpath-person-org-results-grid";
 const DISPLAY_SCENARIO = "ui/ucpath-person-org-displayed-eid";
@@ -98,15 +98,15 @@ const ASSIGNMENTS_GRID_PORT_KEY = "personOrgSummary.body()";
 const RETURN_PORT_KEY = "personOrgSummary.returnToSearchButton()";
 
 
-const SS_SMART_HR_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json";
-const SS_SMART_HR_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json";
+const SS_SMART_HR_FIXTURE_EVIDENCE = "tests/support/fixtures/ui/ucpath/ss-smart-hr.fixture.json";
+const SS_SMART_HR_LIVE_EVIDENCE = "tests/support/fixtures/ui/ucpath/ss-smart-hr.live.json";
 const RECEIPT_SCENARIO = "ui/ucpath-ss-smart-hr-transaction-receipt";
 const RECEIPT_PORT_KEY = "ssSmartHRTransactions.transactionResultRow()";
 const APPROVAL_STATUS_PORT_KEY = "ssSmartHRTransactions.approvalStatusSelect()";
 
 
-const SMART_HR_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json";
-const SMART_HR_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json";
+const SMART_HR_FIXTURE_EVIDENCE = "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json";
+const SMART_HR_LIVE_EVIDENCE = "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json";
 const WIZARD_SCENARIO = "ui/ucpath-smart-hr-termination-wizard";
 const SWEEP_SCENARIO = "ui/ucpath-smart-hr-pending-sweep";
 const SS_SEARCH_SCENARIO = "ui/ucpath-ss-smart-hr-search";

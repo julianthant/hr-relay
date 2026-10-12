@@ -12,7 +12,7 @@ The assigned brief owns acceptance and final test accounting.
 | `.agents/`, `.claude/` | Repository-local skills and operating references. |
 | `config/` | Active runtime isolation and shared test-data configuration; the example is tracked and private local input remains ignored. |
 | `dist/` | Generated dashboard build output. |
-| `docs/` | Current entrypoint and reference contracts, sanitized selector evidence, authoring guide and reviewed guard inventory. |
+| `docs/` | Current entrypoint and reference contracts, authoring guide and reviewed guard inventory. |
 | `duo-autopilot/` | Duo signing with a backend-provisioned session credential; browser verification uses `scripts/verify/browser-login.ts`. |
 | `node_modules/` | Local installed dependencies. |
 | `scripts/build/` | Workflow manifest generation and checks. |
@@ -127,7 +127,7 @@ Kernel stub and member fixtures live in `helpers/backend/kernel-stub-command-fix
 
 Client day, awaiting queue and settings editor inputs have shared dashboard fixture owners. Stream backpressure and preflight port setup live under `helpers/backend/`, backup and admission child setup under `helpers/storage/`, and pending transaction rows in `helpers/ucpath-pending-row-fixtures.ts`. Worker pool plan inputs use `helpers/backend/worker-supervision-world.ts`; kernel start inputs use the existing command-kernel harness.
 
-Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
+Selector fixtures and live selector evidence now live under `tests/support/fixtures/ui/<system>/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector
 evidence remains checked in. Current selector binding inputs live beside their architecture reader in

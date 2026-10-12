@@ -172,7 +172,7 @@ const HASH_B = "b".repeat(64);
 const NOW = "2026-07-31T17:00:00.000Z";
 const CLOCK = manualClock(new Date("2026-07-31T10:00:00-07:00"));
 const UI_EVIDENCE = JSON.parse(readFileSync(
-  join(REPO_ROOT, "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json"),
+  join(REPO_ROOT, "tests/support/fixtures/ui/ucpath/person-org.fixture.json"),
   "utf8",
 )) as unknown;
 

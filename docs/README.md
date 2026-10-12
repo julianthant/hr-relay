@@ -10,7 +10,6 @@ A design, finding, or historical live result is not proof of current implementat
 docs/
 ├── rebuild/
 │   ├── reference/        Contracts, current codebase map, lessons, and store catalog
-│   ├── evidence/         Sanitized selector evidence, organized by system
 │   ├── guides/           Practical instructions grounded in the contracts and code
 │   └── guard-inventory.json  Reviewed guard manifest
 ```
@@ -19,7 +18,7 @@ docs/
 
 Briefs, receipts and task evidence live in the main checkout's gitignored `.work/` folder, outside
 disposable worktrees.
-Selector fixture and live-read-only evidence now lives under `rebuild/evidence/selectors/<system>/`;
+Selector fixture and live-read-only evidence now lives under `../tests/support/fixtures/ui/<system>/`;
 retained semantic registries name the evidence used by verification. Legacy migration/provenance
 inventories live outside the repository in task evidence. Current architecture checks use only
 their reader-owned behavior fixtures. Both relocations preserve payload bytes and stay separate from operator runtime
