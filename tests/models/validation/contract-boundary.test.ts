@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
-import { contractSchemaLeaves } from "../../../src/models/validation/contract-boundary.js";
+import { assertSchemaOwnsPath, assertSchemaOffersPath, contractSchemaLeaves } from "../../../src/models/validation/contract-boundary.js";
 
 const paths = (schema: z.core.$ZodType): readonly string[] =>
   contractSchemaLeaves(schema).map((leaf) => leaf.path);
@@ -99,5 +99,29 @@ describe("contractSchemaLeaves", () => {
     const leaves = contractSchemaLeaves(z.strictObject({ tree: NodeSchema }));
     assert.ok(leaves.some((leaf) => leaf.path === "tree.label"));
     assert.ok(leaves.every((leaf) => !leaf.path.startsWith("tree.child.child")));
+  });
+});
+
+describe("schema field ownership", () => {
+  it("accepts the same nested schema reused in every union arm", () => {
+    const record = z.strictObject({ id: z.string() });
+    const schema = z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("a"), record }),
+      z.strictObject({ state: z.literal("b"), record }),
+    ]);
+    assert.doesNotThrow(() => assertSchemaOwnsPath(schema, "record.id", "freshness"));
+    assert.doesNotThrow(() => assertSchemaOffersPath(schema, "record.id", "subject"));
+    assert.throws(() => assertSchemaOwnsPath(schema, "record.missing", "freshness"), /unknown schema field/u);
+  });
+
+  it("refuses a recursive path without a field and retains every-arm ownership", () => {
+    const recursive: z.ZodType = z.lazy(() => recursive);
+    assert.throws(() => assertSchemaOwnsPath(recursive, "id", "freshness"), /unknown schema field/u);
+    const schema = z.union([
+      z.strictObject({ record: z.strictObject({ id: z.string() }) }),
+      z.strictObject({ record: z.strictObject({ name: z.string() }) }),
+    ]);
+    assert.throws(() => assertSchemaOwnsPath(schema, "record.id", "freshness"), /unknown schema field/u);
+    assert.doesNotThrow(() => assertSchemaOffersPath(schema, "record.id", "subject"));
   });
 });
