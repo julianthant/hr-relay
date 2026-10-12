@@ -1,6 +1,6 @@
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { SectionUnavailableError } from "../../../../src/backend/runs/commands/refusals.js";
-import { buildTrustSection } from "../../../../src/backend/runs/queries/run-trust.js";
+import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { foldTrustGate } from "../../../support/helpers/backend/trust-authority-fixture.js";
@@ -39,13 +39,13 @@ afterEach(cleanup);
           listGateResults: (id: string) => h.database.authority.gateResults.listByRun(id) },
         descriptors: { resolve: () => undefined } };
       assert.equal(projection.projection.runFold(WRITE_FIXTURE_RUN_ID), undefined);
-      const section = buildTrustSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write");
+      const section = buildRunSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write");
       assert.equal(section.section, "parked-write");
       const intent = parkedIntent(h.database);
       assert.equal(intent.status, "parked"); if (intent.status !== "parked") throw new Error("not parked");
       for (const changed of [{ workflowId: "person-lookup" }, { runAttempt: intent.runAttempt + 1 },
         { itemId: "aaaaaaaa-0000-4000-8000-000000000001" }, { runId: "aaaaaaaa-0000-4000-8000-000000000002" }]) {
-        assert.throws(() => buildTrustSection({ ...deps, authority: { ...deps.authority,
+        assert.throws(() => buildRunSection({ ...deps, authority: { ...deps.authority,
           getWriteIntent: () => ({ ...intent, ...changed }) as typeof intent } }, WRITE_FIXTURE_RUN_ID, "parked-write"),
         /IDENTITY_MISMATCH|belongs to/);
       }
@@ -53,7 +53,7 @@ afterEach(cleanup);
       const state = deps.runReader.read(WRITE_FIXTURE_RUN_ID);
       assert.equal(state.state, "present"); if (state.state !== "present") throw new Error("parked run missing");
       foldTrustGate(projection, state.run, "resolved");
-      const contradictory = buildTrustSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write");
+      const contradictory = buildRunSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write");
       assert.deepEqual(contradictory, section, "resolved fold cannot hide canonical parked-write actions");
       const resolved = h.kernel.execute(resolutionCommand("resolve-write-absent", {
         runId: WRITE_FIXTURE_RUN_ID, expectedVersion: state.run.version,
@@ -64,7 +64,7 @@ afterEach(cleanup);
       assert.equal(resumed.state, "present"); if (resumed.state !== "present") throw new Error("resumed run missing");
       assert.equal(resumed.run.lifecycle.state, "queued");
       foldTrustGate(projection, resumed.run, "open");
-      assert.throws(() => buildTrustSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write"), SectionUnavailableError,
+      assert.throws(() => buildRunSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write"), SectionUnavailableError,
         "stale open evidence cannot regrant resolved write actions");
 
     } finally { projection.dispose(); }

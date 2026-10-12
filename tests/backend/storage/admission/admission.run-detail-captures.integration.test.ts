@@ -4,7 +4,6 @@ import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixture
 
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { prepareLiveDiagnosticArtifactLease,readDiagnosticBundleAttachment } from "../../../../src/backend/runs/queries/diagnostic-bundle.js";
-import { buildTrustSection } from "../../../../src/backend/runs/queries/run-trust.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
@@ -17,6 +16,7 @@ import { afterEach,describe,it,vi } from "vitest";
 import type { z } from "zod";
 import { DiagnosticBundleCorruptError,SectionUnavailableError,TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import {
+buildRunSection,
 readRunDetail,
 readRunSection,
 type RunDetailQueryDeps
@@ -180,7 +180,7 @@ describe("run capture authority", () => {
     const run = service.read(uuidOf(1)); assert.equal(run.state, "present");
     if (run.state !== "present") throw new Error("run missing");
     const trust = createReceiptService({ database: h.database, descriptors: [personLookupDescriptor], runReader: h.deps.runReader });
-    const failure = buildTrustSection({ ...h.deps, trust }, uuidOf(1), "failure");
+    const failure = buildRunSection({ ...h.deps, trust }, uuidOf(1), "failure");
     assert.equal(failure.section, "failure");
     if (failure.section !== "failure" || failure.payload.state !== "available") throw new Error("failure evidence missing");
     h.database.authority.diagnosticBundles.insert(bundleOf(62,
@@ -210,13 +210,13 @@ describe("run capture authority", () => {
     const trust = createReceiptService({ database: h.database, descriptors: [personLookupDescriptor], runReader: h.deps.runReader });
     const deps = { ...h.deps, trust };
     assert.equal((await readRunSection(deps, id, "captures")).section, "captures");
-    assert.equal(buildTrustSection(deps, id, "failure").section, "failure");
-    assert.equal(buildTrustSection(deps, id, "receipt").section, "receipt");
+    assert.equal(buildRunSection(deps, id, "failure").section, "failure");
+    assert.equal(buildRunSection(deps, id, "receipt").section, "receipt");
     const failure = h.database.authority.failures.get(uuidOf(40)); assert.ok(failure);
     for (const change of [{ runId: RunIdSchema.parse(uuidOf(2)) }, { attempt: failure.attempt + 1 },
       { workflowId: "separations" }, { traceId: "pl-010101-0002" }]) {
       const foreign = { ...failure, ...change };
-      assert.throws(() => buildTrustSection({ ...deps, trust: { ...trust,
+      assert.throws(() => buildRunSection({ ...deps, trust: { ...trust,
         getFailure: () => foreign as typeof failure } }, id, "failure"), /TRUST_EVIDENCE_IDENTITY_MISMATCH/);
     }
   });

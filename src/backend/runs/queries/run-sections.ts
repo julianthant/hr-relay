@@ -59,4 +59,3 @@ export function buildRunSection(
     }
   }
 }
-export { buildRunSection as buildTrustSection };

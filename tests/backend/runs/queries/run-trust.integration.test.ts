@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { projectFailureResolution } from "../../../../src/backend/runs/queries/failure-resolution.js";
-import { buildTrustSection } from "../../../../src/backend/runs/queries/run-trust.js";
+import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { resolutionCommand, resolutionFixture, resolutionReadDeps } from "../../../support/helpers/failure-resolution/fixtures.js";
@@ -40,14 +40,14 @@ describe("D capture identity and served resolution", () => {
         assert.deepEqual(deps.trust.ensureReceipt(f.record.runId), receipt);
         const raw = deps.trust.failureResolution?.read(f.record.runId, f.record.failureId); assert.ok(raw);
         assert.ok(JSON.stringify(raw).includes(note));
-        const served = buildTrustSection(deps, f.record.runId, "failure");
+        const served = buildRunSection(deps, f.record.runId, "failure");
         assert.equal(JSON.stringify(served).includes(note), false);
         assert.ok(JSON.stringify(served).includes("Protected resolution note withheld."));
         assert.equal(JSON.stringify(projectFailureResolution(raw, false)).includes(note), true);
         const captured = structuredClone(served);
         f.kernel.execute(resolutionCommand({ target: { runId: f.record.runId, failureId: f.record.failureId, expectedVersion: 2 }, payload: { action: "reopen" } }));
         assert.ok(JSON.stringify(captured).includes('"status":"resolved"'));
-        assert.ok(JSON.stringify(buildTrustSection(deps, f.record.runId, "failure")).includes('"status":"unresolved"'));
+        assert.ok(JSON.stringify(buildRunSection(deps, f.record.runId, "failure")).includes('"status":"unresolved"'));
         assert.equal(immutable(), before);
         assert.deepEqual(deps.trust.ensureReceipt(f.record.runId), receipt);
       } finally { sql.close(); }
@@ -80,7 +80,7 @@ it("corrupt protected annotation JSON fails by name without echoing private text
     const triggers = sql.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='run_failures'").all();
     for (const row of triggers) { assert.equal(typeof row.name, "string"); sql.exec(`DROP TRIGGER "${String(row.name).replaceAll('"', '""')}"`); }
     sql.prepare("UPDATE run_failures SET resolution_json=? WHERE id=?").run('SYNTHETIC_PRIVATE_NOTE_INVALID_JSON', f.record.failureId);
-    assert.throws(() => buildTrustSection(resolutionReadDeps(f), f.record.runId, "failure"), error =>
+    assert.throws(() => buildRunSection(resolutionReadDeps(f), f.record.runId, "failure"), error =>
       error instanceof Error && error.message === "failure-resolution-annotation-invalid");
   } finally { sql.close(); f.dispose(); }
 });
@@ -106,7 +106,7 @@ afterEach(_afterEachFixture0);
     testWorkerPorts(f.database, f.world.clock, { path: join(f.world.stateRoot, "trust.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
     const { run } = seedPersonLookupExitRun(f.database);
     assert.equal(f.world.projection.runFold(run.envelope.runId), undefined);
-    const result = buildTrustSection(f.deps, run.envelope.runId, "receipt");
+    const result = buildRunSection(f.deps, run.envelope.runId, "receipt");
     assert.equal(result.section, "receipt");
     const original = canonicalJsonStringify(f.receipts.ensureReceipt(run.envelope.runId));
     assert.deepEqual(explainRunFrom(f.database, run.envelope.runId), explainRunFrom(f.database, run.envelope.traceId));
@@ -120,14 +120,14 @@ afterEach(_afterEachFixture0);
       address: { runId: id, traceId: run.envelope.traceId, spanPath: run.envelope.traceId, attempt: run.envelope.attempt },
       level: "step", message });
     for (let i = 0; i < 201; i++) append(`trust note ${String(i)}`);
-    const first = buildTrustSection(f.deps, id, "logs");
+    const first = buildRunSection(f.deps, id, "logs");
     assert.equal(first.section, "logs"); if (first.section !== "logs") throw new Error("wrong section");
     assert.ok(first.payload.rows);
     assert.equal(first.payload.rows.length, 200);
     const cursor = first.payload.nextCursor; assert.equal(cursor.state, "present");
     if (cursor.state !== "present") throw new Error("missing next page");
     append("late note");
-    const second = buildTrustSection(f.deps, id, "logs", cursor.value);
+    const second = buildRunSection(f.deps, id, "logs", cursor.value);
     assert.equal(second.section, "logs"); if (second.section !== "logs") throw new Error("wrong section");
     assert.ok(second.payload.rows);
     assert.equal(second.payload.rows.length, 1);
@@ -135,16 +135,16 @@ afterEach(_afterEachFixture0);
     assert.equal(source.filter(row => row.payload.kind === "note").length, 202);
     const terminal = f.cancel(run, 2);
     assert.equal(f.service.delete({ commandId: uuidOf(3), runId: id, expectedVersion: terminal.version }).state, "deleted");
-    assert.throws(() => buildTrustSection(f.deps, id, "logs", cursor.value), /deleted/);
+    assert.throws(() => buildRunSection(f.deps, id, "logs", cursor.value), /deleted/);
     assert.deepEqual(f.database.authority.timelineEvents.page({ runId: run.envelope.runId }), []);
-    assert.throws(() => buildTrustSection(f.deps, uuidOf(88), "logs"), /absent/);
+    assert.throws(() => buildRunSection(f.deps, uuidOf(88), "logs"), /absent/);
   });
 
   it("refuses a receipt's foreign identity and leaves its immutable source untouched", () => {
     const f = fixture(); const a = f.cancel(f.create(20), 21); const b = f.cancel(f.create(22), 23);
     const foreign = f.receipts.ensureReceipt(b.envelope.runId);
     const deps = { ...f.deps, trust: { ...f.receipts, ensureReceipt: () => foreign } };
-    assert.throws(() => buildTrustSection(deps, a.envelope.runId, "receipt"), /TRUST_EVIDENCE_IDENTITY_MISMATCH/);
+    assert.throws(() => buildRunSection(deps, a.envelope.runId, "receipt"), /TRUST_EVIDENCE_IDENTITY_MISMATCH/);
     assert.deepEqual(f.database.authority.evidenceReceipts.findByRun(b.envelope.runId), foreign);
     assert.equal(f.database.authority.evidenceReceipts.findByRun(a.envelope.runId), undefined);
   });
@@ -167,7 +167,7 @@ afterEach(_afterEachFixture0);
     assert.equal(f.world.projection.runFold(run.envelope.runId), undefined);
     assert.equal((buildRunGate(f.deps, run.envelope.runId, undefined, parked) as {state:string}).state, "open");
     assert.deepEqual(readGateParks(f.database, f.reader), [{ runId: run.envelope.runId, workflowId: run.envelope.workflow, gateId: "identity-approval" }]);
-    const identity = buildTrustSection(f.deps, run.envelope.runId, "identity-gate");
+    const identity = buildRunSection(f.deps, run.envelope.runId, "identity-gate");
     assert.equal(identity.section, "identity-gate");
     assert.throws(() => buildRunGate({ ...f.deps, authority: { ...f.deps.authority,
       listGateResults: () => [{ runId: uuidOf(999) } as ReturnType<typeof f.deps.authority.listGateResults>[number]] } },
@@ -184,14 +184,14 @@ afterEach(_afterEachFixture0);
     const queued = f.create(34); const openFold = foldTrustGate(f.world, queued, "open");
     assert.equal((buildRunGate(f.deps, queued.envelope.runId, openFold, queued) as { state: string }).state, "absent",
       "stale open evidence cannot grant a gate to a canonical queued run");
-    assert.throws(() => buildTrustSection(f.deps, queued.envelope.runId, "parked-write"), SectionUnavailableError);
+    assert.throws(() => buildRunSection(f.deps, queued.envelope.runId, "parked-write"), SectionUnavailableError);
 
   });
 
   it("refuses unconfigured admission and mismatched notification workflow before durable writes or delivery", async () => {
     const f = fixture(); const run = f.create(40);
     const { runReader: _reader, ...unconfigured } = f.deps;
-    assert.throws(() => buildTrustSection(unconfigured, run.envelope.runId, "logs"), /NOT_CONFIGURED/);
+    assert.throws(() => buildRunSection(unconfigured, run.envelope.runId, "logs"), /NOT_CONFIGURED/);
     const notifications = inbox(f);
     await assert.rejects(notifications.publish({ kind: "gate-opened", runId: run.envelope.runId,
       workflowId: "separations", gateId: "identity-approval" }), /IDENTITY_MISMATCH/);
