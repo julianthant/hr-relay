@@ -183,6 +183,13 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/intake/work-study-fixtures.ts` | WorkStudy projection and manifest input |
 | `helpers/dashboard/activity-report-fixtures.ts` | empty and populated Activity report input |
 
+| `helpers/credential-persistence-fixtures.ts` | fresh protected credential request and crash fixtures |
+| `helpers/credential-doctor-fixtures.ts` | native credential doctor fixture and inventory |
+| `helpers/test-target-registry-fixtures.ts` | registry subjects and recording public inputs |
+| `helpers/backend/note-scope-fixtures.ts` | note and terminal event fixture inputs |
+| `helpers/backend/owned-vite-probe-fixtures.ts` | owned local Vite probe server |
+| `helpers/dry-run-scenario-fixtures.ts` | fresh authored dry-run manifest |
+
 ## File fixtures
 
 - `fixtures/documents/synthetic-sample.pdf`

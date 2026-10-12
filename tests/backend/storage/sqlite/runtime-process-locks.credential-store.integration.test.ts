@@ -1,29 +1,13 @@
+import { createCredentialPersistenceFixtures } from "../../../support/helpers/credential-persistence-fixtures.js";
 import assert from "node:assert/strict";
-import {
-chmodSync,
-mkdirSync,
-mkdtempSync,
-readFileSync,
-realpathSync,
-rmSync,
-unlinkSync,
-writeFileSync
-} from "node:fs";
+import { chmodSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { tmpdir } from "node:os";
+
 import { join } from "node:path";
 import { afterEach,describe,it,vi } from "vitest";
 import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import {
-PROTECTED_SETTINGS_SCHEMA_HASH,
-ProtectedSettingsApplyInputSchema,
-type ProtectedSettingsApplyInput,
-type ProtectedSettingsPatch,
-} from "../../../../src/models/config/protected-settings.js";
-import {
-createCredentialStore,
-type CredentialStoreHooks
-} from "../../../support/helpers/synthetic-storage-admission.js";
+import { type ProtectedSettingsApplyInput } from "../../../../src/models/config/protected-settings.js";
+import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const COMMAND_1 = "11111111-1111-4111-8111-111111111111";
 const COMMAND_2 = "22222222-2222-4222-8222-222222222222";
@@ -39,40 +23,9 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function fixture(hooks?: CredentialStoreHooks) {
-  const stateRoot = mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-store-"));
-  roots.push(stateRoot);
-  const tracker = join(stateRoot, ".tracker");
-  mkdirSync(tracker, { mode: 0o755 });
-  chmodSync(tracker, 0o755);
-  const store = createCredentialStore({ stateRoot: tracker, hooks });
-  return {
-    stateRoot,
-    tracker,
-    directory: join(tracker, "credentials"),
-    path: join(tracker, "credentials", "protected.json"),
-    lockPath: join(tracker, "credentials", ".protected.lock"),
-    store,
-  };
-}
+const { fixture, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
-function request(input: {
-  readonly commandId: string;
-  readonly writeId: string;
-  readonly expectedRevision: number;
-  readonly entries: ProtectedSettingsPatch;
-  readonly updatedAt?: string;
-}): ProtectedSettingsApplyInput {
-  return ProtectedSettingsApplyInputSchema.parse({
-    commandId: input.commandId,
-    commandFingerprint: input.commandId === COMMAND_1 ? "1".repeat(64) : "2".repeat(64),
-    expectedRevision: input.expectedRevision,
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    writeId: input.writeId,
-    entries: input.entries,
-    updatedAt: input.updatedAt ?? NOW_1,
-  });
-}
+
 
 function applied(
   store: ReturnType<typeof createCredentialStore>,

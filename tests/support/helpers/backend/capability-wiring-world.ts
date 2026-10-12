@@ -1,3 +1,4 @@
+import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { type defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { z } from "zod";
@@ -209,4 +210,27 @@ export function createCapabilityWiringTestWorld() {
     for (const dispose of disposers.splice(0)) dispose();
   };
   return { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim, cleanup };
+}
+
+export function createWiredCapabilityTask(wiredContract: ReturnType<typeof createCapabilityWiringTestWorld>["wiredContract"], FIXTURE_BYTES: Uint8Array, PAYLOAD: ReturnType<typeof createCapabilityWiringTestWorld>["PAYLOAD"], byteLength: (stream: AsyncIterable<unknown>) => Promise<number>, observed: () => { artifactSha?: string; artifactBytes?: number; providerState?: string }) {
+  return defineTask(wiredContract, {
+  sessions: [],
+  async run({ ctx }) {
+    const ref = await ctx.artifacts.put(FIXTURE_BYTES, { mediaType: "text/plain" });
+    const bytes = await byteLength(await ctx.artifacts.open(ref));
+    const response = await ctx.providers["geocode.census"].call(PAYLOAD);
+    if (response.state !== "produced") {
+      ctx.fail("provider-unavailable", `ocr.extract answered ${response.state}`);
+    }
+    observed().artifactSha = ref.sha256;
+    observed().artifactBytes = bytes;
+    observed().providerState = response.state;
+    ctx.recordData([
+      { direction: "read", field: "providerState", value: response.state },
+      { direction: "read", field: "artifactSha", value: ref.sha256 },
+      { direction: "read", field: "artifactBytes", value: bytes },
+    ]);
+    return { providerState: response.state, artifactSha: ref.sha256, artifactBytes: bytes };
+  },
+});
 }

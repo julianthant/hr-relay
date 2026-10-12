@@ -117,6 +117,8 @@ the owning evidence records.
 
 Browser factory and worker sessions share `helpers/browser/session-factory-fixtures.ts`; flow, graph and scenario coverage share `helpers/workflow/flow-task-fixtures.ts`. WorkStudy intake builders live in `helpers/intake/work-study-fixtures.ts`, Activity report inputs in `helpers/dashboard/activity-report-fixtures.ts`, and forward operation-display workflows use `helpers/operation-display-fixtures.ts`.
 
+Credential persistence and inspection use `helpers/credential-persistence-fixtures.ts` and `helpers/credential-doctor-fixtures.ts`; registry inputs use `helpers/test-target-registry-fixtures.ts`. Note events, Vite probe servers and dry-run manifests share their fixture builders under `helpers/backend/` and `helpers/dry-run-scenario-fixtures.ts`.
+
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector

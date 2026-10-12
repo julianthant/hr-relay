@@ -1,3 +1,5 @@
+import { recordingInputSource } from "../../../support/helpers/test-target-registry-fixtures.js";
+import { createTestTargetRegistryFixtures } from "../../../support/helpers/test-target-registry-fixtures.js";
 import assert from "node:assert/strict";
 import { chmodSync,mkdirSync,mkdtempSync,realpathSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,14 +9,13 @@ import { createTestDataInputSource,testDataLocalPath } from "../../../../src/bac
 import {
 parseTestTargetRegistry,
 resolveSeparationsTestTarget,
-type TestTargetRegistryInput
 } from "../../../../src/backend/app/registries/test-target-registry.js";
 import type { TestDataInputSource } from "../../../../src/models/config/test-data.js";
 import { testDataInputSource } from "../../../support/helpers/test-data/test-data-source.js";
 
-type TestTargetEntryInput = TestTargetRegistryInput["targets"][number];
-type FinalizationArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations-kuali-finalization"]>;
-type ChainArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations"]>;
+
+
+
 
 
 const DOCUMENT_NUMBER_SECRET = {
@@ -27,56 +28,18 @@ const FIXTURE_CONFIGURED_SOURCE = testDataInputSource({
 });
 
 
-const SUBJECT = {
-  label: "fixture-target",
-  availability: {
-    state: "unknown",
-    lastObserved: "2026-08-20",
-    reason: "No live fixture exists.",
-  },
-  provenance: {
-    document: "docs/rebuild/reference/guards-and-tests.md",
-    section: "§10.5",
-  },
-  usagePolicy: "read-only",
-  cleanupObligation: "None; this fixture must not write.",
-  owner: "test operator",
-  purpose: "The registry fixture every parse/resolve case in this file starts from.",
-} as const;
+const { CHAIN_ARM, registry, rawRegistry, finalizationSubject, chainSubject } = createTestTargetRegistryFixtures(DOCUMENT_NUMBER_SECRET);
 
 /** Every finalization canonical leaf a live read can observe, minus the four person values. */
-const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
-  actionId: "0123456789abcdef01234567",
-  documentNumber: "4444",
-  emplIdSource: "document-eid",
-  ucpathDeptId: { state: "present", value: "000412" },
-  ucpathDepartment: { state: "present", value: "HOUSING/DINING/HOSPITALITY" },
-  observedDepartmentOptions: ["- - -", "000412 - Housing/Dining/Hospitality"],
-  payrollTitleCode: "004921",
-  payrollTitle: "STDT 2",
-  lastDayWorked: "06/09/2026",
-  separationDate: "06/10/2026",
-  terminationEffectiveDate: "06/11/2026",
-  observedExistingComments: "",
-};
+
 
 /** The same leaves plus the two a run only has once ② has filed and ③ composed. */
-const COMPLETE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
-  ...OBSERVED_PUBLIC_INPUT,
-  transactionNumber: "T009000001",
-  timekeeperComments: "Synthetic finalization comment.",
-};
 
 
-const FINALIZATION_ARM: FinalizationArmInput = {
-  kind: "ordinary",
-  publicInput: COMPLETE_PUBLIC_INPUT,
-};
 
-const CHAIN_ARM: ChainArmInput = {
-  kind: "full-chain-dry-run",
-  publicInput: { document: { state: "configured", reference: DOCUMENT_NUMBER_SECRET } },
-};
+
+
+
 
 const AVAILABLE = {
   state: "available",
@@ -84,40 +47,17 @@ const AVAILABLE = {
   reason: "Synthetic complete fixture.",
 } as const;
 
-function registry(targets: TestTargetRegistryInput["targets"]): TestTargetRegistryInput {
-  return { schemaVersion: 2, targets };
-}
 
 
-function rawRegistry(targets: readonly unknown[]): unknown {
-  return { schemaVersion: 2, targets };
-}
 
-function finalizationSubject(
-  overrides: Partial<TestTargetEntryInput> = {},
-): TestTargetEntryInput {
-  return { ...SUBJECT, workflows: { "separations-kuali-finalization": FINALIZATION_ARM }, ...overrides };
-}
 
-function chainSubject(
-  overrides: Partial<TestTargetEntryInput> = {},
-): TestTargetEntryInput {
-  return { ...SUBJECT, workflows: { separations: CHAIN_ARM }, ...overrides };
-}
+
+
+
+
 
 /** A test-data input source whose every read is recorded by input name. */
-function recordingInputSource(values: Parameters<typeof testDataInputSource>[0]): {
-  readonly source: TestDataInputSource;
-  readonly read: readonly string[];
-} {
-  const read: string[] = [];
-  const delegate = testDataInputSource(values);
-  const source: TestDataInputSource = { read: (name) => {
-    read.push(name);
-    return delegate.read(name);
-  } };
-  return { source, read };
-}
+
 
 /** A source whose private file is invalid: the loader already refused it by key, never by value. */
 const privateRoots: string[] = [];

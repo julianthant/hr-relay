@@ -1,4 +1,5 @@
-import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { instrumentPool, kernelOver, type PoolEffectEvent } from "../../../../support/helpers/backend/dashboard-pool-world.js";
+
 import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
 import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
@@ -10,16 +11,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { composeWorkerProcessControl } from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { createCommandKernel, type CommandKernel, type CommandKernelDependencies, type WorkerPoolRuntimeSeam } from "../../../../../src/backend/runs/commands/command-kernel.js";
+
+import { type CommandKernel, type WorkerPoolRuntimeSeam } from "../../../../../src/backend/runs/commands/command-kernel.js";
 
 import { type WorkerPoolMember } from "../../../../../src/backend/runtime/workers/worker-loop.js";
 import type { SpawnedWorkerHandle, WorkerProcessSpawnRequest } from "../../../../../src/backend/runtime/workers/worker-supervisor.js";
 
 import { WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock, type Clock, type TestClock } from "../../../../../src/rules/time/clock.js";
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../../support/fixtures/intake-kernel-seams.js";
-import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
+
+
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 import { ManualScheduler } from "../../../../support/helpers/phase1f-executor-harness.js";
 
@@ -99,13 +100,7 @@ function envelope(clock: Clock, commandId = nextCommandId()) {
 }
 
 /** One pool-effect boundary crossing, in door order. */
-interface PoolEffectEvent {
-  readonly commandId: string;
-  readonly type: string;
-  readonly phase: "enter" | "exit";
-  readonly seq: number;
-  readonly atMonotonicMs: number;
-}
+
 
 function eventOf(events: readonly PoolEffectEvent[], commandId: string, phase: "enter" | "exit"): PoolEffectEvent {
   return required(
@@ -114,65 +109,9 @@ function eventOf(events: readonly PoolEffectEvent[], commandId: string, phase: "
   );
 }
 
-function instrumentPool(
-  pool: WorkerPoolRuntimeSeam,
-  clock: Clock,
-  events: PoolEffectEvent[],
-): WorkerPoolRuntimeSeam {
-  let seq = 0;
-  const record = (commandId: string, type: string, phase: "enter" | "exit"): void => {
-    seq += 1;
-    events.push({ commandId, type, phase, seq, atMonotonicMs: clock.monotonicMs() });
-  };
-  const wrap = <Method extends keyof WorkerPoolRuntimeSeam>(method: Method): WorkerPoolRuntimeSeam[Method] =>
-    async (context: Parameters<WorkerPoolRuntimeSeam[Method]>[0]) => {
-      record(context.command.commandId, context.command.type, "enter");
-      try {
-        return await pool[method](context);
-      } finally {
-        record(context.command.commandId, context.command.type, "exit");
-      }
-    };
-  return {
-    planPoolWorkerCount: wrap("planPoolWorkerCount"),
-    spawnPoolWorker: wrap("spawnPoolWorker"),
-    stopPoolWorker: wrap("stopPoolWorker"),
-    pausePoolWorker: wrap("pausePoolWorker"),
-    resumePoolWorker: wrap("resumePoolWorker"),
-    refreshPoolBrowser: wrap("refreshPoolBrowser"),
-    reopenPoolBrowser: wrap("reopenPoolBrowser"),
-  };
-}
 
-function kernelOver(
-  database: AuthorityDatabase,
-  clock: Clock,
-  pool: WorkerPoolRuntimeSeam,
-): CommandKernel {
-  const dependencies: CommandKernelDependencies = {
-    lifecycle: new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
-    appVersion: "0.1.0",
-    configIdentity: (() => { const active = database.authority.runtimeConfig.get(); assert.ok(active); return {configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId}; })(),
-    intakeParser: UNWIRED_INTAKE_PARSER,
-    intakeProjections: NO_INTAKE_PROJECTIONS,
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
-    clock,
-    ids: sequentialIdFactory("f"),
-    descriptors: {
-      resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
-    },
-    writeResolution: {
-      resolvePresent: () => {
-        throw new Error("unused in this suite");
-      },
-      resolveAbsent: () => {
-        throw new Error("unused in this suite");
-      },
-    },
-    workerRuntime: { pool },
-  };
-  return createCommandKernel(dependencies);
-}
+
+
 
 /** Journal truth: an applied command has its row and its applied audit; a refusal has neither. */
 function assertJournaled(database: AuthorityDatabase, commandId: string): void {
