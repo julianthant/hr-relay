@@ -3,12 +3,10 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { DAY, instantOffsetOf, workerLeaseOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world } = createRunQueueProjectionTestWorld();
+const {world, cleanup } = createRunQueueProjectionTestWorld();
 
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 
 describe("lease-only transitions reach the Session Panel without a span", () => {

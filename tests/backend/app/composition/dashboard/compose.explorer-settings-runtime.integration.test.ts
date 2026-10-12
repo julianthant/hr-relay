@@ -24,7 +24,13 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture } = createDashboardPortTestWorld();
+const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture, cleanup } = createDashboardPortTestWorld(() => {
+      vi.mocked(fsyncSync).mockReset();
+      vi.mocked(readFileSync).mockReset();
+      vi.mocked(openSync).mockReset();
+      vi.mocked(mkdirSync).mockReset();
+      vi.restoreAllMocks();
+    }, () => releaseAdmissionFixtures());
 
 
 function settingsCommand(
@@ -86,16 +92,7 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
-afterEach(async () => {
-  vi.mocked(fsyncSync).mockReset();
-  vi.mocked(readFileSync).mockReset();
-  vi.mocked(openSync).mockReset();
-  vi.mocked(mkdirSync).mockReset();
-  vi.restoreAllMocks();
-
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  releaseAdmissionFixtures();
-});
+afterEach(cleanup);
 
 function committedExplorer() {
   const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-explorer-"));

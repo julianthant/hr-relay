@@ -7,11 +7,9 @@ import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { disposers, executorHarness, enqueueAndClaim, SIGNAL } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
 
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("cancellation racing failure authorization", () => {
   it("settles cancelled when admission commits after the boundary read but before authorization", async () => {

@@ -26,7 +26,7 @@ import { ManualScheduler } from "../../../../support/helpers/phase1f-executor-ha
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
 {
-const { servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, roots, openDatabases, cleanups, openControlHarness, nextCommandId, envelope, settleMicrotasks, fireBirthPoll, admitPoolSlot, spawnPoolWorker, admitExternalSlot, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember } = createDashboardPoolTestWorld();
+const {servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, openControlHarness, nextCommandId, envelope, settleMicrotasks, fireBirthPoll, admitPoolSlot, spawnPoolWorker, admitExternalSlot, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember, cleanup } = createDashboardPoolTestWorld();
 
 function applySettingsRequiringRestart(harness: ControlHarness): void {
   const patch = { "browser.headless": { set: false } } as const;
@@ -50,11 +50,7 @@ function applySettingsRequiringRestart(harness: ControlHarness): void {
 
 describe("the composed worker process control through the kernel pool door", () => {
 
-  afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+  afterEach(cleanup);
 
   it.each(["all-or-none", "best-effort"] as const)("holds %s bulk child identities until an in-flight worker effect is journaled", async (mode) => {
     const harness = openControlHarness();
@@ -317,11 +313,7 @@ describe("the composed worker process control through the kernel pool door", () 
 
 describe("dashboard launch creates bounded worker capacity", () => {
 
-  afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+  afterEach(cleanup);
 
   it("declares one cold worker, waits for birth, and replays without recreating a later crash", async () => {
     const h = openControlHarness(); const commands = launchCommands(h); const { request } = dashboardLaunch(h);
@@ -372,15 +364,11 @@ describe("dashboard launch creates bounded worker capacity", () => {
 }
 
 {
-const { servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, WORKER_2, roots, openDatabases, cleanups, openControlHarness, nextCommandId, envelope, admitPoolSlot, spawnPoolWorker, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember } = createDashboardPoolTestWorld();
+const {servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, WORKER_2, cleanups, openControlHarness, nextCommandId, envelope, admitPoolSlot, spawnPoolWorker, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember, cleanup } = createDashboardPoolTestWorld();
 
 describe("dashboard launch creates bounded worker capacity", () => {
 
-  afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+  afterEach(cleanup);
 
 
   it.each(["pause", "stop"] as const)("keeps a larger declaration and starts only a missing slot beside a %s-directed member", async directive => {
@@ -511,11 +499,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
 
 describe("dashboard shutdown drains owned workers between ingress and the process lock", () => {
 
-  afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+  afterEach(cleanup);
 
   it.each(["manual-worker", "dashboard-start"] as const)("%s writes a graceful stop, waits for the owned OS exit, then releases the server lock", async mode => {
     const repoRoot = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hrauto-shutdown-")));
@@ -691,11 +675,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
 
 describe("every control retains a crash after effect admission", () => {
 
-  afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+  afterEach(cleanup);
 
   it.each(["plan-worker-count", "spawn-worker", "pause-worker", "resume-worker", "stop-worker", "refresh-browser", "reopen-browser"] as const)("%s never repeats an uncertain effect or accepts a divergent replay", async type => {
     let fault = false; let calls = 0;

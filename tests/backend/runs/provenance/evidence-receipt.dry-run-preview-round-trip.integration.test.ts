@@ -1,7 +1,7 @@
 import { createDryRunPreviewResultTestWorld } from "../../../support/helpers/backend/dry-run-preview-result-world.js";
 import { deriveRunResultDigest } from "../../../../src/models/run/result.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { afterEach, describe, it } from "vitest";
 import { buildRunPreviewResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
@@ -9,14 +9,10 @@ import { WRITE_FIXTURE_NODE_ID } from "../../../support/fixtures/write-sequencer
 import { FINALIZATION_FIELDS, finalizationClaimRunning, finalizationContext, finalizationDurableFootprint, finalizationHarness, finalizationPreviewDependencies, finalizationQueuedRun } from "../../../support/helpers/kuali-finalization-fixtures.js";
 import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness } = createDryRunPreviewResultTestWorld();
+const {kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup } = createDryRunPreviewResultTestWorld();
 
 
-afterEach(() => {
-  for (const open of kualiOpen.splice(0)) open.dispose();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("a dry run previews its transaction node and ends there", () => {
 

@@ -7,12 +7,10 @@ import { FINALIZE_NODE } from "../../../../src/workflows/separations/workflow.js
 import { FINALIZATION_ITEM_ID, FINALIZATION_RUN_ID, type FinalizationHarness } from "../../../support/helpers/kuali-finalization-fixtures.js";
 import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const { open, signal, harness, executorDependencies, enqueueFromComparison, parkApproveAndReclaim } = createFinalizationTerminalTestWorld();
+const {signal, harness, executorDependencies, enqueueFromComparison, parkApproveAndReclaim, cleanup } = createFinalizationTerminalTestWorld();
 
 
-afterEach(() => {
-  for (const harness of open.splice(0)) harness.dispose();
-});
+afterEach(cleanup);
 
 function authorityWithoutFinalizationCheckpoint(
   value: FinalizationHarness,

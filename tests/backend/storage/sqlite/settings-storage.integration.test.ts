@@ -2,7 +2,7 @@ import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backe
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import {existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -10,9 +10,9 @@ import { afterEach, describe, it } from "vitest";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 
-const { roots, databases, admissions, fixture, protectedCommand, failAudit } = createSettingsAuthorityTestWorld();
+const {fixture, protectedCommand, failAudit, cleanup } = createSettingsAuthorityTestWorld();
 
-afterEach(() => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(cleanup);
 function ordinary(expectedRevision = 1) {
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
   return { family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: "2026-09-06T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",

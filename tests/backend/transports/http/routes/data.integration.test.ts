@@ -9,11 +9,9 @@ import { RunDetailSectionResponseSchema } from "../../../../../src/models/dashbo
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { runRecordOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world, depsOf, sourceRun, checkpointFor, storeCheckpoint } = createRunDetailTestWorld();
+const {world, depsOf, sourceRun, checkpointFor, storeCheckpoint, cleanup } = createRunDetailTestWorld();
 
-afterEach(() => {
-  for (const current of worlds.splice(0)) current.dispose();
-});
+afterEach(cleanup);
 
 describe("read-only Context Data projection", () => {
 

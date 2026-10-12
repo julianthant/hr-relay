@@ -10,7 +10,7 @@ import { RuntimeConfigClaimTokenSchema } from "../../../../src/models/config/run
 import { ActorIdSchema, TraceIdSchema } from "../../../../src/rules/identity/ids.js";
 import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { composeWorkerRuntime, createTimeoutDeadlineScheduler, lineTaskLogger } from "../../../../src/backend/app/composition/worker-compose.js";
@@ -27,17 +27,10 @@ import { RUN_ID, WORKFLOW_ID, sequentialIdFactory } from "../../../support/fixtu
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
 import { happySessionHarness, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { roots, openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig, composeInput } = createWorkerCompositionTestWorld();
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig, composeInput, cleanup } = createWorkerCompositionTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  releaseAdmissionFixtures();
-  for (const root of roots.splice(0)) {
-    releaseAdmissionFixture(root);
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanup);
 
 describe("settings apply during a production worker claim", () => {
   it.each(["protected", "ordinary"] as const)("%s apply preserves the active run and permits the next retained run", async (kind) => {

@@ -3,7 +3,7 @@ import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { copyFileSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {copyFileSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -15,44 +15,12 @@ import { WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-const { stubLaunch, servedControlBasis, PL, plMember, required, roots, openDatabases, cleanups, liveRealChildren, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase } = createDashboardChildTestWorld();
+const {stubLaunch, servedControlBasis, PL, plMember, required, roots, cleanups, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 const SEP = WorkflowIdSchema.parse("separations");
 const _PL_1 = plMember(1);
 
-afterEach(async () => {
-  // Run every cleanup stage despite failures so signal escalation, database close and root cleanup still execute.
-  const errors: unknown[] = [];
-  for (const cleanup of cleanups.splice(0).reverse()) {
-    try {
-      await cleanup();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  for (const child of liveRealChildren.splice(0)) {
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  }
-  for (const database of openDatabases.splice(0)) {
-    try {
-      database.close();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  releaseAdmissionFixtures();
-  for (const root of roots.splice(0)) {
-    try {
-      releaseAdmissionFixture(root);
-      rmSync(root, { recursive: true, force: true });
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  if (errors.length > 0) {
-    throw new AggregateError(errors, `afterEach cleanup failed (${String(errors.length)} error(s))`);
-  }
-}, 30_000);
+afterEach(cleanup, 30_000);
 
 describe("real runtime: dashboard shutdown releases the locks, reports close evidence, and leaves no orphans", () => {
   it(

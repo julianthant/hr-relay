@@ -4,11 +4,9 @@ import { afterEach, describe, it } from "vitest";
 import { WriteParkedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { absentProbeEvidence, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const { disposers, harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture } = createWriteSequencerTestWorld();
+const {harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture, cleanup } = createWriteSequencerTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("inline recovery of this run's own attempting intent", () => {
 

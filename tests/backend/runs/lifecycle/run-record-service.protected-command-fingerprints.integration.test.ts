@@ -4,9 +4,9 @@ import { afterEach, describe, it } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { cleanups, fixture, created } = createRunRecordServiceTestWorld();
+const {fixture, created, cleanup } = createRunRecordServiceTestWorld();
 
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+afterEach(cleanup);
 
 describe("protected canonical command fingerprints", () => {
 

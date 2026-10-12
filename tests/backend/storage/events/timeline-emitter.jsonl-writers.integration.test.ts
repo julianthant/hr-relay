@@ -1,6 +1,6 @@
 import { createJsonlWriterTestWorld } from "../../../support/helpers/backend/jsonl-writer-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { afterEach, describe, it } from "vitest";
 import { ObservedDataPointSchema } from "../../../../src/backend/logs/span-emitter.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
@@ -8,13 +8,10 @@ import { SpanEventWireSchema } from "../../../../src/models/events/types.js";
 import { RedactedFieldSchema } from "../../../../src/rules/redaction/redaction.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
-const { roots, repositories, repositoryOf, nativeLines, stateRoot, RUN_ID, TRACE, AT } = createJsonlWriterTestWorld();
+const {repositoryOf, nativeLines, stateRoot, RUN_ID, TRACE, AT, cleanup } = createJsonlWriterTestWorld();
 
 
-afterEach(() => {
-  repositories.clear();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 const CLASSIFICATIONS = [
   "secret", "credential-file", "direct-identifier", "sensitive-hr", "safe-diagnostic",
 ] as const;

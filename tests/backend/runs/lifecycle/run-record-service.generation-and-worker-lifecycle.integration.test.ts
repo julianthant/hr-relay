@@ -12,9 +12,9 @@ import { WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fi
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const { cleanups, fixture, created, runningRun, raceConnection, failureTerminalRequest } = createRunRecordServiceTestWorld();
+const {fixture, created, runningRun, raceConnection, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+afterEach(cleanup);
 
 describe("canonical run-record service", () => {
 

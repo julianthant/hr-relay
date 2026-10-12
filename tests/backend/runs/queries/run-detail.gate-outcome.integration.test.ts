@@ -7,11 +7,9 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { queuedEventOf, runEndedEventOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world, RUN_ID } = createRunDetailTestWorld();
+const {world, RUN_ID, cleanup } = createRunDetailTestWorld();
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 const HASH = "a".repeat(64);
 const GATE_RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 const RESOLVED_AT = "2026-08-19T09:15:00.000Z";

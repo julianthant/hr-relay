@@ -12,11 +12,9 @@ import { HASH_B, NOW } from "../../../support/fixtures/phase1c-contract-fixtures
 import { runRecordOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
-const { worlds, world, OUTPUT_SCHEMA_HASH, EXACT_DESCRIPTOR, depsOf, sourceRun, checkpointFor, storeCheckpoint } = createRunDetailTestWorld();
+const {world, OUTPUT_SCHEMA_HASH, EXACT_DESCRIPTOR, depsOf, sourceRun, checkpointFor, storeCheckpoint, cleanup } = createRunDetailTestWorld();
 
-afterEach(() => {
-  for (const current of worlds.splice(0)) current.dispose();
-});
+afterEach(cleanup);
 
 function contextData(
   current: DashboardWorld,

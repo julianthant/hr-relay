@@ -19,7 +19,7 @@ import { timelineEventDuration } from "../../../../src/models/dashboard/run-deta
 import { DAY } from "../../../support/helpers/backend/dashboard-harness.js";
 
 {
-const { worlds, world } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld();
 
 /* ── 1. the factory derives and REFUSES ──────────────────────────────────── */
 
@@ -96,9 +96,7 @@ function descriptorNamed<First extends string>(
 }
 
 describe("the descriptor's declared timeline", () => {
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
   it("derives ONE category per node when a descriptor declares nothing", () => {
 
@@ -245,9 +243,7 @@ function seedRun(w: DashboardWorld): void {
 }
 
 describe("the served categorical steps", () => {
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
   it("serves ONE step per category, not one per node", () => {
     const w = world();
@@ -393,9 +389,7 @@ function terminal(w: DashboardWorld, outcome: "done" | "failed"): void {
 }
 
 describe("a replayed node is not a node that never ran", () => {
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
   it("renders a no-span node with an earlier run's checkpoint as REPLAYED", () => {
     const w = world();
@@ -507,7 +501,7 @@ afterEach(() => {
 }
 
 {
-const { worlds, world } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld();
 
 const SEED = 1;
 const NODE = "timecard-search";
@@ -559,9 +553,7 @@ function poisonedWorld(): DashboardWorld {
 }
 
 describe("two executions sharing one span identity in a checkpoint without claim generation", () => {
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
   it("parses a timeline with repeated execution identities", () => {
 
@@ -606,7 +598,7 @@ afterEach(() => {
 }
 
 {
-const { worlds, world } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld();
 
 /** A run the projection can render, with nothing on its timeline yet. */
 function seedRun(w: DashboardWorld, seed = 1): void {
@@ -634,9 +626,7 @@ function spanBase(seed: number, node: string) {
 }
 
 describe("a timeline event's own measured duration", () => {
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
   it("measures the SPAN, not the gap to the next event", () => {
     const w = world();
@@ -742,9 +732,7 @@ afterEach(() => {
 });
 
 describe("the day the timeline is read from", () => {
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
   it("still renders a full day's wire beside the durations", () => {
     const w = world();

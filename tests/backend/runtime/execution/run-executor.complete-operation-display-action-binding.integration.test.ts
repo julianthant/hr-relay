@@ -4,11 +4,9 @@ import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { disposers, executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, actionBindingQueuedRun, actionBindingSessions } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, actionBindingQueuedRun, actionBindingSessions, cleanup } = createRunExecutorTestWorld();
 
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("complete operation display action binding", () => {
 

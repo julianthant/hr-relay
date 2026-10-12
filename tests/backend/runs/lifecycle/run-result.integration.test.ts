@@ -1,19 +1,15 @@
 import { createDryRunPreviewResultTestWorld } from "../../../support/helpers/backend/dry-run-preview-result-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { afterEach, describe, it } from "vitest";
 import { buildRunPreviewResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKER_ID, writeFixtureDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness } = createDryRunPreviewResultTestWorld();
+const {PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup } = createDryRunPreviewResultTestWorld();
 
 
-afterEach(() => {
-  for (const open of kualiOpen.splice(0)) open.dispose();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 function terminalRun(database: AuthorityDatabase) {
   const record = database.authority.runs.get(WRITE_FIXTURE_RUN_ID);

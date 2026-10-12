@@ -8,11 +8,9 @@ import { UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { disposers, executorHarness, enqueueAndClaim, SIGNAL } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
 
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("failure, retry, and resume", () => {
 

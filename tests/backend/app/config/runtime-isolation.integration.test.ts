@@ -1,17 +1,14 @@
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 
-const { CLOCK, roots, admissions, composeStorageCommand, drillPaths, open, seedRealShapedAuthority } = createStorageRestoreTestWorld();
+const {CLOCK, composeStorageCommand, drillPaths, open, seedRealShapedAuthority, cleanup } = createStorageRestoreTestWorld();
 
 
-afterEach(() => {
-  for(const admission of admissions.values())admission.release();admissions.clear();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
 

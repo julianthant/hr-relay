@@ -5,7 +5,7 @@ import { createBackfillGapNotifier } from "../../../../src/backend/runs/notifica
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { disposers, world } = createNotificationBackfillTestWorld();
+const {world, cleanup } = createNotificationBackfillTestWorld();
 
 
 const GAP = {
@@ -17,9 +17,7 @@ const GAP = {
   currentCursor: "pc:12",
   projectionGeneration: 3,
 } as const;
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("backfill-gap notification", () => {
 

@@ -17,7 +17,13 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS, persistCorruptJournaledSettings } from "../../../../support/fixtures/integration/settings-runtime-corruption-fixtures.js";
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-const { cleanups, composeDashboardRuntime, copyRuntimePackageFixture } = createDashboardPortTestWorld();
+const { cleanups, composeDashboardRuntime, copyRuntimePackageFixture, cleanup } = createDashboardPortTestWorld(() => {
+      vi.mocked(fsyncSync).mockReset();
+      vi.mocked(readFileSync).mockReset();
+      vi.mocked(openSync).mockReset();
+      vi.mocked(mkdirSync).mockReset();
+      vi.restoreAllMocks();
+    }, () => releaseAdmissionFixtures());
 
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -31,16 +37,7 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
-afterEach(async () => {
-  vi.mocked(fsyncSync).mockReset();
-  vi.mocked(readFileSync).mockReset();
-  vi.mocked(openSync).mockReset();
-  vi.mocked(mkdirSync).mockReset();
-  vi.restoreAllMocks();
-
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  releaseAdmissionFixtures();
-});
+afterEach(cleanup);
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
   it("unwinds an initial preflight refresh rejection and keeps authority admission recoverable", async () => {

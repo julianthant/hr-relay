@@ -1,6 +1,6 @@
 import { createDryRunCompositionTestWorld } from "../../../support/helpers/backend/dry-run-composition-world.js";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -13,14 +13,10 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { testDataInputSource } from "../../../support/helpers/test-data/test-data-source.js";
 
-const { roots, databases, TEST_MANIFEST, CHAIN_READY_MANIFEST } = createDryRunCompositionTestWorld();
+const {roots, TEST_MANIFEST, CHAIN_READY_MANIFEST, cleanup } = createDryRunCompositionTestWorld();
 
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("dry-run scenario production composition boundary", () => {
   it("persists a blocked result without constructing browser/runtime services", async () => {

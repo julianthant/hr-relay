@@ -6,11 +6,9 @@ import { createDashboardStreamHub } from "../../../../../src/backend/transports/
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { DAY, makeWorld as makeDashboardWorld, queuedEventOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 
-const { disposers, world } = createNotificationBackfillTestWorld();
+const { disposers, world, cleanup } = createNotificationBackfillTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("backfill-gap notification", () => {
 

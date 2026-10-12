@@ -13,11 +13,9 @@ import { deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/w
 import { absentProbeEvidence, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, WriteFixtureCommit, writeFixtureDescriptor, WriteFixtureProofSchema, writeFixtureQueuedRun, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { AtomicWriteCommitStorageStepSchema, SequencedWriteCommitStepSchema } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { disposers, harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture } = createWriteSequencerTestWorld();
+const {harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture, cleanup } = createWriteSequencerTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, never silent)", () => {
   it("keeps the commit lane and session owned until a deadline-ignoring callback actually settles", async () => {

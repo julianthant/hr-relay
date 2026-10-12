@@ -4,11 +4,9 @@ import { afterEach, describe, it } from "vitest";
 import { StagedPageDiscardedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { absentProbeEvidence, WRITE_FIXTURE_NOW } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const { disposers, harness, claimRunning, contextFor, intentByKey } = createWriteSequencerTestWorld();
+const {harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("beat ④ — budget expiry and CAS races discard the staged page", () => {
   it("discards on an elapsed probe→fence budget and never clicks", async () => {

@@ -19,11 +19,9 @@ import { NoteWireSchema } from "../../../../../src/models/events/types.js";
 import { UUID_5, UUID_6 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-const { disposers, executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup } = createRunExecutorTestWorld();
 
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("complete operation display action binding", () => {
 

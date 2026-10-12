@@ -7,11 +7,9 @@ import { createNoteTimelineWriter } from "../../../../src/backend/storage/events
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { queuedEventOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld();
 
-afterEach(() => {
-  for (const current of worlds.splice(0)) current.dispose();
-});
+afterEach(cleanup);
 
 function depsOf(current: DashboardWorld): RunDetailQueryDeps {
   return {

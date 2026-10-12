@@ -7,11 +7,9 @@ import { UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtu
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { disposers, loopHarness } = createWorkerDirectiveTestWorld();
+const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("worker run loop", () => {
   it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {

@@ -7,11 +7,9 @@ import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-cer
 import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { WORKER_A, RUN_FINGERPRINT, SYSTEM, NEED, T0, recipeFactory, managerFor, databases, sharedAuthority, leaseRow } = createLoginContractTestWorld();
+const {WORKER_A, RUN_FINGERPRINT, SYSTEM, NEED, T0, recipeFactory, managerFor, sharedAuthority, leaseRow, cleanup } = createLoginContractTestWorld();
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-});
+afterEach(cleanup);
 
 describe("two workers, one credential, one ceremony at a time", () => {
 

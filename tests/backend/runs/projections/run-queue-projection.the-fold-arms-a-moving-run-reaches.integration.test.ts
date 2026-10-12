@@ -4,12 +4,10 @@ import { afterEach, describe, it } from "vitest";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { atDayOffset, claimEventOf, DAY, dayOffsetOf, instantOffsetOf, notificationRecordOf, runEndedEventOf, traceOf, uuidOf, workerLeaseOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world, runRecordOf, queuedEventOf, CLAIM } = createRunQueueProjectionTestWorld();
+const {world, runRecordOf, queuedEventOf, CLAIM, cleanup } = createRunQueueProjectionTestWorld();
 
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 
 describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", () => {

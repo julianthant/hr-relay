@@ -1,7 +1,7 @@
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFileSync, rmSync } from "node:fs";
+import {readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -9,9 +9,9 @@ import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-reg
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 
-const { roots, databases, admissions, fixture, protectedCommand, failAudit } = createSettingsAuthorityTestWorld();
+const {fixture, protectedCommand, failAudit, cleanup } = createSettingsAuthorityTestWorld();
 
-afterEach(() => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(cleanup);
 
 describe("SQLite settings authority", () => {
   it("refuses a retained credential identity before async worker-pool effects", async () => {

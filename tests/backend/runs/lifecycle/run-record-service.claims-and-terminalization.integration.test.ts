@@ -6,9 +6,9 @@ import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_5, UUID_
 import { WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const { cleanups, fixture, created, runningRun, failureTerminalRequest } = createRunRecordServiceTestWorld();
+const {fixture, created, runningRun, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+afterEach(cleanup);
 
 describe("canonical run-record service", () => {
 

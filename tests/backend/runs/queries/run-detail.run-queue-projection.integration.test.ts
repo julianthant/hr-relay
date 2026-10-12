@@ -4,12 +4,10 @@ import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import { claimEventOf, DAY, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world, runRecordOf, queuedEventOf, appendOther } = createRunQueueProjectionTestWorld();
+const {world, runRecordOf, queuedEventOf, appendOther, cleanup } = createRunQueueProjectionTestWorld();
 
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 describe("THE run/queue projection", () => {
 

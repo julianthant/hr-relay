@@ -1,6 +1,6 @@
 import { createJsonlWriterTestWorld } from "../../../support/helpers/backend/jsonl-writer-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { afterEach, describe, it } from "vitest";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { NoteWireSchema, projectNoteForOperator } from "../../../../src/models/events/types.js";
@@ -9,13 +9,10 @@ import { localDatePart, manualClock, type Clock } from "../../../../src/rules/ti
 import { DeclaredActionOccurrenceSchema } from "../../../../src/rules/workflow/task-provenance.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { roots, repositories, repositoryOf, nativeLines, stateRoot, RUN_ID, TRACE, AT } = createJsonlWriterTestWorld();
+const {repositoryOf, nativeLines, stateRoot, RUN_ID, TRACE, AT, cleanup } = createJsonlWriterTestWorld();
 
 
-afterEach(() => {
-  repositories.clear();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("native note writer and classified fields", () => {
   it("retains classified values and counts invalid fields", () => {

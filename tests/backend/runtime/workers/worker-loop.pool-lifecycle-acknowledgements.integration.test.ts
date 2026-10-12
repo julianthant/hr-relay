@@ -9,11 +9,9 @@ import { NOW, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures
 import { ITEM_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { openAuthorityHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { disposers, workerBrowserCommand, admittedAdapterRoster, admitAdapterPlan, OBSERVED_GRACEFUL, STOP_ESCALATION } = createPoolRuntimeTestWorld();
+const { disposers, workerBrowserCommand, admittedAdapterRoster, admitAdapterPlan, OBSERVED_GRACEFUL, STOP_ESCALATION, cleanup } = createPoolRuntimeTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 
 

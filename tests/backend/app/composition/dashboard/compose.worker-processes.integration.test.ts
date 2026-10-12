@@ -3,7 +3,7 @@ import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-
 import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
 import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -16,44 +16,12 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../../suppor
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-const { stubLaunch, servedControlBasis, PL, plMember, STUB_CLI_PATH, required, roots, openDatabases, cleanups, liveRealChildren, nextCommandId, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase } = createDashboardChildTestWorld();
+const {stubLaunch, servedControlBasis, PL, plMember, STUB_CLI_PATH, required, roots, openDatabases, cleanups, nextCommandId, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 const PL_1 = plMember(1);
 const PL_2 = plMember(2);
 
-afterEach(async () => {
-  // Run every cleanup stage despite failures so signal escalation, database close and root cleanup still execute.
-  const errors: unknown[] = [];
-  for (const cleanup of cleanups.splice(0).reverse()) {
-    try {
-      await cleanup();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  for (const child of liveRealChildren.splice(0)) {
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  }
-  for (const database of openDatabases.splice(0)) {
-    try {
-      database.close();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  releaseAdmissionFixtures();
-  for (const root of roots.splice(0)) {
-    try {
-      releaseAdmissionFixture(root);
-      rmSync(root, { recursive: true, force: true });
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  if (errors.length > 0) {
-    throw new AggregateError(errors, `afterEach cleanup failed (${String(errors.length)} error(s))`);
-  }
-}, 30_000);
+afterEach(cleanup, 30_000);
 
 /** One pool-effect boundary crossing, in door order. */
 interface PoolEffectEvent {

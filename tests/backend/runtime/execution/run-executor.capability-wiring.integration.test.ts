@@ -8,11 +8,9 @@ import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/wor
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
-const { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput: _FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim } = createCapabilityWiringTestWorld();
+const {SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput: _FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim, cleanup } = createCapabilityWiringTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 const observed: { artifactSha?: string; artifactBytes?: number; providerState?: string } = {};
 

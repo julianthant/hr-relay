@@ -4,12 +4,10 @@ import { afterEach, describe, it } from "vitest";
 import { claimEventOf, cleanReceiptOf, DAY, instantOffsetOf, receiptWithOutputOf, runEndedEventOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const { worlds, world, runRecordOf, queuedEventOf, appendOther } = createRunQueueProjectionTestWorld();
+const {world, runRecordOf, queuedEventOf, appendOther, cleanup } = createRunQueueProjectionTestWorld();
 
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 
 describe("the queue row's ordinal, class, links and outcome", () => {

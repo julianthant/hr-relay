@@ -3,12 +3,10 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { claimEventOf, DAY, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world, runRecordOf, queuedEventOf, CLAIM } = createRunQueueProjectionTestWorld();
+const {world, runRecordOf, queuedEventOf, CLAIM, cleanup } = createRunQueueProjectionTestWorld();
 
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 describe("settled run presentation retains skip reasons and measured timing", () => {
   /** Exactly the exit run's node walk, at one run attempt. */

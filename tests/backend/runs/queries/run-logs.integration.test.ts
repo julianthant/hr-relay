@@ -22,11 +22,9 @@ import { UUID_4, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtu
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, recordingLogger, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { disposers, executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, cleanup } = createRunExecutorTestWorld();
 
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("complete operation display action binding", () => {
 
