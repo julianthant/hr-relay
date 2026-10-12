@@ -1,5 +1,3 @@
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/components/dev/rebuild-demo/DemoUiKit.tsx (1,189 lines). */
 import { useState, type ReactNode } from "react";
 import {
   ArrowUpDown,

@@ -1,5 +1,3 @@
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/components/dev/rebuild-demo/ds/tokens.ts */
 import "./tokens.css";
 
 /** The token layer's TypeScript face. `tokens.css` owns the values;

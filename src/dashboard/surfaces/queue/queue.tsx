@@ -1,6 +1,4 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/components/dev/rebuild-demo/DemoQueue.tsx */
 import { memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText } from "lucide-react";

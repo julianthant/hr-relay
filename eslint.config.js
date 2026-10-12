@@ -15,18 +15,7 @@ const unusedImportsRules = {
   ],
 };
 
-// Type-aware rule tiering, ported verbatim from the legacy repo's burned-down
-// tier (2026-07-17). Two tiers:
-//
-//   (1) ENFORCED (error) — real bug classes, configured smarter where the
-//       default fights a deliberate idiom.
-//   (2) OFF with cause — rules that contradict a documented house idiom, not
-//       debt: `require-await` (handlers keep a uniform async signature even
-//       when a given implementation happens to be sync).
-//
-// D93 note: unlike the legacy repo, this tree has NO debt manifest and NO
-// relaxed tests tier. `src/**` and `tests/**` are both zero-debt strict from
-// the first file (ref guards-and-tests §1.1) — the whole point of a fresh repository.
+// Async handlers keep a uniform signature, including synchronous implementations.
 const typeAwareTuning = {
   "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
   "@typescript-eslint/no-base-to-string": "error",
@@ -79,9 +68,7 @@ export default ts.config(
     rules: { ...unusedImportsRules, ...typeAwareTuning },
   },
 
-  // These authored root configs are included by tsconfig and must not become a
-  // typecheck-only island. Keep the list exact; arbitrary repository roots are
-  // not a lint target.
+  // Lint the same authored root configs as TypeScript.
   {
     files: ["vitest.config.ts", "vite.dashboard.config.ts", "vite.parity.config.ts"],
     plugins: { "unused-imports": unusedImports },
@@ -89,8 +76,7 @@ export default ts.config(
     rules: { ...unusedImportsRules, ...typeAwareTuning },
   },
 
-  // Rebuild browser sources (the dashboard landed in 1i-spine): the same
-  // strict tier plus the React hooks rules that guard hook ordering/deps.
+  // Browser sources use the strict tier and React hook rules.
   {
     files: ["src/dashboard/**/*.ts", "src/dashboard/**/*.tsx"],
     plugins: { "unused-imports": unusedImports, "react-hooks": reactHooks },
@@ -103,8 +89,7 @@ export default ts.config(
     },
   },
 
-  // Tests: same strict type-aware tier as source — this tree carries no debt
-  // manifest. Only the `_`-prefix unused convention differs (core TS rule).
+  // Tests use the source tier with the `_`-prefix unused convention.
   {
     files: ["tests/**/*.ts", "tests/**/*.tsx"],
     plugins: { "unused-imports": unusedImports },

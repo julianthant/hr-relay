@@ -1,5 +1,3 @@
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/components/dev/rebuild-demo/ds/primitives-data.tsx */
 import { Button as HeroButton, ProgressBar as HeroProgressBar } from "@heroui/react";
 import { useState, type DragEvent, type HTMLAttributes, type KeyboardEvent, type ReactNode, type TdHTMLAttributes, type ThHTMLAttributes } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown, GripVertical } from "lucide-react";

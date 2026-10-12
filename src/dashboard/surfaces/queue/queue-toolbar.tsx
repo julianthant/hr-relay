@@ -1,5 +1,3 @@
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/components/dev/rebuild-demo/DemoBulkBar.tsx (`DemoQueueToolbar` */
 import { useMemo, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
