@@ -10,7 +10,7 @@ import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
 import { composeDuoCeremonyGateFactory, duoCeremonyCredentialKey } from "../../src/backend/runtime/gates/duo-ceremony-gate.js";
-import { SessionAcquisitionTimeoutError, SESSION_ACQUISITION_TIMEOUT_TEXT, WorkerSessionManager } from "../../src/backend/runtime/workers/worker-sessions.js";
+import { SessionAcquisitionTimeoutError, sessionAcquisitionTimeoutText, WorkerSessionManager } from "../../src/backend/runtime/workers/worker-sessions.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { RuntimeInstanceSchema } from "../../src/models/config/instance.js";
@@ -102,7 +102,7 @@ export function smokeErrorDiagnostic(error: unknown): string {
     }
     if (current instanceof SessionAcquisitionTimeoutError) {
       diagnostic.code = "browser-session-acquisition-timeout";
-      diagnostic.text = SESSION_ACQUISITION_TIMEOUT_TEXT;
+      diagnostic.text = sessionAcquisitionTimeoutText(current.boundMs);
       diagnostic.phase = "acquisition";
       const system = BrowserSystemIdSchema.safeParse(current.system);
       if (system.success) diagnostic.system = system.data;

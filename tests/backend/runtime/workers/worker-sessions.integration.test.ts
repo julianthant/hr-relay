@@ -409,6 +409,48 @@ describe("bounded browser-session acquisition", () => {
     assert.deepEqual(sessions.activeSystems(), []);
   });
 
+  it("bounds pending acquisition closure, retains its failure and still cleans a late resource", async () => {
+    const base = sessionFactory();
+    let releaseOpen: (() => void) | undefined;
+    const opened = new Promise<void>(resolve => { releaseOpen = resolve; });
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
+      factory: { open: async input => {
+        const resource = await base.factory.open(input);
+        await opened;
+        return resource;
+      } }, clock, scheduler, acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("expired acquisition must not run"));
+    const rejection = assert.rejects(lease, /timeouts\.sessionAcquireMs bound/);
+    await new Promise(resolve => setImmediate(resolve));
+    scheduler.pending()[0].fire();
+    await rejection;
+
+    const shutdown = sessions.closeAll("worker-stop");
+    const shutdownFailure = assert.rejects(shutdown, error => error instanceof AggregateError
+      && error.errors.some(value => value instanceof Error && /closure is unproved/.test(value.message)));
+    await new Promise(resolve => setImmediate(resolve));
+    const pending = scheduler.pending();
+    assert.equal(pending.length, 1, "pending acquisition closure must arm a bound");
+    assert.equal(pending[0].deadlineMonotonicMs, clock.monotonicMs() + FIXTURE_SESSION_ACQUIRE_MS);
+    pending[0].fire();
+    await shutdownFailure;
+    await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined), /closure is unproved/);
+
+    releaseOpen?.();
+    for (let tick = 0; tick < 5; tick += 1) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(base.opens(), 1);
+    assert.equal(base.closes(), 1, "the late resource must still prove its own cleanup");
+    assert.deepEqual(sessions.activeSystems(), []);
+    await assert.rejects(sessions.closeAll("worker-stop"), error => error instanceof AggregateError
+      && error.errors.some(value => value instanceof Error && /closure is unproved/.test(value.message)));
+  });
+
   it("retains failed factory cleanup after its acquisition promise has settled", async () => {
     const failure = new AggregateError([new Error("launch failed"), new Error("closure unproved")], "setup cleanup failed");
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));

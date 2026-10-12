@@ -8,7 +8,7 @@ import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admi
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
-import { WorkerSessionManager, SessionAcquisitionTimeoutError, SESSION_ACQUISITION_TIMEOUT_TEXT } from "../../../src/backend/runtime/workers/worker-sessions.js";
+import { WorkerSessionManager, SessionAcquisitionTimeoutError } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { acquireRuntimeProcessLock, RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, writeLiveSmokeRuntimeFileExclusive } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { deleteOwnedBrowserProfile, PlaywrightWorkerSessionFactory, workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
 import { WorkerSlotRecordSchema } from "../../../src/models/run/worker-slot.js";
@@ -484,13 +484,14 @@ describe("registered browser-login smoke lifecycle", () => {
   it("prints fixed acquisition and stall text without free-form error messages", () => {
     const stall = new BrowserLandingStallError("ucpath", "shibboleth-stale-request",
       { host: "a5.ucsd.edu", path: "/Shibboleth.sso/SAML2/POST", title: "Web Login Service - Stale Request" });
-    const timeout = new SessionAcquisitionTimeoutError("ucpath");
+    const timeout = new SessionAcquisitionTimeoutError("ucpath", 12_345);
     stall.message = "synthetic-message-secret";
     timeout.message = "synthetic-timeout-secret";
     const diagnostic = smokeErrorDiagnostic(new AggregateError([timeout, stall]));
     expect(JSON.parse(diagnostic)).toEqual([{ error: "AggregateError" }, {
       error: "SessionAcquisitionTimeoutError", system: "ucpath", phase: "acquisition",
-      code: "browser-session-acquisition-timeout", text: SESSION_ACQUISITION_TIMEOUT_TEXT,
+      code: "browser-session-acquisition-timeout", text: "Browser-session acquisition (open + login) exceeded its 12345ms timeouts.sessionAcquireMs bound. "
+        + "Check timeouts.duoApprovalSeconds against the acquisition bound; never lengthen taskMs to hide a dead session.",
     }, { error: "BrowserLandingStallError", system: "ucpath", phase: "duo-clearance",
       code: "shibboleth-stale-request", text: BROWSER_LANDING_STALL_TEXT["shibboleth-stale-request"],
       host: "a5.ucsd.edu", path: "/Shibboleth.sso/SAML2/POST", title: "Web Login Service - Stale Request" }]);

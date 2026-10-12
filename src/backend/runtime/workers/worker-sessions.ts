@@ -143,12 +143,16 @@ function abortError(system: BrowserSystemId): Error {
 }
 
 
-export const SESSION_ACQUISITION_TIMEOUT_TEXT = "Browser-session acquisition (open + login) exceeded its timeouts.sessionAcquireMs bound.";
+export function sessionAcquisitionTimeoutText(boundMs: number): string {
+  if (!Number.isFinite(boundMs) || boundMs <= 0) throw new Error("session acquisition bound must be positive and finite");
+  return `Browser-session acquisition (open + login) exceeded its ${boundMs}ms timeouts.sessionAcquireMs bound. `
+    + "Check timeouts.duoApprovalSeconds against the acquisition bound; never lengthen taskMs to hide a dead session.";
+}
 export class SessionAcquisitionTimeoutError extends Error {
   readonly code = "browser-session-acquisition-timeout";
   readonly phase = "acquisition";
-  constructor(readonly system: BrowserSystemId) {
-    super(SESSION_ACQUISITION_TIMEOUT_TEXT);
+  constructor(readonly system: BrowserSystemId, readonly boundMs: number) {
+    super(sessionAcquisitionTimeoutText(boundMs));
     this.name = "SessionAcquisitionTimeoutError";
   }
 }
@@ -644,10 +648,20 @@ export class WorkerSessionManager {
             new AbortController().signal,
             async () => {
               if (starting !== undefined) {
-                try { await starting; }
+                const closing = new AbortController();
+                const timeout = new Error(`${system} pending acquisition closure exceeded its ${this.#acquireDeadlineMs}ms bound; closure is unproved`);
+                const handle = this.#scheduler.schedule(this.#clock.monotonicMs() + this.#acquireDeadlineMs, () => {
+                  this.#poisoned.add(system);
+                  this.#acquisitionCleanupFailures.set(system, timeout);
+                  closing.abort(timeout);
+                });
+                try { await waitForAcquisition(starting, closing.signal, system); }
                 catch (error) {
+                  if (error === timeout) throw error;
                   if ((error instanceof AggregateError || error instanceof DuoCeremonyReleaseFailedError)
                     && !this.#acquisitionCleanupFailures.has(system)) failures.push(error);
+                } finally {
+                  handle.cancel();
                 }
               }
               await this.#closeSystem(system, reason);
@@ -707,7 +721,7 @@ export class WorkerSessionManager {
     const handle = this.#scheduler.schedule(
       deadlineMonotonicMs,
       () => {
-        expiry = new SessionAcquisitionTimeoutError(need.system);
+        expiry = new SessionAcquisitionTimeoutError(need.system, this.#acquireDeadlineMs);
         acquisition.abort(expiry);
       },
     );
