@@ -255,7 +255,7 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
         source = { kind: "headless", system: "workflow" };
       }
       const admitted = isLocalActionValueEligible(occurrence, authority, source);
-      eligible = observed && source.kind === "browser" && admitted;
+      eligible = observed && admitted;
     }
     const { value: rawValue, ...withoutRawValue } = action;
     const durableAction: BrowserAction = {
