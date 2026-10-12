@@ -1,3 +1,5 @@
+import { createSearchWorkflowDefinitionFixtures } from "../support/helpers/search-workflow-definition-fixtures.js";
+import { createOperationDisplayFixtures } from "../support/helpers/operation-display-fixtures.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
@@ -6,7 +8,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/models/workflow/presentatio
 import { type RegisteredTaskStore } from "../../src/workflow-kit/task-registry.js";
 import { BUILD_MANIFEST } from "../../src/workflow-kit/validation/build-manifest.js";
 import { defineWorkflowRole } from "../../src/workflow-kit/validation/module-role.js";
-import { type AnyWorkflowEntry, type WorkflowAuthor, type WorkflowDefinitionSpec, compileWorkflow, composeWorkflowModule, defineWorkflow, workflowDefinitionOf, workflowExplorerDeclaration, workflowEntryKinds } from "../../src/workflow-kit/workflow-definition.js";
+import { type AnyWorkflowEntry, type WorkflowAuthor, compileWorkflow, composeWorkflowModule, defineWorkflow, workflowDefinitionOf, workflowExplorerDeclaration, workflowEntryKinds } from "../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../src/workflow-kit/workflow.js";
 import { PersonLookupCanonicalInput, PersonLookupInput, personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
@@ -27,37 +29,10 @@ import { freezeWorkflowOperationDisplaySnapshot } from "../../src/models/workflo
 import { type WorkflowOperationDisplayDeclaration, OPERATION_DISPLAY_FORMAT_VERSION } from "../../src/models/workflow/operation-display.js";
 import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
 
-const lookupInput = ({ input }: { input: { emplId?: string; name?: string; keepNonHdh: boolean } }) =>
-  input.emplId === undefined
-    ? { kind: "by-name" as const, name: input.name ?? "Fixture Person", keepNonHdh: input.keepNonHdh }
-    : { kind: "by-eid" as const, emplId: input.emplId };
+const { lookupInput, fixtureWorkflow } = createSearchWorkflowDefinitionFixtures();
+
 
 type Author = WorkflowAuthor<typeof PersonLookupInput>;
-type Authored = ReturnType<WorkflowDefinitionSpec<typeof PersonLookupInput, z.ZodType>["steps"]>;
-
-function fixtureWorkflow(id: string, steps: (author: Author) => Authored) {
-  return defineWorkflow({
-    id,
-    version: 1,
-    code: "fx",
-    label: "Fixture",
-    icon: "Search",
-    category: "search",
-    input: PersonLookupInput,
-    canonicalInput: PersonLookupCanonicalInput,
-    inputSubject: "eid",
-    surface: { shape: "single" },
-    enqueue: "reject-active",
-    actions: STANDARD_WORKFLOW_ACTIONS,
-    surfaces: {},
-    details: [],
-    identity: { matchKey: () => "fixture" },
-    presentation: { title: () => "Fixture" },
-    scenarios: ["person-lookup/happy-by-eid"],
-    role: defineWorkflowRole({ kind: "standalone" }),
-    steps,
-  });
-}
 
 describe("workflow definition compiler", () => {
   it("exports the compiled ordered tuple product and refuses an uncompiled definition", () => {
@@ -414,56 +389,11 @@ describe("canonical awaited child terminal evidence", () => {
   });
 });
 
-const DISPLAY_CHILD_A_ID = "fixture-operation-display-child-a";
-const DISPLAY_CHILD_B_ID = "fixture-operation-display-child-b";
-const DISPLAY_FORWARD_ID = "fixture-operation-display-forward";
+const { DISPLAY_CHILD_A_ID, DISPLAY_CHILD_B_ID, DISPLAY_FORWARD_ID, DisplayInput, DisplayCanonicalInput, DisplayResult, ChildARef, ChildBRef, DelegationPolicy, searchInvocation } = createOperationDisplayFixtures();
 
-const DisplayInput = z.strictObject({
-  firstEid: EidSchema,
-  secondEid: EidSchema,
-});
-const DisplayCanonicalInput = defineCanonicalInput(
-  DisplayInput,
-  z.strictObject({ firstEid: EidSchema, secondEid: EidSchema }),
-  [{ firstEid: "10800000", secondEid: "10800001" }],
-);
-const DisplayResult = z.strictObject({ done: z.boolean() });
-const ChildAResult = z.strictObject({ nestedState: z.enum(["done", "failed", "cancelled", "blocked"]) });
-const ChildBResult = z.strictObject({ approved: z.boolean() });
-const ChildARef = {
-  id: WorkflowIdSchema.parse(DISPLAY_CHILD_A_ID),
-  input: DisplayInput,
-  result: ChildAResult,
-};
-const ChildBRef = {
-  id: WorkflowIdSchema.parse(DISPLAY_CHILD_B_ID),
-  input: DisplayInput,
-  result: ChildBResult,
-};
-
-const DelegationPolicy = {
-  onChildFailed: "fail-parent" as const,
-  cascadeCancel: "cascade" as const,
-  afterChildRetry: "resume-parent" as const,
-  visibility: "inline" as const,
-};
 
 const operation = SearchPersonOrg.operation;
 if (operation === undefined) throw new Error("SearchPersonOrg must declare its reusable display operation");
-
-function searchInvocation(id: string, entryId: string, inputPath: "firstEid" | "secondEid") {
-  return {
-    id,
-    entryId,
-    contractRole: "task" as const,
-    occurrencePath: [entryId],
-    bindings: [
-      { slot: "search-kind", value: { kind: "constant" as const, value: "by-eid" } },
-      { slot: "empl-id", value: { kind: "run-input" as const, path: inputPath } },
-      { slot: "name", value: { kind: "constant" as const, value: "unused" } },
-    ],
-  };
-}
 
 const operationNodes = [
   { id: "first-search-operation", kind: "operation" as const, invocationId: "first-search" },
