@@ -1,7 +1,7 @@
 ---
 name: hr-manage
 description: >-
-  The shared operations skill every workflow-specific HR skill is built on — Codex managing the hr-automation-rebuild workflows and dashboard: bring the BFF + worker up correctly, start runs (dryRun default) for one subject or a whole cohort with N parallel workers, monitor (timeline, explain run, spans, storage doctor), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers dashboard/runtime housekeeping (ports, locks, orphan browsers, fingerprint check, notifications, archive). Invoke on `/hr-manage`, "run X for these people", "N parallel sessions", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
+  The shared operations skill every workflow-specific HR skill is built on — Codex managing the Relay workflows and dashboard: bring the BFF + worker up correctly, start runs (dryRun default) for one subject or a whole cohort with N parallel workers, monitor (timeline, explain run, spans, storage doctor), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers dashboard/runtime housekeeping (ports, locks, orphan browsers, fingerprint check, notifications, archive). Invoke on `/hr-manage`, "run X for these people", "N parallel sessions", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
 ---
 
 # /hr-manage — run, batch, monitor, approve, report
@@ -32,8 +32,8 @@ The BFF is a singleton (pinned port + lock). A BFF started before a descriptor e
 ## 2 · Start a run (one subject)
 
 - **Dashboard**: `playwright-cli -s=mgr open http://localhost:5174` → run modal → the descriptor's declared entry shape (`surfaces.inputRun`; examples are shown in the modal) → confirm with `dryRun` checked. Screenshot the confirmation.
-- **API**: `POST /api/v1/start-plans` (entries per `inputRun`) → `POST /api/v1/commands` (confirm; carries `dryRun`, `expectedVersion`). `docs/rebuild/migrations/separations.md` §9 has the exact pairs that were used live. Response arms: `accepted` · `rejected` · `conflict` (CAS — re-read `currentVersion`, never just "try again").
-- Subjects by LABEL (`config/test-data.json` → `subjects`), private values from ignored `config/test-data.local.json` via `src/control/test-data.ts` (D341); check with `npm run cli -- test-data check --json --subject <label>`; missing → `blocked: needs <label>`.
+- **API**: `POST /api/v1/start-plans` (entries per `inputRun`) → `POST /api/v1/commands` (confirm; carries `dryRun`, `expectedVersion`). Use the active brief's assigned evidence folder under the main checkout's `.work/` for task-specific run records; verify current state against authority and the source system. Response arms: `accepted` · `rejected` · `conflict` (CAS — re-read `currentVersion`, never just "try again").
+- Subjects by LABEL (`config/test-data.json` → `subjects`), private values from ignored `config/test-data.local.json` via `src/backend/app/registries/test-data.ts` (D341); check with `npm run cli -- test-data check --json --subject <label>`; missing → `blocked: needs <label>`.
 - A REAL write (`dryRun=false`): only under `ref write-safety` §3.2 with the operator's explicit authorization for that run/subject/document, stated in the conversation; say it back before you send it.
 
 ## 3 · Batch / cohort (the "do these N" request)
@@ -71,4 +71,4 @@ States from authority (`queued · claimed · running · parked · done · failed
 - Archive / activity: the archive model is append-only (v13 tables abort UPDATE/DELETE) — apply re-derives blockers in its own transaction; a refused apply is normal when a run went queued in between.
 - Backups are written only on command (`storage backup`, D322) — take one before a real write; `storage doctor` reports the latest but no longer gates on it; `storage restore --from <manifest>` only stopped-system and only when the operator says so.
 - Anything that smells like a platform defect → `.agents/skill-library/hr-debug/REFERENCE.md`; a
-  repeatable gotcha → tell the operator it is lesson-worthy (`/hr-lesson` is theirs).
+  repeatable gotcha → keep its lasting rule in the owning reference and nearest module `AGENTS.md`; system drivers use `src/backend/systems/<system>/AGENTS.md`.

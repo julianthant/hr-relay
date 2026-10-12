@@ -1,12 +1,12 @@
 ---
 name: hr-debug
-description: 'Internal repo-specific debugging for hr-automation-rebuild: selector/page-state repair via live probe, structural anchors, registry fix, live re-verification, and provenance; login/Duo/session problems; stale-singleton-BFF fingerprint; checkpoint-key and gate-resume collisions; span/projection gaps; guard/manifest failures; parity-lane lies; and a dry-run audit proving no submission node by node. Wraps global debug with fail-loud rules against longer waits, unverified fallbacks, and fixture-only repros.'
+description: 'Internal repo-specific debugging for Relay: selector/page-state repair via live probe, structural anchors, registry fix, live re-verification, and provenance; login/Duo/session problems; stale-singleton-BFF fingerprint; checkpoint-key and gate-resume collisions; span/projection gaps; guard/manifest failures; parity-lane lies; and a dry-run audit proving no submission node by node. Wraps global debug with fail-loud rules against longer waits, unverified fallbacks, and fixture-only repros.'
 user-invocable: false
 ---
 
 # hr-debug — this repo's failure classes, and the loop for each
 
-The general debugging method is the global `debug` skill (gate → minimise → hypothesise → instrument → fix → regression test → cleanup); hr-debug is the repo-specific wrapper that adds this repo's failure classes, evidence sources, and forbidden first moves. Before hypothesising, name a red command you have already run — or build the feedback loop first. Read `docs/rebuild/reference/lessons.md` for the class you are in before you form a theory — most of what follows is a one-line index into it.
+The general debugging method is the global `debug` skill (gate → minimise → hypothesise → instrument → fix → regression test → cleanup); hr-debug is the repo-specific wrapper that adds this repo's failure classes, evidence sources, and forbidden first moves. Before hypothesising, name a red command you have already run — or build the feedback loop first. Read the reference that owns the failure class and the nearest module `AGENTS.md` before forming a theory; system-driver issues use `src/backend/systems/<system>/AGENTS.md`.
 
 ## 0 · Forbidden first moves
 - "Add a longer wait / pollMs" before you have DISPROVEN timing (read the span timings; the operator has been burned: *"timing is not the cause, don't repeat that"*).
@@ -34,17 +34,17 @@ The general debugging method is the global `debug` skill (gate → minimise → 
 3. Fix in the store driver / selector registry: **structural anchors first (`id`, `name`, role+accessible name), observed labels behind them; a no-match must refuse by NAME, never fall through** (`.or()` is a union under strict mode — it asserts the arms are exclusive; prefer `.first()`-settle + a pure verdict function, D213).
 4. Port from legacy only with `// ported from hr-automation@<sha> <path>`; re-verify LIVE (D150 — live beats diffing legacy).
 5. Re-run the failing step live; then the unit/scenario that pins it; `npm run build:manifest` if a descriptor closure moved.
-6. `playwright-cli close-all`. Record: the run id, the anchor before/after, the live proof — in the migration doc or the store `AGENTS.md` (invariants only). Lesson-worthy → tell the operator.
+6. `playwright-cli close-all`. Record the run id, anchor before and after, and live proof in the active brief's assigned evidence folder under the main checkout's `.work/`; keep lasting invariants in the owning module `AGENTS.md`.
 
 Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the grid (D213); Kuali paints client-side (~1 s menubar, ~3 s heading, empty-heading decoys) — bound-wait for the fact; a Kuali `actionId` names a step, not a document — prove the document number from the h1; TritON renders one field under three labels — labels identify the realm; ui-grid virtualization terminates on coverage, not on `scrollTop` (D205); header names must come from the same container as the cells.
 
 ## 3 · Auth / session
 - Authentication is proven by CONTENT (`PS_TOKEN` / `sid` + no sign-in form), never by URL (D120). A 3-second "success" is the public portal.
-- Duo: the WebAuthn counter is per credential, shared across profiles — presented value must be `max(stored+1, nowSec)`; a refused profile is BURNT (only a fresh profile recovers) — read `ref lessons` 2026-08-19 (D243/D244) before deleting anything. "canceled or timed out" in ~1 s = the counter refusal, not a slow prompt.
+- Duo: the WebAuthn counter is per credential, shared across profiles — presented value must be `max(stored+1, nowSec)`; a refused profile is BURNT (only a fresh profile recovers) — read `docs/rebuild/reference/execution-and-sessions.md` and the nearest module `AGENTS.md` before changing Duo session state. "canceled or timed out" in ~1 s = the counter refusal, not a slow prompt.
 - `sessionAcquireMs` (60 s) bounds the whole login chain; do not raise it to hide a dead session.
 
 ## 4 · Runtime / singleton
-- BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE fingerprint: `curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint'` vs `src/domain/workflow/generated-build-manifest.ts` after `npm run build:manifest`. Mismatch → restart the BFF; every run it planned is unclaimable.
+- BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE fingerprint: `curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint'` vs `src/workflow-kit/validation/generated-build-manifest.ts` after `npm run build:manifest`. Mismatch → restart the BFF; every run it planned is unclaimable.
 - `ls .tracker/locks/` + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
 - Worker wedged at boot with its own old claim → D200 (lease is the evidence; sweep by workerId). A `claimed` row with an `attempting` intent is refused at startup by design — that is a §4.1 recovery, not a restart.
 
@@ -72,7 +72,7 @@ For a workflow (or all of them):
 2. For each transaction node: under `dryRun`, `executeDryRun` must PREVIEW (probe + would-prepare, or report `already-present`) and never fence/commit — check the `dry-run-commit-free` + `subject-before-fence` guards cover it and the scenario asserts `write_intents` / `write_attempts` / `durable_outbox` deltas = 0.
 3. The rehearsal must still exercise the WHOLE path (searches, navigation, form staging) — a preview that refuses where the real run succeeds is a false rehearsal (D215); a preview that answers where the real run stops is the same defect from the other side.
 4. Run it live with `dryRun=true` (hr-manage), then `explain run` + the durable counts.
-5. Emit the matrix: `| workflow | has dry-run scenario | last live dry run (date, run id) | durable deltas | gaps |` — and put the gaps in the migration doc / tree node, not in chat only.
+5. Emit the matrix: `| workflow | has dry-run scenario | last live dry run (date, run id) | durable deltas | gaps |` — and record task-specific gaps in the active brief's assigned evidence folder; put lasting rules in the owning reference or nearest module `AGENTS.md`.
 
 ## Close
-Failing test pinned → fix → gate green → `code-reviewer` + `silent-failure-hunter` on the diff → record (migration doc line / store `AGENTS.md` invariant) → tell the operator if it is lesson-worthy.
+Failing test pinned → fix → gate green → `code-reviewer` + `silent-failure-hunter` on the diff → record task evidence in the active brief's assigned evidence folder; keep lasting invariants in the owning module `AGENTS.md`.

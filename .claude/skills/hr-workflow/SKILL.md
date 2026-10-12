@@ -1,7 +1,10 @@
 ---
 name: hr-workflow
 description: >-
-  Hidden-helper creator for hr-automation-rebuild. `/hr-workflow WORKFLOW_ID` learns one workflow from its descriptor, module, stores, migration doc, roadmap, lessons, and canary subjects, then writes or refreshes a `user-invocable: false` helper under `.claude/skills/` for `hr-manage` to consume. Use when creating or refreshing workflow-specific guidance without adding another `/` command.
+  Hidden-helper creator for Relay. `/hr-workflow WORKFLOW_ID` learns one workflow from its
+  descriptor, module, stores, the active brief's assigned evidence folder, roadmap, owning references,
+  and canary subjects, then refreshes a `user-invocable: false` helper under `.claude/skills/` for
+  `hr-manage`. Use to create or refresh workflow-specific guidance without another `/` command.
 ---
 
 # /hr-workflow <workflow-id> — generate or refresh a hidden workflow helper
@@ -14,11 +17,13 @@ hand-maintained Known failure modes and Live record sections.
 ## 1 · Learn — read in this order, take notes as you go
 
 1. `src/workflows/<id>/descriptor.ts` — nodes, `when`, gates, transaction nodes, `surfaces.inputRun` (what the operator types), result shape. Bundle-safe: zod + `src/domain/**` + `src/base/**` (D106).
-2. `src/workflows/<id>/module.ts` + `src/control/workflow-registry.ts` — which store tasks bind which contracts.
-3. Each store it binds — `src/stores/<system>/AGENTS.md` (invariants, provenance, lessons) then the task files. `docs/rebuild/reference/stores.md` is the derived catalog; code wins.
-4. `docs/rebuild/migrations/<id>.md` if present (separations is the worked example — §1 questionnaire, §9 live records).
+2. `src/workflows/<id>/module.ts` + `src/backend/app/registries/workflow-registry.ts` — which store tasks bind which contracts.
+3. Each store it binds — `src/backend/systems/<system>/AGENTS.md` (invariants and provenance) then the task files. `docs/rebuild/reference/stores.md` is the derived catalog; code wins.
+4. The active brief's assigned evidence folder in the main checkout's `.work/` contains verified
+   task records; confirm current workflow state in code and authority.
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume), `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate), `execution-and-sessions`, `guards-and-tests` §10 (test tiers), `dashboard-surfaces`.
-6. `docs/rebuild/reference/lessons.md` — grep the workflow id and each system; every hit becomes a line in "Known failure modes".
+6. Read the owning reference for the failure class and nearest module `AGENTS.md`; carry verified
+   findings into "Known failure modes".
 7. `config/test-data.json` (`subjects`; D341) and `tests/scenario/*<id>*` — canary labels and what the existing scenarios assert. Private values live only in ignored `config/test-data.local.json`; never read or print them.
 8. The platform-wide rails live in `.claude/skills/hr-manage/SKILL.md` and the hidden
    `.claude/skills/hr-debug/SKILL.md` — read both once so the generated helper references them instead
@@ -35,7 +40,7 @@ Stop when you can fill every template section from evidence. A section you canno
 ```markdown
 ---
 name: hr-<short-id>
-description: Internal workflow guidance for `<workflow-id>` and its plain-English names in hr-automation-rebuild — <one clause: what it reads/writes and which systems>. Use through hr-manage for run, dry-run, monitor, prove, test, or debug work.
+description: Internal workflow guidance for `<workflow-id>` and its plain-English names in Relay — <one clause: what it reads/writes and which systems>. Use through hr-manage for run, dry-run, monitor, prove, test, or debug work.
 user-invocable: false
 ---
 
@@ -49,8 +54,9 @@ user-invocable: false
 
 ## Inputs & subjects
 - Run modal / `surfaces.inputRun`: <what the operator types, examples declared by the descriptor>
-- Canary subjects: <labels from config/test-data.json subjects; private values stay in ignored config/test-data.local.json via src/control/test-data.ts (D341) — a missing subject is `blocked: needs <label>`, never `failed`>
-- Subjects that must NOT be used / are burnt: <from the migration doc's live records>
+- Canary subjects: <labels from config/test-data.json subjects; private values stay in ignored config/test-data.local.json via src/backend/app/registries/test-data.ts (D341) — a missing subject is `blocked: needs <label>`, never `failed`>
+- Subjects that must NOT be used / are burnt: <from the active brief's assigned evidence folder,
+  confirmed against current authority>
 
 ## Run it (details in hr-manage)
 - Processes: `npm run dashboard` (BFF 3938 + vite 5174) and `npm run cli -- worker <workflow-id>`; restart the BFF after descriptor edits (fingerprint trap — hr-debug §stale-bff).
@@ -69,15 +75,17 @@ user-invocable: false
 - T1a structural: <path>; T1b dry-run scenario / checkpoint manifest: <path or OWED>; T2 dashboard scenario: <path or OWED>; unit tests for pure folds: <…>
 - Gate: `npm run typecheck && npm run lint && npm run test:coverage`; `npm run build:manifest` after any edit under the descriptor's closure.
 
-## Known failure modes (from ref lessons + migration doc + store `AGENTS.md`)
-- <date / D-number: one line each — the symptom, the cause, where the fix lives. Link the lesson.>
+## Known failure modes (from the owning reference and nearest module `AGENTS.md`)
+- <one line per verified issue: the symptom, cause, owning reference, and nearest module
+  `AGENTS.md`>
 - Debug anything new through hidden `hr-debug`; selectors use its selector-repair loop; never "add a longer wait" first.
 
 ## Live record
-- <dated lines: run/trace ids, subject label, dry/controlled, durable counts, result — copied from docs/rebuild/migrations/<id>.md §9, newest first>
+- <task-specific run evidence from the active brief's assigned evidence folder, checked against
+  current authority>
 
 ## Record when you are done
-- dated line in `docs/rebuild/migrations/<id>.md`; store/dashboard `AGENTS.md` only for invariants; lesson-worthy findings → tell the operator ("this looks lesson-worthy: …") — `/hr-lesson` is theirs to invoke.
+- Record task notes in the active brief's assigned evidence folder under `.work/`; keep lasting invariants in the owning module `AGENTS.md`.
 ```
 
 ## 4 · Verify the generated helper
@@ -85,7 +93,7 @@ user-invocable: false
 - Frontmatter parses; name matches the directory; description is model-facing; and
   `user-invocable: false` is present.
 - Every path it cites exists (`ls` them); every node in the table exists in the descriptor (count matches).
-- No secret values, no EIDs, no document numbers of real people outside the "Live record" lines the migration doc already carries.
+- No secret values, no EIDs, no document numbers of real people in the resource.
 - Recap: the file path, the short-id mapping, the sections left `UNKNOWN` and what fills them.
 
 ## Refresh mode (`/hr-workflow <id>` when `hr-<short-id>` exists)
