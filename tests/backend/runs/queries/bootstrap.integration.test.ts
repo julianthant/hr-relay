@@ -377,7 +377,7 @@ describe("bootstrap storage summary", () => {
     const world = makeWorld();
     try {
       const reached = new Set<string>();
-      for (const backup of ["current", "stale", "missing"] as const) {
+      for (const backup of ["current", "stale", "missing", "unavailable"] as const) {
         const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup }));
         reached.add(FrontendBootstrapWireSchema.parse(wire).storage.backup);
       }

@@ -3,6 +3,8 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { protectedSubjectDisplay } from "../../../../src/backend/runs/start/protected-input.js";
+import { retainedRunProtectedBindings } from "../../../../src/models/write-safety/protected-input.js";
 import { RunRecordService, type CreateRunRequest } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../../src/models/config/runtime-generation.js";
@@ -51,7 +53,8 @@ export function createRunRecordServiceTestWorld() {
       ids: { uuid: () => `10000000-0000-4000-8000-${String(next++).padStart(12, "0")}` },
       publishQueued: (run) => {
         assert.equal(database.authority.runs.get(run.envelope.runId)?.version, 1);
-        emitter.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic run" }));
+        const display = protectedSubjectDisplay(retainedRunProtectedBindings(run), () => ({ title: "Synthetic run" }));
+        emitter.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, ...display }));
         database.afterAuthorityCommit(() => published.push(run));
       },
     });
