@@ -1,3 +1,4 @@
+import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
@@ -166,19 +167,7 @@ describe("cross-date search result", () => {
   });
 
   it("represents an exact zero-match page without an absent or unknown count", () => {
-    assert.deepEqual(CrossDateSearchPageSchema.parse({
-      wireVersion: 1,
-      generatedAt: "2026-08-28T16:00:00.000Z",
-      snapshot: {
-        authorityGeneration: 19,
-        order: "match-strength/enqueued-desc/run-id-asc:v2",
-        token: "test-snapshot-token",
-      },
-      totalMatches: 0,
-      coverage: { matched: 0, subjectUnavailable: 0, actorUnavailable: 0, candidateLimit: 10000 },
-      results: [],
-      nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
-    }).totalMatches, 0);
+    assert.deepEqual(CrossDateSearchPageSchema.parse(zeroMatchSearchPage()).totalMatches, 0);
   });
 
   it("serves one redacted authority row without a title or person identifier", () => {

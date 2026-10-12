@@ -1,3 +1,4 @@
+import { kualiFinalizationVariablesInput, unfinalizedKualiFieldsInput } from "../../support/helpers/kuali-finalization-input-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { describe } from "vitest";
 import { it } from "vitest";
@@ -29,33 +30,9 @@ import type { AnyTask } from "../../../src/workflow-kit/task.js";
 
 {
 
-const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.parse({
-  department: "000412 - Housing/Dining/Hospitality",
-  payrollTitleCode: "004921",
-  payrollTitle: "STDT 2",
-  timekeeperName: "Julian Zaw",
-  lastDayWorked: "06/09/2026",
-  separationDate: "06/10/2026",
-  terminationEffectiveDate: "06/11/2026",
-  transactionNumber: "T002209631",
-  timekeeperComments: "Termination effective date set from the reconciled separation date.",
-  observedExistingComments: "",
-});
+const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.parse(kualiFinalizationVariablesInput());
 
-const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze({
-  department: "- - -",
-  payrollTitleCode: "",
-  payrollTitle: "",
-  requestAcknowledged: false,
-  timekeeperName: "",
-  lastDayWorked: "",
-  separationDate: "",
-  terminationEffectiveDate: "",
-  submittedTerminationTemplate: false,
-  transactionNumber: "",
-  finalPay: null,
-  timekeeperComments: "",
-});
+const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze(unfinalizedKualiFieldsInput());
 
 describe("Kuali separation finalization — the staged-variables fold", () => {
   it("composes the twelve written fields from nine variables and three ratified assertions", () => {
