@@ -1,26 +1,12 @@
-import { CommandResultSchema,type CommandResult } from "../../../src/rules/commands/commands.js";
 import { uuidOf } from "./fixture-identity.js";
+import { createFixtureDaySetup } from "../../support/helpers/dashboard/profiles/fixture-day-setup.js";
 
-
-export const FIXTURE_COMMAND_RESULTS: Readonly<Record<"applied" | "conflict" | "rejected", CommandResult>> = Object.freeze({
-  applied: CommandResultSchema.parse({
-    state: "applied",
-    commandId: uuidOf(920),
-    affectedTargets: [{ family: "run", runId: uuidOf(910) }],
-  }),
-  conflict: CommandResultSchema.parse({
-    state: "conflict",
-    commandId: uuidOf(921),
-    currentVersion: 2,
-    message: "the row moved while you were looking at it; the fresh projection replaces it",
-  }),
-  rejected: CommandResultSchema.parse({
-    state: "rejected",
-    commandId: uuidOf(922),
-    code: "policy-refused",
-    message: "a cancelled run cannot be retried from this surface",
-  }),
+export const {
+  FIXTURE_COMMAND_RESULTS
+} = createFixtureDaySetup( {
+  uuidOf
 });
+
 export { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 export { FIXTURE_IDENTITY_GATE,FIXTURE_IDENTITY_GATE_TYPED_EID,FIXTURE_PARKED_WRITE,FIXTURE_RUN_DETAILS,FIXTURE_SECTIONS } from "./fixture-detail.js";
 export { FIXTURE_DIAGNOSTIC_BUNDLE,FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES } from "./fixture-diagnostic.js";

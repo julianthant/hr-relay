@@ -1,9 +1,8 @@
-import { Hono } from "hono";
 import { FIXTURE_EXPLORER_WIRE } from "./fixture-explorer.js";
-export function registerFixtureExplorerRoutes({ app }: { app: Hono }): void {
+import { createFixtureExplorerRoutesSetup } from "../../support/helpers/dashboard/profiles/fixture-explorer-routes-setup.js";
 
-
-
-  app.get("/api/v1/explorer", (c) => c.json(FIXTURE_EXPLORER_WIRE as unknown));
-
-}
+export const {
+  registerFixtureExplorerRoutes
+} = createFixtureExplorerRoutesSetup( {
+  FIXTURE_EXPLORER_WIRE
+});
