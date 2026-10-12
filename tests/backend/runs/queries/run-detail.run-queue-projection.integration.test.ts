@@ -2,9 +2,9 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
-import { claimEventOf, DAY, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { claimEventOf, DAY, taskEventsOf, traceOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const {world, runRecordOf, queuedEventOf, appendOther, cleanup } = createRunQueueProjectionTestWorld();
+const {world, queuedEventOf, appendOther, seedExitRunShape, cleanup } = createRunQueueProjectionTestWorld();
 
 
 afterEach(cleanup);
@@ -66,25 +66,6 @@ describe("THE run/queue projection", () => {
 });
 
 describe("settled run presentation retains skip reasons and measured timing", () => {
-  /** Exactly the exit run's node walk, at one run attempt. */
-  function seedExitRunShape(w: DashboardWorld): void {
-    queuedEventOf(w, { seed: 1 });
-    claimEventOf(w, 1);
-    taskEventsOf(w, 1, "searching", "done");
-    taskEventsOf(w, 1, "cross-verify", "done");
-    taskEventsOf(w, 1, "active-status", "done");
-    taskEventsOf(w, 1, "crm-dates", "skipped", "condition-false");
-    w.writer.emit({
-      t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-      runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), outcome: "done",
-    });
-    w.authority.put(runRecordOf({
-      seed: 1,
-      lifecycle: { state: "terminal", outcome: "done", endedAt: "2026-08-03T17:14:30.000Z" },
-      version: 3,
-    }));
-  }
-
   it("renders a conditionally-skipped node as SKIPPED with its closed reason, never as cancelled", () => {
     const w = world();
     seedExitRunShape(w);

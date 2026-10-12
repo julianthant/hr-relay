@@ -9,17 +9,13 @@ import { rmSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey, WriteFixtureProofSchema } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { mkdtempSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
 import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { failureStatus } from "../../../../src/backend/transports/http/routes/failure-status.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { kualiReceiptEvidence, seedPersonLookupExitRun } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor, separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -575,14 +571,7 @@ afterEach(() => {
 
 
   it("keeps divergent receipt sentences out of the service and HTTP divergence error", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-binding-http-"));
-    roots.push(root);
-    const database = AuthorityDatabase.open(
-      { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "receipt-binding-http-test" },
-      manualClock(new Date("2026-08-04T00:11:13.500Z")),
-    );
-    testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
-  databases.push(database);
+    const database = openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-binding-http-", "receipt-binding-http-test");
     const seeded = seedPersonLookupExitRun(database);
     const runId = String(seeded.run.envelope.runId);
     const authority = database.authority;

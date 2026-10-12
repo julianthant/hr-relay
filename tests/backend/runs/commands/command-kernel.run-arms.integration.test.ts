@@ -1,3 +1,4 @@
+import { kernelRejectMemberRecord } from "../../../support/helpers/backend/kernel-reject-member-run.js";
 import { createCommandKernelTestWorld, type Harness } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
@@ -66,33 +67,8 @@ describe("run arms", () => {
 
     const cascadeChildId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
     const independentChildId = "aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa";
-    const childRecord = (childRunId: string, edgeId: string, suffix: string) => ({
-      envelope: {
-        runId: childRunId,
-        workflow: "kernel-reject",
-        itemId: deriveItemId("kernel-reject", `child:${suffix}`),
-        traceId: `kr-170000-${suffix}`,
-        descriptorVersion: 1,
-        contractFingerprint: parent.envelope.contractFingerprint,
-        resolvedInstance: { ucpath: "prod" },
-        configFingerprint: parent.envelope.configFingerprint,
-        configSnapshotId: parent.envelope.configSnapshotId,
-        parent: { runId: parentId, tracePrefix: parent.envelope.traceId, edgeId },
-        shape: "operation-member",
-        priority: "bulk",
-        dryRun: false,
-        attempt: 1,
-        enqueuedAt: NOW,
-      },
-      input: parent.input,
-      lifecycle: { state: "queued" },
-      claimGeneration: 0,
-      version: 1,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    assert.equal(harness.database.authority.runs.enqueue(childRecord(cascadeChildId, "cascade-edge", "aaaa")).state, "inserted");
-    assert.equal(harness.database.authority.runs.enqueue(childRecord(independentChildId, "independent-edge", "bbbb")).state, "inserted");
+    assert.equal(harness.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, cascadeChildId, "child:aaaa", "kr-170000-aaaa", "cascade-edge", NOW)).state, "inserted");
+    assert.equal(harness.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, independentChildId, "child:bbbb", "kr-170000-bbbb", "independent-edge", NOW)).state, "inserted");
 
     const manifest = (manifestId: string, edgeId: string, childRunId: string, childItemId: string, cascadeCancel: string) => ({
       manifestId,
@@ -147,31 +123,7 @@ describe("run arms", () => {
     const parent = harness.database.authority.runs.get(parentId);
     assert.ok(parent !== undefined);
     const orphanId = "aaaaaaaa-9999-4999-8999-aaaaaaaaaaaa";
-    assert.equal(harness.database.authority.runs.enqueue({
-      envelope: {
-        runId: orphanId,
-        workflow: "kernel-reject",
-        itemId: deriveItemId("kernel-reject", "child:orphan"),
-        traceId: "kr-170000-9999",
-        descriptorVersion: 1,
-        contractFingerprint: parent.envelope.contractFingerprint,
-        resolvedInstance: { ucpath: "prod" },
-        configFingerprint: parent.envelope.configFingerprint,
-        configSnapshotId: parent.envelope.configSnapshotId,
-        parent: { runId: parentId, tracePrefix: parent.envelope.traceId, edgeId: "orphan-edge" },
-        shape: "operation-member",
-        priority: "bulk",
-        dryRun: false,
-        attempt: 1,
-        enqueuedAt: NOW,
-      },
-      input: parent.input,
-      lifecycle: { state: "queued" },
-      claimGeneration: 0,
-      version: 1,
-      createdAt: NOW,
-      updatedAt: NOW,
-    }).state, "inserted");
+    assert.equal(harness.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, orphanId, "child:orphan", "kr-170000-9999", "orphan-edge", NOW)).state, "inserted");
 
     assert.throws(
       () => harness.kernel.execute(runCommand("cancel", parentId, parent.version)),

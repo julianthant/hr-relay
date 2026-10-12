@@ -1,3 +1,4 @@
+import { createPersonLookupProvenanceCheckpoint } from "../../../support/helpers/backend/person-lookup-provenance-checkpoint.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
@@ -13,10 +14,8 @@ SearchPersonOrgOutputSchema,
 UcpathCandidateSchema,
 } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { ContractFieldPathSchema,ProvenancePolicySchema } from "../../../../src/models/task/task-contract.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import type {
-FactProvenance,
 RunCheckpointRecord,
 } from "../../../../src/models/workflow/checkpoint.js";
 import {
@@ -222,31 +221,13 @@ function collector(
   });
 }
 
-function checkpointFrom(
-  nodeId: string,
-  outputSchema: z.ZodType,
-  output: unknown,
-  provenance: readonly FactProvenance[],
-  writtenAt = NOW,
-): RunCheckpointRecord {
-  return RunCheckpointRecordSchema.parse({
-    workflowId: "person-lookup",
-    itemId: ITEM_ID,
-    nodeId,
-    attempt: 1,
-    claimGeneration: 1,
-    runId: RUN_ID,
-    output: {
-      schemaHash: deriveSchemaHash(outputSchema, "output"),
-      value: JsonValueSchema.parse(outputSchema.parse(output)),
-    },
-    descriptorVersion: 1,
-    contractFingerprint: HASH_A,
-    implFingerprint: HASH_B,
-    provenance,
-    writtenAt,
-  });
-}
+const { checkpointFrom } = createPersonLookupProvenanceCheckpoint({
+  itemId: ITEM_ID,
+  runId: RUN_ID,
+  contractFingerprint: HASH_A,
+  implFingerprint: HASH_B,
+  now: NOW,
+});
 
 function dependencyCheckpoints(): Readonly<{
   search: RunCheckpointRecord;

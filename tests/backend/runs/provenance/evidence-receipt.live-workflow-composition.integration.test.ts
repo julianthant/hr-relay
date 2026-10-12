@@ -1,15 +1,12 @@
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
 import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
 import type { RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
 import { WriteIntentRecordSchema,deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-safety.js";
 import {
 EXIT_CRM_RECORD_ID,
@@ -35,15 +32,7 @@ afterEach(() => {
 });
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "receipt-test" },
-    manualClock(new Date("2026-08-04T00:11:13.500Z")),
-  );
-  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
-  databases.push(database);
-  return database;
+  return openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-", "receipt-test");
 }
 
 

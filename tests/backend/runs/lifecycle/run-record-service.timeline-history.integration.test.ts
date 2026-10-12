@@ -1,3 +1,4 @@
+import { openConfirmedRetentionDatabase } from "../../../support/helpers/storage/confirmed-retention-fixtures.js";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,8 +8,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,UUID_5,UUID_6,WRITE_ATTEMPT,WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
-import { atomicWriteCheckpoint,currentAtomicWriteFixture,seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+import { atomicWriteCheckpoint,currentAtomicWriteFixture } from "../../../support/helpers/timeline-write-fixture.js";
 
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
@@ -22,17 +22,7 @@ function root(): string {
 const ts = "2026-09-08T12:00:00.000Z";
 describe("retained confirmed history and shared retry deletion", () => {
   function committed() {
-    const path = join(root(), "confirmed.db");
-    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500,
-      migrationOwner: "confirmed-retention-test" }, manualClock(new Date(ts)));
-    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
-    database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
-    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
-    const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
-    if (run === undefined) throw new Error("missing fixture owner");
-    database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: ts }, now: ts });
-    return { database, run, path };
+    return openConfirmedRetentionDatabase(root, ts, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
   }
   it("preserves permanent ancestor proof across intermediate and descendant deletion", () => {
     const { database, run } = committed();

@@ -1,29 +1,19 @@
-import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { createKernelStubCommandFixtures, type KernelStubHarness as Harness } from "../../../support/helpers/backend/kernel-stub-command-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
 import { z } from "zod";
-import {
-createCommandKernel,
-type CommandKernel,
-type CommandKernelDependencies,
-} from "../../../../src/backend/runs/commands/command-kernel.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { FixtureReadReceipt } from "../../../support/fixtures/descriptor-fixtures.js";
-import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
-import { seedSyntheticRuntimeConfig,singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
+import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { type AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -71,62 +61,13 @@ const descriptor = defineWorkflowDescriptor({
     }),
 });
 
-const unrelated=():never=>{throw new Error("unrelated kernel effect reached");};
-const workerRuntime:CommandKernelDependencies["workerRuntime"]={pool:{planPoolWorkerCount:unrelated,spawnPoolWorker:unrelated,
-  refreshPoolBrowser:unrelated,reopenPoolBrowser:unrelated,stopPoolWorker:unrelated,pausePoolWorker:unrelated,resumePoolWorker:unrelated}};
-const writeResolution:CommandKernelDependencies["writeResolution"]={resolvePresent:unrelated,resolveAbsent:unrelated};
-
-interface Harness {
-  readonly database: AuthorityDatabase;
-  readonly kernel: CommandKernel;
-  readonly clock: ReturnType<typeof manualClock>;
-  readonly configIdentity: CommandKernelDependencies["configIdentity"];
-  readonly plannerIds: ReturnType<typeof sequentialIdFactory>;
-}
-
-function createHarness(): Harness {
-  const clock = manualClock(new Date(NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-kernel-recovery-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "kernel.sqlite"), busyTimeoutMs: 250, migrationOwner: "kernel-recovery-test" },
-    clock,
-  );
-  openDatabases.push(database);
-  seedSyntheticRuntimeConfig(database);
-  const active=database.authority.runtimeConfig.get();assert.ok(active);
-  const configIdentity={configSnapshotId:active.configSnapshotId,configFingerprint:active.configFingerprint};
-  const kernel = createCommandKernel({
-    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
-    appVersion: "0.1.0",
-    configIdentity,
-    intakeParser: UNWIRED_INTAKE_PARSER,
-    intakeProjections: NO_INTAKE_PROJECTIONS,
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
-    clock,
-    ids: sequentialIdFactory("d"),
-    descriptors: { resolve: (workflowId) => (String(descriptor.id) === workflowId ? descriptor : undefined) },
-    explorerEdits: {
-      apply: (): never => { throw new Error("this harness composes no explorer edit executor"); },
-    },
-    writeResolution,
-    workerRuntime,
-    settings: {
-      validateRequest: () => undefined,
-      commitPrivate: () => undefined,
-      reconcileReplay: () => { throw new Error("this harness composes no settings replay authority"); },
-      applyOrdinary: (): never => { throw new Error("this harness composes no settings apply authority"); },
-    },
-  });
-  return { database, kernel, clock, configIdentity, plannerIds: sequentialIdFactory("f") };
-}
-
-let commandSequence = 0;
-function nextCommandId(): string {
-  commandSequence += 1;
-  const tail = String(commandSequence).padStart(4, "0");
-  return `cccccccc-${tail}-4000-8000-${tail}00000000`;
-}
+const { createHarness, nextCommandId, runCommand } = createKernelStubCommandFixtures({
+  roots,
+  openDatabases,
+  prefix: "hrauto-kernel-recovery-",
+  migrationOwner: "kernel-recovery-test",
+  resolve: (workflowId) => (String(descriptor.id) === workflowId ? descriptor : undefined),
+});
 
 const STEP_OMISSIONS = [{ step: "probing", facts: { present: true } }];
 
@@ -172,18 +113,6 @@ function startTerminalRun(harness: Harness, options: Readonly<{ dryRun: boolean;
   const version = harness.database.authority.runs.get(runId)?.version;
   assert.ok(version !== undefined);
   return { runId, version };
-}
-
-function runCommand(type: string, runId: string, expectedVersion: number) {
-  return {
-    commandId: nextCommandId(),
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "run",
-    type,
-    target: { runId, expectedVersion },
-  } as const;
 }
 
 function recoveredRun(harness: Harness, type: "retry" | "restart", target: { runId: string; version: number }) {

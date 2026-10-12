@@ -1,33 +1,14 @@
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { claimEventOf, DAY, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { claimEventOf, DAY, traceOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const {world, runRecordOf, queuedEventOf, CLAIM, cleanup } = createRunQueueProjectionTestWorld();
+const {world, runRecordOf, queuedEventOf, CLAIM, seedExitRunShape, cleanup } = createRunQueueProjectionTestWorld();
 
 
 afterEach(cleanup);
 
 describe("settled run presentation retains skip reasons and measured timing", () => {
-  /** Exactly the exit run's node walk, at one run attempt. */
-  function seedExitRunShape(w: DashboardWorld): void {
-    queuedEventOf(w, { seed: 1 });
-    claimEventOf(w, 1);
-    taskEventsOf(w, 1, "searching", "done");
-    taskEventsOf(w, 1, "cross-verify", "done");
-    taskEventsOf(w, 1, "active-status", "done");
-    taskEventsOf(w, 1, "crm-dates", "skipped", "condition-false");
-    w.writer.emit({
-      t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-      runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), outcome: "done",
-    });
-    w.authority.put(runRecordOf({
-      seed: 1,
-      lifecycle: { state: "terminal", outcome: "done", endedAt: "2026-08-03T17:14:30.000Z" },
-      version: 3,
-    }));
-  }
-
   it("serves the terminal instant on a settled row and an explicit absence while in flight", () => {
     const w = world();
     seedExitRunShape(w);
