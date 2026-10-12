@@ -87,8 +87,8 @@ function safeSubject(database: DatabaseSync, run: RunRecord, declaration: z.infe
 
 export function createRunSearchIndex(database: DatabaseSync) {
   const prepareTemporaryState = () => {
+    database.exec("CREATE TEMP TABLE IF NOT EXISTS search_actor_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_declarations(id TEXT PRIMARY KEY,json TEXT NOT NULL) WITHOUT ROWID");
-
   };
   const count = () => CountSchema.parse(database.prepare("SELECT count(*) AS count FROM run_search").get()).count;
   const publication = () => {
@@ -114,8 +114,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
     return sources;
   };
   const actorSourceKey = (source: z.infer<typeof ActorSourcesSchema>[number]) => source.kind === "queued" ? `queued:${source.event.eventId}` : `start-audit:${source.audit.auditId}`;
-  const validateActorSources = (run: RunRecord, sources: z.infer<typeof ActorSourcesSchema>) => {
-    const retained = retainedActorSources(run);
+  const validateActorSources = (run: RunRecord, sources: z.infer<typeof ActorSourcesSchema>, retained = retainedActorSources(run)) => {
     const frozen = new Map(sources.map(source => [actorSourceKey(source),source]));
     if (frozen.size !== sources.length) throw new Error("run-search-actor-source-duplicate");
     const actual = new Map(retained.map(source => [actorSourceKey(source),source]));
@@ -153,22 +152,25 @@ export function createRunSearchIndex(database: DatabaseSync) {
       if (canonicalJsonStringify(record.metadata) !== canonicalJsonStringify(metadataFor(run, declaration, sources))) throw new Error("run-search-source-metadata-invalid");
     }
   };
-  const write = (run: RunRecord, now: string) => {
+  const write = (run: RunRecord, now: string, rebuilding = false) => {
     const id = run.envelope.runId;
-    const prior = database.prepare("SELECT declaration_json,actor_source_json,created_at FROM run_search WHERE run_id=?").get(id);
-    const frozen = prior === undefined ? undefined : z.strictObject({ declaration_json:z.string().nullable(),actor_source_json:z.string().nullable(),created_at:z.string() }).parse(prior);
+    const prior = database.prepare("SELECT * FROM run_search WHERE run_id=?").get(id);
+    const frozen = prior === undefined ? undefined : FullIndexRowSchema.parse(prior);
     const declared = database.prepare("SELECT json AS payload_json FROM search_declarations WHERE id=?").get(declarationKey(run));
     const declaration = frozen?.declaration_json != null ? RunSearchDeclarationSchema.parse(JSON.parse(frozen.declaration_json))
       : declared === undefined ? null : parse(RunSearchDeclarationSchema,declared);
     if (declaration !== null && (declaration.workflow !== run.envelope.workflow || declaration.version !== run.envelope.descriptorVersion
       || declaration.contractFingerprint !== run.envelope.contractFingerprint)) throw new Error("run-search-declaration-identity-mismatch");
+    if (prior !== undefined && !rebuilding) runSearchIndexFromRow(prior, run, false);
     const sources = frozen?.actor_source_json == null ? [] : ActorSourcesSchema.parse(JSON.parse(frozen.actor_source_json));
-    for (const source of retainedActorSources(run)) {
+    const refreshActor = rebuilding || prior === undefined || database.prepare("SELECT 1 FROM search_actor_dirty WHERE run_id=?").get(id) !== undefined;
+    const retained = refreshActor ? retainedActorSources(run) : sources;
+    for (const source of retained) {
       const existing = sources.find(entry => actorSourceKey(entry) === actorSourceKey(source));
       if (existing === undefined) sources.push(source);
       else if (canonicalJsonStringify(existing) !== canonicalJsonStringify(source)) throw new Error("run-search-retained-actor-source-mismatch");
     }
-    validateActorSources(run,sources);
+    validateActorSources(run,sources,retained);
     const metadata = metadataFor(run, declaration, sources);
     const generation = z.object({authority_generation:z.number().int().nonnegative()}).parse(database.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()).authority_generation;
     const record = RunSearchIndexRecordSchema.parse({ runId: id, sourceVersion: run.version, buildGeneration: generation, metadata });
@@ -181,11 +183,14 @@ export function createRunSearchIndex(database: DatabaseSync) {
       subject,actor,metadata.version,metadata.failureCode,Number(metadata.evidence.receipt),Number(metadata.evidence.diagnostic),
       canonicalJsonStringify(Object.keys(run.envelope.resolvedInstance).sort()),run.version,declaration === null ? null : canonicalJsonStringify(declaration),
       sources.length === 0 ? null : canonicalJsonStringify(sources),canonicalJsonStringify(record),frozen?.created_at ?? now,now);
+    database.prepare("DELETE FROM search_actor_dirty WHERE run_id=?").run(id);
   };
-  const writeId = (id: string, now: string) => {
+  const writeId = (id: string, now: string, rebuilding = false) => {
     const raw = database.prepare("SELECT * FROM runs WHERE id=?").get(id);
-    if (raw === undefined) database.prepare("DELETE FROM run_search WHERE run_id=?").run(id);
-    else write(runRecordFromRow(raw),now);
+    if (raw === undefined) {
+      database.prepare("DELETE FROM run_search WHERE run_id=?").run(id);
+      database.prepare("DELETE FROM search_actor_dirty WHERE run_id=?").run(id);
+    } else write(runRecordFromRow(raw),now,rebuilding);
   };
   return {
     publication,
@@ -197,12 +202,19 @@ export function createRunSearchIndex(database: DatabaseSync) {
       const sources = ["runs","run_checkpoints","run_receipts","run_failures","diagnostic_snapshots","timeline_events"];
       for (const table of sources) for (const action of ["INSERT","UPDATE","DELETE"]) {
         const refs = action === "INSERT" ? ["NEW"] : action === "DELETE" ? ["OLD"] : ["OLD","NEW"];
-        const when = table === "timeline_events" ? ` WHEN json_extract(${action === "DELETE" ? "OLD" : "NEW"}.payload_json,'$.payload.event.t')='run.queued'` : "";
-        database.exec(`CREATE TEMP TRIGGER IF NOT EXISTS search_dirty_${table}_${action} AFTER ${action} ON main.${table}${when} BEGIN ${refs.map(ref => `INSERT OR IGNORE INTO search_dirty SELECT ${ref}.${table === "runs" ? "id" : "run_id"} WHERE ${ref}.${table === "runs" ? "id" : "run_id"} IS NOT NULL;`).join(" ")} END`);
+        const when = table === "timeline_events" ? ` WHEN ${refs.map(ref => `json_extract(${ref}.payload_json,'$.payload.event.t')='run.queued'`).join(" OR ")}` : "";
+        const inserts = refs.map(ref => `INSERT OR IGNORE INTO search_dirty SELECT ${ref}.${table === "runs" ? "id" : "run_id"} WHERE ${ref}.${table === "runs" ? "id" : "run_id"} IS NOT NULL;`).join(" ");
+        const actors = table === "timeline_events" ? refs.map(ref => `INSERT OR IGNORE INTO search_actor_dirty SELECT ${ref}.run_id WHERE ${ref}.run_id IS NOT NULL;`).join(" ") : "";
+        database.exec(`CREATE TEMP TRIGGER IF NOT EXISTS search_dirty_${table}_${action} AFTER ${action} ON main.${table}${when} BEGIN ${inserts} ${actors} END`);
       }
-      database.exec(`CREATE TEMP TRIGGER IF NOT EXISTS search_start_actor AFTER INSERT ON main.command_audits
-        WHEN json_extract(NEW.payload_json,'$.request.family')='start' AND json_extract(NEW.payload_json,'$.result.state') IN ('applied','already-applied')
-        BEGIN INSERT OR IGNORE INTO search_dirty SELECT json_extract(value,'$.runId') FROM json_each(NEW.payload_json,'$.result.affectedTargets') WHERE json_extract(value,'$.family')='run'; END`);
+      for (const action of ["INSERT", "UPDATE", "DELETE"]) {
+        const refs = action === "INSERT" ? ["NEW"] : action === "DELETE" ? ["OLD"] : ["OLD", "NEW"];
+        const statements = refs.flatMap(ref => ["search_dirty", "search_actor_dirty"].map(table =>
+          `INSERT OR IGNORE INTO ${table} SELECT json_extract(value,'$.runId') FROM json_each(${ref}.payload_json,'$.result.affectedTargets')
+            WHERE json_extract(${ref}.payload_json,'$.request.family')='start'
+            AND json_extract(${ref}.payload_json,'$.result.state') IN ('applied','already-applied') AND json_extract(value,'$.family')='run';`)).join(" ");
+        database.exec(`CREATE TEMP TRIGGER IF NOT EXISTS search_start_actor_${action} AFTER ${action} ON main.command_audits BEGIN ${statements} END`);
+      }
     },
     register(input: unknown, now: string) {
       const current = publication();
@@ -244,7 +256,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       const after = restart ? "" : prior.afterRun ?? "";
       const rows = database.prepare(`SELECT id FROM runs WHERE id>? ORDER BY id LIMIT ?`).all(after, limit + 1).map(row => KeySchema.parse(row).id);
       const selected = rows.slice(0, limit);
-      for (const id of selected) writeId(id, now);
+      for (const id of selected) writeId(id, now, true);
       return publish({ state: rows.length > limit ? "building" : "published", sourceGeneration, afterRun: selected.at(-1) ?? prior.afterRun, rowCount: (restart ? 0 : prior.rowCount) + selected.length }, now);
     },
     search(input: unknown, sourceGeneration: number) {
