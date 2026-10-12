@@ -1,12 +1,11 @@
+import { createUcpathPendingRowFixtures } from "../../../support/helpers/ucpath-pending-row-fixtures.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
 ucpathPendingSweepIdempotencyKey
 } from "../../../../src/models/systems/ucpath/delete-pending-terminations.js";
-import type {
-UcpathTransactionRow
-} from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
+
 import { EidSchema,IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 
 const EID = EidSchema.parse("10001799");
@@ -14,17 +13,7 @@ const NAME = "Drose Clauckia";
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-14T02:00:00.000Z");
 const EFFDT = "06/11/2026";
 
-function row(overrides: Partial<UcpathTransactionRow> = {}): UcpathTransactionRow {
-  return {
-    transactionId: "T002209631",
-    emplId: EID,
-    action: "TER",
-    approvalStatus: "Pending",
-    startDate: EFFDT,
-    displayedName: NAME,
-    ...overrides,
-  };
-}
+const { row } = createUcpathPendingRowFixtures(EID, NAME, EFFDT);
 
 const EMPTY_SET = {
   kind: "ucpath-pending-termination-set" as const,
