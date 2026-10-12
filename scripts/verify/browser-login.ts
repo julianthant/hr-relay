@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { createCredentialStore } from "../../src/backend/storage/configuration/credential-store.js";
 import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
 import { fileURLToPath } from "node:url";
@@ -5,8 +6,8 @@ import { hostConfigFacts } from "../../src/models/config/host-display.js";
 /** Live login smoke against production SSO: it reports content-based login proof (never a value), and full Chromium is required to load the Duo extension. */
 /** It never runs a workflow node and never commits a UCPath transaction. */
 import { randomUUID } from "node:crypto";
-import { lstatSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 import { rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
 import { composeDuoCeremonyGateFactory } from "../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { SessionAcquisitionTimeoutError, SESSION_ACQUISITION_TIMEOUT_TEXT, WorkerSessionManager } from "../../src/backend/runtime/workers/worker-sessions.js";
@@ -25,7 +26,7 @@ import {
   PlaywrightWorkerSessionFactory,
   workerProfileDirectory,
 } from "../../src/backend/runtime/browser/browser-session-factory.js";
-import type { BrowserDeadlineScheduler } from "../../src/backend/runtime/browser/browser-session-factory.js";
+import type { BrowserSessionFactoryOptions, BrowserDeadlineScheduler } from "../../src/backend/runtime/browser/browser-session-factory.js";
 import { createCredentialSecretSource, readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { probePrimaryDisplay } from "../../src/backend/app/host/primary-display.js";
 import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../src/backend/systems/browser-shared/login-contract.js";
@@ -35,6 +36,7 @@ import { acquireRuntimeProcessLock, readRuntimeProcessLock } from "../../src/bac
 import type { WorkerSlotRecord } from "../../src/models/run/worker-slot.js";
 import type { DuoCeremonyGateHandle } from "../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import type { Clock } from "../../src/rules/time/clock.js";
+import { canonicalJsonStringify } from "../../src/rules/validation/canonical-json.js";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 
 const SUPPORTED = new Set(["ucpath", "crm"]);
@@ -195,6 +197,40 @@ export async function withSmokeWorker(
   if (errors.length > 1) throw new AggregateError(errors, "live-smoke-operation-or-cleanup-failed");
 }
 
+export function createSmokeProfileAdmission(input: Readonly<{
+  processLockRoot: string;
+  acquisitionId: string;
+  workerId: WorkerSlotRecord["workerId"];
+  ordinal: number;
+  system: ReturnType<typeof BrowserSystemIdSchema.parse>;
+  profileRoot: string;
+}>): BrowserSessionFactoryOptions["admitProfile"] {
+  let admittedIdentity: string | undefined;
+  let readmitted = false;
+  return profile => {
+    const lock = readRuntimeProcessLock(input.processLockRoot, "live-smoke");
+    const directory = workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: input.ordinal, system: input.system });
+    const admission = BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false });
+    const identity = canonicalJsonStringify(admission);
+    if (lock?.pid !== process.pid || lock.releasedAt !== null || lock.acquisitionId !== input.acquisitionId
+      || profile.workerId !== input.workerId || profile.system !== input.system || profile.profileDirectory !== directory
+      || admittedIdentity !== undefined && identity !== admittedIdentity) throw new Error("live-smoke-profile-custody-unavailable");
+    const existing = lstatSync(directory, { throwIfNoEntry: false });
+    if (existing !== undefined && (admittedIdentity === undefined || readmitted)) throw new Error("live-smoke-profile-custody-unavailable");
+    for (let cursor = directory; ; cursor = dirname(cursor)) {
+      const metadata = lstatSync(cursor, { throwIfNoEntry: false });
+      if (metadata !== undefined && (!metadata.isDirectory() || metadata.isSymbolicLink()
+        || process.getuid !== undefined && metadata.uid !== process.getuid() || (metadata.mode & 0o077) !== 0)) throw new Error("live-smoke-profile-custody-unavailable");
+      if (cursor === input.profileRoot) break;
+      if (cursor === dirname(cursor)) throw new Error("live-smoke-profile-custody-unavailable");
+    }
+    if (existing !== undefined && !realpathSync(directory).startsWith(`${realpathSync(input.profileRoot)}${sep}`)) throw new Error("live-smoke-profile-custody-unavailable");
+    admittedIdentity = identity;
+    if (existing !== undefined) readmitted = true;
+    return Promise.resolve(admission);
+  };
+}
+
 async function main(): Promise<void> {
   const requested = process.argv[2];
   if (requested === undefined || !SUPPORTED.has(requested)) {
@@ -255,13 +291,8 @@ async function main(): Promise<void> {
     scheduler: realScheduler,
     newSessionId: () => randomUUID(),
     slotOrdinal: requestedWorker => { if (requestedWorker !== workerId) throw new Error("live-smoke-profile-owner-mismatch"); return ordinal; },
-    admitProfile: profile => {
-      const lock = readRuntimeProcessLock(processLockRoot, "live-smoke");
-      if (lock?.pid !== process.pid || lock.acquisitionId !== processLock.acquisitionId
-        || profile.workerId !== workerId || profile.profileDirectory !== workerProfileDirectory({ profileRoot: smokeProfileRoot, slotOrdinal: ordinal, system })
-        || lstatSync(profile.profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new Error("live-smoke-profile-custody-unavailable");
-      return Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false }));
-    },
+    admitProfile: createSmokeProfileAdmission({ processLockRoot, acquisitionId: z.uuid().parse(processLock.acquisitionId),
+      workerId, ordinal, system, profileRoot: smokeProfileRoot }),
     onAuthenticationEvidence: (observed) => {
       evidence.push(observed);
       write(`[evidence] ${observed.system} @ ${observed.url}`);

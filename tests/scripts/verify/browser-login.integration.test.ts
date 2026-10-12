@@ -1,15 +1,17 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker } from "../../../scripts/verify/browser-login.js";
+import { createSmokeProfileAdmission, closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker } from "../../../scripts/verify/browser-login.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
 import { SessionAcquisitionTimeoutError, SESSION_ACQUISITION_TIMEOUT_TEXT } from "../../../src/backend/runtime/workers/worker-sessions.js";
-import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
+import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
+import { FingerprintSchema, WorkerIdSchema } from "../../../src/rules/identity/ids.js";
 
 const clock = manualClock(new Date("2026-10-11T10:00:00.000Z"));
 const credentialKey = FingerprintSchema.parse("ab".repeat(32));
@@ -32,7 +34,7 @@ function fixture() {
   const gates = createDuoCeremonyGateFactory({ leases: database.authority.duoCeremonyLeases, credentialKey,
     clock, scheduler: { schedule: () => ({ cancel: () => undefined }) }, sessionAcquireMs: 60000,
     graceMs: 20000, pollIntervalMs: 250 });
-  return { database, plan, allocate, gates };
+  return { root, database, plan, allocate, gates };
 }
 
 describe("registered browser-login smoke lifecycle", () => {
@@ -161,6 +163,58 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(database.authority.workerSlots.list()[1].retiredAt).toBeNull();
     expect(database.authority.duoCeremonyLeases.get(credentialKey)).toBeUndefined();
     expect(database.authority.workerPools.get("person-lookup")?.desiredWorkers).toBe(1);
+  });
+
+  it("re-admits only its exact already-admitted profile once for fresh-profile recovery", async () => {
+    const { root } = fixture();
+    const processLockRoot = join(root, "locks");
+    const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    try {
+      const profileRoot = join(root, "profiles");
+      const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: 1, system: "ucpath" });
+      const admit = createSmokeProfileAdmission({ processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+        workerId: WorkerIdSchema.parse("person-lookup-worker-1"), ordinal: 1, system: "ucpath", profileRoot });
+      const profile = { workerId: WorkerIdSchema.parse("person-lookup-worker-1"), system: "ucpath" as const,
+        instance: "prod" as const, configFingerprint: credentialKey, signInFingerprint: credentialKey,
+        browserMode: "headless" as const, profileDirectory };
+      await expect(admit(profile)).resolves.toMatchObject({ profileRevision: 1, resetRequired: false });
+      mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
+      await expect(admit(profile)).resolves.toMatchObject({ profileDirectory });
+      expect(() => admit(profile)).toThrow(/custody-unavailable/u);
+      rmSync(profileDirectory, { recursive: true });
+      await expect(admit(profile)).resolves.toMatchObject({ profileDirectory });
+      expect(() => admit({ ...profile, signInFingerprint: FingerprintSchema.parse("cd".repeat(32)) })).toThrow(/custody-unavailable/u);
+      expect(() => admit({ ...profile, workerId: WorkerIdSchema.parse("person-lookup-worker-2") })).toThrow(/custody-unavailable/u);
+      lock.release();
+      expect(() => admit(profile)).toThrow(/custody-unavailable/u);
+    } finally { lock.release(); }
+  });
+
+  it("refuses unowned existing, linked and nonprivate smoke profiles", async () => {
+    const { root } = fixture();
+    const processLockRoot = join(root, "locks");
+    const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    try {
+      const profileRoot = join(root, "profiles");
+      const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: 1, system: "ucpath" });
+      const options = { processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+        workerId: WorkerIdSchema.parse("person-lookup-worker-1"), ordinal: 1, system: "ucpath" as const, profileRoot };
+      const profile = { workerId: options.workerId, system: options.system, instance: "prod" as const,
+        configFingerprint: credentialKey, signInFingerprint: credentialKey, browserMode: "headless" as const, profileDirectory };
+      mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
+      expect(() => createSmokeProfileAdmission(options)(profile)).toThrow(/custody-unavailable/u);
+      rmSync(profileDirectory, { recursive: true });
+      const admit = createSmokeProfileAdmission(options);
+      await admit(profile);
+      symlinkSync(root, profileDirectory);
+      expect(() => admit(profile)).toThrow(/custody-unavailable/u);
+      rmSync(profileDirectory);
+      mkdirSync(profileDirectory, { mode: 0o700 });
+      chmodSync(profileDirectory, 0o755);
+      expect(() => admit(profile)).toThrow(/custody-unavailable/u);
+      chmodSync(profileDirectory, 0o700);
+      expect(() => admit({ ...profile, profileDirectory: join(root, "other") })).toThrow(/custody-unavailable/u);
+    } finally { lock.release(); }
   });
 
   it("prints fixed acquisition and stall text without free-form error messages", () => {
