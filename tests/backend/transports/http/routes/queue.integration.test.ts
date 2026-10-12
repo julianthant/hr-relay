@@ -1,3 +1,4 @@
+import { foreignOriginCases } from "../../../../support/helpers/backend/http-route-harness.js";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { it, afterEach, describe, expect, vi } from "vitest";
@@ -231,13 +232,7 @@ afterEach(cleanupOriginalFixture);
     connection.close();
   });
 
-  const FOREIGN_ORIGIN_CASES = [
-    ["missing Origin", { host: "localhost" }],
-    ["foreign Origin", { host: "localhost", origin: "https://hostile.example" }],
-    ["malformed Origin", { host: "localhost", origin: "not an origin" }],
-    ["Host-mismatched Origin", { host: "localhost:3938", origin: "http://127.0.0.1:3938" }],
-    ["non-loopback Host", { host: "attacker.example", origin: "http://attacker.example" }],
-  ] as const;
+  const FOREIGN_ORIGIN_CASES = foreignOriginCases();
 
   it.each(FOREIGN_ORIGIN_CASES)(
     "refuses a start plan with %s before the planner or the body is touched",

@@ -108,13 +108,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.match(String((await json(inverted)).message), /ends before it starts/);
   });
 
-  const _FOREIGN_ORIGIN_CASES = [
-    ["missing Origin", { host: "localhost" }],
-    ["foreign Origin", { host: "localhost", origin: "https://hostile.example" }],
-    ["malformed Origin", { host: "localhost", origin: "not an origin" }],
-    ["Host-mismatched Origin", { host: "localhost:3938", origin: "http://127.0.0.1:3938" }],
-    ["non-loopback Host", { host: "attacker.example", origin: "http://attacker.example" }],
-  ] as const;
+
 });
 
 import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";

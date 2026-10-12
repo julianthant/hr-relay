@@ -672,13 +672,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.doesNotMatch(String(body.message), /artifact authority must not see/u);
   });
 
-  const _FOREIGN_ORIGIN_CASES = [
-    ["missing Origin", { host: "localhost" }],
-    ["foreign Origin", { host: "localhost", origin: "https://hostile.example" }],
-    ["malformed Origin", { host: "localhost", origin: "not an origin" }],
-    ["Host-mismatched Origin", { host: "localhost:3938", origin: "http://127.0.0.1:3938" }],
-    ["non-loopback Host", { host: "attacker.example", origin: "http://attacker.example" }],
-  ] as const;
+
 });
 
 import { HASH_B,beforeArtifactReaderOperation,captureDiagnosticBundle,disposeHttpRouteHarness,harness,json,loopbackResponse,observeArtifactLeaseDisposal,writeStoredArtifactEnvelope,type Harness } from "../../../../support/helpers/backend/http-route-harness.js";

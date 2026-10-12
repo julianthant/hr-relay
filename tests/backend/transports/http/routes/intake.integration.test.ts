@@ -1,3 +1,4 @@
+import { foreignOriginCases } from "../../../../support/helpers/backend/http-route-harness.js";
 
 import assert from "node:assert/strict";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -5,13 +6,7 @@ import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kern
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
-  const FOREIGN_ORIGIN_CASES = [
-    ["missing Origin", { host: "localhost" }],
-    ["foreign Origin", { host: "localhost", origin: "https://hostile.example" }],
-    ["malformed Origin", { host: "localhost", origin: "not an origin" }],
-    ["Host-mismatched Origin", { host: "localhost:3938", origin: "http://127.0.0.1:3938" }],
-    ["non-loopback Host", { host: "attacker.example", origin: "http://attacker.example" }],
-  ] as const;
+  const FOREIGN_ORIGIN_CASES = foreignOriginCases();
 
   it.each(FOREIGN_ORIGIN_CASES)(
     "refuses an intake upload with %s before the query, the bytes or the intake service are read",
