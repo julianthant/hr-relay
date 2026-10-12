@@ -1,7 +1,8 @@
-import { Hono } from "hono";
 import { FIXTURE_STORAGE_DOCTOR } from "../../../fixtures/dashboard/fixture-storage.js";
-export function registerFixtureStorageRoutes({ app }: { app: Hono }): void {
+import { createFixtureStorageRoutesSetup } from "../profiles/fixture-storage-routes-setup.js";
 
-  app.get("/api/v1/storage/doctor/latest", (c) => c.json({ state: "never-run" }));
-  app.get("/api/v1/storage/doctor", (c) => c.json(FIXTURE_STORAGE_DOCTOR as unknown));
-}
+export const {
+  registerFixtureStorageRoutes
+} = createFixtureStorageRoutesSetup( {
+  FIXTURE_STORAGE_DOCTOR
+});

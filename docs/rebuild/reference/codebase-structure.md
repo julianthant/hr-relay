@@ -110,7 +110,7 @@ Unit files use `.test.ts`; integration files use `.integration.test.ts` beside t
 
 Architecture fixtures/helpers are colocated under dashboard, logs, models, runs, runtime, storage,
 support, systems and tooling owners. Unit and integration tests share the same module paths as production code. Shared fixtures, helpers and child-process entrypoints stay under
-`tests/support/`; helpers build fresh native authority and expose its actual timeline, claim and profile ports. Archive and old-format conversion fixtures are absent. Activity integration and parity share `fixtures/dashboard/fixture-activity.ts`; intake shares `fixtures/dashboard/fixture-intake-authority.ts`. The desktop parity suite remains the screenshot/accessibility
+`tests/support/`; helpers build fresh native authority and expose its actual timeline, claim and profile ports. Archive and old-format conversion fixtures are absent. Activity integration and parity share `fixtures/dashboard/fixture-activity.ts`; intake shares `fixtures/dashboard/fixture-intake-authority.ts`. Parity and served profiles allocate separate fixture values through common setup bodies in `helpers/dashboard/profiles/`; seeded lifecycle functions live in `helpers/dashboard/served-fixtures/seeded-lifecycle.ts`. The desktop parity suite remains the screenshot/accessibility
 contract; its reference files are not refreshed to make wiring pass. Role-derived path helpers do
 not imply current files or coverage. Exact test move counts and retirement dispositions remain with
 the owning evidence records.

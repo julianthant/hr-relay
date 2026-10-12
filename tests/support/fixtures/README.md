@@ -6,7 +6,7 @@ This catalogue lists every shared non-test module in `tests/support/`. Fixtures 
 
 `tests/architecture/tooling/test-data-ownership.test.ts` owns import-purity and resource capability exceptions. Shared admission helpers bind database and credential fixtures to exact synthetic installation roots; release admission before removing roots. Credential factories stay inside deferred function bodies. `preflight/corpus` uses Chromium only for launch-refusal spies in its explicit executor. Proxy construction does not open databases. Executable process fixtures cannot be imported; their exact consumers are recorded in the ownership guard.
 
-Parity and served dashboard BFFs retain separate corpus and build authority: `tests/parity/helpers/bundle.ts` validates `dist/parity-dashboard`; `helpers/dashboard/served-fixtures/bundle.ts` validates `dist/dashboard`. Their distinct data and route graphs remain separate.
+Parity and served dashboard BFFs retain separate corpus and build authority: `tests/parity/helpers/bundle.ts` validates `dist/parity-dashboard`; `helpers/dashboard/served-fixtures/bundle.ts` validates `dist/dashboard`. Their profile data, route closures, build roots and disposal remain separate. Common setup bodies live in `helpers/dashboard/profiles/`; each profile supplies its authored fixture inputs and allocates its own values. Seeded lifecycle functions share `helpers/dashboard/served-fixtures/seeded-lifecycle.ts`.
 
 `../helpers/dashboard/run-start-dialog-harness.ts` supplies per-caller Run Start DOM setup and cleanup for the dialog and omitted-step unit suites; importing it performs no DOM setup.
 
@@ -92,6 +92,40 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/canonical-run-reader.ts` | canonical run reader |
 | `helpers/dashboard-model-fixtures.ts` | dashboard run detail, queue, pagination and artifact data |
 | `helpers/dashboard/fixture-bff.ts` | fixture bff |
+| `helpers/dashboard/profiles/bundle-setup.ts` | bundle profile setup |
+| `helpers/dashboard/profiles/date-navigation-server-setup.ts` | date navigation server profile setup |
+| `helpers/dashboard/profiles/diagnostic-jpeg-fixture-setup.ts` | diagnostic jpeg fixture profile setup |
+| `helpers/dashboard/profiles/fixture-activity-routes-setup.ts` | fixture activity routes profile setup |
+| `helpers/dashboard/profiles/fixture-bff-setup.ts` | fixture bff profile setup |
+| `helpers/dashboard/profiles/fixture-bootstrap-setup.ts` | fixture bootstrap profile setup |
+| `helpers/dashboard/profiles/fixture-day-setup.ts` | fixture day profile setup |
+| `helpers/dashboard/profiles/fixture-detail-routes-setup.ts` | fixture detail routes profile setup |
+| `helpers/dashboard/profiles/fixture-detail-setup.ts` | fixture detail profile setup |
+| `helpers/dashboard/profiles/fixture-diagnostic-setup.ts` | fixture diagnostic profile setup |
+| `helpers/dashboard/profiles/fixture-explorer-routes-setup.ts` | fixture explorer routes profile setup |
+| `helpers/dashboard/profiles/fixture-explorer-setup.ts` | fixture explorer profile setup |
+| `helpers/dashboard/profiles/fixture-gate-setup.ts` | fixture gate profile setup |
+| `helpers/dashboard/profiles/fixture-identity-setup.ts` | fixture identity profile setup |
+| `helpers/dashboard/profiles/fixture-intake-routes-setup.ts` | fixture intake routes profile setup |
+| `helpers/dashboard/profiles/fixture-notifications-setup.ts` | fixture notifications profile setup |
+| `helpers/dashboard/profiles/fixture-profile-setup.ts` | fixture profile profile setup |
+| `helpers/dashboard/profiles/fixture-queue-routes-setup.ts` | fixture queue routes profile setup |
+| `helpers/dashboard/profiles/fixture-queue-setup.ts` | fixture queue profile setup |
+| `helpers/dashboard/profiles/fixture-run-captures-setup.ts` | fixture run captures profile setup |
+| `helpers/dashboard/profiles/fixture-settings-routes-setup.ts` | fixture settings routes profile setup |
+| `helpers/dashboard/profiles/fixture-settings-setup.ts` | fixture settings profile setup |
+| `helpers/dashboard/profiles/fixture-shell-routes-setup.ts` | fixture shell routes profile setup |
+| `helpers/dashboard/profiles/fixture-start-routes-setup.ts` | fixture start routes profile setup |
+| `helpers/dashboard/profiles/fixture-start-setup.ts` | fixture start profile setup |
+| `helpers/dashboard/profiles/fixture-storage-routes-setup.ts` | fixture storage routes profile setup |
+| `helpers/dashboard/profiles/fixture-storage-setup.ts` | fixture storage profile setup |
+| `helpers/dashboard/profiles/run-detail/context-data-setup.ts` | context data profile setup |
+| `helpers/dashboard/profiles/run-detail/gates-park-setup.ts` | gates park profile setup |
+| `helpers/dashboard/profiles/run-detail/logs-captures-setup.ts` | logs captures profile setup |
+| `helpers/dashboard/profiles/run-detail/receipts-failures-setup.ts` | receipts failures profile setup |
+| `helpers/dashboard/profiles/run-detail/timeline-setup.ts` | timeline profile setup |
+| `helpers/dashboard/profiles/seeded-bff-setup.ts` | seeded bff profile setup |
+| `helpers/dashboard/profiles/seeded-services-setup.ts` | seeded services profile setup |
 | `helpers/dashboard/run-start-dialog-harness.ts` | run start dialog harness |
 | `helpers/dashboard/served-fixtures/bundle.ts` | bundle |
 | `helpers/dashboard/served-fixtures/date-navigation-server.ts` | date navigation server |
