@@ -1,15 +1,16 @@
+import { createSeparationStartFixtures } from "../../support/helpers/backend/separation-start-fixtures.js";
 import assert_m0 from "node:assert/strict";
 import { mkdtempSync as mkdtempSync_m0, rmSync as rmSync_m0 } from "node:fs";
 import { tmpdir as tmpdir_m0 } from "node:os";
 import { join as join_m0 } from "node:path";
 import { afterEach as afterEach_m0, describe as describe_m0, it as it_m0 } from "vitest";
-import { planStart as planStart_m0 } from "../../../src/backend/runs/start/plan.js";
+
 import { deriveItemId as deriveItemId_m0 } from "../../../src/rules/identity/identifiers.js";
 import { manualClock as manualClock_m0 } from "../../../src/rules/time/clock.js";
-import { HASH_A as HASH_A_m0, NOW as NOW_m0, UUID_4 as UUID_4_m0 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory as sequentialIdFactory_m0 } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { protectedSecretSource as protectedSecretSource_m0 } from "../../support/helpers/protected-secret-source.js";
-import { separationsDescriptor as separationsDescriptor_m0 } from "../../support/helpers/registered-workflows.js";
+import { NOW as NOW_m0 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+
+
+
 import { AuthorityDatabase as AuthorityDatabase_m0 } from "../../support/helpers/synthetic-storage-admission.js";
 
 import assert_m1 from "node:assert/strict";
@@ -49,21 +50,7 @@ function openDatabase(): AuthorityDatabase_m0 {
   return database;
 }
 
-function plan(submissions: readonly unknown[], dryRun = false) {
-  return planStart_m0(
-    { protectedSecrets: protectedSecretSource_m0({ timekeeperName: "Synthetic Timekeeper" }), authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory_m0(), planTtlMs: 600_000 },
-    {
-      descriptor: separationsDescriptor_m0,
-      submissions,
-      dryRun,
-      priority: "bulk" as const,
-      shape: "single" as const,
-      configFingerprint: HASH_A_m0,
-      configSnapshotId: UUID_4_m0,
-      plannedBy: "local-operator",
-    },
-  );
-}
+const { plan } = createSeparationStartFixtures(openDatabase, CLOCK);
 
 describe_m0("separations — start planning through the existing service", () => {
 afterEach_m0(_afterEachFixture0);

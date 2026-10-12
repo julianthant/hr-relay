@@ -194,6 +194,13 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | `helpers/kuali-finalization-input-fixtures.ts` | pure raw Kuali finalization inputs |
 
+| `helpers/backend/notification-inbox-world.ts` | notification inbox world |
+| `helpers/workflow/omission-definition-fixtures.ts` | omission definition fixtures |
+| `helpers/dashboard/identity-ceremony-fixtures.ts` | identity ceremony fixtures |
+| `helpers/backend/run-claim-fixtures.ts` | run claim fixtures |
+| `helpers/backend/worker-lease-fixtures.ts` | worker lease fixtures |
+| `helpers/backend/separation-start-fixtures.ts` | separation start fixtures |
+
 ## File fixtures
 
 - `fixtures/documents/synthetic-sample.pdf`

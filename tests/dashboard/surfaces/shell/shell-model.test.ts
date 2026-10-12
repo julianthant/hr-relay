@@ -1,3 +1,4 @@
+import { createWorkerLeaseFixtures } from "../../../support/helpers/backend/worker-lease-fixtures.js";
 
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,it as it_m0 } from "vitest";
@@ -31,7 +32,7 @@ import {
 WORKER_STOP_REASON_LABEL as WORKER_STOP_REASON_LABEL_m2,
 WORKER_TONE as WORKER_TONE_m2
 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { WorkerLeaseRecordSchema as WorkerLeaseRecordSchema_m2 } from "../../../../src/models/run/worker.js";
+
 
 
 {
@@ -311,21 +312,7 @@ describe_m1("totalCount — the `All` segment", () => {
 
 const STARTED = "2026-08-20T16:00:00.000Z";
 
-function leaseOf(overrides: Readonly<Record<string, unknown>> = {}): ReturnType<typeof WorkerLeaseRecordSchema_m2.parse> {
-  return WorkerLeaseRecordSchema_m2.parse({
-    workerId: "person-lookup-worker-1",
-    workflow: "person-lookup",
-    browserSystems: ["ucpath"],
-    processId: 1234,
-    leaseGeneration: 1, controlRevision: 1,
-    lifecycle: { state: "idle", startedAt: STARTED, heartbeatAt: "2026-08-20T16:00:30.000Z" },
-    control: { directive: "run", requestedAt: STARTED, requestedBy: "local-operator" },
-    version: 5,
-    createdAt: STARTED,
-    updatedAt: "2026-08-20T16:00:30.000Z",
-    ...overrides,
-  });
-}
+const { leaseOf } = createWorkerLeaseFixtures(STARTED);
 
 const NO_TRACE = (): undefined => undefined;
 

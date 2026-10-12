@@ -121,6 +121,8 @@ Credential persistence and inspection use `helpers/credential-persistence-fixtur
 
 Authored dry-run records share their fixture owner; raw Kuali inputs use the import-free `helpers/kuali-finalization-input-fixtures.ts`. Empty search page inputs use `helpers/dashboard/search-page-fixtures.ts`, and HTTP refusal case rows use `helpers/backend/http-route-harness.ts`.
 
+Terminal-run, preview and settings fixtures use their shared worlds. Notification execution uses `helpers/backend/notification-inbox-world.ts`; dashboard input and identity fixtures use `helpers/dashboard-model-fixtures.ts` and `helpers/dashboard/identity-ceremony-fixtures.ts`. Omission definitions live in `helpers/workflow/omission-definition-fixtures.ts`, Kuali driver helpers in `helpers/backend/kuali-task-world.ts`, and queue seeding in `helpers/seeded-dashboard-world.ts`. Claim, lease and separation planning builders live under `helpers/backend/`.
+
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector

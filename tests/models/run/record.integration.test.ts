@@ -1,3 +1,4 @@
+import { createRunClaimFixtures } from "../../support/helpers/backend/run-claim-fixtures.js";
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -15,18 +16,18 @@ import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-
 import { insertMeasuredSearchRun } from "../../support/helpers/backend/cross-date-search-harness.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { afterEach } from "vitest";
-import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
+
 import { runRecordFromRow } from "../../../src/backend/storage/sqlite/run-record-row.js";
 import { RunLifecycleSchema } from "../../../src/models/run/record.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
-import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
-import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
-import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
-import { HASH_B } from "../../support/fixtures/phase1c-contract-fixtures.js";
+
+
+
+
 import { HASH_C } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { LATER as LATERImport2 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+
 import { UUID_7 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
@@ -35,11 +36,11 @@ import { personLookupDescriptor } from "../../support/helpers/registered-workflo
 import { summaryFixture } from "../../support/helpers/backend/served-database-surfaces-fixtures.js";
 import { id } from "../../support/helpers/database-foundation/fixtures.js";
 import { NOW as NOWImport2 } from "../../support/helpers/database-foundation/fixtures.js";
-import { randomUUID } from "node:crypto";
-import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
+
+
 import { runClaim } from "../../../src/models/run/record.js";
 import { runTransitionViolation } from "../../../src/models/run/record.js";
-import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+
 import { HASH_A } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { UUID_1 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { WORKER_START_REQUEST as BASE_WORKER_START_REQUEST } from "../../support/fixtures/phase1f-run-fixtures.js";
@@ -94,7 +95,7 @@ describe("cross-date search authority read", () => {
 {
 const CLOCK = manualClock(new Date(LATERImport2));
 
-const {roots, CLAIM, ACTIVE, openDatabase, startRunning, cleanup } = createRunIntegrationTestWorld(CLOCK);
+const { roots, openDatabase, startRunning, cleanup, failure, failureAuthorization, resultRequest } = createRunIntegrationTestWorld(CLOCK);
 
 const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 
@@ -132,86 +133,11 @@ function corruptRunConsequence(
   }
 }
 
-function failure(run: ReturnType<typeof startRunning>) {
-  return {
-    failureId: UUID_6,
-    fingerprint: HASH_C,
-    runId: run.envelope.runId,
-    traceId: run.envelope.traceId,
-    attempt: run.envelope.attempt,
-    workflowId: run.envelope.workflow,
-    nodeId: "crm-dates",
-    taskId: "crm/read-onboarding-dates",
-    code: "CRM_UNAVAILABLE",
-    summary: "CRM onboarding dates were unavailable",
-    transient: true,
-    writeState: "not-attempted",
-    causeChain: [{
-      code: "CRM_UNAVAILABLE",
-      summary: "CRM returned an unavailable response",
-      role: "primary",
-      transient: true,
-    }],
-    remediation: [{ kind: "retry-when-served", message: "Retry after CRM is available" }],
-    occurredAt: LATERImport2,
-  } as const;
-}
 
-function failureAuthorization(run: ReturnType<typeof startRunning>) {
-  return {
-    kind: "failed" as const,
-    runId: run.envelope.runId,
-    workflowId: run.envelope.workflow,
-    attempt: run.envelope.attempt,
-    descriptorVersion: run.envelope.descriptorVersion,
-    contractFingerprint: run.envelope.contractFingerprint,
-    expectedVersion: run.version,
-    claim: CLAIM,
-    authorizedAt: LATERImport2,
-    failureId: UUID_6,
-  };
-}
 
-function resultRequest(database: AuthorityDatabase, run: ReturnType<typeof startRunning>) {
-  const activeCheckpoint = RunCheckpointRecordSchema.parse({
-    workflowId: run.envelope.workflow,
-    itemId: run.envelope.itemId,
-    nodeId: "active-status",
-    attempt: run.envelope.attempt,
-    claimGeneration: 1,
-    runId: run.envelope.runId,
-    output: { schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"), value: ACTIVE },
-    descriptorVersion: run.envelope.descriptorVersion,
-    contractFingerprint: personLookupDescriptor.contractFingerprint,
-    implFingerprint: HASH_B,
-    provenance: [{ path: "state", source: "derived", observedAt: NOW, originalObservedAt: NOW }],
-    writtenAt: NOW,
-  });
-  database.authority.runCheckpoints.insert(activeCheckpoint);
-  const built = buildRunResult(
-    personLookupDescriptor,
-    run,
-    [
-      { state: "resolved", nodeId: "active-status", checkpoint: activeCheckpoint },
-      { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
-    ],
-    CLOCK,
-  );
-  const result = built.record;
-  const authorization = {
-    kind: "done" as const,
-    runId: result.runId,
-    workflowId: result.workflowId,
-    attempt: result.attempt,
-    descriptorVersion: result.descriptorVersion,
-    contractFingerprint: result.contractFingerprint,
-    expectedVersion: run.version,
-    claim: CLAIM,
-    authorizedAt: LATERImport2,
-    resultDigest: result.resultDigest,
-  };
-  return { result, authorization, factoryAuthorization: built.authorization };
-}
+
+
+
 
 describe("atomic failure terminal authority", () => {
 afterEach(cleanup);
@@ -340,28 +266,10 @@ const databases: AuthorityDatabase[] = [];
 const LATER = "2026-07-31T17:05:00.000Z";
 const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
-function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-runs-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    CLOCK,
-  );
-  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  for (const poolIndex of [1, 2]) database.withAuthorityTransaction(repositories => {
-    admitDirectWorker(repositories, { commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
-      expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0, processId: WORKER_START_REQUEST.processId,
-      processAcquisitionId: randomUUID(), authorityPath: join(root, "state.sqlite"), processLockRoot: join(root, "locks"), now: NOW }, randomUUID());
-  });
-  databases.push(database);
-  return database;
-}
+const { openDatabase, claimOne } =
+  createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
 
-function claimOne(database: AuthorityDatabase, now = NOW) {
-  const outcome = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now });
-  if (outcome.state !== "claimed") throw new Error(`expected a claim, got ${outcome.state}`);
-  return outcome.run;
-}
+
 
 describe("RunRecord", () => {
 afterEach(() => {

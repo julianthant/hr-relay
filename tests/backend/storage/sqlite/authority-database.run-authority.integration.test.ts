@@ -1,10 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { createRunClaimFixtures } from "../../../support/helpers/backend/run-claim-fixtures.js";
+
+
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
+
+
 import { afterEach,describe,it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import {
@@ -33,22 +34,8 @@ const databases: AuthorityDatabase[] = [];
 const LATER = "2026-07-31T17:05:00.000Z";
 const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
-function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-runs-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    CLOCK,
-  );
-  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  for (const poolIndex of [1, 2]) database.withAuthorityTransaction(repositories => {
-    admitDirectWorker(repositories, { commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
-      expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0, processId: WORKER_START_REQUEST.processId,
-      processAcquisitionId: randomUUID(), authorityPath: join(root, "state.sqlite"), processLockRoot: join(root, "locks"), now: NOW }, randomUUID());
-  });
-  databases.push(database);
-  return database;
-}
+const { openDatabase, claimOne } =
+  createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
 
 /** A second queued run for the same workflow, distinguishable by id and priority. */
 function siblingRun(overrides: Readonly<Record<string, unknown>>, envelope: Readonly<Record<string, unknown>> = {}) {
@@ -59,11 +46,7 @@ function siblingRun(overrides: Readonly<Record<string, unknown>>, envelope: Read
   };
 }
 
-function claimOne(database: AuthorityDatabase, now = NOW) {
-  const outcome = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now });
-  if (outcome.state !== "claimed") throw new Error(`expected a claim, got ${outcome.state}`);
-  return outcome.run;
-}
+
 
 afterEach(() => {
   while (databases.length > 0) databases.pop()?.close();
