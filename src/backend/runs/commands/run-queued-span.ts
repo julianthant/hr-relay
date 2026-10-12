@@ -1,3 +1,5 @@
+import { protectedSubjectDisplay, ProtectedSubjectDisplayRefusedError } from "../start/protected-input.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import type { ActorId } from "../../../rules/identity/ids.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { SpanEventWire } from "../../../models/events/types.js";
@@ -13,6 +15,8 @@ export function runQueuedSpanEvent(input: Readonly<{
   subtitle?: string;
 }>): RunQueuedSpanEvent {
   const { run } = input;
+  const display = protectedSubjectDisplay(retainedRunProtectedBindings(run), () => input);
+  if (input.title !== display.title || input.subtitle !== display.subtitle) throw new ProtectedSubjectDisplayRefusedError();
   return {
     t: "run.queued",
     kind: "run",
