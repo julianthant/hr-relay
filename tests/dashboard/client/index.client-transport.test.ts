@@ -1,3 +1,4 @@
+import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -192,19 +193,7 @@ describe("typed queries and error normalization", () => {
       baseUrl: "http://bff.test",
       fetchImpl: (input) => {
         requested = String(input);
-        return Promise.resolve(jsonResponse(200, {
-          wireVersion: 1,
-          generatedAt: "2026-08-28T16:00:00.000Z",
-          snapshot: {
-            authorityGeneration: 19,
-            order: "match-strength/enqueued-desc/run-id-asc:v2",
-            token: "test-snapshot-token",
-          },
-          totalMatches: 0,
-          coverage:{matched:0,subjectUnavailable:0,actorUnavailable:0,candidateLimit:10000},
-          results: [],
-          nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
-        }));
+        return Promise.resolve(jsonResponse(200, zeroMatchSearchPage()));
       },
     });
 
@@ -224,19 +213,7 @@ describe("typed queries and error normalization", () => {
   });
 
   it("rejects malformed and unknown cross-date search response bodies", async () => {
-    const validPage = {
-      wireVersion: 1,
-      generatedAt: "2026-08-28T16:00:00.000Z",
-      snapshot: {
-        authorityGeneration: 19,
-        order: "match-strength/enqueued-desc/run-id-asc:v2",
-        token: "test-snapshot-token",
-      },
-      totalMatches: 0,
-          coverage:{matched:0,subjectUnavailable:0,actorUnavailable:0,candidateLimit:10000},
-      results: [],
-      nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
-    };
+    const validPage = zeroMatchSearchPage();
     const bodies = [
       { wireVersion: 1 },
       { ...validPage, unknownAuthorityFact: true },
