@@ -6,7 +6,7 @@ import { hostConfigFacts } from "../../src/models/config/host-display.js";
 /** It never runs a workflow node and never commits a UCPath transaction. */
 import { randomUUID } from "node:crypto";
 import { lstatSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
 import { composeDuoCeremonyGateFactory } from "../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { WorkerSessionManager } from "../../src/backend/runtime/workers/worker-sessions.js";
@@ -17,7 +17,6 @@ import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment } from 
 import {
   BrowserSystemIdSchema,
   FingerprintSchema,
-  WorkerIdSchema,
   WorkflowIdSchema,
 } from "../../src/rules/identity/ids.js";
 import {
@@ -32,6 +31,9 @@ import { probePrimaryDisplay } from "../../src/backend/app/host/primary-display.
 import type { AuthenticatedApplicationEvidence } from "../../src/backend/systems/browser-shared/login-contract.js";
 import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock, readRuntimeProcessLock } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
+import type { WorkerSlotRecord } from "../../src/models/run/worker-slot.js";
+import type { DuoCeremonyGateHandle } from "../../src/backend/runtime/gates/duo-ceremony-gate.js";
+import type { Clock } from "../../src/rules/time/clock.js";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 
 const SUPPORTED = new Set(["ucpath", "crm"]);
@@ -59,6 +61,87 @@ function hostOf(url: string): string {
   }
 }
 
+export function smokeErrorDiagnostic(error: unknown): string {
+  const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+  return error instanceof AggregateError
+    ? [detail, ...error.errors.map((nested: unknown) => smokeErrorDiagnostic(nested))].join("\n")
+    : detail;
+}
+
+export class SmokeSessionClosureError extends AggregateError {
+  constructor(errors: readonly unknown[]) {
+    super(errors, "live-smoke-session-closure-unproved");
+    this.name = "SmokeSessionClosureError";
+  }
+}
+
+export async function closeSmokeSessions(
+  sessions: Pick<WorkerSessionManager, "closeAll">,
+  deleteProfile: () => void,
+  operationErrors: readonly unknown[],
+): Promise<void> {
+  try {
+    await sessions.closeAll("worker-stop");
+    deleteProfile();
+  } catch (error) {
+    throw new SmokeSessionClosureError([...operationErrors, error]);
+  }
+  if (operationErrors.length === 1) throw operationErrors[0];
+  if (operationErrors.length > 1) throw new AggregateError(operationErrors, "live-smoke-session-cleanup-failed");
+}
+
+export async function withSmokeWorker(
+  database: AuthorityDatabase,
+  operation: (slot: WorkerSlotRecord, gates: Set<DuoCeremonyGateHandle>) => Promise<void>,
+  clock: Clock = systemClock,
+): Promise<void> {
+  const slot = database.withAuthorityTransaction(repositories => {
+    const workflow = WorkflowIdSchema.parse("person-lookup");
+    const active = repositories.workerSlots.list(workflow).filter(candidate => candidate.retiredAt === null);
+    const poolIndex = [1, 2, 3].find(index => !active.some(candidate => candidate.poolIndex === index));
+    if (poolIndex === undefined) throw new Error("live-smoke-worker-pool-capacity-exceeded");
+    const now = clock.now().toISOString();
+    if (repositories.workerPools.get(workflow) === undefined) {
+      const planned = repositories.workerPools.plan({ workflow, expectedVersion: 0,
+        desiredWorkers: 0, requestedBy: "local-operator", now });
+      if (planned.state !== "applied") throw new Error("live-smoke-worker-pool-admission-conflict");
+    }
+    return repositories.workerSlots.allocate({ workflow, poolIndex, commandId: null, now });
+  });
+  const gates = new Set<DuoCeremonyGateHandle>();
+  const errors: unknown[] = [];
+  try {
+    await operation(slot, gates);
+  } catch (error) {
+    errors.push(error);
+  }
+  let released = true;
+  for (const gate of gates) {
+    try { gate.dispose(errors[0]); } catch (error) { released = false; errors.push(error); }
+  }
+  if (released && !(errors[0] instanceof SmokeSessionClosureError)) {
+    try {
+      database.withAuthorityTransaction(repositories => {
+        const request = { workerId: slot.workerId, commandId: randomUUID(),
+          expectedRevision: slot.membershipRevision, now: clock.now().toISOString() };
+        const command = { commandId: request.commandId, family: "worker-browser", type: "stop-worker",
+          requestedAt: request.now, requestedBy: "local-operator", source: "live-smoke",
+          reason: "Retire the worker slot owned by this browser login check",
+          target: { workerId: slot.workerId, expectedVersion: slot.membershipRevision } };
+        repositories.commands.insert(command);
+        const retired = repositories.workerSlots.retire(request);
+        const target = { family: "worker-browser", workerId: slot.workerId };
+        repositories.commandAudits.insert({ auditId: randomUUID(), request: command,
+          result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
+          versionChanges: [{ target, before: slot.membershipRevision, after: retired.membershipRevision }],
+          affectedDependencyIds: [], completedAt: request.now });
+      });
+    } catch (error) { errors.push(error); }
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, "live-smoke-operation-or-cleanup-failed");
+}
+
 async function main(): Promise<void> {
   const requested = process.argv[2];
   if (requested === undefined || !SUPPORTED.has(requested)) {
@@ -67,10 +150,7 @@ async function main(): Promise<void> {
   const system = BrowserSystemIdSchema.parse(requested);
   if (process.argv.includes("--reuse")) throw new Error("live-smoke-profile-reuse-unavailable: developer smoke profiles require a fresh owned launch");
   const headed = process.argv.includes("--headed");
-  // `--worker <id>` lets two smokes run side by side on distinct profiles
-  // (ref execution-and-sessions §10.8).
-  const workerFlag = process.argv.indexOf("--worker");
-  const workerId = WorkerIdSchema.parse(workerFlag === -1 ? "live-smoke-worker-1" : process.argv[workerFlag + 1]);
+  if (process.argv.includes("--worker")) throw new Error("live-smoke-worker-selection-unavailable: the check allocates its own worker slot");
   const workspace = fileURLToPath(new URL("../..", import.meta.url));
   const admission = acquireEntrypointAdmission(workspace, "shared");
   try {
@@ -90,6 +170,8 @@ async function main(): Promise<void> {
     systemClock,
   );
   try {
+  await withSmokeWorker(database, async (slot, gates) => {
+  const { workerId, ordinal } = slot;
   const hostFacts = hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay));
   const record = database.withAuthorityTransaction((repositories) => readSettings(repositories));
   const config = resolveConfigWithProvenance(record.settings, hostFacts, systemClock).config;
@@ -103,7 +185,7 @@ async function main(): Promise<void> {
 
   if (process.argv.includes("--cold")) {
     const profileDirectory = workerProfileDirectory({
-      profileRoot: smokeProfileRoot, slotOrdinal: 1, system,
+      profileRoot: smokeProfileRoot, slotOrdinal: ordinal, system,
     });
     deleteOwnedBrowserProfile(smokeProfileRoot, profileDirectory);
     write("[smoke] cold start: fresh owned profile selected");
@@ -119,11 +201,11 @@ async function main(): Promise<void> {
     clock: systemClock,
     scheduler: realScheduler,
     newSessionId: () => randomUUID(),
-    slotOrdinal: requestedWorker => { if (requestedWorker !== workerId) throw new Error("live-smoke-profile-owner-mismatch"); return 1; },
+    slotOrdinal: requestedWorker => { if (requestedWorker !== workerId) throw new Error("live-smoke-profile-owner-mismatch"); return ordinal; },
     admitProfile: profile => {
       const lock = readRuntimeProcessLock(processLockRoot, "live-smoke");
       if (lock?.pid !== process.pid || lock.acquisitionId !== processLock.acquisitionId
-        || profile.workerId !== workerId || profile.profileDirectory !== workerProfileDirectory({ profileRoot: smokeProfileRoot, slotOrdinal: 1, system })
+        || profile.workerId !== workerId || profile.profileDirectory !== workerProfileDirectory({ profileRoot: smokeProfileRoot, slotOrdinal: ordinal, system })
         || lstatSync(profile.profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new Error("live-smoke-profile-custody-unavailable");
       return Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false }));
     },
@@ -143,7 +225,7 @@ async function main(): Promise<void> {
 
   // Lock before the database opens and release after close, so `cli storage restore` sees the live owner;
   // differently-named smokes share the authority database, so one smoke brings a database that needs migrating to the current schema first.
-  const duoCeremony = composeDuoCeremonyGateFactory({
+  const duoFactory = composeDuoCeremonyGateFactory({
     config, leases: database.authority.duoCeremonyLeases, clock: systemClock, scheduler: realScheduler,
   });
 
@@ -157,14 +239,19 @@ async function main(): Promise<void> {
     scheduler: realScheduler,
     acquireDeadlineMs: config.timeouts.sessionAcquireMs,
     defaultBrowserMode: headed ? "headed" : "headless",
-    duoCeremony,
+    duoCeremony: { openGate: input => {
+      const gate = duoFactory.openGate(input);
+      gates.add(gate);
+      return gate;
+    } },
     onEvent: (event) => {
       const detail = event.type === "browser-session:start" ? ` login=${event.login}` : "";
       write(`[session] ${event.type} ${event.system} ${event.sessionId}${detail} (+${elapsed(started)})`);
     },
   });
-  sessions.bindRunConfigFingerprint(configFingerprint);
+  const sessionErrors: unknown[] = [];
   try {
+  sessions.bindRunConfigFingerprint(configFingerprint);
   await sessions.withDriver(
     { system, access: "read", session: "reuse-worker" },
     instance,
@@ -182,11 +269,13 @@ async function main(): Promise<void> {
   }
   write(`[smoke] hop chain (hosts, in order): ${[...new Set(hops.map(hostOf))].join(" → ")}`);
   write(`[smoke] ${system} login + neutral reset verified in ${elapsed(started)}`);
-  } finally {
-    await sessions.closeAll("worker-stop");
-    deleteOwnedBrowserProfile(smokeProfileRoot, join(smokeProfileRoot, "w1"));
-    write("[smoke] every session closed with proof");
+  } catch (error) {
+    sessionErrors.push(error);
   }
+  await closeSmokeSessions(sessions,
+    () => { deleteOwnedBrowserProfile(smokeProfileRoot, join(smokeProfileRoot, `w${ordinal}`)); }, sessionErrors);
+  write("[smoke] every session closed with proof");
+  });
   } finally {
     database.close();
     processLock.release();
@@ -196,7 +285,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error: unknown) => {
   process.exitCode = 1;
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.stderr.write(`${smokeErrorDiagnostic(error)}\n`);
 });
