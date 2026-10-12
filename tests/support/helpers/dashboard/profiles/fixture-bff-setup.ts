@@ -1,14 +1,13 @@
 import { registerFixturePreflightRoutes } from "../../../../parity/helpers/fixture-preflight-routes.js";
 import { wireError } from "../../../fixtures/dashboard/fixture-wire-error.js";
 import { Hono } from "hono";
-import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { extname, join, normalize } from "node:path";
 import { z } from "zod";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import type { FixtureBffOptions, FixtureDashboardProfile } from "../../../fixtures/dashboard/fixture-profile.js";
 import { type ParityBundleProof } from "../served-fixtures/bundle.js";
+import { createStaticAssetFixture } from "../static-assets.js";
 import type * as DiagnosticJpegFixtureTypes from "../../../fixtures/dashboard/diagnostic-jpeg-fixture.js";
 import type * as FixtureDayTypes from "../../../fixtures/dashboard/fixture-day.js";
 import type * as FixtureDiagnosticTypes from "../../../fixtures/dashboard/fixture-diagnostic.js";
@@ -150,34 +149,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
     return { app };
   }
 
-  const CONTENT_TYPES: Readonly<Record<string, string>> = {
-    ".html": "text/html; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".svg": "image/svg+xml",
-    ".woff2": "font/woff2",
-    ".png": "image/png",
-    ".map": "application/json; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-  };
-
-  async function serveStatic(distDir: string, pathname: string, res: ServerResponse): Promise<void> {
-    const relative = pathname === "/" ? "/index.html" : pathname;
-    const target = normalize(join(distDir, relative));
-    if (!target.startsWith(normalize(distDir))) {
-      res.writeHead(404).end("not found");
-      return;
-    }
-    try {
-      const body = await readFile(target);
-      const type = CONTENT_TYPES[extname(target)];
-      res.writeHead(200, type === undefined ? {} : { "content-type": type }).end(body);
-    } catch {
-      // A missing asset is a 404, never a silent empty 200 — the parity spec
-      // fails loudly on a blank page rather than capturing one.
-      res.writeHead(404).end("not found");
-    }
-  }
+  const serveStatic = createStaticAssetFixture();
 
   function serveSse(
     res: ServerResponse,
