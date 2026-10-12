@@ -182,5 +182,5 @@ export function createWorkerSupervisionTestWorld() {
       directive: stopDirective(harness.clock.now().toISOString()),
     };
   }
-  return { WORKFLOW, NOW, member, DIRECTIVE_WRITE_VERSIONS, openHarness, stopDirective, stopRequest };
+  return { WORKFLOW, NOW, member, DIRECTIVE_WRITE_VERSIONS, openHarness, stopDirective, stopRequest, stopReceipt, stopPolicy };
 }
