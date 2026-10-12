@@ -1,29 +1,12 @@
+import { terminalDone, depsOf } from "../../support/helpers/backend/note-scope-fixtures.js";
 
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
-import {
-buildRunSection,
-type RunDetailQueryDeps
-} from "../../../src/backend/runs/queries/run-detail.js";
+import { buildRunSection } from "../../../src/backend/runs/queries/run-detail.js";
 import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
-import {
-assertNoteWithinRunScope,
-runRecordNoteScopeInstants,
-runNotePartitionScope as sharedNotePartitionScope,
-} from "../../../src/models/run/note-scope.js";
+import { assertNoteWithinRunScope, runRecordNoteScopeInstants, runNotePartitionScope as sharedNotePartitionScope } from "../../../src/models/run/note-scope.js";
 import { type RunRecord } from "../../../src/models/run/record.js";
-import {
-AT,
-claimEventOf,
-instantOffsetOf,
-makeWorld,
-queuedEventOf,
-runEndedEventOf,
-runRecordOf,
-traceOf,
-uuidOf,
-type DashboardWorld
-} from "../../support/helpers/backend/dashboard-harness.js";
+import { AT, instantOffsetOf, makeWorld, traceOf, uuidOf, type DashboardWorld } from "../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
@@ -36,30 +19,12 @@ afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
 });
 
-function terminalDone(w: DashboardWorld, seed: number, over: Record<string, unknown> = {}): void {
-  queuedEventOf(w, { seed, ...over });
-  claimEventOf(w, seed);
-  runEndedEventOf(w, seed, "done");
-  w.authority.put(runRecordOf({
-    seed,
-    ...over,
-    lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 60_000) },
-    claimGeneration: 1,
-    version: 3,
-  }));
-}
+
 
 describe("a logs GET opens only its run partitions", () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
-  function depsOf(w: DashboardWorld): RunDetailQueryDeps {
-    return { timeline: w.timeline, runReader: w.runReader,
-      stateRoot: w.stateRoot,
-      projection: w.projection,
-      authority: w.authority,
-      descriptors: { resolve: () => personLookupDescriptor },
-    };
-  }
+
 
 
   function emitNotes(w: DashboardWorld, seed: number, count: number, from = 0): void {
