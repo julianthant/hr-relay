@@ -69,6 +69,7 @@ export const ContainmentSchema = z.enum(["root", "member", "linked"]);
 /** A run this row DELEGATED TO and is waiting on; the chip needs where to jump, what to call it, and what it is doing, so the wire carries all three. */
 const LinkedRunWireSchema = z.strictObject({
   runId: RunIdSchema,
+  partitionDay: LocalDateSchema,
   workflowId: WorkflowIdSchema,
   label: z.string().min(1),
   panelKind: PanelKindSchema,

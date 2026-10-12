@@ -101,6 +101,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.equal(group.memberRollup.total, 2);
     assert.deepEqual(group.linkedRuns, [{
       runId: uuidOf(4),
+      partitionDay: DAY,
       workflowId: "person-lookup",
       label: personLookupDescriptor.label,
       panelKind: "run",
