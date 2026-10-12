@@ -1,4 +1,4 @@
-import { createIdentityCeremonyFixtures } from "../../../support/helpers/dashboard/identity-ceremony-fixtures.js";
+import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
@@ -242,16 +242,7 @@ const { ONE_CLICK, CHOOSE, TYPE_EID, gateDetail } =
 
 
 
-const APPROVE: CommandAction = {
-  key: "resolve-gate-approved",
-  label: "Approve",
-  intent: "primary",
-  placement: ["banner"],
-  kind: "command",
-  command: "resolve-gate",
-  expectedVersion: 3,
-  resolution: "approved",
-};
+const APPROVE: CommandAction = identityApprovalAction("Approve");
 const REJECT: CommandAction = { ...APPROVE, key: "resolve-gate-rejected", resolution: "rejected" };
 
 function available(detail: IdentityGateDetail) {

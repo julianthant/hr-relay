@@ -1,4 +1,4 @@
-import { createIdentityCeremonyFixtures } from "../../../../support/helpers/dashboard/identity-ceremony-fixtures.js";
+import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
@@ -50,16 +50,7 @@ const { ONE_CLICK, CHOOSE, TYPE_EID, gateDetail } =
 
 
 
-const APPROVE: CommandAction = {
-  key: "resolve-gate-approved",
-  label: "Approve",
-  intent: "primary",
-  placement: ["banner"],
-  kind: "command",
-  command: "resolve-gate",
-  expectedVersion: 3,
-  resolution: "approved",
-};
+const APPROVE: CommandAction = identityApprovalAction("Approve");
 
 function available(detail: IdentityGateDetail) {
   return { state: "available" as const, value: detail };
