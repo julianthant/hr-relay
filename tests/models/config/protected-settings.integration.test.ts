@@ -1,38 +1,41 @@
+import { createCredentialDoctorWriter } from "../../support/helpers/credential-doctor-fixtures.js";
+import { createCredentialDoctorFixtures } from "../../support/helpers/credential-doctor-fixtures.js";
+import { createCredentialPersistenceFixtures } from "../../support/helpers/credential-persistence-fixtures.js";
 import { default as assert } from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { chmodSync } from "node:fs";
-import { lstatSync } from "node:fs";
-import { mkdirSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
+
+
+
+
+
 import { readFileSync } from "node:fs";
-import { readdirSync } from "node:fs";
-import { realpathSync } from "node:fs";
+
+
 import { rmSync } from "node:fs";
 import { writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+
+
+
 import { isDeepStrictEqual } from "node:util";
 import { afterEach } from "vitest";
 import { describe } from "vitest";
 import { it } from "vitest";
 import { vi } from "vitest";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+
+
+
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/models/config/protected-settings.js";
+
 import { PROTECTED_SETTINGS_SET_MARKER } from "../../../src/models/config/protected-settings.js";
 import { ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { ProtectedSettingsNameSchema } from "../../../src/models/config/protected-settings.js";
 import { markProtectedSettingsPatch } from "../../../src/models/config/protected-settings.js";
 import type { ProtectedSettingsApplyInput } from "../../../src/models/config/protected-settings.js";
-import type { ProtectedSettingsPatch } from "../../../src/models/config/protected-settings.js";
+
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { createCredentialStore as createCredentialStore_m2 } from "../../support/helpers/synthetic-storage-admission.js";
-import type { CredentialStoreHooks } from "../../support/helpers/synthetic-storage-admission.js";
+
 
 {
 
@@ -78,54 +81,11 @@ const _afterEachFixture0 = () => {
   cleanups.length = 0;
 };
 
-function fixture() {
-  const workspace = mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-doctor-"));
-  cleanups.push(() => rmSync(workspace, { recursive: true, force: true }));
-  const admission = acquireEntrypointAdmission(workspace,"exclusive");
-  cleanups.push(() => admission.release());
-  const root = admission.stateRoot;
-  const authorityPath = join(root,"state.db");
-  const database = AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"credential-doctor-fixture"});
-  cleanups.push(() => database.close());
-  const credentialDirectory = join(root,"credentials");
-  const credentialPath = join(credentialDirectory,"protected.json");
-  const credentialStore = createCredentialStore({admission,stateRoot:root});
-  const options = {authorityPath,stateRoot:root,stateRootTrustAnchor:workspace,backupDirectory:join(root,"backups","authority"),busyTimeoutMs:100};
-  return {root,workspace,admission,database,credentialDirectory,credentialPath,credentialStore,options};
-}
+const { fixture, snapshot } = createCredentialDoctorFixtures(cleanups);
 
-function writeCredentials(f: ReturnType<typeof fixture>, entries: ProtectedSettingsPatch) {
-  const outcome = f.credentialStore.apply(ProtectedSettingsApplyInputSchema.parse({
-    commandId: COMMAND_ID,
-    commandFingerprint: "1".repeat(64),
-    expectedRevision: 1,
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    writeId: WRITE_ID,
-    entries,
-    updatedAt: "2026-09-06T20:00:00.000Z",
-  }));
-  assert.equal(outcome.state, "applied");
-  if (outcome.state !== "applied") throw new Error("credential fixture failed to apply");
-  return outcome.record;
-}
+const writeCredentials = createCredentialDoctorWriter(COMMAND_ID, WRITE_ID);
 
-function snapshot(root: string): unknown {
-  return readdirSync(root).sort().map((name) => {
-    const path = join(root, name);
-    const stat = lstatSync(path);
-    const bytes = stat.isDirectory() ? undefined : readFileSync(path);
-    return {
-      name,
-      mode: stat.mode,
-      uid: stat.uid,
-      ino: stat.ino,
-      size: stat.size,
-      mtime: stat.mtimeMs,
-      ctime: stat.ctimeMs,
-      content: stat.isDirectory() ? snapshot(path) : bytes?.toString("base64"),
-    };
-  });
-}
+
 
 async function unchanged(f: ReturnType<typeof fixture>) {
   const meta = f.database.getMeta();
@@ -193,82 +153,13 @@ const _afterEachFixture0 = () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
-function fixture(hooks?: CredentialStoreHooks) {
-  const stateRoot = mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-store-"));
-  roots.push(stateRoot);
-  const tracker = join(stateRoot, ".tracker");
-  mkdirSync(tracker, { mode: 0o755 });
-  chmodSync(tracker, 0o755);
-  const store = createCredentialStore_m2({ stateRoot: tracker, hooks });
-  return {
-    stateRoot,
-    tracker,
-    directory: join(tracker, "credentials"),
-    path: join(tracker, "credentials", "protected.json"),
-    lockPath: join(tracker, "credentials", ".protected.lock"),
-    store,
-  };
-}
+const { fixture, crashAfterCredentialRename, crashBeforeCredentialRename, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
-function crashAfterCredentialRename(stateRoot: string, input: ProtectedSettingsApplyInput) {
-  const moduleUrl = pathToFileURL(join(
-    process.cwd(),
-    "tests",
-    "support",
-    "helpers",
-    "synthetic-storage-admission.ts",
-  )).href;
-  return spawnSync(process.execPath, [
-    "--import",
-    "tsx",
-    "--input-type=module",
-    "--eval",
-    `import { createCredentialStore } from ${JSON.stringify(moduleUrl)};
-     createCredentialStore({
-       stateRoot: ${JSON.stringify(stateRoot)},
-       hooks: { afterRename: () => process.kill(process.pid, "SIGKILL") },
-     }).apply(${JSON.stringify(input)});`,
-  ], { encoding: "utf8" });
-}
 
-function crashBeforeCredentialRename(stateRoot: string, input: ProtectedSettingsApplyInput) {
-  const moduleUrl = pathToFileURL(join(
-    process.cwd(),
-    "tests",
-    "support",
-    "helpers",
-    "synthetic-storage-admission.ts",
-  )).href;
-  return spawnSync(process.execPath, [
-    "--import",
-    "tsx",
-    "--input-type=module",
-    "--eval",
-    `import { createCredentialStore } from ${JSON.stringify(moduleUrl)};
-     createCredentialStore({
-       stateRoot: ${JSON.stringify(stateRoot)},
-       hooks: { beforeRename: () => process.kill(process.pid, "SIGKILL") },
-     }).apply(${JSON.stringify(input)});`,
-  ], { encoding: "utf8" });
-}
 
-function request(input: {
-  readonly commandId: string;
-  readonly writeId: string;
-  readonly expectedRevision: number;
-  readonly entries: ProtectedSettingsPatch;
-  readonly updatedAt?: string;
-}): ProtectedSettingsApplyInput {
-  return ProtectedSettingsApplyInputSchema.parse({
-    commandId: input.commandId,
-    commandFingerprint: input.commandId === COMMAND_1 ? "1".repeat(64) : "2".repeat(64),
-    expectedRevision: input.expectedRevision,
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    writeId: input.writeId,
-    entries: input.entries,
-    updatedAt: input.updatedAt ?? NOW_1,
-  });
-}
+
+
+
 
 function applied(
   store: ReturnType<typeof createCredentialStore_m2>,
