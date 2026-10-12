@@ -1,5 +1,3 @@
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/components/dev/rebuild-demo/ds/primitives-layout.tsx */
 import { Alert as HeroAlert, Card as HeroCard, EmptyState as HeroEmptyState, Surface as HeroSurface } from "@heroui/react";
 import {
   forwardRef,

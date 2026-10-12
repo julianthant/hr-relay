@@ -1,9 +1,6 @@
 import { formatCalendarDate, formatInstantDate } from "../../../lib/date-format.js";
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/components/dev/rebuild-demo/demo-wire.ts (`fmtClock` */
 
-/** A served ISO instant as the operator's wall clock (`3:07 PM`).
- * DEVIATION from the demo's implementation, on purpose: the demo regex-sliced */
+/** A served ISO instant as the operator's wall clock (`3:07 PM`). */
 export function fmtClock(iso: string): string {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) throw new Error(`fmtClock: not an ISO instant: ${iso}`);

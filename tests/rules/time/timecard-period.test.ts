@@ -8,7 +8,6 @@ didPeriodLabelSwitch,
 formatTimecardDate,
 resolveCurrentVisibleTimecardRange,
 resolvePreviousVisibleTimecardRange,
-timecardCheckWindows,
 } from "../../../src/rules/time/timecard-period.js";
 
 function localDate(year: number, month: number, day: number): Date {
@@ -183,31 +182,5 @@ describe("didPeriodLabelSwitch", () => {
   it("asserts loudly on every unverifiable case", () => {
     assert.throws(() => assertPeriodLabelSwitched("", "x"), /switch is unverified/);
     assert.doesNotThrow(() => assertPeriodLabelSwitched("before", "after"));
-  });
-})
-
-describe("timecardCheckWindows", () => {
-  it("derives both windows from the Clock, never from a hidden default", () => {
-    const clock = manualClock(localDate(2026, 3, 20));
-    const windows = timecardCheckWindows(clock);
-    assert.deepEqual(windows.current, range(2026, 1, 19, 2026, 3, 27));
-    assert.deepEqual(windows.previous, range(2025, 11, 20, 2026, 3, 27));
-  });
-
-  it("keeps each window narrow enough to resolve any month/day to one year", () => {
-    const clock = manualClock(localDate(2026, 3, 20));
-    const { previous } = timecardCheckWindows(clock);
-    assert.equal(formatTimecardDate(12, 30, previous), "12/30/2025");
-  });
-
-  it("lands every bound on local midnight across a DST transition", () => {
-    // 2026-03-20 minus sixty calendar days crosses spring-forward; milliseconds would land on the preceding day.
-    const windows = timecardCheckWindows(manualClock(localDate(2026, 3, 20)));
-    for (const bound of [
-      windows.current.start, windows.current.end, windows.previous.start, windows.previous.end,
-    ]) {
-      assert.equal(bound.getHours(), 0, bound.toString());
-      assert.equal(bound.getMinutes(), 0, bound.toString());
-    }
   });
 })

@@ -236,18 +236,3 @@ export function assertPeriodLabelSwitched(
     `[timecard] pay-period switch is unverified - label went from ${JSON.stringify(before)} to ${JSON.stringify(after)}`,
   );
 }
-
-/** Conservative year-resolution windows for the two timecard reads, derived from the Clock's now. */
-export function timecardCheckWindows(
-  clock: Clock,
-): Readonly<{ current: TimecardDateRange; previous: TimecardDateRange }> {
-  const now = clock.now();
-  assertValidDate(now, "timecard window reference");
-  const shiftDays = (days: number): Date =>
-    new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
-  const end = shiftDays(7);
-  return {
-    current: { start: shiftDays(-60), end },
-    previous: { start: shiftDays(-120), end },
-  };
-}

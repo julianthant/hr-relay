@@ -97,7 +97,7 @@ export function assertNoteWithinRunScope(
     throw new Error(
       `refusing to file a note for run ${note.runId} at ${note.at.toISOString()}: it would land in the `
       + `${scope.workflow} partition for ${day}, outside the run's own notes scope ${scope.fromDate}..${scope.toDate}, `
-      + "so the run's logs tab could never serve it (ref dashboard-surfaces §2.1)",
+      + "so the run's logs tab could never serve it (ref dashboard-surfaces)",
     );
   }
 }

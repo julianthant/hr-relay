@@ -347,7 +347,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "bf77881226887e245bbf6759666f9a4a8c1608aaab4d6be6bfe020af058e1d93",
+      "fingerprint": "7be32b09f0cf10f583db2455225863a3983985dd7b5a20af00c6709d35dd87d6",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -763,7 +763,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",
@@ -857,7 +857,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "f48cfd59869e0e212e3621c1d38f332ce0a1e2b8aaacfc41646fab927012047e",
+      "fingerprint": "4dcec3496a12f2d533f91d29f16c5120300185d6adaa08bd3467f27779475064",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1273,7 +1273,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",
@@ -1371,7 +1371,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "281a181d68e85e640e8d19cdb99c91c03efc0b76c683f475d42ac01abacbddbe",
+      "fingerprint": "74a1bf7d810bb9f643d948aca4ecd0d1c4a02c8117bf1d5cb9fd1ba10e49ed28",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1787,7 +1787,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",
@@ -1885,7 +1885,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "1aa3024a81433bb2ba5dde0bc372a88d2adc873ddf57841bf29468ec4d0f24a8",
+      "fingerprint": "1221b1f622991595580fda0e296724f16f5961ec2689a98c50afbda464751aa7",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2301,7 +2301,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",
@@ -2399,7 +2399,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "b83fa6a83919f7625454c22198fffc995e0aecb8d40e8917a4ad8f9f01820551",
+      "fingerprint": "fd473a94c12c9fc1a832896b294b4d18353956fb22fda161832a265018cc39b2",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2815,7 +2815,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",
@@ -2913,7 +2913,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "ebbd4fd1704d11664ddc2ddcd94ff229fd83010c4f6938ab5f291f683c6c8fae",
+      "fingerprint": "dfbc53fd03fff6e794eff906942330d029cea22e9c0e4c18db8dbb78cf20f0ce",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -3329,7 +3329,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",
@@ -6361,7 +6361,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "559bf5e2d90783a476ed2264b1049dff98e9ea3144b89305bf17e35c9e8f62b2",
+      "fingerprint": "97fd46ef6d81a466eebe25078772155573073ee52ed1fca66115e0b331887ade",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6597,7 +6597,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",
@@ -6667,7 +6667,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "088694ae7ecdd7d2c18297bbd9cb5e6c2de224e0a5a266ed2d1a77a7e0248dd8",
+      "fingerprint": "8109fc5ecc89eba5bdb7b89ea5481c760b92a367c78c4c085b690db932207af8",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6903,7 +6903,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",
@@ -6973,7 +6973,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/search-employee"
     },
     {
-      "fingerprint": "bf34cf334e744d52ce8f219b889eae21d7681380994563379ac09b6ce58336d1",
+      "fingerprint": "e9e798042c2b819d11033db35181470cece0e389554b183f3aae6dad00f63459",
       "sources": [
         {
           "path": "src/backend/processing/normalization/tasks/read-contact-advice.ts",
@@ -7165,7 +7165,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/normalization/street-safety.ts",
-          "sha256": "870bf3a50850803ece6deaefaf1992952719d52967145a41915066b17952b8df"
+          "sha256": "7d1d8c54fa2395f77a573232624ddc2ef791ca6599bd71822d3c42616d7e63ff"
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
@@ -13687,7 +13687,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-termination-type"
     },
     {
-      "fingerprint": "6d9a5db8912592d5c5ec8e461c2230d6d9bc13e1c025de86bc90492954f7ce9d",
+      "fingerprint": "825cf255def5c6e6f9832e3624f96c0cfdbd3a35ef75b78f9f43177250e3d870",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -13879,7 +13879,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/time/timecard-period.ts",
-          "sha256": "d88a1e3f0540ba754f51ed445c7bbe392bf6a3864753d4742dbfa73905ee55da"
+          "sha256": "31453c9ec262fe8b0b62d87fd0901ed6659478c4734d2199275a408e852457b7"
         },
         {
           "path": "src/rules/validation/absence.ts",

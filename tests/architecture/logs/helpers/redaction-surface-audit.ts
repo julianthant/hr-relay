@@ -286,7 +286,7 @@ export const REDACTED_NAME_WAIVERS: readonly RedactedNameWaiver[] = Object.freez
         "D183 finding: `ContextSectionSchema`/`ContextDataSectionSchema` name their scalar "
         + "`valueRedacted`, and src/backend/runs/queries/run-detail.ts serves the RAW recorded "
         + "value — the descriptor-declared detail patch, the stored checkpoint scalar, or a count. "
-        + "That is ref dashboard-surfaces §1.1(c)'s Data rail working as designed: the operator's own loopback "
+        + "That is ref dashboard-surfaces's Data rail working as designed: the operator's own loopback "
         + "surface is entitled to the values their run touched, and a digest there would answer "
         + "nothing. The NAME is the defect, not the value, and renaming a served wire field is a "
         + "ref dashboard-surfaces contract change with its own decision — recorded here so the next reader does "

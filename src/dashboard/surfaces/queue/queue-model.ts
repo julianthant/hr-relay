@@ -261,7 +261,10 @@ export function useAttentionAnnounce(status: ProposedStatus): boolean {
     // First sight of a row is not a transition. Mounting into an attention
     // status is how EVERY row on a busy panel would announce itself on paint.
     if (was === null || was === status) return;
-    if (!attention) return;
+    if (!attention) {
+      setAnnouncing(false);
+      return;
+    }
     setAnnouncing(true);
     const timer = window.setTimeout(() => setAnnouncing(false), ATTENTION_ANNOUNCE_MS);
     return () => window.clearTimeout(timer);

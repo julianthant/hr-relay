@@ -1,5 +1,3 @@
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/lib/utils.ts (the `cn` class combinator only — the legacy */
 import { type ClassValue, clsx } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
 

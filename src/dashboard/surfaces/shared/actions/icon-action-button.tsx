@@ -1,5 +1,3 @@
-/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * src/dashboard/components/shared/IconActionButton.tsx */
 import type { MouseEvent, ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { IconButton } from "../../../ds/ui.js";

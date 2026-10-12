@@ -1,24 +1,24 @@
-import { instrumentPool, kernelOver, type PoolEffectEvent } from "../../../../support/helpers/backend/dashboard-pool-world.js";
+import { createDashboardChildTestWorld } from "../../../../support/helpers/backend/dashboard-child-world.js";
+import { instrumentPool,kernelOver,type PoolEffectEvent } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 
 import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
-import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { releaseAdmissionFixture,releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { type ChildProcess } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync,realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach,describe,it } from "vitest";
 import { composeWorkerProcessControl } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 
-import { type CommandKernel, type WorkerPoolRuntimeSeam } from "../../../../../src/backend/runs/commands/command-kernel.js";
+import { type CommandKernel,type WorkerPoolRuntimeSeam } from "../../../../../src/backend/runs/commands/command-kernel.js";
 
 import { type WorkerPoolMember } from "../../../../../src/backend/runtime/workers/worker-loop.js";
-import type { SpawnedWorkerHandle, WorkerProcessSpawnRequest } from "../../../../../src/backend/runtime/workers/worker-supervisor.js";
+import type { SpawnedWorkerHandle,WorkerProcessSpawnRequest } from "../../../../../src/backend/runtime/workers/worker-supervisor.js";
 
 import { WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
-import { manualClock, type Clock, type TestClock } from "../../../../../src/rules/time/clock.js";
+import { manualClock,type Clock,type TestClock } from "../../../../../src/rules/time/clock.js";
 
 
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
@@ -41,44 +41,9 @@ function required<T>(value: T | undefined, what: string): T {
 
 /* ── shared cleanup: kill every child even on failure, then sweep roots ──── */
 
-const roots: string[] = [];
-const openDatabases: AuthorityDatabase[] = [];
-const cleanups: (() => Promise<void> | void)[] = [];
-const liveRealChildren: ChildProcess[] = [];
+const { roots, openDatabases, cleanups, cleanup } = createDashboardChildTestWorld(releaseAdmissionFixtures, releaseAdmissionFixture);
 
-afterEach(async () => {
-  // Run every cleanup stage despite failures so signal escalation, database close and root cleanup still execute.
-  const errors: unknown[] = [];
-  for (const cleanup of cleanups.splice(0).reverse()) {
-    try {
-      await cleanup();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  for (const child of liveRealChildren.splice(0)) {
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  }
-  for (const database of openDatabases.splice(0)) {
-    try {
-      database.close();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  releaseAdmissionFixtures();
-  for (const root of roots.splice(0)) {
-    try {
-      releaseAdmissionFixture(root);
-      rmSync(root, { recursive: true, force: true });
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  if (errors.length > 0) {
-    throw new AggregateError(errors, `afterEach cleanup failed (${String(errors.length)} error(s))`);
-  }
-}, 30_000);
+afterEach(cleanup, 30_000);
 
 /* ── shared command plumbing ─────────────────────────────────────────────── */
 
