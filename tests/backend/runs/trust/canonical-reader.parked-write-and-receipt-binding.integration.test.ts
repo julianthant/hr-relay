@@ -26,13 +26,10 @@ import { personLookupDescriptor, separationsKualiFinalizationDescriptor } from "
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 {
-const { roots, openDatabases, roundTrip, parkedIntent, nextCommandId, resolutionCommand } = createParkedWriteRoundTripTestWorld();
+const { cleanup, roundTrip, parkedIntent, nextCommandId, resolutionCommand } = createParkedWriteRoundTripTestWorld();
 
 describe("post-fence park → typed outcome arm → typed operator resolution", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   it("serves canonical parked-write evidence without a fold and refuses foreign intent membership", async () => {
     const h = roundTrip(); await h.park();
@@ -251,10 +248,7 @@ afterEach(() => {
 
 
 describe("a confirmed-present proof that does not fit", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   async function refusedPresent(payload: Record<string, unknown>) {
     const harness = roundTrip();
@@ -305,10 +299,7 @@ afterEach(() => {
 
 
 describe("cancel over an unresolved fenced write", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   function cancelCommand(runId: string, expectedVersion: number) {
     return {
@@ -425,10 +416,7 @@ afterEach(() => {
 
 
 describe("kernel outer resolution rollback", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   it("unwinds product/lifecycle journals and all write evidence after inner lifecycle settlement", async () => {
     const h = roundTrip(writeFixtureDescriptor, { afterSequencedStep: (step) => {

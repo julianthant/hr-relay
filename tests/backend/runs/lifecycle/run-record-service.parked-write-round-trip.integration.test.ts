@@ -1,18 +1,14 @@
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, WriteFixtureProofSchema } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const { roots, openDatabases, roundTrip, parkedIntent, resolutionCommand } = createParkedWriteRoundTripTestWorld();
+const { cleanup, roundTrip, parkedIntent, resolutionCommand } = createParkedWriteRoundTripTestWorld();
 
 
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("post-fence park → typed outcome arm → typed operator resolution", () => {
 

@@ -11,7 +11,7 @@ import { testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
 import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
@@ -413,7 +413,11 @@ export function createAuthorityAccountingTestWorld() {
     recordedAt: NOW,
     execution: { state: "not-started", reason: "subject-unavailable" },
   };
-  return { ATOMIC_WRITE_COMMIT, roots, openDatabases, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT };
+  function cleanup(): void {
+    for (const database of openDatabases.splice(0)) database.close();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  }
+  return { ATOMIC_WRITE_COMMIT, roots, openDatabases, cleanup, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT };
 }
 
 export type MutationCase = Readonly<{

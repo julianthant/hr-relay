@@ -1,7 +1,6 @@
 import { authorityMutationCases, type MutationCase } from "../../../support/helpers/backend/authority-accounting-world.js";
 import { createAuthorityAccountingTestWorld } from "../../../support/helpers/backend/authority-accounting-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, DEPENDENCY_RECORD, HASH_B, LATER, NOTIFICATION, NOW, UUID_1, UUID_3, UUID_7, UUID_8, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, RUN_SESSION, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -13,7 +12,7 @@ import { IDEMPOTENCY_KEY, UUID_4, UUID_6 } from "../../../support/fixtures/phase
 
 
 {
-const { ATOMIC_WRITE_COMMIT, roots, openDatabases, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT } = createAuthorityAccountingTestWorld();
+const { ATOMIC_WRITE_COMMIT, openDatabases, cleanup, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT } = createAuthorityAccountingTestWorld();
 
 const INTAKE_SESSION = {
   intakeSessionId: "7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5e",
@@ -40,10 +39,7 @@ const INTAKE_SESSION = {
 };
 
 describe("authority generation accounting", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   it("keeps one read snapshot while another connection commits without waiting", () => {
     const path = databasePath("concurrent-read-snapshot.sqlite");
@@ -160,7 +156,7 @@ afterEach(() => {
 }
 
 {
-const { ATOMIC_WRITE_COMMIT, roots, openDatabases, databasePaths, OPERATOR_XLSX_EXPORT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase } = createAuthorityAccountingTestWorld();
+const { ATOMIC_WRITE_COMMIT, cleanup, databasePaths, OPERATOR_XLSX_EXPORT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase } = createAuthorityAccountingTestWorld();
 
 const OPERATOR_XLSX_EXPORT_ALTERNATE = {
   ...OPERATOR_XLSX_EXPORT,
@@ -187,10 +183,7 @@ function corruptXlsx(path: string, mutate: (database: DatabaseSync) => void): vo
 }
 
 describe("authority persistence invariants", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 
   it.each([
@@ -322,10 +315,7 @@ afterEach(() => {
 });
 
 describe("run ordinals", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   const RUN_ID_2 = "aaaaaaaa-0002-4000-8000-000200000000";
   const RUN_ID_3 = "aaaaaaaa-0003-4000-8000-000300000000";
@@ -385,10 +375,7 @@ afterEach(() => {
 });
 
 describe("workflow batch presentation persistence", () => {
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   it("persists genuine grouping, fences presentation edits and preserves batch identity across reopen", () => {
     const path = databasePath("workflow-batches.sqlite");

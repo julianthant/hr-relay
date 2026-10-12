@@ -2,7 +2,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCommandKernel, type CommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -164,5 +164,9 @@ export function createParkedWriteRoundTripTestWorld() {
       payload: { ...payload, occurrenceKeyDigest: intent.idempotencyKeyDigest },
     };
   }
-  return { roots, openDatabases, roundTrip, parkedIntent, resolutionCommand, nextCommandId };
+  function cleanup(): void {
+    for (const database of openDatabases.splice(0)) database.close();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  }
+  return { roots, openDatabases, cleanup, roundTrip, parkedIntent, resolutionCommand, nextCommandId };
 }
