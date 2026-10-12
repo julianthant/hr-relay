@@ -321,3 +321,19 @@ describe("separation dates — the comment builders", () => {
     );
   });
 });
+
+describe("timecard reconciliation — plan as-of eligibility", () => {
+  for (const leave of ["sick", "holiday"] as const) {
+    it(`refuses a future ${leave} date inside the widened timecard window`, () => {
+      const planned = plan({ lastDayWorked: date("10/01/2026"), separationDate: date("10/01/2026"), observedAt: "2026-10-12T19:00:00.000Z" });
+      assert.equal(planned.state, "planned");
+      if (planned.state !== "planned") throw new Error("expected planned separation");
+      const result = reconcile({ plan: planned.plan, lastPunchDate: "10/01/2026", sickDates: leave === "sick" ? ["10/31/2026"] : [], holidayDates: leave === "holiday" ? ["10/31/2026"] : [], observedWindow: planned.plan.timecardWindow });
+      assert.equal(result.state, "refused");
+      if (result.state !== "refused") throw new Error("expected refusal");
+      assert.equal(result.code, "separation-date-in-future");
+      assert.match(result.reason, /10\/31\/2026 is after 10\/12\/2026/u);
+      assert.match(result.reason, /not yet separated/u);
+    });
+  }
+});
