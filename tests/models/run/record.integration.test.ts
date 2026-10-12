@@ -94,7 +94,7 @@ describe("cross-date search authority read", () => {
 {
 const CLOCK = manualClock(new Date(LATERImport2));
 
-const { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning } = createRunIntegrationTestWorld(CLOCK);
+const {roots, CLAIM, ACTIVE, openDatabase, startRunning, cleanup } = createRunIntegrationTestWorld(CLOCK);
 
 const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 
@@ -214,10 +214,7 @@ function resultRequest(database: AuthorityDatabase, run: ReturnType<typeof start
 }
 
 describe("atomic failure terminal authority", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   it("refuses replay for every schema-valid mismatch from failure authorization to consequence", () => {
     const cases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
@@ -259,10 +256,7 @@ afterEach(() => {
 });
 
 describe("atomic success terminal authority", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   it("refuses replay for every schema-valid mismatch from success authorization to consequence", () => {
     const cases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [

@@ -1,6 +1,6 @@
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { afterEach, describe, it } from "vitest";
 import { completionFromAuthorization } from "../../../src/models/run/completion.js";
 import { deriveRunResultDigest } from "../../../src/models/run/result.js";
@@ -9,7 +9,7 @@ import { HASH_C, LATER, UUID_6 } from "../../support/fixtures/phase1c-contract-f
 import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
-const { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest } = createRunIntegrationTestWorld();
+const {CLAIM, ACTIVE, openDatabase, startRunning, resultRequest, cleanup } = createRunIntegrationTestWorld();
 
 
 function failure(run: ReturnType<typeof startRunning>) {
@@ -52,10 +52,7 @@ function failureAuthorization(run: ReturnType<typeof startRunning>) {
   };
 }
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("atomic failure terminal authority", () => {
   it("inserts the exact failure, transitions failed, lists by run, and replays byte-exactly", () => {

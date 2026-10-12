@@ -1,18 +1,15 @@
 import { createRunIntegrationTestWorld } from "../../../support/helpers/run-integration-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { afterEach, describe, it } from "vitest";
 import { ReadOnboardingDatesOutputSchema } from "../../../../src/models/systems/crm/read-onboarding-dates.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { HASH_B, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, databases, openDatabase, startRunning, resultRequest } = createRunIntegrationTestWorld();
+const {openDatabase, startRunning, resultRequest, cleanup } = createRunIntegrationTestWorld();
 
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("atomic success terminal authority", () => {
 

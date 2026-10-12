@@ -58,14 +58,11 @@ import { separationsKualiFinalizationDescriptor } from "../../support/helpers/re
 
 {
 
-const { roots, databases, CLAIM, openDatabase, startRunning, resultRequest } = createRunIntegrationTestWorld();
+const {CLAIM, openDatabase, startRunning, resultRequest, cleanup } = createRunIntegrationTestWorld();
 
 
 describe("atomic success terminal authority", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   it("rejects the former schema-valid complete/empty-dependencies fabrication bypass", () => {
     const database = openDatabase();
