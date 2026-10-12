@@ -1,33 +1,35 @@
+import { createRunClaimFixtures } from "../../support/helpers/backend/run-claim-fixtures.js";
+import { createSettingsAuthorityTestWorld } from "../../support/helpers/backend/settings-authority-world.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
-import { realpathSync } from "node:fs";
+
+
+
 import { rmSync } from "node:fs";
-import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+
+
+
 import { afterEach } from "vitest";
 import { describe } from "vitest";
 import { it } from "vitest";
-import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
-import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
-import type { CommandAuthority } from "../../../src/backend/runs/commands/command-kernel.js";
-import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
-import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore as nativeCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+
+
+
+
+
+
+
+
+
 import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
 import { deriveSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
-import type { CredentialStoreHooks } from "../../support/helpers/synthetic-storage-admission.js";
-import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
+
+
+
 import { derivePersistedSettingsFingerprint } from "../../../src/models/config/settings.js";
-import { seedSyntheticRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
+
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { deriveSettingsCommandFingerprint } from "../../../src/rules/commands/commands.js";
 import { COMMAND_FIXTURES } from "../../support/fixtures/phase1c-contract-fixtures.js";
@@ -43,27 +45,11 @@ import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 
 {
 
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
-const admissions: RuntimeAdmission[] = [];
+const { roots, databases, admissions, fixture } = createSettingsAuthorityTestWorld();
+
+
 const _afterEachFixture0 = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
-function fixture(hooks?: CredentialStoreHooks, exclusive = false) {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "sqlite-settings-")); roots.push(repoRoot);
-  const admission = exclusive ? acquireEntrypointAdmission(repoRoot, "exclusive") : undefined;
-  if (admission !== undefined) admissions.push(admission);
-  const root = join(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(root, { recursive: true, mode: 0o700 });
-  writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "credential-restore-proof", version: "0.1.0" }));
-  const clock = manualClock(new Date("2026-09-06T12:00:00Z"));
-  const path = join(root, "state.db");
-  const options = { path, busyTimeoutMs: 250, migrationOwner: "settings-test" };
-  const database = admission === undefined ? AuthorityDatabase.open(options, clock) : NativeAuthorityDatabase.open(admission, options, clock); databases.push(database);
-  seedSyntheticRuntimeConfig(database);
-  const credentialOptions = { stateRoot: root, ...(hooks === undefined ? {} : { hooks }) };
-  const store = admission === undefined ? createCredentialStore(credentialOptions) : nativeCredentialStore({ ...credentialOptions, admission });
-  const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
-  const execute = (request: unknown, authority: CommandAuthority = database) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request);
-  return { repoRoot, root, path, database, store, execute, clock, admission };
-}
+
 function ordinary(expectedRevision = 1) {
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
   return { family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: "2026-09-06T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
@@ -103,22 +89,8 @@ const databases: AuthorityDatabase[] = [];
 
 const LATER = "2026-07-31T17:05:00.000Z";
 
-function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-runs-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    CLOCK,
-  );
-  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  for (const poolIndex of [1, 2]) database.withAuthorityTransaction(repositories => {
-    admitDirectWorker(repositories, { commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
-      expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0, processId: WORKER_START_REQUEST.processId,
-      processAcquisitionId: randomUUID(), authorityPath: join(root, "state.sqlite"), processLockRoot: join(root, "locks"), now: NOW }, randomUUID());
-  });
-  databases.push(database);
-  return database;
-}
+const { openDatabase } =
+  createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
 
 const _afterEachFixture0 = () => {
   while (databases.length > 0) databases.pop()?.close();

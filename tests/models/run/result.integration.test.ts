@@ -1,54 +1,55 @@
+import { createDryRunPreviewResultTestWorld } from "../../support/helpers/backend/dry-run-preview-result-world.js";
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+
 import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+
+
 import { afterEach } from "vitest";
 import { describe } from "vitest";
 import { it } from "vitest";
 import { deriveRunResultDigest } from "../../../src/models/run/result.js";
 import { deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
-import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
+
+
 import { HASH_A } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { LATER } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
+
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { deriveCheckpointOutputDigest } from "../../../src/models/run/result.js";
 import { deriveTerminalFailureDigest } from "../../../src/models/run/result.js";
 import { RunTerminalEvidenceResultSchema } from "../../../src/models/run/result.js";
-import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
-import { runWorkerLoop } from "../../../src/backend/runtime/workers/worker-loop.js";
-import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
+
+
+
 import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
-import { WorkerIdSchema } from "../../../src/rules/identity/ids.js";
-import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
-import type { TestClock } from "../../../src/rules/time/clock.js";
+
+
+
 import { workflowDryRunSupport } from "../../../src/workflow-kit/workflow.js";
 import { workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
-import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { absentProbeEvidence } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { buildWriteFixtureRegistry } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { createWriteFixtureWorld } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { WRITE_FIXTURE_IMPL_FINGERPRINT } from "../../support/fixtures/write-sequencer-fixtures.js";
+
+
+
+
+
 import { WRITE_FIXTURE_KEY } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { WRITE_FIXTURE_NODE_ID } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { WRITE_FIXTURE_NOW } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { WRITE_FIXTURE_RUN_ID } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { WRITE_FIXTURE_WORKER_ID } from "../../support/fixtures/write-sequencer-fixtures.js";
+
 import { WRITE_FIXTURE_WORKFLOW_ID } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { writeFixtureDescriptor } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { writeFixtureQueuedRun } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { writeFixtureSessions } from "../../support/fixtures/write-sequencer-fixtures.js";
-import type { WriteFixtureWorld } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
-import type { FinalizationHarness } from "../../support/helpers/kuali-finalization-fixtures.js";
-import { ManualScheduler } from "../../support/helpers/phase1f-executor-harness.js";
-import { recordingLogger } from "../../support/helpers/phase1f-executor-harness.js";
-import { recordingTimelineEmitter } from "../../support/helpers/phase1f-executor-harness.js";
+
+
+
+
+
+
+
+
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import type { ReceiptBuildInput } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
@@ -182,83 +183,7 @@ describe("separations — start planning through the existing service", () => {
 }
 
 {
-const roots: string[] = [];
-const openDatabases: AuthorityDatabase[] = [];
-const kualiOpen: FinalizationHarness[] = [];
-
-const PREVIEW_RESULT_SCHEMA_HASH = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
-
-interface Harness {
-  readonly database: AuthorityDatabase;
-  readonly clock: TestClock;
-  readonly world: WriteFixtureWorld;
-  readonly emitter: ReturnType<typeof recordingTimelineEmitter>;
-  readonly run: (options?: Readonly<{ dryRun?: boolean; probe?: unknown }>) => Promise<void>;
-}
-
-function harness(): Harness {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-preview-"));
-  roots.push(root);
-  const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
-  );
-  openDatabases.push(database);
-
-  const world = createWriteFixtureWorld();
-  const stores = buildWriteFixtureRegistry(world);
-  const sessions = writeFixtureSessions(world);
-  const scheduler = new ManualScheduler(clock);
-  const ids = sequentialIdFactory("c");
-  const log = recordingLogger().log;
-  const emitter = recordingTimelineEmitter(database, clock);
-
-  const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
-    const dryRun = options.dryRun ?? true;
-    const workerPorts = testWorkerPorts(database, clock, { path: join(root, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
-    assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
-
-    world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
-    await runWorkerLoop({
-      ...workerPorts,
-      workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
-      workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
-      descriptor: writeFixtureDescriptor,
-      stores,
-      authority: database,
-      sessionFactory: sessions.factory,
-      emitter: emitter.emitter,
-      clock,
-      ids,
-      scheduler,
-      taskDeadlineMs: 60_000,
-      sessionAcquireMs: 20_000,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
-      heartbeatIntervalMs: 600_000,
-      idleRepollMs: 1_000,
-      log,
-      stopSignal: new AbortController().signal,
-      exitWhenIdle: true,
-      writeSequencerFor: (manager) => createWriteSequencer({
-        lifecycle: testRunLifecycle(database, clock),
-        stores,
-        authority: database,
-        sessions: manager,
-        emitter: emitter.emitter,
-        clock,
-        ids,
-        scheduler,
-        taskDeadlineMs: 60_000,
-        operator: "local-operator",
-        log,
-        resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
-      }),
-    });
-  };
-
-  return { database, clock, world, emitter, run };
-}
+const { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness } = createDryRunPreviewResultTestWorld();
 
 function terminalRun(database: AuthorityDatabase) {
   const record = database.authority.runs.get(WRITE_FIXTURE_RUN_ID);

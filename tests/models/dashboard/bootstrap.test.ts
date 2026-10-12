@@ -1,3 +1,4 @@
+import { createDashboardModelFixtures } from "../../support/helpers/dashboard-model-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { describe } from "vitest";
 import { it } from "vitest";
@@ -7,66 +8,7 @@ import { runtimeTimeZone } from "../../../src/rules/time/clock.js";
 
 {
 
-const HASH_A = "a".repeat(64);
-const HASH_B = "b".repeat(64);
-const NOW = "2026-07-31T17:00:00.000Z";
-
-const WORKFLOW_PRIMITIVE = {
-  id: "onboarding",
-  code: "on",
-  label: "Onboarding",
-  categoryId: "onboarding",
-  descriptorFingerprint: HASH_A,
-  availability: { state: "available" },
-  role: { kind: "standalone" },
-
-  start: {
-    summary: "Look one person up in UCPath and CRM.",
-    enqueue: "reject-active",
-
-
-    version: 7,
-
-    spreadsheetIntake: true,
-    inputRun: {
-      placeholder: "Enter EIDs or names, semicolon-separated",
-      parser: {
-        split: { kind: "delimited", delimiters: [";", "\n"] },
-        rules: [{ when: { kind: "otherwise" }, emit: "query" }],
-      },
-    },
-    steps: [
-      {
-        key: "identity",
-        label: "Identity",
-        includedByDefault: true,
-        control: { state: "required", reason: "Identity is required." },
-      },
-      {
-        key: "crm-dates",
-        label: "CRM Dates",
-        includedByDefault: false,
-        control: { state: "selectable", inputField: "includeCrmDates" },
-      },
-    ],
-  },
-};
-
-const BOOTSTRAP = {
-  wireVersion: 1,
-  appVersion: "1.0.0",
-  descriptorHash: HASH_A,
-  settingsSchemaHash: HASH_B,
-  protectedSchemaHash: HASH_A,
-  projectionGeneration: 1,
-  actor: { id: "local-operator", label: "Local operator" },
-  serverClock: { now: NOW, zone: "America/Los_Angeles" },
-  storage: { authority: "healthy", backup: "current", checkedAt: NOW },
-  workflows: [WORKFLOW_PRIMITIVE],
-  systemInstances: [{ system: "ucpath", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "test URL not configured" } }],
-  settingsSections: [{ id: "general", label: "General", revision: 1 }],
-  featureAvailability: [{ feature: "ocr", availability: { state: "available" } }],
-};
+const { WORKFLOW_PRIMITIVE, BOOTSTRAP } = createDashboardModelFixtures();
 
 describe("dashboard wire primitives", () => {
 
