@@ -8,7 +8,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "49601acbb8a74282f8659ddfc6944cea015ebdd4a722fa7e97735e2be2639bcd",
+    "sha256": "d2340abf7aafffccc0ff8dc48ed03f7433a5f36c672da848000b485f0e900b4c",
     "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
   },
   {
@@ -28,7 +28,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/dashboard/app/navigation/archive-route-model.ts",
-    "sha256": "b27840980d3f7fa2ae32172d4a10c2426395ed5e11399f94601d847e7fe1ca23",
+    "sha256": "96519e6ef20e4aa19a27df5f8deb8c9bcc6fd0559bee8d0f018798b00fa39458",
     "reason": "Oversized or malformed supplied route JSON returns null; the URL-state caller marks archiveBrowseInvalid instead of substituting a parsed route."
   },
   {
