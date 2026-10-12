@@ -1,48 +1,38 @@
-import { fenceWriteFixture, seedCorruptWriteFenceFixture } from "../../support/helpers/write-fence-fixture.js";
-import { createWriteRecoveryTestWorld } from "../../support/helpers/backend/write-recovery-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { describe, it } from "vitest";
-import { deriveWriteBindingProofDigest } from "../../../src/rules/write-safety/write-safety.js";
-import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { NOW as FOUNDATION_NOW, id } from "../../support/helpers/database-foundation/fixtures.js";
-import { resolutionCommand, resolutionFixture } from "../../support/helpers/failure-resolution/fixtures.js";
-import { afterEach } from "vitest";
-import { repeatOccurrenceKey } from "../../../src/models/run/rerun.js";
-import { WriteIntentRecordSchema, deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
-import { sourceBoundHarness } from "../../support/fixtures/integration/source-bound-fixtures.js";
-import { absentProbeEvidence, writeFixtureDescriptor, writeFixtureParallelDescriptor } from "../../support/fixtures/write-sequencer-fixtures.js";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { afterEach,describe,it } from "vitest";
+import { repeatOccurrenceKey } from "../../../src/models/run/rerun.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, NOW, UUID_1, UUID_8 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { WriteIntentRecordSchema,deriveIdempotencyKeyDigest,deriveWriteBindingProofDigest } from "../../../src/rules/write-safety/write-safety.js";
+import { sourceBoundHarness } from "../../support/fixtures/integration/source-bound-fixtures.js";
+import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,NOW,UUID_1,UUID_8,WRITE_ATTEMPT,WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { absentProbeEvidence,writeFixtureDescriptor,writeFixtureParallelDescriptor } from "../../support/fixtures/write-sequencer-fixtures.js";
+import { createWriteRecoveryTestWorld } from "../../support/helpers/backend/write-recovery-world.js";
+import { NOW as FOUNDATION_NOW,id } from "../../support/helpers/database-foundation/fixtures.js";
+import { resolutionCommand,resolutionFixture } from "../../support/helpers/failure-resolution/fixtures.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { currentAtomicWriteFixture, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
-import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
-import { RunRecordService, runContinuationPort } from "../../../src/backend/runs/lifecycle/run-record-service.js";
+import { currentAtomicWriteFixture,seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { fenceWriteFixture,seedCorruptWriteFenceFixture } from "../../support/helpers/write-fence-fixture.js";
 
 import { reconstructConfirmedOperation } from "../../../src/models/events/confirmed-operation.js";
 
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
-import { testRunContinuation } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import type { WriteResolutionContext } from "../../../src/backend/runs/commands/command-kernel.js";
 
-import { createWriteResolutionExecutor } from "../../../src/backend/runtime/writes/write-recovery.js";
-import type { RunRecord } from "../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
-import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-safety.js";
-import { CONFIG_SNAPSHOT, UUID_5, UUID_6, UUID_7 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_5,UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
-import { WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, WriteFixtureProofSchema, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureQueuedRun } from "../../support/fixtures/write-sequencer-fixtures.js";
+import { WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_WORKFLOW_ID,WriteFixtureProofSchema,writeFixtureDescriptorAfterUnrelatedEdit,writeFixtureQueuedRun } from "../../support/fixtures/write-sequencer-fixtures.js";
 
-import { createWriteSequencerTestWorld } from "../../support/helpers/backend/write-sequencer-world.js";
 import { z } from "zod";
 import { WriteSafetyAuthorityError } from "../../../src/rules/write-safety/write-safety.js";
-import { ambiguousProbeVerdict, unknownProbeVerdict } from "../../support/fixtures/write-sequencer-fixtures.js";
+import { ambiguousProbeVerdict,unknownProbeVerdict } from "../../support/fixtures/write-sequencer-fixtures.js";
+import { createWriteSequencerTestWorld } from "../../support/helpers/backend/write-sequencer-world.js";
 
 {
 const NOW = FOUNDATION_NOW;
@@ -200,7 +190,7 @@ afterEach(() => {
 }
 
 {
-const { disposers, harness, ownBindingProof, parkedAttemptingWrite } = createWriteRecoveryTestWorld();
+const { disposers, resolutionHarness, commandFor, parkedAttemptingWrite } = createWriteRecoveryTestWorld();
 
 function intentByKey(database: AuthorityDatabase) {
   return database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY);
@@ -210,53 +200,6 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
-
-  function resolutionHarness(descriptor = writeFixtureDescriptor) {
-    const h = harness();
-    const executor = createWriteResolutionExecutor({
-      continuation: testRunContinuation(h.database, h.clock),
-      descriptors: {
-        resolve: (workflowId) =>
-          String(descriptor.id) === workflowId ? descriptor : undefined,
-      },
-      authority: h.database,
-      ids: h.ids,
-      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
-    });
-    const makeKernel=()=>{
-    const lifecycle = new RunRecordService({database:h.database,clock:h.clock,ids:h.ids,publishQueued:()=>{}});
-    const unused=():never=>{throw new Error("unused operator resolution port");};
-    const kernel=createCommandKernel({authority:h.database,lifecycle,clock:h.clock,ids:h.ids,appVersion:"1.0.0",
-      descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},
-      configIdentity:{configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},
-      intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
-      workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
-        stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
-      writeResolution:createWriteResolutionExecutor({authority:h.database,continuation:runContinuationPort(lifecycle),
-        descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids,
-        resolveImplFingerprint:()=>WRITE_FIXTURE_IMPL_FINGERPRINT})});
-    return kernel;
-    };
-    return { h, executor, kernel:makeKernel(),makeKernel };
-  }
-
-  function commandFor(type: "resolve-write-present" | "resolve-write-absent", run: RunRecord, payload: Record<string, unknown>) {
-    return CommandRequestSchema.parse({
-      commandId: UUID_7,
-      requestedAt: WRITE_FIXTURE_NOW,
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "run",
-      type,
-      target: {
-        runId: run.envelope.runId,
-        expectedVersion: run.version,
-        writeIntentId: UUID_8,
-        intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: deriveWriteBindingProofDigest(ownBindingProof()),
-      },
-      payload: {...payload,occurrenceKeyDigest:WRITE_FIXTURE_KEY_DIGEST},
-    });
-  }
 
   it.each([writeFixtureDescriptor,writeFixtureDescriptorAfterUnrelatedEdit])("confirmed-present parses the exact proof schema and resumes under closure $contractFingerprint", descriptor => {
     const { h, kernel,makeKernel } = resolutionHarness(descriptor);

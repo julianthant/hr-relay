@@ -1,21 +1,25 @@
-import { fenceWriteFixture } from "../write-fence-fixture.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
-import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { RunRecordService,runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { createWriteRecoveryService, type WriteRecoveryService } from "../../../../src/backend/runtime/writes/write-recovery.js";
+import { createWriteRecoveryService,createWriteResolutionExecutor,type WriteRecoveryService } from "../../../../src/backend/runtime/writes/write-recovery.js";
+import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
-import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
+import { manualClock,type TestClock } from "../../../../src/rules/time/clock.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
-import { CONFIG_SNAPSHOT, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
+import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
+import { CONFIG_SNAPSHOT,UUID_5,UUID_6,UUID_7,UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_OBSERVATION, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_STAGED_STATE, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureQueuedRun, writeFixtureSessionManager, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
-import { ManualScheduler, recordingLogger, type SessionFactoryHarness } from "../phase1f-executor-harness.js";
+import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
+import { WRITE_FIXTURE_IMPL_FINGERPRINT,WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_KEY_DIGEST,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_OBSERVATION,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_STAGED_STATE,WRITE_FIXTURE_WORKER_ID,WRITE_FIXTURE_WORKFLOW_ID,buildWriteFixtureRegistry,createWriteFixtureWorld,writeFixtureDescriptor,writeFixtureQueuedRun,writeFixtureSessionManager,writeFixtureSessions,type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
+import { ManualScheduler,recordingLogger,type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { fenceWriteFixture } from "../write-fence-fixture.js";
 
 interface Harness {
   readonly world: WriteFixtureWorld;
@@ -193,8 +197,55 @@ export function createWriteRecoveryTestWorld() {
     if (parked.state !== "applied") throw new Error("park transition failed");
     return { run: parked.run, writeIntentId: UUID_8 };
   }
+  function resolutionHarness(descriptor = writeFixtureDescriptor) {
+    const h = harness();
+    const executor = createWriteResolutionExecutor({
+      continuation: testRunContinuation(h.database, h.clock),
+      descriptors: {
+        resolve: (workflowId) =>
+          String(descriptor.id) === workflowId ? descriptor : undefined,
+      },
+      authority: h.database,
+      ids: h.ids,
+      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+    });
+    const makeKernel=()=>{
+    const lifecycle = new RunRecordService({database:h.database,clock:h.clock,ids:h.ids,publishQueued:()=>{}});
+    const unused=():never=>{throw new Error("unused operator resolution port");};
+    const kernel=createCommandKernel({authority:h.database,lifecycle,clock:h.clock,ids:h.ids,appVersion:"1.0.0",
+      descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},
+      configIdentity:{configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},
+      intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
+      workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
+        stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
+      writeResolution:createWriteResolutionExecutor({authority:h.database,continuation:runContinuationPort(lifecycle),
+        descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids,
+        resolveImplFingerprint:()=>WRITE_FIXTURE_IMPL_FINGERPRINT})});
+    return kernel;
+    };
+    return { h, executor, kernel:makeKernel(),makeKernel };
+  }
+
+  function commandFor(type: "resolve-write-present" | "resolve-write-absent", run: RunRecord, payload: Record<string, unknown>) {
+    return CommandRequestSchema.parse({
+      commandId: UUID_7,
+      requestedAt: WRITE_FIXTURE_NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type,
+      target: {
+        runId: run.envelope.runId,
+        expectedVersion: run.version,
+        writeIntentId: UUID_8,
+        intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: deriveWriteBindingProofDigest(ownBindingProof()),
+      },
+      payload: {...payload,occurrenceKeyDigest:WRITE_FIXTURE_KEY_DIGEST},
+    });
+  }
+
   const cleanup = () => {
     for (const dispose of disposers.splice(0)) dispose();
   };
-  return { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, cleanup };
+  return { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, resolutionHarness, commandFor, cleanup };
 }
