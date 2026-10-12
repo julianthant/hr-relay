@@ -5,18 +5,88 @@ import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/ru
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
-import { recordBrowserAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
+import { recordBrowserAction, withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
+import { fillSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import type { Page } from "playwright";
+import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ConfigSchema } from "../../../../src/models/config/schema.js";
+import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ObservedOperationStructureWireSchema } from "../../../../src/models/dashboard/operation-structure.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
 import { RunParentSchema } from "../../../../src/models/run/envelope.js";
 import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
-import { UUID_4, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, UUID_4, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup } = createRunExecutorTestWorld();
 
 afterEach(cleanup);
+
+describe("cold login action note secrecy", () => {
+  for (const failed of [false, true]) {
+    it(`drops unbound raw credentials when cold login ${failed ? "fails" : "succeeds"}`, async () => {
+      const h = executorHarness();
+      const { database, clock } = h.authority;
+      const { run } = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+      const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
+      const secret = "synthetic-cold-password-proof";
+      const operation = withBrowserActionNotes(clock, async () => {
+        recordBrowserAction("typed", "ucsd.sso.password", secret);
+        if (failed) throw new Error("synthetic downstream login failure");
+      }, actions => { for (const action of actions) writer.emitRunAction({ workflow: run.envelope.workflow,
+        address: { runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+          spanPath: run.envelope.traceId }, action }, run); });
+      if (failed) await assert.rejects(operation, /synthetic downstream/u); else await operation;
+      const notes = readPersistedNotes(database);
+      assert.equal(notes.length, 1);
+      assert.equal(JSON.stringify(notes).includes(secret), false);
+      assert.equal(notes[0].action?.value, undefined);
+      assert.equal(notes[0].message, "Typed into ucsd sso password");
+    });
+
+    it(`never records SSO credential values when the actual fill ${failed ? "precedes failure" : "succeeds"}`, async () => {
+      const h = executorHarness();
+      const { database, clock } = h.authority;
+      const { run, claim } = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+      const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
+      const credentials = { userId: "synthetic-cold-username-proof", password: "synthetic-cold-password-proof" };
+      const filled: string[] = [];
+      function field() {
+        const value = { first: () => value, or: () => value, count: async () => 1,
+          fill: async (value: string) => { filled.push(value); } };
+        return value;
+      }
+      const page = { locator: field, getByLabel: field, url: () => "https://sso.example.invalid/login" } as unknown as Page;
+      const gate = duoCeremonyGatesOver(database, clock, h.scheduler).openGate({
+        workerId: WorkerIdSchema.parse(claim.workerId),
+        system: "ucpath", envelopeDeadlineMonotonicMs: clock.monotonicMs() + 60_000,
+        cancelCeremony: () => undefined, signal: SIGNAL });
+      let capturedBytes = "";
+      try {
+        const operation = gate.withCeremony(token => withBrowserActionNotes(clock, async () => {
+          await fillSsoCredentials("ucpath", { page, config: ConfigSchema.parse(CONFIG_SNAPSHOT.config), credentials,
+            instance: "prod", label: "synthetic-cold-login", signal: SIGNAL, duoCeremony: gate,
+            recordEvidence: () => undefined }, token);
+          if (failed) throw new Error("synthetic downstream login failure");
+        }, actions => {
+          capturedBytes = JSON.stringify(actions);
+          for (const action of actions) writer.emitRunAction({ workflow: run.envelope.workflow,
+            address: { runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+              spanPath: run.envelope.traceId }, action }, run);
+        }));
+        if (failed) await assert.rejects(operation, /synthetic downstream/u); else await operation;
+      } finally { gate.dispose(); }
+      const notes = readPersistedNotes(database);
+      assert.equal(notes.length, 2);
+      for (const value of Object.values(credentials)) {
+        assert.equal(filled.includes(value), true);
+        assert.equal(capturedBytes.includes(value), false);
+        assert.equal(JSON.stringify(notes).includes(value), false);
+      }
+    });
+  }
+});
 
 function actionBindingRetrySessions(): SessionFactoryHarness {
   return sessionFactoryHarness({

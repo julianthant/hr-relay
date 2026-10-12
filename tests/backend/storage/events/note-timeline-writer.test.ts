@@ -6,7 +6,8 @@ import { NoteWireSchema } from "../../../../src/models/events/types.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { OperationActionIdSchema } from "../../../../src/models/workflow/operation-display.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { DeclaredActionOccurrenceSchema } from "../../../../src/rules/workflow/task-provenance.js";
+import { ActionConsumedValueSchema, DeclaredActionOccurrenceSchema, type ActionConsumedValue, type DeclaredActionOccurrence } from "../../../../src/rules/workflow/task-provenance.js";
+import { recordBrowserAction, withBrowserActionBinding, withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 
 const RUN = "11111111-1111-4111-8111-111111111111";
 const HASH = "a".repeat(64);
@@ -31,6 +32,88 @@ const authority = { envelope: { runId: RUN, workflow: "onboarding", traceId: "fp
       session: { kind: "browser", id: "browser-session", system: "ucpath" },
       actions: [{ id: "read-field", target: "unregistered.private" }] } }] } },
   createdAt: AT, updatedAt: AT, lifecycle: { state: "running" } } as unknown as RunRecord;
+
+describe("browser action value admission", () => {
+  const privateValue = "synthetic-private-action-proof";
+  async function capture(target: string, rawTarget = target, consumed: ActionConsumedValue | null = { state: "observed", value: privateValue },
+    alter?: (operation: DeclaredActionOccurrence) => DeclaredActionOccurrence) {
+    const system = target.startsWith("kuali.") ? "kuali" : "ucpath";
+    const invocation = authority.envelope.operationDisplaySnapshot!.invocations[0];
+    const frozen = { ...authority, envelope: { ...authority.envelope, operationDisplaySnapshot: {
+      ...authority.envelope.operationDisplaySnapshot, invocations: [{ ...invocation,
+        operation: { ...invocation.operation, system, session: { kind: "browser", id: "browser-session", system },
+          actions: [{ id: "read-field", target, valueSlot: "field-value" }],
+          values: [{ id: "field-value", source: { kind: "contract-input", path: "emplId" } }] } }] } } } as unknown as RunRecord;
+    const base = DeclaredActionOccurrenceSchema.parse({ ...event.action, state: "completed",
+      value: consumed === null ? undefined : { ...event.action.value, consumed } });
+    const occurrence = alter === undefined ? base : alter(base);
+    const lines: string[] = [];
+    const clock = manualClock(new Date(AT));
+    const writer = createNoteTimelineWriter({ clock, pid: 1,
+      repository: { append: input => { lines.push(JSON.stringify(input)); return {} as never; } } });
+    let note: ReturnType<typeof writer.emitRunAction> | undefined;
+    await withBrowserActionNotes(clock, () => withBrowserActionBinding(action => ({ ...action, operation: occurrence }), async () => {
+      recordBrowserAction("typed", rawTarget, privateValue);
+    }), actions => { for (const action of actions) note = writer.emitRunAction({ workflow: frozen.envelope.workflow,
+      address: { runId: RUN, attempt: 1, traceId: frozen.envelope.traceId, spanPath: "first" }, action }, frozen); });
+    assert.ok(note);
+    return { note, lines, occurrence };
+  }
+
+  for (const target of ["ucpath.smart-hr.details-eid-input", "unregistered.private"]) {
+    it(`withholds raw and nested values for ${target} while preserving provenance`, async () => {
+      const h = await capture(target);
+      assert.equal(h.lines.join("").includes(privateValue), false);
+      assert.equal(h.note.action?.value, undefined);
+      assert.deepEqual(h.note.action?.operation, { ...h.occurrence, value: { ...h.occurrence.value,
+        consumed: { state: "withheld", reason: "classification-required" } } });
+    });
+  }
+  for (const consumed of [null,
+    ActionConsumedValueSchema.parse({ state: "withheld", reason: "classification-required" }),
+    ActionConsumedValueSchema.parse({ state: "withheld", reason: "protection-unresolved" }),
+    ActionConsumedValueSchema.parse({ state: "redacted", binding: { kind: "test-data-local",
+      sourceId: "44444444-4444-4444-8444-444444444444", inputPath: "emplId", name: "personLookupCanaryEid" } }),
+  ]) {
+    it(`does not authorize a separate raw value from ${consumed?.state ?? "missing"} content`, async () => {
+      const h = await capture("ucpath.person-org.eid-input", "ucpath.person-org.eid-input", consumed);
+      assert.equal(h.lines.join("").includes(privateValue), false);
+      assert.equal(h.note.action?.value, undefined);
+      assert.deepEqual(h.note.action?.operation, h.occurrence);
+    });
+  }
+  it("uses the frozen target classification even when the raw target claims an HR control", async () => {
+    const h = await capture("ucpath.smart-hr.details-eid-input", "ucpath.person-org.eid-input");
+    assert.equal(h.lines.join("").includes(privateValue), false);
+  });
+  it("does not authorize raw content different from the admitted observation", async () => {
+    const h = await capture("ucpath.person-org.eid-input", "ucpath.person-org.eid-input",
+      { state: "observed", value: "synthetic-classified-proof" });
+    assert.equal(h.lines.join("").includes(privateValue), false);
+    assert.equal(h.note.action?.value, undefined);
+    assert.deepEqual(h.note.action?.operation?.value?.consumed,
+      { state: "observed", value: "synthetic-classified-proof" });
+  });
+  for (const [field, expected] of [["run", /authority-mismatch/u], ["slot", /frozen-value-slot-mismatch/u],
+    ["producer", /frozen-value-producer-mismatch/u]] as const) {
+    it(`refuses a bound ${field} mismatch before note append`, async () => {
+      await assert.rejects(capture("ucpath.person-org.eid-input", "ucpath.person-org.eid-input",
+        { state: "observed", value: privateValue }, operation => DeclaredActionOccurrenceSchema.parse({
+          ...operation,
+          ...(field === "run" ? { runId: "33333333-3333-4333-8333-333333333333" }
+            : { value: { ...operation.value, ...(field === "slot" ? { slot: "foreign-slot" }
+              : { producer: { kind: "run-input", path: "foreignInput" } }) } }),
+        })), expected);
+    });
+  }
+  for (const target of ["ucpath.person-org.eid-input", "kuali.action-list.search-input"]) {
+    it(`retains classified bound values for ${target}`, async () => {
+      const h = await capture(target);
+      assert.equal(h.note.action?.value, privateValue);
+      assert.equal(h.note.action?.operation?.value?.consumed.state, "observed");
+    });
+  }
+});
 
 describe("confirmed action note append boundary", () => {
   it("withholds unregistered values before the append port and preserves exact owner/identity", () => {
