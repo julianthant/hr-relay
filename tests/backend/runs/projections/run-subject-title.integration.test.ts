@@ -7,7 +7,7 @@ import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 const { searchingCheckpoint, RESOLVED } = createSubjectTitleTestWorld();
 
 
-describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", () => {
+describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
 
   it("names a structured value for what it is rather than stringifying it", () => {
 
