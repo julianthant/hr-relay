@@ -5,6 +5,7 @@ import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/dr
 import {
 type IdentityGateDetail
 } from "../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
+import type { CommandAction } from "../../../../src/dashboard/app/commands/command-dispatch.js";
 import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 
 
@@ -15,6 +16,19 @@ buildIdentityEvidencePacket,
 deriveIdentityEvidenceDigest,
 } from "../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
+
+export function identityApprovalAction(label: string): CommandAction {
+  return {
+    key: "resolve-gate-approved",
+    label,
+    intent: "primary",
+    placement: ["banner"],
+    kind: "command",
+    command: "resolve-gate",
+    expectedVersion: 3,
+    resolution: "approved",
+  };
+}
 
 export function createIdentityCeremonyFixtures(
   NOW: string,
@@ -94,16 +108,7 @@ export function createIdentityCeremonyFixtures(
         origin: "a UCPath search on the document's name listed this EID",
       })),
       approvalShape: packet.approvalShape,
-      actions: [{
-        key: "resolve-gate-approved",
-        label: "Approve the chosen EID",
-        intent: "primary",
-        placement: ["banner"],
-        kind: "command",
-        command: "resolve-gate",
-        expectedVersion: 3,
-        resolution: "approved",
-      }],
+      actions: [identityApprovalAction("Approve the chosen EID")],
       ...overrides,
     });
   }
