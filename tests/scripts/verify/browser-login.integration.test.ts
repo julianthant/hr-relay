@@ -1,12 +1,13 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker } from "../../../scripts/verify/browser-login.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
-import { DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 
 const clock = manualClock(new Date("2026-10-11T10:00:00.000Z"));
@@ -161,15 +162,74 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(database.authority.workerPools.get("person-lookup")?.desiredWorkers).toBe(1);
   });
 
-  it("prints decisive nested aggregate diagnostics without dumping error objects", () => {
+  it("prints safe nested error identities without dumping error objects", () => {
     const setup = new Error("offline setup failed");
     const close = new Error("offline closure failed");
     const reservation = new Error("offline profile reservation held");
     const diagnostic = smokeErrorDiagnostic(new AggregateError([
       new AggregateError([setup, close], "offline factory failed"), reservation,
     ], "offline smoke failed"));
-    for (const error of [setup, close, reservation]) expect(diagnostic).toContain(error.message);
+    expect(JSON.parse(diagnostic)).toEqual([{ error: "AggregateError" }, { error: "AggregateError" },
+      { error: "Error" }, { error: "Error" }, { error: "Error" }]);
+    for (const error of [setup, close, reservation]) expect(diagnostic).not.toContain(error.message);
     expect(diagnostic).not.toContain("[object Object]");
+  });
+
+  it("withholds authentication material across aggregate members, causes and arbitrary properties", () => {
+    const sentinels = ["synthetic-auth-user", "synthetic-auth-pass", "synthetic-saml-proof",
+      "synthetic-execution-proof", "synthetic-fragment-proof", "synthetic-message-proof", "synthetic-property-proof"];
+    const url = `https://${sentinels[0]}:${sentinels[1]}@login.example.invalid/sso?SAMLResponse=${sentinels[2]}&execution=${sentinels[3]}#${sentinels[4]}`;
+    const login = new BrowserLoginError("ucpath", "sso-submit", sentinels[5], url,
+      { cause: new TypeError(sentinels[5]) });
+    Object.assign(login, { authentication: { token: sentinels[6], password: sentinels[1] } });
+    const duo = new DuoTerminalRefusalError("crm", sentinels[5], url);
+    const error = new AggregateError([new Error(sentinels[5], { cause: login }),
+      new AggregateError([duo, sentinels[2], { authentication: { token: sentinels[6] } }], sentinels[5])],
+    sentinels[5], { cause: new Error(sentinels[5], { cause: duo }) });
+    const diagnostic = smokeErrorDiagnostic(error);
+    for (const sentinel of sentinels) expect(diagnostic.includes(sentinel)).toBe(false);
+    expect(diagnostic).not.toContain("SAMLResponse");
+    expect(diagnostic).not.toContain("authentication");
+    const entries = z.array(z.record(z.string(), z.string())).parse(JSON.parse(diagnostic));
+    expect(entries).toContainEqual({ error: "BrowserLoginError", system: "ucpath", phase: "sso-submit", host: "login.example.invalid" });
+    expect(entries).toContainEqual({ error: "DuoTerminalRefusalError", system: "crm", phase: "duo-clearance", host: "login.example.invalid" });
+    expect(entries).toContainEqual({ error: "TypeError" });
+    expect(entries.filter(entry => entry.error === "DuoTerminalRefusalError")).toHaveLength(1);
+  });
+
+  it("never echoes an unparseable target or its parser failure", () => {
+    const sentinel = "synthetic-invalid-auth-url-proof";
+    const error = new BrowserLoginError("ucpath", "verify-landing", sentinel, `https://[invalid?token=${sentinel}`);
+    const diagnostic = smokeErrorDiagnostic(error);
+    expect(diagnostic.includes(sentinel)).toBe(false);
+    expect(JSON.parse(diagnostic)).toEqual([{ error: "BrowserLoginError", system: "ucpath", phase: "verify-landing", host: "<unparseable navigation target>" }]);
+  });
+
+  it("omits non-Error values without coercing or reading authentication objects", () => {
+    const sentinel = "synthetic-non-error-auth-proof";
+    const object = { authentication: { token: sentinel }, toString: () => { throw new Error("non-Error coercion reached"); } };
+    for (const input of [sentinel, object, null, undefined]) {
+      expect(smokeErrorDiagnostic(input)).toBe("[]");
+    }
+  });
+
+  it("bounds cycles shared between aggregate members and error causes", () => {
+    const child = new Error("synthetic-cycle-auth-proof");
+    const aggregate = new AggregateError([child], "synthetic-cycle-auth-proof", { cause: child });
+    child.cause = aggregate;
+    expect(JSON.parse(smokeErrorDiagnostic(aggregate))).toEqual([{ error: "AggregateError" }, { error: "Error" }]);
+  });
+
+  it("does not admit arbitrary error names or forged login metadata", () => {
+    const sentinel = "synthetic-forged-auth-proof";
+    const error = new BrowserLoginError("ucpath", "sso-form", sentinel, "https://login.example.invalid/");
+    Object.assign(error, { name: sentinel, system: sentinel, step: sentinel });
+    const diagnostic = smokeErrorDiagnostic(error);
+    expect(diagnostic.includes(sentinel)).toBe(false);
+    expect(JSON.parse(diagnostic)).toEqual([{ error: "BrowserLoginError", host: "login.example.invalid" }]);
+    const generic = new Error(sentinel);
+    generic.name = sentinel;
+    expect(smokeErrorDiagnostic(generic)).toBe('[{"error":"Error"}]');
   });
 
   it("keeps cleanup failure visible and never retires while its gate remains held", async () => {
