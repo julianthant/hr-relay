@@ -7,7 +7,7 @@ import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoi
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
-import { HASH_B, LATER, NOW } from "../fixtures/phase1c-contract-fixtures.js";
+import { HASH_B, HASH_C, LATER, NOW, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
@@ -130,9 +130,48 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
     };
     return { result, authorization, factoryAuthorization: built.authorization };
   }
+  function failure(run: ReturnType<typeof startRunning>) {
+    return {
+      failureId: UUID_6,
+      fingerprint: HASH_C,
+      runId: run.envelope.runId,
+      traceId: run.envelope.traceId,
+      attempt: run.envelope.attempt,
+      workflowId: run.envelope.workflow,
+      nodeId: "crm-dates",
+      taskId: "crm/read-onboarding-dates",
+      code: "CRM_UNAVAILABLE",
+      summary: "CRM onboarding dates were unavailable",
+      transient: true,
+      writeState: "not-attempted",
+      causeChain: [{
+        code: "CRM_UNAVAILABLE",
+        summary: "CRM returned an unavailable response",
+        role: "primary",
+        transient: true,
+      }],
+      remediation: [{ kind: "retry-when-served", message: "Retry after CRM is available" }],
+      occurredAt: LATER,
+    } as const;
+  }
+
+  function failureAuthorization(run: ReturnType<typeof startRunning>) {
+    return {
+      kind: "failed" as const,
+      runId: run.envelope.runId,
+      workflowId: run.envelope.workflow,
+      attempt: run.envelope.attempt,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+      expectedVersion: run.version,
+      claim: CLAIM,
+      authorizedAt: LATER,
+      failureId: UUID_6,
+    };
+  }
   const cleanup = () => {
     for (const database of databases.splice(0)) database.close();
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   };
-  return { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest, WORKER_ID, cleanup };
+  return { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest, WORKER_ID, failure, failureAuthorization, cleanup };
 }

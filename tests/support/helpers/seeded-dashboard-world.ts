@@ -87,5 +87,5 @@ export function createSeededDashboardWorld() {
       runId: uuidOf(9), attempt: 1, traceId: traceOf(9), spanPath: traceOf(9), gate: "approval",
     });
   }
-  return { seedWorld, queuedEventOf };
+  return { seedWorld, queuedEventOf, runRecordOf, CLAIM };
 }
