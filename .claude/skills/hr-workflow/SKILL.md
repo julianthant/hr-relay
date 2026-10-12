@@ -21,7 +21,7 @@ hand-maintained Known failure modes and Live record sections.
 3. Each store it binds — `src/backend/systems/<system>/AGENTS.md` (invariants and provenance) then the task files. `docs/rebuild/reference/stores.md` is the derived catalog; code wins.
 4. The active brief's assigned evidence folder in the main checkout's `.work/` contains verified
    task records; confirm current workflow state in code and authority.
-5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume), `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate), `execution-and-sessions`, `guards-and-tests` §10 (test tiers), `dashboard-surfaces`.
+5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume), `write-safety` (controlled-commit proof and identity gate), `execution-and-sessions`, `guards-and-tests` §10 (test tiers), `dashboard-surfaces`.
 6. Read the owning reference for the failure class and nearest module `AGENTS.md`; carry verified
    findings into "Known failure modes".
 7. `config/test-data.json` (`subjects`; D341) and `tests/scenario/*<id>*` — canary labels and what the existing scenarios assert. Private values live only in ignored `config/test-data.local.json`; never read or print them.

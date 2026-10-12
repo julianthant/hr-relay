@@ -133,7 +133,7 @@ Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.
   request identity and stale-artifact refusal. Use synthetic applicant fixtures.
 - Controlled write: **OWED** — mismatch refusal before fencing, one source-verified request, permanent
   already-present replay, failure around upload/submit, reconciliation and approved target disposition,
-  under [write-safety §3.2](../../../docs/rebuild/reference/write-safety.md).
+  under [write safety](../../../docs/rebuild/reference/write-safety.md).
 - Implementation gates: `npm run typecheck`, `npm run lint`, `npm run test:coverage`; refresh/check
   the build manifest when the descriptor import closure changes. Platform run/session behavior remains
   owned by [execution-and-sessions](../../../docs/rebuild/reference/execution-and-sessions.md).

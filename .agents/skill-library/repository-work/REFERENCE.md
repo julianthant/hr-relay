@@ -155,7 +155,7 @@ adapter boundary and its guard), **D331** the settings catalog and protected `.t
 arms, write-only protected values, `settings > default` with the environment gone as a resolver input),
 and **D332** the one stopped-system `cli storage upgrade` with its preflight, journal, rollback, boot
 matrix and adapter roster A0–A8 (ref dashboard-surfaces  D332, its settings half in
-clock-config-secrets §D332, the deletion tests in ref guards-and-tests ). Until 1.6 lands, the
+clock-config-secrets, the deletion tests in ref guards-and-tests). Until 1.6 lands, the
 as-built authorities described above stay in force. Doc 01 §1.6 binds each 1.6 task to one seam, gate,
 integration order and deletion test; 2.6 revalidates downstream consumers, and 3.1 finishes the
 dashboard. Provider API keys remain the sole `.env.providers` class; credentials and local canary inputs move

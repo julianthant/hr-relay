@@ -38,8 +38,8 @@ source and compiled projections; this skill still produces a `hr-manage` runbook
 4. The active brief's assigned evidence folder in the main checkout's `.work/` contains verified
    task records; confirm current workflow state in code and authority.
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume),
-   `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate),
-   `execution-and-sessions`, `guards-and-tests` §3.14 (focused and phase-exit cadence), and
+   `write-safety` (controlled-commit proof and identity gate),
+   `execution-and-sessions`, `guards-and-tests` (verification cadence), and
    `dashboard-surfaces`.
 6. Read the owning reference for the failure class and nearest module `AGENTS.md`; carry verified
    findings into "Known failure modes".
@@ -105,7 +105,7 @@ Stop when you can fill every template section from evidence. A section you canno
 - Focused tests, lint, and affected static/generated checks: <existing paths and verified outcomes from the owning task>
 - Phase-exit gates: <only the gates required by the active phase plan, with actual outcomes or not run>
 - Do not infer test execution from declared scenario ids or revive retired scenario/parity
-  obligations. Follow root `AGENTS.md` and `ref guards-and-tests` §3.14 for cadence.
+  obligations. Follow root `AGENTS.md` and `ref guards-and-tests` for cadence.
 
 ## Known failure modes (from the owning reference and nearest module AGENTS.md)
 - <one line per verified issue: the symptom, cause, owning reference, and nearest module

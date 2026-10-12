@@ -59,7 +59,7 @@ A throwing, ambiguous, or unknown pre-write probe raises `WriteSafetyAuthorityEr
 
 A positive probe is not trusted without parsing. The sequencer parses both the declared proof and the full output reconstructed from it. An existing `committed` or `observed-present` intent also requires valid stored schema identities and proof before reuse.
 
-## Permanent identity and storage
+## 3. Permanent identity and storage
 
 `deriveIdempotencyKeyDigest` derives the permanent digest from the system and exact natural key using the `hrauto:permanent-write-key:v1` domain. `WriteIntentRecordSchema` re-derives the key and binding-proof digests from stored fields.
 
@@ -188,7 +188,7 @@ The command kernel accepts `resolve-write-present` and `resolve-write-absent` on
 
 `command-kernel.ts` refuses generic retry for parked writes and rejects cancellation over any `attempting` or `parked` intent in the entire cancellation cascade. Resolution must precede cancellation. Confirmed absence resumes to queued, so subsequent cancellation remains subject to the ordinary queue race.
 
-## Settlement, history, and evidence receipts
+## 6. Settlement, history, and evidence receipts
 
 `executeSequencedWriteCommit` composes one authority transaction around current claim validation, write settlement, and the lifecycle transition. `AuthorityDatabase.commitWriteAttempt` verifies the exact checkpoint output and confirmation instant, run/attempt/claim ownership, intent generation, attempt state, and fenced transaction identity.
 

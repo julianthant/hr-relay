@@ -1,4 +1,4 @@
-/** `separations-identity-check` — the UCPath identity passage, provable ALONE and read-only, carrying write-safety §14's identity-authority policy: one gate condition, and a result no write binds without authority. */
+/** `separations-identity-check` — the UCPath identity passage, provable ALONE and read-only, carrying write-safety's identity-authority policy: one gate condition, and a result no write binds without authority. */
 import { z } from "zod";
 import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
 import { EidSchema } from "../../../../rules/identity/ids.js";
