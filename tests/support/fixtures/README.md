@@ -190,6 +190,17 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/worker-lease-fixtures.ts` | worker lease fixtures |
 | `helpers/backend/separation-start-fixtures.ts` | separation start fixtures |
 
+| `helpers/dashboard/client-day-fixtures.ts` | client day fixtures |
+| `helpers/dashboard/awaiting-queue-fixtures.ts` | awaiting queue fixtures |
+| `helpers/backend/stream-backpressure-fixtures.ts` | stream backpressure fixtures |
+| `helpers/storage/backup-fixtures.ts` | backup fixtures |
+| `helpers/ucpath-pending-row-fixtures.ts` | ucpath pending row fixtures |
+| `helpers/storage/admission-child-fixtures.ts` | admission child fixtures |
+| `helpers/backend/preflight-port-fixtures.ts` | preflight port fixtures |
+| `helpers/dashboard/settings-editor-fixtures.ts` | settings editor fixtures |
+| `helpers/backend/worker-supervision-world.ts` | worker supervision world |
+| `helpers/backend/command-kernel-harness.ts` | command kernel harness |
+
 ## File fixtures
 
 - `fixtures/documents/synthetic-sample.pdf`

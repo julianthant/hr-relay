@@ -182,5 +182,20 @@ export function createWorkerSupervisionTestWorld() {
       directive: stopDirective(harness.clock.now().toISOString()),
     };
   }
-  return { WORKFLOW, NOW, member, DIRECTIVE_WRITE_VERSIONS, openHarness, stopDirective, stopRequest, stopReceipt, stopPolicy };
+  function planRequest(
+    desired: number,
+    members: readonly WorkerPoolMember[],
+    excess: readonly WorkerPoolMember[],
+    at: string = NOW,
+  ) {
+    return {
+      command: "plan-worker-count" as const,
+      workflowId: WORKFLOW,
+      desiredWorkers: PositiveIntSchema.parse(desired),
+      members,
+      excessMembers: excess,
+      directive: stopDirective(at),
+    };
+  }
+  return { planRequest, WORKFLOW, NOW, member, DIRECTIVE_WRITE_VERSIONS, openHarness, stopDirective, stopRequest, stopReceipt, stopPolicy };
 }
