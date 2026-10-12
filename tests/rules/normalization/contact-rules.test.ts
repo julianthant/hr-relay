@@ -60,3 +60,19 @@ describe("contact rules — state / zip / country / relationship", () => {
     assert.equal(canonicalizeRelationshipRule("acquaintance from work"), null);
   });
 });
+
+describe("contact rules — canonical USPS membership", () => {
+  it("leaves unknown two-letter state codes ambiguous", () => {
+    assert.equal(normalizeUsStateRule("zz"), null);
+    assert.equal(normalizeUsStateRule("ZZ"), null);
+  });
+  it("recognizes all five inhabited territories by name and code", () => {
+    for (const [name, code] of [
+      ["American Samoa", "AS"], ["Guam", "GU"], ["Northern Mariana Islands", "MP"],
+      ["Puerto Rico", "PR"], ["U.S. Virgin Islands", "VI"],
+    ]) {
+      assert.equal(normalizeUsStateRule(name), code);
+      assert.equal(normalizeUsStateRule(code.toLowerCase()), code);
+    }
+  });
+});
