@@ -1,7 +1,5 @@
-// Service worker — the ONLY place the Duo private key is used. The MAIN-world
-// shim (inpage.js) never sees the key; it sends Duo's challenge here, this worker
-// signs it, bumps the signCount, and returns only the (public, single-use)
-// assertion components. See BUILD_PLAN.md §3 and §7.
+// The service worker signs Duo challenges with the backend-provisioned session credential.
+// The page receives assertion components, never the private key.
 
 import { base64ToBytes, bytesToBase64, bytesEqual, createAssertion } from "./crypto.js";
 import { nextSignCount } from "./sign-count.js";
@@ -44,7 +42,7 @@ async function persistSignCount(credentialId, newCount) {
 }
 
 /**
- * Pick which credential answers this ceremony (BUILD_PLAN §3.4, §11.6):
+ * Pick the credential that answers this ceremony:
  *  - scoped to the request's rpId;
  *  - if `allowCredentials` is non-empty, the credential whose id is listed
  *    (preferring the platform/`internal` one — a security key is rejected by
@@ -88,12 +86,7 @@ async function handleSign(req) {
   }
   // Counter is load-bearing: advance and PERSIST before returning. Duo may
   // observe the new counter even if the login later fails, so persisting eagerly
-  // keeps the file at-or-ahead of Duo's view (BUILD_PLAN §6.5).
-  //
-  // D243: the advance is floored at WALL-CLOCK seconds, not `+ 1`. Duo's counter
-  // is per-credential and shared by every browser profile that replays this key,
-  // while our copy is per-profile — see sign-count.js for the whole argument and
-  // for the wedge that `+ 1` caused.
+  // The wall-clock floor keeps counters ahead across profiles that share a credential.
   const oldCount = Number(cred.signCount) || 0;
   const newCount = nextSignCount(oldCount, Math.floor(Date.now() / 1000));
   await persistSignCount(cred.credentialId, newCount);
@@ -124,7 +117,7 @@ async function handleSign(req) {
 let signQueue = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || (msg.type !== "DUO_AUTOPILOT_SIGN" && msg.type !== "DUO_AUTOPILOT_ENROLL")) return undefined;
+  if (!msg || msg.type !== "DUO_AUTOPILOT_SIGN") return undefined;
 
   // Only honor requests from our content script running on the Duo host.
   const url = (sender && sender.url) || "";
@@ -133,12 +126,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
-  if (msg.type === "DUO_AUTOPILOT_ENROLL") {
-    sendResponse({ ok: false, reason: "canonical-credential-enrollment-required" });
-    return false;
-  }
-
-  // DUO_AUTOPILOT_SIGN — serialize through the signCount queue.
+  // Serialize signing through the signCount queue.
   const result = signQueue
     .then(() => handleSign(msg.request))
     .catch(() => ({ ok: false, reason: "duo-signing-failed" }));
