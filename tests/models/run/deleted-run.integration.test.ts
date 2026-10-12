@@ -1,27 +1,12 @@
-import { DeletedRunRecordSchema,type DeletedRunRecord } from "../../../src/models/run/deleted-run.js";
-import { RunLifecycleSchema,RunRecordSchema } from "../../../src/models/run/record.js";
+import { createSeededDashboardWorld } from "../../support/helpers/seeded-dashboard-world.js";
+import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../../src/models/run/deleted-run.js";
 import { inMemoryRunReaderFake } from "../../support/helpers/canonical-run-reader.js";
-
 import assert from "node:assert/strict";
-import { afterEach,describe,it,vi } from "vitest";
-import { DAY, instantOffsetOf, makeWorld, queuedEventOf as queuedEventBase, runRecordOf as runRecordBase, taskEventsOf, uuidOf, type DashboardWorld } from "../../support/helpers/backend/dashboard-harness.js";
+import { afterEach, describe, it, vi } from "vitest";
+import { DAY, instantOffsetOf, makeWorld, taskEventsOf, uuidOf, type DashboardWorld } from "../../support/helpers/backend/dashboard-harness.js";
 
-function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {
-  const lifecycle = RunLifecycleSchema.parse(input.lifecycle ?? {state:"queued"});
-  if (lifecycle.state !== "terminal" || !["done","failed"].includes(lifecycle.outcome)) return runRecordBase(input);
-  const base = runRecordBase({...input,lifecycle:{state:"queued"}});
-  const version = Math.max(2,base.version), claimGeneration = Math.max(1,base.claimGeneration);
-  return RunRecordSchema.parse({...base,lifecycle,version,claimGeneration,updatedAt:lifecycle.endedAt,completion:{
-    schemaVersion:1,kind:lifecycle.outcome,expectedVersion:version-1,
-    claim:{workerId:"queue-fixture-worker",claimGeneration},authorizedAt:lifecycle.endedAt,
-    ...(lifecycle.outcome === "done" ? {resultDigest:"a".repeat(64)} : {failureId:lifecycle.failureId}),
-  }});
-}
-function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase>[0]) {
-  const event = queuedEventBase(w,{...input,lifecycle:{state:"queued"}});
-  if (input.lifecycle !== undefined) w.authority.put(runRecordOf({...input,enqueuedAt:input.enqueuedAt ?? w.clock.now().toISOString()}));
-  return event;
-}
+const { queuedEventOf } = createSeededDashboardWorld();
+
 
 const worlds: DashboardWorld[] = [];
 

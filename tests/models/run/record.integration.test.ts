@@ -1,3 +1,4 @@
+import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { realpathSync } from "node:fs";
@@ -21,7 +22,6 @@ import type { RunRecord } from "../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
-import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { HASH_B } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { HASH_C } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { LATER as LATERImport2 } from "../../support/fixtures/phase1c-contract-fixtures.js";
@@ -31,9 +31,7 @@ import { UUID_7 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
-import type { AuthorityTerminalizationHooks } from "../../support/helpers/synthetic-storage-admission.js";
 import { summaryFixture } from "../../support/helpers/backend/served-database-surfaces-fixtures.js";
 import { id } from "../../support/helpers/database-foundation/fixtures.js";
 import { NOW as NOWImport2 } from "../../support/helpers/database-foundation/fixtures.js";
@@ -95,30 +93,10 @@ describe("cross-date search authority read", () => {
 
 {
 const CLOCK = manualClock(new Date(LATERImport2));
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
-const WORKER_ID = "person-lookup-worker-1";
-const CLAIM = { workerId: WORKER_ID, claimGeneration: 1 };
-const AFTER_LATER = "2026-07-31T17:02:00.000Z";
-const ACTIVE = {
-  state: "active" as const,
-  reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-  hdh: true,
-};
 
-function openDatabase(hooks?: AuthorityTerminalizationHooks): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-run-terminal-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    CLOCK,
-    undefined,
-    hooks,
-  );
-  testWorkerPorts(database, CLOCK, { path: join(root, "authority.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
-  databases.push(database);
-  return database;
-}
+const { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning } = createRunIntegrationTestWorld(CLOCK);
+
+const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 
 function corruptRunConsequence(
   mutate: (run: RunRecord) => unknown,
@@ -152,49 +130,6 @@ function corruptRunConsequence(
   } finally {
     raw.close();
   }
-}
-
-function startRunning(database: AuthorityDatabase, nodeId = "crm-dates") {
-  database.authority.runs.enqueue({
-    ...QUEUED_RUN,
-    envelope: {
-      ...QUEUED_RUN.envelope,
-      contractFingerprint: personLookupDescriptor.contractFingerprint,
-    },
-    input: {
-      ...QUEUED_RUN.input,
-      parsed: {
-        ...QUEUED_RUN.input.parsed,
-        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
-      },
-    },
-  });
-  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW });
-  if (claimed.state !== "claimed") throw new Error("run was not claimed");
-  const validating = database.authority.runs.transition({
-    runId: RUN_ID,
-    expectedVersion: claimed.run.version,
-    claim: CLAIM,
-    lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
-    now: NOW,
-  });
-  if (validating.state !== "applied") throw new Error("run did not enter validating");
-  const running = database.authority.runs.transition({
-    runId: RUN_ID,
-    expectedVersion: validating.run.version,
-    claim: CLAIM,
-    lifecycle: {
-      state: "running",
-      workerId: WORKER_ID,
-      claimedAt: NOW,
-      heartbeatAt: NOW,
-      currentNodeId: nodeId,
-    },
-    now: NOW,
-  });
-  if (running.state !== "applied") throw new Error("run did not enter running");
-  return running.run;
 }
 
 function failure(run: ReturnType<typeof startRunning>) {

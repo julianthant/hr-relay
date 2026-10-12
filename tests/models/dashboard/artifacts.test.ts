@@ -1,22 +1,10 @@
+import { createDashboardModelFixtures } from "../../support/helpers/dashboard-model-fixtures.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { ArtifactRefWireSchema,ArtifactResourceWireSchema,CapturePointerWireSchema } from "../../../src/models/dashboard/artifacts.js";
-const ARTIFACT_1 = "66666666-6666-4666-8666-666666666666";
-const HASH_A = "a".repeat(64);
-const ARTIFACT = {
-  state: "available",
-  value: {
-    artifactId: ARTIFACT_1,
-    sha256: HASH_A,
-    byteLength: 100,
-    sensitivity: "redacted",
-    redaction: "applied",
-    mediaKind: "image",
-    mediaType: "image/png",
-    width: 1280,
-    height: 720,
-  },
-};
+
+const { ARTIFACT_1, ARTIFACT } = createDashboardModelFixtures();
+
 
 function isPlainObject(value: unknown): value is object {
   return value !== null && typeof value === "object" && !Array.isArray(value);

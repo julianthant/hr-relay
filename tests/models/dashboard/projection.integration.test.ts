@@ -1,3 +1,4 @@
+import { createSeededDashboardWorld } from "../../support/helpers/seeded-dashboard-world.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { seedSyntheticRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
 import { default as assert } from "node:assert/strict";
@@ -14,8 +15,6 @@ import type { CommandKernel } from "../../../src/backend/runs/commands/command-k
 import { notificationWireOf } from "../../../src/models/dashboard/projection.js";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
-import { RunLifecycleSchema } from "../../../src/models/run/record.js";
-import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { NO_INTAKE_PROJECTIONS } from "../../support/fixtures/intake-kernel-seams.js";
 import { UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
@@ -28,15 +27,9 @@ import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
-import { claimEventOf } from "../../support/helpers/backend/dashboard-harness.js";
 import { DAY } from "../../support/helpers/backend/dashboard-harness.js";
 import { DESCRIPTOR_SET_HASH } from "../../support/helpers/backend/dashboard-harness.js";
-import { instantOffsetOf } from "../../support/helpers/backend/dashboard-harness.js";
 import { makeWorld } from "../../support/helpers/backend/dashboard-harness.js";
-import { queuedEventOf as queuedEventBase } from "../../support/helpers/backend/dashboard-harness.js";
-import { runRecordOf as runRecordBase } from "../../support/helpers/backend/dashboard-harness.js";
-import { taskEventsOf } from "../../support/helpers/backend/dashboard-harness.js";
-import { traceOf } from "../../support/helpers/backend/dashboard-harness.js";
 import { uuidOf } from "../../support/helpers/backend/dashboard-harness.js";
 import type { DashboardWorld } from "../../support/helpers/backend/dashboard-harness.js";
 
@@ -202,22 +195,8 @@ _afterEachFixture0();
 
 {
 
-function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {
-  const lifecycle = RunLifecycleSchema.parse(input.lifecycle ?? {state:"queued"});
-  if (lifecycle.state !== "terminal" || !["done","failed"].includes(lifecycle.outcome)) return runRecordBase(input);
-  const base = runRecordBase({...input,lifecycle:{state:"queued"}});
-  const version = Math.max(2,base.version), claimGeneration = Math.max(1,base.claimGeneration);
-  return RunRecordSchema.parse({...base,lifecycle,version,claimGeneration,updatedAt:lifecycle.endedAt,completion:{
-    schemaVersion:1,kind:lifecycle.outcome,expectedVersion:version-1,
-    claim:{workerId:"queue-fixture-worker",claimGeneration},authorizedAt:lifecycle.endedAt,
-    ...(lifecycle.outcome === "done" ? {resultDigest:"a".repeat(64)} : {failureId:lifecycle.failureId}),
-  }});
-}
-function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase>[0]) {
-  const event = queuedEventBase(w,{...input,lifecycle:{state:"queued"}});
-  if (input.lifecycle !== undefined) w.authority.put(runRecordOf({...input,enqueuedAt:input.enqueuedAt ?? w.clock.now().toISOString()}));
-  return event;
-}
+const { seedWorld } = createSeededDashboardWorld();
+
 
 const worlds: DashboardWorld[] = [];
 
@@ -230,70 +209,6 @@ function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
 const _afterEachFixture0 = () => {
   for (const w of worlds.splice(0)) w.dispose();
 };
-
-const CLAIM = {
-  workerId: "person-lookup-worker-1",
-  claimedAt: "2026-08-03T17:00:05.000Z",
-  heartbeatAt: "2026-08-03T17:00:05.000Z",
-} as const;
-
-function seedWorld(w: DashboardWorld): void {
-  queuedEventOf(w, { seed: 1 });
-
-  queuedEventOf(w, { seed: 2 });
-  w.authority.put(runRecordOf({ seed: 2, lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1, version: 2 }));
-  claimEventOf(w, 2);
-  taskEventsOf(w, 2, "searching");
-
-  queuedEventOf(w, { seed: 3 });
-  claimEventOf(w, 3);
-  taskEventsOf(w, 3, "searching", "done");
-  w.writer.emit({
-    t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-    runId: uuidOf(3), attempt: 1, traceId: traceOf(3), spanPath: traceOf(3), outcome: "done",
-  });
-  w.authority.put(runRecordOf({
-    seed: 3,
-    lifecycle: { state: "terminal", outcome: "done", endedAt: "2026-08-03T17:10:00.000Z" },
-    version: 3,
-  }));
-
-  queuedEventOf(w, { seed: 4 });
-  claimEventOf(w, 4);
-  taskEventsOf(w, 4, "searching", "failed");
-  w.writer.emit({
-    t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-    runId: uuidOf(4), attempt: 1, traceId: traceOf(4), spanPath: traceOf(4),
-    outcome: "failed", failureId: uuidOf(9004),
-  });
-  w.authority.put(runRecordOf({
-    seed: 4,
-    lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T17:12:00.000Z", failureId: uuidOf(9004) },
-    version: 3,
-  }));
-
-  queuedEventOf(w, { seed: 5 });
-
-  queuedEventOf(w, { seed: 6, shape: "operation", title: "I-9 batch" });
-  queuedEventOf(w, { seed: 7, shape: "operation-member", parentSeed: 6 });
-  queuedEventOf(w, { seed: 8, shape: "operation-member", parentSeed: 6 });
-  w.writer.emit({
-    t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-    runId: uuidOf(8), attempt: 1, traceId: traceOf(8), spanPath: traceOf(8),
-    outcome: "failed", failureId: uuidOf(9008),
-  });
-  w.authority.put(runRecordOf({
-    seed: 8, shape: "operation-member", parentSeed: 6,
-    lifecycle: { state: "terminal", outcome: "failed", endedAt: "2026-08-03T17:13:00.000Z", failureId: uuidOf(9008) },
-    version: 2,
-  }));
-
-  queuedEventOf(w, { seed: 9, lifecycle: { state: "parked-gate", gateId: "approval", parkedAt: instantOffsetOf(0), resumeAt: "approval" } });
-  w.writer.emit({
-    t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
-    runId: uuidOf(9), attempt: 1, traceId: traceOf(9), spanPath: traceOf(9), gate: "approval",
-  });
-}
 
 describe("THE run/queue projection", () => {
 afterEach(_afterEachFixture0);
