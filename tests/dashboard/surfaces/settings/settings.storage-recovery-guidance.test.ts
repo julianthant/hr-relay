@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { createSettingsStorageDoctorFixtures, MeasurementFreeResizeObserver } from "../../../support/helpers/settings-storage-doctor-fixtures.js";
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
@@ -17,52 +18,13 @@ StorageDoctorWireSchema,
 type StorageDoctorWire,
 } from "../../../../src/models/dashboard/storage.js";
 
-class MeasurementFreeResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
+const { STORAGE, REPORT_BASE } = createSettingsStorageDoctorFixtures();
+
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-
-const STORAGE = StorageHealthSummaryWireSchema.parse({
-  authority: "healthy",
-  backup: "current",
-  checkedAt: "2026-08-31T16:00:00.000Z",
-});
 const SECTIONS = SettingsSectionPrimitiveSchema.array().parse([
   { id: "storage", label: "Storage checks", revision: 1 },
 ]);
-
-const REPORT_BASE = {
-  recovery: { state: "clear" },
-  protectedSettings: { state: "unavailable", cause: { code: "authority-unavailable", summary: "protected settings fixture is unavailable" } },
-  mode: "read-only",
-  authorityUpgrades: { state: "absent", reason: "journal-empty" },
-  checkedAt: "2026-08-31T16:01:00.000Z",
-  authority: {
-    state: "healthy",
-    schemaVersion: 27,
-    authorityGeneration: 41,
-    pageCount: 12,
-  },
-  counts: {
-    state: "available",
-    values: {
-      pendingCommands: 0,
-      unresolvedWriteIntents: 0,
-      leases: 0,
-      providerReservations: 0,
-      artifactOutbox: 0,
-    },
-  },
-  backup: {
-    state: "missing",
-    cause: { code: "backup-missing", summary: "no verified backup is present" },
-  },
-  restoreCandidates: [],
-  service: { state: "never-run", reason: "backup service has not run" },
-} as const;
 
 let root: Root | undefined;
 let host: HTMLElement | undefined;

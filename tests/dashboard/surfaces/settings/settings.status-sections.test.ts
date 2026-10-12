@@ -1,33 +1,21 @@
+// @vitest-environment jsdom
+import { MeasurementFreeResizeObserver } from "../../../support/helpers/settings-storage-doctor-fixtures.js";
 import { PreflightActionsProvider } from "../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 import { fixturePreflightReport } from "../../../parity/helpers/fixture-preflight-routes.js";
 import { DEFAULT_DASHBOARD_PROFILE } from "../../../parity/helpers/fixture-profile.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../parity/helpers/fixture-settings.js";
-// @vitest-environment jsdom
-
 import assert from "node:assert/strict";
-import { act,createElement } from "react";
-import { createRoot,type Root } from "react-dom/client";
-import { afterEach,describe,it } from "vitest";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { buildSettingsNav } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
-import {
-SettingsSectionPrimitiveSchema,
-StorageHealthSummaryWireSchema,
-} from "../../../../src/models/dashboard/bootstrap.js";
-import {
-SETTINGS_SYSTEM_HOSTS_SECTION_ID,
-SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
-SettingsFactsWireSchema,
-type SettingsFactsWire,
-} from "../../../../src/models/dashboard/settings.js";
+import { SettingsSectionPrimitiveSchema, StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { SETTINGS_SYSTEM_HOSTS_SECTION_ID, SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, SettingsFactsWireSchema, type SettingsFactsWire } from "../../../../src/models/dashboard/settings.js";
 
-class MeasurementFreeResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
+
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 

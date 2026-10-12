@@ -1,47 +1,33 @@
 // @vitest-environment jsdom
-import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
-import { act as act_m0,createElement as createElement_m0 } from "react";
-import { createRoot as createRoot_m0,type Root as Root_m0 } from "react-dom/client";
-import { afterEach as afterEach_m0,describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
+import { MeasurementFreeResizeObserver } from "../../../support/helpers/settings-storage-doctor-fixtures.js";
+import { default as assert_m0, default as assert_m1 } from "node:assert/strict";
+import { act as act_m0, createElement as createElement_m0 } from "react";
+import { createRoot as createRoot_m0, type Root as Root_m0 } from "react-dom/client";
+import { afterEach as afterEach_m0, describe as describe_m0, describe as describe_m1, it as it_m0, it as it_m1 } from "vitest";
 import type { DashboardClient as DashboardClient_m0 } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m0 } from "../../../../src/dashboard/state/client-context.js";
-import { buildSettingsNav as buildSettingsNav_m0,buildSettingsNav as buildSettingsNav_m1,resolveSettingsSection as resolveSettingsSection_m0,resolveSettingsSection as resolveSettingsSection_m1 } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
+import { buildSettingsNav as buildSettingsNav_m0, buildSettingsNav as buildSettingsNav_m1, resolveSettingsSection as resolveSettingsSection_m0, resolveSettingsSection as resolveSettingsSection_m1 } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { SettingsPage as SettingsPage_m0 } from "../../../../src/dashboard/surfaces/settings/settings.js";
-import { SettingsSectionPrimitiveSchema as SettingsSectionPrimitiveSchema_m0,SettingsSectionPrimitiveSchema as SettingsSectionPrimitiveSchema_m1,StorageHealthSummaryWireSchema as StorageHealthSummaryWireSchema_m0 } from "../../../../src/models/dashboard/bootstrap.js";
+import { SettingsSectionPrimitiveSchema as SettingsSectionPrimitiveSchema_m0, SettingsSectionPrimitiveSchema as SettingsSectionPrimitiveSchema_m1, StorageHealthSummaryWireSchema as StorageHealthSummaryWireSchema_m0 } from "../../../../src/models/dashboard/bootstrap.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID as SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID_m1 } from '../../../../src/models/dashboard/settings.js';
 import { fixtureSettingsDocument as fixtureSettingsDocument_m0 } from "../../../parity/helpers/fixture-settings.js";
-
 import assert_m2 from "node:assert/strict";
 import { createElement as createElement_m2 } from "react";
 import { renderToStaticMarkup as renderToStaticMarkup_m2 } from "react-dom/server";
-import { describe as describe_m2,it as it_m2 } from "vitest";
+import { describe as describe_m2, it as it_m2 } from "vitest";
 import type { DashboardClient as DashboardClient_m2 } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m2 } from "../../../../src/dashboard/state/client-context.js";
-import {
-DASHBOARD_MAIN_REGION_ID as DASHBOARD_MAIN_REGION_ID_m2,
-SETTINGS_GEAR_ID as SETTINGS_GEAR_ID_m2,
-SETTINGS_KEYBOARD_SECTION_ID as SETTINGS_KEYBOARD_SECTION_ID_m2,
-buildSettingsNav as buildSettingsNav_m2,
-resolveSettingsSection as resolveSettingsSection_m2,
-settingsCloseFocusTargetId as settingsCloseFocusTargetId_m2,
-type SettingsSection as SettingsSection_m2
-} from "../../../../src/dashboard/surfaces/settings/settings-model.js";
+import { DASHBOARD_MAIN_REGION_ID as DASHBOARD_MAIN_REGION_ID_m2, SETTINGS_GEAR_ID as SETTINGS_GEAR_ID_m2, SETTINGS_KEYBOARD_SECTION_ID as SETTINGS_KEYBOARD_SECTION_ID_m2, buildSettingsNav as buildSettingsNav_m2, resolveSettingsSection as resolveSettingsSection_m2, settingsCloseFocusTargetId as settingsCloseFocusTargetId_m2, type SettingsSection as SettingsSection_m2 } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { SettingsPage as SettingsPage_m2 } from "../../../../src/dashboard/surfaces/settings/settings.js";
-import {
-SettingsSectionPrimitiveSchema as SettingsSectionPrimitiveSchema_m2,
-StorageHealthSummaryWireSchema as StorageHealthSummaryWireSchema_m2
-} from "../../../../src/models/dashboard/bootstrap.js";
+import { SettingsSectionPrimitiveSchema as SettingsSectionPrimitiveSchema_m2, StorageHealthSummaryWireSchema as StorageHealthSummaryWireSchema_m2 } from "../../../../src/models/dashboard/bootstrap.js";
 
 
 {
 
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-class MeasurementFreeResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
+
+
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
 const STORAGE = StorageHealthSummaryWireSchema_m0.parse({
