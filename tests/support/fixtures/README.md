@@ -190,6 +190,10 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/owned-vite-probe-fixtures.ts` | owned local Vite probe server |
 | `helpers/dry-run-scenario-fixtures.ts` | fresh authored dry-run manifest |
 
+| `helpers/dashboard/search-page-fixtures.ts` | fresh authored zero-match search page |
+
+| `helpers/kuali-finalization-input-fixtures.ts` | pure raw Kuali finalization inputs |
+
 ## File fixtures
 
 - `fixtures/documents/synthetic-sample.pdf`

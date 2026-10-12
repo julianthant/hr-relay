@@ -119,6 +119,8 @@ Browser factory and worker sessions share `helpers/browser/session-factory-fixtu
 
 Credential persistence and inspection use `helpers/credential-persistence-fixtures.ts` and `helpers/credential-doctor-fixtures.ts`; registry inputs use `helpers/test-target-registry-fixtures.ts`. Note events, Vite probe servers and dry-run manifests share their fixture builders under `helpers/backend/` and `helpers/dry-run-scenario-fixtures.ts`.
 
+Authored dry-run records share their fixture owner; raw Kuali inputs use the import-free `helpers/kuali-finalization-input-fixtures.ts`. Empty search page inputs use `helpers/dashboard/search-page-fixtures.ts`, and HTTP refusal case rows use `helpers/backend/http-route-harness.ts`.
+
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector

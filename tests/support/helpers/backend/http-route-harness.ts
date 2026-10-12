@@ -655,3 +655,13 @@ export async function loopbackResponse(
     client.end();
   });
 }
+
+export function foreignOriginCases() {
+return [
+    ["missing Origin", { host: "localhost" }],
+    ["foreign Origin", { host: "localhost", origin: "https://hostile.example" }],
+    ["malformed Origin", { host: "localhost", origin: "not an origin" }],
+    ["Host-mismatched Origin", { host: "localhost:3938", origin: "http://127.0.0.1:3938" }],
+    ["non-loopback Host", { host: "attacker.example", origin: "http://attacker.example" }],
+  ] as const;
+}
