@@ -1,3 +1,4 @@
+import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -5,20 +6,20 @@ import { tmpdir } from "node:os";
 import { join as join_m0 } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { composeStorageCommand as composeStorageCommand_m0 } from "../../../../src/backend/app/composition/storage-compose.js";
-import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { executeSettingsCommand, type CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
-import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+
+
 import { createCredentialSecretSource } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
+
 import { requireSecret } from "../../../../src/models/config/secrets.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { AuthorityDatabase as AuthorityDatabase_m0, createCredentialStore as createCredentialStore_m0, type CredentialStoreHooks } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase as AuthorityDatabase_m0, createCredentialStore as createCredentialStore_m0 } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, sweepWorkerClaims, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -34,7 +35,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
-import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
+
 import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { atomicWriteCheckpoint, currentAtomicWriteFixture, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
@@ -51,41 +52,18 @@ import { AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/
 
 {
 
-const roots: string[] = [];
-const databases: AuthorityDatabase_m0[] = [];
-const admissions: RuntimeAdmission[] = [];
+const { roots, databases, admissions, fixture, protectedCommand, failAudit } = createSettingsAuthorityTestWorld();
+
+
 const _afterEachFixture0 = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
-function fixture(hooks?: CredentialStoreHooks, exclusive = false) {
-  const repoRoot = mkdtempSync(join_m0(realpathSync(tmpdir()), "sqlite-settings-")); roots.push(repoRoot);
-  const admission = exclusive ? acquireEntrypointAdmission(repoRoot, "exclusive") : undefined;
-  if (admission !== undefined) admissions.push(admission);
-  const root = join_m0(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(root, { recursive: true, mode: 0o700 });
-  writeFileSync(join_m0(repoRoot, "package.json"), JSON.stringify({ name: "credential-restore-proof", version: "0.1.0" }));
-  const clock = manualClock(new Date("2026-09-06T12:00:00Z"));
-  const path = join_m0(root, "state.db");
-  const options = { path, busyTimeoutMs: 250, migrationOwner: "settings-test" };
-  const database = admission === undefined ? AuthorityDatabase_m0.open(options, clock) : AuthorityDatabase.open(admission, options, clock); databases.push(database);
-  seedSyntheticRuntimeConfig(database);
-  const credentialOptions = { stateRoot: root, ...(hooks === undefined ? {} : { hooks }) };
-  const store = admission === undefined ? createCredentialStore_m0(credentialOptions) : createCredentialStore({ ...credentialOptions, admission });
-  const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
-  const execute = (request: unknown, authority: CommandAuthority = database) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request);
-  return { repoRoot, root, path, database, store, execute, clock, admission };
-}
+
 function ordinary(expectedRevision = 1) {
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
   return { family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: "2026-09-06T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
     target: { expectedRevision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } };
 }
-function protectedCommand() {
-  return { family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: "2026-09-06T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
-    target: { expectedRevision: 1 }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-private-value" } } } };
-}
-function failAudit(database: AuthorityDatabase_m0): CommandAuthority {
-  return { withAuthorityTransaction: (work) => database.withAuthorityTransaction((repositories) => work({ ...repositories,
-    commandAudits: { ...repositories.commandAudits, insert: () => { throw new Error("injected audit failure"); } },
-  })) };
-}
+
+
 
 describe("SQLite settings authority", () => {
 afterEach(_afterEachFixture0);

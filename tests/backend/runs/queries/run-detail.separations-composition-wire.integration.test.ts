@@ -1,3 +1,4 @@
+import { createSeparationStartFixtures } from "../../../support/helpers/backend/separation-start-fixtures.js";
 import { createSeparationIdentityPacketFixture } from "../../../support/helpers/separation-identity-packet-fixture.js";
 import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -11,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { buildRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
-import { planStart } from "../../../../src/backend/runs/start/plan.js";
+
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { MatchIdentityOutputSchema, SeparationsMatchIdentity } from "../../../../src/models/workflows/separations/match-identity.js";
@@ -22,10 +23,10 @@ import { deriveIdentityEvidenceDigest } from "../../../../src/rules/separations/
 import { SeparationWritePlanSchema } from "../../../../src/rules/separations/write-plan.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js";
-import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+
 import { makeWorld, runRecordOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
-import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -64,21 +65,7 @@ function openDatabase(): AuthorityDatabase {
   return database;
 }
 
-function plan(submissions: readonly unknown[], dryRun = false) {
-  return planStart(
-    { protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }), authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000 },
-    {
-      descriptor: separationsDescriptor,
-      submissions,
-      dryRun,
-      priority: "bulk" as const,
-      shape: "single" as const,
-      configFingerprint: HASH_A,
-      configSnapshotId: UUID_4,
-      plannedBy: "local-operator",
-    },
-  );
-}
+const { plan } = createSeparationStartFixtures(openDatabase, CLOCK);
 
 describe("separations — start planning through the existing service", () => {
 
