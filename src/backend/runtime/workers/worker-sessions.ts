@@ -148,6 +148,13 @@ export function sessionAcquisitionTimeoutText(boundMs: number): string {
   return `Browser-session acquisition (open + login) exceeded its ${boundMs}ms timeouts.sessionAcquireMs bound. `
     + "Check timeouts.duoApprovalSeconds against the acquisition bound; never lengthen taskMs to hide a dead session.";
 }
+export class WorkerSessionClosureUnprovedError extends AggregateError {
+  constructor(workerId: string, failures: readonly unknown[] = []) {
+    super(failures, `worker ${workerId} failed to close every browser session; closure is unproved`);
+    this.name = "WorkerSessionClosureUnprovedError";
+  }
+}
+
 export class SessionAcquisitionTimeoutError extends Error {
   readonly code = "browser-session-acquisition-timeout";
   readonly phase = "acquisition";
@@ -677,7 +684,7 @@ export class WorkerSessionManager {
       this.#closingReason = undefined;
     }
     if (failures.length > 0) {
-      throw new AggregateError(failures, `worker ${this.#workerId} failed to close every browser session`);
+      throw new WorkerSessionClosureUnprovedError(this.#workerId, failures);
     }
   }
 

@@ -1,3 +1,4 @@
+import { WorkerSessionClosureUnprovedError } from "../../runtime/workers/worker-sessions.js";
 import { composeRuntimePreflight, type RuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
@@ -232,7 +233,7 @@ export function createProductionDryRunScenarioRuntime(
   );
 
   const drain = input.drainWorker ?? (async (workflow: string): Promise<void> => {
-    await composeWorkerRuntime({
+    const report = await composeWorkerRuntime({
       admission,
       ...(workflow === separationsKualiFinalizationModule.descriptor.id
         ? { scenarioStepProofModule: separationsKualiFinalizationModule }
@@ -253,6 +254,7 @@ export function createProductionDryRunScenarioRuntime(
         : { processIdentityObserver: input.processIdentityObserver }),
       ...(input.write === undefined ? {} : { write: input.write }),
     });
+    if (report.closure === "unproved") throw new WorkerSessionClosureUnprovedError(report.workerId);
   });
 
   const runtime: DryRunScenarioRuntime = {

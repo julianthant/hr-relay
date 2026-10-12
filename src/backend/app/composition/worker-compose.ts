@@ -1,3 +1,4 @@
+import { WorkerSessionClosureUnprovedError } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
 import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../logs/emergency-faults.js";
@@ -697,8 +698,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       clock,
       workerId,
       leaseGeneration,
-      report.stopped === "stop-directive" ? "operator" : "shutdown",
-      undefined,
+      report.closure === "unproved" ? "crashed" : report.stopped === "stop-directive" ? "operator" : "shutdown",
+      report.closure === "unproved" ? new WorkerSessionClosureUnprovedError(workerId) : undefined,
       log,
     );
     runtimeReport = report;

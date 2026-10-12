@@ -308,6 +308,7 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
       workerId: finished.workerId,
       workflowId: finished.workflowId,
       stopped: finished.stopped,
+      closure: finished.closure,
       outcomes: finished.outcomes.map(({ state }) => state),
     }));
     return;

@@ -54,6 +54,7 @@ import {
 import {
   withBoundRunConfigFingerprint,
   WorkerSessionManager,
+  WorkerSessionClosureUnprovedError,
   type WorkerBrowserSessionFactory,
   type WorkerSessionEvent,
 } from "./worker-sessions.js";
@@ -142,6 +143,7 @@ export const WorkerLoopReportSchema = z.strictObject({
   outcomes: z.array(RunExecutionOutcomeSchema),
   /** `stop-directive` = the durable lease directive said stop, between items. */
   stopped: z.enum(["idle", "stop-signal", "stop-directive"]),
+  closure: z.enum(["proved", "unproved"]),
 });
 export type WorkerLoopReport = z.infer<typeof WorkerLoopReportSchema>;
 
@@ -278,6 +280,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   emit({ t: "span.started", kind: "worker", workerId, spanPath: workerPath, name: workflowId });
 
   const outcomes: RunExecutionOutcome[] = [];
+  let closure: WorkerLoopReport["closure"] = "proved";
   let stopped: "idle" | "stop-signal" | "stop-directive" = "stop-signal";
   try {
     while (!deps.stopSignal.aborted) {
@@ -396,10 +399,19 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       try { deps.log.warn("confirmed action publication closed with pending events", { pending: publication.pending }); }
       catch { /* Health remains queryable through the publisher; shutdown still owns session closure. */ }
     }
-    await sessions.closeAll("worker-stop");
-    emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath, outcome: "done" });
+    await sessions.closeAll("worker-stop").catch((error: unknown) => {
+      if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;
+      closure = "unproved";
+    });
+    emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath,
+      outcome: closure === "proved" ? "done" : "failed",
+      ...(closure === "proved" ? {} : {
+        diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+        errorSummary: `worker ${workerId} browser session closure is unproved`,
+      }),
+    });
   }
-  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped });
+  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped, closure });
 }
 
 /* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions ) ──── */

@@ -14,7 +14,7 @@ import { type BrowserDeadlineScheduler } from "../../../../src/backend/runtime/b
 
 import { type WorkerBrowserSessionFactory, type WorkerSessionEvent } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
+import { WorkerSessionManager, WorkerSessionClosureUnprovedError } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 
 
 
@@ -463,7 +463,8 @@ describe("bounded browser-session acquisition", () => {
     await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined), error => error === failure);
     await new Promise(resolve => setImmediate(resolve));
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      await assert.rejects(sessions.closeAll("worker-stop"), error => error instanceof AggregateError && error.errors.includes(failure));
+      await assert.rejects(sessions.closeAll("worker-stop"), error => error instanceof WorkerSessionClosureUnprovedError
+        && error.name === "WorkerSessionClosureUnprovedError" && error.errors.includes(failure));
     }
     await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined), error => error === failure);
   });
