@@ -536,12 +536,10 @@ afterEach(() => {
 }
 
 {
-const { disposers, harness, claimRunning, contextFor, intentByKey } = createWriteSequencerTestWorld();
+const {harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 
 describe("the seven-beat happy path", () => {
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 
   it("keeps a probe observation emitted when that task throws later", async () => {
@@ -624,9 +622,7 @@ afterEach(() => {
 });
 
 describe("beat ① — pre-fence probe indeterminacy refuses loudly", () => {
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
   for (const [verdict, expected] of [
     [ambiguousProbeVerdict(WRITE_FIXTURE_NOW), /found 2 matches/],
@@ -667,9 +663,7 @@ afterEach(() => {
 });
 
 describe("dry-run — structurally zero intent, zero fence, zero commit", () => {
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 
   it("identifies a refused preview by safe key digest without exposing the person identifier", async () => {
@@ -693,9 +687,7 @@ afterEach(() => {
 });
 
 describe("a driver lease without the claimed run's bound fingerprint refuses", () => {
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
   it("refuses the probe lease loudly: no browser, no fence, no click, nothing settled", async () => {
     const h = harness();
