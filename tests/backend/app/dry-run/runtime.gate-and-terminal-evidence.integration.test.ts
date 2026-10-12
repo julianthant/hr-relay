@@ -1,6 +1,6 @@
 import { createDryRunCompositionTestWorld } from "../../../support/helpers/backend/dry-run-composition-world.js";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -16,7 +16,7 @@ import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-f
 import { FINALIZATION_EID, FINALIZATION_OTHER_EID } from "../../../support/helpers/kuali-finalization-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, databases, spanTextFromAuthority, selectedSettingsFixture, composedSessions, PREVIEW_RECEIPT_VERIFICATION, NAME_ONLY_FINALIZATION_INPUT, admittedFinalization, TEST_MANIFEST } = createDryRunCompositionTestWorld();
+const {roots, spanTextFromAuthority, selectedSettingsFixture, composedSessions, PREVIEW_RECEIPT_VERIFICATION, NAME_ONLY_FINALIZATION_INPUT, admittedFinalization, TEST_MANIFEST, cleanup } = createDryRunCompositionTestWorld();
 
 
 const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
@@ -52,11 +52,7 @@ const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
   ],
 });
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("dry-run scenario production composition boundary", () => {
 

@@ -236,5 +236,8 @@ export function createWriteSequencerTestWorld() {
     };
     return { intent, attempt };
   }
-  return { disposers, harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture };
+  const cleanup = () => {
+    for (const dispose of disposers.splice(0)) dispose();
+  };
+  return { disposers, harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture, cleanup };
 }

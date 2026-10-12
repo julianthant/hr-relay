@@ -3,7 +3,7 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
+
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { composeWorkerRuntime } from "../../../../src/backend/app/composition/worker-compose.js";
@@ -14,17 +14,10 @@ import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixture
 import { ITEM_ID, RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { happySessionHarness, healthyCrmDriver, personLookupQueuedRun, sessionFactoryHarness, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { roots, openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, composeInput } = createWorkerCompositionTestWorld();
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, composeInput, cleanup } = createWorkerCompositionTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  releaseAdmissionFixtures();
-  for (const root of roots.splice(0)) {
-    releaseAdmissionFixture(root);
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanup);
 const POOL_INDEX_2 = PositiveIntSchema.parse(2);
 
 function admittedWorkerId(stateRoot: string, clock: TestClock, poolIndex = 1) {

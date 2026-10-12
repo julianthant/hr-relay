@@ -19,7 +19,7 @@ import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, identityCheckDescriptor, createHarness, nextCommandId, _createPlan } = createCommandKernelTestWorld();
+const { roots, openDatabases, identityCheckDescriptor, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
 
 
 afterEach(() => {
@@ -27,24 +27,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function startCommand(plan: ReturnType<typeof _createPlan>, commandId = nextCommandId()) {
-  return {
-    commandId,
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "start",
-    type: "start-run",
-    target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.version },
-    payload: {
-      descriptorFingerprint: plan.descriptorFingerprint,
-      configFingerprint: plan.configFingerprint,
-      ingressSchemaHash: plan.ingressSchemaHash,
-      canonicalInputSchemaHash: plan.canonicalInputSchemaHash,
-      inputFingerprint: plan.inputFingerprint,
-    },
-  };
-}
+
 
 describe("gate resolution", () => {
   function stageIdentityGateRun(

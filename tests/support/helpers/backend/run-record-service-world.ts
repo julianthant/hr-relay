@@ -175,5 +175,6 @@ export function createRunRecordServiceTestWorld() {
       },
     };
   }
-  return { cleanups, fixture, created, runningRun, raceConnection, failureTerminalRequest };
+  const cleanup = () => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); };
+  return { cleanups, fixture, created, runningRun, raceConnection, failureTerminalRequest, cleanup };
 }

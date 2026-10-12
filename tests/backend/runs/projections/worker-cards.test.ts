@@ -1,3 +1,4 @@
+import { createWorkerLeaseFixtures } from "../../../support/helpers/backend/worker-lease-fixtures.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
@@ -7,28 +8,14 @@ canStopWorker,
 workerDirectiveNote,
 workerElapsedSeconds
 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";
+
 
 const STARTED = "2026-08-20T16:00:00.000Z";
 const SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const RUN = "11111111-1111-4111-8111-111111111111";
 const TRACE = "pl-160500-1111";
 
-function leaseOf(overrides: Readonly<Record<string, unknown>> = {}): ReturnType<typeof WorkerLeaseRecordSchema.parse> {
-  return WorkerLeaseRecordSchema.parse({
-    workerId: "person-lookup-worker-1",
-    workflow: "person-lookup",
-    browserSystems: ["ucpath"],
-    processId: 1234,
-    leaseGeneration: 1, controlRevision: 1,
-    lifecycle: { state: "idle", startedAt: STARTED, heartbeatAt: "2026-08-20T16:00:30.000Z" },
-    control: { directive: "run", requestedAt: STARTED, requestedBy: "local-operator" },
-    version: 5,
-    createdAt: STARTED,
-    updatedAt: "2026-08-20T16:00:30.000Z",
-    ...overrides,
-  });
-}
+const { leaseOf } = createWorkerLeaseFixtures(STARTED);
 
 const NO_TRACE = (): undefined => undefined;
 describe("the card the projector composes from a lease", () => {

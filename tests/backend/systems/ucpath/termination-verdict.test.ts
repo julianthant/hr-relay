@@ -1,3 +1,4 @@
+import { createUcpathPendingRowFixtures } from "../../../support/helpers/ucpath-pending-row-fixtures.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
@@ -33,17 +34,7 @@ const TARGET = {
   initiatorComments: "x",
 };
 
-function row(overrides: Partial<UcpathTransactionRow> = {}): UcpathTransactionRow {
-  return {
-    transactionId: "T002209631",
-    emplId: EID,
-    action: "TER",
-    approvalStatus: "Pending",
-    startDate: EFFDT,
-    displayedName: NAME,
-    ...overrides,
-  };
-}
+const { row } = createUcpathPendingRowFixtures(EID, NAME, EFFDT);
 
 function scan(rows: readonly UcpathTransactionRow[]): UcpathTransactionScan {
   return { state: "read", emplId: EID, rows: [...rows], scannedRowCount: rows.length, observedAt: OBSERVED_AT };

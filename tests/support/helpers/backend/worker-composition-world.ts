@@ -4,7 +4,7 @@ import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.j
 import { fixtureAdmission, installationAdmission, AuthorityDatabase } from "../admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -18,7 +18,7 @@ import { type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 
 
 
-export function createWorkerCompositionTestWorld() {
+export function createWorkerCompositionTestWorld(releaseAdmissionFixtures: () => void, releaseAdmissionFixture: (root: string) => void) {
   const roots: string[] = [];
 
   const openDatabases: AuthorityDatabase[] = [];
@@ -152,5 +152,13 @@ export function createWorkerCompositionTestWorld() {
       },
     } as const;
   }
-  return { roots, openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig, composeInput, fixtureProcessIdentityObserver };
+  const cleanup = () => {
+    for (const database of openDatabases.splice(0)) database.close();
+    releaseAdmissionFixtures();
+    for (const root of roots.splice(0)) {
+      releaseAdmissionFixture(root);
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+  return { roots, openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig, composeInput, fixtureProcessIdentityObserver, cleanup };
 }

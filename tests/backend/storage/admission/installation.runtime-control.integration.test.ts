@@ -13,9 +13,9 @@ import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest, 
 import { NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
-const { workspaces, fixture, restore, adoptSynthetic, relocationPlan, prepareDestination, staged } = createInstallationControlTestWorld();
+const { workspaces, fixture, restore, adoptSynthetic, relocationPlan, prepareDestination, staged, cleanup } = createInstallationControlTestWorld();
 
-afterEach(() => { for (const workspace of workspaces.splice(0)) rmSync(workspace, { recursive: true, force: true }); });
+afterEach(cleanup);
 function settledMove(workspace: string, destination: RuntimePair): { operationId: string; locator: ExclusiveInstallationLease["locator"] } {
   const lease = acquireInstallation(workspace, "exclusive");
   const held = restore(workspace);

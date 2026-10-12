@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -373,5 +373,10 @@ export function createDryRunCompositionTestWorld() {
       },
     ],
   });
-  return { roots, databases, spanTextFromAuthority, selectedSettingsFixture, composedSessions, PREVIEW_RECEIPT_VERIFICATION, NAME_ONLY_FINALIZATION_INPUT, admittedFinalization, TEST_MANIFEST, admissionFixture, CHAIN_READY_MANIFEST };
+  const cleanup = () => {
+    for (const database of databases.splice(0)) database.close();
+    for (const root of roots.splice(0))
+      rmSync(root, { recursive: true, force: true });
+  };
+  return { roots, databases, spanTextFromAuthority, selectedSettingsFixture, composedSessions, PREVIEW_RECEIPT_VERIFICATION, NAME_ONLY_FINALIZATION_INPUT, admittedFinalization, TEST_MANIFEST, admissionFixture, CHAIN_READY_MANIFEST, cleanup };
 }

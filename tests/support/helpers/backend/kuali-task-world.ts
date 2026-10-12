@@ -22,6 +22,53 @@ type DriverCall = Readonly<{ operation: KualiOperation; args: readonly unknown[]
 
 
 
+export function recordingDriver(handlers: Partial<Record<KualiOperation, OperationHandler>>) {
+    const calls: DriverCall[] = [];
+    const invoke = async (operation: KualiOperation, args: readonly unknown[]): Promise<unknown> => {
+      calls.push({ operation, args });
+      const handler = handlers[operation];
+      if (handler === undefined) throw new Error(`unexpected Kuali semantic operation: ${operation}`);
+      return handler(...args);
+    };
+
+    const driver = {
+      system: "kuali",
+      read: (id: unknown) => invoke("read", [id]),
+      readActionListForDocument: (input: unknown) => invoke("readActionListForDocument", [input]),
+      readSeparationDocument: (input: unknown) => invoke("readSeparationDocument", [input]),
+      stageSeparationFinalization: (input: unknown) => invoke("stageSeparationFinalization", [input]),
+      readSavedSeparationFinalization: (input: unknown) => invoke("readSavedSeparationFinalization", [input]),
+      commit: (id: unknown, capability: unknown) => invoke("commit", [id, capability]),
+    } as unknown as KualiRrssDocumentDriver;
+
+    return { driver, calls };
+  }
+
+export function invocation(
+    task: AnyTask,
+    input: unknown,
+    driver: KualiRrssDocumentDriver,
+    mutation?: MutationCapability,
+  ) {
+    const points: DataPoint[] = [];
+    const ctx = {
+      signal: new AbortController().signal,
+      log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
+      fail: taskFailer(task.contract),
+      recordData: (point: DataPoint | readonly DataPoint[]) => {
+        if (Array.isArray(point)) points.push(...point as readonly DataPoint[]);
+        else points.push(point as DataPoint);
+      },
+      driver,
+      ...(mutation === undefined ? {} : { mutation }),
+    };
+    const parsedInput = task.contract.input.parse(input);
+    return {
+      points,
+      run: () => task.impl.run({ input: parsedInput, ctx } as never),
+    };
+  }
+
 export function createKualiTaskTestWorld() {
   const NOW = IsoInstantSchema.parse("2026-08-20T17:24:11.000Z");
 
@@ -51,52 +98,9 @@ export function createKualiTaskTestWorld() {
 
   const READ_INPUT = { actionId: DOCUMENT.actionId, documentNumber: DOCUMENT.documentNumber };
 
-  function recordingDriver(handlers: Partial<Record<KualiOperation, OperationHandler>>) {
-    const calls: DriverCall[] = [];
-    const invoke = async (operation: KualiOperation, args: readonly unknown[]): Promise<unknown> => {
-      calls.push({ operation, args });
-      const handler = handlers[operation];
-      if (handler === undefined) throw new Error(`unexpected Kuali semantic operation: ${operation}`);
-      return handler(...args);
-    };
 
-    const driver = {
-      system: "kuali",
-      read: (id: unknown) => invoke("read", [id]),
-      readActionListForDocument: (input: unknown) => invoke("readActionListForDocument", [input]),
-      readSeparationDocument: (input: unknown) => invoke("readSeparationDocument", [input]),
-      stageSeparationFinalization: (input: unknown) => invoke("stageSeparationFinalization", [input]),
-      readSavedSeparationFinalization: (input: unknown) => invoke("readSavedSeparationFinalization", [input]),
-      commit: (id: unknown, capability: unknown) => invoke("commit", [id, capability]),
-    } as unknown as KualiRrssDocumentDriver;
 
-    return { driver, calls };
-  }
 
-  function invocation(
-    task: AnyTask,
-    input: unknown,
-    driver: KualiRrssDocumentDriver,
-    mutation?: MutationCapability,
-  ) {
-    const points: DataPoint[] = [];
-    const ctx = {
-      signal: new AbortController().signal,
-      log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-      fail: taskFailer(task.contract),
-      recordData: (point: DataPoint | readonly DataPoint[]) => {
-        if (Array.isArray(point)) points.push(...point as readonly DataPoint[]);
-        else points.push(point as DataPoint);
-      },
-      driver,
-      ...(mutation === undefined ? {} : { mutation }),
-    };
-    const parsedInput = task.contract.input.parse(input);
-    return {
-      points,
-      run: () => task.impl.run({ input: parsedInput, ctx } as never),
-    };
-  }
 
   function point(direction: "read" | "write", field: string, value: unknown): DataPoint {
     return { direction, field, value };

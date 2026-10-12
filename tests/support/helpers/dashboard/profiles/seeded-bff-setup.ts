@@ -8,10 +8,9 @@ import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
 import { seed } from "../served-fixtures/seeded-lifecycle.js";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
-import { extname, join, normalize } from "node:path";
+import { join } from "node:path";
 import { descriptorSetHash } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -22,6 +21,7 @@ import { type DashboardApp } from "../../../../../src/backend/transports/http/ro
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { type ParityBundleProof } from "../served-fixtures/bundle.js";
+import { createStaticAssetFixture } from "../static-assets.js";
 import type * as SeededServicesTypes from "../served-fixtures/seeded-services.js";
 import type * as BundleTypes from "../served-fixtures/bundle.js";
 import type * as DateNavigationServerTypes from "../served-fixtures/date-navigation-server.js";
@@ -55,34 +55,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     "subtitle 'present': the start-plan path this seed uses proposes no subtitle",
   ]);
 
-  const CONTENT_TYPES: Readonly<Record<string, string>> = {
-    ".html": "text/html; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".svg": "image/svg+xml",
-    ".woff2": "font/woff2",
-    ".png": "image/png",
-    ".map": "application/json; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-  };
-
-  async function serveStatic(distDir: string, pathname: string, res: ServerResponse): Promise<void> {
-    const relative = pathname === "/" ? "/index.html" : pathname;
-    const target = normalize(join(distDir, relative));
-    if (!target.startsWith(normalize(distDir))) {
-      res.writeHead(404).end("not found");
-      return;
-    }
-    try {
-      const body = await readFile(target);
-      const type = CONTENT_TYPES[extname(target)];
-      res.writeHead(200, type === undefined ? {} : { "content-type": type }).end(body);
-    } catch {
-      // A missing asset is a 404, never a silent empty 200 — a parity capture of
-      // a blank page must fail loudly rather than be frozen as a reference.
-      res.writeHead(404).end("not found");
-    }
-  }
+  const serveStatic = createStaticAssetFixture();
 
   async function readBody(req: IncomingMessage): Promise<Buffer> {
     const chunks: Buffer[] = [];

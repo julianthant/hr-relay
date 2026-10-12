@@ -6,11 +6,9 @@ import { UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { disposers, executorHarness, SIGNAL } = createRunExecutorTestWorld();
+const {executorHarness, SIGNAL, cleanup } = createRunExecutorTestWorld();
 
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("terminal identity binding", () => {
   it("refuses to execute a run bound to a different descriptor identity", async () => {

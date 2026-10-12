@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -108,5 +108,6 @@ export function createInstallationControlTestWorld() {
         config, provenance: ordinary.provenance }) }));
     return () => evidence;
   }
-  return { workspaces, fixture, restore, adoptSynthetic, relocationPlan, prepareDestination, staged };
+  const cleanup = () => { for (const workspace of workspaces.splice(0)) rmSync(workspace, { recursive: true, force: true }); };
+  return { workspaces, fixture, restore, adoptSynthetic, relocationPlan, prepareDestination, staged, cleanup };
 }

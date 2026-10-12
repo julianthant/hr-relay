@@ -1,3 +1,4 @@
+import { recordingInputSource } from "../../../support/helpers/test-target-registry-fixtures.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
@@ -10,7 +11,7 @@ SEPARATIONS_WORKFLOW,
 TEST_TARGET_REGISTRY,
 TestTargetWorkflowArmsSchema
 } from "../../../../src/backend/app/registries/test-target-registry.js";
-import type { TestDataInputSource } from "../../../../src/models/config/test-data.js";
+
 import { testDataInputSource } from "../../../support/helpers/test-data/test-data-source.js";
 
 
@@ -24,18 +25,7 @@ const COMMITTED_CONFIGURED_SOURCE = testDataInputSource({
 });
 
 /** A test-data input source whose every read is recorded by input name. */
-function recordingInputSource(values: Parameters<typeof testDataInputSource>[0]): {
-  readonly source: TestDataInputSource;
-  readonly read: readonly string[];
-} {
-  const read: string[] = [];
-  const delegate = testDataInputSource(values);
-  const source: TestDataInputSource = { read: (name) => {
-    read.push(name);
-    return delegate.read(name);
-  } };
-  return { source, read };
-}
+
 
 /** A source whose private file is invalid: the loader already refused it by key, never by value. */
 const privateRoots: string[] = [];

@@ -1,6 +1,6 @@
 import { createDryRunCompositionTestWorld } from "../../../support/helpers/backend/dry-run-composition-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -17,14 +17,10 @@ import { journalProtectedSettings } from "../../../support/helpers/integration/j
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 import { testDataInputSource } from "../../../support/helpers/test-data/test-data-source.js";
 
-const { roots, databases, composedSessions, TEST_MANIFEST, admissionFixture, CHAIN_READY_MANIFEST } = createDryRunCompositionTestWorld();
+const {composedSessions, TEST_MANIFEST, admissionFixture, CHAIN_READY_MANIFEST, cleanup } = createDryRunCompositionTestWorld();
 
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("dry-run scenario production composition boundary", () => {
 

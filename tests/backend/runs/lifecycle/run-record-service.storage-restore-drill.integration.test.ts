@@ -14,7 +14,7 @@ import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../s
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { atomicWriteCheckpoint, currentAtomicWriteFixture, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { readdirSync, rmSync } from "node:fs";
+import {readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -23,13 +23,10 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, admissions, composeStorageCommand, drillPaths, open } = createStorageRestoreTestWorld();
+const {composeStorageCommand, drillPaths, open, cleanup } = createStorageRestoreTestWorld();
 
 
-afterEach(() => {
-  for(const admission of admissions.values())admission.release();admissions.clear();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("restore-loss warning after real worker recovery", () => {
   const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));

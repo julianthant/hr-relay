@@ -1,21 +1,22 @@
+import { createOmissionDefinitionFixtures } from "../../../support/helpers/workflow/omission-definition-fixtures.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
-import { z } from "zod";
+
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { StartStepOmissionRefusedError,resolveStartStepOmissions } from "../../../../src/backend/runs/start/step-selection.js";
 import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
-import { CANONICAL_FIELDS } from "../../../../src/models/fields/registry.js";
+
 import { CrmReadOnboardingRecord } from "../../../../src/models/systems/crm/read-onboarding-record.js";
 import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
+
+
 import { type StepOmissionDeclaration } from "../../../../src/models/workflow/step-omission.js";
-import { EidSchema } from "../../../../src/rules/identity/ids.js";
-import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
-import { defineWorkflow,type WorkflowAuthor } from "../../../../src/workflow-kit/workflow-definition.js";
+
+
+
 import { WORKER_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { compileFixtureWorkflow } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import {
@@ -37,73 +38,7 @@ afterEach(() => {
 
 const SIGNAL = new AbortController().signal;
 
-const FixtureInput = z.strictObject({ emplId: EidSchema, expectedName: CANONICAL_FIELDS.fullName.schema });
-const FixtureCanonicalInput = defineCanonicalInput(
-  FixtureInput,
-  z.strictObject({ emplId: EidSchema, expectedName: CANONICAL_FIELDS.fullName.schema }),
-  [{ emplId: "10800000", expectedName: "Fixture, Person" }],
-);
-const ReviewResultSchema = z.strictObject({ approved: z.boolean() });
-const FixtureResultSchema = z.strictObject({ verified: z.boolean() });
-
-type Author = WorkflowAuthor<typeof FixtureInput>;
-
-/** Rebuilds the CRM verification read as a complete, schema-valid `absent` outcome from the typed flag. */
-const VERIFY_OMISSION: StepOmissionDeclaration = {
-  form: { fields: [{ key: "verifiedByHand", label: "Verified by hand", kind: "boolean" }] },
-  produces: {
-    verify: ({ facts, scope }) => {
-      const input = scope.input as { emplId: string };
-      return {
-        state: "absent" as const,
-        queriedEid: input.emplId,
-        reason: facts.verifiedByHand === true ? "verified by the operator outside the CRM" : "not verified",
-      };
-    },
-  },
-};
-
-function fixture(id: string, code: string, steps: (author: Author) => ReturnType<Parameters<typeof defineWorkflow<typeof FixtureInput, typeof FixtureResultSchema>>[0]["steps"]>) {
-  return defineWorkflow({
-    id,
-    version: 1,
-    code,
-    label: "D313 fixture",
-    icon: "Search",
-    category: "operations",
-    input: FixtureInput,
-    canonicalInput: FixtureCanonicalInput,
-    inputSubject: "eid",
-    surface: { shape: "single" },
-    enqueue: "reject-active",
-    actions: STANDARD_WORKFLOW_ACTIONS,
-    surfaces: {},
-    details: [],
-    identity: { matchKey: (input) => `eid:${input.emplId}` },
-    presentation: { title: (input) => `EID ${input.emplId}` },
-    scenarios: [`${id}/happy`],
-    role: defineWorkflowRole({ kind: "standalone" }),
-    steps,
-  });
-}
-
-
-const gateInsideOmittableStep = fixture("omission-gate-inside-omitted-step", "dg", ({ task, gate, group, result }) => {
-  const search = task({ id: "search", contract: SearchPersonOrg, label: "Search", replay: "checkpoint" }, [], ({ input }) => ({
-    kind: "by-eid" as const, emplId: input.emplId,
-  }));
-  const review = gate({ id: "review", label: "Review", statusKey: "awaitingReview", result: ReviewResultSchema }, [search]);
-  const verify = task({ id: "verify", contract: CrmReadOnboardingRecord, label: "Verify", replay: "checkpoint" }, [search, review], ({ input }) => ({
-    eid: input.emplId, name: input.expectedName,
-  }));
-  return {
-    steps: [
-      [{ key: "reads", label: "Reads" }, [search]],
-      [group({ key: "deciding", label: "Deciding" }, { omission: VERIFY_OMISSION }), [review, verify]],
-    ],
-    result: result(FixtureResultSchema, [verify], ({ outputs }) => ({ verified: outputs.verify.state === "found" })),
-  };
-});
+const { ReviewResultSchema, FixtureResultSchema, VERIFY_OMISSION, fixture, gateInsideOmittableStep } = createOmissionDefinitionFixtures();
 
 describe("definition-time omission completeness", () => {
   it("refuses an omittable step whose gate is read from outside the step, naming the mandatory-verifier rule", () => {

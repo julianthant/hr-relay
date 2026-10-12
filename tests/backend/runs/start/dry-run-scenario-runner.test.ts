@@ -1,56 +1,14 @@
+import { createDryRunScenarioFixtures } from "../../../support/helpers/dry-run-scenario-fixtures.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import {
-evaluateDryRunScenarioEvidence,
-parseDryRunScenarioArguments,
-runDryRunScenario,
-} from "../../../../src/backend/runs/start/dry-run-scenario-runner.js";
+import { evaluateDryRunScenarioEvidence, parseDryRunScenarioArguments, runDryRunScenario } from "../../../../src/backend/runs/start/dry-run-scenario-runner.js";
 import type { DryRunScenarioResult } from "../../../../src/models/trust/dry-run-scenario-result.js";
 import {
 parseDryRunScenarioManifest
 } from "../../../../src/models/trust/dry-run-scenario.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
-const MANIFEST = {
-  scenarioId: "fixture-workflow/dry-run",
-  workflow: "fixture-workflow",
-  arm: "dry-run-preview",
-  transactionNode: "write",
-  recordedBy: "fixture contract",
-  cases: [{
-    caseId: "ordinary",
-    subjectLabel: "fixture-canary",
-    subjectKind: "ordinary",
-    why: "the ordinary case",
-    nodesReached: ["read", "write"],
-    nodesExcluded: ["after-write"],
-    checkpoints: [{
-      node: "read",
-      attempt: 1,
-      keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"],
-    }],
-    gateResults: [],
-    durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
-    receipt: {
-      result: "partial",
-      confidence: "unknown",
-      verification: [
-        { obligation: "node.read", verdict: "verified", mandatory: false },
-        { obligation: "node.write", verdict: "unknown", mandatory: true },
-        { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
-        { obligation: "landing", verdict: "unknown", mandatory: true },
-      ],
-    },
-    terminal: {
-      lifecycle: "done",
-      resultSchema: "RunDryRunPreviewResultSchema",
-      kind: "dry-run-preview",
-      externalCommit: "none",
-      stoppedAtNodeId: "write",
-    },
-    preview: { outcome: "would-prepare", subject: "match", staged: true },
-  }],
-} as const;
+const { MANIFEST } = createDryRunScenarioFixtures();
 
 const GATED_MANIFEST = {
   ...MANIFEST,

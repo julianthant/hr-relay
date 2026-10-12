@@ -5,11 +5,12 @@ import { runInNewContext } from "node:vm";
 import type { Page } from "playwright";
 import { describe, it, vi } from "vitest";
 import { scanTerminationTransactionsOnPage } from "../../../../../src/backend/systems/ucpath/driver/smart-hr-operation.js";
-import type { UcpathTransactionRow } from "../../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { EidSchema, IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
+import { createDeterministicUcpathDriverRow } from "../../../../support/helpers/ucpath-pending-row-fixtures.js";
 
 const EID = EidSchema.parse("10001799");
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-28T19:00:00.000Z");
+const { transactionRow } = createDeterministicUcpathDriverRow(EID);
 
 function timeoutError(message: string): Error {
   const error = new Error(message);
@@ -761,15 +762,3 @@ describe("SS Smart HR transaction scan", () => {
     });
   });
 });
-
-function transactionRow(overrides: Partial<UcpathTransactionRow> = {}): UcpathTransactionRow {
-  return {
-    transactionId: "T009000001",
-    emplId: EID,
-    action: "TER",
-    approvalStatus: "Pending",
-    startDate: "06/11/2026",
-    displayedName: "Person, Deterministic",
-    ...overrides,
-  };
-}

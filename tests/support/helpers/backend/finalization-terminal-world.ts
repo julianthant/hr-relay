@@ -234,5 +234,8 @@ export function createFinalizationTerminalTestWorld() {
 
     return claimQueued(value);
   }
-  return { open, signal, harness, executorDependencies, enqueueFromComparison, parkApproveAndReclaim };
+  const cleanup = () => {
+    for (const harness of open.splice(0)) harness.dispose();
+  };
+  return { open, signal, harness, executorDependencies, enqueueFromComparison, parkApproveAndReclaim, cleanup };
 }

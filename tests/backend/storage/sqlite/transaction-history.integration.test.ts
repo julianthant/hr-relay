@@ -86,6 +86,7 @@ import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT_m4, LEDGER_PAYLOA
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { historyClock } from "../../../support/helpers/storage/transaction-history-fixture.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { openConfirmedRetentionDatabase } from "../../../support/helpers/storage/confirmed-retention-fixtures.js";
 import { atomicWriteCheckpoint, currentAtomicWriteFixture, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 
 {
@@ -412,17 +413,7 @@ describe("retained confirmed history and shared retry deletion", () => {
 afterEach(_afterEachFixture0);
 
   function committed() {
-    const path = join(root(), "confirmed.db");
-    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500,
-      migrationOwner: "confirmed-retention-test" }, manualClock(new Date(ts)));
-    seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
-    database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
-    database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
-    const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
-    if (run === undefined) throw new Error("missing fixture owner");
-    database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: ts }, now: ts });
-    return { database, run, path };
+    return openConfirmedRetentionDatabase(root, ts, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
   }
   it("reconstructs every current confirmation field and retains authenticated proof beyond pruning and deletion", () => {
     const { database, run } = committed();

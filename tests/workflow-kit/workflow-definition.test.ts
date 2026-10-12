@@ -26,7 +26,7 @@ import { manualClock } from "../../src/rules/time/clock.js";
 import { QUEUED_RUN } from "../support/fixtures/phase1f-run-fixtures.js";
 import { buildWorkflowExplorer } from "../../src/backend/runs/queries/explorer.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../src/models/workflow/operation-display-snapshot.js";
-import { type WorkflowOperationDisplayDeclaration, OPERATION_DISPLAY_FORMAT_VERSION } from "../../src/models/workflow/operation-display.js";
+
 import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
 
 const { lookupInput, fixtureWorkflow } = createSearchWorkflowDefinitionFixtures();
@@ -389,164 +389,13 @@ describe("canonical awaited child terminal evidence", () => {
   });
 });
 
-const { DISPLAY_CHILD_A_ID, DISPLAY_CHILD_B_ID, DISPLAY_FORWARD_ID, DisplayInput, DisplayCanonicalInput, DisplayResult, ChildARef, ChildBRef, DelegationPolicy, searchInvocation } = createOperationDisplayFixtures();
+const { DISPLAY_CHILD_A_ID, DISPLAY_CHILD_B_ID, DISPLAY_FORWARD_ID, outerWorkflow } = createOperationDisplayFixtures();
 
 
 const operation = SearchPersonOrg.operation;
 if (operation === undefined) throw new Error("SearchPersonOrg must declare its reusable display operation");
 
-const operationNodes = [
-  { id: "first-search-operation", kind: "operation" as const, invocationId: "first-search" },
-  { id: "second-search-operation", kind: "operation" as const, invocationId: "second-search" },
-];
-const operationDisplay: WorkflowOperationDisplayDeclaration = {
-  capability: "complete",
-  version: OPERATION_DISPLAY_FORMAT_VERSION,
-  transforms: [{
-    id: "search-summary",
-    input: z.strictObject({ first: EidSchema, second: EidSchema, mode: z.string().min(1) }),
-    output: z.strictObject({ text: z.string().min(1) }),
-    inputs: [
-      { id: "first", inputPath: "first", value: { kind: "run-input", path: "firstEid" } },
-      { id: "second", inputPath: "second", value: { kind: "run-input", path: "secondEid" } },
-      {
-        id: "mode",
-        inputPath: "mode",
-        value: {
-          kind: "configuration",
-          key: "explorer.search.mode",
-          schema: z.string().min(1),
-          example: "normal",
-        },
-      },
-    ],
-    example: { first: "10800000", second: "10800001", mode: "normal" },
-    derive: (value) => {
-      const input = z.strictObject({ first: EidSchema, second: EidSchema, mode: z.string().min(1) }).parse(value);
-      return { text: `${input.mode}:${input.first}/${input.second}` };
-    },
-  }],
-  invocations: [
-    searchInvocation("first-search", "first-search", "firstEid"),
-    searchInvocation("second-search", "second-search", "secondEid"),
-  ],
-  presentation: [{
-    id: "search-session",
-    kind: "session-lifecycle",
-    children: operationNodes,
-  }, {
-    id: "selection-outcome",
-    kind: "branch",
-    outcomes: [{
-      id: "first-resolved",
-      label: "First search resolved",
-      when: {
-        kind: "equals",
-        value: { kind: "task-output", entryId: "first-search", path: "selection.status" },
-        expected: "resolved",
-      },
-      continuation: "delegate-child-a",
-    }],
-  }, {
-    id: "summary-ready",
-    kind: "verify",
-    outcomes: [{
-      id: "summary-present",
-      label: "Search summary present",
-      when: {
-        kind: "is-present",
-        value: { kind: "transformation", transformId: "search-summary", path: "text" },
-      },
-    }],
-  }, {
-    id: "delegate-child-a",
-    kind: "delegate",
-    entryId: "child-a",
-    targetWorkflowId: DISPLAY_CHILD_A_ID,
-  }, {
-    id: "delegate-child-b",
-    kind: "delegate",
-    entryId: "child-b",
-    targetWorkflowId: DISPLAY_CHILD_B_ID,
-  }, {
-    id: "child-a-finished",
-    kind: "verify",
-    outcomes: [{
-      id: "child-a-output-present",
-      label: "Child A returned a state",
-      when: {
-        kind: "is-present",
-        value: { kind: "child-output", entryId: "child-a", path: "nestedState" },
-      },
-    }],
-  }],
-};
-
-const forwardWorkflow = defineWorkflow({
-  id: DISPLAY_FORWARD_ID,
-  version: 1,
-  code: "fdo",
-  label: "Operation Display Parent",
-  icon: "Search",
-  category: "operations",
-  input: DisplayInput,
-  canonicalInput: DisplayCanonicalInput,
-  inputSubject: "eid",
-  surface: { shape: "single" },
-  enqueue: "reject-active",
-  actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: {},
-  details: [],
-  identity: { matchKey: (input) => `parent:${input.firstEid}/${input.secondEid}` },
-  presentation: { title: () => "Operation display parent" },
-  scenarios: ["fixture-operation-display/parent"],
-  role: defineWorkflowRole({ kind: "standalone" }),
-  operationDisplay,
-  steps: ({ task, delegate, result }) => {
-    const first = task({
-      id: "first-search",
-      contract: SearchPersonOrg,
-      label: "First search",
-      replay: "checkpoint",
-    }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.firstEid }));
-    const second = task({
-      id: "second-search",
-      contract: SearchPersonOrg,
-      label: "Second search",
-      replay: "checkpoint",
-    }, [first], ({ input }) => ({ kind: "by-eid" as const, emplId: input.secondEid }));
-    const childA = delegate({
-      id: "child-a",
-      label: "Child A",
-      target: ChildARef,
-      edgeId: "fixture-display-child-a",
-      cardinality: "one",
-      await: "terminal",
-      join: "one",
-      policy: DelegationPolicy,
-    }, [second], {
-      bind: ({ input }) => input,
-      deriveChildItemId: () => ItemIdSchema.parse("00000000-0000-4000-8000-000000000da2"),
-    });
-    const childB = delegate({
-      id: "child-b",
-      label: "Child B",
-      target: ChildBRef,
-      edgeId: "fixture-display-child-b",
-      cardinality: "one",
-      await: "terminal",
-      join: "one",
-      policy: DelegationPolicy,
-    }, [first], {
-      bind: ({ input }) => input,
-      deriveChildItemId: () => ItemIdSchema.parse("00000000-0000-4000-8000-000000000da3"),
-    });
-    return {
-      steps: [[{ key: "display", label: "Display" }, [first, second, childA, childB]]],
-      result: result(DisplayResult, [], () => ({ done: true })),
-    };
-  },
-});
+const forwardWorkflow = outerWorkflow(DISPLAY_FORWARD_ID, "forward");
 const displayManifest = fixtureBuildManifest([
   DISPLAY_CHILD_A_ID,
   DISPLAY_CHILD_B_ID,

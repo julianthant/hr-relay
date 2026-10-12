@@ -1,6 +1,6 @@
 import { createDryRunCompositionTestWorld } from "../../../support/helpers/backend/dry-run-composition-world.js";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -16,7 +16,7 @@ import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtu
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, databases, spanTextFromAuthority, selectedSettingsFixture, NAME_ONLY_FINALIZATION_INPUT, admittedFinalization, TEST_MANIFEST, admissionFixture } = createDryRunCompositionTestWorld();
+const { roots, databases, spanTextFromAuthority, selectedSettingsFixture, NAME_ONLY_FINALIZATION_INPUT, admittedFinalization, TEST_MANIFEST, admissionFixture, cleanup } = createDryRunCompositionTestWorld();
 
 
 function injectSnapshotFault(raw: DatabaseSync, triggerName: "settings_snapshots_immutable" | "settings_snapshots_retained", fault: () => void) {
@@ -26,11 +26,7 @@ function injectSnapshotFault(raw: DatabaseSync, triggerName: "settings_snapshots
   try { fault(); } finally { raw.exec(trigger.sql); }
 }
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("dry-run scenario production composition boundary", () => {
 

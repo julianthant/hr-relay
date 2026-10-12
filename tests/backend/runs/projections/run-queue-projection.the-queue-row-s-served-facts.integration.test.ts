@@ -4,12 +4,10 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { claimEventOf, DAY, failureRecordOf, instantOffsetOf, receiptWithWarningsOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world, runRecordOf, queuedEventOf, seedWorld } = createRunQueueProjectionTestWorld();
+const {world, runRecordOf, queuedEventOf, seedWorld, cleanup } = createRunQueueProjectionTestWorld();
 
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 
 describe("the queue row's served facts", () => {

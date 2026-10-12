@@ -10,7 +10,7 @@ import { HASH_A, HASH_B, UUID_4 } from "../../../support/fixtures/phase1c-contra
 import { APP_VERSION, claimEventOf, DAY, DESCRIPTOR_SET_HASH, instantOffsetOf, taskEventsOf, traceOf, uuidOf, workerLeaseOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor, separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const { worlds, world, runRecordOf, queuedEventOf, CLAIM, otherConnection, appendOther, seedWorld } = createRunQueueProjectionTestWorld();
+const {world, runRecordOf, queuedEventOf, CLAIM, otherConnection, appendOther, seedWorld, cleanup } = createRunQueueProjectionTestWorld();
 
 function corruptLatest(w: DashboardWorld): void {
   using raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
@@ -22,9 +22,7 @@ function corruptLatest(w: DashboardWorld): void {
   finally { raw.exec(sql); }
 }
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 describe("THE run/queue projection", () => {
   it("shows the six declared Separations steps in the queue pipeline", () => {

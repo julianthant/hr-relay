@@ -3,12 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, assertWorkerProcessCustody, bindWorkerProcessAdmission, observeRuntimeLockSnapshot, RestoreAdmissionFileSchema, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
+import { createFirstInstallCustodyFixture } from "../../../support/helpers/storage/first-install-custody-fixtures.js";
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 {
@@ -175,19 +174,7 @@ describe("first installation worker custody", () => {
 afterEach(_afterEachFixture0);
 
   function initialFixture() {
-    const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-first-worker-"))); roots.push(workspace);
-    const root = join(workspace, rebuildRuntimeIsolation.processLockRoot);
-    const authorityPath = join(workspace, rebuildRuntimeIsolation.stateRoot, "state.db");
-    let custody: RuntimeProcessLockHandle | undefined;
-    const snapshot = () => observeRuntimeLockSnapshot({ processLockRoot: root, sourceDatabaseIdentity: HASH_A });
-    const acquire = () => acquireEntrypointAdmission(workspace, "shared", pair => {
-      expect(join(pair.stateRoot, "state.db")).toBe(authorityPath);
-      custody ??= acquireRuntimeProcessLock({ processLockRoot: root, name: "workers", pid: process.pid,
-        admission: { kind: "unbound-worker", authorityPath } });
-    });
-    return { root, authorityPath, snapshot, acquire, custody: () => {
-      if (custody === undefined) throw new Error("missing first-install custody"); return custody;
-    } };
+    return createFirstInstallCustodyFixture(roots, HASH_A);
   }
   it("holds the same genuine admission inside first-install open and subsequent composition open", () => {
     const f = initialFixture(), originalOpen = AuthorityDatabase.open.bind(AuthorityDatabase);

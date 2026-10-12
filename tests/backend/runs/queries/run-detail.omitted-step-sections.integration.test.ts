@@ -6,12 +6,10 @@ import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { claimEventOf, instantOffsetOf, queuedEventOf, runRecordOf, taskEventsOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld();
 
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 const CATEGORIES: NonNullable<RunDetailDescriptorView["timeline"]> = [
   { label: "Kuali extraction", nodes: [{ id: "document", label: "Separation Document" }] },

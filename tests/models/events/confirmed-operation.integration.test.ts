@@ -4,11 +4,9 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { absentProbeEvidence, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_OBSERVATION, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID } from "../../support/fixtures/write-sequencer-fixtures.js";
 
-const { disposers, harness, claimRunning, contextFor, intentByKey } = createWriteSequencerTestWorld();
+const {harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("the seven-beat happy path", () => {
   it("probes, prepares, binds, fences before the click, and settles beat ⑦ atomically", async () => {

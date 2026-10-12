@@ -1,7 +1,7 @@
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import {readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -13,14 +13,11 @@ import { COMMAND_FIXTURES, NOTIFICATION, NOW, WRITE_INTENT_ATTEMPTING } from "..
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
-const { CLOCK, roots, admissions, composeStorageCommand, drillPaths, open, seedRealShapedAuthority, takeBackup, corrupt } = createStorageRestoreTestWorld();
+const {CLOCK, composeStorageCommand, drillPaths, open, seedRealShapedAuthority, takeBackup, corrupt, cleanup } = createStorageRestoreTestWorld();
 
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });
 
-afterEach(() => {
-  for(const admission of admissions.values())admission.release();admissions.clear();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 /** `COMMAND_FIXTURES` is a `readonly unknown[]`, so its id is read by schema. */
 function seededCommandId(): string {

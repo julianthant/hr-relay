@@ -9,11 +9,9 @@ import { UUID_5, UUID_6, UUID_8 } from "../../../support/fixtures/phase1c-contra
 import { absentProbeEvidence, WRITE_FIXTURE_EID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_OBSERVATION, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_SECRET_CANARY, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, WriteFixtureProofSchema, writeFixtureQueuedRun, writeFixtureSaveDescriptor, type WriteFixtureWorld } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { disposers, harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture } = createWriteSequencerTestWorld();
+const {harness, claimRunning, contextFor, intentByKey, attemptingIntentFixture, cleanup } = createWriteSequencerTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 function parkLegacyAttemptingIntent(database: AuthorityDatabase, message: string): void {
   const attempting = attemptingIntentFixture(UUID_5);

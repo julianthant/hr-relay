@@ -5,7 +5,7 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { fixtureAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
@@ -25,17 +25,10 @@ import { settingsSetOperations } from "../../../support/fixtures/settings-operat
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
 import { happySessionHarness, personLookupQueuedRun, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { roots, openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, fixtureProcessIdentityObserver, composeInput } = createWorkerCompositionTestWorld();
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, fixtureProcessIdentityObserver, composeInput, cleanup } = createWorkerCompositionTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
-  releaseAdmissionFixtures();
-  for (const root of roots.splice(0)) {
-    releaseAdmissionFixture(root);
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanup);
 const POOL_INDEX_2 = PositiveIntSchema.parse(2);
 
 function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {

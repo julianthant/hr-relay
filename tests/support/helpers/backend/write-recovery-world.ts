@@ -192,5 +192,8 @@ export function createWriteRecoveryTestWorld() {
     if (parked.state !== "applied") throw new Error("park transition failed");
     return { run: parked.run, writeIntentId: UUID_8 };
   }
-  return { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite };
+  const cleanup = () => {
+    for (const dispose of disposers.splice(0)) dispose();
+  };
+  return { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, cleanup };
 }

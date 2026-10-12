@@ -1,19 +1,15 @@
 import { createDashboardPoolTestWorld } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { afterEach, describe, it } from "vitest";
 import { PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
 
-const { servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, WORKER_2, roots, openDatabases, cleanups, openControlHarness, nextCommandId, envelope, spawnPoolWorker, admitExternalSlot } = createDashboardPoolTestWorld();
+const {servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, WORKER_2, openControlHarness, nextCommandId, envelope, spawnPoolWorker, admitExternalSlot, cleanup } = createDashboardPoolTestWorld();
 
 const POOL_INDEX_2 = PositiveIntSchema.parse(2);
 const MEMBER_2 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_2, ordinal: POOL_INDEX_2, membershipRevision: PositiveIntSchema.parse(1), workerId: WORKER_2 } as const;
 
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 /* ── the composed seam, end to end ───────────────────────────────────────── */
 

@@ -1,3 +1,4 @@
+import { createWiredCapabilityTask } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import assert from "node:assert/strict";
@@ -15,11 +16,9 @@ import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/wor
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput: _FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim } = createCapabilityWiringTestWorld();
+const { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput: _FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim, cleanup } = createCapabilityWiringTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 let observed: { artifactSha?: string; artifactBytes?: number; providerState?: string } = {};
 
@@ -37,26 +36,7 @@ const _artifactsOnlyTask = defineTask(artifactsOnlyContract, {
   },
 });
 
-const wiredTask = defineTask(wiredContract, {
-  sessions: [],
-  async run({ ctx }) {
-    const ref = await ctx.artifacts.put(FIXTURE_BYTES, { mediaType: "text/plain" });
-    const bytes = await byteLength(await ctx.artifacts.open(ref));
-    const response = await ctx.providers["geocode.census"].call(PAYLOAD);
-    if (response.state !== "produced") {
-      ctx.fail("provider-unavailable", `ocr.extract answered ${response.state}`);
-    }
-    observed.artifactSha = ref.sha256;
-    observed.artifactBytes = bytes;
-    observed.providerState = response.state;
-    ctx.recordData([
-      { direction: "read", field: "providerState", value: response.state },
-      { direction: "read", field: "artifactSha", value: ref.sha256 },
-      { direction: "read", field: "artifactBytes", value: bytes },
-    ]);
-    return { providerState: response.state, artifactSha: ref.sha256, artifactBytes: bytes };
-  },
-});
+const wiredTask = createWiredCapabilityTask(wiredContract, FIXTURE_BYTES, PAYLOAD, byteLength, () => observed);
 const wiredDescriptor = fixtureDescriptor("wiring-wired", "ww", wiredContract);
 
 function registryFor(task: typeof _providersOnlyTask | typeof _artifactsOnlyTask | typeof wiredTask) {

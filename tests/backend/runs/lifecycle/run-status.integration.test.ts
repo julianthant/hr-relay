@@ -7,12 +7,10 @@ import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.
 import type { SpanOutcomeWire } from "../../../../src/models/events/types.js";
 import { claimEventOf, instantOffsetOf, queuedEventOf, runEndedEventOf, runRecordOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld();
 
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 
 const NODE = "search-person";
 

@@ -5,11 +5,9 @@ import { z } from "zod";
 import { WriteParkedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { absentProbeEvidence, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const { disposers, harness, claimRunning, contextFor, intentByKey } = createWriteSequencerTestWorld();
+const {harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, never silent)", () => {
 

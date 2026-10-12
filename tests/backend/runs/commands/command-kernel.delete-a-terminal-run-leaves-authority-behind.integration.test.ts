@@ -1,3 +1,4 @@
+import { kernelRejectMemberRecord } from "../../../support/helpers/backend/kernel-reject-member-run.js";
 import { createCommandKernelTestWorld, type Harness } from "../../../support/helpers/backend/command-kernel-harness.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
@@ -103,31 +104,7 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     const childId = "aaaaaaaa-4444-4444-8444-aaaaaaaaaaaa";
     const manifestId = "bbbbbbbb-4444-4444-8444-bbbbbbbbbbbb";
     const dependencyId = "cccccccc-4444-4444-8444-cccccccccccc";
-    assert.equal(harness.database.authority.runs.enqueue({
-      envelope: {
-        runId: childId,
-        workflow: "kernel-reject",
-        itemId: deriveItemId("kernel-reject", "child:delete"),
-        traceId: "kr-170000-4444",
-        descriptorVersion: 1,
-        contractFingerprint: parent.envelope.contractFingerprint,
-        resolvedInstance: { ucpath: "prod" },
-        configFingerprint: parent.envelope.configFingerprint,
-        configSnapshotId: parent.envelope.configSnapshotId,
-        parent: { runId: parentId, tracePrefix: parent.envelope.traceId, edgeId: "delete-edge" },
-        shape: "operation-member",
-        priority: "bulk",
-        dryRun: false,
-        attempt: 1,
-        enqueuedAt: NOW,
-      },
-      input: parent.input,
-      lifecycle: { state: "queued" },
-      claimGeneration: 0,
-      version: 1,
-      createdAt: NOW,
-      updatedAt: NOW,
-    }).state, "inserted");
+    assert.equal(harness.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, childId, "child:delete", "kr-170000-4444", "delete-edge", NOW)).state, "inserted");
     harness.database.authority.delegationManifests.insert({
       manifestId,
       parentRunId: parentId,

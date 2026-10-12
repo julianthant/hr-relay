@@ -5,11 +5,9 @@ import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-lo
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { disposers, loopHarness } = createWorkerDirectiveTestWorld();
+const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("durable worker directives (ref dashboard-surfaces §2.4), observed between items", () => {
   it("stops without claiming when the directive says stop", async () => {

@@ -46,5 +46,8 @@ export function createPoolRuntimeTestWorld() {
     { stage: "sigterm-sent", timeoutMs: 30_000 },
     { stage: "sigkill-sent" },
   ] as const;
-  return { disposers, workerBrowserCommand, admittedAdapterRoster, admitAdapterPlan, OBSERVED_GRACEFUL, STOP_ESCALATION };
+  const cleanup = () => {
+    for (const dispose of disposers.splice(0)) dispose();
+  };
+  return { disposers, workerBrowserCommand, admittedAdapterRoster, admitAdapterPlan, OBSERVED_GRACEFUL, STOP_ESCALATION, cleanup };
 }

@@ -1,9 +1,6 @@
-import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-
+import { openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
 import {
 ensureRunEvidenceReceipt,
@@ -11,7 +8,6 @@ type EvidenceReceiptStore,
 type ReceiptWriteEvidence
 } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { RunEvidenceReceiptSchema,type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { seedPersonLookupExitRun } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor,separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -34,14 +30,7 @@ afterEach(() => {
 
 
 function seededStore(): Readonly<{ store: EvidenceReceiptStore; runId: string }> {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-binding-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "receipt-binding-test" },
-    manualClock(new Date("2026-08-04T00:11:13.500Z")),
-  );
-  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
-  databases.push(database);
+  const database = openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-binding-", "receipt-binding-test");
   const seeded = seedPersonLookupExitRun(database);
   const { authority } = database;
   const runId = String(seeded.run.envelope.runId);

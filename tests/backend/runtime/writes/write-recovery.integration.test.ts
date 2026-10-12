@@ -12,11 +12,9 @@ import { UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtu
 import { WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, WriteFixtureCommit, WriteFixtureProofSchema, absentProbeEvidence, ambiguousProbeVerdict, unknownProbeVerdict, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey, writeFixtureDocumentDescriptor, writeFixtureQueuedRun, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite } = createWriteRecoveryTestWorld();
+const {SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, cleanup } = createWriteRecoveryTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 function intentByKey(database: AuthorityDatabase) {
   return database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY);

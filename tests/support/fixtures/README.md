@@ -178,6 +178,40 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/runtime-lock-contender.ts` | runtime lock contender |
 | `processes/worker-browser-control-cli.ts` | worker browser control cli |
 | `processes/worker-stub-cli.ts` | worker stub cli |
+| `helpers/browser/session-factory-fixtures.ts` | fresh browser factory and worker session runtime |
+| `helpers/workflow/flow-task-fixtures.ts` | flow, graph and scenario task contracts |
+| `helpers/intake/work-study-fixtures.ts` | WorkStudy projection and manifest input |
+| `helpers/dashboard/activity-report-fixtures.ts` | empty and populated Activity report input |
+
+| `helpers/credential-persistence-fixtures.ts` | fresh protected credential request and crash fixtures |
+| `helpers/credential-doctor-fixtures.ts` | native credential doctor fixture and inventory |
+| `helpers/test-target-registry-fixtures.ts` | registry subjects and recording public inputs |
+| `helpers/backend/note-scope-fixtures.ts` | note and terminal event fixture inputs |
+| `helpers/backend/owned-vite-probe-fixtures.ts` | owned local Vite probe server |
+| `helpers/dry-run-scenario-fixtures.ts` | fresh authored dry-run manifest |
+
+| `helpers/dashboard/search-page-fixtures.ts` | fresh authored zero-match search page |
+
+| `helpers/kuali-finalization-input-fixtures.ts` | pure raw Kuali finalization inputs |
+
+| `helpers/backend/notification-inbox-world.ts` | notification inbox world |
+| `helpers/workflow/omission-definition-fixtures.ts` | omission definition fixtures |
+| `helpers/dashboard/identity-ceremony-fixtures.ts` | identity ceremony fixtures |
+| `helpers/dashboard/static-assets.ts` | static asset fixture serving for both BFF profiles |
+| `helpers/backend/run-claim-fixtures.ts` | run claim fixtures |
+| `helpers/backend/worker-lease-fixtures.ts` | worker lease fixtures |
+| `helpers/backend/separation-start-fixtures.ts` | separation start fixtures |
+
+| `helpers/dashboard/client-day-fixtures.ts` | client day fixtures |
+| `helpers/dashboard/awaiting-queue-fixtures.ts` | awaiting queue fixtures |
+| `helpers/backend/stream-backpressure-fixtures.ts` | stream backpressure fixtures |
+| `helpers/storage/backup-fixtures.ts` | backup fixtures |
+| `helpers/ucpath-pending-row-fixtures.ts` | Keiichiro pending rows and deterministic driver transaction rows |
+| `helpers/storage/admission-child-fixtures.ts` | admission child fixtures |
+| `helpers/backend/preflight-port-fixtures.ts` | preflight port fixtures |
+| `helpers/dashboard/settings-editor-fixtures.ts` | settings editor fixtures |
+| `helpers/backend/worker-supervision-world.ts` | worker supervision world |
+| `helpers/backend/command-kernel-harness.ts` | command kernel harness |
 
 ## File fixtures
 
@@ -193,3 +227,10 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 - `fixtures/storage/native-authority/migrated-tombstones.json`
 - `fixtures/storage/native-authority/schema40-failure.json`
 - `helpers/dashboard/color-filtered-roster.xlsx`
+| `helpers/backend/kernel-stub-command-fixtures.ts` | createKernelStubCommandFixtures shared fixtures |
+| `helpers/backend/kernel-reject-member-run.ts` | kernelRejectMemberRecord shared fixtures |
+| `helpers/backend/person-lookup-start-fixtures.ts` | createPersonLookupStartFixtures shared fixtures |
+| `helpers/backend/person-lookup-provenance-checkpoint.ts` | createPersonLookupProvenanceCheckpoint shared fixtures |
+| `helpers/storage/confirmed-retention-fixtures.ts` | openConfirmedRetentionDatabase shared fixtures |
+| `helpers/storage/first-install-custody-fixtures.ts` | createFirstInstallCustodyFixture shared fixtures |
+| `helpers/backend/person-lookup-receipt-database.ts` | openPersonLookupReceiptDatabase shared fixtures |

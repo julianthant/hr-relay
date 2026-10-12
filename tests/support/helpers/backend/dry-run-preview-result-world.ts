@@ -1,6 +1,6 @@
 import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
@@ -98,5 +98,10 @@ export function createDryRunPreviewResultTestWorld() {
 
     return { database, clock, world, emitter, run };
   }
-  return { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness };
+  const cleanup = () => {
+    for (const open of kualiOpen.splice(0)) open.dispose();
+    for (const database of openDatabases.splice(0)) database.close();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  };
+  return { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup };
 }

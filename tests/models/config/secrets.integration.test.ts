@@ -1,75 +1,52 @@
+import { createCredentialPersistenceFixtures } from "../../support/helpers/credential-persistence-fixtures.js";
+import { createSettingsAuthorityTestWorld } from "../../support/helpers/backend/settings-authority-world.js";
 import { default as assert } from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+
 import { copyFileSync } from "node:fs";
-import { mkdirSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
-import { realpathSync } from "node:fs";
 import { rmSync } from "node:fs";
-import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+
 import { join } from "node:path";
 import { afterEach } from "vitest";
 import { describe } from "vitest";
 import { it } from "vitest";
 import { vi } from "vitest";
-import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
-import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
-import type { CommandAuthority } from "../../../src/backend/runs/commands/command-kernel.js";
-import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
+
+
+
+
+
 import { createCredentialSecretSource } from "../../../src/backend/runtime/settings/settings-runtime.js";
-import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore as nativeCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/models/config/protected-settings.js";
+
+
+
+
 import { requireSecret } from "../../../src/models/config/secrets.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
+
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
-import type { CredentialStoreHooks } from "../../support/helpers/synthetic-storage-admission.js";
-import { chmodSync } from "node:fs";
+
 import { syncBuiltinESMExports } from "node:module";
 import { RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../../src/models/config/catalog.js";
-import { ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
+
 import type { ProtectedSettingsApplyInput } from "../../../src/models/config/protected-settings.js";
-import type { ProtectedSettingsPatch } from "../../../src/models/config/protected-settings.js";
+
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { SecretMissingError } from "../../../src/models/config/secrets.js";
 import { assertNoMigratedEnvironmentKeys } from "../../../src/models/config/secrets.js";
 import { inspectSecret } from "../../../src/models/config/secrets.js";
 import { optionalSecret } from "../../../src/models/config/secrets.js";
 import { retiredTestTargetEnvironmentRefusal } from "../../../src/models/config/secrets.js";
-import { seedSyntheticRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
+
 import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
 
 {
 
-const roots: string[] = [];
-const databases: AuthorityDatabase[] = [];
-const admissions: RuntimeAdmission[] = [];
+const { roots, databases, admissions, fixture, protectedCommand } = createSettingsAuthorityTestWorld();
+
+
 const _afterEachFixture0 = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
-function fixture(hooks?: CredentialStoreHooks, exclusive = false) {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "sqlite-settings-")); roots.push(repoRoot);
-  const admission = exclusive ? acquireEntrypointAdmission(repoRoot, "exclusive") : undefined;
-  if (admission !== undefined) admissions.push(admission);
-  const root = join(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(root, { recursive: true, mode: 0o700 });
-  writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "credential-restore-proof", version: "0.1.0" }));
-  const clock = manualClock(new Date("2026-09-06T12:00:00Z"));
-  const path = join(root, "state.db");
-  const options = { path, busyTimeoutMs: 250, migrationOwner: "settings-test" };
-  const database = admission === undefined ? AuthorityDatabase.open(options, clock) : NativeAuthorityDatabase.open(admission, options, clock); databases.push(database);
-  seedSyntheticRuntimeConfig(database);
-  const credentialOptions = { stateRoot: root, ...(hooks === undefined ? {} : { hooks }) };
-  const store = admission === undefined ? createCredentialStore(credentialOptions) : nativeCredentialStore({ ...credentialOptions, admission });
-  const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
-  const execute = (request: unknown, authority: CommandAuthority = database) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request);
-  return { repoRoot, root, path, database, store, execute, clock, admission };
-}
-function protectedCommand() {
-  return { family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: "2026-09-06T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
-    target: { expectedRevision: 1 }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-private-value" } } } };
-}
+
+
 
 describe("SQLite settings authority", () => {
 afterEach(_afterEachFixture0);
@@ -178,40 +155,9 @@ const _afterEachFixture0 = () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
-function fixture(hooks?: CredentialStoreHooks) {
-  const stateRoot = mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-store-"));
-  roots.push(stateRoot);
-  const tracker = join(stateRoot, ".tracker");
-  mkdirSync(tracker, { mode: 0o755 });
-  chmodSync(tracker, 0o755);
-  const store = createCredentialStore({ stateRoot: tracker, hooks });
-  return {
-    stateRoot,
-    tracker,
-    directory: join(tracker, "credentials"),
-    path: join(tracker, "credentials", "protected.json"),
-    lockPath: join(tracker, "credentials", ".protected.lock"),
-    store,
-  };
-}
+const { fixture, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
-function request(input: {
-  readonly commandId: string;
-  readonly writeId: string;
-  readonly expectedRevision: number;
-  readonly entries: ProtectedSettingsPatch;
-  readonly updatedAt?: string;
-}): ProtectedSettingsApplyInput {
-  return ProtectedSettingsApplyInputSchema.parse({
-    commandId: input.commandId,
-    commandFingerprint: input.commandId === COMMAND_1 ? "1".repeat(64) : "2".repeat(64),
-    expectedRevision: input.expectedRevision,
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    writeId: input.writeId,
-    entries: input.entries,
-    updatedAt: input.updatedAt ?? NOW_1,
-  });
-}
+
 
 function applied(
   store: ReturnType<typeof createCredentialStore>,

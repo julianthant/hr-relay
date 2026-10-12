@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { timelineNoteLocation, timelineSpanLocation, type TimelineLine } from "../../../../src/backend/storage/events/timeline-reader.js";
@@ -53,5 +53,9 @@ export function createJsonlWriterTestWorld() {
   const TRACE = "pl-104233-3b8f";
 
   const AT = new Date("2026-08-03T10:42:33.000-07:00");
-  return { roots, repositories, repositoryOf, nativeLines, stateRoot, RUN_ID, TRACE, AT };
+  const cleanup = () => {
+    repositories.clear();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  };
+  return { roots, repositories, repositoryOf, nativeLines, stateRoot, RUN_ID, TRACE, AT, cleanup };
 }

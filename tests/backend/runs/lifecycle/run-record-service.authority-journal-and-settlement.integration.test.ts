@@ -17,9 +17,9 @@ import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { cleanups, fixture, created, runningRun, raceConnection } = createRunRecordServiceTestWorld();
+const {fixture, created, runningRun, raceConnection, cleanup } = createRunRecordServiceTestWorld();
 
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+afterEach(cleanup);
 
 function lifecycleCommand(
   request: unknown,

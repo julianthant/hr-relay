@@ -5,11 +5,9 @@ import { WriteParkedError } from "../../../../src/backend/runtime/writes/write-s
 import { withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { absentProbeEvidence, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const { disposers, harness, claimRunning, contextFor, intentByKey } = createWriteSequencerTestWorld();
+const {harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("completed transaction gesture binding", () => {
 

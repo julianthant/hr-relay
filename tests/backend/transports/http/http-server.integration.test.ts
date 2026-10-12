@@ -1,3 +1,4 @@
+import { createStreamBackpressureFixtures } from "../../../support/helpers/backend/stream-backpressure-fixtures.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 
 import { Hono } from "hono";
@@ -15,13 +16,13 @@ import { type DashboardApp } from "../../../../src/backend/transports/http/route
 import { verifiedByteResponse } from "../../../../src/backend/transports/http/routes/verified-byte-response.js";
 import { type ActorId } from "../../../../src/rules/identity/ids.js";
 
-import { BackfillGapObservationSchema } from "../../../../src/backend/runs/notifications/backfill-gap.js";
 
-import { createDashboardStreamHub, type DashboardStreamConnection, type DashboardStreamHub } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+
+import { type DashboardStreamConnection, type DashboardStreamHub } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { dashboardEventStreamBody } from "../../../../src/backend/transports/http/subscriptions/sse-response.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../src/models/dashboard/subscription.js";
 
-import { claimEventOf, DAY, makeWorld, queuedEventOf, taskEventsOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { DAY, taskEventsOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 {
 
@@ -633,21 +634,7 @@ const _afterEachFixture0 = async () => {
   for (const w of worlds.splice(0)) w.dispose();
 };
 
-function harness(): { w: DashboardWorld; hub: DashboardStreamHub } {
-  const w = makeWorld();
-  worlds.push(w);
-  const hub = createDashboardStreamHub({
-    projection: w.projection,
-    maxPending: MAX_PENDING,
-    backfillGaps: {
-      detected: (input: unknown) => Promise.resolve({ published: false as const, gap: BackfillGapObservationSchema.parse(input) }),
-    },
-  });
-  hubs.push(hub);
-  queuedEventOf(w, { seed: 1 });
-  claimEventOf(w, 1);
-  return { w, hub };
-}
+const { harness } = createStreamBackpressureFixtures(worlds, hubs, MAX_PENDING);
 
 /** Parse every COMPLETE event block; a trailing partial block is not an event yet. */
 function parseSse(text: string): DashboardStreamEnvelope[] {

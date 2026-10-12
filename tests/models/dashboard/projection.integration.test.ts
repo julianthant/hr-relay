@@ -1,30 +1,31 @@
+import { createNotificationInboxTestWorld } from "../../support/helpers/backend/notification-inbox-world.js";
 import { createSeededDashboardWorld } from "../../support/helpers/seeded-dashboard-world.js";
-import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
-import { seedSyntheticRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
+
+
 import { default as assert } from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { realpathSync } from "node:fs";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+
+
+
+
+
 import { afterEach } from "vitest";
 import { describe } from "vitest";
 import { it } from "vitest";
-import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
-import type { CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+
+
 import { notificationWireOf } from "../../../src/models/dashboard/projection.js";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
-import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import { NO_INTAKE_PROJECTIONS } from "../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
-import { HASH_A } from "../../support/fixtures/phase1c-contract-fixtures.js";
+
+
+
+
+
 import { LATER } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { UUID_2 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { UUID_7 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+
+
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
 import { DAY } from "../../support/helpers/backend/dashboard-harness.js";
@@ -35,83 +36,7 @@ import type { DashboardWorld } from "../../support/helpers/backend/dashboard-har
 
 {
 
-const disposers: (() => void)[] = [];
-const _afterEachFixture0 = () => {
-  for (const dispose of disposers.splice(0)) dispose();
-};
-
-const ACTOR = "local-operator";
-
-function record(overrides: Record<string, unknown> = {}) {
-  return NotificationRecordSchema.parse({
-    notificationId: UUID_7,
-    actorId: ACTOR,
-    dedupeFingerprint: HASH_A,
-    trigger: "failed",
-    channel: "ping",
-    status: "unread",
-    snooze: { state: "not-snoozed" },
-    title: "Run failed",
-    summary: "person-lookup run failed at cross-verify",
-    links: [{ kind: "run", runId: UUID_2 }],
-    count: 1,
-    lastSeenAt: NOW,
-    version: 1,
-    createdAt: NOW,
-    updatedAt: NOW,
-    ...overrides,
-  });
-}
-
-function harness(): { database: AuthorityDatabase; kernel: CommandKernel } {
-  const clock = manualClock(new Date(LATER));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-inbox-"));
-  disposers.push(() => rmSync(root, { recursive: true, force: true }));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "inbox-test" },
-    clock,
-  );
-  disposers.push(() => database.close());
-  seedSyntheticRuntimeConfig(database);
-  const active = database.authority.runtimeConfig.get(); assert.ok(active);
-  const kernel = createCommandKernel({
-    lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
-    appVersion: "0.1.0",
-    configIdentity: { configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId },
-    intakeParser: UNWIRED_INTAKE_PARSER,
-    intakeProjections: NO_INTAKE_PROJECTIONS,
-    authority: {
-      withAuthorityTransaction: (work) => database.withAuthorityTransaction(
-        (repositories) => work(repositories),
-      ),
-    },
-    clock,
-    ids: sequentialIdFactory("c"),
-    descriptors: { resolve: () => undefined },
-    writeResolution: {
-      resolvePresent: () => { throw new Error("unused"); },
-      resolveAbsent: () => { throw new Error("unused"); },
-    },
-    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
-  });
-  return { database, kernel };
-}
-
-let sequence = 0;
-function command(type: string, expectedVersion: number, extra: Record<string, unknown> = {}) {
-  sequence += 1;
-  const tail = String(sequence).padStart(4, "0");
-  return {
-    commandId: `eeeeeeee-${tail}-4000-8000-${tail}00000000`,
-    requestedAt: LATER,
-    requestedBy: ACTOR,
-    source: "notification-bell",
-    family: "notification",
-    type,
-    target: { notificationId: UUID_7, actorId: ACTOR, expectedVersion },
-    ...extra,
-  };
-}
+const { _afterEachFixture0, ACTOR, record, harness, command } = createNotificationInboxTestWorld();
 
 describe("notificationWireOf", () => {
 afterEach(_afterEachFixture0);

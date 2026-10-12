@@ -2,7 +2,7 @@ import { createDryRunCompositionTestWorld } from "../../../support/helpers/backe
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -28,16 +28,13 @@ import { personLookupDescriptor, separationsDescriptor } from "../../../support/
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { evaluateT1bManifest } from "../../../support/helpers/t1b-manifests.js";
 
-const { roots, databases } = createDryRunCompositionTestWorld();
+const { roots, databases, cleanup } = createDryRunCompositionTestWorld();
 
 
 
 const PERSON_LOOKUP_LIVE_READ = evaluateT1bManifest(process.cwd(), "tests/support/fixtures/dry-run/person-lookup-manifest.ts");
 const SEPARATIONS_DRY_RUN = evaluateT1bManifest(process.cwd(), "tests/support/fixtures/dry-run/separations-manifest.ts");
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 const CANONICAL_INPUT = PersonLookupCanonicalInput.parse({
   emplId: EXECUTOR_EID,

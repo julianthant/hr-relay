@@ -11,7 +11,7 @@ import { duoCeremonyGatesOver, FIXTURE_DUO_CREDENTIAL_KEY, FIXTURE_DUO_LEASE_GRA
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import type { DuoCeremonyLeaseRepository } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { WORKER_A, SYSTEM, NEED, T0, recipeFactory, managerFor, databases, sharedAuthority, leaseRow } = createLoginContractTestWorld();
+const {WORKER_A, SYSTEM, NEED, T0, recipeFactory, managerFor, sharedAuthority, leaseRow, cleanup } = createLoginContractTestWorld();
 
 const WORKER_B = WorkerIdSchema.parse("person-lookup-worker-2");
 const TTL_MS = FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS + FIXTURE_DUO_LEASE_GRACE_MS;
@@ -42,9 +42,7 @@ async function advance(clock: TestClock, scheduler: ManualScheduler, ms: number)
     await flush();
   }
 }
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-});
+afterEach(cleanup);
 
 describe("two workers, one credential, one ceremony at a time", () => {
   it("starts the second worker's ceremony strictly after the first worker's verifier returned", async () => {

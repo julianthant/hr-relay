@@ -16,7 +16,7 @@ import { protectedSecretSource } from "../../../support/helpers/protected-secret
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-import { realpathSync } from "node:fs";
+import { createPersonLookupStartFixtures } from "../../../support/helpers/backend/person-lookup-start-fixtures.js";
 
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../../../../src/backend/runs/start/plan.js";
 import { deriveCanonicalInputDigest, derivePlannedInputFingerprint, StartPlanRecordSchema } from "../../../../src/models/run/start-plan.js";
@@ -25,7 +25,7 @@ import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../../../src/workflows/person-lookup/workflow.js";
-import { CONFIG_SNAPSHOT, HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 import { WRITE_FIXTURE_NODE_ID, writeFixtureDescriptorWithoutDryRunArm } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { personLookupDescriptor, separationsKualiFinalizationDescriptor, separationsUcpathTerminationDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -190,35 +190,7 @@ const PERSON_NAME_MATCH_KEY = "name:Battistessa, Johnnie";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
-function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-start-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    CLOCK,
-  );
-  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  databases.push(database);
-  return database;
-}
-
-function plannerDeps(authority: AuthorityDatabase, ids = sequentialIdFactory()) {
-  return { authority, clock: CLOCK, ids, planTtlMs: PLAN_TTL_MS };
-}
-
-function baseRequest(submissions: readonly unknown[], overrides: Record<string, unknown> = {}) {
-  return {
-    descriptor: personLookupDescriptor,
-    submissions,
-    dryRun: false,
-    priority: "bulk" as const,
-    shape: "single" as const,
-    configFingerprint: CONFIG_SNAPSHOT.fingerprint,
-    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
-    plannedBy: "local-operator",
-    ...overrides,
-  };
-}
+const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, CLOCK, PLAN_TTL_MS);
 
 const _afterEachFixture0 = () => {
   while (databases.length > 0) databases.pop()?.close();

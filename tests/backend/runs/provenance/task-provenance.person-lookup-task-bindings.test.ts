@@ -1,6 +1,6 @@
+import { createPersonLookupProvenanceCheckpoint } from "../../../support/helpers/backend/person-lookup-provenance-checkpoint.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { z } from "zod";
 import type { RecordedDataBatch } from "../../../../src/backend/runs/provenance/task-provenance.js";
 import { createTaskProvenanceCollector } from "../../../../src/backend/runs/provenance/task-provenance.js";
 import { createDeterministicCrmOnboardingDriver } from "../../../../src/backend/systems/crm/driver/fake.js";
@@ -11,14 +11,11 @@ import { searchPersonOrgTask } from "../../../../src/backend/systems/ucpath/task
 import { CrmReadOnboardingDates,ReadOnboardingDatesOutputSchema } from "../../../../src/models/systems/crm/read-onboarding-dates.js";
 import { CrmReadOnboardingRecord,ReadOnboardingRecordOutputSchema } from "../../../../src/models/systems/crm/read-onboarding-record.js";
 import { SearchPersonOrg,SearchPersonOrgOutputSchema,UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import type { FactProvenance,RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
-import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import type { RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
 import { ReadActiveStatus } from "../../../../src/models/workflows/person-lookup/read-active-status.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../src/rules/redaction/redaction.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { DataPointSchema } from "../../../../src/rules/workflow/task-provenance.js";
 import { readActiveStatusTask } from "../../../../src/workflows/person-lookup/tasks/read-active-status.js";
@@ -78,30 +75,13 @@ function collectorFor(
   });
 }
 
-function checkpointFrom(
-  nodeId: string,
-  outputSchema: z.ZodType,
-  output: unknown,
-  provenance: readonly FactProvenance[],
-): RunCheckpointRecord {
-  return RunCheckpointRecordSchema.parse({
-    workflowId: "person-lookup",
-    itemId: "33333333-3333-4333-8333-333333333333",
-    nodeId,
-    attempt: 1,
-    claimGeneration: 1,
-    runId: "aaaaaaaa-0001-4000-8000-000100000000",
-    output: {
-      schemaHash: deriveSchemaHash(outputSchema, "output"),
-      value: JsonValueSchema.parse(outputSchema.parse(output)),
-    },
-    descriptorVersion: 1,
-    contractFingerprint: HASH_A,
-    implFingerprint: HASH_B,
-    provenance,
-    writtenAt: NOW,
-  });
-}
+const { checkpointFrom } = createPersonLookupProvenanceCheckpoint({
+  itemId: "33333333-3333-4333-8333-333333333333",
+  runId: "aaaaaaaa-0001-4000-8000-000100000000",
+  contractFingerprint: HASH_A,
+  implFingerprint: HASH_B,
+  now: NOW,
+});
 
 const candidate = UcpathCandidateSchema.parse({
   emplId: "10873698",

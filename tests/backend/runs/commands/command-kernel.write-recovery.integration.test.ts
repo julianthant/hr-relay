@@ -13,11 +13,9 @@ import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safet
 import { CONFIG_SNAPSHOT, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NOW, writeFixtureDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite } = createWriteRecoveryTestWorld();
+const {SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, cleanup } = createWriteRecoveryTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", () => {
   function resolutionHarness(descriptor = writeFixtureDescriptor) {

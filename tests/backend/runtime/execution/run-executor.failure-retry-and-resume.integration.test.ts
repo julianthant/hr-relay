@@ -7,11 +7,9 @@ import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run
 import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { happySessionHarness, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { disposers, executorHarness, enqueueAndClaim, SIGNAL } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
 
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 describe("failure, retry, and resume", () => {
   it("keeps arbitrary task failure detail unstamped in authority and out of the admitted task span", async () => {

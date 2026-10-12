@@ -10,11 +10,9 @@ import { FIXTURE_PARKED_WRITE_INTENT } from "../../../support/fixtures/dashboard
 import { IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, NOW, SUBJECT_PROOF, UNSCOPED_PROOF } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { queuedEventOf, runRecordOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const { worlds, world, RUN_ID } = createRunDetailTestWorld();
+const {world, RUN_ID, cleanup } = createRunDetailTestWorld();
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
-});
+afterEach(cleanup);
 const ITEM_ID = uuidOf(5001);
 const INTENT_ID = uuidOf(11);
 const ATTEMPT_ID = uuidOf(12);

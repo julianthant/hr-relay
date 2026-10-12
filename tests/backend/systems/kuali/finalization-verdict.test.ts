@@ -1,3 +1,4 @@
+import { kualiFinalizationVariablesInput, unfinalizedKualiFieldsInput } from "../../../support/helpers/kuali-finalization-input-fixtures.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
@@ -13,18 +14,7 @@ KualiFinalizationVariablesSchema
 } from "../../../../src/models/ui/kuali-separation-finalization.js";
 import { EidSchema,IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 
-const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.parse({
-  department: "000412 - Housing/Dining/Hospitality",
-  payrollTitleCode: "004921",
-  payrollTitle: "STDT 2",
-  timekeeperName: "Julian Zaw",
-  lastDayWorked: "06/09/2026",
-  separationDate: "06/10/2026",
-  terminationEffectiveDate: "06/11/2026",
-  transactionNumber: "T002209631",
-  timekeeperComments: "Termination effective date set from the reconciled separation date.",
-  observedExistingComments: "",
-});
+const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.parse(kualiFinalizationVariablesInput());
 
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-14T10:18:00.000Z");
 
@@ -36,20 +26,7 @@ const TARGET: KualiFinalizationTarget = Object.freeze({
 });
 
 
-const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze({
-  department: "- - -",
-  payrollTitleCode: "",
-  payrollTitle: "",
-  requestAcknowledged: false,
-  timekeeperName: "",
-  lastDayWorked: "",
-  separationDate: "",
-  terminationEffectiveDate: "",
-  submittedTerminationTemplate: false,
-  transactionNumber: "",
-  finalPay: null,
-  timekeeperComments: "",
-});
+const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze(unfinalizedKualiFieldsInput());
 
 describe("Kuali separation finalization — the probe verdict", () => {
   it("binds protected absence evidence to value identity without hashing the name or signer", () => {

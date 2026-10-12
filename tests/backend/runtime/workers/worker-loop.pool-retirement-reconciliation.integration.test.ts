@@ -6,11 +6,9 @@ import { createWorkerPoolRuntimeExecutor } from "../../../../src/backend/runtime
 import { NOW, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { ITEM_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
-const { disposers, workerBrowserCommand, admittedAdapterRoster, admitAdapterPlan, OBSERVED_GRACEFUL, STOP_ESCALATION } = createPoolRuntimeTestWorld();
+const {workerBrowserCommand, admittedAdapterRoster, admitAdapterPlan, OBSERVED_GRACEFUL, STOP_ESCALATION, cleanup } = createPoolRuntimeTestWorld();
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 
 

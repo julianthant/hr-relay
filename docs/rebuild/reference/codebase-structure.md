@@ -115,6 +115,18 @@ contract; its reference files are not refreshed to make wiring pass. Role-derive
 not imply current files or coverage. Exact test move counts and retirement dispositions remain with
 the owning evidence records.
 
+Browser factory and worker sessions share `helpers/browser/session-factory-fixtures.ts`; flow, graph and scenario coverage share `helpers/workflow/flow-task-fixtures.ts`. WorkStudy intake builders live in `helpers/intake/work-study-fixtures.ts`, Activity report inputs in `helpers/dashboard/activity-report-fixtures.ts`, and forward operation-display workflows use `helpers/operation-display-fixtures.ts`.
+
+Credential persistence and inspection use `helpers/credential-persistence-fixtures.ts` and `helpers/credential-doctor-fixtures.ts`; registry inputs use `helpers/test-target-registry-fixtures.ts`. Note events, Vite probe servers and dry-run manifests share their fixture builders under `helpers/backend/` and `helpers/dry-run-scenario-fixtures.ts`.
+
+Authored dry-run records share their fixture owner; raw Kuali inputs use the import-free `helpers/kuali-finalization-input-fixtures.ts`. Empty search page inputs use `helpers/dashboard/search-page-fixtures.ts`, and HTTP refusal case rows use `helpers/backend/http-route-harness.ts`.
+
+Static asset fixture serving lives in `helpers/dashboard/static-assets.ts`, shared by both dashboard BFF profiles. Terminal-run, preview and settings fixtures use their shared worlds. Notification execution uses `helpers/backend/notification-inbox-world.ts`; dashboard input and identity fixtures use `helpers/dashboard-model-fixtures.ts` and `helpers/dashboard/identity-ceremony-fixtures.ts`. Omission definitions live in `helpers/workflow/omission-definition-fixtures.ts`, Kuali driver helpers in `helpers/backend/kuali-task-world.ts`, and queue seeding in `helpers/seeded-dashboard-world.ts`. Claim, lease and separation planning builders live under `helpers/backend/`.
+
+Kernel stub and member fixtures live in `helpers/backend/kernel-stub-command-fixtures.ts` and `kernel-reject-member-run.ts`. Person Lookup start, checkpoint and receipt fixtures live in `helpers/backend/person-lookup-start-fixtures.ts`, `person-lookup-provenance-checkpoint.ts` and `person-lookup-receipt-database.ts`. Confirmed history and first-install custody fixtures live in `helpers/storage/confirmed-retention-fixtures.ts` and `first-install-custody-fixtures.ts`. The run-queue projection world owns settled-run seeding; the pending-row owner also builds deterministic driver rows.
+
+Client day, awaiting queue and settings editor inputs have shared dashboard fixture owners. Stream backpressure and preflight port setup live under `helpers/backend/`, backup and admission child setup under `helpers/storage/`, and pending transaction rows in `helpers/ucpath-pending-row-fixtures.ts`. Worker pool plan inputs use `helpers/backend/worker-supervision-world.ts`; kernel start inputs use the existing command-kernel harness.
+
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector

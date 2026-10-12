@@ -1,18 +1,19 @@
+import { createSeparationStartFixtures } from "../../support/helpers/backend/separation-start-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdtempSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
-import { planStart } from "../../../src/backend/runs/start/plan.js";
+
 import { parseInputRunText,toRawSubmission } from "../../../src/models/workflow/ingress.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { HASH_A,NOW,UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
+
 import {
 type DashboardWorld
 } from "../../support/helpers/backend/dashboard-harness.js";
-import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
+
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
@@ -42,21 +43,7 @@ function openDatabase(): AuthorityDatabase {
   return database;
 }
 
-function plan(submissions: readonly unknown[], dryRun = false) {
-  return planStart(
-    { protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }), authority: openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000 },
-    {
-      descriptor: separationsDescriptor,
-      submissions,
-      dryRun,
-      priority: "bulk" as const,
-      shape: "single" as const,
-      configFingerprint: HASH_A,
-      configSnapshotId: UUID_4,
-      plannedBy: "local-operator",
-    },
-  );
-}
+const { plan } = createSeparationStartFixtures(openDatabase, CLOCK);
 
 describe("separations — start planning through the existing service", () => {
 

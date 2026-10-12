@@ -1,3 +1,5 @@
+import { kualiFinalizationVariablesInput, unfinalizedKualiFieldsInput } from "../../support/helpers/kuali-finalization-input-fixtures.js";
+import { recordingDriver, invocation } from "../../support/helpers/backend/kuali-task-world.js";
 import { default as assert } from "node:assert/strict";
 import { describe } from "vitest";
 import { it } from "vitest";
@@ -5,7 +7,7 @@ import { saveSeparationFinalizationTask } from "../../../src/backend/systems/kua
 import { stageSeparationFinalizationTask } from "../../../src/backend/systems/kuali/tasks/stage-separation-finalization.js";
 import { KualiMatchSeparationFinalization } from "../../../src/models/systems/kuali/match-separation-finalization.js";
 import type { MutationCapability } from "../../../src/models/ui/driver.js";
-import type { KualiRrssDocumentDriver } from "../../../src/models/ui/kuali-rrss-document.js";
+
 import { KUALI_RRSS_SAVE_BUTTON } from "../../../src/models/ui/kuali-rrss-document.js";
 import type { KualiFinalizationVariables } from "../../../src/models/ui/kuali-separation-finalization.js";
 import type { KualiObservedFinalizationFields } from "../../../src/models/ui/kuali-separation-finalization.js";
@@ -22,40 +24,16 @@ import { kualiFinalizationFields } from "../../../src/models/ui/kuali-separation
 import { kualiFinalizationFormKeysMissing } from "../../../src/models/ui/kuali-separation-finalization.js";
 import { kualiFinalizationWireUnasserted } from "../../../src/models/ui/kuali-separation-finalization.js";
 import type { KualiFinalizationTarget } from "../../../src/models/ui/kuali-separation-finalization.js";
-import type { DataPoint } from "../../../src/rules/workflow/task-provenance.js";
+
 import { TaskError } from "../../../src/workflow-kit/errors.js";
-import { taskFailer } from "../../../src/workflow-kit/task.js";
-import type { AnyTask } from "../../../src/workflow-kit/task.js";
+
+
 
 {
 
-const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.parse({
-  department: "000412 - Housing/Dining/Hospitality",
-  payrollTitleCode: "004921",
-  payrollTitle: "STDT 2",
-  timekeeperName: "Julian Zaw",
-  lastDayWorked: "06/09/2026",
-  separationDate: "06/10/2026",
-  terminationEffectiveDate: "06/11/2026",
-  transactionNumber: "T002209631",
-  timekeeperComments: "Termination effective date set from the reconciled separation date.",
-  observedExistingComments: "",
-});
+const VARIABLES: KualiFinalizationVariables = KualiFinalizationVariablesSchema.parse(kualiFinalizationVariablesInput());
 
-const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze({
-  department: "- - -",
-  payrollTitleCode: "",
-  payrollTitle: "",
-  requestAcknowledged: false,
-  timekeeperName: "",
-  lastDayWorked: "",
-  separationDate: "",
-  terminationEffectiveDate: "",
-  submittedTerminationTemplate: false,
-  transactionNumber: "",
-  finalPay: null,
-  timekeeperComments: "",
-});
+const UNFINALIZED: KualiObservedFinalizationFields = Object.freeze(unfinalizedKualiFieldsInput());
 
 describe("Kuali separation finalization — the staged-variables fold", () => {
   it("composes the twelve written fields from nine variables and three ratified assertions", () => {
@@ -277,62 +255,13 @@ const TARGET: KualiFinalizationTarget = KualiFinalizationTargetSchema.parse({
 const MATCH_EXAMPLE = KualiMatchSeparationFinalization.example;
 if (MATCH_EXAMPLE.state !== "present") throw new Error("Kuali match example must carry a present proof");
 
-type KualiOperation =
-  | "read"
-  | "readActionListForDocument"
-  | "readSeparationDocument"
-  | "stageSeparationFinalization"
-  | "readSavedSeparationFinalization"
-  | "commit";
-type OperationHandler = (...args: readonly unknown[]) => unknown;
-type DriverCall = Readonly<{ operation: KualiOperation; args: readonly unknown[] }>;
 
-function recordingDriver(handlers: Partial<Record<KualiOperation, OperationHandler>>) {
-  const calls: DriverCall[] = [];
-  const invoke = async (operation: KualiOperation, args: readonly unknown[]): Promise<unknown> => {
-    calls.push({ operation, args });
-    const handler = handlers[operation];
-    if (handler === undefined) throw new Error(`unexpected Kuali semantic operation: ${operation}`);
-    return handler(...args);
-  };
 
-  const driver = {
-    system: "kuali",
-    read: (id: unknown) => invoke("read", [id]),
-    readActionListForDocument: (input: unknown) => invoke("readActionListForDocument", [input]),
-    readSeparationDocument: (input: unknown) => invoke("readSeparationDocument", [input]),
-    stageSeparationFinalization: (input: unknown) => invoke("stageSeparationFinalization", [input]),
-    readSavedSeparationFinalization: (input: unknown) => invoke("readSavedSeparationFinalization", [input]),
-    commit: (id: unknown, capability: unknown) => invoke("commit", [id, capability]),
-  } as unknown as KualiRrssDocumentDriver;
 
-  return { driver, calls };
-}
 
-function invocation(
-  task: AnyTask,
-  input: unknown,
-  driver: KualiRrssDocumentDriver,
-  mutation?: MutationCapability,
-) {
-  const points: DataPoint[] = [];
-  const ctx = {
-    signal: new AbortController().signal,
-    log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
-    fail: taskFailer(task.contract),
-    recordData: (point: DataPoint | readonly DataPoint[]) => {
-      if (Array.isArray(point)) points.push(...point as readonly DataPoint[]);
-      else points.push(point as DataPoint);
-    },
-    driver,
-    ...(mutation === undefined ? {} : { mutation }),
-  };
-  const parsedInput = task.contract.input.parse(input);
-  return {
-    points,
-    run: () => task.impl.run({ input: parsedInput, ctx } as never),
-  };
-}
+
+
+
 
 describe("Kuali task wrappers at their semantic-driver boundary", () => {
 

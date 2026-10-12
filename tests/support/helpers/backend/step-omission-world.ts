@@ -1,6 +1,6 @@
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
@@ -136,5 +136,9 @@ export function createStepOmissionTestWorld() {
         : checkpoints.map((row) => (String(row.nodeId) === ASSERTED_NODE ? asserted : row)),
     };
   }
-  return { roots, databases, STEP, TYPED_FACT, omittedStepFixture, ASSERTED_AT, ASSERTED_NODE, OMITTED_NODE };
+  const cleanup = () => {
+    for (const database of databases.splice(0)) database.close();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  };
+  return { roots, databases, STEP, TYPED_FACT, omittedStepFixture, ASSERTED_AT, ASSERTED_NODE, OMITTED_NODE, cleanup };
 }

@@ -6,7 +6,7 @@ import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixt
 import { Plan1CanonicalInput, Plan1Input, Plan1Output, plan1Parent, plan1Stores, plan1Workflows } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
-const { disposers, executorHarness, enqueueAndClaim, SIGNAL, readPersistedNotes } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, readPersistedNotes, cleanup } = createRunExecutorTestWorld();
 
 const PLAN1_CONFIG_ID = "00000000-0000-4000-8000-000000000c01";
 import assert from "node:assert/strict";
@@ -19,9 +19,7 @@ import { NoteWireSchema } from "../../../../src/models/events/types.js";
 import { type RunParent } from "../../../../src/models/run/envelope.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) dispose();
-});
+afterEach(cleanup);
 
 it("executes two canonical children and a nested child, preserving every derived input through real terminal authority and source routes", async () => {
   const harness = executorHarness({ descriptor: plan1Parent.descriptor, stores: plan1Stores });

@@ -1,61 +1,22 @@
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+
 import { afterEach, describe, it } from "vitest";
 import { completionFromAuthorization } from "../../../src/models/run/completion.js";
 import { deriveRunResultDigest } from "../../../src/models/run/result.js";
 import { TerminalAuthorizationRecordSchema } from "../../../src/models/run/terminal-authorization.js";
-import { HASH_C, LATER, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { LATER, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
-const { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest } = createRunIntegrationTestWorld();
+const { ACTIVE, openDatabase, startRunning, resultRequest, cleanup, failure, failureAuthorization } = createRunIntegrationTestWorld();
 
 
-function failure(run: ReturnType<typeof startRunning>) {
-  return {
-    failureId: UUID_6,
-    fingerprint: HASH_C,
-    runId: run.envelope.runId,
-    traceId: run.envelope.traceId,
-    attempt: run.envelope.attempt,
-    workflowId: run.envelope.workflow,
-    nodeId: "crm-dates",
-    taskId: "crm/read-onboarding-dates",
-    code: "CRM_UNAVAILABLE",
-    summary: "CRM onboarding dates were unavailable",
-    transient: true,
-    writeState: "not-attempted",
-    causeChain: [{
-      code: "CRM_UNAVAILABLE",
-      summary: "CRM returned an unavailable response",
-      role: "primary",
-      transient: true,
-    }],
-    remediation: [{ kind: "retry-when-served", message: "Retry after CRM is available" }],
-    occurredAt: LATER,
-  } as const;
-}
 
-function failureAuthorization(run: ReturnType<typeof startRunning>) {
-  return {
-    kind: "failed" as const,
-    runId: run.envelope.runId,
-    workflowId: run.envelope.workflow,
-    attempt: run.envelope.attempt,
-    descriptorVersion: run.envelope.descriptorVersion,
-    contractFingerprint: run.envelope.contractFingerprint,
-    expectedVersion: run.version,
-    claim: CLAIM,
-    authorizedAt: LATER,
-    failureId: UUID_6,
-  };
-}
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+
+
+afterEach(cleanup);
 
 describe("atomic failure terminal authority", () => {
   it("inserts the exact failure, transitions failed, lists by run, and replays byte-exactly", () => {
