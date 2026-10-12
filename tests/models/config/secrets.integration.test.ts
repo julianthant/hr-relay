@@ -3,12 +3,8 @@ import { createSettingsAuthorityTestWorld } from "../../support/helpers/backend/
 import { default as assert } from "node:assert/strict";
 
 import { copyFileSync } from "node:fs";
-import { mkdirSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
-import { realpathSync } from "node:fs";
 import { rmSync } from "node:fs";
 
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
 import { describe } from "vitest";
@@ -24,12 +20,10 @@ import { createCredentialSecretSource } from "../../../src/backend/runtime/setti
 
 
 
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/models/config/protected-settings.js";
 import { requireSecret } from "../../../src/models/config/secrets.js";
 
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
-import type { CredentialStoreHooks } from "../../support/helpers/synthetic-storage-admission.js";
 
 import { syncBuiltinESMExports } from "node:module";
 import { RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../../src/models/config/catalog.js";
