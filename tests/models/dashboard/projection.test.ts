@@ -60,9 +60,9 @@ describe("dashboard wire primitives", () => {
 
     assert.equal(QueueSurfaceWireSchema.safeParse({
       ...QUEUE,
-      linkedRuns: [{ runId: RUN_1, workflowId: "onboarding", label: "Onboarding", panelKind: "run", status: "running" }],
+      linkedRuns: [{ runId: RUN_1, partitionDay: DAY.day, workflowId: "onboarding", label: "Onboarding", panelKind: "run", status: "running" }],
     }).success, false);
-    const chip = { runId: RUN_2, workflowId: "onboarding", label: "Onboarding", panelKind: "run", status: "running" };
+    const chip = { runId: RUN_2, partitionDay: DAY.day, workflowId: "onboarding", label: "Onboarding", panelKind: "run", status: "running" };
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, linkedRuns: [chip] }).success, true);
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, linkedRuns: [chip, chip] }).success, false);
     const operation = {

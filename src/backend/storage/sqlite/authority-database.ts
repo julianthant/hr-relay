@@ -317,6 +317,7 @@ type RunRepository = Readonly<{
   findByTrace(traceId: string): RunRecord | undefined;
 
   listByWorkflow(workflow: string): readonly RunRecord[];
+  listPage(input: Readonly<{ workflow?: string; offset: number; limit: number }>): readonly RunRecord[];
 
   listCurrentByWorkflow(workflow: string): readonly RunRecord[];
 
@@ -4167,6 +4168,28 @@ export class AuthorityDatabase implements Disposable {
         return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration);
       }),
 
+      listPage: (input: Readonly<{ workflow?: string; offset: number; limit: number }>) => {
+        const { workflow, offset, limit } = z.strictObject({ workflow: z.string().optional(),
+          offset: z.number().int().nonnegative(), limit: z.number().int().min(1).max(1001) }).parse(input);
+        this.#validateExternalQuerySources();
+        this.#database.exec(`CREATE TEMP TABLE IF NOT EXISTS canonical_run_page(position INTEGER PRIMARY KEY,run_id TEXT NOT NULL UNIQUE);
+          CREATE TEMP TABLE IF NOT EXISTS canonical_run_page_state(id INTEGER PRIMARY KEY CHECK(id=1),generation INTEGER NOT NULL,
+            data_version INTEGER NOT NULL,source_changes INTEGER NOT NULL,workflow TEXT);`);
+        const generation = this.getMeta().authorityGeneration;
+        const dataVersion = readIntPragma(this.#database, "data_version");
+        const changes = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
+        const state = z.strictObject({ generation: z.number().int(), data_version: z.number().int(), source_changes: z.number().int(),
+          workflow: z.string().nullable() }).optional().parse(this.#database.prepare("SELECT generation,data_version,source_changes,workflow FROM canonical_run_page_state WHERE id=1").get());
+        if (state?.generation !== generation || state.data_version !== dataVersion || state.source_changes !== changes || state.workflow !== (workflow ?? null)) {
+          this.#database.exec("DELETE FROM canonical_run_page; DELETE FROM canonical_run_page_state");
+          this.#database.prepare(`INSERT INTO canonical_run_page SELECT row_number() OVER (
+            ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id),id FROM runs ${workflow === undefined ? "" : "WHERE workflow=?"}`)
+            .run(...(workflow === undefined ? [] : [workflow]));
+          this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(generation,dataVersion,workflow ?? null);
+        }
+        return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
+          WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
+      },
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
       `).all(workflow).map((row) => runRecordFromRow(row))),

@@ -42,6 +42,7 @@ const CursorAttackPayloadSchema = z.strictObject({
   sourceIdentity: z.string(),
   authorityGeneration: z.number().int().nonnegative(),
   expiresAt: z.string(),
+  generatedAt: z.string(),
   order: z.literal("match-strength/enqueued-desc/run-id-asc:v2"),
   after: z.strictObject({
     matchRank: z.number().int().nonnegative(),

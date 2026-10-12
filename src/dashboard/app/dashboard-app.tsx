@@ -421,8 +421,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   }, [activeWorkflowId, setRoute, setActiveWorkflowId]);
 
   const selectRun = useCallback(
-    (runId: string) => {
-      leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, {runId, partitionDay: day}), section: "logs" }));
+    (runId: string, partitionDay = day) => {
+      leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, {runId, partitionDay}), section: "logs" }));
     },
     [route, setRoute, day, leaveSettings],
   );
@@ -773,7 +773,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       /* Use the served child route; current-day lookup cannot find cross-day delegation. */
       onOpenLinked: (link) => {
         setActiveWorkflowId(String(link.workflowId));
-        selectRun(String(link.runId));
+        selectRun(String(link.runId), link.partitionDay);
       },
     }),
     [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, dayWire, setActiveWorkflowId, exitQueueSelection, runPreviewAction],

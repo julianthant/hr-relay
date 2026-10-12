@@ -478,7 +478,7 @@ async function composeDashboardRuntimeStartup(
     reason: "backups are written only on operator command (npm run cli -- storage backup)",
   });
 
-  const readBackupSummary = (): "current" | "stale" | "missing" => {
+  const readBackupSummary = (): ReturnType<typeof summarizeBackupHealth> => {
     let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
     try {
       liveGeneration = { state: "known", value: database.getMeta().authorityGeneration };

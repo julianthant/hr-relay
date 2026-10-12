@@ -82,6 +82,7 @@ const CrossDateSearchCursorPayloadSchema = z.strictObject({
   sourceIdentity: FingerprintSchema,
   authorityGeneration: NonNegativeIntSchema,
   expiresAt: IsoInstantSchema,
+  generatedAt: IsoInstantSchema,
   order: z.literal(CROSS_DATE_SEARCH_ORDER),
   after: z.strictObject({
     matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
@@ -96,6 +97,7 @@ const CrossDateSearchSnapshotTokenPayloadSchema = z.strictObject({
   sourceIdentity: FingerprintSchema,
   authorityGeneration: NonNegativeIntSchema,
   expiresAt: IsoInstantSchema,
+  generatedAt: IsoInstantSchema,
   order: z.literal(CROSS_DATE_SEARCH_ORDER),
 });
 type CrossDateSearchSnapshotTokenPayload = z.infer<typeof CrossDateSearchSnapshotTokenPayloadSchema>;
@@ -378,6 +380,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
       : decodeCursor(query.cursor, cursorSigningKey, sourceIdentity, queryHash);
     const expiresAt = selectedSnapshot?.expiresAt ?? cursor?.expiresAt ?? new Date(deps.clock.now().getTime() + 15 * 60 * 1000).toISOString();
     if (Date.parse(expiresAt) <= deps.clock.now().getTime()) return snapshotTokenRefusal("search snapshot expired; run a fresh query");
+    const generatedAt = selectedSnapshot?.generatedAt ?? cursor?.generatedAt ?? deps.clock.now().toISOString();
     return deps.authority.readSnapshot((snapshot) => {
         const authorityGeneration = NonNegativeIntSchema.parse(snapshot.authorityGeneration);
         if (cursor !== undefined && cursor.authorityGeneration !== authorityGeneration) {
@@ -424,6 +427,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
               sourceIdentity,
               authorityGeneration,
               expiresAt,
+              generatedAt,
               order: CROSS_DATE_SEARCH_ORDER,
               after: {
                 matchRank: lastVisible.matchRank,
@@ -434,7 +438,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
           };
         return CrossDateSearchPageSchema.parse({
           wireVersion: 1,
-          generatedAt: deps.clock.now().toISOString(),
+          generatedAt,
           snapshot: {
             authorityGeneration,
             order: CROSS_DATE_SEARCH_ORDER,
@@ -444,6 +448,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
               sourceIdentity,
               authorityGeneration,
               expiresAt,
+              generatedAt,
               order: CROSS_DATE_SEARCH_ORDER,
             }), cursorSigningKey),
           },

@@ -334,6 +334,26 @@ afterEach(_afterEachFixture0);
     assert.equal(summarizeBackupHealth_m3(w.options, w.database.getMeta().authorityGeneration, w.clock), "current");
   });
 
+  it("refuses a missing, nonregular or wrong-size physical copy and distinguishes I/O uncertainty", async () => {
+    const w = world();
+    await w.service.request({ trigger: "interval", requiredGeneration: w.database.getMeta().authorityGeneration });
+    const name = readdirSync(w.directory).find(name => name.endsWith(".manifest.json"));
+    assert.ok(name);
+    const manifest = JSON.parse(readFileSync(join(w.directory, name), "utf8")) as { backupFileName: string };
+    const copy = join(w.directory, manifest.backupFileName);
+    rmSync(copy);
+    assert.equal(summarizeBackupHealth_m3(w.options, w.database.getMeta().authorityGeneration, w.clock), "missing");
+    mkdirSync(copy);
+    assert.equal(summarizeBackupHealth_m3(w.options, w.database.getMeta().authorityGeneration, w.clock), "missing");
+    rmSync(copy, { recursive: true });
+    writeFileSync(copy, "short");
+    assert.equal(summarizeBackupHealth_m3(w.options, w.database.getMeta().authorityGeneration, w.clock), "missing");
+    const spy = vi.spyOn(fs, "lstatSync").mockImplementation(() => { throw Object.assign(new Error("denied"), { code: "EACCES" }); });
+    syncBuiltinESMExports();
+    try { assert.equal(summarizeBackupHealth_m3(w.options, undefined, w.clock), "unavailable"); }
+    finally { spy.mockRestore(); syncBuiltinESMExports(); }
+  });
+
   it("reads stale on ANY authority-generation gap, and current again after the next backup", async () => {
     const w = world();
     await w.service.request({ trigger: "interval", requiredGeneration: w.database.getMeta().authorityGeneration });

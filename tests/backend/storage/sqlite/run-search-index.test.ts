@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,expect,it } from "vitest";
+import { afterEach,describe,expect,it,vi } from "vitest";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runRecordColumns,runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "../../../../src/backend/storage/sqlite/run-search-index.js";
@@ -30,6 +30,35 @@ function fixture() {
 }
 const query = { q: "", scope: "all", facets: {}, limit: 1 };
 describe("native one-row search", () => {
+  it.each([0, 1000, 10000])("does not rescan %i unrelated audits for a pure heartbeat", population => {
+    const f = fixture(); const id = f.add(1, "2026-10-01T12:00:00.000Z"); f.publish();
+    const insert = f.db.prepare("INSERT INTO command_audits(id,command_id,payload_json,created_at) VALUES(?,?,?,?)");
+    f.db.exec("BEGIN");
+    for (let ordinal = 0; ordinal < population; ordinal++) insert.run(`audit-${String(ordinal)}`, `command-${String(ordinal)}`,
+      JSON.stringify({ request: { family: "lifecycle" }, result: { state: "applied", affectedTargets: [{ family: "run", runId: id }] } }), QUEUED_RUN.createdAt);
+    f.db.exec("COMMIT");
+    const prepare = vi.spyOn(f.db, "prepare");
+    f.db.prepare("UPDATE runs SET version=version+1,lifecycle_json=json_set(lifecycle_json,'$.version',version+1) WHERE id=?").run(id);
+    f.db.prepare("UPDATE database_states SET authority_generation=2,search_generation=NULL,search_state='invalid'").run();
+    f.index.publishChanges(2, QUEUED_RUN.createdAt, RunSearchPublicationSchema.parse({ state: "published", sourceGeneration: 1, afterRun: null, rowCount: 1 }));
+    expect(prepare.mock.calls.filter(([sql]) => sql.includes("FROM command_audits"))).toHaveLength(0);
+    expect(f.index.search(query, 2).rows[0]?.metadata.actor).toEqual({ state: "unavailable", reason: "not-recorded" });
+  });
+  it("invalidates actor provenance for contributing audit insert, update and deletion including old bindings", () => {
+    const f = fixture(); const id = f.add(1, "2026-10-01T12:00:00.000Z"), other = f.add(2, "2026-10-01T13:00:00.000Z"); f.publish();
+    const payload = (runId: string) => JSON.stringify({ request: { family: "start" }, result: { state: "applied", affectedTargets: [{ family: "run", runId }] } });
+    const dirty = () => f.db.prepare("SELECT run_id FROM search_actor_dirty ORDER BY run_id").all();
+    f.db.prepare("INSERT INTO command_audits(id,command_id,payload_json,created_at) VALUES('audit','command',?,?)").run(payload(id), QUEUED_RUN.createdAt);
+    expect(dirty()).toEqual([{ run_id: id }]);
+    f.db.exec("DELETE FROM search_actor_dirty; DELETE FROM search_dirty");
+    f.db.exec("DROP TRIGGER command_audits_immutable");
+    f.db.prepare("UPDATE command_audits SET payload_json=? WHERE id='audit'").run(payload(other));
+    expect(dirty()).toEqual([{ run_id: id }, { run_id: other }]);
+    expect(() => f.index.publishChanges(2, QUEUED_RUN.createdAt, RunSearchPublicationSchema.parse({ state: "published", sourceGeneration: 1, afterRun: null, rowCount: 2 }))).toThrow();
+    f.db.exec("DELETE FROM search_actor_dirty; DELETE FROM search_dirty; DROP TRIGGER command_audits_retained; DELETE FROM command_audits WHERE id='audit'");
+    expect(dirty()).toEqual([{ run_id: other }]);
+  });
+
   it("freezes declaration identity and serves literal ranked results with full count and keyset order", () => {
     const f = fixture(); const old = f.add(1, "2026-10-01T12:00:00.000Z"), recent = f.add(2, "2026-10-02T12:00:00.000Z"); f.publish();
     const page = f.index.search(query, 1);

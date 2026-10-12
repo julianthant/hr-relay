@@ -32,6 +32,25 @@ describe('mounted frontend reliability contracts', () => {
     assert.equal(host.querySelectorAll('tbody tr').length, 1);
     assert(host.querySelector('input[aria-label="U1000"]'));
   });
+  it('undoes structural sorting separately from focused cell typing', async () => {
+    const original = newEditableWorkbook();
+    const sheet = original.sheets[0];
+    const second = { id: 'second-row', cells: Array.from({ length: sheet.width }, (_, column) => ({ value: column === 0 ? 'Aaron' : '' })) };
+    const host = await mount(createElement(SheetHarness, { initial: { ...original, sheets: [{ ...sheet, rows: [...sheet.rows, second] }] } }));
+    const cell = host.querySelector('input[aria-label="A2"]'); assert(cell instanceof HTMLInputElement);
+    for (const value of ['A', 'Alice']) await act(async () => {
+      cell.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(cell, value);
+      cell.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await press('Sort column A');
+    assert.equal(host.querySelector<HTMLInputElement>('input[aria-label="A2"]')?.value, 'Aaron');
+    await press('Undo spreadsheet edit');
+    assert.equal(host.querySelector<HTMLInputElement>('input[aria-label="A2"]')?.value, 'Alice');
+    await press('Undo spreadsheet edit');
+    assert.equal(host.querySelector<HTMLInputElement>('input[aria-label="A2"]')?.value, '');
+    await press('Redo spreadsheet edit');
+    assert.equal(host.querySelector<HTMLInputElement>('input[aria-label="A2"]')?.value, 'Alice');
+  });
   it('supports reversible controlled cell edits and keeps unrelated text-field shortcuts native', async () => {
     const host = await mount(createElement(SheetHarness, { initial: newEditableWorkbook() }));
     const cell = host.querySelector('input[aria-label="A2"]'); assert(cell instanceof HTMLInputElement);

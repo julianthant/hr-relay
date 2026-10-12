@@ -72,6 +72,27 @@ function harness(maxPending = 64, retention = 512) {
 }
 
 describe("confirmed run log composite stream", () => {
+  it("retires stream heads without imposing a lifetime stream cap", () => {
+    const h = harness();
+    for (let stream = 0; stream < 4200; stream++) {
+      h.batches.push([event(`stream-${stream}`, 1)]); h.hub.poll();
+    }
+    assert.equal(h.hub.stats().degraded, false);
+    assert.equal(h.hub.stats().ordinal, 4200);
+    assert.equal(h.hub.stats().retained, 512);
+    const connection = h.hub.connect({ runId: RUN }); connection.close(); h.hub.close();
+  });
+  it.each(["gap", "regression"] as const)("keeps a known head through a bounded tail batch before checking its late %s", kind => {
+    const h = harness();
+    for (let stream = 0; stream < 4096; stream++) {
+      h.batches.push([event(`stream-${stream}`, stream === 0 ? 2 : 1)]); h.hub.poll();
+    }
+    h.batches.push([event("new-stream", 1), event("stream-0", kind === "gap" ? 4 : 1)]);
+    h.hub.poll();
+    assert.equal(h.hub.stats().lastError, kind === "gap" ? "run-log-worker-sequence-gap" : "run-log-worker-sequence-regressed");
+    h.hub.close();
+  });
+
   it("assigns unique global cursors to interleaved worker events and resumes the exact selection", async () => {
     const h = harness();
     const first = h.hub.connect({ runId: RUN });

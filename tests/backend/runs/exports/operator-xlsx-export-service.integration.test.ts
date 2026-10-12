@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Readable } from "node:stream";
 import { describe,it } from "vitest";
+import { exportSearchMetadata } from "../../../../src/backend/runs/exports/search-metadata-export.js";
 import { createOperatorXlsxExportService } from "../../../../src/backend/runs/exports/operator-xlsx-export-service.js";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
@@ -203,6 +204,35 @@ async function bytesOf(stream: NodeJS.ReadableStream): Promise<Buffer> {
 }
 
 describe("operator XLSX export service", () => {
+  it("exports an elapsed-clock signed selection through XLSX, CSV and diagnostic collectors including continuation", async () => {
+    const h = exportHarness("elapsed-selection"); await h.artifacts.ready;
+    try {
+      insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 93, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 94, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+      const search = realSearchService(h, 0x41);
+      const query = { ...selectedSearchRequest().selection.query, limit: 1 };
+      const page = search.search(query);
+      assert.equal(page.nextCursor.state, "present");
+      const selection = { kind: "search" as const, query, snapshot: { ...page.snapshot, generatedAt: page.generatedAt } };
+      const generation = h.database.getMeta().authorityGeneration;
+      h.clock.advanceWall(1);
+      assert.equal(h.database.getMeta().authorityGeneration, generation);
+      for (const format of ["csv", "diagnostic"] as const) {
+        const response = exportSearchMetadata({ search, sourceIdentity: h.database.getSourceDatabaseIdentity() }, { selection, format });
+        const text = await response.text();
+        assert.ok(text.includes(page.generatedAt));
+        assert.ok(text.includes(page.results[0]?.runId ?? "missing"));
+        assert.ok(text.includes(search.search({ ...query, cursor: page.nextCursor.state === "present" ? page.nextCursor.value : undefined }).results[0]?.runId ?? "missing"));
+      }
+      const service = createOperatorXlsxExportService({ clock: h.clock, ids: { uuid: () => EXPORT_ID },
+        artifacts: h.artifacts, sourceIdentity: h.database.getSourceDatabaseIdentity(),
+        authority: h.database.authority.operatorXlsxExports, search,
+        activityReport: () => { throw new Error("unexpected activity"); } });
+      const result = await service.export(LOCAL_OPERATOR_ACTOR_ID, { requestVersion: 3, selection });
+      assert.equal(result.evidence.selection.kind, "search");
+      assert.ok(result.bytes.length > 0);
+    } finally { h.close(); }
+  });
   it("persists content-addressed bytes and exact attachment evidence before returning", async () => {
     const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-operator-xlsx-"));
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));

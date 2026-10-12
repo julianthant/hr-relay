@@ -27,6 +27,7 @@ export const RECONCILED_DATE_REFUSAL_CODES = [
   "no-punch-in-window",
   /** A leave day the card reported falls outside the window it was read over. */
   "leave-date-outside-window",
+  "separation-date-in-future",
 ] as const;
 export const ReconciledDateRefusalCodeSchema = z.enum(RECONCILED_DATE_REFUSAL_CODES);
 export type ReconciledDateRefusalCode = z.infer<typeof ReconciledDateRefusalCodeSchema>;
@@ -480,6 +481,14 @@ export function reconcileSeparationDates(input: Readonly<{
   const latestHolidayDate = holidayDates.at(-1) ?? null;
 
   const separationDate = computeSeparationDate(lastDayWorked, sickDates, holidayDates);
+  if (isLaterSeparationDate(separationDate, input.plan.asOfDate)) {
+    return ReconciledDatesResolutionSchema.parse({
+      state: "refused",
+      code: "separation-date-in-future",
+      reason: `reconciled separation date ${separationDate} is after ${input.plan.asOfDate}, the day this run planned the separation; `
+        + "the employee is not yet separated, so there is no termination to file",
+    });
+  }
   const terminationEffectiveDate = addSeparationDays(separationDate, 1);
   const initials = separationInitials(input.timekeeperName);
   const dateChangeComments = buildDateChangeComments({

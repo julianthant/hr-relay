@@ -34,7 +34,7 @@ export interface RunLogsStreamDeps {
   readonly projection: Pick<RunQueueProjection, "onChange" | "buildDashboardDayWire" | "cursor" | "generation">;
   readonly readRun: (runId: string) => Readonly<{ disposition: "live" | "archived"; run: RunRecord }> | undefined;
   readonly store: Readonly<{
-    tail(cursors: ReadonlyMap<string, TimelineCursor>): RunLogTail;
+    tail(cursors: ReadonlyMap<string, TimelineCursor>, knownStreams?: ReadonlySet<string>): RunLogTail;
     snapshot(authority: RunRecord): Readonly<{ events: readonly ConfirmedActionEvent[]; hasEarlier: boolean; parsedLines: number }>;
   }>;
   readonly retention?: number;
@@ -250,7 +250,7 @@ export class RunLogsStreamHub {
           this.#resetSubscriber(subscriber, "generation-changed");
         }
       }
-      const tail = this.#deps.store.tail(this.#cursors);
+      const tail = this.#deps.store.tail(this.#cursors, new Set(this.#streamSequence.keys()));
       this.#parsedLines += tail.parsedLines;
       this.#bytesRead += tail.bytesRead;
       if (tail.pruned) {
@@ -267,12 +267,13 @@ export class RunLogsStreamHub {
           if (previous !== body) throw new Error("run-log-event-id-conflict");
           continue;
         }
-        const lastSequence = this.#streamSequence.get(event.workerStreamId);
+        const lastSequence = this.#streamSequence.get(event.workerStreamId) ?? tail.previousSequences?.get(event.eventId);
         if (lastSequence !== undefined && event.sequence !== lastSequence + 1) {
           throw new Error(event.sequence > lastSequence ? "run-log-worker-sequence-gap" : "run-log-worker-sequence-regressed");
         }
-        if (lastSequence === undefined && this.#streamSequence.size >= 4096) throw new Error("run-log-stream-head-bound-exceeded");
+
         this.#deliver(this.#retain({ kind: "log", event } as Omit<Change, "ordinal">));
+        this.#streamSequence.delete(event.workerStreamId);
         this.#streamSequence.set(event.workerStreamId, event.sequence);
         this.#seen.set(event.eventId, body);
         if (this.#seen.size > 4096) this.#seen.delete(this.#seen.keys().next().value!);
@@ -287,6 +288,8 @@ export class RunLogsStreamHub {
       this.#recovering = false;
       this.#lastError = error instanceof Error ? error.message : String(error);
       this.#publishHealthTransition(previousHealth);
+    } finally {
+      while (this.#streamSequence.size > 4096) this.#streamSequence.delete(this.#streamSequence.keys().next().value!);
     }
   }
 

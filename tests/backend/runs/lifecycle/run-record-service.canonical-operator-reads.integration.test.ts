@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { mkdtempSync,realpathSync,rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach,it } from "vitest";
+import { afterEach,it,vi } from "vitest";
 import { RunRecordService,requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { listCanonicalRuns } from "../../../../src/backend/runs/queries/canonical-runs.js";
 import { buildRunDetail,readRunDetail,type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -214,3 +215,33 @@ it("counts zero, one and multiple spanless members and removes the settled tree 
   assert.equal(f.world.projection.buildActivityReportWire(DAY, DAY).totalRuns, 0);
 });
 
+
+it("materializes only the requested bounded canonical page", () => {
+  const f = fixture();
+  f.database.withAuthorityTransaction(repositories => {
+    for (let seed = 1; seed <= 1001; seed++) repositories.runs.enqueue(runRecordOf({ seed }));
+  });
+  let scanned = 0;
+  const authority = { ...f.database.authority, runs: { ...f.database.authority.runs,
+    listByWorkflow(workflow: string) { const rows = f.database.authority.runs.listByWorkflow(workflow); scanned += rows.length; return rows; } } };
+  const database = new Proxy(f.database, { get(target, key) {
+    if (key === "authority") return authority;
+    const value: unknown = Reflect.get(target, key);
+    if (typeof value !== "function") return value;
+    return (...args: unknown[]): unknown => Reflect.apply(value, target, args);
+  } });
+  const service = new RunRecordService({ database, clock: f.clock,
+    ids: { uuid: () => { throw new Error("read fixture"); } }, publishQueued: () => {} });
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const first = service.list({ disposition: "live", limit: 10 });
+  assert.equal(first.state, "listed");
+  assert.equal(first.rows?.length, 10);
+  assert.equal(scanned, 0, "a bounded page must not enumerate each workflow corpus");
+  assert.equal(listCanonicalRuns(service, "live").length, 1001);
+  assert.equal(prepare.mock.calls.filter(([sql]) => sql.includes("INSERT INTO canonical_run_page SELECT")).length, 1,
+    "all pages share one complete scalar ordering per source generation");
+  f.database.authority.runs.enqueue(runRecordOf({ seed: 2002 }));
+  assert.equal(listCanonicalRuns(service, "live").length, 1002);
+  assert.equal(prepare.mock.calls.filter(([sql]) => sql.includes("INSERT INTO canonical_run_page SELECT")).length, 2);
+  prepare.mockRestore();
+});

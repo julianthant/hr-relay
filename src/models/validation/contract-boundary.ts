@@ -87,39 +87,43 @@ function schemaOwnsPath(
   parts: readonly string[],
   unionRule: "every" | "some" = "every",
 ): boolean {
-  const seen = new WeakMap<object, Set<string>>();
+  const ancestry = new WeakMap<object, Set<string>>();
   function visit(current: z.core.$ZodType, remaining: readonly string[]): boolean {
     if (remaining.length === 0) return true;
     const signature = remaining.join(".");
     const currentObject = current;
-    const signatures = seen.get(currentObject) ?? new Set<string>();
+    const signatures = ancestry.get(currentObject) ?? new Set<string>();
     if (signatures.has(signature)) return false;
     signatures.add(signature);
-    seen.set(currentObject, signatures);
-    const definition = schemaDefinition(current);
-    const type = String(definition.type);
-    if (type === "object") {
-      const [head, ...tail] = remaining;
-      if (head === undefined) return true;
-      const shape = definition.shape as { readonly [key: string]: z.core.$ZodType };
-      return Object.hasOwn(shape, head) && visit(shape[head], tail);
+    ancestry.set(currentObject, signatures);
+    try {
+      const definition = schemaDefinition(current);
+      const type = String(definition.type);
+      if (type === "object") {
+        const [head, ...tail] = remaining;
+        if (head === undefined) return true;
+        const shape = definition.shape as { readonly [key: string]: z.core.$ZodType };
+        return Object.hasOwn(shape, head) && visit(shape[head], tail);
+      }
+      if (type === "union") {
+        const options = definition.options as z.core.$ZodType[];
+        return unionRule === "every"
+          ? options.every((option) => visit(option, remaining))
+          : options.some((option) => visit(option, remaining));
+      }
+      if (type === "lazy") return visit((definition.getter as () => z.core.$ZodType)(), remaining);
+      if (["optional", "nullable", "default", "readonly", "nonoptional", "catch"].includes(type)) {
+        return visit(definition.innerType as z.core.$ZodType, remaining);
+      }
+      if (type === "pipe") return visit(definition.out as z.core.$ZodType, remaining);
+      if (type === "intersection") {
+        return visit(definition.left as z.core.$ZodType, remaining)
+          || visit(definition.right as z.core.$ZodType, remaining);
+      }
+      return false;
+    } finally {
+      signatures.delete(signature);
     }
-    if (type === "union") {
-      const options = definition.options as z.core.$ZodType[];
-      return unionRule === "every"
-        ? options.every((option) => visit(option, remaining))
-        : options.some((option) => visit(option, remaining));
-    }
-    if (type === "lazy") return visit((definition.getter as () => z.core.$ZodType)(), remaining);
-    if (["optional", "nullable", "default", "readonly", "nonoptional", "catch"].includes(type)) {
-      return visit(definition.innerType as z.core.$ZodType, remaining);
-    }
-    if (type === "pipe") return visit(definition.out as z.core.$ZodType, remaining);
-    if (type === "intersection") {
-      return visit(definition.left as z.core.$ZodType, remaining)
-        || visit(definition.right as z.core.$ZodType, remaining);
-    }
-    return false;
   }
   return visit(schema, parts);
 }

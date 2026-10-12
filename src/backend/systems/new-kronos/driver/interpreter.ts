@@ -320,6 +320,12 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       );
     }
     const totalCount = counters.total;
+    if (candidates.length !== totalCount) {
+      throw new NewKronosDriverError(
+        `the Employee Search panel rendered ${String(candidates.length)} candidate(s) against Total [${String(totalCount)}] — `
+        + "the result set is incomplete, so neither a match nor employee absence can be established",
+      );
+    }
     const matched = candidates.find(({ employeeId }) => employeeId === input.employeeId);
     if (matched === undefined) {
       return NewKronosSearchReadSchema.parse({
@@ -443,7 +449,8 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     const harvestOnce = async (): Promise<{
       rows: readonly { month: number; day: number; rawDateCell: string; cells: readonly string[] }[];
       headers: readonly string[];
-      dataCells: number;
+      dateRowCount: number;
+      dataRowCount: number;
       viewportCount: number;
       topRow: string;
       scrollTop: number;
@@ -455,7 +462,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       const dataViewport = viewports[viewports.length - 1];
       if (dateViewport === undefined || dataViewport === undefined || viewports.length < 2) {
         return {
-          rows: [], headers: [], viewportCount: viewports.length, dataCells: -1,
+          rows: [], headers: [], viewportCount: viewports.length, dateRowCount: 0, dataRowCount: 0,
           topRow: "", scrollTop: 0, scrollHeight: 0, clientHeight: 0,
         };
       }
@@ -493,15 +500,11 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
         });
       }
       const first = dateRows[0];
-      const firstDataRow = dataRows[0];
       return {
         rows,
         headers,
-        // How many cells a body row actually renders — the count the header
-        // list has to agree with, checked below rather than assumed.
-        dataCells: firstDataRow === undefined
-          ? -1
-          : firstDataRow.querySelectorAll("[role=gridcell]").length,
+        dateRowCount: dateRows.length,
+        dataRowCount: dataRows.length,
         viewportCount: viewports.length,
         topRow: first === undefined ? "" : (first.textContent ?? "").trim(),
         scrollTop: dataViewport.scrollTop,
@@ -536,21 +539,38 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
         + "column plus the data column — the timecard did not load",
       );
     }
-    // Headers and cells must have equal counts before using resolved column indices.
-    if (opening.dataCells >= 0 && opening.dataCells !== headers.length) {
-      throw new NewKronosDriverError(
-        `the timecard grid's data rows render ${String(opening.dataCells)} cell(s) against `
-        + `${String(headers.length)} data header(s) ${JSON.stringify(headers)} — the header row and the `
-        + "body rows do not describe the same columns, so every column index would be an offset into "
-        + "the wrong cell; refusing to read punches through a mapping that cannot be trusted",
-      );
-    }
+    const validateHarvest = (harvest: Awaited<ReturnType<typeof harvestOnce>>): void => {
+      if (harvest.viewportCount < 2 || harvest.dateRowCount !== harvest.dataRowCount
+        || harvest.rows.length !== harvest.dateRowCount) {
+        throw new NewKronosDriverError(
+          `the timecard grid has unaligned date/data row counts ${String(harvest.dateRowCount)}/${String(harvest.dataRowCount)} `
+          + `and ${String(harvest.rows.length)} dated row(s) — refusing an incomplete row window`,
+        );
+      }
+      if (harvest.headers.length !== headers.length
+        || harvest.headers.some((header, index) => header !== headers[index])) {
+        throw new NewKronosDriverError("the timecard grid headers changed during repaint — refusing a changed column mapping");
+      }
+      for (const row of harvest.rows) {
+        if (row.cells.length !== headers.length) {
+          throw new NewKronosDriverError(
+            `the timecard grid row ${String(row.month)}/${String(row.day)} renders ${String(row.cells.length)} cell(s) against `
+            + `${String(headers.length)} data header(s) — refusing a missing or truncated data row`,
+          );
+        }
+      }
+    };
+    validateHarvest(opening);
     const columns = resolveTimecardColumns(headers);
     const cellAt = (cells: readonly string[], column: keyof typeof columns): string =>
       cells[columns[column]] ?? "";
     const read = await readVirtualizedGrid(
       {
-        harvest: async () => await harvestOnce(),
+        harvest: async () => {
+          const harvest = await harvestOnce();
+          validateHarvest(harvest);
+          return harvest;
+        },
         scrollTo: scrollGridTo,
         settle: async () => { await tick(POLL_INTERVAL_MS); },
         refuse: (message: string) => new NewKronosDriverError(message),
