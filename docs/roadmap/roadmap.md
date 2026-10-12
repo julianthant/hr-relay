@@ -9,9 +9,12 @@ Statuses: `done`, `now`, `next`, `later`. One line per key implementation.
 - [done] Cleanup — old plans, history docs, decision log and CLAUDE.md removed; new AGENTS.md.
 - [done] AI providers removed — only the ChatGPT-subscription OCR entry point remains.
 - [done] Every check green — typecheck, lint, tests, screenshots and coverage pass; merged into master.
-- [now] Docs and comments describe the current system — no decision numbers, dates or history.
-- [next] Renamed to Relay — app title, README, favicon and repository name.
-- [next] Dependency and startup fixes — patched packages and a crash-safe admission lock.
+- [done] Docs and comments describe the current system — no decision numbers, dates or history.
+- [done] Renamed to Relay — app title, README, favicon and repository name.
+- [done] Dependency and startup fixes — patched packages and a crash-safe admission lock.
+- [done] Legacy code removed — current version only, on a fresh stored state of 34 tables.
+- [now] Simplified source and one test tree — each concept said once; tests mirror the source.
+- [next] Reference docs and codebase review — docs match the code; approved review findings fixed.
 
 ## Wiring base
 
