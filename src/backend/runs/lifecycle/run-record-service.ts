@@ -204,15 +204,14 @@ export class RunRecordService {
         || cursor.workflow !== request.workflow || cursor.disposition !== request.disposition)) {
         return { state: "refused" as const, refusal: { reason: "cursor-stale" as const } };
       }
-      const workflows = request.workflow === undefined
-        ? database.authority.runs.listWorkflows() : [request.workflow];
-      const rows = workflows.flatMap(workflow => database.authority.runs.listByWorkflow(workflow)).sort(compareRuns);
       const offset = cursor === undefined ? 0 : cursor.offset;
-      const page = rows.slice(offset, offset + request.limit);
+      const rows = database.authority.runs.listPage({ offset, limit: request.limit + 1,
+        ...(request.workflow === undefined ? {} : { workflow: request.workflow }) });
+      const page = rows.slice(0, request.limit);
       return {
         state: "listed" as const,
         rows: page,
-        ...(offset + page.length >= rows.length ? {} : {
+        ...(rows.length <= request.limit ? {} : {
           cursor: { generation, offset: offset + page.length, disposition: request.disposition,
             ...(request.workflow === undefined ? {} : { workflow: request.workflow }) },
         }),
@@ -1118,10 +1117,3 @@ function findNonTerminalTreeMember(
   return visit(rootRunId);
 }
 
-function compareRuns(left: RunRecord, right: RunRecord): number {
-  const priority = Number(left.envelope.priority === "bulk") - Number(right.envelope.priority === "bulk");
-  if (priority !== 0) return priority;
-  const time = Date.parse(left.envelope.enqueuedAt) - Date.parse(right.envelope.enqueuedAt);
-  if (time !== 0) return time;
-  return left.envelope.runId < right.envelope.runId ? -1 : left.envelope.runId === right.envelope.runId ? 0 : 1;
-}
