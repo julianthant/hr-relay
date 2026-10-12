@@ -253,6 +253,53 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(() => writeLiveSmokeRuntimeFileExclusive(join(processLockRoot, "live-smoke-slots"), "../unrelated", "{}")).toThrow();
   });
 
+  it("never records closure after a generic launcher rejection leaves profile custody unknown", async () => {
+    const { root: stateRoot, database, gates } = fixture();
+    const scheduler = new ManualScheduler(clock);
+    const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
+    await helpers.withTempRuntime(async ({ config }) => {
+      const processLockRoot = join(stateRoot, "locks");
+      const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+      const profileRunId = "00000000-0000-4000-8000-000000000005";
+      const profileRoot = join(stateRoot, "scratch", "live-smoke", profileRunId, "browsers");
+      const failure = new Error("fixture uncertain launcher rejection");
+      try {
+        await expect(withSmokeWorker(database, async (slot, ownedGates) => {
+          const record = recordSmokeSlot({ processLockRoot, slot, profileRunId, system: "ucpath", credentialKey });
+          const factory = new PlaywrightWorkerSessionFactory({ config: { ...config,
+            paths: { ...config.paths, browserProfileRoot: profileRoot } },
+            protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }),
+            isolation: rebuildRuntimeIsolation, clock, scheduler, slotOrdinal: () => slot.ordinal,
+            newSessionId: () => "00000000-0000-4000-8000-000000000001",
+            bindings: helpers.recordingBindings(),
+            launcher: { launch: input => { mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 }); return Promise.reject(failure); } },
+            admitProfile: createSmokeProfileAdmission({ processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+              workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot }),
+          });
+          const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow,
+            stores: taskStoreRegistry, factory, clock, scheduler, acquireDeadlineMs: 60000,
+            duoCeremony: { openGate: input => { const gate = gates.openGate(input); ownedGates.add(gate); return gate; } } });
+          manager.bindRunConfigFingerprint(credentialKey);
+          const errors: unknown[] = [];
+          try { await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
+            new AbortController().signal, async () => { throw new Error("uncertain launcher callback reached"); }); }
+          catch (error) { errors.push(error); }
+          await closeSmokeSessions(manager, () => { deleteOwnedBrowserProfile(profileRoot, join(profileRoot, `w${slot.ordinal}`)); },
+            errors, () => { record.proveClosure(clock); });
+        }, clock)).rejects.toMatchObject({ name: "SmokeSessionClosureError", errors: [failure, { name: "ProfileCustodyUnavailableError" }] });
+        lock.release();
+        expect(existsSync(join(processLockRoot, "live-smoke-slots", "live-smoke-claims", `${lock.acquisitionId}.closed.json`))).toBe(false);
+        expect(() => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot, clock,
+          observeProcess: () => ({ state: "gone" }) })).toThrow(SmokeSlotOwnershipUnavailableError);
+        const slots = database.authority.workerSlots.list();
+        expect(slots).toHaveLength(1);
+        expect(slots[0].retiredAt).toBeNull();
+        expect(existsSync(workerProfileDirectory({ profileRoot, slotOrdinal: slots[0].ordinal, system: "ucpath" }))).toBe(true);
+        expect(database.authority.duoCeremonyLeases.get(credentialKey)).toBeUndefined();
+      } finally { lock.release(); }
+    });
+  });
+
   it("performs one manager/factory fresh-profile recovery under its own retained Duo lease", async () => {
     const { database, gates } = fixture();
     const scheduler = new ManualScheduler(clock);

@@ -145,8 +145,8 @@ export async function closeSmokeSessions(
 ): Promise<void> {
   try {
     await sessions.closeAll("worker-stop");
-    proveClosure?.();
     deleteProfile();
+    proveClosure?.();
   } catch (error) {
     throw new SmokeSessionClosureError([...operationErrors, error]);
   }
