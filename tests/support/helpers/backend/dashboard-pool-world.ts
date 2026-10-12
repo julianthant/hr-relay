@@ -1,3 +1,6 @@
+import type { AuthorityDatabase as PoolAuthorityDatabase } from "../admission-fixture.js";
+import { type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { type Clock } from "../../../../src/rules/time/clock.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
@@ -320,4 +323,72 @@ export function createDashboardPoolTestWorld() {
     return workerId;
   }
   return { servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, WORKER_2, roots, openDatabases, cleanups, openControlHarness, nextCommandId, envelope, spawnPoolWorker, admitExternalSlot, admitPoolSlot, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember, settleMicrotasks, fireBirthPoll };
+}
+
+export interface PoolEffectEvent {
+  readonly commandId: string;
+  readonly type: string;
+  readonly phase: "enter" | "exit";
+  readonly seq: number;
+  readonly atMonotonicMs: number;
+}
+
+export function instrumentPool(
+  pool: WorkerPoolRuntimeSeam,
+  clock: Clock,
+  events: PoolEffectEvent[],
+): WorkerPoolRuntimeSeam {
+  let seq = 0;
+  const record = (commandId: string, type: string, phase: "enter" | "exit"): void => {
+    seq += 1;
+    events.push({ commandId, type, phase, seq, atMonotonicMs: clock.monotonicMs() });
+  };
+  const wrap = <Method extends keyof WorkerPoolRuntimeSeam>(method: Method): WorkerPoolRuntimeSeam[Method] =>
+    async (context: Parameters<WorkerPoolRuntimeSeam[Method]>[0]) => {
+      record(context.command.commandId, context.command.type, "enter");
+      try {
+        return await pool[method](context);
+      } finally {
+        record(context.command.commandId, context.command.type, "exit");
+      }
+    };
+  return {
+    planPoolWorkerCount: wrap("planPoolWorkerCount"),
+    spawnPoolWorker: wrap("spawnPoolWorker"),
+    stopPoolWorker: wrap("stopPoolWorker"),
+    pausePoolWorker: wrap("pausePoolWorker"),
+    resumePoolWorker: wrap("resumePoolWorker"),
+    refreshPoolBrowser: wrap("refreshPoolBrowser"),
+    reopenPoolBrowser: wrap("reopenPoolBrowser"),
+  };
+}
+
+export function kernelOver(
+  database: PoolAuthorityDatabase,
+  clock: Clock,
+  pool: WorkerPoolRuntimeSeam,
+): CommandKernel {
+  const dependencies: CommandKernelDependencies = {
+    lifecycle: new RunRecordService({ database, clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
+    appVersion: "0.1.0",
+    configIdentity: (() => { const active = database.authority.runtimeConfig.get(); assert.ok(active); return {configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId}; })(),
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
+    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+    clock,
+    ids: sequentialIdFactory("f"),
+    descriptors: {
+      resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
+    },
+    writeResolution: {
+      resolvePresent: () => {
+        throw new Error("unused in this suite");
+      },
+      resolveAbsent: () => {
+        throw new Error("unused in this suite");
+      },
+    },
+    workerRuntime: { pool },
+  };
+  return createCommandKernel(dependencies);
 }

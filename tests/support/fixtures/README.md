@@ -178,6 +178,12 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/runtime-lock-contender.ts` | runtime lock contender |
 | `processes/worker-browser-control-cli.ts` | worker browser control cli |
 | `processes/worker-stub-cli.ts` | worker stub cli |
+| `helpers/credential-persistence-fixtures.ts` | fresh protected credential request and crash fixtures |
+| `helpers/credential-doctor-fixtures.ts` | native credential doctor fixture and inventory |
+| `helpers/test-target-registry-fixtures.ts` | registry subjects and recording public inputs |
+| `helpers/backend/note-scope-fixtures.ts` | note and terminal event fixture inputs |
+| `helpers/backend/owned-vite-probe-fixtures.ts` | owned local Vite probe server |
+| `helpers/dry-run-scenario-fixtures.ts` | fresh authored dry-run manifest |
 
 ## File fixtures
 

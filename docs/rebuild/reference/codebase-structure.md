@@ -115,6 +115,8 @@ contract; its reference files are not refreshed to make wiring pass. Role-derive
 not imply current files or coverage. Exact test move counts and retirement dispositions remain with
 the owning evidence records.
 
+Credential persistence and inspection use `helpers/credential-persistence-fixtures.ts` and `helpers/credential-doctor-fixtures.ts`; registry inputs use `helpers/test-target-registry-fixtures.ts`. Note events, Vite probe servers and dry-run manifests share their fixture builders under `helpers/backend/` and `helpers/dry-run-scenario-fixtures.ts`.
+
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector
