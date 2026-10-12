@@ -433,6 +433,16 @@ export function removeOwnedGeocodeRuntimeFile(root: string, name: string, custod
   removeOwnedClaimRuntimeFile(root, "geocode", name, custody);
 }
 
+export function readLiveSmokeRuntimeFile(root: string, name: string): Readonly<{ text: string; custody: GeocodeFileCustody }> {
+  return readClaimRuntimeFile(root, "live-smoke", name);
+}
+export function writeLiveSmokeRuntimeFileExclusive(root: string, name: string, text: string): GeocodeFileCustody {
+  return writeClaimRuntimeFileExclusive(root, "live-smoke", name, text);
+}
+export function removeOwnedLiveSmokeRuntimeFile(root: string, name: string, custody: GeocodeFileCustody): void {
+  removeOwnedClaimRuntimeFile(root, "live-smoke", name, custody);
+}
+
 function writeWorkerProcessLockFile(root: string, record: WorkerProcessLockFile): void {
   const directory = join(root, WORKER_PROCESS_LOCK_DIRECTORY);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
