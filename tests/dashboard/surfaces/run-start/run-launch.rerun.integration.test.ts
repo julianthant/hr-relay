@@ -1,11 +1,11 @@
-import { createMountedRerunWorld } from "../../support/helpers/dashboard/mounted-rerun-world.js";
+import { createMountedRerunWorld } from "../../../support/helpers/dashboard/mounted-rerun-world.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach,describe,it } from "vitest";
-import { StartPlanRequestSchema } from "../../../src/models/dashboard/start-plan.js";
-import type { RunRecord } from "../../../src/models/run/record.js";
-import { absentProbeEvidence } from "../../support/fixtures/write-sequencer-fixtures.js";
+import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
+import type { RunRecord } from "../../../../src/models/run/record.js";
+import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const { setup, text, button, press, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld();
 afterEach(cleanup);
