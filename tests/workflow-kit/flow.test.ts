@@ -187,3 +187,20 @@ describe("workflow flow builder", () => {
     assert.equal(built.instrumentation[0]?.label, "span-hooks");
   });
 });
+
+describe("branch target ownership", () => {
+  it("rejects a downstream target shared by two cases", () => {
+    assert.throws(() => base()
+      .branch("choice", { dependsOn: ["search"], choose: () => "a", cases: { a: ["shared"], b: ["shared"] } })
+      .step("shared", readTwo, { dependsOn: ["search"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+      .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["shared"], derive: ({ outputs }) => ({ eid: outputs.shared.eid }) }),
+    /branch choice target shared appears in more than one case/u);
+  });
+  it("accepts disjoint downstream targets", () => {
+    assert.doesNotThrow(() => base()
+      .branch("choice", { dependsOn: ["search"], choose: () => "a", cases: { a: ["left"], b: ["right"] } })
+      .step("left", readTwo, { dependsOn: ["search"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+      .step("right", readTwo, { dependsOn: ["search"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+      .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["search"], derive: ({ outputs }) => ({ eid: outputs.search.eid }) }));
+  });
+});

@@ -477,9 +477,15 @@ function assertControlFlowTargets(nodes: readonly GraphNodeBase[]): void {
   for (const [index, node] of nodes.entries()) {
     if (node.kind === "branch") {
       const branch = node as unknown as BranchNode<never, Readonly<Record<string, readonly NodeId[]>>>;
+      const targetCases = new Map<NodeId, string>();
       for (const [caseName, targets] of Object.entries(branch.cases)) {
         if (targets.length === 0) throw new Error(`branch ${node.id} case "${caseName}" joins no node`);
         for (const target of targets) {
+          const previousCase = targetCases.get(target);
+          if (previousCase !== undefined && previousCase !== caseName) {
+            throw new Error(`branch ${node.id} target ${target} appears in more than one case`);
+          }
+          targetCases.set(target, caseName);
           assertDownstream(`branch ${node.id} case "${caseName}"`, index, String(target));
         }
       }
