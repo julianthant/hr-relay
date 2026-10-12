@@ -115,6 +115,8 @@ contract; its reference files are not refreshed to make wiring pass. Role-derive
 not imply current files or coverage. Exact test move counts and retirement dispositions remain with
 the owning evidence records.
 
+Browser factory and worker sessions share `helpers/browser/session-factory-fixtures.ts`; flow, graph and scenario coverage share `helpers/workflow/flow-task-fixtures.ts`. WorkStudy intake builders live in `helpers/intake/work-study-fixtures.ts`, Activity report inputs in `helpers/dashboard/activity-report-fixtures.ts`, and forward operation-display workflows use `helpers/operation-display-fixtures.ts`.
+
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector
