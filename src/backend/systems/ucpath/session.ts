@@ -34,7 +34,8 @@ const LOGIN_CONTROL_NAME = /log in to ucpath/i;
 
 const CAMPUS_RESELECT_ATTEMPTS = 3;
 // PeopleSoft psc and psp routes are application and portal servlets; require application evidence.
-const PEOPLESOFT_APP_SERVLETS = ["/psc/", "/psp/"] as const;
+const PEOPLESOFT_APP_HOST = "ucphrprdpub.universityofcalifornia.edu";
+const PEOPLESOFT_APP_PATHS = ["/psc/ucphrprd/EMPLOYEE/HRMS/", "/psp/ucphrprd/EMPLOYEE/HRMS/"] as const;
 // PS_TOKEN proves the session; PS_TOKENEXPIRE may exist before authentication and cannot substitute.
 const PEOPLESOFT_SESSION_COOKIE = "PS_TOKEN";
 const PEOPLESOFT_COOKIE_DOMAIN = "universityofcalifornia.edu";
@@ -43,23 +44,28 @@ const PEOPLESOFT_SIGNON_SELECTOR = 'input#userid, input#pwd, input[name="userid"
 
 // A UC-host landing is only a wait predicate; the public portal also satisfies it.
 export function isUcpathPostSsoLanding(rawUrl: string): boolean {
-  const url = rawUrl.toLowerCase();
-  return url.includes("universityofcalifornia.edu")
-    && !url.includes(CAMPUS_DISCOVERY_MARKER)
-    && !url.includes("duosecurity.com")
-    && !url.includes("a5.ucsd.edu")
-    && !url.includes("/login")
-    && !url.includes("cmd=login")
-    && !url.includes("cmd=expire")
-    && !url.includes("shibboleth")
-    && !url.startsWith("chrome-error");
+  try {
+    const url = new URL(rawUrl);
+    const path = url.pathname.toLowerCase();
+    return url.protocol === "https:"
+      && (url.host === PEOPLESOFT_APP_HOST || url.host === "ucpath.universityofcalifornia.edu")
+      && !path.includes(CAMPUS_DISCOVERY_MARKER) && !path.includes("/login") && !path.includes("shibboleth")
+      && ![...url.searchParams].some(([key, value]) => key.toLowerCase() === "cmd"
+        && (value.toLowerCase() === "login" || value.toLowerCase() === "expire"));
+  } catch {
+    return false;
+  }
 }
 
 
 export function isAuthenticatedUcpathAppUrl(rawUrl: string): boolean {
-  const url = rawUrl.toLowerCase();
-  return isUcpathPostSsoLanding(url)
-    && PEOPLESOFT_APP_SERVLETS.some((servlet) => url.includes(servlet));
+  try {
+    const url = new URL(rawUrl);
+    return isUcpathPostSsoLanding(rawUrl) && url.host === PEOPLESOFT_APP_HOST
+      && PEOPLESOFT_APP_PATHS.some(path => url.pathname.startsWith(path));
+  } catch {
+    return false;
+  }
 }
 
 /** The two-fact proof: PeopleSoft's own session token, and no sign-in form. */
