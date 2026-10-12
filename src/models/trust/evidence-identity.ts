@@ -41,8 +41,3 @@ export function deriveEvidenceEntryId(
 export function evidenceEntryRef(entryId: string): EvidenceRef {
   return EvidenceRefSchema.parse(`observation:${entryId}`);
 }
-
-/** A link to the receipt itself, for evidence that qualifies the whole run. */
-export function evidenceReceiptRef(receiptId: string): EvidenceRef {
-  return EvidenceRefSchema.parse(`receipt:${receiptId}`);
-}

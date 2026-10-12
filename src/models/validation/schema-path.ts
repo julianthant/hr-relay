@@ -1,12 +1,8 @@
 /** Resolve a dotted target path inside a strict object schema; the schema found at that path must be the SAME OBJECT as the canonical field's, by reference comparison. */
 import type { z } from "zod";
 
-interface ZodInternals {
-  readonly _zod: { readonly def: { readonly [key: string]: unknown } };
-}
-
 function schemaDefinition(schema: z.core.$ZodType): { readonly [key: string]: unknown } {
-  return (schema as unknown as ZodInternals)._zod.def;
+  return schema._zod.def as z.core.$ZodTypeDef & { readonly [key: string]: unknown };
 }
 
 const WRAPPERS = new Set(["optional", "nullable", "default", "readonly", "nonoptional", "catch"]);

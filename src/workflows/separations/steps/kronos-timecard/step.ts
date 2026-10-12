@@ -29,7 +29,7 @@ const EmployeeNameSchema = CANONICAL_FIELDS.fullName.schema;
 const SEARCH_TIMEOUT_DEFAULT_MS = 15_000;
 
 /** The ingress schema — the ONE place defaults are applied (ref workflow-model §2). */
-export const SeparationsKronosTimecardInput = z.strictObject({
+const SeparationsKronosTimecardInput = z.strictObject({
   emplId: EidSchema,
   /** What the run believes the person is called; compared, never substituted. */
   expectedName: EmployeeNameSchema,
@@ -44,7 +44,7 @@ export const SeparationsKronosTimecardInput = z.strictObject({
 });
 
 /** The validation-only view of the stored snapshot: same shape, no defaults. */
-export const SeparationsKronosTimecardCanonicalInput = defineCanonicalInput(
+const SeparationsKronosTimecardCanonicalInput = defineCanonicalInput(
   SeparationsKronosTimecardInput,
   z.strictObject({
     emplId: EidSchema,
@@ -70,7 +70,7 @@ export const SeparationsKronosTimecardCanonicalInput = defineCanonicalInput(
   ],
 );
 
-export const SeparationsKronosTimecardResultSchema = z.strictObject({
+const SeparationsKronosTimecardResultSchema = z.strictObject({
   /** Who the TIMECARD said it was, beside who the run expected. */
   subject: z.strictObject({
     expectedEid: EidSchema,

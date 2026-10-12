@@ -86,5 +86,3 @@ export interface SystemLoginContext extends AuthenticationVerificationContext {
 }
 
 export type SystemLoginRecipe = (context: SystemLoginContext) => Promise<LoginResult>;
-
-export type BrowserLoginRegistry = Readonly<Partial<Record<BrowserSystemId, SystemLoginRecipe>>>;

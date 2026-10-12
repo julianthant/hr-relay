@@ -1,6 +1,6 @@
 
 import { join } from "node:path";
-import { z } from "zod";
+import type { z } from "zod";
 import { TimelinePageRequestSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
@@ -167,5 +167,3 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   };
   return buildExplainRunView(evidence);
 }
-
-export const ExplainArgsSchema = z.array(z.string());

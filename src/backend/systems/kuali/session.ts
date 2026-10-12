@@ -20,7 +20,6 @@ import {
   waitForAuthenticatedLanding,
   waitForSsoForm,
 } from "../browser-shared/ucsd-sso.js";
-export { kualiSession } from "./session-provider.js";
 
 const SYSTEM = "kuali" as const;
 
@@ -33,7 +32,7 @@ const KUALI_APP_CONTROL_RENDER_MS = 15_000;
 const SSO_FORM_SELECTOR = 'input#ssousername, input[name="j_username"], input[type="password"]';
 
 
-export function isAuthenticatedKualiUrl(rawUrl: string): boolean {
+function isAuthenticatedKualiUrl(rawUrl: string): boolean {
   const url = rawUrl.toLowerCase();
   return url.includes(KUALI_APP_HOST) && !url.startsWith("chrome-error");
 }

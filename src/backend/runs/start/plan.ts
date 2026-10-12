@@ -1,5 +1,6 @@
 import { type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
 import { admitProtectedInput, protectedSubjectMatchKey } from "./protected-input.js";
+import { errorText } from "../lifecycle/support.js";
 import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 
@@ -12,7 +13,6 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { deriveItemId } from "../../../rules/identity/identifiers.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import {
-  BrowserSystemIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
 } from "../../../rules/identity/ids.js";
@@ -64,11 +64,6 @@ export interface StartPlanRequest {
   readonly plannedBy: string;
   readonly rerun?: RerunPlan;
 }
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 
 export function resolveInstances(
   descriptor: AnyWorkflowDescriptor,
@@ -224,9 +219,4 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     createdAt: now,
     updatedAt: now,
   });
-}
-
-/** The browser systems a planned run will touch, for preflight and session accounting. */
-export function plannedSystems(descriptor: AnyWorkflowDescriptor): readonly string[] {
-  return workflowProjections(descriptor).systems.map((system) => BrowserSystemIdSchema.parse(system));
 }

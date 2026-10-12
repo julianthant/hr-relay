@@ -20,11 +20,11 @@ const SuccessConsequenceSchema = z.strictObject({
   result: RunResultRecordSchema,
 });
 
-export const TerminalConsequenceSchema = z.discriminatedUnion("kind", [
+const TerminalConsequenceSchema = z.discriminatedUnion("kind", [
   FailureConsequenceSchema,
   SuccessConsequenceSchema,
 ]);
-export type TerminalConsequence = z.infer<typeof TerminalConsequenceSchema>;
+type TerminalConsequence = z.infer<typeof TerminalConsequenceSchema>;
 
 export interface TerminalAuthorizationInput {
   /** The CURRENT run record, read inside the worker's own execution. */

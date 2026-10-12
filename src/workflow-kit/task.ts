@@ -169,8 +169,8 @@ export interface CommitTaskCtx<
 type LiteralValueOfTaskId<Id> = Id extends LiteralTaskId<infer Value> ? Value : Id;
 export type NamespaceOf<C extends AnyTaskContract> = LiteralValueOfTaskId<C["id"]> extends
   `${infer Namespace}/${string}` ? Namespace : never;
-export type BrowserSystemOf<C extends AnyTaskContract> = Extract<NamespaceOf<C>, BrowserSystemId>;
-export type ProviderNeedsOf<C extends AnyTaskContract> =
+type BrowserSystemOf<C extends AnyTaskContract> = Extract<NamespaceOf<C>, BrowserSystemId>;
+type ProviderNeedsOf<C extends AnyTaskContract> =
   C extends { readonly providers: readonly (infer Capability extends ProviderCapabilityId)[] }
     ? Capability
     : never;
@@ -243,7 +243,7 @@ export interface CommitTaskImpl<
   }>) => Promise<z.input<C["output"]>>;
 }
 
-export type ImplFor<
+type ImplFor<
   C extends AnyTaskContract,
   Driver extends ContractDriver<C> = ContractDriver<C>,
 > = C extends AnyReadTaskContract ? ReadTaskImpl<C, Driver>

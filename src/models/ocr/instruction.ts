@@ -119,8 +119,3 @@ export function buildAnswerSkeleton(formType: OcrFormType): unknown {
     record: { answers },
   };
 }
-
-/** The answer keys one record must carry — what the completeness rule checks. */
-export function skeletonAnswerPaths(formType: OcrFormType): readonly string[] {
-  return ocrForm(formType).fields.map((spec) => spec.path);
-}

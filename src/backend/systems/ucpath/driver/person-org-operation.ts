@@ -364,14 +364,10 @@ function toLastFirstName(fullName: string, lastName: string): string {
   return displayPersonName(`${normalizedLast}, ${givenNames}`);
 }
 
-export function preferredAssignmentOf(detail: PersonOrgDetail): PersonOrgAssignmentDetails {
-  return selectPreferredAssignmentDetails(
+function candidateFromDetail(detail: PersonOrgDetail, expectedLastName: string): UcpathCandidate {
+  const assignment = selectPreferredAssignmentDetails(
     detail.cells.map((cells) => deriveAssignmentDetailsFromCells(cells)),
   );
-}
-
-function candidateFromDetail(detail: PersonOrgDetail, expectedLastName: string): UcpathCandidate {
-  const assignment = preferredAssignmentOf(detail);
   return UcpathCandidateSchema.parse({
     emplId: detail.observedEid,
     name: toLastFirstName(detail.displayedName, expectedLastName),
@@ -605,7 +601,7 @@ export function deriveJobRowFromCells(cells: readonly string[], rowIndex: number
 }
 
 
-export async function readJobSummaryWithPagePort(
+async function readJobSummaryWithPagePort(
   pagePort: PersonOrgPagePort,
   input: Readonly<{ emplId: Eid }>,
   observedAt: string,

@@ -144,20 +144,20 @@ async function pollUntil<T>(
   }
 }
 
-function createDriverInternals(page: Page, clock: Clock) {
+export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKronosTimecardDriver {
   const nowIso = (): string => IsoInstantSchema.parse(clock.now().toISOString());
 
   // Choose search context by the state's anchor; unloaded and populated search panels expose different controls.
   const resolvePanelRoot = async (
     anchor: ElementId,
   ): Promise<{ root: PanelRoot; context: PanelContext }> => {
-    const probe = await pollUntil(clock, PANEL_CONTEXT_TIMEOUT_MS, async () => {
+    const probe = await pollUntil<{ root: PanelRoot; context: PanelContext }>(clock, PANEL_CONTEXT_TIMEOUT_MS, async () => {
       const frame = page.frameLocator(NEW_KRONOS_PORTAL_FRAME_SELECTOR);
       if (await resolveRecipe(frame, anchor).count() > 0) {
-        return { root: frame as PanelRoot, context: "portal-frame" as PanelContext };
+        return { root: frame, context: "portal-frame" };
       }
       if (await resolveRecipe(page, anchor).count() > 0) {
-        return { root: page as PanelRoot, context: "top-level" as PanelContext };
+        return { root: page, context: "top-level" };
       }
       return null;
     });
@@ -379,7 +379,7 @@ function createDriverInternals(page: Page, clock: Clock) {
 
 
   const closeSearchPanel = async (): Promise<void> => {
-    for (const root of [page.frameLocator(NEW_KRONOS_PORTAL_FRAME_SELECTOR), page] as PanelRoot[]) {
+    for (const root of [page.frameLocator(NEW_KRONOS_PORTAL_FRAME_SELECTOR), page]) {
       const close = resolveRecipe(root, NEW_KRONOS_SEARCH_CLOSE_BUTTON);
       if (await close.count() !== 1) continue;
       await close.click({ timeout: CONTROL_TIMEOUT_MS });
@@ -715,15 +715,9 @@ function createDriverInternals(page: Page, clock: Clock) {
     });
   };
 
-  return { searchEmployee, readSeparationTimecard };
-}
-
-
-export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKronosTimecardDriver {
-  const internals = createDriverInternals(page, clock);
   return NewKronosTimecardDriverSchema.parse({
     system: "new-kronos",
-    searchEmployee: internals.searchEmployee,
-    readSeparationTimecard: internals.readSeparationTimecard,
+    searchEmployee,
+    readSeparationTimecard,
   });
 }

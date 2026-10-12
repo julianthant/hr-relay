@@ -11,9 +11,9 @@ export const GateParkObservationSchema = z.strictObject({
 });
 export type GateParkObservation = z.infer<typeof GateParkObservationSchema>;
 
-export const GateParkObservationSetSchema = z.array(GateParkObservationSchema);
+const GateParkObservationSetSchema = z.array(GateParkObservationSchema);
 
-export type GateParkObservationReport = Readonly<{
+type GateParkObservationReport = Readonly<{
   /** Parks whose durable row this observation wrote. */
   published: readonly Readonly<{ park: GateParkObservation; report: NotificationPublishReport }>[];
   /** Parks this notifier had already reported — deliberately re-published as nothing. */

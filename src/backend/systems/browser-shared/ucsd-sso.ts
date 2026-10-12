@@ -14,9 +14,8 @@ import type {
 import type { BrowserSystemId } from "../../../rules/identity/ids.js";
 
 
-export const UCSD_SSO_HOST = "a5.ucsd.edu";
 
-export const DUO_HOST = "duosecurity.com";
+const DUO_HOST = "duosecurity.com";
 
 const SSO_SUBMIT_SELECTOR = 'button[name="_eventId_proceed"]';
 
@@ -98,7 +97,7 @@ export async function isSsoFormPresent(page: Page): Promise<boolean> {
 }
 
 
-export async function probeSsoFormAbsent(page: Page): Promise<ObservedFact> {
+async function probeSsoFormAbsent(page: Page): Promise<ObservedFact> {
   return probeAbsentControl(page, {
     selector: `${SSO_SUBMIT_SELECTOR}, ${SSO_USERNAME_SELECTOR}`,
     description: "the UCSD TritON SSO form",
@@ -209,8 +208,7 @@ export async function submitSsoForm(
   }
 }
 
-/** The locator for Duo's terminal refusal. Exported so a probe can assert it. */
-export function duoTerminalRefusalLocator(page: Page): Locator {
+function duoTerminalRefusalLocator(page: Page): Locator {
   return page.getByText(DUO_TERMINAL_REFUSAL_TEXT).first();
 }
 

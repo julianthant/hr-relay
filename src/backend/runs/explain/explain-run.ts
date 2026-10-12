@@ -27,7 +27,7 @@ function present<Value extends z.ZodType>(value: Value) {
   ]);
 }
 
-export const ExplainRunViewSchema = z.strictObject({
+const ExplainRunViewSchema = z.strictObject({
   runId: z.string().min(1),
   traceId: z.string().min(1),
   workflowId: z.string().min(1),

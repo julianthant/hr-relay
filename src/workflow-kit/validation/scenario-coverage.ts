@@ -4,7 +4,7 @@ import { NodeIdSchema, ScenarioIdSchema } from "../../rules/identity/ids.js";
 import type { NodeId } from "../../rules/identity/ids.js";
 import type { RuntimeFlowNode } from "../../models/workflow/graph.js";
 
-export const CoveragePointKindSchema = z.enum(["branch-case", "gate", "delegation", "transaction"]);
+const CoveragePointKindSchema = z.enum(["branch-case", "gate", "delegation", "transaction"]);
 
 export const GraphCoveragePointSchema = z.strictObject({
   /** Stable, derived from the graph — `branch-case:mode-branch/write`. */
@@ -18,7 +18,7 @@ export const GraphCoveragePointSchema = z.strictObject({
   detail: z.string().min(1),
 });
 
-export type CoveragePointKind = z.infer<typeof CoveragePointKindSchema>;
+type CoveragePointKind = z.infer<typeof CoveragePointKindSchema>;
 export type GraphCoveragePoint = z.infer<typeof GraphCoveragePointSchema>;
 
 /** Derive every graph path that needs its own scenario. A `many` delegation contributes zero/one/many fan-out sizes because those are genuinely different code paths, not spellings. */

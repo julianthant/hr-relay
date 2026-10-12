@@ -66,11 +66,6 @@ export type RegisteredTaskStore =
   | HeadlessTaskStore<string, Readonly<Record<string, AnyTask>>>;
 const FACTORY_DEFINED_STORES = new WeakSet<object>();
 
-export const EMPTY_TASK_CONTRACT_CORPUS = deepFreeze(TaskContractResolutionCorpusSchema.parse({
-  scenarioIds: [],
-  tasks: [],
-}));
-
 function validateStoreTasks(
   namespace: string,
   tasks: Readonly<Record<string, AnyTask>>,

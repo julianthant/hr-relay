@@ -39,7 +39,6 @@ export const SpanOutcomeSchema = z.enum([
   "interrupted",
   "superseded",
 ]);
-export type SpanOutcome = z.infer<typeof SpanOutcomeSchema>;
 
 
 export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);

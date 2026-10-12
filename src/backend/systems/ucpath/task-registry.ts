@@ -14,7 +14,6 @@ import { verifyTerminationTask } from "./tasks/verify-termination.js";
 import { readPendingTerminationSetTask } from "./tasks/read-pending-termination-set.js";
 import { verifyTerminationFilingPresentTask } from "./tasks/verify-termination-filing-present.js";
 
-export { ucpathDriver };
 
 export const ucpathStore = defineBrowserStore(
   "ucpath",

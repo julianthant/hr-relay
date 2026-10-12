@@ -2,8 +2,8 @@ import { z } from "zod";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { RunSummaryQuerySchema } from "../../storage/sqlite/run-summaries.js";
 import { runtimeTimeZone } from "../../../rules/time/clock.js";
-import { statusOf } from "./run-summary-status.js";
-import type { SummaryRow } from "./run-summary-status.js";
+import { deriveRunStatus } from "../lifecycle/run-status.js";
+type SummaryRow = ReturnType<AuthorityDatabase["queryRunSummaries"]>["items"][number];
 /** Selected live summary rows, streamed in bounded indexed pages inside one database snapshot. */
 function visitRange(database:AuthorityDatabase,from:string,to:string,visit:(row:SummaryRow)=>void) {
   for(const workflow of database.summaryWorkflows()) {
@@ -100,7 +100,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
 
     for (const row of inRange) {
       const day=row.localDay,authority=row;
-      const surface={workflowId:row.workflow,status:statusOf(row),runId:row.runId};
+      const surface={workflowId:row.workflow,status:deriveRunStatus(row),runId:row.runId};
       const warningVerdict={kind:row.warningCount===null?"unread":row.warningCount===0?"none":"present"};
       days.set(day, (days.get(day) ?? 0) + 1);
       const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();

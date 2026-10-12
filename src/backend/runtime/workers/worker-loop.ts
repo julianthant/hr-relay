@@ -432,7 +432,6 @@ export const WorkerStopObservedStageSchema = z.strictObject({
   stage: z.enum(WORKER_STOP_ESCALATION_STAGES),
   at: IsoInstantSchema,
 });
-export type WorkerStopObservedStage = z.infer<typeof WorkerStopObservedStageSchema>;
 
 // Observed escalation stages are a timestamped prefix with no gaps or repeats.
 export const WorkerStopObservedStagesSchema = z
@@ -492,7 +491,6 @@ export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("st
     observed: WorkerStopObservedStagesSchema,
   }),
 ]);
-export type WorkerPoolMemberReconciliationFact = z.infer<typeof WorkerPoolMemberReconciliationFactSchema>;
 
 export const WorkerPoolReconciliationAcknowledgementSchema = z.strictObject({
   command: z.literal("plan-worker-count"),
@@ -500,9 +498,6 @@ export const WorkerPoolReconciliationAcknowledgementSchema = z.strictObject({
   desiredWorkers: z.number().int().min(0).max(MAX_WORKERS_PER_POOL),
   members: z.array(WorkerPoolMemberReconciliationFactSchema).max(MAX_WORKERS_PER_POOL),
 });
-export type WorkerPoolReconciliationAcknowledgement = z.infer<
-  typeof WorkerPoolReconciliationAcknowledgementSchema
->;
 
 const WorkerSpawnAcknowledgementSchema = z.strictObject({
   command: z.literal("spawn-worker"),

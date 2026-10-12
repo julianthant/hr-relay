@@ -9,29 +9,22 @@ export {
   type AuthorityWriteCommitHooks,
 } from "./authority-database.js";
 export {
-  AUTHORITY_RECORD_SCHEMA_REGISTRY,
   ArtifactOutboxStorageRecordSchema,
 } from "./storage-records.js";
 export {
   AuthorityBackupService,
   AuthorityBackupServiceOptionsSchema,
-  verifyBackupBytesAtPath,
   verifyBackupManifestAtPath,
-  type VerifiedBackup,
 } from "./backup-service.js";
 export {
   AuthorityBootStore,
   AuthorityMutationUnavailableError,
-  storageHealthCauseFromError,
 } from "./authority-boot.js";
 export { AuthorityHealthPreflightRunner } from "./authority-health-runner.js";
 export {
   OfflineAuthorityRestoreService,
   OfflineRestoreFailure,
   OfflineRestoreOptionsSchema,
-  type OfflineRestoreAdmissionFactory,
-  type OfflineRestoreAuthorityState,
-  type OfflineRestoreFileOperations,
 } from "./offline-restore.js";
 export {
   RecoveryStopProofStore,
@@ -54,61 +47,23 @@ export {
   RecoveryProcessLockStateSchema,
   RecoveryRuntimeLockSnapshotSchema,
   StoppedSystemProofSchema,
-  SpanAuthorityReconciliationSchema,
-  SpanAuthorityReadSnapshotSchema,
   SpanAuthorityRunRootSchema,
-  SpanAuthorityRunResolutionSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
-  type AuthorityBackupManifest,
-  type AuthorityBackupRequest,
-  type AuthorityBackupRunReport,
-  type AuthorityBootReport,
-  type AuthorityCopyInspection,
-  type AuthorityPendingCounts,
-  type OfflineRestoreReport,
-  type RestoreCandidate,
-  type RecoveryRuntimeLockSnapshot,
-  type StoppedSystemProof,
-  type SpanAuthorityReconciliation,
-  type SpanAuthorityReadSnapshot,
-  type SpanAuthorityRunRoot,
-  type SpanAuthorityRunResolution,
-  type StorageDoctorReport,
-  type StorageHealthCause,
 } from "./recovery-contracts.js";
 export {
   doctorAuthorityStorage,
   summarizeBackupHealth,
   summarizeSpanAuthorityReconciliation,
-  BackupSummaryOptionsSchema,
-  SpanAuthorityHealthSummarySchema,
   StorageDoctorOptionsSchema,
-  type SpanAuthorityHealthSummary,
 } from "./storage-doctor.js";
 export {
   AtomicWriteCommitInputSchema,
   AtomicWriteCommitReportSchema,
   AtomicWriteCommitStorageStepSchema,
   PermanentWriteResolutionSchema,
-  SequencedWriteCommitInputSchema,
   SequencedWriteCommitStepSchema,
   WriteFenceInputSchema,
-  WriteIntentParkCodeSchema,
-  WriteIntentParkRequestSchema,
-  WriteIntentRetrySettlementRequestSchema,
-  WriteRefenceInputSchema,
-  type AtomicWriteCommitInput,
-  type AtomicWriteCommitReport,
-  type AtomicWriteCommitStorageStep,
-  type PermanentWriteResolution,
-  type SequencedWriteCommitInput,
-  type SequencedWriteCommitStep,
-  type WriteFenceInput,
-  type WriteIntentParkCode,
-  type WriteIntentParkRequest,
-  type WriteIntentRetrySettlementRequest,
-  type WriteRefenceInput,
 } from "./write-commit-contracts.js";
 export {
   FailureTerminalizationReportSchema,
@@ -117,8 +72,4 @@ export {
   SuccessTerminalizationReportSchema,
   SuccessTerminalizationRequestSchema,
   SuccessTerminalizationStorageStepSchema,
-  type FailureTerminalizationReport,
-  type FailureTerminalizationStorageStep,
-  type SuccessTerminalizationReport,
-  type SuccessTerminalizationStorageStep,
 } from "./run-terminal-contracts.js";

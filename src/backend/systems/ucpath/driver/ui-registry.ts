@@ -3,7 +3,6 @@ import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import {
   BrowserSystemIdSchema,
   DateOnlySchema,
-  EidSchema,
   ElementIdSchema,
   ObservationIdSchema,
   PageStateIdSchema,
@@ -135,7 +134,7 @@ const UiPortContextSchema = z.enum([
   "ss-smart-hr-search",
 ]);
 
-export const LocatorRecipeSchema = z.discriminatedUnion("kind", [
+const LocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("role"),
     role: z.enum(["textbox", "link", "button"]),
@@ -158,12 +157,12 @@ export const LocatorRecipeSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const StateEvidenceRuleSchema = z.strictObject({
+const StateEvidenceRuleSchema = z.strictObject({
   kind: z.literal("visible"),
   element: ElementIdSchema,
 });
 
-export const ObservationRecipeSchema = z.strictObject({
+const ObservationRecipeSchema = z.strictObject({
   kind: z.literal("element-text"),
   element: ElementIdSchema,
   valueType: z.enum(["eid", "text"]),
@@ -229,7 +228,7 @@ const DriverRootRecipeSchema = z.strictObject({
   selectorKey: SelectorKeySchema,
 });
 
-export const UiRegistrySchema = z.strictObject({
+const UiRegistrySchema = z.strictObject({
   system: BrowserSystemIdSchema,
   root: DriverRootRecipeSchema,
   screens: z.array(ScreenDefinitionSchema).min(1),
@@ -239,7 +238,7 @@ export const UiRegistrySchema = z.strictObject({
   scenarios: z.array(UiVerificationScenarioSchema).min(1),
 });
 
-export const UiRegistryPortBindingSchema = z.union([
+const UiRegistryPortBindingSchema = z.union([
   z.strictObject({
     system: BrowserSystemIdSchema,
     legacyKey: z.string().min(1),
@@ -1232,7 +1231,6 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
   ],
 }));
 
-export type UcpathUiRegistry = z.infer<typeof UiRegistrySchema>;
 
 export function auditUcpathUiRegistry(registryInput: unknown = UCPATH_UI_REGISTRY): readonly string[] {
   const result = UiRegistrySchema.safeParse(registryInput);
@@ -1419,8 +1417,4 @@ export function auditUcpathUiEvidenceBindings(input: unknown): readonly string[]
     }
   }
   return issues;
-}
-
-export function parseUcpathRegistryEid(input: string) {
-  return EidSchema.parse(input);
 }

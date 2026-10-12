@@ -8,7 +8,6 @@ import { saveSeparationFinalizationTask } from "./tasks/save-separation-finaliza
 import { stageSeparationFinalizationTask } from "./tasks/stage-separation-finalization.js";
 import { verifySeparationFinalizationTask } from "./tasks/verify-separation-finalization.js";
 
-export { kualiDriver };
 
 export const kualiStore = defineBrowserStore("kuali", kualiDriver, kualiSession, {
   searchSeparationAction: searchSeparationActionTask,

@@ -10,9 +10,6 @@ import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type Prote
 import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify } from "../rules/validation/canonical-json.js";
 import type {
-  AnyCommitTaskContract,
-  AnyPrepareTaskContract,
-  AnyReadTaskContract,
   AnyTaskContract,
 } from "../models/task/task-contract.js";
 import {
@@ -108,8 +105,6 @@ import type {
   WorkflowResultSpec,
 } from "./flow.js";
 
-/* ── the authored halves that stay typed over the graph ──────────────────── */
-
 // Compile error when a node is renamed; the factory proves the path exists.
 export interface DetailProjectionSpec<S> {
   readonly key: string;
@@ -150,7 +145,7 @@ export interface InputPreset<Input> {
 }
 
 // The match key identifies the logical item; the kernel mints the ItemId.
-export interface WorkflowIdentitySpec<Input> {
+interface WorkflowIdentitySpec<Input> {
   readonly matchKey: (input: Input) => string;
 }
 
@@ -177,8 +172,6 @@ export interface WorkflowPresentationSpec<Input> {
   readonly title: (input: Input) => string;
   readonly subtitle?: (input: Input) => string | undefined;
 }
-
-/* ── the descriptor ──────────────────────────────────────────────────────── */
 
 export interface WorkflowDescriptor<
   InputSchema extends z.ZodType,
@@ -330,8 +323,6 @@ export interface WorkflowDescriptorSpec<
   /** The built graph — its exact node tuple, result spec, and accumulators. */
   readonly flow: BuiltFlow<InputSchema, ResultSchema, Nodes, S, D>;
 }
-
-/* ── derived projections (ref dashboard-surfaces reads these; nobody hand-writes them) ───── */
 
 export interface WorkflowProjections {
   readonly steps: readonly StepProjection[];
@@ -510,23 +501,6 @@ export function workflowTerminalResultExecution(descriptor: object): unknown {
   return execution;
 }
 
-/** Invoke the exact authored derive only after the descriptor identity is authenticated. */
-export function deriveWorkflowTerminalResult<
-  InputSchema extends z.ZodType,
-  ResultSchema extends z.ZodType,
-  Nodes extends readonly GraphNodeBase[],
-  Completion extends CompletionProgram | undefined,
-  S extends Readonly<Record<string, AnyNodeEntry>>,
-  D extends readonly (keyof S & string)[],
->(
-  descriptor: WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
-  scope: Parameters<WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>["result"]["derive"]>[0],
-): z.input<ResultSchema> {
-  return workflowTerminalResultExecution(descriptor).derive(scope);
-}
-
-/* ── runtime node view ───────────────────────────────────────────────────── */
-
 // Widening happens once; `kind` is re-parsed first.
 function runtimeNodes(nodes: readonly GraphNodeBase[]): readonly RuntimeFlowNode[] {
   for (const node of nodes) {
@@ -592,10 +566,6 @@ export function runtimeNodeLabel(node: RuntimeFlowNode): string {
   }
 }
 
-function labelOf(node: RuntimeFlowNode): string {
-  return runtimeNodeLabel(node);
-}
-
 function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection[] {
   const steps: StepProjection[] = [];
   for (const node of nodes) {
@@ -614,7 +584,7 @@ function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection
     steps.push(StepProjectionSchema.parse({
       key: node.id,
       nodeId: node.id,
-      label: labelOf(node),
+      label: runtimeNodeLabel(node),
       kind: node.kind,
       ...(node.kind === "task" ? { taskId: node.uses.id } : {}),
       conditional: (node.kind === "task" || (node.kind === "gate" && node.resolvedBy === "operator")) && node.when !== undefined,
@@ -662,11 +632,11 @@ function deriveTimeline(
     // deriving from the label instead would invent a second spelling of a name the graph already owns.
     return Object.freeze(nodes.map((node) => TimelineCategoryProjectionSchema.parse({
       key: String(node.id),
-      label: labelOf(node),
-      nodes: [{ id: node.id, label: labelOf(node) }],
+      label: runtimeNodeLabel(node),
+      nodes: [{ id: node.id, label: runtimeNodeLabel(node) }],
     })));
   }
-  const labelByNode = new Map(nodes.map((node) => [String(node.id), labelOf(node)]));
+  const labelByNode = new Map(nodes.map((node) => [String(node.id), runtimeNodeLabel(node)]));
   const seen = new Set<string>();
   const categories = declared.map((category) => {
     const parsed = TimelineCategorySpecSchema.parse(category);
@@ -739,8 +709,6 @@ function deriveGates(nodes: readonly RuntimeFlowNode[]): readonly GateProjection
 function systemOf(taskId: string): string {
   return taskId.slice(0, taskId.indexOf("/"));
 }
-
-/* ── validation ──────────────────────────────────────────────────────────── */
 
 function assertContractPlacement(id: string, nodes: readonly RuntimeFlowNode[]): void {
   for (const node of nodes) {
@@ -850,8 +818,6 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
     }
   }
 }
-
-/* ── the factory ─────────────────────────────────────────────────────────── */
 
 export function defineWorkflowDescriptor<
   InputSchema extends z.ZodType,
@@ -1529,5 +1495,3 @@ export function descriptorRuntimeNodes(descriptor: AnyWorkflowDescriptor): reado
   }
   return nodes;
 }
-
-export type { AnyCommitTaskContract, AnyPrepareTaskContract, AnyReadTaskContract };

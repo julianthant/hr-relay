@@ -20,13 +20,13 @@ import {
 } from "../../workflow.js";
 /** The ingress schema: both identifiers are required, neither derivable — the document number is
  *  the run's own claim, proved from the page's level-1 heading before touching anything. */
-export const SeparationsKualiReadInput = z.strictObject({
+const SeparationsKualiReadInput = z.strictObject({
   actionId: KualiActionIdSchema,
   documentNumber: KualiDocumentNumberSchema,
 });
 
 /** The validation-only view of the stored snapshot: same shape, no defaults. */
-export const SeparationsKualiReadCanonicalInput = defineCanonicalInput(
+const SeparationsKualiReadCanonicalInput = defineCanonicalInput(
   SeparationsKualiReadInput,
   z.strictObject({
     actionId: KualiActionIdSchema,
@@ -38,7 +38,7 @@ export const SeparationsKualiReadCanonicalInput = defineCanonicalInput(
   ],
 );
 
-export const SeparationsKualiReadResultSchema = z.strictObject({
+const SeparationsKualiReadResultSchema = z.strictObject({
   /** The whole form, verbatim — consumers project, they never re-scrape. */
   document: KualiSeparationDocumentSchema,
   /** §4a's resolution. A run only has one if the map carried the type. */

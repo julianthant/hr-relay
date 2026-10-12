@@ -7,9 +7,9 @@ import {
 import type { NotificationInbox, NotificationPublishReport } from "./inbox.js";
 
 export const BackfillGapObservationSchema = BackfillGapTriggerEventSchema;
-export type BackfillGapObservation = z.infer<typeof BackfillGapObservationSchema>;
+type BackfillGapObservation = z.infer<typeof BackfillGapObservationSchema>;
 
-export type BackfillGapDetectionReport =
+type BackfillGapDetectionReport =
   | Readonly<{ published: false; gap: BackfillGapObservation }>
   | Readonly<{
     published: true;

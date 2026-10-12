@@ -38,13 +38,13 @@ import {
 const SOURCE_STATE = "ucpath.ss-smart-hr.transaction-ready";
 
 // Hash both person and effective date; absence for another date cannot settle this key.
-export function ucpathTerminationQueryDigest(target: UcpathTerminationTarget): string {
+function ucpathTerminationQueryDigest(target: UcpathTerminationTarget): string {
   return FingerprintSchema.parse(sha256Hex(
     ["hrauto:ucpath-termination-query:v1", target.emplId, target.effectiveDate].join("\0"),
   ));
 }
 
-export function ucpathPendingSweepQueryDigest(target: UcpathPendingSweepTarget): string {
+function ucpathPendingSweepQueryDigest(target: UcpathPendingSweepTarget): string {
   return FingerprintSchema.parse(sha256Hex(
     [
       "hrauto:ucpath-pending-terminations-query:v2",

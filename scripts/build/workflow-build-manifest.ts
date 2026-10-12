@@ -86,7 +86,7 @@ export function collectSourceClosure(repoRoot: string, entry: string): readonly 
 }
 
 /** Union of several server entry closures, still canonicalized by source path. */
-export function collectSourceClosures(
+function collectSourceClosures(
   repoRoot: string,
   entries: readonly string[],
 ): readonly SourceHash[] {

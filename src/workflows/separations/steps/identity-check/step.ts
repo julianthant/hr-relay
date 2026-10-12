@@ -65,7 +65,7 @@ function refineIdentityInput(
   }
 }
 
-export const SeparationsIdentityCheckInput = z
+const SeparationsIdentityCheckInput = z
   .strictObject(IdentityCheckInputShape)
   .superRefine(refineIdentityInput);
 
@@ -103,7 +103,7 @@ export const SeparationsIdentityCheckCanonicalInput = defineCanonicalInput(
   ],
 );
 
-export const SeparationsIdentityCheckResultSchema = z.strictObject({
+const SeparationsIdentityCheckResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
   /** The subject established by machine verification or operator approval. */
   approved: ResolvedIdentitySubjectSchema,

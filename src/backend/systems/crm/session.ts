@@ -22,7 +22,6 @@ import {
   waitForAuthenticatedLanding,
   waitForSsoForm,
 } from "../browser-shared/ucsd-sso.js";
-export { crmSession } from "./session-provider.js";
 
 const SYSTEM = "crm" as const;
 

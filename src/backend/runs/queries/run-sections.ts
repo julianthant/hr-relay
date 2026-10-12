@@ -14,7 +14,6 @@ import { buildLogsSection } from "./run-detail/logs.js";
 import { buildReceiptFailureSection } from "./run-detail/receipts-failures.js";
 import type { RunNoteScanCache } from "./run-logs.js";
 
-/** The one live section dispatcher. Every arm names its exclusive projector. */
 export async function readRunSection(
   deps: RunDetailQueryDeps,
   runId: string,
@@ -28,7 +27,6 @@ export async function readRunSection(
   return buildRunSection(deps, runId, section, cursorInput);
 }
 
-/** Synchronous projector entry used by archive freezes and compatibility callers. */
 export function buildRunSection(
   deps: RunDetailQueryDeps,
   runId: string,
@@ -61,15 +59,4 @@ export function buildRunSection(
     }
   }
 }
-
-
-export function buildTrustSection(
-  deps: RunDetailQueryDeps,
-  runId: string,
-  sectionInput: string,
-  cursorInput?: string,
-  noteScanCache?: RunNoteScanCache,
-): RunDetailSectionResponse {
-  const section = SectionNameSchema.parse(sectionInput);
-  return buildRunSection(deps, runId, section, cursorInput, noteScanCache);
-}
+export { buildRunSection as buildTrustSection };

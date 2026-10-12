@@ -30,7 +30,6 @@ import { createTrustNotifications } from "./notifications.js";
 import { createTrustReadDependencies } from "./trust.js";
 import { composeDataQueries } from "./data.js";
 export { dataOriginViewsOf } from "./run-detail-descriptors.js";
-export { readGateParks } from "./notifications.js";
 import { createCredentialStore } from "../../../storage/configuration/credential-store.js";
 import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";

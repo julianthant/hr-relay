@@ -111,7 +111,7 @@ export const documentNode = kualiExtractionEntries.task(DOCUMENT_NODE, KualiRead
   replay: "checkpoint",
 });
 
-export const planNode = kualiExtractionEntries.task(PLAN_NODE, SeparationsReadSeparationPlan, {
+const planNode = kualiExtractionEntries.task(PLAN_NODE, SeparationsReadSeparationPlan, {
   label: "Separation Plan",
   replay: "checkpoint",
 });
@@ -130,7 +130,7 @@ export const IDENTITY_CHECK_STEP = defineWorkflowStep({
 
 /** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
 export const NAME_SEARCH_NODE = "name-search";
-export const SUBJECT_NODE = "subject";
+const SUBJECT_NODE = "subject";
 export const COMPARISON_NODE = "comparison";
 export const GATE_NODE = "identity-approval";
 export const APPROVAL_NODE = "approval";
@@ -143,7 +143,7 @@ export const nameSearchNode = identityCheckEntries.task(NAME_SEARCH_NODE, Search
   replay: "checkpoint",
 });
 
-export const subjectNode = identityCheckEntries.task(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
+const subjectNode = identityCheckEntries.task(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
   label: "Separation Subject",
   replay: "checkpoint",
 });
@@ -176,7 +176,7 @@ export const JOB_SUMMARY_STEP = defineWorkflowStep({
 
 /** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
 export const JOB_SUMMARY_NODE = "job-summary";
-export const EMPLOYMENT_NODE = "employment";
+const EMPLOYMENT_NODE = "employment";
 export const DEPARTMENT_NODE = "department-option";
 
 const jobSummaryEntries = defineStepEntries(JOB_SUMMARY_STEP);
@@ -187,12 +187,12 @@ export const jobSummaryNode = jobSummaryEntries.task(JOB_SUMMARY_NODE, UcpathRea
   replay: "checkpoint",
 });
 
-export const employmentNode = jobSummaryEntries.task(EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
+const employmentNode = jobSummaryEntries.task(EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
   label: "Employment",
   replay: "checkpoint",
 });
 
-export const departmentOptionNode = jobSummaryEntries.task(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
+const departmentOptionNode = jobSummaryEntries.task(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
   label: "Department Option",
   replay: "checkpoint",
 });
@@ -205,14 +205,14 @@ export const KRONOS_TIMECARD_STEP = defineWorkflowStep({
 });
 
 /** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
-export const TIMECARD_SEARCH_NODE = "timecard-search";
-export const TIMECARD_NODE = "timecard";
+const TIMECARD_SEARCH_NODE = "timecard-search";
+const TIMECARD_NODE = "timecard";
 export const DATES_NODE = "dates";
 
 const kronosTimecardEntries = defineStepEntries(KRONOS_TIMECARD_STEP);
 
 // The search's point is the panel selection, not a restorable value.
-export const timecardSearchNode = kronosTimecardEntries.task(TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
+const timecardSearchNode = kronosTimecardEntries.task(TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
   label: "Timecard Search",
   replay: "always-rerun",
 });
@@ -223,7 +223,7 @@ export const timecardNode = kronosTimecardEntries.task(TIMECARD_NODE, NewKronosR
   replay: "checkpoint",
 });
 
-export const datesNode = kronosTimecardEntries.task(DATES_NODE, SeparationsReadSeparationDates, {
+const datesNode = kronosTimecardEntries.task(DATES_NODE, SeparationsReadSeparationDates, {
   label: "Reconciled Dates",
   replay: "checkpoint",
 });
@@ -283,7 +283,7 @@ export const UCPATH_TRANSACTION_STEP = defineWorkflowStep({
 export const PENDING_SET_NODE = "pending-set";
 export const SWEEP_NODE = "clear-pending";
 export const TERMINATION_NODE = "file-termination";
-export const RECEIPT_NODE = "receipt";
+const RECEIPT_NODE = "receipt";
 
 const ucpathTransactionEntries = defineStepEntries(UCPATH_TRANSACTION_STEP);
 
@@ -313,7 +313,7 @@ export const fileTerminationNode = ucpathTransactionEntries.transaction(TERMINAT
 });
 
 // Recheck the proof every run; a checkpoint would stand in for the check.
-export const receiptNode = ucpathTransactionEntries.task(RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
+const receiptNode = ucpathTransactionEntries.task(RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
   label: "Termination Receipt",
   replay: "always-rerun",
 });

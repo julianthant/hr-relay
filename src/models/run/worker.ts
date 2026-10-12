@@ -91,11 +91,6 @@ export const WorkerLeaseRecordSchema = z.strictObject({
 });
 export type WorkerLeaseRecord = z.infer<typeof WorkerLeaseRecordSchema>;
 
-/** The run a worker is actively executing, or `undefined` when it holds none. */
-export function workerActiveRunId(lease: WorkerLeaseRecord): string | undefined {
-  return lease.lifecycle.state === "busy" ? lease.lifecycle.runId : undefined;
-}
-
 export function isLiveWorker(lease: WorkerLeaseRecord): boolean {
   return LIVE_WORKER_STATES.some((state) => state === lease.lifecycle.state);
 }

@@ -114,9 +114,8 @@ export const DryRunScenarioEvidenceSchema = z.strictObject({
   receipt: EvidenceReceiptSchema,
   terminal: EvidenceTerminalSchema,
 });
-export type DryRunScenarioEvidence = z.infer<typeof DryRunScenarioEvidenceSchema>;
 
-export const DryRunScenarioStartedSchema = z.strictObject({
+const DryRunScenarioStartedSchema = z.strictObject({
   runId: z.string().uuid(),
   traceId: z.string().min(1),
   writeSafetyBefore: DryRunWriteSafetyCountsSchema,

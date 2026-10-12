@@ -62,7 +62,7 @@ import type {
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../rules/separations/termination-type.js";
 
 
-export const KUALI_FAKE_UNFINALIZED_FIELDS: KualiObservedFinalizationFields = Object.freeze({
+const KUALI_FAKE_UNFINALIZED_FIELDS: KualiObservedFinalizationFields = Object.freeze({
   department: "- - -",
   payrollTitleCode: "",
   payrollTitle: "",
@@ -173,7 +173,7 @@ export interface KualiFakeWorld {
 }
 
 
-export interface KualiFakeSeparationForm {
+interface KualiFakeSeparationForm {
   /** `Form - <name> - Kuali`'s middle segment. Set it to drive S2. */
   formType: string;
   employeeName: string;

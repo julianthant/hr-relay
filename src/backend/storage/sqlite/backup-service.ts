@@ -41,14 +41,6 @@ type AuthorityBackupSource = Pick<
   "getMeta" | "getSourceDatabaseIdentity" | "onlineBackupTo"
 >;
 
-function inspectBackupCopy(
-  admission: RuntimeAdmission,
-  backupPath: string,
-  expectedSchemaVersion?: number,
-): ReturnType<typeof inspectAuthorityBackupReadOnly> {
-  return inspectAuthorityBackupReadOnly(admission, backupPath, expectedSchemaVersion);
-}
-
 // Read-only WAL connections can create SQLite companions and cannot remove them on close.
 function removeReadOnlyInspectionCompanions(backupPath: string): void {
   const walPath = `${backupPath}-wal`;
@@ -79,10 +71,6 @@ function fsyncPath(path: string): void {
   } finally {
     closeSync(descriptor);
   }
-}
-
-function fsyncDirectory(path: string): void {
-  fsyncPath(path);
 }
 
 async function sha256File(path: string): Promise<string> {
@@ -129,8 +117,8 @@ export async function verifyBackupManifestAtPath(
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
   await verifyBackupBytesAtPath(backupPath, manifest);
   const copyAdmission = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
-  let inspection: ReturnType<typeof inspectBackupCopy>;
-  try { inspection = inspectBackupCopy(copyAdmission, backupPath, manifest.schemaVersion); }
+  let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
+  try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, backupPath, manifest.schemaVersion); }
   finally { copyAdmission.release(); }
   removeReadOnlyInspectionCompanions(backupPath);
   for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
@@ -228,8 +216,8 @@ export class AuthorityBackupService {
       await this.#source.onlineBackupTo(temporaryBackupPath);
       this.#admission.assertWritable();
       const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, await sha256File(temporaryBackupPath));
-      let inspection: ReturnType<typeof inspectBackupCopy>;
-      try { inspection = inspectBackupCopy(copyAdmission, temporaryBackupPath); }
+      let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
+      try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath); }
       finally { copyAdmission.release(); }
       removeReadOnlyInspectionCompanions(temporaryBackupPath);
       chmodSync(temporaryBackupPath, 0o600);
@@ -244,7 +232,7 @@ export class AuthorityBackupService {
       const stats = statSync(finalBackupPath);
       const digest = await sha256File(finalBackupPath);
       this.#admission.assertWritable();
-      fsyncDirectory(this.#directory);
+      fsyncPath(this.#directory);
       const verification = {
         state: "verified",
         observedFrom: "backup-copy",
@@ -280,7 +268,7 @@ export class AuthorityBackupService {
       fsyncPath(temporaryManifestPath);
       renameSync(temporaryManifestPath, finalManifestPath);
       finalPaths.push(finalManifestPath);
-      fsyncDirectory(this.#directory);
+      fsyncPath(this.#directory);
       await verifyBackupManifestAtPath(this.#admission, finalManifestPath, this.#source.getSourceDatabaseIdentity());
       return manifest;
     } catch (error) {

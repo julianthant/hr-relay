@@ -530,7 +530,7 @@ async function readReasonOptions(
   return raw.filter((option) => option.value.length > 0);
 }
 
-export async function stageTerminationOnPage(
+async function stageTerminationOnPage(
   page: Page,
   input: UcpathTerminationTarget,
   observedAt: string,
@@ -741,7 +741,7 @@ export function joinPendingSweepGridRows(
   return joined;
 }
 
-export async function stagePendingTerminationSweepOnPage(
+async function stagePendingTerminationSweepOnPage(
   page: Page,
   input: UcpathPendingSweepTarget,
   observedAt: string,
@@ -854,7 +854,7 @@ async function observeCommitRefusal(page: Page): Promise<CommitRefusalObservatio
 }
 
 /** The two commit controls, and nothing else, behind an unforgeable token. */
-export async function commitOnPage(
+async function commitOnPage(
   page: Page,
   id: ElementId,
   capability: MutationCapability,
