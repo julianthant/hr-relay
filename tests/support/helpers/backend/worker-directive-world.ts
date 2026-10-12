@@ -48,5 +48,8 @@ export function createWorkerDirectiveTestWorld() {
     };
     return { authority, sessions, scheduler, emitter, stop, deps };
   }
-  return { disposers, loopHarness };
+  const cleanup = () => {
+    for (const dispose of disposers.splice(0)) dispose();
+  };
+  return { disposers, loopHarness, cleanup };
 }

@@ -205,5 +205,8 @@ export function createCapabilityWiringTestWorld() {
     if (claimed.state !== "applied") throw new Error(`claim outcome was ${claimed.state}`);
     return { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration } };
   }
-  return { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim };
+  const cleanup = () => {
+    for (const dispose of disposers.splice(0)) dispose();
+  };
+  return { disposers, SIGNAL, SCENARIO, FIXTURE_BYTES, PAYLOAD, FixtureOutput, providersOnlyContract, artifactsOnlyContract, wiredContract, byteLength, fixtureDescriptor, queuedRunFor, wiringHarness, claim, cleanup };
 }

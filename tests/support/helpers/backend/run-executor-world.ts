@@ -250,5 +250,8 @@ export function createRunExecutorTestWorld() {
       crm: () => healthyCrmDriver(),
     });
   }
-  return { disposers, executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions };
+  const cleanup = async () => {
+    for (const dispose of disposers.splice(0)) dispose();
+  };
+  return { disposers, executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup };
 }

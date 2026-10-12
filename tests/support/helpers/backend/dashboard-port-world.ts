@@ -11,7 +11,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 
 
 
-export function createDashboardPortTestWorld() {
+export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmissionFixtures: () => void) {
   const cleanups: (() => Promise<void> | void)[] = [];
 
   async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
@@ -47,5 +47,11 @@ export function createDashboardPortTestWorld() {
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
   }
-  return { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture };
+  const cleanup = async () => {
+    resetMocks();
+
+    for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+    releaseAdmissionFixtures();
+  };
+  return { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture, cleanup };
 }

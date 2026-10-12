@@ -34,5 +34,8 @@ export function createNotificationBackfillTestWorld() {
     });
     return { database, inbox };
   }
-  return { disposers, world };
+  const cleanup = () => {
+    for (const dispose of disposers.splice(0)) dispose();
+  };
+  return { disposers, world, cleanup };
 }

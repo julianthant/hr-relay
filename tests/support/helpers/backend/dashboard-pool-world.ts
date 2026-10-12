@@ -3,7 +3,7 @@ import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqli
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -319,5 +319,10 @@ export function createDashboardPoolTestWorld() {
       control: { directive, requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
     return workerId;
   }
-  return { servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, WORKER_2, roots, openDatabases, cleanups, openControlHarness, nextCommandId, envelope, spawnPoolWorker, admitExternalSlot, admitPoolSlot, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember, settleMicrotasks, fireBirthPoll };
+  const cleanup = async () => {
+    for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+    for (const database of openDatabases.splice(0)) database.close();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  };
+  return { servedControlBasis, NOW, WORKFLOW, BROWSER_SYSTEMS, WORKER_1, MEMBER_1, WORKER_2, roots, openDatabases, cleanups, openControlHarness, nextCommandId, envelope, spawnPoolWorker, admitExternalSlot, admitPoolSlot, dashboardLaunch, launchCommands, proveLaunchBirth, occupyMember, settleMicrotasks, fireBirthPoll, cleanup };
 }

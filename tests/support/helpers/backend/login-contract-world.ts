@@ -144,5 +144,8 @@ export function createLoginContractTestWorld() {
     assert.ok(row !== undefined, "the credential's lease row must exist");
     return row;
   }
-  return { WORKER_A, SYSTEM, NEED, T0, recipeFactory, managerFor, databases, sharedAuthority, leaseRow, RUN_FINGERPRINT };
+  const cleanup = () => {
+    for (const database of databases.splice(0)) database.close();
+  };
+  return { WORKER_A, SYSTEM, NEED, T0, recipeFactory, managerFor, databases, sharedAuthority, leaseRow, RUN_FINGERPRINT, cleanup };
 }

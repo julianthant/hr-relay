@@ -109,5 +109,8 @@ export function createRunQueueProjectionTestWorld() {
       runId: uuidOf(9), attempt: 1, traceId: traceOf(9), spanPath: traceOf(9), gate: "approval",
     });
   }
-  return { worlds, world, runRecordOf, queuedEventOf, CLAIM, appendOther, seedWorld, otherConnection };
+  const cleanup = () => {
+    for (const w of worlds.splice(0)) w.dispose();
+  };
+  return { worlds, world, runRecordOf, queuedEventOf, CLAIM, appendOther, seedWorld, otherConnection, cleanup };
 }

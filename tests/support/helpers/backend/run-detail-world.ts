@@ -141,5 +141,8 @@ export function createRunDetailTestWorld() {
   }
 
   const RUN_ID = uuidOf(1);
-  return { worlds, world, OUTPUT_SCHEMA_HASH, EXACT_DESCRIPTOR, depsOf, sourceRun, checkpointFor, storeCheckpoint, RUN_ID };
+  const cleanup = () => {
+    for (const w of worlds.splice(0)) w.dispose();
+  };
+  return { worlds, world, OUTPUT_SCHEMA_HASH, EXACT_DESCRIPTOR, depsOf, sourceRun, checkpointFor, storeCheckpoint, RUN_ID, cleanup };
 }

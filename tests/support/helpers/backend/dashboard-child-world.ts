@@ -1,7 +1,7 @@
 import { AuthorityDatabase } from "../admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawn as spawnChildProcess, type ChildProcess } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { type WorkerPoolMember } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { type WorkerProcessSpawner } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
@@ -21,7 +21,7 @@ export interface RealChildRecord {
 
 
 
-export function createDashboardChildTestWorld() {
+export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => void, releaseAdmissionFixture: (root: string) => void) {
   function servedControlBasis(database: AuthorityDatabase, workerId: string) {
     const lease = database.authority.workerLeases.get(workerId);
     assert.ok(lease?.controlRevision, "the fixture must serve a real control basis");
@@ -167,5 +167,38 @@ export function createDashboardChildTestWorld() {
     };
   }
 
-  return { stubLaunch, servedControlBasis, PL, plMember, STUB_CLI_PATH, REPO_ROOT, required, roots, openDatabases, cleanups, liveRealChildren, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, nextCommandId };
+  const cleanup = async () => {
+    // Run every cleanup stage despite failures so signal escalation, database close and root cleanup still execute.
+    const errors: unknown[] = [];
+    for (const cleanup of cleanups.splice(0).reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    for (const child of liveRealChildren.splice(0)) {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }
+    for (const database of openDatabases.splice(0)) {
+      try {
+        database.close();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    releaseAdmissionFixtures();
+    for (const root of roots.splice(0)) {
+      try {
+        releaseAdmissionFixture(root);
+        rmSync(root, { recursive: true, force: true });
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, `afterEach cleanup failed (${String(errors.length)} error(s))`);
+    }
+  };
+  return { stubLaunch, servedControlBasis, PL, plMember, STUB_CLI_PATH, REPO_ROOT, required, roots, openDatabases, cleanups, liveRealChildren, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, nextCommandId, cleanup };
 }

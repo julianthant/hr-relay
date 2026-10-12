@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -54,5 +54,6 @@ export function createSettingsAuthorityTestWorld() {
       commandAudits: { ...repositories.commandAudits, insert: () => { throw new Error("injected audit failure"); } },
     })) };
   }
-  return { roots, databases, admissions, fixture, protectedCommand, failAudit };
+  const cleanup = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
+  return { roots, databases, admissions, fixture, protectedCommand, failAudit, cleanup };
 }

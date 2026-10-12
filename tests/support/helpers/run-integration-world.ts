@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
@@ -130,5 +130,9 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
     };
     return { result, authorization, factoryAuthorization: built.authorization };
   }
-  return { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest, WORKER_ID };
+  const cleanup = () => {
+    for (const database of databases.splice(0)) database.close();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  };
+  return { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest, WORKER_ID, cleanup };
 }
