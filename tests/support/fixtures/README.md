@@ -173,6 +173,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/t1b-manifests.ts` | t1b manifests |
 | `helpers/test-data/test-data-source.ts` | test data source |
 | `helpers/timeline-write-fixture.ts` | timeline write fixture |
+| `helpers/write-fence-fixture.ts` | claimed write-fence setup and caller-supplied corrupt SQLite seeding |
 | `helpers/trust/trust-wire-fixtures.ts` | trust wire fixtures |
 | `processes/run-record-race-worker.ts` | run record race worker |
 | `processes/runtime-lock-contender.ts` | runtime lock contender |
