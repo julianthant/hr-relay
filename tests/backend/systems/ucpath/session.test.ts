@@ -450,8 +450,70 @@ describe("ucpath login recipe", () => {
     });
   });
 
+  it("recovers a visible Shibboleth stale request once inside the same ceremony deadline", async () => {
+    const stale = `${SSO}?execution=private`;
+    const { context, harness } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
+        "sso-submit": { navigatesTo: stale }, "sso-username": {}, "sso-password": {},
+        "stale-request": { count: 0 },
+      },
+      elementsByUrl: { [stale]: { "stale-request": { count: 1 } }, [UCPATH_APP]: NO_SIGN_IN_FORMS },
+      settlesTo: [UCPATH_APP], cookiesByUrl: { [UCPATH_APP]: [PS_TOKEN] },
+    });
+    const originalWait = context.page.waitForURL.bind(context.page);
+    let waits = 0;
+    let remaining = 60_000;
+    const waitBudgets: number[] = [];
+    context.page.waitForURL = async (predicate, options) => {
+      waitBudgets.push(options?.timeout ?? 0);
+      if (waits++ === 0) {
+        remaining = 45_000;
+        return await new Promise<void>(() => undefined);
+      }
+      return originalWait(predicate, options);
+    };
+    let gates = 0;
+    const originalGate = context.duoCeremony;
+    const bounded = { ...context, acquisitionRemainingMs: () => remaining,
+      duoCeremony: originalGate };
+    bounded.duoCeremony = { withCeremony: async run => {
+      gates += 1;
+      return originalGate.withCeremony(run);
+    } };
+    assert.equal(await ucpathLoginRecipe(bounded), "logged-in");
+    assert.equal(gates, 1);
+    assert.deepEqual(waitBudgets, [59_000, 44_000]);
+    assert.equal(harness.actions().filter(action => action === `goto:${UCPATH_PORTAL}`).length, 2);
+    assert.equal(harness.actions().filter(action => action === "click:sso-submit").length, 2);
+  });
+
+  it("refuses stale text outside UCSD Shibboleth and an exhausted recovery budget", async () => {
+    for (const [stalled, remaining, code, canRecover] of [
+      ["https://other.example/stale", 60_000, "sso-first-factor-rejected", true],
+      [SSO, 1_000, "shibboleth-stale-request", true],
+      [SSO, 60_000, "shibboleth-stale-request", false],
+    ] as const) {
+      const { context, harness } = contextFor({
+        url: "about:blank",
+        elements: {
+          "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
+          "sso-submit": { navigatesTo: stalled }, "sso-username": {}, "sso-password": {},
+          "stale-request": { count: 1 },
+        },
+      });
+      await assert.rejects(ucpathLoginRecipe({ ...context, acquisitionRemainingMs: () => remaining, claimStaleRequestRecovery: () => canRecover }), error => {
+        assert.ok(error instanceof BrowserLandingStallError);
+        assert.equal(error.code, code);
+        return true;
+      });
+      assert.equal(harness.actions().filter(action => action === `goto:${UCPATH_PORTAL}`).length, 1);
+    }
+  });
+
   it("diagnoses the Shibboleth stale-request page specifically", async () => {
-    const { context } = contextFor({
+    const { context, harness } = contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -464,6 +526,7 @@ describe("ucpath login recipe", () => {
       settlesTo: [],
     });
     await assert.rejects(ucpathLoginRecipe(context), /stale-request page; the SAML execution expired/);
+    assert.equal(harness.actions().filter(action => action === `goto:${UCPATH_PORTAL}`).length, 2);
   });
 
   it("refuses a landing that still shows the SSO form", async () => {

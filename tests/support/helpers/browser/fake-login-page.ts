@@ -15,7 +15,7 @@ export type FakeElementName =
   | "duo-refusal";
 
 
-const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal"]);
+const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal", "stale-request"]);
 
 
 export const NEVER_SETTLES = "fake:never-settles";

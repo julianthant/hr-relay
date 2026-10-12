@@ -6,7 +6,7 @@ import {
   probeAbsentControl,
   probeSessionCookie,
 } from "../browser-shared/authenticated-application.js";
-import { BrowserLoginError } from "../browser-shared/login-contract.js";
+import { BrowserLoginError, BrowserLandingStallError } from "../browser-shared/login-contract.js";
 import type {
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
@@ -23,6 +23,8 @@ import {
   waitForAuthenticatedLanding,
   waitForSsoForm,
 } from "../browser-shared/ucsd-sso.js";
+
+import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 
 const SYSTEM = "ucpath" as const;
 // Detect campus discovery by its link; its post-SSO path need not match the entry route.
@@ -209,71 +211,85 @@ async function enterAuthenticatedApplication(context: SystemLoginContext): Promi
   }
 }
 
+async function navigateUcpathLoginEntry(context: SystemLoginContext): Promise<void> {
+  const { page, config } = context;
+  const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
+  abortIfCancelled(SYSTEM, "navigate-login-entry", context);
+  try {
+    await raceCancellation(
+      page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
+      SYSTEM,
+      "navigate-login-entry",
+      context,
+    );
+    recordBrowserAction("opened", "ucpath.portal");
+  } catch (error) {
+    if (error instanceof BrowserLoginError) throw error;
+    throw new BrowserLoginError(
+      SYSTEM,
+      "navigate-login-entry",
+      "the UCPath portal did not load",
+      page.url(),
+      { cause: error },
+    );
+  }
+}
+
+async function completeUcpathCeremony(context: SystemLoginContext, token: DuoCeremonyLeaseToken): Promise<void> {
+  const { page, config } = context;
+  // The portal's login control is the first navigation that can reach the
+  // Duo ceremony, so it runs under the lease (ref execution-and-sessions ).
+  await clickPortalLoginControl(context);
+
+  // Campus discovery only appears when the IdP has no live session; when it
+  // does, selecting UC San Diego is what produces the SSO form.
+  const gate = await awaitLoginGate(context);
+  if (gate === "campus-discovery") await selectUcSanDiego(context);
+
+  if (gate !== "application") {
+    await waitForSsoForm(SYSTEM, context, token);
+    await fillSsoCredentials(SYSTEM, context, token);
+    await submitSsoForm(SYSTEM, context, token);
+    await waitForAuthenticatedLanding(
+      SYSTEM,
+      context,
+      token,
+      (url) => isUcpathPostSsoLanding(url) || url.toLowerCase().includes(CAMPUS_DISCOVERY_MARKER),
+      config.timeouts.duoApprovalSeconds * 1_000,
+    );
+  }
+
+  // Duo can return to campus discovery; detect its link and reselect under the bounded retry.
+  for (let attempt = 0; attempt < CAMPUS_RESELECT_ATTEMPTS; attempt += 1) {
+    if (await campusLink(page).count() === 0) break;
+    await selectUcSanDiego(context);
+    await waitForAuthenticatedLanding(
+      SYSTEM,
+      context,
+      token,
+      isUcpathPostSsoLanding,
+      config.timeouts.navigationMs,
+    );
+  }
+
+  await enterAuthenticatedApplication(context);
+}
+
 export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
   verify: verifyUcpathAuthenticatedApplication,
-  navigate: async (context): Promise<void> => {
-    const { page, config } = context;
-    const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
-    abortIfCancelled(SYSTEM, "navigate-login-entry", context);
-    try {
-      await raceCancellation(
-        page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
-        SYSTEM,
-        "navigate-login-entry",
-        context,
-      );
-      recordBrowserAction("opened", "ucpath.portal");
-    } catch (error) {
-      if (error instanceof BrowserLoginError) throw error;
-      throw new BrowserLoginError(
-        SYSTEM,
-        "navigate-login-entry",
-        "the UCPath portal did not load",
-        page.url(),
-        { cause: error },
-      );
-    }
-
-
-  },
+  navigate: navigateUcpathLoginEntry,
   ceremony: async (context, token): Promise<void> => {
-    const { page, config } = context;
-    // The portal's login control is the first navigation that can reach the
-    // Duo ceremony, so it runs under the lease (ref execution-and-sessions ).
-    await clickPortalLoginControl(context);
-
-    // Campus discovery only appears when the IdP has no live session; when it
-    // does, selecting UC San Diego is what produces the SSO form.
-    const gate = await awaitLoginGate(context);
-    if (gate === "campus-discovery") await selectUcSanDiego(context);
-
-    if (gate !== "application") {
-      await waitForSsoForm(SYSTEM, context, token);
-      await fillSsoCredentials(SYSTEM, context, token);
-      await submitSsoForm(SYSTEM, context, token);
-      await waitForAuthenticatedLanding(
-        SYSTEM,
-        context,
-        token,
-        (url) => isUcpathPostSsoLanding(url) || url.toLowerCase().includes(CAMPUS_DISCOVERY_MARKER),
-        config.timeouts.duoApprovalSeconds * 1_000,
-      );
+    try {
+      await completeUcpathCeremony(context, token);
+    } catch (error) {
+      if (!(error instanceof BrowserLandingStallError)
+        || error.code !== "shibboleth-stale-request" || error.host !== "a5.ucsd.edu"
+        || context.signal.aborted
+        || (context.acquisitionRemainingMs !== undefined && context.acquisitionRemainingMs() <= 1_000)
+        || context.claimStaleRequestRecovery?.() === false) throw error;
+      await navigateUcpathLoginEntry(context);
+      await completeUcpathCeremony(context, token);
     }
-
-    // Duo can return to campus discovery; detect its link and reselect under the bounded retry.
-    for (let attempt = 0; attempt < CAMPUS_RESELECT_ATTEMPTS; attempt += 1) {
-      if (await campusLink(page).count() === 0) break;
-      await selectUcSanDiego(context);
-      await waitForAuthenticatedLanding(
-        SYSTEM,
-        context,
-        token,
-        isUcpathPostSsoLanding,
-        config.timeouts.navigationMs,
-      );
-    }
-
-    await enterAuthenticatedApplication(context);
   },
 });

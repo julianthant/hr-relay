@@ -129,6 +129,7 @@ export interface SystemLoginContext extends AuthenticationVerificationContext {
 
   readonly duoCeremony: DuoCeremonyGate;
   readonly acquisitionRemainingMs?: () => number;
+  readonly claimStaleRequestRecovery?: () => boolean;
 }
 
 export type SystemLoginRecipe = (context: SystemLoginContext) => Promise<LoginResult>;

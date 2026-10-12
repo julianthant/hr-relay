@@ -215,6 +215,14 @@ async function observeDuoTerminalRefusal(page: Page, timeoutMs: number): Promise
   return "duo-refused";
 }
 
+async function observeStaleRequest(page: Page, timeoutMs: number): Promise<"stale-request"> {
+  try {
+    await page.getByText(STALE_REQUEST_TEXT).first().waitFor({ state: "visible", timeout: timeoutMs });
+    if (URL.parse(page.url())?.hostname === "a5.ucsd.edu") return "stale-request";
+  } catch { /* The landing arm owns timeout and diagnosis. */ }
+  return await new Promise<"stale-request">(() => undefined);
+}
+
 
 export async function waitForAuthenticatedLanding(
   system: BrowserSystemId,
@@ -228,15 +236,17 @@ export async function waitForAuthenticatedLanding(
   const landingMs = Math.max(1, Math.min(timeoutMs, remaining - Math.min(1_000, remaining / 2)));
   try {
     const outcome = await raceCancellation(
-      Promise.race<"landed" | "duo-refused">([
+      Promise.race<"landed" | "duo-refused" | "stale-request">([
         context.page.waitForURL((url) => landed(url.href), { timeout: landingMs })
           .then(() => "landed"),
         observeDuoTerminalRefusal(context.page, landingMs),
+        observeStaleRequest(context.page, landingMs),
       ]),
       system,
       "duo-clearance",
       context,
     );
+    if (outcome === "stale-request") throw new Error("Shibboleth stale request observed");
     if (outcome === "duo-refused") {
       throw new DuoTerminalRefusalError(system, DUO_TERMINAL_REFUSAL_TEXT, context.page.url());
     }
@@ -273,7 +283,8 @@ async function describeStalledLanding(
   context: Pick<SystemLoginContext, "page">,
 ): Promise<BrowserLandingStallCode | "duo-refused"> {
   try {
-    if (await context.page.getByText(STALE_REQUEST_TEXT).count() > 0) return "shibboleth-stale-request";
+    if (URL.parse(context.page.url())?.hostname === "a5.ucsd.edu"
+      && await context.page.getByText(STALE_REQUEST_TEXT).count() > 0) return "shibboleth-stale-request";
     const host = URL.parse(context.page.url())?.hostname;
     if (host === DUO_HOST || host?.endsWith(`.${DUO_HOST}`)) {
       try {

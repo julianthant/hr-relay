@@ -113,6 +113,7 @@ export interface WorkerSessionManagerOptions {
 interface AcquisitionEnvelope {
   readonly deadlineMonotonicMs: number;
   readonly cancel: (reason: Error) => void;
+  readonly claimStaleRequestRecovery: () => boolean;
 }
 
 function browserStoreFor(
@@ -697,9 +698,15 @@ export class WorkerSessionManager {
     );
     // The acquisition runs under the ACQUISITION signal, so a cooperative
     // login recipe aborts itself at the bound instead of only being raced.
+    let staleRequestRecovered = false;
     const started = this.#getOrStart(need, instance, configFingerprint, browserMode, acquisition.signal, {
       deadlineMonotonicMs,
       cancel: (reason) => acquisition.abort(reason),
+      claimStaleRequestRecovery: () => {
+        if (staleRequestRecovered) return false;
+        staleRequestRecovered = true;
+        return true;
+      },
     });
     try {
       return await waitForAcquisition(started, acquisition.signal, need.system);
@@ -876,6 +883,7 @@ export class WorkerSessionManager {
       exclusive,
       signal,
       duoCeremony: gate,
+      claimStaleRequestRecovery: envelope.claimStaleRequestRecovery,
       acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs - this.#clock.monotonicMs()),
     });
     this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
