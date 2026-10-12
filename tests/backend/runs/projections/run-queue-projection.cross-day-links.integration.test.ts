@@ -7,8 +7,8 @@ const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
 it("links a child with its canonical day across midnight while keeping each row in its own partition", () => {
   const w = world();
-  queuedEventOf(w, { seed: 1, enqueuedAt: "2026-08-04T06:59:00.000Z" });
-  queuedEventOf(w, { seed: 2, parentSeed: 1, enqueuedAt: "2026-08-04T07:01:00.000Z" });
+  queuedEventOf(w, { seed: 1, enqueuedAt: new Date(2026, 7, 3, 23, 59).toISOString() });
+  queuedEventOf(w, { seed: 2, parentSeed: 1, enqueuedAt: new Date(2026, 7, 4, 0, 1).toISOString() });
   const parentDay = w.projection.buildDashboardDayWire("2026-08-03");
   const childDay = w.projection.buildDashboardDayWire("2026-08-04");
   assert.deepEqual(parentDay.queueSurfaces.map(row => row.runId), [uuidOf(1)]);
