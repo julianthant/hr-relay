@@ -408,6 +408,7 @@ The executor brackets actual tasks, gates, and transactions. Transaction prepare
 separate child spans within the retained lease. Action observations use the Notes stream rather
 than another scheduler. Replayed checkpoints retain their exact evidence identity.
 [Dashboard surfaces](dashboard-surfaces.md) owns event wire formats and folds.
+Every start surface publishes the committed run through `runQueuedSpanEvent` before worker execution; a durable run row alone does not prove its required queue root exists.
 
 ## 8. Person Lookup
 

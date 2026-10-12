@@ -457,6 +457,8 @@ entry eviction. Dashboard report evidence expires after 60 seconds or a config c
 `storage doctor` is a read-only storage inspection; it does not repair authority or substitute an
 empty inventory. [Execution and sessions](execution-and-sessions.md) owns workflow admission and
 worker readiness details.
+`backup-service.ts` removes only its owned read-only inspection companions and refuses nonempty WAL; live database companions are never cleanup targets.
+`storage-doctor.ts` reconciles exact run/root, attempt, path, and terminal identities in one inspection; malformed authority withholds absence classifications and never selects a substitute database or row.
 
 ## Fiscal dates
 

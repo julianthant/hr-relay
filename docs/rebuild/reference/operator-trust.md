@@ -59,6 +59,7 @@ object as one leaf. `classifyEvidenceLeaf` refuses an undeclared leaf by its sco
 `redactEvidenceLeaf` uses the declaration through `redactDiagnosticFields`, so its current local
 output retains the supplied value. The declaration remains mandatory even when local retention
 changes its output transform to `allow`.
+`run-logs.ts` resolves observations from exactly one descriptor data origin for the node/task pair; a service origin without a browser system stays absent, and missing or ambiguous origins refuse.
 
 `src/backend/logs/observed-data.ts` and `src/backend/runs/provenance/evidence-receipt.ts` share this
 classification owner. A fixture's extra leaves also need declarations. A task's input binding,
@@ -187,6 +188,7 @@ operational read failures, and corrupt evidence remain distinct refusals. The ro
 `src/backend/runs/queries/run-captures.ts` builds the run's verified capture view. Optional operation
 identity binds a capture to an exact retained action occurrence. Unbound captures remain captures;
 the query does not manufacture an association from current inputs or a timestamp.
+`run-captures.ts` joins an artifact only when its complete verified metadata agrees and retains every same-run diagnostic-bundle origin; run status and nearby failures never supply provenance.
 
 ### Retention and custody
 

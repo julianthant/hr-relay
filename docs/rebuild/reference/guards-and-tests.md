@@ -125,6 +125,7 @@ An execution claim uses the real composed production signal and admission path w
 scratch environment. Fixture values alone do not prove execution, deadline handling, authority
 admission, or persistence. Tests preserve the real schema parser, provenance collector, command
 kernel, timeline writer, and receipt derivation at the seam they claim to cover.
+Composition tests that replace browser sessions also pass the lease-backed `fixtureDuoCeremonyGates(clock)` through `duoCeremony`; they retain the real worker drain and never read operator credentials.
 
 `tests/architecture/runs/evidence-receipt.test.ts` owns receipt schema/evidence checks.
 `tests/backend/runs/provenance/evidence-receipt.live-workflow-composition.integration.test.ts`
@@ -233,6 +234,7 @@ The catch scanner's reviewed exceptions live in
 a reason, and a nonzero original finding. The manifest proves unsafe-catch and independent
 comment-only changes invalidate the allowance. This is a source-bound exception, not a growing
 count-only waiver.
+`runner-invocation-audit.ts` walks the bounded local executable import, re-export, and require closure of each package-declared runner and refuses chains, unresolved or escaping modules, and over-bound walks.
 
 ### 5.2 Gate and scope guards
 
@@ -370,6 +372,7 @@ uses `dryRun: true`. The command name alone does not authorize a live write or w
 The runner compares per-run authority evidence and exact write-intent/attempt/outbox deltas rather
 than inferring no-write from progress text. Ordinary checkpoints, gate results, and terminal rows
 are legitimate rehearsal effects.
+The dry-run runner compares the complete ordered receipt verification list, including node obligations, and keeps absent, ambiguous, and unknown verdicts distinct.
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 
@@ -394,11 +397,12 @@ readiness requires the actual admitted execution and evidence.
 
 `src/backend/runs/provenance/test-data-usage.ts` records value-free source identity in run
 provenance. `src/models/trust/dry-run-scenario-result.ts` defines the durable
-`dry_run_scenario_results` record, inserted through `src/backend/storage/sqlite/authority-database.ts`.
+`dryrun_results` record, inserted through `src/backend/storage/sqlite/authority-database.ts`.
 The result binds manifest digest, subject label, run/trace identity, assertion outcomes, verdict,
 time, and measured duration. `met`, `blocked`, and `failed` remain distinct. A blocked result proves
 that execution did not proceed, and a changed manifest invalidates reuse of an earlier result for
 the new assertions. Durable receipt evidence is separate from terminal display status.
+`dryrun_results` admits exact result-id replay and refuses divergent replay or updates; deletion requires the owning `deleted_runs` tombstone.
 
 ## Not built yet
 
