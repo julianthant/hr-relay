@@ -196,6 +196,27 @@ describe("branch target ownership", () => {
       .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["shared"], derive: ({ outputs }) => ({ eid: outputs.shared.eid }) }),
     /branch choice target shared appears in more than one case/u);
   });
+  for (const outerCase of ["a", "b"]) {
+    it(`rejects a nested branch target shared with outer case ${outerCase}`, () => {
+      assert.throws(() => base()
+        .branch("outer", { dependsOn: ["search"], choose: () => "a", cases: outerCase === "a" ? { a: ["inner", "shared"], b: ["other"] } : { a: ["inner"], b: ["shared"] } })
+        .branch("inner", { dependsOn: ["outer"], choose: () => "a", cases: { a: ["shared"], b: ["inner-other"] } })
+        .step("shared", readTwo, { dependsOn: ["inner"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+        .step("other", readTwo, { dependsOn: ["search"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+        .step("inner-other", readTwo, { dependsOn: ["inner"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+        .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["search"], derive: ({ outputs }) => ({ eid: outputs.search.eid }) }),
+      /branch inner target shared appears in more than one case/u);
+    });
+  }
+  it("accepts nested branches with disjoint targets and reused case names", () => {
+    assert.doesNotThrow(() => base()
+      .branch("outer", { dependsOn: ["search"], choose: () => "a", cases: { a: ["inner"], b: ["other"] } })
+      .branch("inner", { dependsOn: ["outer"], choose: () => "a", cases: { a: ["left"], b: ["right"] } })
+      .step("left", readTwo, { dependsOn: ["inner"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+      .step("right", readTwo, { dependsOn: ["inner"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+      .step("other", readTwo, { dependsOn: ["search"], bind: ({ input }) => ({ eid: input.eid }), replay: "checkpoint" })
+      .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["search"], derive: ({ outputs }) => ({ eid: outputs.search.eid }) }));
+  });
   it("accepts disjoint downstream targets", () => {
     assert.doesNotThrow(() => base()
       .branch("choice", { dependsOn: ["search"], choose: () => "a", cases: { a: ["left"], b: ["right"] } })

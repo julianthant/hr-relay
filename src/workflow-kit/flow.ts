@@ -474,18 +474,19 @@ function assertControlFlowTargets(nodes: readonly GraphNodeBase[]): void {
     if (targetIndex === undefined) throw new Error(`${owner} targets undeclared node ${target}`);
     if (targetIndex <= index) throw new Error(`${owner} targets ${target}, which is not downstream of it`);
   };
+  const targetCases = new Map<NodeId, { branchId: NodeId; caseName: string }>();
   for (const [index, node] of nodes.entries()) {
     if (node.kind === "branch") {
       const branch = node as unknown as BranchNode<never, Readonly<Record<string, readonly NodeId[]>>>;
-      const targetCases = new Map<NodeId, string>();
       for (const [caseName, targets] of Object.entries(branch.cases)) {
         if (targets.length === 0) throw new Error(`branch ${node.id} case "${caseName}" joins no node`);
         for (const target of targets) {
           const previousCase = targetCases.get(target);
-          if (previousCase !== undefined && previousCase !== caseName) {
+          if (previousCase !== undefined
+            && (previousCase.branchId !== node.id || previousCase.caseName !== caseName)) {
             throw new Error(`branch ${node.id} target ${target} appears in more than one case`);
           }
-          targetCases.set(target, caseName);
+          targetCases.set(target, { branchId: node.id, caseName });
           assertDownstream(`branch ${node.id} case "${caseName}"`, index, String(target));
         }
       }
