@@ -1,7 +1,8 @@
+import { createIdentityCeremonyFixtures } from "../../../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { deriveJobRowFromCells } from "../../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+
 import {
 composeCommandRequest,
 type CommandAction,
@@ -14,16 +15,13 @@ identityGateAnswer,
 optionFor,
 type IdentityGateDetail,
 } from "../../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
-import { IdentityGateDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
+
 import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { CommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { IdentityApprovalResultSchema } from "../../../../../src/rules/separations/identity-approval.js";
-import type { IdentityEvidencePacket } from "../../../../../src/rules/separations/identity-evidence.js";
-import {
-buildIdentityEvidencePacket,
-deriveIdentityEvidenceDigest,
-} from "../../../../../src/rules/separations/identity-evidence.js";
-import { noSeparationWritePlan } from "../../../../../src/rules/separations/write-plan.js";
+
+
+
 
 const NOW = "2026-08-14T17:00:00.000Z";
 /** The EID the document carries and the run checked. */
@@ -37,92 +35,20 @@ const runId = (n: number): string =>
 
 const CONTEXT = { actorId: "local-operator", source: "run-detail" } as const;
 
-function jobRows() {
-  return [deriveJobRowFromCells([
-    "0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
-    "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student",
-  ], 0)];
-}
+const { ONE_CLICK, CHOOSE, TYPE_EID, gateDetail } =
+  createIdentityCeremonyFixtures(NOW, CHECKED, NAME_SEARCH, RESULT_SCHEMA_HASH, runId);
 
 
-function packetOf(input: {
-  readonly documentName: string;
-  readonly searchResolvesEid: string;
-}): IdentityEvidencePacket {
-  const rows = jobRows();
-  return buildIdentityEvidencePacket({
-    documentNumber: "4510",
-    documentName: input.documentName,
-    documentEidText: CHECKED,
-    emplIdSource: "document-eid",
-    documentEidConflicts: false,
-    jobSummary: {
-      pageStateId: "ucpath.person-org.detail-ready",
-      emplId: CHECKED as never,
-      displayedName: "Hernandez, Jose Santos",
-      jobRows: rows,
-      rowCount: rows.length,
-      renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
-      observedAt: NOW as never,
-    },
-    nameSelection: {
-      status: "resolved",
-      selected: {
-        emplId: input.searchResolvesEid as never,
-        name: input.searchResolvesEid === CHECKED ? "Hernandez, Jose Santos" : "Hernandez, Jose",
-        department: "Housing Dining Hospitality",
-        jobTitle: "STDT 3",
-        employeeStatus: "active",
-        hdh: true,
-      },
-      candidateEids: [input.searchResolvesEid as never],
-    },
-    plan: noSeparationWritePlan("this fixture composes no separation write plan"),
-  });
-}
+
 
 /** The three packets the three ceremonies fall out of. */
-const ONE_CLICK = packetOf({ documentName: "Hernandez, Jose Santos", searchResolvesEid: CHECKED });
+
 /** the name agrees, but a search on it resolves a DIFFERENT person */
-const CHOOSE = packetOf({ documentName: "Hernandez, Jose Santos", searchResolvesEid: NAME_SEARCH });
+
 /** Names that do not match. */
-const TYPE_EID = packetOf({ documentName: "Okonkwo, Adaeze", searchResolvesEid: NAME_SEARCH });
 
-function gateDetail(packet: IdentityEvidencePacket, overrides: Record<string, unknown> = {}): IdentityGateDetail {
-  const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
-  return IdentityGateDetailWireSchema.parse({
-    runId: runId(1),
-    gateId: "identity-approval",
-    label: "Identity Approval",
-    parkedAt: NOW,
-    resumeAt: "approval",
-    expectedVersion: 3,
-    resultSchemaHash: RESULT_SCHEMA_HASH,
-    evidenceDigest: deriveIdentityEvidenceDigest(packet),
-    packet,
 
-    options: packet.approvableEids.map((eid) => ({
-      eid: String(eid),
-      chosenFrom: String(eid) === String(packet.emplId)
-        ? "checked"
-        : String(eid) === String(nameSearchEid) ? "name-search" : "manual",
-      displayName: String(eid) === String(packet.emplId) ? packet.ucpathName : `EID ${String(eid)}`,
-      origin: "a UCPath search on the document's name listed this EID",
-    })),
-    approvalShape: packet.approvalShape,
-    actions: [{
-      key: "resolve-gate-approved",
-      label: "Approve the chosen EID",
-      intent: "primary",
-      placement: ["banner"],
-      kind: "command",
-      command: "resolve-gate",
-      expectedVersion: 3,
-      resolution: "approved",
-    }],
-    ...overrides,
-  });
-}
+
 
 const APPROVE: CommandAction = {
   key: "resolve-gate-approved",
