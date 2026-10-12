@@ -1,7 +1,7 @@
 # CRM store
 
 ACT CRM onboarding reads for Person Lookup. Raw Playwright access and locator recipes stay under
-`driver/`; tasks import only the task-safe declaration at `../declaration.ts` and the schema-first
+`driver/`; tasks import only the task-safe declaration at `driver-declaration.ts` and the schema-first
 domain driver contract.
 
 ## Person Lookup invariants

@@ -20,11 +20,11 @@ export interface QueueRowActionFacts {
   readonly status: QueueStatus;
   /** the CAS target every served command binds to */
   readonly rowRevision: number;
-  /** ref workflow-model §2's envelope flag — decides whether a re-run can touch a real system */
+  /** ref workflow-model's envelope flag — decides whether a re-run can touch a real system */
   readonly dryRun: boolean;
   /** a delegated child; the kernel refuses generic retry for one */
   readonly isChild: boolean;
-  /** the run is parked on a fenced write whose outcome is unknown (ref write-safety §4.1) */
+  /** the run is parked on a fenced write whose outcome is unknown (ref write-safety ) */
   readonly parkedWrite: boolean;
   /** delegated members under an operation row; `0` for every other surface */
   readonly memberCount: number;
@@ -34,7 +34,7 @@ export interface QueueRowActionFacts {
   readonly named: boolean;
   /** the workflow's own label, for confirm copy that names what is about to run */
   readonly workflowLabel: string;
-  /** ref dashboard-surfaces §2.4's `has-review-panel` condition input */
+  /** ref dashboard-surfaces's `has-review-panel` condition input */
   readonly hasReviewPanel: boolean;
 }
 
@@ -53,7 +53,7 @@ const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts)
   delete: (facts) => TERMINAL_QUEUE_STATUSES.has(facts.status) && !facts.isChild,
 };
 
-/** Ref dashboard-surfaces §2.4's closed condition rules, evaluated over projected row state. */
+/** Ref dashboard-surfaces's closed condition rules, evaluated over projected row state. */
 function conditionHolds(rule: ActionConditionRule, facts: QueueRowActionFacts): boolean {
   switch (rule.requires) {
     case "gate-open": return facts.status === "awaiting-approval";

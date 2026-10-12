@@ -60,7 +60,7 @@ export const ExplorerUiLinkWireSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   label: z.string().min(1),
   verifiedAt: z.string().min(1),
-  /** The driver registry that owns this id — ref operator-trust §5.2's "driver" source link. */
+  /** The driver registry that owns this id — ref operator-trust's "driver" source link. */
   driverSource: z.string().min(1),
 });
 export type ExplorerUiLinkWire = z.infer<typeof ExplorerUiLinkWireSchema>;
@@ -281,12 +281,12 @@ export const ExplorerNodeWireSchema = z.strictObject({
     fieldPath: ContractFieldPathSchema,
     display: z.enum(["text", "eid", "date", "count", "badge"]),
   })),
-  /** Descriptor-allowlisted Edit Data fields sourced from this node (ref data-intake-and-edit-data §6.2). */
+  /** Descriptor-allowlisted Edit Data fields sourced from this node (ref data-intake-and-edit-data ). */
   editableFields: z.array(z.strictObject({
     fieldPath: ContractFieldPathSchema,
     label: z.string().min(1),
   })),
-  /** Graph coverage points this node contributes (ref operator-trust §3.2). */
+  /** Graph coverage points this node contributes (ref operator-trust ). */
   coveragePoints: z.array(z.strictObject({
     id: z.string().min(1),
     kind: z.enum(["branch-case", "gate", "delegation", "transaction"]),

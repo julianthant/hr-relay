@@ -395,6 +395,8 @@ It does not search another CWD/worktree or fall back to `.env` or protected Sett
 public labels and input keys, not private values. A configured input proves addressability only;
 readiness requires the actual admitted execution and evidence.
 
+### 10.6 Durable rehearsal evidence
+
 `src/backend/runs/provenance/test-data-usage.ts` records value-free source identity in run
 provenance. `src/models/trust/dry-run-scenario-result.ts` defines the durable
 `dryrun_results` record, inserted through `src/backend/storage/sqlite/authority-database.ts`.

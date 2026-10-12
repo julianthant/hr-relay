@@ -1,6 +1,6 @@
 import { DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
-/** The ONE typed dashboard client (ref frontend-backend-integration §0.2/§2) */
+/** The ONE typed dashboard client (ref frontend-backend-integration /§2) */
 import { createDashboardCommands, type DashboardCommands } from "./commands.js";
 import { createDashboardQueries, type DashboardQueries } from "./queries.js";
 import {

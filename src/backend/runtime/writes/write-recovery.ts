@@ -217,7 +217,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
     const runConfigFingerprint = FingerprintSchema.parse(run.envelope.configFingerprint);
     deps.sessions.bindRunConfigFingerprint(runConfigFingerprint);
 
-    /* the probe runs FIRST — before any startAt/resume logic (ref write-safety §4) */
+    /* the probe runs FIRST — before any startAt/resume logic (ref write-safety ) */
     let verdict: RuntimeProbeVerdict;
     try {
       verdict = await executeIdempotencyProbe(probeDeps, {
@@ -227,7 +227,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
         signal: input.signal,
       });
     } catch (error) {
-      // A throwing probe is `unknown`, never `absent` (charter catch-swallow ban).
+      // A throwing probe is `unknown`, never `absent`.
       void error;
       return park(
         intent,
@@ -409,7 +409,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
   return Object.freeze({ recover });
 }
 
-/* ── the kernel's typed operator resolutions (ref write-safety §4.1) ───────────────── */
+/* ── the kernel's typed operator resolutions (ref write-safety ) ───────────────── */
 
 export interface WriteResolutionDependencies {
   readonly continuation: RunContinuationPort;

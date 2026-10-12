@@ -75,7 +75,7 @@ export interface GraphNodeBase {
 
 export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends GraphNodeBase {
   readonly kind: "task";
-  /** Display label. Defaults to the contract's `title` (ref workflow-model §1.5 precedence). */
+  /** Display label. Defaults to the contract's `title` (ref workflow-model precedence). */
   readonly label?: string;
   /** Import the contract by value. */
   readonly uses: C;
@@ -83,7 +83,7 @@ export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends Grap
   readonly bind: (scope: Scope) => z.input<C["input"]>;
     /* A DECLARED condition, evaluated by one function and rendered by another: one declaration, so the sentence the explorer prints cannot disagree with the rule the executor applies. */
   readonly when?: NodeCondition;
-  /** Resume policy — REQUIRED, no default (ref workflow-model §5.3). */
+  /** Resume policy — REQUIRED, no default (ref workflow-model ). */
   readonly replay: "checkpoint" | "always-rerun";
 }
 

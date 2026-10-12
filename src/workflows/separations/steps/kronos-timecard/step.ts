@@ -28,7 +28,7 @@ const EmployeeNameSchema = CANONICAL_FIELDS.fullName.schema;
 /** Search timeout: a search that answers neither way by this budget reports silence as its own failure, never a no-results negative. */
 const SEARCH_TIMEOUT_DEFAULT_MS = 15_000;
 
-/** The ingress schema — the ONE place defaults are applied (ref workflow-model §2). */
+/** The ingress schema — the ONE place defaults are applied (ref workflow-model ). */
 const SeparationsKronosTimecardInput = z.strictObject({
   emplId: EidSchema,
   /** What the run believes the person is called; compared, never substituted. */

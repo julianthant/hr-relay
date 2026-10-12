@@ -37,7 +37,7 @@ export interface IntakeValidationInput {
   readonly excludedRows?: readonly number[];
     /* When these rows were read, as an ISO instant, supplied by the caller from the clock rather than read here. */
   readonly readAt: string;
-  /** The workflow's own identity function over a parsed input (ref workflow-model §5.7). */
+  /** The workflow's own identity function over a parsed input (ref workflow-model ). */
   readonly deriveItemId: (parsedInput: JsonValue) => ItemId;
 }
 

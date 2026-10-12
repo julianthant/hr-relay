@@ -674,7 +674,7 @@ export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/* ── the completion proof contract (ref write-safety §4.1) ───────────────────── */
+/* ── the completion proof contract (ref write-safety ) ───────────────────── */
 
 /** One leaf of the proof a confirmed-present resolution carries, addressed by the dot path it occupies; the server derives these from the commit contract's own schema. */
 export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
@@ -790,13 +790,13 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   expectedVersion: z.number().int().positive(),
   /** The descriptor's exact gate-result schema hash the kernel will require. */
   resultSchemaHash: FingerprintSchema,
-  /** The digest an approval or rejection must carry (ref write-safety §14.5). */
+  /** The digest an approval or rejection must carry (ref write-safety ). */
   evidenceDigest: FingerprintSchema,
   packet: IdentityEvidencePacketSchema,
   options: z.array(IdentityGateOptionWireSchema).min(1),
     /* The SERVER decides how much ceremony the decision costs, so a surface cannot quietly turn a risky approval into one click. */
   approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
-  /** Ref frontend-backend-integration §8.5: an interactive control exists only because the server said so. */
+  /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
 }).superRefine((gate, context) => {
   const eids = gate.options.map(({ eid }) => eid);

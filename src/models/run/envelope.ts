@@ -24,7 +24,7 @@ import { StepOmissionsSchema } from "../workflow/step-omission.js";
 export const SystemInstanceSchema = z.enum(["prod", "test"]);
 export type SystemInstance = z.infer<typeof SystemInstanceSchema>;
 
-/** The SHAPE axis (ref dashboard-surfaces §1.1) — stamped once at enqueue, never recomputed. */
+/** The SHAPE axis (ref dashboard-surfaces ) — stamped once at enqueue, never recomputed. */
 export const RunShapeSchema = z.enum(["single", "preview", "operation", "operation-member"]);
 export type RunShape = z.infer<typeof RunShapeSchema>;
 
@@ -54,7 +54,7 @@ export type RunParent = z.infer<typeof RunParentSchema>;
 export const RunEnvelopeSchema = z.strictObject({
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
-  /** The logical-item key half: `(workflow, itemId)` — ref workflow-model §5.7. */
+  /** The logical-item key half: `(workflow, itemId)` — ref workflow-model. */
   itemId: ItemIdSchema,
   /** Frozen at enqueue; the join key for spans, notes, and the ledger. */
   traceId: TraceIdSchema,
@@ -82,7 +82,7 @@ export const RunEnvelopeSchema = z.strictObject({
     /** Present only on a Restart-from-start attempt; carried unchanged through a requeue. */
   recovery: RunRecoveryModeSchema.optional(),
   sourceBound: SourceBoundRunSchema.optional(),
-  /** A resumable graph-node id, never an internal transaction arm (ref workflow-model §5.7). */
+  /** A resumable graph-node id, never an internal transaction arm (ref workflow-model ). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),
   freshnessOverride: z.array(FreshnessOverrideSchema).min(1).optional(),

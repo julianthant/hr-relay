@@ -388,7 +388,7 @@ export const RunItemQuerySchema = z.strictObject({
   itemId: ItemIdSchema,
 });
 
-/* ── start plans (ref frontend-backend-integration §5.1) ───────────────────────────────────────────── */
+/* ── start plans (ref frontend-backend-integration ) ───────────────────────────────────────────── */
 
 export const StartPlanConsumeRequestSchema = z.strictObject({
   startPlanId: StartPlanIdSchema,
@@ -416,7 +416,7 @@ export const StartPlanConsumeOutcomeSchema = z.discriminatedUnion("state", [
 ]);
 export type StartPlanConsumeOutcome = z.infer<typeof StartPlanConsumeOutcomeSchema>;
 
-/* ── worker leases (ref execution-and-sessions §3) ───────────────────────────────────────────── */
+/* ── worker leases (ref execution-and-sessions ) ───────────────────────────────────────────── */
 
 export const WorkerStartRequestSchema = z.strictObject({
   workerId: WorkerIdSchema,

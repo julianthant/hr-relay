@@ -55,13 +55,13 @@ export interface RunDetailDataOriginView {
     maxAge: number | "unbounded";
     override: "forbidden" | "audited";
   }>[];
-  /** Commit nodes this node's facts can statically reach (ref workflow-model §5.5). */
+  /** Commit nodes this node's facts can statically reach (ref workflow-model ). */
   readonly feeds: readonly Readonly<{ nodeId: string; label: string }>[];
 }
 
 // Context data comes from declared origins, not a second descriptor details contract.
 export interface RunDetailDescriptorView {
-  /** Ref dashboard-surfaces §1.2: where the RUN resolves the subject's name, if it ever does. */
+  /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
 
   readonly timeline?: readonly Readonly<{
@@ -105,7 +105,7 @@ export interface RunDetailQueryDeps {
   readonly projection: RunQueueProjection;
   readonly authority: {
     getRun(runId: string): RunRecord | undefined;
-    /** Ref workflow-model §5.7's "latest compatible attempt wins" read, for edit values. */
+    /** Ref workflow-model's "latest compatible attempt wins" read, for edit values. */
     latestCheckpoint(
       workflowId: string,
       itemId: string,

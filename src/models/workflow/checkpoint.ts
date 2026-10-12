@@ -25,7 +25,7 @@ export const FactProvenanceSchema = z.strictObject({
   source: z.enum(["live", "derived", "operator"]),
   observedAt: IsoInstantSchema,
   originalObservedAt: IsoInstantSchema,
-  /** Present only for an operator correction (ref workflow-model §5.6 #3). */
+  /** Present only for an operator correction (ref workflow-model #3). */
   correctedAt: IsoInstantSchema.optional(),
   supersedes: IsoInstantSchema.optional(),
 });

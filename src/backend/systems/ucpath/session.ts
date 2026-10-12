@@ -240,7 +240,7 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
   ceremony: async (context, token): Promise<void> => {
     const { page, config } = context;
     // The portal's login control is the first navigation that can reach the
-    // Duo ceremony, so it runs under the lease (ref execution-and-sessions §10.2).
+    // Duo ceremony, so it runs under the lease (ref execution-and-sessions ).
     await clickPortalLoginControl(context);
 
     // Campus discovery only appears when the IdP has no live session; when it

@@ -152,7 +152,7 @@ A settled prior transaction returns an `already-present` preview without staging
 
 `run-executor.ts` records the preview and ends the run at that transaction node. Upstream task checkpoints, gate records, preview events, and terminal rehearsal evidence can still exist. A dry run is not a verified real write. Dry-run evidence accounting uses `writeIntents.countDryRunEvidenceByRun`, scoped to the run rather than global table counts.
 
-## Crash recovery and UNKNOWN refusal
+## 4. Crash recovery and UNKNOWN refusal
 
 `createWriteRecovery` handles unfinished `attempting` intents. Worker and expired-claim recovery must reconcile these intents before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
 
@@ -208,12 +208,14 @@ Confirmed-action publication is separate from settlement. `run-executor.ts` publ
 
 ## Separation write protections
 
-### 14.5 Identity authority and approval evidence
+### 14.4 Identity gate
 
 `match-identity.ts`, `verifyIdentityApproval`, and the registered graph distinguish independently supplied EIDs from name resolution:
 
 - `document-eid` and `canonical-eid` require an exact UCPath actual-detail read-back and coherent declared origin. They produce `machine-verification` without a gate result.
 - `name-resolved` requires the operator's typed identity gate result even when similarity is high. The graph's gate condition is exactly `packet.emplIdSource == "name-resolved"`.
+
+### 14.5 Identity authority and approval evidence
 
 The post-gate task verifies the packet digest, approved EID membership, and `chosenFrom` label. It refuses an EID the packet never showed. A supplied-EID packet cannot consume an operator result. Rejection is a failed identity verification and cannot reach a write.
 

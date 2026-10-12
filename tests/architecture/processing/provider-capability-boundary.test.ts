@@ -26,7 +26,7 @@ function isNetworkOwner(path: string): boolean {
   if (path === "src/backend/app/host/local-vite-probe.ts") return true;
 
   if (path.startsWith("src/dashboard/client/")) return true;
-  // Ref frontend-backend-integration §0: the in-process BFF binds loopback node:http; exactly one host
+  // Ref frontend-backend-integration: the in-process BFF binds loopback node:http; exactly one host
   // module owns that listener.
   return path === "src/backend/transports/http/http-server.ts";
 }

@@ -140,7 +140,7 @@ export const ResolvedParkedWriteAbsenceInputSchema = z.strictObject({
   settlement:WriteRetrySettlementSchema,resolution:ParkedWriteResolutionBindingSchema,
 });
 
-/** Ref write-safety §4.3 park codes — mirrors the parked intent/run vocabulary exactly. */
+/** Ref write-safety park codes — mirrors the parked intent/run vocabulary exactly. */
 export const WriteIntentParkCodeSchema = z.enum([
   "unknown",
   "ambiguous",
@@ -188,7 +188,7 @@ export const WriteRefenceInputSchema = z.strictObject({
   }
 });
 
-/* ── the beat-⑦ outer bundle (ref dashboard-surfaces Phase-1f authority; ref write-safety §3 beat ⑦) ── */
+/* ── the beat-⑦ outer bundle (ref dashboard-surfaces Phase-1f authority; ref write-safety beat ⑦) ── */
 
 export const SequencedWriteCommitStepSchema = z.enum([
   "commit-write-attempt",

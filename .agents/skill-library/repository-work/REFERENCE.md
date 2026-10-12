@@ -26,18 +26,16 @@ declaration data, not test evidence. The current suite map is
 Read the assigned brief and the relevant owning reference contract before implementation.
 
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
-  `charter` (the operator's vision + the non-negotiables) · `task-contract` (tasks, stores, drivers) ·
+  `task-contract` (tasks, stores, drivers) ·
   `workflow-model` (the builder, descriptors, the run state machine) · `dashboard-surfaces` (spans,
   the ONE projection, every surface) · `execution-and-sessions` (workers, queues, browser sessions) ·
   `data-intake-and-edit-data` (extraction, OCR, intake, Edit Data) · `write-safety` (the write
   sequencer, intents, the ALWAYS-GATE) · `guards-and-tests` (the guard/test architecture) ·
   `clock-config-secrets` (clock, config resolver, secrets) · `operator-trust` (failures, receipts,
   knowledge, the explorer) · `frontend-backend-integration` (the BFF and wire) ·
-  `foundation-gap-audit` (frozen — a design input, owns nothing) · `stores` (the DERIVED store
+  `stores` (the DERIVED store
   catalog — read it before authoring a task, and remember the code wins over it).
-- `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`), recording
-  "X looked safe and did Y", each naming its decision. Before kernel / driver / dashboard /
-  write-safety work, search by seam/decision and read the matching entries; do not append historical lessons or retrospective comments as part of ordinary execution.
+- Read the owning reference and nearest module `AGENTS.md` before kernel, driver, dashboard, or write-safety changes.
 - `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/architecture/`
   must match it exactly, both directions.
 
@@ -83,11 +81,11 @@ Keep per-file isolation, in-test concurrency, test membership, coverage floors a
 limits intact. Run full coverage without a concurrent compiler/linter gate; reduce contention
 before treating a full-suite timeout as permission to weaken a check.
 
-Phase 3.2 onward uses [D191's 2026-09-19 cadence](../../../docs/rebuild/reference/guards-and-tests.md#phase-exit-gates-from-3-2):
+Phase 3.2 onward uses [verification checklist](../../../docs/rebuild/reference/guards-and-tests.md):
 focused tests/lint/affected checks for all within-phase work, full gates and repairs at phase exit.
 This overrides the older default/group schedule below; Phase 3.1 retains its own exception.
 
-D191 in `docs/rebuild/reference/guards-and-tests.md` §3.14 owns documentation-only checks,
+D191 in `docs/rebuild/reference/guards-and-tests.md`  owns documentation-only checks,
 unchanged-input evidence reuse and concurrent gate scheduling. Its 2026-09-09 amendment assigns
 focused tests/scoped lint/quick checks to Phase 3 and future parallel workers, and full gates plus
 fixes to the named finalizer. Other in-flight assignments keep their explicit cadence until revised.
@@ -109,25 +107,10 @@ isolation" below for what still MUST differ from the legacy checkout.
 - **Porting = copy with provenance.** When you bring verified knowledge across (a selector, a
   parsing rule, a page-state fact), copy it and record **the legacy commit hash and source path** in
   the ported code. Never link it at runtime — which is impossible anyway.
-- **Legacy change accounting is RETIRED (D150, 2026-08-05).** The two repositories no longer touch
-  each other in either direction: nothing here reads legacy's working tree, and legacy work never
-  blocks a rebuild gate. `docs/rebuild/migrations/legacy/legacy-change-accounting.json` is a frozen
-  historical record of what was reconciled through the split — do not extend it. **What replaced it:** the risk was a
-  ported selector or page-state fact going stale after legacy fixed it, and that is now covered by
-  **live re-verification at each workflow's migration**, which the charter already makes mandatory
-  and pre-authorized. A selector checked against the live system beats one diffed against legacy's
-  copy of it. `legacy-selector-port-provenance` is unaffected: the checked-in architecture
-  provenance snapshot pins all 406 keys to a FIXED legacy commit's source blobs and authenticated,
-  identifier-redacted source snapshots, so legacy moving on cannot invalidate it.
+- Record copied source commit and path in the assigned brief's evidence folder. Root `AGENTS.md` owns live re-verification and production isolation; the codebase map names current selector fixtures and readers.
 - **Nothing in the legacy repo may be deleted** during the rebuild or the initial cutover. The whole
   repository is the D89 rollback asset.
-- Architecture guards read the byte-preserved
-  `docs/rebuild/migrations/legacy/legacy-architecture-provenance.json`; its strict parser
-  authenticates every identifier-redacted frozen source and path-inventory snapshot before exposing
-  it. The external payload anchor prevents a changed snapshot from authenticating a recomputed
-  digest; SSN- and UCSD EID-shaped values must never enter this evidence. Missing, malformed,
-  duplicate, reordered, or content-address-mismatched evidence fails loud. Never restore a
-  `../hr-automation` or `HRAUTO_LEGACY_REPO` execution dependency to a finished gate.
+- Never restore a `../hr-automation` or `HRAUTO_LEGACY_REPO` execution dependency to a finished gate.
 - Inventories that span both repos (`src/models/runtime/runtime-environment.ts`) mark legacy paths with an
   explicit **`legacy:` scheme**. Both repos have a `src/` — `src/cli.ts` exists in both — so a bare
   path is ambiguous. Unprefixed always means this repo.
@@ -165,14 +148,14 @@ an identifier mention, another function, or direct module execution is not proof
 
 D327 plans the replacement without claiming it built, and 0.3 designed it (closed 2026-09-04) as three
 contracts 1.6 implements EXACTLY, without redesign: **D330** the run-record lifecycle service (ref
-dashboard-surfaces §D330.1–§D330.12: identity tuple, three-way existence, the seven-state machine,
+dashboard-surfaces : identity tuple, three-way existence, the seven-state machine,
 `version` CAS + `claimGeneration` fence, one total queue order, D308 delete behind the tombstone, the
 adapter boundary and its guard), **D331** the settings catalog and protected `.tracker/settings/` root
-(ref clock-config-secrets §D331.1–§D331.12: the closed 88-row catalog, five source classes, two CAS
+(ref clock-config-secrets : the closed 88-row catalog, five source classes, two CAS
 arms, write-only protected values, `settings > default` with the environment gone as a resolver input),
 and **D332** the one stopped-system `cli storage upgrade` with its preflight, journal, rollback, boot
-matrix and adapter roster A0–A8 (ref dashboard-surfaces §2.5 D332, its settings half in
-clock-config-secrets §D332, the deletion tests in ref guards-and-tests §5.2). Until 1.6 lands, the
+matrix and adapter roster A0–A8 (ref dashboard-surfaces  D332, its settings half in
+clock-config-secrets §D332, the deletion tests in ref guards-and-tests ). Until 1.6 lands, the
 as-built authorities described above stay in force. Doc 01 §1.6 binds each 1.6 task to one seam, gate,
 integration order and deletion test; 2.6 revalidates downstream consumers, and 3.1 finishes the
 dashboard. Provider API keys remain the sole `.env.providers` class; credentials and local canary inputs move
@@ -224,7 +207,7 @@ for porting provenance; never restore a live legacy dependency (D93/D150).
 `install -m 600 .env.example .env.providers`, then fill only supported provider pool cells.
 Keep an existing `.env` intact as operator reference; normal startup never opens it or falls back to it
 (D343). Never overwrite an existing runtime file as setup. CLI and D300 document-number smoke startup
-go through `scripts/secure-env-bootstrap.ts`: normal runtime startup refuses migrated environment
+go through `scripts/dev/secure-env-bootstrap.ts`: normal runtime startup refuses migrated environment
 names, opens the fixed provider-only path without following symlinks, validates that descriptor,
 and admits its exact bytes before importing the allowlisted entrypoint. Storage commands bypass
 runtime environment admission so stopped upgrade can inspect historical sources without changing
@@ -247,8 +230,8 @@ browser; malformed available subjects fail by label/date. Subjects and shared da
 `config/test-data.json`; private identifiers/paths live only in ignored `config/test-data.local.json`,
 read through `src/backend/app/registries/test-data.ts` and the private reader
 `src/backend/storage/configuration/test-data-local.ts` (D341). `npm run cli -- test-data check
---json` reports names/states only. Read `ref guards-and-tests` §10.5 and `ref clock-config-secrets`
-§D341 for the detour's acceptance evidence. Never source a
+--json` reports names/states only. Read `ref guards-and-tests`  and `ref clock-config-secrets`
+ for the detour's acceptance evidence. Never source a
 canary from `.env`, expose its value, silently substitute another target, or infer current availability.
 
 ## Coding conventions
@@ -267,7 +250,7 @@ canary from `.env`, expose its value, silently substitute another target, or inf
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
-  (`dashboard-refresh-boundary`, ref frontend-backend-integration §8.14, `src/dashboard/AGENTS.md`).
+  (`dashboard-refresh-boundary`, ref frontend-backend-integration , `src/dashboard/AGENTS.md`).
 - Archive subviews are dashboard route state (`archiveView`), not `ArchiveWorkspace` local state; a
   cross-takeover door must name the real Archive view in that state rather than open the ledger and
   require a second click.

@@ -44,7 +44,7 @@ export const SpanBrowserSystemSchema = z.enum([
 ]);
 export const SpanSystemInstanceSchema = z.enum(["prod", "test"]);
 
-/** Ref dashboard-surfaces §1.1's outcome union; `skipped` is a task-span outcome. */
+/** Ref dashboard-surfaces's outcome union; `skipped` is a task-span outcome. */
 export const SpanOutcomeWireSchema = z.enum([
   "done", "failed", "cancelled", "discarded", "skipped", "interrupted", "superseded",
 ]);

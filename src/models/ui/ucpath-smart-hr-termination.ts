@@ -104,7 +104,7 @@ export const UcpathUsDateSchema = z.string().regex(
   "a UCPath Smart HR date is MM/DD/YYYY",
 );
 
-/** What a run asks for. The permanent key is EID + effective date (ref write-safety §5). */
+/** What a run asks for. The permanent key is EID + effective date (ref write-safety ). */
 export const UcpathTerminationTargetSchema = z.strictObject({
   emplId: EidSchema,
     /* Require the verified/approved name to match Page B before fencing any write. */

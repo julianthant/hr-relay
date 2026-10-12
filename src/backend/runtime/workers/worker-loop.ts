@@ -115,14 +115,14 @@ export interface WorkerLoopDependencies {
   readonly writeSequencerFor?: (sessions: WorkerSessionManager, taskDeadlineMs:number) => WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
   readonly gateSources?: GateSourceRuntime;
-  /** Ref operator-trust §2.2's automatic bundle capture; absent means no bundle is minted. */
+  /** Ref operator-trust's automatic bundle capture; absent means no bundle is minted. */
   readonly diagnostics?: RunDiagnosticCapture;
   /** Explicit per-run screenshot persistence, executed while a lease owns its page. */
   readonly browserScreenshotCapture?: RunBrowserScreenshotCapture;
 
   readonly providers?: RunProviderWiring;
   readonly artifacts?: ContentAddressedArtifactWriter;
-  /** Ref data-intake-and-edit-data §4.1's blocking sink projector; absent, a declaring node fails loud. */
+  /** Ref data-intake-and-edit-data's blocking sink projector; absent, a declaring node fails loud. */
   readonly artifactProjector?: RunArtifactProjector;
 
   readonly controlPoll?: () => WorkerDirective;
@@ -292,7 +292,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       if (directive === "pause") {
         // Paused: claim nothing, keep the worker alive, re-poll on the bounded
-        // idle cadence (ref execution-and-sessions §3 — a worker never sleeps unboundedly).
+        // idle cadence (ref execution-and-sessions — a worker never sleeps unboundedly).
         await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
         continue;
       }
@@ -402,7 +402,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped });
 }
 
-/* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions §0) ──── */
+/* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions ) ──── */
 
 
 export const MAX_WORKERS_PER_POOL = 3;

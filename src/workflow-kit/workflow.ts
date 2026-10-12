@@ -184,7 +184,7 @@ export interface WorkflowDescriptor<
   readonly id: WorkflowId;
   /** Bumped for semantic graph/bind/presentation contract changes. */
   readonly version: number;
-  /** Build-manifest derived (ref workflow-model §1.1); stamped on every run, checkpoint, and span. */
+  /** Build-manifest derived (ref workflow-model ); stamped on every run, checkpoint, and span. */
   readonly contractFingerprint: Fingerprint;
   readonly code: string;
   readonly label: string;
@@ -207,7 +207,7 @@ export interface WorkflowDescriptor<
   /** Explicit optional candidates for new Run input/omission assertions. */
   readonly rerunValues?: readonly RerunValueMappingSpec[];
   readonly details: readonly DetailProjectionSpec<S>[];
-  /** Ref dashboard-surfaces §1.2: where the RUN resolves the subject's name, if it ever does. */
+  /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
    /** The run-detail timeline's categorical shape, DERIVED by the factory: the declared
     * categories with member labels, or the one-per-node default. Always exhaustive. */
@@ -342,7 +342,7 @@ export interface WorkflowProjections {
 export type WorkflowDryRunSupport =
   | Readonly<{
     state: "supported";
-    /** The first transaction node; a preview stops there (ref task-contract §10.1). */
+    /** The first transaction node; a preview stops there (ref task-contract ). */
     stopsAt: string;
   }>
   | Readonly<{ state: "unsupported"; reason: "no-transaction-node" }>
@@ -919,7 +919,7 @@ export function defineWorkflowDescriptor<
 
   const editData = spec.capabilities?.editData;
   if (typeof editData === "object") {
-    // Ref data-intake-and-edit-data §6.2/§6.3: an editable path must resolve through the producing
+    // Ref data-intake-and-edit-data /§6.3: an editable path must resolve through the producing
     // node's own output schema, and only a READ task node's output is correctable (a write proof isn't).
     for (const field of editData.fields) {
       const owner = nodeByIdOrThrow(id, nodes, field.nodeId, "editData field");

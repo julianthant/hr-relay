@@ -127,7 +127,7 @@ describe("ref data-intake-and-edit-data §3 header discovery", () => {
   });
 
   it("counts sole use across OTHER rows, so two identical headings do not self-penalize", () => {
-    // Ref data-intake-and-edit-data §2.1 exists to keep two `Name` columns distinct; the ranking must
+    // Ref data-intake-and-edit-data exists to keep two `Name` columns distinct; the ranking must
     // not treat that supported layout as evidence against the header row.
     const rows = [
       ["Name", "Name", "EID"],

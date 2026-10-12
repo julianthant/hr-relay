@@ -1077,7 +1077,7 @@ function executeIntake(
       }
       const held = current.bindings.find((entry) => entry.targetFieldId === request.payload.targetFieldId);
       if (held !== undefined && held.sourceColumnId === request.payload.sourceColumnId) return noOp();
-      // THE one mint (ref data-intake-and-edit-data §2.5). It re-proves both checks above against the
+      // THE one mint (ref data-intake-and-edit-data ). It re-proves both checks above against the
       // projection and the detected columns; a suggestion cannot reach it.
       const binding = confirmBinding({
         projection,
@@ -1328,7 +1328,7 @@ function executeIntake(
 
           shape: "single",
           // A spreadsheet fan-out is the definition of bulk, and this is a
-          // server stamp rather than a caller claim (ref dashboard-surfaces §1.1).
+          // server stamp rather than a caller claim (ref dashboard-surfaces ).
           priority: "bulk",
           dryRun: request.payload.dryRun,
           ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),

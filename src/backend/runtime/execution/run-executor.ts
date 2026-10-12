@@ -132,7 +132,7 @@ export class WriteParkedError extends Error {
   }
 }
 
-/** Ref workflow-model §3.2's delegation seam: atomic fan-out enqueue, park, and typed join. */
+/** Ref workflow-model's delegation seam: atomic fan-out enqueue, park, and typed join. */
 export interface ChildRunContext {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly node: ChildRunRuntimeNode;
@@ -193,7 +193,7 @@ export interface RunExecutorDependencies {
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly scheduler: MonotonicDeadlineScheduler;
-  /** Immutable per-invocation task bound (ref execution-and-sessions §5.5); no default, no opt-out. */
+  /** Immutable per-invocation task bound (ref execution-and-sessions ); no default, no opt-out. */
   readonly taskDeadlineMs: number;
   readonly log: TaskLogger;
   /** Optional production sink for task messages and browser actions. */
@@ -203,7 +203,7 @@ export interface RunExecutorDependencies {
   readonly childRuns?: ChildRunExecutor;
   /** Registered workflow/external source ports for non-operator gates. */
   readonly gateSources?: GateSourceRuntime;
-  /** Ref operator-trust §2.2. Absent means no automatic bundle, never a silent empty one. */
+  /** Ref operator-trust. Absent means no automatic bundle, never a silent empty one. */
   readonly diagnostics?: RunDiagnosticCapture;
 
   readonly providers?: RunProviderWiring;
@@ -500,7 +500,7 @@ export async function executeClaimedRun(
   };
 
   const interpret = async (): Promise<RunExecutionOutcome> => {
-    /* ── validating: ref workflow-model §5.4 entry validation, before any browser ────── */
+    /* ── validating: ref workflow-model entry validation, before any browser ────── */
     transitionTo({ state: "validating", workerId: claim.workerId, claimedAt, heartbeatAt: instant() });
 
     const problems: string[] = [];

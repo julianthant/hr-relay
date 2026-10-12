@@ -64,7 +64,7 @@ export type WorkerControlBasis = z.infer<typeof WorkerControlBasisSchema>;
 
 export const WorkerLeaseRecordSchema = z.strictObject({
   workerId: WorkerIdSchema,
-  /** A worker claims only its own workflow's rows (ref execution-and-sessions §3.1). */
+  /** A worker claims only its own workflow's rows (ref execution-and-sessions ). */
   workflow: WorkflowIdSchema,
   browserSystems: WorkerBrowserSystemsSchema,
   processId: PositiveIntSchema,

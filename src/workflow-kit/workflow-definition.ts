@@ -741,7 +741,7 @@ export interface WorkflowDefinitionSpec<
   readonly input: InputSchema;
   /** What this workflow IS to the composition root. */
   readonly role: WorkflowModuleRole;
-  /** Ref data-intake-and-edit-data §1 — the spreadsheet-capable declaration, when one exists. */
+  /** Ref data-intake-and-edit-data — the spreadsheet-capable declaration, when one exists. */
   readonly intake?: IntakeProjection;
   /** Optional v1 action display declaration; omitted definitions remain legacy. */
   readonly operationDisplay?: WorkflowOperationDisplayDeclaration;

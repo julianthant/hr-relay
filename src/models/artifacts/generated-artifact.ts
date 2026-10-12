@@ -11,7 +11,7 @@ export const ArtifactOutboxStorageRecordSchema = z.strictObject({
   artifactId: ArtifactIdSchema,
   projectionId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   stableKeyFingerprint: FingerprintSchema,
-  /** Ordered declared-key pairs, never an open map (ref data-intake-and-edit-data §2's own rule). */
+  /** Ordered declared-key pairs, never an open map (ref data-intake-and-edit-data's own rule). */
   keyValues: ArtifactProjectionKeyValueSchema.array().min(1),
   sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   sourceRunId: RunIdSchema,

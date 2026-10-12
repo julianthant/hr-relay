@@ -177,7 +177,7 @@ export const separationsIdentityCheckWorkflow = defineWorkflow({
       display: "text",
     },
   ],
-  /** Ref dashboard-surfaces §1.2: the start input's `employeeName` is the KUALI FORM'S CLAIM, so before
+  /** Ref dashboard-surfaces: the start input's `employeeName` is the KUALI FORM'S CLAIM, so before
    *  Job Summary answers the row keeps the claim; after, it states UCPath's record instead. */
   subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
   identity: {

@@ -219,7 +219,7 @@ describe("two live worker loops drain one queue", () => {
     assert.equal(new Set(claims.map(({ runId }) => runId)).size, enqueued.length);
     assert.equal(new Set(claims.map(({ workerId }) => workerId)).size, 2, "both workers must have claimed");
 
-    // Ref execution-and-sessions §7 "parallelism silently serializes": at some sampled instant TWO
+    // Ref execution-and-sessions "parallelism silently serializes": at some sampled instant TWO
     // workers owned work at once. A serialized runtime would peak at one.
     assert.ok(observer.samples() > 20, `only ${String(observer.samples())} samples were taken`);
     assert.equal(observer.maxWorkersHoldingWork(), 2);

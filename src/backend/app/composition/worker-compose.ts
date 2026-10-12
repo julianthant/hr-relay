@@ -233,7 +233,7 @@ function startWorkerMaintenance(input: Readonly<{
 
   const sweep = (now: string): void => {
     const staleBefore = new Date(clock.nowMs() - input.claimStaleAfterMs).toISOString();
-    // Recovery is not workflow-scoped by nature (ref execution-and-sessions §3): sweep every
+    // Recovery is not workflow-scoped by nature (ref execution-and-sessions ): sweep every
     // workflow's expired claims, not just this worker's.
     const outcomes = sweepWorkerClaims(database, input.lifecycle, { staleBefore, now });
     for (const outcome of outcomes) {
@@ -306,7 +306,7 @@ function startWorkerMaintenance(input: Readonly<{
     handle = input.scheduler.schedule(clock.monotonicMs() + input.heartbeatIntervalMs, tick);
   };
   // The first beat runs SYNCHRONOUSLY: recovery has scheduling priority over
-  // claim expiry (ref write-safety §4), so the boot sweep must precede the first claim.
+  // claim expiry (ref write-safety ), so the boot sweep must precede the first claim.
   tick();
 
   return Object.freeze({

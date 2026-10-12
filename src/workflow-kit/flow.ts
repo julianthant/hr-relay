@@ -1,5 +1,5 @@
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
-/** The ONE workflow builder API (ref workflow-model §3): it accumulates `S` (per-node output/conditional/contracts) and `Nodes`, so reading an undeclared output fails `tsc`. */
+/** The ONE workflow builder API (ref workflow-model ): it accumulates `S` (per-node output/conditional/contracts) and `Nodes`, so reading an undeclared output fails `tsc`. */
 import { z } from "zod";
 import type {
   AnyCommitTaskContract,
@@ -82,13 +82,13 @@ export interface StepOpts<
   C extends AnyReadTaskContract,
   D extends readonly (keyof S & string)[],
 > {
-  /** Defaults to the contract's `title` (ref workflow-model §1.5). */
+  /** Defaults to the contract's `title` (ref workflow-model ). */
   readonly label?: string;
   readonly dependsOn: D;
   readonly bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]>;
   /** A DECLARED node condition (schema form), never a closure. */
   readonly when?: NodeConditionSpec;
-  /** REQUIRED — no default (ref workflow-model §5.3). */
+  /** REQUIRED — no default (ref workflow-model ). */
   readonly replay: "checkpoint" | "always-rerun";
 }
 
