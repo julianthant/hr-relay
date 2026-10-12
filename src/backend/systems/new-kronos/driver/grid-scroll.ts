@@ -41,13 +41,13 @@ export interface VirtualizedGridRead {
 
 
 export const MAX_GRID_SCROLL_STEPS = 200;
-export const GRID_SCROLL_FRACTION = 0.6;
+const GRID_SCROLL_FRACTION = 0.6;
 /** 20 polls of the caller's interval — 4s at 200ms — for ONE virtualized repaint. */
-export const GRID_REPAINT_POLLS = 20;
+const GRID_REPAINT_POLLS = 20;
 /** Consecutive steps that add no new row before the read is declared stuck. */
-export const GRID_SCROLL_STALL_LIMIT = 3;
+const GRID_SCROLL_STALL_LIMIT = 3;
 // Wait for the grid body to repaint; applied range text alone does not prove the rendered row window.
-export const GRID_APPLIED_WINDOW_POLLS = 50;
+const GRID_APPLIED_WINDOW_POLLS = 50;
 
 /** The rendered window's identity, for "has it repainted yet". */
 function renderedDays(rows: readonly RawTimecardGridRow[]): string {

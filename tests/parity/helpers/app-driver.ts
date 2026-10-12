@@ -12,9 +12,9 @@ export interface AppRoute {
   readonly explore?: string;
 
   readonly catalog?: string;
-  /** `""` is the archive ledger; a run id opens that archived run (2i-G). */
+  /** A legacy Archive link shown as a removal notice. */
   readonly archive?: string;
-  /** The Archive-owned view restored by a deep link. */
+  /** A legacy Archive view named by a deep link. */
   readonly archiveView?: "runs" | "versions";
   /** `from..to`; `""` opens the report on its default range (2i-G). */
   readonly activity?: string;

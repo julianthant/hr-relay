@@ -10,7 +10,7 @@ const ArchiveRouteFiltersSchema = z.strictObject({
   versionState: z.enum(["stamped", "adopted", "unrecorded"]).optional(),
 });
 
-export const ArchiveBrowseStateSchema = z.strictObject({
+const ArchiveBrowseStateSchema = z.strictObject({
   filters: ArchiveRouteFiltersSchema.default({}),
   after: z.strictObject({ completedAt: z.string().datetime(), runId: z.uuid() }).optional(),
   columns: z.array(z.string().min(1).max(1024)).max(100).refine(columns => new Set(columns).size === columns.length, "Duplicate Archive columns").optional(),
@@ -26,8 +26,6 @@ export function parseArchiveBrowse(value: string): ArchiveBrowseState | null {
   try { const result = ArchiveBrowseStateSchema.safeParse(JSON.parse(value)); return result.success ? result.data : null; }
   catch { return null; }
 }
-
-export const EMPTY_ARCHIVE_BROWSE: ArchiveBrowseState = { filters: {} };
 
 const ArchiveFolderRouteSchema = z.strictObject({
   dashboardKey: z.string().max(40).regex(/^(?:unrecorded|[1-9]\d*\.\d+)$/u),

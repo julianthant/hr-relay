@@ -13,7 +13,7 @@ export const SourceHashSchema = z.strictObject({
 });
 export type SourceHash = z.infer<typeof SourceHashSchema>;
 
-export const BuildManifestEntrySchema = z.strictObject({
+const BuildManifestEntrySchema = z.strictObject({
   fingerprint: FingerprintSchema,
   /** The exact closure that produced the fingerprint, sorted by path. */
   sources: z.array(SourceHashSchema).min(1),

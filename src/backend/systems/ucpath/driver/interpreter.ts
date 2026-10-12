@@ -3,20 +3,13 @@ import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { EidSchema } from "../../../../rules/identity/ids.js";
 import { UiActionProofSchema } from "../../../../models/ui/driver.js";
-import type { PageStateProof, UiActionProof } from "../../../../models/ui/driver.js";
+import type { UiActionProof } from "../../../../models/ui/driver.js";
 import {
-  UCPATH_PERSON_ORG_DETAIL_READY,
-  UCPATH_PERSON_ORG_DETAIL_SCREEN,
   UCPATH_PERSON_ORG_DISPLAYED_EID,
   UCPATH_PERSON_ORG_DISPLAYED_NAME,
-  UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_EID_DISPLAY,
   UCPATH_PERSON_ORG_EID_INPUT,
   UCPATH_PERSON_ORG_NAME_DISPLAY,
-  UCPATH_PERSON_ORG_NO_RESULTS,
-  UCPATH_PERSON_ORG_RESULTS_READY,
-  UCPATH_PERSON_ORG_SEARCH_READY,
-  UCPATH_PERSON_ORG_SEARCH_SCREEN,
 } from "../../../../models/ui/ucpath-person-org.js";
 import type { UcpathStoreDriver } from "../../../../models/ui/ucpath-driver.js";
 import {
@@ -61,7 +54,7 @@ export interface UcpathPersonOrgOperations {
   ) => Promise<UcpathJobSummaryRead>;
 }
 
-export const ucpathPersonOrgOperations: UcpathPersonOrgOperations = Object.freeze({
+const ucpathPersonOrgOperations: UcpathPersonOrgOperations = Object.freeze({
   searchPersonOrg: searchPersonOrgOnPage,
   readJobSummary: readJobSummaryOnPage,
 });
@@ -167,22 +160,3 @@ export function createUcpathPersonOrgDriver(
     },
   };
 }
-
-export const UCPATH_PERSON_ORG_DRIVER_VOCABULARY = {
-  screens: [UCPATH_PERSON_ORG_SEARCH_SCREEN, UCPATH_PERSON_ORG_DETAIL_SCREEN],
-  states: [
-    UCPATH_PERSON_ORG_SEARCH_READY,
-    UCPATH_PERSON_ORG_RESULTS_READY,
-    UCPATH_PERSON_ORG_NO_RESULTS,
-    UCPATH_PERSON_ORG_DETAIL_READY,
-  ],
-  fields: [UCPATH_PERSON_ORG_EID_INPUT],
-  displays: [
-    UCPATH_PERSON_ORG_EID_DISPLAY,
-    UCPATH_PERSON_ORG_NAME_DISPLAY,
-    UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
-  ],
-  observations: [UCPATH_PERSON_ORG_DISPLAYED_EID, UCPATH_PERSON_ORG_DISPLAYED_NAME],
-} as const;
-
-export type { PageStateProof, UiActionProof };

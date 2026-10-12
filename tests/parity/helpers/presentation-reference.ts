@@ -9,12 +9,14 @@ export async function capturePresentationReference(page: Page, info: TestInfo, n
   if (viewport === null) throw new Error("presentation-reference-viewport-missing");
   const attribute = await page.locator("[data-app-root]").getAttribute("data-demo-theme");
   if (attribute !== "dark" && attribute !== "light") throw new Error("presentation-reference-theme-missing");
-  const stateId = `${basename(info.file, ".spec.ts")}-${name.replace(/\.png$/u, "")}`.replace(/[^a-zA-Z0-9_.-]+/gu, "-");
+  const captureId = basename(info.file, ".test.ts");
+  const stateId = `${captureId}-${name.replace(/\.png$/u, "")}`.replace(/[^a-zA-Z0-9_.-]+/gu, "-");
   await page.evaluate(() => document.fonts.ready);
+  // Frozen reference provenance keeps its existing fixture identifier.
   await captureParityPair(page, resolve("tests/parity/references"), {
     stateId, viewport: `${String(viewport.width)}x${String(viewport.height)}`,
     theme: attribute === "dark" ? "graphite-warm" : "paper-ink",
-    adapter: "fixture", fixtureId: `${basename(info.file)}:${info.title}`,
+    adapter: "fixture", fixtureId: `${captureId}.spec.ts:${info.title}`,
     descriptorHash, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
   });
 }

@@ -104,7 +104,7 @@ export function createIntakeAuthority() {
 
 export async function startIntakeAuthorityServer(input: { distDir: string; bundle: ParityBundleProof }) {
   const [{DEFAULT_DASHBOARD_PROFILE},{startFixtureServer}]=await Promise.all([import("./fixture-profile.js"),
-    import("../../../parity/helpers/fixture-bff.js")]);
+    import("../../helpers/dashboard/fixture-bff.js")]);
   const template = DEFAULT_DASHBOARD_PROFILE.bootstrap.workflows.map(workflow => WorkflowBootstrapPrimitiveSchema.parse(workflow)).find(workflow => workflow.start?.spreadsheetIntake === true);
   if (template === undefined) throw new Error("Intake browser fixture has no spreadsheet entry template");
   const profile = { ...DEFAULT_DASHBOARD_PROFILE, bootstrap: FrontendBootstrapWireSchema.parse({ ...DEFAULT_DASHBOARD_PROFILE.bootstrap,

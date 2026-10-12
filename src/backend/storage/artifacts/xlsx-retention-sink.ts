@@ -154,9 +154,6 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
           || artifact.mediaType !== OPERATOR_XLSX_MEDIA_TYPE) throw new Error("generated-artifact-readback-conflict");
         return artifact;
       };
-      const retain = async (bytes: Buffer) => verifyRetained(
-        await options.artifacts.put(bytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE }), bytes,
-      );
       if (stored.present) {
         if (request.previousArtifact === undefined) throw new Error("generated-artifact-previous-version-unavailable");
         await verifyRetained(request.previousArtifact, stored.bytes);
@@ -176,8 +173,11 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         return Object.freeze({ contentSha256: contentSha256(stored.bytes), artifact });
       }
 
-      const nextBytes = await composeWorkbook([...upsert(upserted, intended).values()]);
-      const artifact = await retain(nextBytes);
+      upserted.set(intended[0] ?? "", intended);
+      const nextBytes = await composeWorkbook([...upserted.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, cells]) => cells));
+      const artifact = await verifyRetained(
+        await options.artifacts.put(nextBytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE }), nextBytes,
+      );
       await mkdir(dirname(workbookPath), { recursive: true });
       const tempPath = `${workbookPath}.tmp-${String(row.outboxId)}`;
       request.prepare(artifact);
@@ -212,12 +212,6 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
       return Object.freeze({ contentSha256: contentSha256(nextBytes), artifact });
     },
   });
-}
-
-function upsert(rows: ReadonlyMap<string, readonly string[]>, intended: readonly string[]): Map<string, readonly string[]> {
-  const next = new Map(rows);
-  next.set(intended[0] ?? "", intended);
-  return new Map([...next.entries()].sort(([left], [right]) => left.localeCompare(right)));
 }
 
 async function composeWorkbook(rows: readonly (readonly string[])[]): Promise<Buffer> {

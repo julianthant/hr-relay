@@ -222,11 +222,6 @@ export function evaluateReceiptDerivationBinding(
 }
 
 
-export function requireReceiptDerivationBinding(input: ReceiptDerivationBindingInput): void {
-  const binding = evaluateReceiptDerivationBinding(input);
-  if (binding.state === "incompatible") throw new Error(binding.message);
-}
-
 /* ── the re-derivation check (6) ─────────────────────────────────────────── */
 
 /** One path at which a stored receipt and this build's derivation disagree. */

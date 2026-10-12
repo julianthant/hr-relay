@@ -1,5 +1,4 @@
 
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import type { BrowserPresentationMode, InstanceSelection, RunParent, RunPriority, RunShape } from "../../../models/run/envelope.js";
@@ -87,9 +86,4 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     createdAt: enqueuedAt,
     updatedAt: enqueuedAt,
   });
-}
-
-/** The canonical-JSON digest input a start plan fingerprints its proposals with. */
-export function plannedInputDigestSource(inputs: readonly SchemaBoundCanonicalValue[]): string {
-  return canonicalJsonStringify(inputs);
 }

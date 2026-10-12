@@ -10,13 +10,13 @@ import { NotificationDeliverabilitySchema, NotificationTriggerEventSchema, notif
 import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-export const NotificationDeliveryOutcomeSchema = z.discriminatedUnion("state", [
+const NotificationDeliveryOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("suppressed-snoozed"), until: IsoInstantSchema }),
   z.strictObject({ state: z.literal("no-channel") }),
   z.strictObject({ state: z.literal("not-requested-existing") }),
 ]);
 
-export const NotificationPublishReportSchema = z.strictObject({
+const NotificationPublishReportSchema = z.strictObject({
   /** Always present: the durable row exists whatever delivery did. */
   notification: NotificationRecordSchema,
   durable: z.enum(["created", "folded", "existing"]),
@@ -36,7 +36,7 @@ export interface NotificationInbox {
 }
 
 
-export interface NotificationAuthority {
+interface NotificationAuthority {
   readonly authority: Pick<AuthorityRepositories, "notifications" | "notificationPublications">;
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
 }

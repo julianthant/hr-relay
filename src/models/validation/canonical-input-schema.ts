@@ -2,12 +2,8 @@
 import { z } from "zod";
 import { auditContractBoundarySchema } from "./contract-boundary.js";
 
-interface ZodInternals {
-  readonly _zod: { readonly def: { readonly [key: string]: unknown } };
-}
-
 function schemaDefinition(schema: z.core.$ZodType): { readonly [key: string]: unknown } {
-  return (schema as unknown as ZodInternals)._zod.def;
+  return schema._zod.def as z.core.$ZodTypeDef & { readonly [key: string]: unknown };
 }
 
 /** Node kinds that re-apply ingress semantics on a read; every one is banned. */

@@ -27,9 +27,9 @@ import type { OperatorXlsxExportRepository } from "../../storage/sqlite/authorit
 import type { CrossDateSearchQueryService } from "../queries/search.js";
 import { composeOperatorXlsxWorkbook } from "./operator-xlsx-workbook.js";
 
-export const OPERATOR_XLSX_MAX_ROWS = 5_000;
+const OPERATOR_XLSX_MAX_ROWS = 5_000;
 
-export interface OperatorXlsxDownload {
+interface OperatorXlsxDownload {
   readonly evidence: OperatorXlsxExportEvidence;
   readonly filename: string;
   readonly mediaType: typeof OPERATOR_XLSX_MEDIA_TYPE;

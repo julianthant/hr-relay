@@ -8,9 +8,14 @@ import ts from "typescript";
 import { TEST_DATA_CONFIG_PATH, TEST_DATA_LOCAL_CONFIG_PATH, TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../../src/models/config/test-data.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
-const UNIT_ONLY_ROOTS = ["tests/unit/"];
+function isUnitTest(path: string): boolean {
+  return path.startsWith("tests/") && /\.test\.(?:ts|js)$/u.test(path)
+    && !/\.integration\.test\.(?:ts|js)$/u.test(path)
+    && !/^tests\/(?:architecture|parity|perf)\//u.test(path);
+}
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
+  "tests/support/helpers/credential-doctor-fixtures.ts",
   "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts",
   "tests/support/fixtures/integration/dry-run-admission-fixtures.ts",
   "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts",
@@ -22,9 +27,12 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/synthetic-storage-admission.ts",
   "tests/support/helpers/admission-fixture.ts",
   "tests/support/helpers/backend/dashboard-harness.ts",
+  "tests/support/helpers/backend/settings-authority-world.ts",
+  "tests/support/helpers/backend/http-route-harness.ts",
+  "tests/support/helpers/storage/native-authority/retained-database-fixture.ts",
 ]);
 const SHARED_ROOTS = ["tests/support/fixtures", "tests/support/helpers"];
-const CROSS_TIER_ROOTS = ["tests/architecture", "tests/integration", "tests/support", "tests/perf", "tests/types", "scripts", "src"];
+const CROSS_TIER_ROOTS = ["tests", "scripts", "src"];
 /** Seams a shared fixture may never touch at import time. */
 const FORBIDDEN_SHARED_IMPORTS: readonly RegExp[] = [
   /src\/control\/test-data\.js$/u,
@@ -52,6 +60,7 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
+  { importer: "tests/support/helpers/credential-doctor-fixtures.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/integration/dry-run-admission-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
@@ -62,13 +71,16 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/admission-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/backend/dashboard-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/backend/settings-authority-world.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
+  { importer: "tests/support/helpers/backend/http-route-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
 ] as const;
 const PROCESS_ENTRYPOINTS = [
-  { file: "worker-browser-control-cli.ts", consumers: ["tests/integration/backend/runtime/workers/worker-loop/native-profile-retirement.test.ts", "tests/integration/backend/storage/events/timeline-emitter/worker-browser-control-process.test.ts", "tests/parity/helpers/session-runtime.ts"] },
-  { file: "worker-stub-cli.ts", consumers: ["tests/integration/backend/runs/lifecycle/run-record-service/worker-pool-parallel-proof.test.ts"] },
-  { file: "run-record-race-worker.ts", consumers: ["tests/integration/backend/storage/sqlite/run-store-contracts/service.test.ts"] },
-  { file: "runtime-lock-contender.ts", consumers: ["tests/integration/backend/storage/sqlite/migrations/storage-restore-drill.test.ts"] },
+  { file: "worker-browser-control-cli.ts", consumers: ["tests/backend/runtime/workers/worker-supervisor.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts"] },
+  { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts"] },
+  { file: "run-record-race-worker.ts", consumers: ["tests/support/helpers/backend/run-record-service-world.ts"] },
+  { file: "runtime-lock-contender.ts", consumers: ["tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts"] },
 ] as const;
 
 function parseSource(path: string, text: string) {
@@ -179,6 +191,17 @@ function processImportViolations(path: string, text: string): string[] {
 
 function childEntrypointBound(path: string, text: string, file: string): boolean {
   const source = parseSource(path, text);
+  const joinNames = new Set(["join"]);
+  for (const declaration of source.statements) {
+    if (!ts.isImportDeclaration(declaration) || !ts.isStringLiteral(declaration.moduleSpecifier)
+      || declaration.moduleSpecifier.text !== "node:path") continue;
+    const bindings = declaration.importClause?.namedBindings;
+    if (bindings !== undefined && ts.isNamedImports(bindings)) {
+      for (const binding of bindings.elements) {
+        if ((binding.propertyName ?? binding.name).text === "join") joinNames.add(binding.name.text);
+      }
+    }
+  }
   const declarations = new Map<string, ts.Expression>();
   function collect(node: ts.Node) {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) declarations.set(node.name.text, node.initializer);
@@ -195,7 +218,7 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
         && relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), node.arguments[0].text)) === `tests/support/processes/${file}`
         && node.arguments[1].getText(source) === "import.meta.url";
     }
-    if (ts.isCallExpression(node) && node.expression.getText(source) === "join" && node.arguments[0]?.getText(source) === "process.cwd()") {
+    if (ts.isCallExpression(node) && joinNames.has(node.expression.getText(source)) && node.arguments[0]?.getText(source) === "process.cwd()") {
       const parts = node.arguments.slice(1);
       return parts.length > 0 && parts.every(ts.isStringLiteral) && parts.map((part) => part.text).join("/") === `tests/support/processes/${file}`;
     }
@@ -246,17 +269,24 @@ function isIgnored(path: string): boolean {
 describe("test-data ownership", () => {
   it("no cross-tier module imports a unit-only fixture or helper", () => {
     const observed: { importer: string; module: string }[] = [];
-    for (const path of sourceFiles(CROSS_TIER_ROOTS)) {
+    for (const path of sourceFiles(CROSS_TIER_ROOTS).filter((file) => !isUnitTest(file))) {
       for (const { resolved } of importsOf(path)) {
-        if (UNIT_ONLY_ROOTS.some((root) => resolved.startsWith(root))) observed.push({ importer: path, module: resolved.replace(/\.js$/u, "") });
+        if (isUnitTest(resolved)) observed.push({ importer: path, module: resolved.replace(/\.js$/u, "") });
       }
     }
     assert.deepEqual(observed, [], "cross-tier code must use shared fixture homes");
+    assert.equal(isUnitTest("tests/backend/helper.test.js"), true);
+    assert.equal(isUnitTest("tests/support/helpers/helper.test.ts"), true);
+    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/parity/reference.test.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
+      assert.equal(isUnitTest(path), false, path);
+    }
+    assert.equal(importsFromText("tests/backend/composition.integration.test.ts", 'import "../models/helper.test.js";')[0]?.resolved, "tests/models/helper.test.js");
   });
 
   it("cross-tier imports use shared architecture helpers", () => {
-    assert.ok(sourceFiles(CROSS_TIER_ROOTS).length > 0);
-    for (const path of sourceFiles(CROSS_TIER_ROOTS)) {
+    const files = sourceFiles(CROSS_TIER_ROOTS).filter((file) => !isUnitTest(file));
+    assert.ok(files.length > 0);
+    for (const path of files) {
       for (const { resolved } of importsOf(path)) {
         if (ARCHITECTURE_HELPERS_ROOT.test(resolved) && !path.startsWith("tests/architecture/")) {
           assert.fail(`${path} imports an architecture-owned helper directly: ${resolved}`);
@@ -280,9 +310,11 @@ describe("test-data ownership", () => {
   });
 
   it("child-entrypoint controls require canonical executable launch binding", () => {
-    const path = "tests/integration/tooling/child-proof.ts", file = "worker-stub-cli.ts";
+    const path = "tests/scripts/test/child-proof.integration.test.ts", file = "worker-stub-cli.ts";
     const literal = 'join(process.cwd(), "tests", "support", "processes", "worker-stub-cli.ts")';
     assert.equal(childEntrypointBound(path, `const child = ${literal}; spawn(process.execPath, ["--import", "tsx", child]);`, file), true);
+    assert.equal(childEntrypointBound(path, `import { join as join_m1 } from "node:path"; const child = ${literal.replace("join(", "join_m1(")}; spawn(process.execPath, ["--import", "tsx", child]);`, file), true);
+    assert.equal(childEntrypointBound(path, `const child = ${literal.replace("join(", "join_m1(")}; spawn(process.execPath, ["--import", "tsx", child]);`, file), false);
     for (const text of [`// spawn(process.execPath, [${literal}]);`, `const unused = ${literal};`, `spawn(process.execPath, [${literal.replace('"support", "processes"', '"process-fixtures"')}]);`, 'import "../../support/processes/worker-stub-cli.ts";']) {
       assert.equal(childEntrypointBound(path, text, file), false, text);
     }
@@ -331,13 +363,22 @@ describe("test-data ownership", () => {
   });
 
   it("shared fixtures and helpers stay pure at import", () => {
-    const files = sourceFiles(SHARED_ROOTS);
+    const files = sourceFiles(SHARED_ROOTS).filter((path) => !path.endsWith(".test.ts"));
     assert.ok(files.length > 10, "shared fixtures exist");
     const violations: string[] = [];
     const observedResourceHarnesses = new Set<string>();
     for (const path of files) {
       violations.push(...capabilityViolations(path, readFileSync(join(REPO_ROOT, path), "utf8")));
+      const source = parseSource(path, readFileSync(join(REPO_ROOT, path), "utf8"));
+      const typeOnly = new Set(source.statements.flatMap((statement) =>
+        ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly
+          && ts.isStringLiteral(statement.moduleSpecifier) ? [statement.moduleSpecifier.text] : []));
+      for (const statement of source.statements) {
+        if (ts.isImportDeclaration(statement) && !statement.importClause?.isTypeOnly
+          && ts.isStringLiteral(statement.moduleSpecifier)) typeOnly.delete(statement.moduleSpecifier.text);
+      }
       for (const { specifier, resolved } of importsOf(path)) {
+        if (typeOnly.has(specifier)) continue;
         if (FORBIDDEN_SHARED_IMPORTS.some((pattern) => pattern.test(resolved) || pattern.test(specifier))) {
           if (SHARED_RESOURCE_HARNESSES.has(path)) observedResourceHarnesses.add(path);
           else violations.push(`${path} -> ${specifier}`);
@@ -392,6 +433,7 @@ describe("test-data ownership", () => {
   it("the shared-fixture README names every shared module", () => {
     const readme = readFileSync(join(REPO_ROOT, "tests/support/fixtures/README.md"), "utf8");
     const missing = sourceFiles(SHARED_ROOTS)
+      .filter((path) => !path.endsWith(".test.ts"))
       .map((path) => path.replace(/^tests\/support\/(?:fixtures|helpers)\//u, "").replace(/\.(?:ts|tsx)$/u, ""))
       .filter((stem) => !stem.includes("/"))
       .filter((stem) => !readme.includes(stem) && !isCoveredByFamily(readme, stem));

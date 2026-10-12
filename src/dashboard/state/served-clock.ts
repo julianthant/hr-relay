@@ -1,14 +1,11 @@
-/** THE dashboard's live "now". */
 import { useEffect, useState } from "react";
 import { systemClock } from "../../rules/time/clock.js";
 
 /** One second: `fmtElapsed`'s smallest unit, so nothing finer would be visible. */
-export const SERVED_CLOCK_TICK_MS = 1000;
+const SERVED_CLOCK_TICK_MS = 1000;
 
 interface ServedClockOrigin {
-  /** the exact instant the server stated */
   readonly instant: string;
-  /** the monotonic reading at the moment that instant reached this page */
   readonly monotonicMs: number;
 }
 

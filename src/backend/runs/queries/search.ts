@@ -27,14 +27,14 @@ import {
   SearchMetadataSchema, SearchCoverageSchema,
 } from "../../../models/dashboard/search.js";
 
-export interface CrossDateSearchDescriptorView {
+interface CrossDateSearchDescriptorView {
   readonly id: string;
   readonly label: string;
   readonly code: string;
   readonly category: string;
 }
 
-export interface CrossDateSearchAuthoritySnapshot {
+interface CrossDateSearchAuthoritySnapshot {
   readonly authorityGeneration: number;
   readonly searchRuns: (input: unknown) => unknown;
 }

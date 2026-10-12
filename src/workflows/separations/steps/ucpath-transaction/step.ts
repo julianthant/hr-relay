@@ -82,7 +82,7 @@ export const SeparationsUcpathTerminationCanonicalInput = defineCanonicalInput(
   ],
 );
 
-export const SeparationsUcpathTerminationResultSchema = z.strictObject({
+const SeparationsUcpathTerminationResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
   /** The subject established by machine verification or operator approval. */
   approved: ResolvedIdentitySubjectSchema,

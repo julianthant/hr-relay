@@ -2,7 +2,6 @@ import type { WorkflowOperationDisplaySnapshot } from "../../models/workflow/ope
 import type { DeclaredActionOccurrence } from "../../rules/workflow/task-provenance.js";
 import { canonicalJsonStringify, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { confirmedStepOccurrence, DeclaredStepResultSchema, type DeclaredStepResult } from "../../models/events/confirmed-action.js";
-export { DeclaredStepResultSchema } from "../../models/events/confirmed-action.js";
 export type { DeclaredStepResult } from "../../models/events/confirmed-action.js";
 
 type Invocation = WorkflowOperationDisplaySnapshot["invocations"][number];

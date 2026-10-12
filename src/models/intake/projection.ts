@@ -11,7 +11,7 @@ import { deriveSchemaHash } from "../validation/schema-bound-value.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { isSchemaPathFailure, resolveSchemaPath, type SchemaPathFailure } from "../validation/schema-path.js";
 import { CanonicalFieldIdSchema, isFactoryDefinedCanonicalField } from "../fields/registry.js";
-import type { CanonicalField, CanonicalFieldId } from "../fields/registry.js";
+import type { CanonicalField } from "../fields/registry.js";
 
 export const IntakeTargetSchema = z.strictObject({
   targetFieldId: IntakeTargetFieldIdSchema,
@@ -121,11 +121,4 @@ export function defineIntakeProjection(
 /** Target ids the operator must bind before §2.2's Run may enable. */
 export function requiredTargetIds(projection: IntakeProjection): readonly IntakeTargetFieldId[] {
   return projection.targets.filter((entry) => entry.required).map((entry) => entry.targetFieldId);
-}
-
-export function canonicalIdFor(
-  projection: IntakeProjection,
-  targetFieldId: IntakeTargetFieldId,
-): CanonicalFieldId | undefined {
-  return projection.target(targetFieldId)?.canonicalFieldId;
 }

@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { FIXTURE_DAY } from "./fixture-identity.js";
-import { FIXTURE_INTAKE_IDS } from "./fixture-intake.js";
+import { FIXTURE_INTAKE_IDS } from "../../support/fixtures/dashboard/fixture-intake.js";
 import type { ReferenceScene,SceneAnchors } from "./reference-scenes.js";
 export const SCENES: readonly ReferenceScene[] = [
 

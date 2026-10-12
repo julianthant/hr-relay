@@ -42,7 +42,7 @@ import { TargetNotFoundError } from "./refusals.js";
 export const INTAKE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 
 
-export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
+const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
   "text/csv",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.ms-excel",
@@ -59,7 +59,7 @@ const IntakeUploadRequestSchema = z.strictObject({
   ),
 });
 
-export type IntakeUploadOutcome =
+type IntakeUploadOutcome =
   | Readonly<{ state: "created" | "joined"; session: IntakeSessionWire }>
   | Readonly<{ state: "refused"; code: IntakeParseRefusalCode; message: string }>;
 

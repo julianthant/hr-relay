@@ -4,7 +4,6 @@ import { newKronosSession } from "./session-provider.js";
 import { readSeparationTimecardTask } from "./tasks/read-separation-timecard.js";
 import { searchEmployeeTask } from "./tasks/search-employee.js";
 
-export { newKronosDriver };
 
 export const newKronosStore = defineBrowserStore("new-kronos", newKronosDriver, newKronosSession, {
   searchEmployee: searchEmployeeTask,

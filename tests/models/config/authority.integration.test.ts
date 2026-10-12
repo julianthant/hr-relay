@@ -1,0 +1,93 @@
+import { createAuthorityAccountingTestWorld } from "../../support/helpers/backend/authority-accounting-world.js";
+import { authorityMutationCases, type MutationCase } from "../../support/helpers/backend/authority-accounting-world.js";
+import { default as assert } from "node:assert/strict";
+import { rmSync } from "node:fs";
+import { afterEach } from "vitest";
+import { describe } from "vitest";
+import { it } from "vitest";
+import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../../src/backend/storage/sqlite/storage-records.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
+import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+describe("dry-run scenario result authority repository", () => {
+  it("registers the table and its boot-time record schema", () => {
+    assert.equal(
+      AUTHORITY_TABLE_REGISTRY.find(({ name }) => name === "dryrun_results")?.classification,
+      "authority",
+    );
+    assert.equal(AUTHORITY_RECORD_SCHEMA_REGISTRY.dryrun_results, DryRunScenarioResultSchema);
+  });
+});
+}
+
+{
+const { ATOMIC_WRITE_COMMIT, roots, openDatabases, databasePaths, CLOCK, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT } = createAuthorityAccountingTestWorld();
+
+describe("authority generation accounting", () => {
+afterEach(() => {
+  for (const database of openDatabases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+  const cases: readonly MutationCase[] = authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT });
+
+  it("accounts for every authority table and increments once per outer authority mutation", () => {
+    assert.deepEqual([...new Set(cases.map(({ table }) => table))].sort(), AUTHORITY_TABLE_REGISTRY
+      .filter(({ classification, name }) => classification === "authority"
+        && !["database_states", "database_upgrades"].includes(name))
+      .map(({ name }) => name)
+      .sort());
+    for (const mutation of cases) {
+      const database = openDatabase();
+      if (mutation.table !== "settings" && mutation.table !== "settings_snapshots" && database.authority.runtimeConfig.get() === undefined) {
+        database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+      }
+      mutation.prepare?.(database);
+      const before = database.getMeta().authorityGeneration;
+      mutation.mutate(database);
+      assert.equal(database.getMeta().authorityGeneration, before + 1, mutation.table);
+      database.close();
+    }
+  });
+});
+}

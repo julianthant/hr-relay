@@ -23,7 +23,6 @@ import {
   waitForAuthenticatedLanding,
   waitForSsoForm,
 } from "../browser-shared/ucsd-sso.js";
-export { ucpathSession } from "./session-provider.js";
 
 const SYSTEM = "ucpath" as const;
 // Detect campus discovery by its link; its post-SSO path need not match the entry route.

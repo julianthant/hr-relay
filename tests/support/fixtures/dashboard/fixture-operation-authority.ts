@@ -6,12 +6,6 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../.
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { plan1SeparationWorkflow, plan1SeparationStores, fictionalSeparationDrivers } from "../plan1-separation-operation.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
-import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
-import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
-import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { createServerVerifiedArtifactReader } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
-import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
-import type { FictionalFormDriver } from "../plan1-browser-operation.js";
 import { plan1BrowserStores, plan1BrowserWorkflow, fictionalFormDriver } from "../plan1-browser-operation.js";
 import { registerTrustRoutes } from "../../../../src/backend/transports/http/routes/trust.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
@@ -25,7 +19,6 @@ import { createNoteTimelineWriter } from "../../../../src/backend/storage/events
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
-import { DeclaredActionIdentitySchema } from "../../../../src/models/workflow/operation-action-identity.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import type { RunParent } from "../../../../src/models/run/envelope.js";
 import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -45,12 +38,12 @@ import { testRunLifecycle, testRunService, testWorkerPorts } from "../run-lifecy
 import { openAuthorityHarness, sessionManagerFor, ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../helpers/phase1f-executor-harness.js";
 import { plan1Parent, plan1Workflows, Plan1Input, Plan1CanonicalInput } from "../plan1-operation-workflows.js";
 import { fixtureBuildManifest } from "../workflow-definition-fixtures.js";
-import { PARITY_DIST_DIR } from "../../../integration/dashboard/client/fixtures/helpers/bundle.js";
+import { PARITY_DIST_DIR } from "../../helpers/dashboard/served-fixtures/bundle.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
-import { startFixtureServer } from "../../../integration/dashboard/client/fixtures/helpers/fixture-bff.js";
+import { startFixtureServer } from "../../helpers/dashboard/served-fixtures/fixture-bff.js";
 
 /** Local-only executor fixture; measured Explorer, Logs and source routes are production code. */
-export async function startOperationAuthorityServer(mode: "local" | "browser" | "separation" | "separation-failed" | "separation-ambiguous" = "local", native?: Readonly<{ driver: FictionalFormDriver; screenshot(): Promise<Readonly<{ bytes: Uint8Array; width: number; height: number }>> }>) {
+export async function startOperationAuthorityServer(mode: "local" | "browser" | "separation" | "separation-failed" | "separation-ambiguous" = "local") {
   const harness = openAuthorityHarness();
   const { database, clock, stateRoot } = harness;
   const separation = mode.startsWith("separation");
@@ -73,7 +66,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
   const active = database.authority.runtimeConfig.get();
   if (active === undefined) throw new Error("fixture active settings missing");
   const configSnapshotId = active.configSnapshotId, fingerprint = active.configFingerprint;
-  const sessions = sessionManagerFor(sessionFactoryHarness({ ucpath: () => separation ? separationDrivers.ucpath : native?.driver ?? fictionalFormDriver(), kuali: () => separationDrivers.kuali }), clock);
+  const sessions = sessionManagerFor(sessionFactoryHarness({ ucpath: () => separation ? separationDrivers.ucpath : fictionalFormDriver(), kuali: () => separationDrivers.kuali }), clock);
   const deps: RunExecutorDependencies = { lifecycle: testRunLifecycle(database, clock), descriptor: plan1Parent.descriptor,
     stores, authority: database, sessions, emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
     clock, ids: sequentialIdFactory("b"), scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000,
@@ -118,29 +111,11 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
   const rootWorkflow = separation ? plan1SeparationWorkflow : mode === "browser" ? plan1BrowserWorkflow : plan1Parent;
   const root = createRun(rootWorkflow, { emplId: "10800000", text: "synthetic", mode: mode === "separation-failed" ? "fail" : mode === "separation-ambiguous" ? "repeat" : "confirmed" });
   await execute(root, rootWorkflow);
-  let captures;
-  if (native !== undefined) {
-    if (mode !== "browser") throw new Error("native-capture-requires-browser-fixture");
-    const run = database.authority.runs.get(root.envelope.runId);
-    if (run === undefined) throw new Error("native-capture-run-missing");
-    const occurrence = readTimelineRecords(database.authority.timelineEvents, 0, run.envelope.runId).records.flatMap(record => record.payload.kind === "note" ? [record.payload.note.action?.operation] : []).find((operation) => operation?.logicalActionId === "search" && operation.state === "confirmed");
-    if (occurrence === undefined) throw new Error("native-capture-confirmed-action-not-retained");
-    const { value: _value, ...operation } = occurrence;
-    const admission = syntheticStateRoot(stateRoot);
-    const artifacts = createContentAddressedArtifactWriter({ admission });
-    await artifacts.ready;
-    const service = createDiagnosticCaptureService({ artifacts, authority: database.authority, clock, ids: sequentialIdFactory("d") });
-    const screenshot = await native.screenshot();
-    await service.capture({ trigger: "operator-request", requestedBy: "local-operator", runId: run.envelope.runId, operation: DeclaredActionIdentitySchema.parse(operation),
-      configFingerprint: fingerprint, descriptorFingerprint: run.envelope.contractFingerprint, fields: [],
-      attachments: [{ kind: "screenshot", mediaType: "image/png", sensitivity: "redacted", ...screenshot }] });
-    captures = { authority: database.authority.diagnosticBundles, artifactReader: createServerVerifiedArtifactReader({ admission }) };
-  }
   const reader = testRunService(database, clock);
   const projection = createOperatorProjection({ database, reader, stateRoot, clock, appVersion: "0.1.0", descriptorSetHash: hash,
     ledger: createTransactionHistory(database.authority), descriptors: { resolve } });
   projection.rebuildFromTimeline();
-  const runDetail = createOperatorRunDetail({ database, runReader: reader, stateRoot, projection, ...(separation ? { trust: createReceiptService({ database, runReader: reader, descriptors: modules.map((module) => module.descriptor) }) } : {}), ...(captures === undefined ? {} : { captures: { ...captures, runReader: reader } }), canonical: { database, reader, descriptors: { resolve } } });
+  const runDetail = createOperatorRunDetail({ database, runReader: reader, stateRoot, projection, ...(separation ? { trust: createReceiptService({ database, runReader: reader, descriptors: modules.map((module) => module.descriptor) }) } : {}), canonical: { database, reader, descriptors: { resolve } } });
   const detailDeps = { ...runDetail, descriptors: { resolve: (id: string) => {
     const module = modules.find((candidate) => candidate.descriptor.id === id);
     return module === undefined ? undefined : { ...module.descriptor, dataOrigins: dataOriginViewsOf(module), gateNodes: gateNodeViewsOf(module.descriptor), writeContracts: writeContractViewsOf(module.descriptor) };
@@ -151,7 +126,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
   app.use("*", async (c, next) => { c.set("requestActorId", LOCAL_OPERATOR_ACTOR_ID); await next(); });
   registerExplorerRoutes(app, { ...explorer.routes, explorer: { ...explorer.routes.explorer, modules, buildManifest: fixtureBuildManifest(modules.map((module) => module.descriptor.id)) } });
   registerRunDetailRoutes(app, { runDetail: detailDeps });
-  registerTrustRoutes(app, { runDetail: detailDeps, ...(captures === undefined ? {} : { diagnosticBundles: { ...captures, runReader: reader } }) });
+  registerTrustRoutes(app, { runDetail: detailDeps });
   const day = clock.now().toISOString().slice(0, 10);
   const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, descriptorHash: hash, projectionGeneration: projection.generation(),
     serverClock: { now: clock.now().toISOString(), zone: "America/Los_Angeles" }, workflows: modules.map(({ descriptor, role }) => ({

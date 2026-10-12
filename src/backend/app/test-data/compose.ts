@@ -43,7 +43,6 @@ export interface TestDataComposeDependencies {
   readonly now?: () => Date;
 }
 
-export { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 
 type SubjectState = "ready" | "blocked" | "defect";
 interface SubjectReport {

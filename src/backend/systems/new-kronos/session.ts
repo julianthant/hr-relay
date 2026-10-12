@@ -22,7 +22,6 @@ import {
   waitForAuthenticatedLanding,
   waitForSsoForm,
 } from "../browser-shared/ucsd-sso.js";
-export { newKronosSession } from "./session-provider.js";
 
 const SYSTEM = "new-kronos" as const;
 
@@ -41,7 +40,7 @@ const SSO_FORM_SELECTOR =
   'input#ssousername, input#ssopassword, button[name="_eventId_proceed"], form[name="loginForm"]';
 
 
-export function isAuthenticatedNewKronosUrl(rawUrl: string): boolean {
+function isAuthenticatedNewKronosUrl(rawUrl: string): boolean {
   const url = rawUrl.toLowerCase();
   return url.includes(NEW_KRONOS_APP_HOST)
     && url.includes(NEW_KRONOS_APP_PATH)

@@ -20,12 +20,12 @@ import { VerifiedArtifactOperationalError } from "../../storage/artifacts/server
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
 import { requireTrustRun } from "../trust/run-reader.js";
 
-export interface VerifiedRunCaptures {
+interface VerifiedRunCaptures {
   readonly state: "available";
   readonly artifacts: readonly RunCaptureArtifactWire[];
 }
 
-export type RunCaptureInspection = VerifiedRunCaptures | Readonly<{
+type RunCaptureInspection = VerifiedRunCaptures | Readonly<{
   state: "absent";
   reason: string;
 }>;
@@ -63,7 +63,7 @@ function captureArtifactRef(runId: string, attachment: DiagnosticBundle["attachm
   }
 }
 
-export async function verifyRunCaptures(
+async function verifyRunCaptures(
   deps: RunDetailQueryDeps,
   runId: string,
   signal?: AbortSignal,

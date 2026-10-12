@@ -1,5 +1,3 @@
-/** WHERE THE OPERATOR HAS BEEN. A queue row can send you somewhere else */
-
 /** the smallest tuple that reproduces a view exactly */
 export interface NavPlace {
   /** the day partition the queue was reading */
@@ -21,13 +19,13 @@ export interface NavHistory {
 
 /** How far back the operator can go. Deep enough that a session of cross-panel
  * link-following never runs out, shallow enough that the array is not a leak. */
-export const NAV_HISTORY_LIMIT = 50;
+const NAV_HISTORY_LIMIT = 50;
 
 export function initNavHistory(place: NavPlace): NavHistory {
   return { places: [place], index: 0 };
 }
 
-export function samePlace(a: NavPlace | undefined, b: NavPlace | undefined): boolean {
+function samePlace(a: NavPlace | undefined, b: NavPlace | undefined): boolean {
   if (a === undefined || b === undefined) return false;
   return a.followToday === b.followToday && (a.followToday === true || a.day === b.day) && a.workflow === b.workflow && a.runId === b.runId && a.tab === b.tab;
 }
@@ -50,7 +48,6 @@ export function pushPlace(history: NavHistory, place: NavPlace): NavHistory {
   if (samePlace(currentPlace(history), place)) return history;
   const kept = history.places.slice(0, history.index + 1);
   kept.push(place);
-  // The oldest end goes, and the index goes
   const overflow = Math.max(0, kept.length - NAV_HISTORY_LIMIT);
   const places = overflow > 0 ? kept.slice(overflow) : kept;
   return { places, index: places.length - 1 };

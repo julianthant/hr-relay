@@ -9,7 +9,7 @@ import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "../transport.js";
 
 
-export function runIdentityError(context: string, code: string, requestedRunId: string): DashboardClientError {
+function runIdentityError(context: string, code: string, requestedRunId: string): DashboardClientError {
   return new DashboardClientError({
     kind: "schema",
     code,

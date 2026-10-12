@@ -30,12 +30,8 @@ export type ProofShape =
   /** Named, with the path and the zod type — never a silent empty field list. */
   | { readonly state: "undescribable"; readonly reason: string };
 
-interface ZodInternals {
-  readonly _zod: { readonly def: { readonly [key: string]: unknown } };
-}
-
 function definitionOf(schema: z.core.$ZodType): { readonly [key: string]: unknown } {
-  return (schema as unknown as ZodInternals)._zod.def;
+  return schema._zod.def as z.core.$ZodTypeDef & { readonly [key: string]: unknown };
 }
 
 interface CheckDefinition {

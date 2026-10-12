@@ -174,7 +174,7 @@ export interface RunQueueProjectionHealth {
   readonly lastError?: string;
 }
 
-export type ProjectedRunLogEvent = Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>;
+type ProjectedRunLogEvent = Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>;
 
 export interface ProjectedRunLogEntry {
   readonly line: TimelineLine;

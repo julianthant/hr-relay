@@ -13,7 +13,7 @@ import type { RunQueueProjection } from "../projections/run-queue-projection.js"
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 
 
-export interface BootstrapModuleView {
+interface BootstrapModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly role: WorkflowModuleRole;
 

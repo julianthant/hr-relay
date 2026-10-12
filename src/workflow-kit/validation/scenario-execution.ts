@@ -17,7 +17,6 @@ export const ExecutableScenarioSpecSchema = z.strictObject({
   scenarioId: ScenarioIdSchema,
   file: z.string().regex(GRAPH_SCENARIO_FILE_PATTERN),
 });
-export type ExecutableScenarioSpec = z.infer<typeof ExecutableScenarioSpecSchema>;
 
 /** Production scenario ids are registered here; contracts and descriptors may reference only these, and a lane separately proves each row is a real `it(...)` in its file. */
 /** Every registered workflow owns exactly one structural scenario source file. */
@@ -262,7 +261,7 @@ export function auditExecutableScenarioParity(
 /* ── the corpus's own layout ──────────────────────────────────────── */
 
 /** One file in `tests/scenario/`, as the guard's directory read observes it. Titles are passed in, not read here, so this pure audit is proved against violating corpora, not a live tree. */
-export const ScenarioCorpusFileSchema = z.strictObject({
+const ScenarioCorpusFileSchema = z.strictObject({
   /** Repo-relative, forward-slashed. */
   file: z.string().min(1),
   /** Every top-level `it(...)` title in declaration order. */
