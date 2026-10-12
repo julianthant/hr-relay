@@ -30,6 +30,7 @@ import {
   UCPATH_SS_SMART_HR_SEARCH_READY,
   UcpathCommitRefusedError,
   UcpathEmplIdNotRecognizedError,
+  UcpathEmploymentRecordMismatchError,
   UcpathPendingSweepStagingSchema,
   UcpathSsSmartHrSettlementDiagnosticSchema,
   UcpathTerminationStagingSchema,
@@ -563,6 +564,9 @@ async function stageTerminationOnPage(
   }
   const observedName = (await nameDisplay.innerText()).trim();
   const observedEmplRecord = await textOf(page.locator(DRIVER_ANCHOR.wizardEmplRecord));
+  if (observedEmplRecord.length === 0 || observedEmplRecord !== input.emplRecord) {
+    throw new UcpathEmploymentRecordMismatchError(input.emplRecord, observedEmplRecord);
+  }
   // The job effective date is disabled and derived by UCPath; inspect it without filling.
   const jobEffectiveDate = page.locator(DRIVER_ANCHOR.wizardJobEffectiveDate);
   const observedEffectiveDate = await textOf(jobEffectiveDate);
@@ -612,7 +616,7 @@ async function stageTerminationOnPage(
     stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
     emplId: input.emplId,
     observedName,
-    observedEmplRecord: observedEmplRecord.length > 0 ? observedEmplRecord : input.emplRecord,
+    observedEmplRecord,
     template: input.template,
     transactionDate: input.effectiveDate,
     effectiveDate: observedEffectiveDate,
