@@ -54,7 +54,7 @@ import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../start
 import { type ExplorerEditApplyRequest, ExplorerEditApplyResultSchema, type ExplorerEditApplyResult } from "../../../models/dashboard/explorer.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsReadbackSchema, type ProtectedSettingsReadback } from "../../../models/config/protected-settings.js";
 
-/* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
+/* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
   "failure-resolution": ["annotate-failure"],

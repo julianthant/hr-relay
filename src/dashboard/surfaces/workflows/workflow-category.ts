@@ -45,7 +45,7 @@ export interface WorkflowGroupingFacts {
   readonly role: WorkflowModuleRole;
 }
 
-/** The harness marking every listing surface renders (ref dashboard-surfaces §Shell).
+/** The harness marking every listing surface renders (ref dashboard-surfaces).
  * It is present on an entry whose OWN served role is `chunk-harness` and on no */
 export interface WorkflowHarnessMarking {
   /** the composition this entry proves a step of — always known, it is served */
