@@ -1,263 +1,42 @@
 # Duo Autopilot
 
-Hands-off **UCSD Duo MFA in your own everyday browser** — a Manifest V3 Chrome
-extension. When Duo asks for a security key or Touch ID, the extension answers
-the WebAuthn ceremony itself, in pure JavaScript. **No phone push. No fingerprint
-touch. No native dialog. No debugger banner.** The Duo prompt just clears.
+Relay loads this Manifest V3 extension into its owned Chromium sessions to answer Duo WebAuthn assertions for `duosecurity.com`. Full Chromium is required because the separate headless shell cannot load extensions. Relay can run full Chromium headed or headless.
 
-It's a tiny **software FIDO2 authenticator** that lives in the page: it intercepts
-`navigator.credentials.get()` on `*.duosecurity.com`, signs Duo's challenge with a
-P-256 key you already enrolled, and hands back a synthetic `PublicKeyCredential`.
-Because the ceremony never reaches Chrome's real WebAuthn stack, there's no OS
-prompt and none of the factor-selection dance.
+This automates a Duo factor. Use it only for an account and environment you are authorized to operate, and follow the institution's authentication policy.
 
----
+## Provisioning
 
-## ⚠️ Read this first
+Relay reads and validates the protected credential file configured by `paths.duoCredential` (`duoWebauthnCredential`). It loads the extension from `paths.duoExtensionDir`, then writes the credential records to the extension's `chrome.storage.session` for each owned browser session. Relay restricts that storage to trusted extension contexts and verifies the stored records. It refuses to provision if a credential copy already exists in `chrome.storage.local`.
 
-This tool **deliberately answers your own MFA without you**. That is the whole
-point, and it is also why you must be careful:
+The extension does not enroll keys or import a packaged credential file. Its Options page shows the active session's credential status and signing counters; it cannot add or replace credentials. Set the credential through Relay's machine credential file.
 
-- **Only for your own account, on your own machine.** This is a personal
-  convenience tool, not an automation product and not something to point at an
-  account you don't own. Using it against someone else's account is account
-  compromise — don't.
-- **It weakens a second factor by design.** Anyone with access to your unlocked
-  browser profile can now pass Duo as you. Treat your OS login and your Chrome
-  profile as the real second factor now.
-- **Your private key lives in `chrome.storage.local`.** It never leaves your
-  machine and is never committed (`credentials/` is gitignored), but it is on
-  disk in your browser profile. Clearing it (see the kill switch) removes it.
-- **Check your institution's policy.** Bypassing the interactive step of MFA may
-  violate acceptable-use rules even on your own account. That's on you.
+## Assertion flow
 
-The credential the extension uses is a **real WebAuthn credential you enrolled
-with Duo yourself** — the same kind a hardware key would create. You are replaying
-your own enrolled key from a more convenient place, not forging anything.
+On `*.duosecurity.com`, `inpage.js` intercepts `navigator.credentials.get()` only when the WebAuthn relying-party ID is `duosecurity.com`. `content.js` relays the challenge to `background.js`. The service worker signs it with the provisioned private key, advances the signing counter in session storage, and returns the assertion. The page and content script never receive the private key. If signing is disabled or no matching credential is available, the browser handles the request normally.
 
----
+The extension does not override `navigator.credentials.create()`. Duo device registration uses the browser's normal WebAuthn flow.
 
-## How it works (30-second version)
+When enabled, the trust-click setting selects Duo's affirmative "Yes, this is my device" or "Yes, trust browser" control after approval. It does not select the refusal control.
 
-```
-Duo page (MAIN world)        content.js (ISOLATED)        background.js (service worker)
-  navigator.credentials.get  ──►  bridge  ──►  sign(): load key from storage,
-  / .create() intercepted                       bump signCount, build authData,
-        ▲                                        import P-256 key, sign, DER-encode
-        └──────── assertion / attestation ◄──────────── (key NEVER enters the page)
-```
+## Options
 
-The private key is used **only** in the service worker (`background.js` →
-`crypto.js`). The in-page shim (`inpage.js`) only sees the public, single-use
-result, so Duo's own JavaScript on the page can never read your key.
+The extension Options page provides these controls:
 
-Anything that isn't a Duo ceremony falls through to the browser's real
-`get()` / `create()`, so your other passkeys keep working normally.
-
----
-
-## Install (load unpacked)
-
-No build step — it's plain MV3 JavaScript.
-
-1. Clone this repo.
-2. Open `chrome://extensions`.
-3. Turn on **Developer mode** (top-right).
-4. Click **Load unpacked** and select this folder.
-5. Open the extension's **Options** page (the ⚙️ / "Extension options").
-
-You'll see the status hero: **No credential** until you set one up.
-
-## Headless / automated use (playwright-cli)
-
-This extension is part of the **hr-automation rebuild** repo so it can clear Duo inside an
-automated browser — specifically the `playwright-cli` session used for headless
-selector mapping against UCSD's auth-gated systems. There is no Options UI to
-click in that browser, so the extension **self-arms**: on service-worker startup,
-when storage holds no credential, it imports the one packaged at
-`credentials/duo-webauthn.json` (the same file the Options "Import from packaged
-file" button reads). Gated so it never overwrites a human-loaded credential, and a
-silent no-op when the file is absent (it's gitignored) or `autoImport` is off.
-
-On auto-import the `signCount` is stamped to the current unix time (seconds) if
-the packaged value is lower. This is the automated equivalent of "Resync
-signCount": the packaged counter is usually far behind Duo's server-observed
-value, so without it Duo rejects the first assertion as a cloned key and the
-prompt hangs. A unix timestamp is monotonic across fresh browser profiles (a
-fixed bump like 1,000,000 would collide on the second headless session) and stays
-ahead of Duo's view. Verified end-to-end against a live UCPath login 2026-06-25.
-
-The admitted transaction-free browser verification command is `npx tsx scripts/verify/browser-login.ts <system>`.
-
-> **Chromium install under Node 26:** `playwright-cli install-browser chromium`
-> hangs in Playwright's zip extractor right before the ~230MB framework. Workaround:
-> `curl` the CfT zip (URL is printed by the install command) and extract with macOS
-> `ditto -x -k <zip> ~/Library/Caches/ms-playwright/chromium-<rev>/`, then
-> `touch …/INSTALLATION_COMPLETE …/DEPENDENCIES_VALIDATED`.
-
----
-
-## Getting a credential
-
-You need a Duo credential in storage before autopilot can do anything. There are
-two ways.
-
-### Option A — Enroll a fresh one through Duo (recommended)
-
-This is the "set it up for me" path: the extension acts as a full software
-authenticator and **captures a brand-new credential straight from Duo's own
-"Add a device" page**. You never touch JSON.
-
-1. On the Options page, open **Set up a credential → Enroll via Duo**.
-2. Pick the factor you'll add: **Touch ID** (most systems) or **Security key**
-   (needed for ACT CRM). This *arms* a one-shot capture.
-3. In another tab, start any UCSD login and reach the Duo prompt. Choose
-   **Other options → Manage devices**, and approve once with your phone (Duo
-   requires an existing factor to add a new one — this is the only time you'll
-   need it).
-4. Click **Add a device → Security key / Touch ID**. When Chrome would normally
-   pop a registration dialog, Autopilot intercepts it instead: it mints a P-256
-   keypair, hands Duo the public key, and saves the private credential itself.
-5. The Options page updates the moment it's captured. You're armed.
-
-> The capture only fires while you've explicitly armed it — a normal security-key
-> registration on Duo (when you haven't armed) passes straight through to your
-> real authenticator, untouched.
-
-Repeat for the second factor type if you use ACT CRM (which only offers a
-security key). Touch ID covers the other five systems.
-
-### Option B — Import existing credential JSON
-
-If you already have a `duo-webauthn.json` (e.g. exported from another tool), use
-**Credential → Paste JSON…** and paste it, or drop the file at
-`credentials/duo-webauthn.json` in the unpacked folder and click **Import from
-packaged file**. Shape:
-
-```json
-{
-  "credentials": [
-    {
-      "rpId": "duosecurity.com",
-      "credentialId": "<base64>",
-      "privateKey": "<base64 PKCS#8 EC P-256>",
-      "userHandle": "<base64 | null>",
-      "signCount": 100220,
-      "isResidentCredential": false,
-      "transport": "internal"
-    }
-  ]
-}
-```
-
-`credentials/` is **gitignored** — the key never gets committed.
-
----
-
-## If Duo "signs but never completes" — Resync signCount
-
-WebAuthn servers treat a counter that doesn't advance as a cloned-key signal. If
-the stored `signCount` falls *behind* what Duo has already observed (e.g. an
-imported file went stale), the first assertion is rejected and the prompt just
-hangs.
-
-Fix: Options → **Credential → Resync signCount**. It bumps every stored counter
-to at least **1,000,000**, safely ahead of Duo's view. Then retry the login.
-(Freshly *enrolled* credentials start at 0 and never hit this — Duo just saw 0.)
-
-### The automation case this used to break (2026-08-19)
-
-Duo's counter is per **credential** and lives on Duo's side. This extension's
-copy is per **browser profile**, and the hr-automation rebuild runs one profile
-per `(worker, system, instance, config fingerprint)` — many profiles, one
-credential, no shared counter. While the sign path advanced by `+ 1`, every cold
-profile jumped the shared counter to `now` on import and every warm profile
-crept by one, so a warm profile could never catch up: **every** subsequent login
-on it was refused, permanently, and the only exit was deleting the profile
-directory. Live-reproduced by forcing one profile's counter 1 063 below Duo's
-observed value — 60.01 s, refused, with the same profile logging in at ~19 s a
-minute earlier.
-
-`src/sign-count.js` now floors every ceremony at wall-clock seconds
-(`max(stored + 1, nowSec)`), which is monotonic across profiles because they all
-read the same clock. See `docs/rebuild/migrations/separations.md` §9.21 for the
-bisection and the measured numbers.
-
----
-
-## Controls (Options page)
-
-| Control | What it does |
+| Control | Behavior |
 |---|---|
-| **Autopilot** | Master kill switch. Off → Duo falls back to your phone. |
-| **Trust this device** | Auto-clicks "Yes, this is my device" so Duo prompts less often. |
-| **Show toast** | Brief on-page "Duo Autopilot approved / enrolled" confirmation. |
-| **Resync signCount** | Bumps counters ahead of Duo if a login stalls (see above). |
-| **Clear credentials** | Wipes the stored key from this browser. Two-tap confirm. |
+| **Autopilot** | Enables or disables automatic assertion signing. |
+| **Trust this device** | Enables or disables the affirmative trust-device click. |
+| **Show toast** | Enables or disables the on-page approval notice. |
+| **Clear credentials** | Removes the credential records from the current browser session. Relay provisions them again when it starts a new owned session. |
 
----
+All three toggles default to on. Clearing credentials affects only the current browser session.
 
-## The systems it covers
+## Offline test
 
-All UCSD logins land on the same Duo Universal Prompt, so one credential set
-covers them all:
-
-| System | Factor used |
-|---|---|
-| UCPath, UKG (old Kronos), Kuali Build, New Kronos (WFD), ServiceNow (HR ESC) | Touch ID (`internal`) |
-| ACT CRM (Salesforce) | Security key (`usb`) |
-
----
-
-## Repo layout
-
-```
-duo-autopilot/
-  manifest.json          MV3 manifest (storage perm + duosecurity.com scope)
-  src/
-    inpage.js            MAIN world — overrides navigator.credentials.get/.create
-    content.js           ISOLATED — message bridge + "trust this device" auto-click
-    background.js        service worker — holds the key, signs, mints credentials,
-                         and auto-imports the packaged credential when storage is empty
-    crypto.js            byte-exact WebAuthn helpers (assertion + registration + CBOR)
-    options.html / .js   status, toggles, and the enrollment / import flow
-  credentials/           GITIGNORED — your private key, never committed
-  test/crypto.test.mjs   offline self-test (run: npm --prefix duo-autopilot test from repo root)
-  BUILD_PLAN.md          the full design spec
-```
-
-## Develop / test
+From the repository root, run:
 
 ```bash
-# From the repo root:
-npm --prefix duo-autopilot test  # offline crypto self-test: base64, DER, assertion + registration round-trips
-
-# Or from duo-autopilot/:
-npm test
+npm --prefix duo-autopilot test
 ```
 
-The repository-root `npm test` command runs the rebuild's Vitest suite; it does
-**not** run this Duo crypto self-test.
-
-The test generates throwaway keys (never your real one) and proves the byte-exact
-path Duo's server checks: that a freshly *registered* key produces an *assertion*
-its own public key verifies.
-
----
-
-## Security model, in full
-
-1. The private key **never enters the page's MAIN world** — only the service
-   worker imports and signs with it.
-2. Content scripts are scoped to `*.duosecurity.com` only — never `<all_urls>`.
-3. The shim only answers a ceremony whose `rpId` is `duosecurity.com`; everything
-   else defers to the real authenticator.
-4. Enrollment capture is **opt-in and one-shot** — it must be armed from Options
-   and disarms itself after a single capture.
-5. `signCount` advances monotonically and is persisted *before* the assertion is
-   returned, so it stays at or ahead of Duo's view.
-6. The key file is gitignored and never logged.
-
----
-
-*Personal tool. No warranty. Use it on your own account and nobody else's.*
+The test uses a generated throwaway P-256 key and verifies the byte-exact assertion data and signature. It does not read the configured credential.

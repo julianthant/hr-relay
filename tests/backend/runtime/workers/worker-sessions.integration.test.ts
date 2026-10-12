@@ -13,6 +13,7 @@ import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-r
 import { type BrowserDeadlineScheduler } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 
 import { type WorkerBrowserSessionFactory, type WorkerSessionEvent } from "../../../../src/backend/runtime/workers/worker-sessions.js";
+import { DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 
 
@@ -324,6 +325,105 @@ describe("bounded browser-session acquisition", () => {
       events.filter((event) => event.type === "browser-session:close").map((event) => event.reason),
       ["poisoned"],
     );
+  });
+
+  it("shares one stale recovery claim and acquisition deadline across the Duo profile retry", async () => {
+    const base = sessionFactory();
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const claims: (() => boolean)[] = [];
+    const budgets: number[] = [];
+    let attempts = 0;
+    const factory: WorkerBrowserSessionFactory = {
+      discardProfile: async () => ({ profileDirectory: "/fixture/profile" }),
+      open: async input => {
+        assert.ok(input.claimStaleRequestRecovery);
+        assert.ok(input.acquisitionRemainingMs);
+        claims.push(input.claimStaleRequestRecovery);
+        budgets.push(input.acquisitionRemainingMs());
+        const resource = await base.factory.open(input);
+        return { ...resource, authentication: { authenticate: async () => {
+          if (attempts++ === 0) {
+            assert.equal(input.claimStaleRequestRecovery?.(), true);
+            clock.advanceMonotonic(100);
+            throw new DuoTerminalRefusalError("ucpath", "fixture refusal", "https://duosecurity.com/");
+          }
+          assert.equal(input.claimStaleRequestRecovery?.(), false);
+          return "logged-in";
+        } } };
+      },
+    };
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry, factory, clock,
+      scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: { openGate: () => ({
+        withCeremony: async () => { throw new Error("unused fixture ceremony"); },
+        retainedForRecovery: () => true, dispose: () => undefined,
+      }) },
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    await sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined);
+    assert.equal(claims.length, 2);
+    assert.equal(claims[0], claims[1]);
+    assert.deepEqual(budgets, [FIXTURE_SESSION_ACQUIRE_MS, FIXTURE_SESSION_ACQUIRE_MS - 100]);
+    await sessions.closeAll("worker-stop");
+  });
+
+  it("awaits failed acquisition cleanup before closeAll returns", async () => {
+    const base = sessionFactory({ loginHangs: true });
+    let releaseCleanup: (() => void) | undefined;
+    const cleanup = new Promise<void>(resolve => { releaseCleanup = resolve; });
+    let closureProved = false;
+    const factory: WorkerBrowserSessionFactory = {
+      open: async input => {
+        const resource = await base.factory.open(input);
+        return { ...resource, close: async closeInput => {
+          await cleanup;
+          const proof = await resource.close(closeInput);
+          closureProved = true;
+          return proof;
+        } };
+      },
+    };
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const scheduler = new ManualScheduler(clock);
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry, factory,
+      clock, scheduler, acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    const lease = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined);
+    const rejection = assert.rejects(lease, /timeouts\.sessionAcquireMs bound/);
+    await new Promise(resolve => setImmediate(resolve));
+    scheduler.pending()[0].fire();
+    await rejection;
+    let shutdownCompleted = false;
+    const shutdown = sessions.closeAll("worker-stop").then(() => { shutdownCompleted = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(shutdownCompleted, false);
+    assert.equal(closureProved, false);
+    releaseCleanup?.();
+    await shutdown;
+    assert.equal(closureProved, true);
+    assert.equal(base.closes(), 1);
+    assert.deepEqual(sessions.activeSystems(), []);
+  });
+
+  it("retains failed factory cleanup after its acquisition promise has settled", async () => {
+    const failure = new AggregateError([new Error("launch failed"), new Error("closure unproved")], "setup cleanup failed");
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
+      factory: { open: async () => { throw failure; } }, clock, scheduler: new ManualScheduler(clock),
+      acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: fixtureDuoCeremonyGates(clock),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined), error => error === failure);
+    await new Promise(resolve => setImmediate(resolve));
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await assert.rejects(sessions.closeAll("worker-stop"), error => error instanceof AggregateError && error.errors.includes(failure));
+    }
+    await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => undefined), error => error === failure);
   });
 
   it("lets an abandoned acquisition run its OWN proven cleanup when it is cooperative", async () => {

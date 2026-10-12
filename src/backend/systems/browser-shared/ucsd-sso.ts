@@ -5,10 +5,11 @@ import { assertDuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-
 import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { probeAbsentControl } from "./authenticated-application.js";
 import type { ObservedFact } from "./authenticated-application.js";
-import { BrowserLoginError, DuoTerminalRefusalError } from "./login-contract.js";
+import { BrowserLoginError, BrowserLandingStallError, DuoTerminalRefusalError, DUO_TERMINAL_REFUSAL_TEXT } from "./login-contract.js";
 import type {
   AuthenticationProbe,
   BrowserLoginStep,
+  BrowserLandingStallCode,
   SystemLoginContext,
 } from "./login-contract.js";
 import type { BrowserSystemId } from "../../../rules/identity/ids.js";
@@ -21,16 +22,8 @@ const SSO_SUBMIT_SELECTOR = 'button[name="_eventId_proceed"]';
 
 const STALE_REQUEST_TEXT = "Web Login Service - Stale Request";
 // Match Duo's outcome sentence, not its factor-specific heading; use first for the union locator.
-const DUO_TERMINAL_REFUSAL_TEXT = /login request .*(?:canceled|cancelled) or timed out/i;
-// A refused security-key assertion can indicate a stale authenticator counter; waiting longer cannot repair it.
-const DUO_TERMINAL_REFUSAL_MESSAGE =
-  "Duo REFUSED the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; "
-  + "this login is dead and the prompt will not clear on its own. The cause is almost never Duo "
-  + "hand-approval: it is a Duo Autopilot signCount regression, where this browser profile's stored "
-  + "counter has fallen BEHIND the value Duo has already observed for the shared credential (a "
-  + "counter that does not advance is a cloned-key signal), which is what happens when any other "
-  + "profile using the same credential signed more recently. Check the extension's stored signCount "
-  + "before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs";
+const DUO_TERMINAL_REFUSAL_PATTERN = /login request .*(?:canceled|cancelled) or timed out/i;
+
 
 export function abortIfCancelled(
   system: BrowserSystemId,
@@ -209,7 +202,7 @@ export async function submitSsoForm(
 }
 
 function duoTerminalRefusalLocator(page: Page): Locator {
-  return page.getByText(DUO_TERMINAL_REFUSAL_TEXT).first();
+  return page.getByText(DUO_TERMINAL_REFUSAL_PATTERN).first();
 }
 
 // Only a terminal refusal settles this arm; the parallel landing wait owns its timeout.
@@ -222,6 +215,14 @@ async function observeDuoTerminalRefusal(page: Page, timeoutMs: number): Promise
   return "duo-refused";
 }
 
+async function observeStaleRequest(page: Page, timeoutMs: number): Promise<"stale-request"> {
+  try {
+    await page.getByText(STALE_REQUEST_TEXT).first().waitFor({ state: "visible", timeout: timeoutMs });
+    if (URL.parse(page.url())?.hostname === "a5.ucsd.edu") return "stale-request";
+  } catch { /* The landing arm owns timeout and diagnosis. */ }
+  return await new Promise<"stale-request">(() => undefined);
+}
+
 
 export async function waitForAuthenticatedLanding(
   system: BrowserSystemId,
@@ -231,68 +232,69 @@ export async function waitForAuthenticatedLanding(
   timeoutMs: number,
 ): Promise<void> {
   assertDuoCeremonyLeaseToken(token, { system });
+  const remaining = context.acquisitionRemainingMs?.() ?? timeoutMs + 1_000;
+  const landingMs = Math.max(1, Math.min(timeoutMs, remaining - Math.min(1_000, remaining / 2)));
   try {
     const outcome = await raceCancellation(
-      Promise.race<"landed" | "duo-refused">([
-        context.page.waitForURL((url) => landed(url.href), { timeout: timeoutMs })
+      Promise.race<"landed" | "duo-refused" | "stale-request">([
+        context.page.waitForURL((url) => landed(url.href), { timeout: landingMs })
           .then(() => "landed"),
-        observeDuoTerminalRefusal(context.page, timeoutMs),
+        observeDuoTerminalRefusal(context.page, landingMs),
+        observeStaleRequest(context.page, landingMs),
       ]),
       system,
       "duo-clearance",
       context,
     );
+    if (outcome === "stale-request") throw new Error("Shibboleth stale request observed");
     if (outcome === "duo-refused") {
-      throw new DuoTerminalRefusalError(system, DUO_TERMINAL_REFUSAL_MESSAGE, context.page.url());
+      throw new DuoTerminalRefusalError(system, DUO_TERMINAL_REFUSAL_TEXT, context.page.url());
     }
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
-    const observed = context.page.url();
-    const diagnosis = await describeStalledLanding(context, observed);
-    if (diagnosis === DUO_TERMINAL_REFUSAL_MESSAGE) {
-
-      throw new DuoTerminalRefusalError(system, diagnosis, observed, { cause: error });
+    const observed = URL.parse(context.page.url());
+    let title = "";
+    let diagnosis: BrowserLandingStallCode | "duo-refused" = "landing-probe-unavailable";
+    const budget = Math.max(1, Math.min(900, (context.acquisitionRemainingMs?.() ?? 1_000) - 100));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await raceCancellation(Promise.race([
+        Promise.all([describeStalledLanding(context), context.page.title()]),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("landing diagnosis deadline")), budget); }),
+      ]), system, "duo-clearance", context);
+      [diagnosis, title] = result;
+    } catch (probeError) {
+      if (context.signal.aborted) throw probeError;
+    } finally {
+      clearTimeout(timer);
     }
-    throw new BrowserLoginError(system, "duo-clearance", diagnosis, observed, { cause: error });
+    if (diagnosis === "duo-refused") {
+      throw new DuoTerminalRefusalError(system, DUO_TERMINAL_REFUSAL_TEXT, context.page.url(), { cause: error }, title);
+    }
+    throw new BrowserLandingStallError(system, diagnosis, {
+      host: observed?.hostname ?? "",
+      path: observed?.pathname ?? "",
+      title: title,
+    }, { cause: error });
   }
 }
 
-
 async function describeStalledLanding(
   context: Pick<SystemLoginContext, "page">,
-  observed: string,
-): Promise<string> {
-  let staleCount: number;
+): Promise<BrowserLandingStallCode | "duo-refused"> {
   try {
-    staleCount = await context.page.getByText(STALE_REQUEST_TEXT).count();
-  } catch {
-    return "no authenticated landing appeared, and the stalled page could not be probed";
-  }
-  if (staleCount > 0) {
-    return "Shibboleth served its stale-request page; the SAML execution expired during login";
-  }
-  if (observed.includes(DUO_HOST)) {
-    // Probe a stalled Duo page for explicit refusal before blaming the approval timeout.
-    let refusalCount: number;
-    try {
-      refusalCount = await duoTerminalRefusalLocator(context.page).count();
-    } catch (error) {
-      return `the Duo prompt never cleared, and whether Duo had already refused it could not be probed: ${error instanceof Error ? error.message : String(error)}`;
+    if (URL.parse(context.page.url())?.hostname === "a5.ucsd.edu"
+      && await context.page.getByText(STALE_REQUEST_TEXT).count() > 0) return "shibboleth-stale-request";
+    const host = URL.parse(context.page.url())?.hostname;
+    if (host === DUO_HOST || host?.endsWith(`.${DUO_HOST}`)) {
+      try {
+        if (await duoTerminalRefusalLocator(context.page).count() > 0) return "duo-refused";
+      } catch { return "duo-refusal-unproven"; }
+      return "duo-prompt-stalled";
     }
-    if (refusalCount > 0) return DUO_TERMINAL_REFUSAL_MESSAGE;
-    return "the Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current";
-  }
-  // TritON can reject the first factor by repainting its form at the same URL.
-  let ssoStillPresent: boolean;
-  try {
-    ssoStillPresent = await isSsoFormPresent(context.page);
-  } catch (error) {
-    return `no authenticated landing appeared, and the stalled page could not be probed further: ${error instanceof Error ? error.message : String(error)}`;
-  }
-  if (ssoStillPresent) {
-    return "the UCSD SSO form is still on the page; the first factor was rejected, so no Duo prompt was ever reached";
-  }
-  return "no authenticated landing appeared";
+    if (await isSsoFormPresent(context.page)) return "sso-first-factor-rejected";
+    return "authenticated-landing-missing";
+  } catch { return "landing-probe-unavailable"; }
 }
 
 
