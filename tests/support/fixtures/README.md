@@ -178,6 +178,10 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/runtime-lock-contender.ts` | runtime lock contender |
 | `processes/worker-browser-control-cli.ts` | worker browser control cli |
 | `processes/worker-stub-cli.ts` | worker stub cli |
+| `helpers/browser/session-factory-fixtures.ts` | fresh browser factory and worker session runtime |
+| `helpers/workflow/flow-task-fixtures.ts` | flow, graph and scenario task contracts |
+| `helpers/intake/work-study-fixtures.ts` | WorkStudy projection and manifest input |
+| `helpers/dashboard/activity-report-fixtures.ts` | empty and populated Activity report input |
 
 ## File fixtures
 
