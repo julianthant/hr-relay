@@ -1,3 +1,4 @@
+import { TaskRefusal } from "../../../support/helpers/separation-task-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { ReadOnboardingRecordOutputSchema } from "../../../../src/models/systems/crm/read-onboarding-record.js";
@@ -8,11 +9,7 @@ import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.j
 import { DataPointSchema } from "../../../../src/rules/workflow/task-provenance.js";
 import { readActiveStatusTask } from "../../../../src/workflows/person-lookup/tasks/read-active-status.js";
 
-class TaskRefusal extends Error {
-  constructor(readonly code: string, message: string) {
-    super(message);
-  }
-}
+
 
 it("names inconsistent UCPath and CRM identities without recording output facts", async () => {
   const expectedEid = EidSchema.parse("10873698");

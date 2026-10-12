@@ -1,30 +1,12 @@
+import { createSeparationTaskFixtures, TaskRefusal } from "../../../support/helpers/separation-task-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EidSchema, FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { IdentityEvidencePacketSchema } from "../../../../src/rules/separations/identity-evidence.js";
-import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { verifyIdentityApprovalTask } from "../../../../src/workflows/separations/tasks/verify-identity-approval.js";
 
-class TaskRefusal extends Error {
-  constructor(readonly code: string, message: string) {
-    super(message);
-  }
-}
+const { taskContext } = createSeparationTaskFixtures();
 
-function taskContext() {
-  const records: DataPoint[] = [];
-  const ctx = {
-    signal: new AbortController().signal,
-    log: Object.freeze({ debug: () => undefined, info: () => undefined, warn: () => undefined }),
-    fail: (code: string, message: string): never => {
-      throw new TaskRefusal(code, message);
-    },
-    recordData(input: DataPoint | readonly DataPoint[]): void {
-      records.push(...(Array.isArray(input) ? input : [input]) as DataPoint[]);
-    },
-  };
-  return { ctx: ctx as never, records };
-}
 
 const APPROVAL_EID = EidSchema.parse("10873698");
 const APPROVAL_PACKET_JOBS = {

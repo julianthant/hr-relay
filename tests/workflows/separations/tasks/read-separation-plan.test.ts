@@ -1,33 +1,11 @@
+import { createSeparationTaskFixtures, TaskRefusal } from "../../../support/helpers/separation-task-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { DateOnlySchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
-import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
+import { DateOnlySchema } from "../../../../src/rules/identity/ids.js";
 import { readSeparationPlanTask } from "../../../../src/workflows/separations/tasks/read-separation-plan.js";
 
-const DOCUMENT = "4444";
-const NAME = "Person, Deterministic";
-const NOW = IsoInstantSchema.parse("2026-08-14T19:00:00.000Z");
+const { DOCUMENT, NAME, NOW, taskContext } = createSeparationTaskFixtures();
 
-class TaskRefusal extends Error {
-  constructor(readonly code: string, message: string) {
-    super(message);
-  }
-}
-
-function taskContext() {
-  const records: DataPoint[] = [];
-  const ctx = {
-    signal: new AbortController().signal,
-    log: Object.freeze({ debug: () => undefined, info: () => undefined, warn: () => undefined }),
-    fail: (code: string, message: string): never => {
-      throw new TaskRefusal(code, message);
-    },
-    recordData(input: DataPoint | readonly DataPoint[]): void {
-      records.push(...(Array.isArray(input) ? input : [input]) as DataPoint[]);
-    },
-  };
-  return { ctx: ctx as never, records };
-}
 
 function formDate(raw: string) {
   const [month, day, year] = raw.split("/");

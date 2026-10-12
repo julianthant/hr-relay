@@ -1,47 +1,10 @@
+import { createSeparationTaskFixtures, TaskRefusal } from "../../../support/helpers/separation-task-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import type { UcpathPersonSelection } from "../../../../src/models/systems/ucpath/search-person-org.js";
-import { EidSchema } from "../../../../src/rules/identity/ids.js";
-import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { matchSeparationSubjectTask } from "../../../../src/workflows/separations/tasks/match-separation-subject.js";
 
-const DOCUMENT = "4444";
-const EID = EidSchema.parse("10800000");
-const NAME = "Person, Deterministic";
+const { DOCUMENT, EID, NAME, taskContext, nameSelection } = createSeparationTaskFixtures();
 
-class TaskRefusal extends Error {
-  constructor(readonly code: string, message: string) {
-    super(message);
-  }
-}
-
-function taskContext() {
-  const records: DataPoint[] = [];
-  const ctx = {
-    signal: new AbortController().signal,
-    log: Object.freeze({ debug: () => undefined, info: () => undefined, warn: () => undefined }),
-    fail: (code: string, message: string): never => {
-      throw new TaskRefusal(code, message);
-    },
-    recordData(input: DataPoint | readonly DataPoint[]): void {
-      records.push(...(Array.isArray(input) ? input : [input]) as DataPoint[]);
-    },
-  };
-  return { ctx: ctx as never, records };
-}
-
-const nameSelection: UcpathPersonSelection = {
-  status: "resolved",
-  selected: {
-    emplId: EID,
-    name: NAME,
-    department: "Housing Dining Hospitality",
-    jobTitle: "STDT 2",
-    employeeStatus: "active",
-    hdh: true,
-  },
-  candidateEids: [EID],
-};
 
 describe("separations workflow task wrappers", () => {
 
