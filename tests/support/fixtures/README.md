@@ -90,6 +90,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |
 | `helpers/browser/fake-login-page.ts` | fake login page |
 | `helpers/canonical-run-reader.ts` | canonical run reader |
+| `helpers/dashboard-model-fixtures.ts` | dashboard run detail, queue, pagination and artifact data |
 | `helpers/dashboard/fixture-bff.ts` | fixture bff |
 | `helpers/dashboard/run-start-dialog-harness.ts` | run start dialog harness |
 | `helpers/dashboard/served-fixtures/bundle.ts` | bundle |
@@ -118,10 +119,18 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/integration/journaled-protected-settings.ts` | journaled protected settings |
 | `helpers/integration/storage-recovery-fixture.ts` | storage recovery fixture |
 | `helpers/kuali-finalization-fixtures.ts` | kuali finalization fixtures |
+| `helpers/operation-display-fixtures.ts` | operation display schemas, bindings and fixture builders |
 | `helpers/phase1f-executor-harness.ts` | phase1f executor harness |
 | `helpers/protected-secret-source.ts` | protected secret source |
 | `helpers/registered-workflows.ts` | registered workflows |
+| `helpers/retained-dashboard-mock-fixtures.ts` | retained dashboard mock sites and literals |
+| `helpers/run-integration-world.ts` | per-caller run database, clock and lifecycle setup |
+| `helpers/search-workflow-definition-fixtures.ts` | search input and workflow definition builders |
+| `helpers/seeded-dashboard-world.ts` | run records, queued events and dashboard seed builders |
+| `helpers/separation-identity-packet-fixture.ts` | synthetic separation identity approval packet |
+| `helpers/separation-task-fixtures.ts` | separation task inputs, context and refusal fixtures |
 | `helpers/separations-composition-fixtures.ts` | separations composition fixtures |
+| `helpers/settings-storage-doctor-fixtures.ts` | settings storage reports and resize observer fixture |
 | `helpers/storage/native-authority/retained-database-fixture.ts` | retained database fixture |
 | `helpers/storage/storage-relocation-fixture.ts` | storage relocation fixture |
 | `helpers/storage/transaction-history-fixture.ts` | transaction history fixture |
