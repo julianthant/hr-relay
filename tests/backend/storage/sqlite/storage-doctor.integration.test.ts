@@ -1,28 +1,30 @@
+import { createStorageBackupLocationFixtures } from "../../../support/helpers/storage/storage-relocation-fixture.js";
+import { createCredentialDoctorFixtures } from "../../../support/helpers/credential-doctor-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import fs, { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import fs, { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { afterEach, describe, it, vi } from "vitest";
-import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
-import { acquireExclusiveRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+
+
+
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+
 import { doctorAuthorityStorage, summarizeBackupHealth } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
-import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+
 import { SpanEventWireSchema } from "../../../../src/models/events/types.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { plan, relocate } from "../../../support/helpers/storage/storage-relocation-fixture.js";
+
 import { AuthorityDatabase as AuthorityDatabase_m2, composeStorageCommand, doctorAuthorityStorage as doctorAuthorityStorage_m2, syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -34,35 +36,7 @@ const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
 const workspaces: string[] = [];
 const _afterEachFixture0 = () => { for (const workspace of workspaces.splice(0)) rmSync(workspace, { recursive: true, force: true }); };
 
-async function movedFixture(artifactOnly = false) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "backup-location-")); workspaces.push(root);
-  const workspace = join(root, "workspace"); mkdirSync(workspace, {mode: 0o700});
-  const initial = acquireEntrypointAdmission(workspace, "exclusive");
-  let source = { stateRoot: initial.stateRoot, artifactRoot: initial.artifactRoot };
-  try {
-    const database = AuthorityDatabase.open(initial, { path: join(initial.stateRoot, "state.db"),
-      busyTimeoutMs: 250, migrationOwner: "backup-location-fixture" }, clock);
-    try {
-      const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, initial);
-      database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
-        fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
-        config: resolved.config, provenance: resolved.provenance });
-    } finally { database.close(); }
-    await backupStoppedAuthority(initial, initial.stateRoot, clock, join(initial.stateRoot, "locks"));
-  } finally { initial.release(); }
-  if (artifactOnly) {
-    const exterior = { stateRoot: join(root, "exterior-state"), artifactRoot: join(root, "exterior-artifacts") };
-    const first = plan(workspace, exterior); await relocate(workspace, first.commandId);
-    source = exterior;
-  }
-  const destination = artifactOnly ? { stateRoot: source.stateRoot, artifactRoot: join(root,"moved-artifacts") }
-    : { stateRoot: join(root,"moved-state"), artifactRoot: join(root,"moved-artifacts") };
-  const request = plan(workspace, destination); await relocate(workspace, request.commandId);
-  const admission = acquireExclusiveRuntimeAdmission(workspace);
-  const options = { stateRootTrustAnchor: root, stateRoot: destination.stateRoot,
-    authorityPath: join(destination.stateRoot,"state.db"), backupDirectory: join(destination.stateRoot,"backups","authority"), busyTimeoutMs:250 };
-  return { workspace, source, destination, admission, options };
-}
+const { movedFixture } = createStorageBackupLocationFixtures(workspaces, clock);
 
 it("verifies copied native backups as previous-location evidence without current restore eligibility", async () => {
 try {
@@ -122,39 +96,9 @@ const _afterEachFixture0 = () => {
   cleanups.length = 0;
 };
 
-function fixture() {
-  const workspace = mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-doctor-"));
-  cleanups.push(() => rmSync(workspace, { recursive: true, force: true }));
-  const admission = acquireEntrypointAdmission(workspace,"exclusive");
-  cleanups.push(() => admission.release());
-  const root = admission.stateRoot;
-  const authorityPath = join(root,"state.db");
-  const database = AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"credential-doctor-fixture"});
-  cleanups.push(() => database.close());
-  const credentialDirectory = join(root,"credentials");
-  const credentialPath = join(credentialDirectory,"protected.json");
-  const credentialStore = createCredentialStore({admission,stateRoot:root});
-  const options = {authorityPath,stateRoot:root,stateRootTrustAnchor:workspace,backupDirectory:join(root,"backups","authority"),busyTimeoutMs:100};
-  return {root,workspace,admission,database,credentialDirectory,credentialPath,credentialStore,options};
-}
+const { fixture, snapshot } = createCredentialDoctorFixtures(cleanups);
 
-function snapshot(root: string): unknown {
-  return readdirSync(root).sort().map((name) => {
-    const path = join(root, name);
-    const stat = lstatSync(path);
-    const bytes = stat.isDirectory() ? undefined : readFileSync(path);
-    return {
-      name,
-      mode: stat.mode,
-      uid: stat.uid,
-      ino: stat.ino,
-      size: stat.size,
-      mtime: stat.mtimeMs,
-      ctime: stat.ctimeMs,
-      content: stat.isDirectory() ? snapshot(path) : bytes?.toString("base64"),
-    };
-  });
-}
+
 
 describe("read-only upgrade phase reporting", () => {
 afterEach(_afterEachFixture0);

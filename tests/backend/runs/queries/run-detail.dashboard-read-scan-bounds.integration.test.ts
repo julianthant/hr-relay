@@ -1,3 +1,4 @@
+import { terminalDone, depsOf, observedDepsOf, observedEvent } from "../../../support/helpers/backend/note-scope-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import { buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps, type 
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 
-import { AT, claimEventOf, instantOffsetOf, makeWorld, queuedEventOf, runEndedEventOf, runRecordOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { AT, instantOffsetOf, makeWorld, queuedEventOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];
@@ -25,30 +26,12 @@ afterEach(() => {
 });
 
 /** A settled `done` run, fold and authority agreeing, as the projector sees one. */
-function terminalDone(w: DashboardWorld, seed: number, over: Record<string, unknown> = {}): void {
-  queuedEventOf(w, { seed, ...over });
-  claimEventOf(w, seed);
-  runEndedEventOf(w, seed, "done");
-  w.authority.put(runRecordOf({
-    seed,
-    ...over,
-    lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 60_000) },
-    claimGeneration: 1,
-    version: 3,
-  }));
-}
+
 
 describe("a logs GET opens only its run partitions", () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
-  function depsOf(w: DashboardWorld): RunDetailQueryDeps {
-    return { timeline: w.timeline, runReader: w.runReader,
-      stateRoot: w.stateRoot,
-      projection: w.projection,
-      authority: w.authority,
-      descriptors: { resolve: () => personLookupDescriptor },
-    };
-  }
+
 
   /** `count` note lines for a run, written by the REAL writer at the clock's day. */
   function emitNotes(w: DashboardWorld, seed: number, count: number, from = 0): void {
@@ -136,26 +119,7 @@ describe("a logs GET opens only its run partitions", () => {
     assert.deepEqual(section.payload.notes, []);
   });
 
-  function observedDepsOf(
-    w: DashboardWorld,
-    dataOrigins: readonly Readonly<{
-      nodeId: string;
-      step: string;
-      taskId: string;
-      system?: string;
-    }>[],
-  ): RunDetailQueryDeps {
-    return { timeline: w.timeline, runReader: w.runReader,
-      stateRoot: w.stateRoot,
-      projection: w.projection,
-      authority: w.authority,
-      descriptors: {
-        resolve: () => ({
-          dataOrigins: dataOrigins.map((origin) => ({ ...origin, dir: "read" as const, feeds: [] })),
-        }),
-      },
-    };
-  }
+
 
   const SEARCH_ORIGIN = {
     nodeId: "searching",
@@ -164,45 +128,7 @@ describe("a logs GET opens only its run partitions", () => {
     system: "ucpath",
   } as const;
 
-  function observedEvent(
-    w: DashboardWorld,
-    input: Readonly<{
-      seed?: number;
-      attempt?: number;
-      at?: string;
-      nodeId?: string;
-      taskId?: string;
-      workflow?: string;
-      traceId?: string;
-    }> = {},
-  ): void {
-    const seed = input.seed ?? 1;
-    const at = input.at ?? w.clock.now().toISOString();
-    const traceId = input.traceId ?? traceOf(seed);
-    w.writer.emit({
-      t: "data.observed",
-      ts: at,
-      workflow: input.workflow ?? "person-lookup",
-      runId: uuidOf(seed),
-      attempt: input.attempt ?? 1,
-      traceId,
-      spanPath: `${traceId}/searching#1.${String(input.attempt ?? 1)}`,
-      nodeId: input.nodeId ?? "searching",
-      taskId: input.taskId ?? "ucpath/search-person-org",
-      observedAt: at,
-      points: [{
-        direction: "read",
-        field: "selection.status",
-        values: [{
-          key: "selection.status",
-          state: "allowed",
-          classification: "safe-diagnostic",
-          transform: "allow",
-          value: "resolved",
-        }],
-      }],
-    });
-  }
+
 
   function fencedEvent(w: DashboardWorld, at: string): void {
     w.writer.emit({

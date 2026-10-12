@@ -1,19 +1,21 @@
+import { createCredentialDoctorWriter } from "../../../support/helpers/credential-doctor-fixtures.js";
+import { createCredentialDoctorFixtures } from "../../../support/helpers/credential-doctor-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { afterEach, describe, it } from "vitest";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+
+
+
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, type ProtectedSettingsPatch } from "../../../../src/models/config/protected-settings.js";
+
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { AuthorityDatabase as AuthorityDatabase_m1, doctorAuthorityStorage as doctorAuthorityStorage_m1, syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -30,54 +32,11 @@ const _afterEachFixture0 = () => {
   cleanups.length = 0;
 };
 
-function fixture() {
-  const workspace = mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-doctor-"));
-  cleanups.push(() => rmSync(workspace, { recursive: true, force: true }));
-  const admission = acquireEntrypointAdmission(workspace,"exclusive");
-  cleanups.push(() => admission.release());
-  const root = admission.stateRoot;
-  const authorityPath = join(root,"state.db");
-  const database = AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"credential-doctor-fixture"});
-  cleanups.push(() => database.close());
-  const credentialDirectory = join(root,"credentials");
-  const credentialPath = join(credentialDirectory,"protected.json");
-  const credentialStore = createCredentialStore({admission,stateRoot:root});
-  const options = {authorityPath,stateRoot:root,stateRootTrustAnchor:workspace,backupDirectory:join(root,"backups","authority"),busyTimeoutMs:100};
-  return {root,workspace,admission,database,credentialDirectory,credentialPath,credentialStore,options};
-}
+const { fixture, snapshot } = createCredentialDoctorFixtures(cleanups);
 
-function writeCredentials(f: ReturnType<typeof fixture>, entries: ProtectedSettingsPatch) {
-  const outcome = f.credentialStore.apply(ProtectedSettingsApplyInputSchema.parse({
-    commandId: COMMAND_ID,
-    commandFingerprint: "1".repeat(64),
-    expectedRevision: 1,
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    writeId: WRITE_ID,
-    entries,
-    updatedAt: "2026-09-06T20:00:00.000Z",
-  }));
-  assert.equal(outcome.state, "applied");
-  if (outcome.state !== "applied") throw new Error("credential fixture failed to apply");
-  return outcome.record;
-}
+const writeCredentials = createCredentialDoctorWriter(COMMAND_ID, WRITE_ID);
 
-function snapshot(root: string): unknown {
-  return readdirSync(root).sort().map((name) => {
-    const path = join(root, name);
-    const stat = lstatSync(path);
-    const bytes = stat.isDirectory() ? undefined : readFileSync(path);
-    return {
-      name,
-      mode: stat.mode,
-      uid: stat.uid,
-      ino: stat.ino,
-      size: stat.size,
-      mtime: stat.mtimeMs,
-      ctime: stat.ctimeMs,
-      content: stat.isDirectory() ? snapshot(path) : bytes?.toString("base64"),
-    };
-  });
-}
+
 
 async function unchanged(f: ReturnType<typeof fixture>) {
   const meta = f.database.getMeta();

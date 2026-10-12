@@ -1,3 +1,4 @@
+import { createTestTargetRegistryFixtures } from "../../../support/helpers/test-target-registry-fixtures.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
@@ -11,7 +12,7 @@ type TestTargetRegistryInput
 
 type TestTargetEntryInput = TestTargetRegistryInput["targets"][number];
 type FinalizationArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations-kuali-finalization"]>;
-type ChainArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations"]>;
+
 
 
 const DOCUMENT_NUMBER_SECRET = {
@@ -19,38 +20,10 @@ const DOCUMENT_NUMBER_SECRET = {
 } as const;
 
 
-const SUBJECT = {
-  label: "fixture-target",
-  availability: {
-    state: "unknown",
-    lastObserved: "2026-08-20",
-    reason: "No live fixture exists.",
-  },
-  provenance: {
-    document: "docs/rebuild/reference/guards-and-tests.md",
-    section: "§10.5",
-  },
-  usagePolicy: "read-only",
-  cleanupObligation: "None; this fixture must not write.",
-  owner: "test operator",
-  purpose: "The registry fixture every parse/resolve case in this file starts from.",
-} as const;
+const { SUBJECT, OBSERVED_PUBLIC_INPUT, FINALIZATION_ARM, registry, rawRegistry, finalizationSubject, chainSubject } = createTestTargetRegistryFixtures(DOCUMENT_NUMBER_SECRET);
 
 /** Every finalization canonical leaf a live read can observe, minus the four person values. */
-const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
-  actionId: "0123456789abcdef01234567",
-  documentNumber: "4444",
-  emplIdSource: "document-eid",
-  ucpathDeptId: { state: "present", value: "000412" },
-  ucpathDepartment: { state: "present", value: "HOUSING/DINING/HOSPITALITY" },
-  observedDepartmentOptions: ["- - -", "000412 - Housing/Dining/Hospitality"],
-  payrollTitleCode: "004921",
-  payrollTitle: "STDT 2",
-  lastDayWorked: "06/09/2026",
-  separationDate: "06/10/2026",
-  terminationEffectiveDate: "06/11/2026",
-  observedExistingComments: "",
-};
+
 
 
 const PENDING_FREE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = (() => {
@@ -59,22 +32,12 @@ const PENDING_FREE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = (() => {
 })();
 
 /** The same leaves plus the two a run only has once ② has filed and ③ composed. */
-const COMPLETE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
-  ...OBSERVED_PUBLIC_INPUT,
-  transactionNumber: "T009000001",
-  timekeeperComments: "Synthetic finalization comment.",
-};
 
 
-const FINALIZATION_ARM: FinalizationArmInput = {
-  kind: "ordinary",
-  publicInput: COMPLETE_PUBLIC_INPUT,
-};
 
-const CHAIN_ARM: ChainArmInput = {
-  kind: "full-chain-dry-run",
-  publicInput: { document: { state: "configured", reference: DOCUMENT_NUMBER_SECRET } },
-};
+
+
+
 
 const AVAILABLE = {
   state: "available",
@@ -82,26 +45,14 @@ const AVAILABLE = {
   reason: "Synthetic complete fixture.",
 } as const;
 
-function registry(targets: TestTargetRegistryInput["targets"]): TestTargetRegistryInput {
-  return { schemaVersion: 2, targets };
-}
 
 
-function rawRegistry(targets: readonly unknown[]): unknown {
-  return { schemaVersion: 2, targets };
-}
 
-function finalizationSubject(
-  overrides: Partial<TestTargetEntryInput> = {},
-): TestTargetEntryInput {
-  return { ...SUBJECT, workflows: { "separations-kuali-finalization": FINALIZATION_ARM }, ...overrides };
-}
 
-function chainSubject(
-  overrides: Partial<TestTargetEntryInput> = {},
-): TestTargetEntryInput {
-  return { ...SUBJECT, workflows: { separations: CHAIN_ARM }, ...overrides };
-}
+
+
+
+
 
 /** A source whose private file is invalid: the loader already refused it by key, never by value. */
 const privateRoots: string[] = [];
