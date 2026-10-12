@@ -31,6 +31,9 @@ Task names, effects, and schemas are in the source and the generated store catal
   store's Save operations.
 - Post-fence absence uses the transaction's verified policy. Never invent a propagation window or
   replace unknown with failure/success. A historical live pass does not authorize a new live write.
+- Observe Kuali's own document response for model and section facts; do not issue an extra query to infer them.
+- A typed person union's discriminator and reason are not identifiers; classify its value leaf separately.
+- Test payload preparation with the mutation intercepted and aborted; commit return values never replace saved-effect verification.
 
 ## Read for the affected seam
 
@@ -41,7 +44,5 @@ Task names, effects, and schemas are in the source and the generated store catal
   assigned task's evidence folder.
 - Before task/driver boundary changes: `docs/rebuild/reference/task-contract.md` and
   `docs/rebuild/reference/stores.md` (derived catalog; code wins).
-- Before repeating a known failure: search [LESSONS.md](LESSONS.md) for the seam and read the matching
-  entries. Requested new lessons go there. Do not copy current task inventories or old canary state here.
 
 Root safety, authorization, and validation rules apply.
