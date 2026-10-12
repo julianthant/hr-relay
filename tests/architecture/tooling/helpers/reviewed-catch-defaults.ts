@@ -103,7 +103,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "bd957e19f13c794f4e4b3273594221c053a40f8fc178ff3117c315d688d113ec",
+    "sha256": "9ded678f889511af9fa073a7fa73c11b990030ade77cc9550651caabef5515c5",
     "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures remain aggregate errors, uncertain resources keep their custody, and the original admission error always rejects."
+  },
+  {
+    "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
+    "sha256": "ee1d213ab0d38667ec849a1233fc11eb8f7b35d75f4f14112e1588c6f55f0f65",
+    "reason": "Stall probes report explicit unknown codes (landing-probe-unavailable, duo-refusal-unproven); every stalled landing still throws BrowserLandingStallError or DuoTerminalRefusalError, and the refusal and stale-request observers leave timeout and diagnosis to the landing wait."
   }
 ] as const;
