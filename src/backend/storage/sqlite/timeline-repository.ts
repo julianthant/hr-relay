@@ -168,6 +168,18 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
         return Object.freeze(rows.map(timelineEventFromRow));
       });
     },
+    confirmedActionHeads(input: Parameters<TimelineRepository["confirmedActionHeads"]>[0]) {
+      const request = z.strictObject({ workerStreamIds: z.array(z.string().min(1)).max(200), before: z.number().int().positive() }).parse(input);
+      if (request.workerStreamIds.length === 0) return [];
+      return ports.read(() => {
+        const rows = prepare(`SELECT * FROM timeline_events WHERE cursor IN (
+          SELECT max(cursor) FROM timeline_events WHERE cursor<?
+          AND json_extract(payload_json,'$.payload.note.confirmedAction.workerStreamId') IN (${request.workerStreamIds.map(() => "?").join(",")})
+          GROUP BY json_extract(payload_json,'$.payload.note.confirmedAction.workerStreamId'))`)
+          .all(request.before, ...request.workerStreamIds);
+        return Object.freeze(rows.map(timelineEventFromRow));
+      });
+    },
     highWaterMark() {
       return ports.read(() => HighWaterMarkSchema.parse(prepare(
         "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'timeline_events'), 0) AS cursor",
