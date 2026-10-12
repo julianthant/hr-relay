@@ -9,7 +9,7 @@ parseCanonicalInputSnapshot,
 } from "../../../src/models/workflow/canonical-input.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 
-/** The ref workflow-model §2 worked example: ingress applies two defaults, canonical does not. */
+/** The ref workflow-model worked example: ingress applies two defaults, canonical does not. */
 const PersonLookupInput = z.union([
   z.strictObject({
     name: z.string().min(1),

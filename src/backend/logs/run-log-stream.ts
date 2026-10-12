@@ -10,6 +10,7 @@ export interface RunLogTail {
   readonly parsedLines: number;
   readonly bytesRead: number;
   readonly hasMore: boolean;
+  readonly previousSequences?: ReadonlyMap<string, number>;
 }
 
 function confirmedOf(record: TimelineEventRecord): ConfirmedActionEvent | undefined {
@@ -23,16 +24,31 @@ function confirmedOf(record: TimelineEventRecord): ConfirmedActionEvent | undefi
 
 export function createRunLogStreamStore(repository: TimelineRepository) {
   return Object.freeze({
-    tail(cursors: ReadonlyMap<string, TimelineCursor>): RunLogTail {
+    tail(cursors: ReadonlyMap<string, TimelineCursor>, knownStreams: ReadonlySet<string> = new Set()): RunLogTail {
       return repository.withReadSnapshot(() => {
         const after = cursors.get("timeline")?.linesConsumed ?? 0;
         const through = repository.highWaterMark();
         if (after > through) throw new Error("run-log-cursor-reset-required");
         const records = repository.page({ after, through, limit: 200 });
         const cursor = records.at(-1)?.cursor ?? through;
+        const previousSequences = new Map<string, number>();
+        const firstEvents = new Map<string, ConfirmedActionEvent>();
+        for (const record of records) {
+          const event = confirmedOf(record);
+          if (event !== undefined && !knownStreams.has(event.workerStreamId) && !firstEvents.has(event.workerStreamId)) {
+            firstEvents.set(event.workerStreamId, event);
+          }
+        }
+        for (const record of repository.confirmedActionHeads({ workerStreamIds: [...firstEvents.keys()], before: after + 1 })) {
+          const head = confirmedOf(record);
+          if (head === undefined) throw new Error("run-log-stream-identity-mismatch");
+          const first = firstEvents.get(head.workerStreamId);
+          if (first === undefined) throw new Error("run-log-stream-identity-mismatch");
+          previousSequences.set(first.eventId, head.sequence);
+        }
         return { events: records.flatMap(record => { const event = confirmedOf(record); return event === undefined ? [] : [event]; }),
           cursors: new Map([["timeline", { linesConsumed: cursor, bytesConsumed: 0 }]]),
-          pruned: false, parsedLines: records.length,
+          previousSequences, pruned: false, parsedLines: records.length,
           bytesRead: records.reduce((sum, record) => sum + Buffer.byteLength(JSON.stringify(record)), 0),
           hasMore: cursor < through };
       });

@@ -21,9 +21,15 @@ HR share a system and declaration, not routes, frames, or anchors; scope each gu
   current-presence authority only; an asserted receipt never becomes controlled-filing evidence.
 - Post-fence absence is operator-only unless the owning contract has accepted a measured replacement.
   Never guess a propagation window or retry an UNKNOWN commit.
+- Distinguish a populated search grid, an exact detail auto-drill, and explicit no-results evidence; a count banner alone is not absence.
+- Expand search results and every Employment Instances grid through its context-scoped View All state before returning a complete read.
+- Bind post-prepare observations to the page prepare ends on, and read derived disabled dates instead of filling them.
+- Map typed driver refusals to reachable task codes; a literal-true action proof cannot produce a false branch.
+- Keep identity approval independent of name similarity; token similarity does not prove the chosen person.
+- Prove authentication with `PS_TOKEN` and absent sign-in forms; public portal and post-SSO URLs are only navigation signals.
 
-Before changing either surface, search [LESSONS.md](LESSONS.md) by the operation/decision and read
-matching entries. Before termination/sweep changes, read the workflow's task evidence §9.39,
+Before changing either surface, read `session.ts` and the relevant `driver/` source.
+Before termination/sweep changes, read the assigned workflow brief,
 `docs/rebuild/reference/write-safety.md`, and the exact task/driver contracts. Use the generated
 `docs/rebuild/reference/stores.md` for task discovery; do not copy its inventory here.
-Requested lessons go in the ledger. Root rules apply.
+Root rules apply.

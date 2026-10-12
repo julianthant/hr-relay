@@ -28,6 +28,7 @@ import {
 import type { BrowserDeadlineScheduler } from "../../src/backend/runtime/browser/browser-session-factory.js";
 import { createCredentialSecretSource, readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { probePrimaryDisplay } from "../../src/backend/app/host/primary-display.js";
+import { BrowserLoginError, DuoTerminalRefusalError } from "../../src/backend/systems/browser-shared/login-contract.js";
 import type { AuthenticatedApplicationEvidence } from "../../src/backend/systems/browser-shared/login-contract.js";
 import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock, readRuntimeProcessLock } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
@@ -55,17 +56,46 @@ function elapsed(since: number): string {
 
 function hostOf(url: string): string {
   try {
-    return new URL(url).host;
-  } catch (error) {
-    return `<unparseable navigation target: ${error instanceof Error ? error.message : String(error)}>`;
+    return new URL(url).hostname || "<unparseable navigation target>";
+  } catch {
+    return "<unparseable navigation target>";
   }
 }
 
+const SAFE_ERROR_IDENTITIES = new Set(["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError",
+  "URIError", "EvalError", "AbortError", "TimeoutError", "ProfileCustodyUnavailableError", "DuoProvisioningError",
+  "DuoCeremonyLeaseHeldError", "DuoCeremonyLeaseExpiredError", "DuoCeremonyReleaseFailedError"]);
+const LOGIN_PHASES = new Set(["navigate-login-entry", "campus-discovery", "sso-form", "credential-fill",
+  "sso-submit", "duo-clearance", "verify-landing"]);
+
 export function smokeErrorDiagnostic(error: unknown): string {
-  const detail = error instanceof Error ? error.stack ?? error.message : String(error);
-  return error instanceof AggregateError
-    ? [detail, ...error.errors.map((nested: unknown) => smokeErrorDiagnostic(nested))].join("\n")
-    : detail;
+  const diagnostics: Record<string, string>[] = [];
+  const seen = new Set<Error>();
+  const pending: unknown[] = [error];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!(current instanceof Error) || seen.has(current)) continue;
+    seen.add(current);
+    const identity = current instanceof DuoTerminalRefusalError ? "DuoTerminalRefusalError"
+      : current instanceof BrowserLoginError ? "BrowserLoginError"
+      : current instanceof SmokeSessionClosureError ? "SmokeSessionClosureError"
+      : current instanceof AggregateError ? "AggregateError"
+      : SAFE_ERROR_IDENTITIES.has(current.name) ? current.name : "Error";
+    const diagnostic: Record<string, string> = { error: identity };
+    if (current instanceof BrowserLoginError) {
+      const system = BrowserSystemIdSchema.safeParse(current.system);
+      if (system.success) diagnostic.system = system.data;
+      const phase = current.step;
+      if (LOGIN_PHASES.has(phase)) diagnostic.phase = phase;
+      diagnostic.host = typeof current.observedUrl === "string" ? hostOf(current.observedUrl) : "<unparseable navigation target>";
+    }
+    diagnostics.push(diagnostic);
+    pending.push(current.cause);
+    if (current instanceof AggregateError && Array.isArray(current.errors)) {
+      for (const nested of current.errors.toReversed()) pending.push(nested);
+    }
+  }
+  return JSON.stringify(diagnostics);
 }
 
 export class SmokeSessionClosureError extends AggregateError {

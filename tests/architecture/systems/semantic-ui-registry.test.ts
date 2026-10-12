@@ -57,14 +57,14 @@ function evidenceBindingInput(): unknown {
   }
   return {
     evidenceByRef: {
-      "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json": readJson("docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json"),
-      "docs/rebuild/evidence/selectors/ucpath/person-org.live.json": readJson("docs/rebuild/evidence/selectors/ucpath/person-org.live.json"),
-      "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json": readJson("docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json"),
-      "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json": readJson("docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json"),
-      "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json":
-        readJson("docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json"),
-      "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json":
-        readJson("docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"),
+      "tests/support/fixtures/ui/ucpath/person-org.fixture.json": readJson("tests/support/fixtures/ui/ucpath/person-org.fixture.json"),
+      "tests/support/fixtures/ui/ucpath/person-org.live.json": readJson("tests/support/fixtures/ui/ucpath/person-org.live.json"),
+      "tests/support/fixtures/ui/ucpath/ss-smart-hr.fixture.json": readJson("tests/support/fixtures/ui/ucpath/ss-smart-hr.fixture.json"),
+      "tests/support/fixtures/ui/ucpath/ss-smart-hr.live.json": readJson("tests/support/fixtures/ui/ucpath/ss-smart-hr.live.json"),
+      "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json":
+        readJson("tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json"),
+      "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json":
+        readJson("tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"),
     },
     portBindings,
   };
@@ -74,8 +74,8 @@ function crmEvidenceBindingInput(): unknown {
   const portMap = bindings;
   return {
     evidenceByRef: {
-      "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json": readJson("docs/rebuild/evidence/selectors/crm/onboarding.fixture.json"),
-      "docs/rebuild/evidence/selectors/crm/onboarding.live.json": readJson("docs/rebuild/evidence/selectors/crm/onboarding.live.json"),
+      "tests/support/fixtures/ui/crm/onboarding.fixture.json": readJson("tests/support/fixtures/ui/crm/onboarding.fixture.json"),
+      "tests/support/fixtures/ui/crm/onboarding.live.json": readJson("tests/support/fixtures/ui/crm/onboarding.live.json"),
     },
     portBindings: portMap.entries.flatMap((entry) => {
       if (entry.system !== "crm"
@@ -98,8 +98,8 @@ function newKronosEvidenceBindingInput(): unknown {
   const portMap = bindings;
   return {
     evidenceByRef: {
-      "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json": readJson("docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json"),
-      "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json": readJson("docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"),
+      "tests/support/fixtures/ui/new-kronos/timecard.fixture.json": readJson("tests/support/fixtures/ui/new-kronos/timecard.fixture.json"),
+      "tests/support/fixtures/ui/new-kronos/timecard.live.json": readJson("tests/support/fixtures/ui/new-kronos/timecard.live.json"),
     },
     portBindings: portMap.entries.flatMap((entry) => {
       if (entry.system !== "new-kronos"
@@ -207,7 +207,7 @@ describe("semantic UI registry architecture", () => {
     const wrongScreen = structuredClone(evidenceBindingInput()) as {
       evidenceByRef: Record<string, { assertions: { screen: string }[] }>;
     };
-    const screenAssertion = wrongScreen.evidenceByRef["docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json"]?.assertions[0];
+    const screenAssertion = wrongScreen.evidenceByRef["tests/support/fixtures/ui/ucpath/person-org.fixture.json"]?.assertions[0];
     if (!screenAssertion) throw new Error("fixture evidence assertion missing");
     screenAssertion.screen = "ucpath.person-org.detail";
     assert.match(auditUcpathUiEvidenceBindings(wrongScreen).join("\n"), /assertion screen drifted/);
@@ -215,7 +215,7 @@ describe("semantic UI registry architecture", () => {
     const wrongScenario = structuredClone(evidenceBindingInput()) as {
       evidenceByRef: Record<string, { assertions: { scenarioId: string }[] }>;
     };
-    const fixtureAssertion = wrongScenario.evidenceByRef["docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json"]?.assertions[0];
+    const fixtureAssertion = wrongScenario.evidenceByRef["tests/support/fixtures/ui/ucpath/person-org.fixture.json"]?.assertions[0];
     if (!fixtureAssertion) throw new Error("fixture evidence assertion missing");
     fixtureAssertion.scenarioId = "ui/ucpath-person-org-displayed-eid";
     assert.match(auditUcpathUiEvidenceBindings(wrongScenario).join("\n"), /assertion scenario drifted/);
@@ -223,7 +223,7 @@ describe("semantic UI registry architecture", () => {
     const wrongPortRow = structuredClone(evidenceBindingInput()) as {
       evidenceByRef: Record<string, { assertions: { portMapRows: { system: string; legacyKey: string }[] }[] }>;
     };
-    const portAssertion = wrongPortRow.evidenceByRef["docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json"]?.assertions[0];
+    const portAssertion = wrongPortRow.evidenceByRef["tests/support/fixtures/ui/ucpath/person-org.fixture.json"]?.assertions[0];
     if (!portAssertion) throw new Error("fixture evidence assertion missing");
     portAssertion.portMapRows = [{ system: "ucpath", legacyKey: "personOrgSummary.personIdValue()" }];
     assert.match(auditUcpathUiEvidenceBindings(wrongPortRow).join("\n"), /assertion port-map rows drifted/);
@@ -256,7 +256,7 @@ describe("semantic UI registry architecture", () => {
     const wrongPortRow = structuredClone(crmEvidenceBindingInput()) as {
       evidenceByRef: Record<string, { assertions: { semanticId: string; portMapRows: { system: string; legacyKey: string }[] }[] }>;
     };
-    const assertion = wrongPortRow.evidenceByRef["docs/rebuild/evidence/selectors/crm/onboarding.fixture.json"]
+    const assertion = wrongPortRow.evidenceByRef["tests/support/fixtures/ui/crm/onboarding.fixture.json"]
       ?.assertions.find(({ semanticId }) => semanticId === "crm.onboarding.displayed-eid");
     if (assertion === undefined) throw new Error("CRM displayed-EID fixture assertion missing");
     assertion.portMapRows = [{ system: "crm", legacyKey: "search.resultRows()" }];
@@ -268,7 +268,7 @@ describe("semantic UI registry architecture", () => {
     const wrongScreen = structuredClone(newKronosEvidenceBindingInput()) as {
       evidenceByRef: Record<string, { assertions: { semanticId: string; screen: string }[] }>;
     };
-    const screenAssertion = wrongScreen.evidenceByRef["docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"]
+    const screenAssertion = wrongScreen.evidenceByRef["tests/support/fixtures/ui/new-kronos/timecard.live.json"]
       ?.assertions.find(({ semanticId }) => semanticId === "new-kronos.timecard.displayed-eid");
     if (screenAssertion === undefined) throw new Error("New Kronos displayed-EID live assertion missing");
     screenAssertion.screen = "new-kronos.employee-search";
@@ -279,7 +279,7 @@ describe("semantic UI registry architecture", () => {
         assertions: { semanticId: string; portMapRows: { system: string; legacyKey: string }[] }[];
       }>;
     };
-    const portAssertion = wrongPortRow.evidenceByRef["docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json"]
+    const portAssertion = wrongPortRow.evidenceByRef["tests/support/fixtures/ui/new-kronos/timecard.fixture.json"]
       ?.assertions.find(({ semanticId }) => semanticId === "new-kronos.timecard.displayed-eid");
     if (portAssertion === undefined) throw new Error("New Kronos displayed-EID fixture assertion missing");
     portAssertion.portMapRows = [{ system: "new-kronos", legacyKey: "search.firstResultSlat()" }];

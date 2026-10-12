@@ -1,3 +1,4 @@
+import { fenceWriteFixture, writeFenceFixtureInput } from "../../support/helpers/write-fence-fixture.js";
 import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -86,7 +87,7 @@ describe("permanent system-scoped write keys", () => {
   it("keeps a committed key permanent across a later sequential starter", () => {
     const path = authorityPath();
     const database = open(path);
-    assert.equal(database.authority.writeIntents.fenceAttempt({
+    assert.equal(fenceWriteFixture(database, {
       intent: WRITE_INTENT_ATTEMPTING,
       attempt: WRITE_ATTEMPT,
     }).state, "fenced");
@@ -94,7 +95,7 @@ describe("permanent system-scoped write keys", () => {
     database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     const generationAfterCommit = database.getMeta().authorityGeneration;
 
-    const replay = database.authority.writeIntents.fenceAttempt(competingFence());
+    const replay = fenceWriteFixture(database, competingFence());
     assert.equal(replay.state, "existing");
     assert.equal(replay.intent.writeIntentId, UUID_1);
     assert.equal(replay.intent.status, "committed");
@@ -105,22 +106,24 @@ describe("permanent system-scoped write keys", () => {
     const path = authorityPath();
     const first = open(path);
     const contender = open(path);
-    assert.equal(first.authority.writeIntents.fenceAttempt({
+    assert.equal(fenceWriteFixture(first, {
       intent: WRITE_INTENT_ATTEMPTING,
       attempt: WRITE_ATTEMPT,
     }).state, "fenced");
 
-    const result = contender.authority.writeIntents.fenceAttempt(competingFence());
+    const generationAfterFence = first.getMeta().authorityGeneration;
+    const result = fenceWriteFixture(contender, competingFence());
     assert.equal(result.state, "existing");
     assert.equal(result.intent.writeIntentId, UUID_1);
     assert.equal(contender.authority.writeAttempts.get(UUID_A), undefined);
-    assert.equal(contender.getMeta().authorityGeneration, 1);
+    assert.equal(contender.getMeta().authorityGeneration, generationAfterFence);
   });
 
   it("records observed-present permanently with zero attempt, ledger, or span outbox", () => {
     const path = authorityPath();
     const database = open(path);
     const observed = observedPresentIntent();
+    writeFenceFixtureInput(database, competingFence());
     const first = database.authority.writeIntents.recordObservedPresent(observed);
     assert.equal(first.state, "recorded-observed-present");
     const generation = database.getMeta().authorityGeneration;
@@ -130,7 +133,7 @@ describe("permanent system-scoped write keys", () => {
     assert.equal(database.authority.writeAttempts.get(UUID_4), undefined);
     assert.deepEqual(database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed"), []);
 
-    const replay = database.authority.writeIntents.fenceAttempt({
+    const replay = fenceWriteFixture(database, {
       intent: {
         ...WRITE_INTENT_ATTEMPTING,
         writeIntentId: UUID_9,
@@ -151,15 +154,15 @@ describe("permanent system-scoped write keys", () => {
 
   it("fails loud when the natural key or binding proof does not match its digest", () => {
     const database = open(authorityPath());
-    assert.throws(() => database.authority.writeIntents.fenceAttempt({
+    assert.throws(() => fenceWriteFixture(database, {
       intent: { ...WRITE_INTENT_ATTEMPTING, idempotencyKey: `${IDEMPOTENCY_KEY}|changed` },
       attempt: WRITE_ATTEMPT,
     }), /idempotency key digest does not match/);
-    assert.throws(() => database.authority.writeIntents.fenceAttempt({
+    assert.throws(() => fenceWriteFixture(database, {
       intent: { ...WRITE_INTENT_ATTEMPTING, idempotencyKeyDigest: "b".repeat(64) },
       attempt: WRITE_ATTEMPT,
     }), /idempotency key digest does not match/);
-    assert.throws(() => database.authority.writeIntents.fenceAttempt({
+    assert.throws(() => fenceWriteFixture(database, {
       intent: { ...WRITE_INTENT_ATTEMPTING, bindingProofDigest: "c".repeat(64) },
       attempt: WRITE_ATTEMPT,
     }), /binding proof digest does not match/);

@@ -1,3 +1,4 @@
+import { fenceWriteFixture, seedCorruptWriteFenceFixture } from "../../support/helpers/write-fence-fixture.js";
 import { createWriteRecoveryTestWorld } from "../../support/helpers/backend/write-recovery-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -14,6 +15,7 @@ import { absentProbeEvidence, writeFixtureDescriptor, writeFixtureParallelDescri
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, NOW, UUID_1, UUID_8 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
@@ -56,7 +58,7 @@ describe("D resolution command authority", () => {
       const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
       const intent = { ...WRITE_INTENT_ATTEMPTING, runId: run.envelope.runId, bindingProof, bindingProofDigest,
         workflowId: run.envelope.workflow, itemId: run.envelope.itemId };
-      assert.equal(f.db.authority.writeIntents.fenceAttempt({ intent,
+      assert.equal(fenceWriteFixture(f.db, { intent,
         attempt: { ...WRITE_ATTEMPT, runId: run.envelope.runId, bindingProof, bindingProofDigest } }).state, "fenced");
       const parked = f.db.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: run.version,
         claim: { workerId: run.lifecycle.workerId, claimGeneration: run.claimGeneration },
@@ -125,13 +127,14 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
     const { runId, runAttempt, currentAttemptId, bindingProof, bindingProofDigest, fencedAt, confirmedAt, completionProof, ...baseIdentity } = baseline;
     void runId; void runAttempt; void currentAttemptId; void bindingProof; void bindingProofDigest; void fencedAt;
     orphan.database.authority.writeIntents.recordObservedPresent({ ...baseIdentity, status: "observed-present", observedProof: completionProof, observedAt: confirmedAt });
-    orphan.database.authority.writeIntents.fenceAttempt({ intent: fenced, attempt: { ...attempt, outcome: { state: "attempting" } } });
+    seedCorruptWriteFenceFixture(orphan.database, { intent: fenced,
+      attempt: { ...attempt, outcome: { state: "attempting" } } }, DatabaseSync);
     assert.equal(orphan.database.authority.runs.get(one.envelope.runId), undefined);
     const otherCommand = orphan.ids.uuid();
     const key = repeatOccurrenceKey(unresolved.occurrence.businessKeyDigest, otherCommand, unresolved.occurrence.nodeId);
     const next = { ...fenced, writeIntentId: orphan.ids.uuid(), idempotencyKey: key, idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", key),
       occurrence: { ...unresolved.occurrence, confirmationCommandId: otherCommand } };
-    assert.throws(() => orphan.database.authority.writeIntents.fenceAttempt({ intent: next,
+    assert.throws(() => orphan.database.authority.writeIntents.fenceAttempt({ claim: { workerId: "synthetic-orphan-worker", claimGeneration: 1 }, intent: next,
       attempt: { ...attempt, writeIntentId: next.writeIntentId, outcome: { state: "attempting" } } }), /unresolved write occurrence/);
   });
 
@@ -171,7 +174,7 @@ afterEach(() => {
   it("rolls back a caught nested fence failure to its savepoint without leaking an intent", () => {
     const database = openDatabase();
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, databasePaths.get(database) ?? (() => { throw new Error("missing fixture path"); })());
-    database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const generationBefore = database.getMeta().authorityGeneration;
     const competingKey = "10001573|termination|2026-08-03";
     const competingIntent = {
@@ -184,7 +187,7 @@ afterEach(() => {
 
     database.withAuthorityTransaction(() => {
       assert.throws(
-        () => database.authority.writeIntents.fenceAttempt({ intent: competingIntent, attempt: competingAttempt }),
+        () => fenceWriteFixture(database, { intent: competingIntent, attempt: competingAttempt }),
         /retained-identity-conflict/u,
       );
     });

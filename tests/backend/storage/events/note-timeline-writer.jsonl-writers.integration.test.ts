@@ -7,9 +7,28 @@ import { NoteWireSchema, projectNoteForOperator } from "../../../../src/models/e
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { localDatePart, manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { DeclaredActionOccurrenceSchema } from "../../../../src/rules/workflow/task-provenance.js";
+import { freezeWorkflowOperationDisplaySnapshot, WorkflowOperationDisplaySnapshotSchema } from "../../../../src/models/workflow/operation-display-snapshot.js";
+import { plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const {repositoryOf, nativeLines, stateRoot, RUN_ID, TRACE, AT, cleanup } = createJsonlWriterTestWorld();
+
+
+function boundBrowserRun() {
+  const run = RunRecordSchema.parse(personLookupQueuedRun());
+  const frozen = freezeWorkflowOperationDisplaySnapshot({ workflowId: run.envelope.workflow,
+    definitionFingerprint: run.envelope.contractFingerprint, display: plan1Leaf.descriptor.operationDisplay });
+  assert.ok(frozen);
+  const original = frozen.invocations[0];
+  const snapshot = WorkflowOperationDisplaySnapshotSchema.parse({ ...frozen, invocations: [{ ...original,
+    id: "search-operation", taskId: "ucpath/search-person-org",
+    bindings: [{ slot: "empl-id", value: { kind: "run-input", path: "emplId" } }],
+    operation: { ...original.operation, system: "ucpath",
+      session: { kind: "browser", id: "ucpath-worker", system: "ucpath" },
+      actions: [{ id: "fill-eid", kind: "fill-field", target: "ucpath.person-org.eid-input", valueSlot: "empl-id" }],
+      values: [{ id: "empl-id", presentation: "local-operator", source: { kind: "contract-input", path: "emplId" } }] } }] });
+  return { ...run, envelope: { ...run.envelope, operationDisplaySnapshot: snapshot } };
+}
 
 
 afterEach(cleanup);
@@ -103,7 +122,7 @@ describe("native note writer and classified fields", () => {
 
   it("records typed values with action verbs and targets in protected-run Logs", () => {
     const root = stateRoot();
-    const run = RunRecordSchema.parse(personLookupQueuedRun());
+    const run = boundBrowserRun();
     const clock = manualClock(new Date(run.updatedAt));
     const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
     const note = writer.emitRunAction({
@@ -114,7 +133,15 @@ describe("native note writer and classified fields", () => {
         traceId: run.envelope.traceId,
         spanPath: run.envelope.traceId,
       },
-      action: { kind: "typed", targetId: "ucpath.person-org.eid-input", value: "951-57-1700", at: clock.now().toISOString() },
+      action: { kind: "typed", targetId: "ucpath.person-org.eid-input", value: "951-57-1700", at: clock.now().toISOString(),
+        operation: DeclaredActionOccurrenceSchema.parse({ runId: run.envelope.runId,
+          definitionFingerprint: run.envelope.contractFingerprint, nodeId: run.envelope.operationDisplaySnapshot.invocations[0].entryId,
+          taskId: "ucpath/search-person-org", attempt: 1, claimGeneration: 1, taskAttempt: 1,
+          invocationId: "search-operation", occurrencePath: run.envelope.operationDisplaySnapshot.invocations[0].occurrencePath,
+          logicalActionId: "fill-eid", occurrence: 1, logicalSessionId: "ucpath-worker",
+          physicalSessionId: "00000000-0000-4000-8000-000000000001",
+          value: { slot: "empl-id", fieldPath: "emplId", producer: { kind: "run-input", path: "emplId" },
+            consumed: { state: "observed", value: "951-57-1700" } } }) },
     }, run);
     assert.equal(note.message, 'Typed "951-57-1700" into ucpath person org eid input');
     assert.equal(projectNoteForOperator(note, true).message, note.message);
@@ -125,7 +152,7 @@ describe("native note writer and classified fields", () => {
 
   it("drops a protected declared action value again at the durable note boundary", () => {
     const root = stateRoot();
-    const run = RunRecordSchema.parse(personLookupQueuedRun());
+    const run = boundBrowserRun();
     const clock = manualClock(new Date(run.updatedAt));
     const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
     const rawProtectedValue = "RAW_PROTECTED_BROWSER_VALUE";
@@ -145,14 +172,14 @@ describe("native note writer and classified fields", () => {
         physicalSessionId: "00000000-0000-4000-8000-000000000001",
         operation: DeclaredActionOccurrenceSchema.parse({
           runId: run.envelope.runId,
-          definitionFingerprint: "a".repeat(64),
-          nodeId: "search",
+          definitionFingerprint: run.envelope.contractFingerprint,
+          nodeId: run.envelope.operationDisplaySnapshot.invocations[0].entryId,
           taskId: "ucpath/search-person-org",
           attempt: 1,
           claimGeneration: 1,
           taskAttempt: 1,
           invocationId: "search-operation",
-          occurrencePath: ["search"],
+          occurrencePath: run.envelope.operationDisplaySnapshot.invocations[0].occurrencePath,
           logicalActionId: "fill-eid",
           occurrence: 1,
           logicalSessionId: "ucpath-worker",

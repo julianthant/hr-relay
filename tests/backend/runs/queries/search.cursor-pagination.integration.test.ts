@@ -139,6 +139,7 @@ describe("cross-date search service", () => {
         /cursor belongs to a foreign authority source/,
       );
 
+      clock.advanceWall(1);
       const secondPage = search.search({
         ...baseQuery,
         cursor: cursorValue,
@@ -146,6 +147,8 @@ describe("cross-date search service", () => {
       assert.equal(secondPage.results[0]?.runId, second.envelope.runId);
       assert.equal(secondPage.nextCursor.state, "absent");
       assert.equal(secondPage.totalMatches, 2);
+      assert.equal(secondPage.generatedAt, firstPage.generatedAt);
+      assert.equal(secondPage.snapshot.token, firstPage.snapshot.token);
 
       insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"),
         seed: 13,

@@ -5,7 +5,7 @@ import type { DashboardTransport } from "../transport.js";
 
 export interface StorageQueries {
 
-  /** Ref dashboard-surfaces §2.5's read-only storage doctor, run on demand from Settings. */
+  /** Ref dashboard-surfaces's read-only storage doctor, run on demand from Settings. */
   storageDoctor(): Promise<StorageDoctorWire>;
   latestStorageDoctor(): Promise<StorageDoctorLatestWire>;
 }

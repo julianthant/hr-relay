@@ -69,6 +69,7 @@ export const ContainmentSchema = z.enum(["root", "member", "linked"]);
 /** A run this row DELEGATED TO and is waiting on; the chip needs where to jump, what to call it, and what it is doing, so the wire carries all three. */
 const LinkedRunWireSchema = z.strictObject({
   runId: RunIdSchema,
+  partitionDay: LocalDateSchema,
   workflowId: WorkflowIdSchema,
   label: z.string().min(1),
   panelKind: PanelKindSchema,
@@ -386,7 +387,7 @@ export const WorkerControlWireSchema = z.strictObject({
 
 export const WorkerCardWireSchema = z.strictObject({
   workerId: WorkerIdSchema,
-  /** The one workflow this worker claims for (ref execution-and-sessions §3.1) — from the lease, never guessed. */
+  /** The one workflow this worker claims for (ref execution-and-sessions ) — from the lease, never guessed. */
   workflowId: WorkflowIdSchema,
   state: z.enum(["starting", "idle", "paused", "working", "stopped", "failed"]),
   controls: WorkerControlWireSchema.optional(),

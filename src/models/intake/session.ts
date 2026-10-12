@@ -21,7 +21,7 @@ export const IntakeSessionStateSchema = z.enum([
 ]);
 export type IntakeSessionState = z.infer<typeof IntakeSessionStateSchema>;
 
-/** A value the operator typed once for the whole run (ref data-intake-and-edit-data §8 step 2). */
+/** A value the operator typed once for the whole run (ref data-intake-and-edit-data step 2). */
 export const IntakeConstantSchema = z.strictObject({
   targetFieldId: IntakeTargetFieldIdSchema,
   value: JsonValueSchema,
@@ -35,7 +35,7 @@ export const IntakeRowCorrectionSchema = z.strictObject({
   correctedAt: IsoInstantSchema,
 });
 
-/** One explicit exclusion — ref data-intake-and-edit-data §5: never a silently dropped row. */
+/** One explicit exclusion — ref data-intake-and-edit-data: never a silently dropped row. */
 export const IntakeRowExclusionSchema = z.strictObject({
   sourceRow: PositiveIntSchema,
   reason: z.string().min(1),

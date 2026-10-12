@@ -1,4 +1,4 @@
-/** The ONE transport implementation (ref frontend-backend-integration §2): nothing outside `src/dashboard/client/**` may call `fetch` or open an event stream.
+/** The ONE transport implementation (ref frontend-backend-integration ): nothing outside `src/dashboard/client/**` may call `fetch` or open an event stream.
  * The */
 import { httpError, networkError } from "./errors.js";
 

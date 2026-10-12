@@ -34,10 +34,14 @@ const onRejection = (event: PromiseRejectionEvent) => report(event.reason);
 window.addEventListener("error", onError);
 window.addEventListener("unhandledrejection", onRejection);
 const disposeErrorReports = () => {
+  window.removeEventListener("pagehide", onPageHide);
   window.removeEventListener("error", onError);
   window.removeEventListener("unhandledrejection", onRejection);
 };
-window.addEventListener("pagehide", disposeErrorReports, { once: true });
+const onPageHide = (event: PageTransitionEvent) => {
+  if (!event.persisted) disposeErrorReports();
+};
+window.addEventListener("pagehide", onPageHide);
 const hot = (import.meta as ImportMeta & { hot?: { dispose(callback: () => void): void } }).hot;
 hot?.dispose(disposeErrorReports);
 

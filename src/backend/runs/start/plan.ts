@@ -1,5 +1,5 @@
 import { type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
-import { admitProtectedInput, protectedSubjectMatchKey } from "./protected-input.js";
+import { admitProtectedInput, hasProtectedSubject, protectedSubjectDisplay, protectedSubjectMatchKey } from "./protected-input.js";
 import { errorText } from "../lifecycle/support.js";
 import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
@@ -157,7 +157,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
 
     const bindings = admittedSubmissions[index].bindings;
-    const protectedSubject = bindings.some(({ inputPath }) => inputPath !== "timekeeperName");
+    const protectedSubject = hasProtectedSubject(bindings);
     const matchKey = protectedSubject ? protectedSubjectMatchKey(bindings, canonicalInput) : planning.matchKey(parsed);
     const itemId = deriveItemId(descriptor.id, matchKey);
     if (seenItemIds.has(itemId)) {
@@ -175,14 +175,13 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       }
     }
 
-    const subtitle = protectedSubject ? undefined : planning.subtitle(parsed);
+    const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(parsed), subtitle: planning.subtitle(parsed) }));
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       ...(descriptor.enqueue !== "supersede-active" ? {} : { supersedeTargets: startSupersedeTargets(
         deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId })) }),
       itemId,
-      title: protectedSubject ? "Protected test subject" : planning.title(parsed),
-      ...(subtitle === undefined ? {} : { subtitle }),
+      ...display,
       rawInput,
       input: { schemaHash: canonicalSchemaHash, value: canonicalInput,
         protectedBindings: admittedSubmissions[index].bindings },

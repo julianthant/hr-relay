@@ -10,8 +10,8 @@ describe("semantic UI registry", () => {
 
   it("keeps both fixture and live evidence sanitized and write-free", () => {
     for (const path of [
-      "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-      "docs/rebuild/evidence/selectors/ucpath/person-org.live.json",
+      "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+      "tests/support/fixtures/ui/ucpath/person-org.live.json",
     ]) {
       const manifest = UiVerificationEvidenceManifestSchema.parse(
         JSON.parse(readFileSync(resolve(REPO_ROOT, path), "utf8")),

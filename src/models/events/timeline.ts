@@ -161,6 +161,7 @@ export interface TimelineRepository {
   get(eventId: string): TimelineEventRecord | undefined;
   page(input: z.input<typeof TimelinePageRequestSchema>): readonly TimelineEventRecord[];
   highWaterMark(): number;
+  confirmedActionHeads(input: Readonly<{ workerStreamIds: readonly string[]; before: number }>): readonly TimelineEventRecord[];
   pruneBefore(retentionDate: string): number;
 }
 

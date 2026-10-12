@@ -242,7 +242,7 @@ export interface WriteSequencerDependencies {
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly scheduler: MonotonicDeadlineScheduler;
-  /** Immutable per-invocation task bound (ref execution-and-sessions §5.5); no default, no opt-out. */
+  /** Immutable per-invocation task bound (ref execution-and-sessions ); no default, no opt-out. */
   readonly taskDeadlineMs: number;
   /** The acting operator identity from the config domain (ref clock-config-secrets); never fabricated. */
   readonly operator: unknown;
@@ -256,7 +256,7 @@ export interface ProductionWriteSequencer extends WriteSequencer {
   executeDryRun(context: WriteSequencerContext): Promise<TransactionDryRunPreview>;
 }
 
-/* ── dry-run preview (ref workflow-model §3.1: prepare + observe, zero intent/fence) ─── */
+/* ── dry-run preview (ref workflow-model: prepare + observe, zero intent/fence) ─── */
 
 
 import {
@@ -453,7 +453,7 @@ function beginBoundedTask(
   return { bounded, settlement };
 }
 
-/** Every task invocation races a mandatory injected monotonic deadline (ref execution-and-sessions §5.5). */
+/** Every task invocation races a mandatory injected monotonic deadline (ref execution-and-sessions ). */
 export async function invokeBoundedTask(
   deps: BoundedTaskDeps,
   taskId: TaskId,
@@ -1711,7 +1711,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "click a real external write for it, whatever the caller passed — use executeDryRun");
     }
 
-    /* stable commit input + key BEFORE any replay, probe or browser (ref workflow-model §3.1) */
+    /* stable commit input + key BEFORE any replay, probe or browser (ref workflow-model ) */
     const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
     const system = systemOf(commitContract.id);
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
@@ -2019,12 +2019,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         refuseRequestedCancellation(context);
         try {
           const resolution = refenceExpectedVersion === undefined
-            ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord })
+            ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord, claim: context.claim })
             : deps.authority.authority.writeIntents.refenceRetryable({
               expectedVersion: refenceExpectedVersion,
+              claim: context.claim,
               intent: intentRecord,
               attempt: attemptRecord,
             });
+          if (resolution.state === "refused") throw new RunLifecycleRefusedError(resolution);
           if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
           if (resolution.state !== "fenced") {
             throw new Error(

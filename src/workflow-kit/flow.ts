@@ -1,5 +1,5 @@
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
-/** The ONE workflow builder API (ref workflow-model §3): it accumulates `S` (per-node output/conditional/contracts) and `Nodes`, so reading an undeclared output fails `tsc`. */
+/** The ONE workflow builder API (ref workflow-model ): it accumulates `S` (per-node output/conditional/contracts) and `Nodes`, so reading an undeclared output fails `tsc`. */
 import { z } from "zod";
 import type {
   AnyCommitTaskContract,
@@ -82,13 +82,13 @@ export interface StepOpts<
   C extends AnyReadTaskContract,
   D extends readonly (keyof S & string)[],
 > {
-  /** Defaults to the contract's `title` (ref workflow-model §1.5). */
+  /** Defaults to the contract's `title` (ref workflow-model ). */
   readonly label?: string;
   readonly dependsOn: D;
   readonly bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]>;
   /** A DECLARED node condition (schema form), never a closure. */
   readonly when?: NodeConditionSpec;
-  /** REQUIRED — no default (ref workflow-model §5.3). */
+  /** REQUIRED — no default (ref workflow-model ). */
   readonly replay: "checkpoint" | "always-rerun";
 }
 
@@ -474,12 +474,19 @@ function assertControlFlowTargets(nodes: readonly GraphNodeBase[]): void {
     if (targetIndex === undefined) throw new Error(`${owner} targets undeclared node ${target}`);
     if (targetIndex <= index) throw new Error(`${owner} targets ${target}, which is not downstream of it`);
   };
+  const targetCases = new Map<NodeId, { branchId: NodeId; caseName: string }>();
   for (const [index, node] of nodes.entries()) {
     if (node.kind === "branch") {
       const branch = node as unknown as BranchNode<never, Readonly<Record<string, readonly NodeId[]>>>;
       for (const [caseName, targets] of Object.entries(branch.cases)) {
         if (targets.length === 0) throw new Error(`branch ${node.id} case "${caseName}" joins no node`);
         for (const target of targets) {
+          const previousCase = targetCases.get(target);
+          if (previousCase !== undefined
+            && (previousCase.branchId !== node.id || previousCase.caseName !== caseName)) {
+            throw new Error(`branch ${node.id} target ${target} appears in more than one case`);
+          }
+          targetCases.set(target, { branchId: node.id, caseName });
           assertDownstream(`branch ${node.id} case "${caseName}"`, index, String(target));
         }
       }

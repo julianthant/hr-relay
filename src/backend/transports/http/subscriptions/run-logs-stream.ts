@@ -17,6 +17,15 @@ type Subscriber = {
   deliveredOrdinal: number; error?: string;
 };
 
+function observeStreamChange(change: () => void): Readonly<{ state: "known" } | { state: "unknown"; cause: unknown }> {
+  try {
+    change();
+    return { state: "known" };
+  } catch (cause) {
+    return { state: "unknown", cause };
+  }
+}
+
 function afterDayCut(message: CompositeStreamEnvelope, dayCut: number): boolean {
   if (message.source !== "dashboard-day") return true;
   const envelope: DashboardStreamEnvelope = message.envelope;
@@ -34,7 +43,7 @@ export interface RunLogsStreamDeps {
   readonly projection: Pick<RunQueueProjection, "onChange" | "buildDashboardDayWire" | "cursor" | "generation">;
   readonly readRun: (runId: string) => Readonly<{ disposition: "live" | "archived"; run: RunRecord }> | undefined;
   readonly store: Readonly<{
-    tail(cursors: ReadonlyMap<string, TimelineCursor>): RunLogTail;
+    tail(cursors: ReadonlyMap<string, TimelineCursor>, knownStreams?: ReadonlySet<string>): RunLogTail;
     snapshot(authority: RunRecord): Readonly<{ events: readonly ConfirmedActionEvent[]; hasEarlier: boolean; parsedLines: number }>;
   }>;
   readonly retention?: number;
@@ -208,7 +217,7 @@ export class RunLogsStreamHub {
 
   #dayChange(change: RunQueueProjectionChange): void {
     if (this.#closed) return;
-    try {
+    const outcome = observeStreamChange(() => {
       if (change.kind === "generation") {
         this.#rotateGeneration();
         for (const subscriber of this.#subscribers) this.#resetSubscriber(subscriber, "generation-changed");
@@ -216,8 +225,9 @@ export class RunLogsStreamHub {
       }
       const retained = this.#retain({ kind: "day", change } as Omit<Change, "ordinal">);
       this.#deliver(retained);
-    } catch (error) {
-      this.#dayError = error instanceof Error ? error.message : String(error);
+    });
+    if (outcome.state === "unknown") {
+      this.#dayError = outcome.cause instanceof Error ? outcome.cause.message : String(outcome.cause);
       this.#degraded = true;
       this.#lastError = this.#dayError;
       this.#rotateGeneration();
@@ -230,63 +240,69 @@ export class RunLogsStreamHub {
     if (this.#closed) return;
     const previousHealth = this.#healthState();
     try {
-      for (const subscriber of this.#subscribers) {
-        if (subscriber.resetPending) continue;
-        try {
-          const current = this.#deps.readRun(subscriber.runId);
-          if (current === undefined || current.disposition !== "live") {
+      const outcome = observeStreamChange(() => {
+        for (const subscriber of this.#subscribers) {
+          if (subscriber.resetPending) continue;
+          try {
+            const current = this.#deps.readRun(subscriber.runId);
+            if (current === undefined || current.disposition !== "live") {
+              this.#resetSubscriber(subscriber, "generation-changed");
+            } else if (current.run.envelope.runId !== subscriber.runId
+              || current.run.envelope.traceId !== subscriber.authority.envelope.traceId
+              || current.run.envelope.contractFingerprint !== subscriber.authority.envelope.contractFingerprint
+              || current.run.envelope.attempt < subscriber.authority.envelope.attempt) {
+              this.#resetSubscriber(subscriber, "generation-changed");
+            } else {
+              subscriber.authority = current.run;
+            }
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            subscriber.error = detail;
             this.#resetSubscriber(subscriber, "generation-changed");
-          } else if (current.run.envelope.runId !== subscriber.runId
-            || current.run.envelope.traceId !== subscriber.authority.envelope.traceId
-            || current.run.envelope.contractFingerprint !== subscriber.authority.envelope.contractFingerprint
-            || current.run.envelope.attempt < subscriber.authority.envelope.attempt) {
-            this.#resetSubscriber(subscriber, "generation-changed");
-          } else {
-            subscriber.authority = current.run;
           }
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error);
-          subscriber.error = detail;
-          this.#resetSubscriber(subscriber, "generation-changed");
         }
-      }
-      const tail = this.#deps.store.tail(this.#cursors);
-      this.#parsedLines += tail.parsedLines;
-      this.#bytesRead += tail.bytesRead;
-      if (tail.pruned) {
-        this.#rotateGeneration();
-        this.#seen.clear();
-        this.#streamSequence.clear();
-        for (const subscriber of this.#subscribers) this.#resetSubscriber(subscriber, "generation-changed");
-      }
-      for (const event of tail.events) {
-        if (event.eventId !== `${event.workerStreamId}/${String(event.sequence)}`) throw new Error("run-log-stream-identity-mismatch");
-        const body = JSON.stringify(event);
-        const previous = this.#seen.get(event.eventId);
-        if (previous !== undefined) {
-          if (previous !== body) throw new Error("run-log-event-id-conflict");
-          continue;
+        const tail = this.#deps.store.tail(this.#cursors, new Set(this.#streamSequence.keys()));
+        this.#parsedLines += tail.parsedLines;
+        this.#bytesRead += tail.bytesRead;
+        if (tail.pruned) {
+          this.#rotateGeneration();
+          this.#seen.clear();
+          this.#streamSequence.clear();
+          for (const subscriber of this.#subscribers) this.#resetSubscriber(subscriber, "generation-changed");
         }
-        const lastSequence = this.#streamSequence.get(event.workerStreamId);
-        if (lastSequence !== undefined && event.sequence !== lastSequence + 1) {
-          throw new Error(event.sequence > lastSequence ? "run-log-worker-sequence-gap" : "run-log-worker-sequence-regressed");
+        for (const event of tail.events) {
+          if (event.eventId !== `${event.workerStreamId}/${String(event.sequence)}`) throw new Error("run-log-stream-identity-mismatch");
+          const body = JSON.stringify(event);
+          const previous = this.#seen.get(event.eventId);
+          if (previous !== undefined) {
+            if (previous !== body) throw new Error("run-log-event-id-conflict");
+            continue;
+          }
+          const lastSequence = this.#streamSequence.get(event.workerStreamId) ?? tail.previousSequences?.get(event.eventId);
+          if (lastSequence !== undefined && event.sequence !== lastSequence + 1) {
+            throw new Error(event.sequence > lastSequence ? "run-log-worker-sequence-gap" : "run-log-worker-sequence-regressed");
+          }
+
+          this.#deliver(this.#retain({ kind: "log", event } as Omit<Change, "ordinal">));
+          this.#streamSequence.delete(event.workerStreamId);
+          this.#streamSequence.set(event.workerStreamId, event.sequence);
+          this.#seen.set(event.eventId, body);
+          if (this.#seen.size > 4096) this.#seen.delete(this.#seen.keys().next().value!);
         }
-        if (lastSequence === undefined && this.#streamSequence.size >= 4096) throw new Error("run-log-stream-head-bound-exceeded");
-        this.#deliver(this.#retain({ kind: "log", event } as Omit<Change, "ordinal">));
-        this.#streamSequence.set(event.workerStreamId, event.sequence);
-        this.#seen.set(event.eventId, body);
-        if (this.#seen.size > 4096) this.#seen.delete(this.#seen.keys().next().value!);
+        this.#cursors = tail.cursors;
+        this.#recovering = tail.hasMore;
+        this.#degraded = this.#dayError !== undefined;
+        this.#lastError = this.#dayError;
+        this.#publishHealthTransition(previousHealth);
+      });
+      if (outcome.state === "unknown") {
+        this.#degraded = true;
+        this.#recovering = false;
+        this.#lastError = outcome.cause instanceof Error ? outcome.cause.message : String(outcome.cause);
+        this.#publishHealthTransition(previousHealth);
       }
-      this.#cursors = tail.cursors;
-      this.#recovering = tail.hasMore;
-      this.#degraded = this.#dayError !== undefined;
-      this.#lastError = this.#dayError;
-      this.#publishHealthTransition(previousHealth);
-    } catch (error) {
-      this.#degraded = true;
-      this.#recovering = false;
-      this.#lastError = error instanceof Error ? error.message : String(error);
-      this.#publishHealthTransition(previousHealth);
+    } finally {
+      while (this.#streamSequence.size > 4096) this.#streamSequence.delete(this.#streamSequence.keys().next().value!);
     }
   }
 

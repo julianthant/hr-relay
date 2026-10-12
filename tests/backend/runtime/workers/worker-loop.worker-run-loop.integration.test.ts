@@ -23,7 +23,7 @@ describe("worker run loop", () => {
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done", "done"]);
 
     // Warm reuse across sequential items: one session per system for BOTH
-    // runs, closed only at worker stop (ref execution-and-sessions §5).
+    // runs, closed only at worker stop (ref execution-and-sessions ).
     assert.equal(harness.sessions.opens("ucpath"), 1);
     assert.equal(harness.sessions.opens("crm"), 1);
     assert.deepEqual(harness.sessions.closeReasons(), ["worker-stop", "worker-stop"]);

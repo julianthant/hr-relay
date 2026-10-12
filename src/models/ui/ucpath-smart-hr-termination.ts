@@ -104,7 +104,7 @@ export const UcpathUsDateSchema = z.string().regex(
   "a UCPath Smart HR date is MM/DD/YYYY",
 );
 
-/** What a run asks for. The permanent key is EID + effective date (ref write-safety §5). */
+/** What a run asks for. The permanent key is EID + effective date (ref write-safety ). */
 export const UcpathTerminationTargetSchema = z.strictObject({
   emplId: EidSchema,
     /* Require the verified/approved name to match Page B before fencing any write. */
@@ -375,6 +375,14 @@ export type UcpathSmartHrTerminationDriver = Readonly<{
 }>;
 
 /* ── Typed driver refusals ───────────────────────────────────────────────── */
+
+export class UcpathEmploymentRecordMismatchError extends Error {
+  constructor(approvedRecord: string, observedRecord: string) {
+    super(`UCPath displayed employment record ${JSON.stringify(observedRecord)}, not the approved `
+      + `${JSON.stringify(approvedRecord)}. A blank or different employment record refuses termination staging.`);
+    this.name = "UcpathEmploymentRecordMismatchError";
+  }
+}
 
 /** Convert rejected Empl ID into a typed refusal before any staging page exists. */
 export class UcpathEmplIdNotRecognizedError extends Error {

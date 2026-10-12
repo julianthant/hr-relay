@@ -1,3 +1,4 @@
+import { fenceWriteFixture, writeFenceFixtureInput } from "../../../support/helpers/write-fence-fixture.js";
 import { authorityMutationCases, type MutationCase } from "../../../support/helpers/backend/authority-accounting-world.js";
 import { createAuthorityAccountingTestWorld } from "../../../support/helpers/backend/authority-accounting-world.js";
 import assert from "node:assert/strict";
@@ -110,7 +111,7 @@ afterEach(cleanup);
     openDatabases.push(database);
     databasePaths.set(database, path);
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, databasePaths.get(database) ?? (() => { throw new Error("missing fixture path"); })());
-    database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const generationBefore = database.getMeta().authorityGeneration;
 
     database.withAuthorityTransaction((authority) => {
@@ -279,14 +280,15 @@ afterEach(cleanup);
     const database = openDatabase();
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, databasePaths.get(database) ?? (() => { throw new Error("missing fixture path"); })());
+    const fence = writeFenceFixtureInput(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const generationBefore = database.getMeta().authorityGeneration;
-    assert.equal(database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }).state, "fenced");
+    assert.equal(database.authority.writeIntents.fenceAttempt(fence).state, "fenced");
     database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     const committedReplay = {
       intent: { ...WRITE_INTENT_ATTEMPTING, writeIntentId: UUID_8, currentAttemptId: UUID_6 },
       attempt: { ...WRITE_ATTEMPT, writeIntentId: UUID_8, writeAttemptId: UUID_6 },
     };
-    assert.equal(database.authority.writeIntents.fenceAttempt(committedReplay).state, "existing");
+    assert.equal(fenceWriteFixture(database, committedReplay).state, "existing");
     assert.equal(database.authority.writeIntents.findByPermanentKey("ucpath", IDEMPOTENCY_KEY)?.writeIntentId, UUID_1);
 
     assert.equal(database.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT).state, "recorded-observed-present");

@@ -1,5 +1,5 @@
 /** The selected day's server state, and nothing else.
- * One subscription per day (ref frontend-backend-integration §7.4: one global stream, not a connection */
+ * One subscription per day (ref frontend-backend-integration: one global stream, not a connection */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardDayWire } from "../../models/dashboard/projection.js";
 import type { SubscriptionState } from "../client/index.js";

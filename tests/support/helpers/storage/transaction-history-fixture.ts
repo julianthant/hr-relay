@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
@@ -36,7 +37,7 @@ export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) 
       const slot = database.authority.workerSlots.list(separationsDescriptor.id).find(entry => entry.poolIndex === poolIndex && entry.retiredAt === null);
       assert.ok(slot);
       assert.equal(database.authority.runs.claimNext({ workflow: separationsDescriptor.id, workerId: slot.workerId, now: ledger.fencedAt }).state,"claimed");
-      assert.equal(database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
+      assert.equal(fenceWriteFixture(database, { intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
       database.commitWriteAttempt(fixture.commit, { ...atomicWriteCheckpoint(fixture.commit), descriptorVersion:separationsDescriptor.version,contractFingerprint:separationsDescriptor.contractFingerprint });
       if (options.terminalize !== true) return fixture;
       const service = testRunService(database, historyClock);

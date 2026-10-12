@@ -102,7 +102,7 @@ import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, SQLITE_MIGRATIONS, auditMigrationTableCoverage, tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
-import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
+import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceRecordsSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
 
 export class AuthoritySchemaVersionError extends Error {
   readonly code = "authority-schema-mismatch";
@@ -317,6 +317,7 @@ type RunRepository = Readonly<{
   findByTrace(traceId: string): RunRecord | undefined;
 
   listByWorkflow(workflow: string): readonly RunRecord[];
+  listPage(input: Readonly<{ workflow?: string; offset: number; limit: number }>): readonly RunRecord[];
 
   listCurrentByWorkflow(workflow: string): readonly RunRecord[];
 
@@ -2261,7 +2262,7 @@ export class AuthorityDatabase implements Disposable {
       if (currentAttempt.outcome.state !== "attempting") {
         throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
       }
-      WriteFenceInputSchema.parse({ intent: currentIntent, attempt: currentAttempt });
+      WriteFenceRecordsSchema.parse({ intent: currentIntent, attempt: currentAttempt });
       this.#assertAtomicCommitMatchesIntent(parsed, currentIntent);
       const run=this.#readRunRow(currentIntent.runId);
       if(run===undefined || checkpoint.runId!==currentIntent.runId || checkpoint.workflowId!==currentIntent.workflowId
@@ -3726,9 +3727,12 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         fenceAttempt: (input: unknown) => {
-          const { intent, attempt } = WriteFenceInputSchema.parse(input);
+          const { intent, attempt, claim } = WriteFenceInputSchema.parse(input);
+          if (intent.status !== "attempting") throw new Error("write fence requires an attempting intent");
           return this.withAuthorityTransaction(() => {
             this.#assertBusinessWriteAdmission(intent);
+            const refusal = this.#writeFenceRefusal(intent, claim);
+            if (refusal !== undefined) return PermanentWriteResolutionSchema.parse({ state: "refused", refusal });
             const existing = this.#findPermanentWriteIntent(intent.system, intent.idempotencyKey);
             if (existing !== undefined) {
               return PermanentWriteResolutionSchema.parse({ state: "existing", intent: existing });
@@ -3739,11 +3743,13 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         refenceRetryable: (input: unknown) => {
-          const { expectedVersion, intent, attempt } = WriteRefenceInputSchema.parse(input);
+          const { expectedVersion, intent, attempt, claim } = WriteRefenceInputSchema.parse(input);
           if (intent.status !== "attempting") {
             throw new Error(`re-fence of ${intent.writeIntentId} must present an attempting intent, not ${intent.status}`);
           }
           return this.withAuthorityTransaction(() => {
+            const refusal = this.#writeFenceRefusal(intent, claim);
+            if (refusal !== undefined) return PermanentWriteResolutionSchema.parse({ state: "refused", refusal });
             const current = this.#requireWriteIntent(intent.writeIntentId);
             if (canonicalJsonStringify(current.status === "observed-present" ? null : current.occurrence ?? null)
               !== canonicalJsonStringify(intent.occurrence ?? null)) {
@@ -4167,6 +4173,28 @@ export class AuthorityDatabase implements Disposable {
         return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration);
       }),
 
+      listPage: (input: Readonly<{ workflow?: string; offset: number; limit: number }>) => {
+        const { workflow, offset, limit } = z.strictObject({ workflow: z.string().optional(),
+          offset: z.number().int().nonnegative(), limit: z.number().int().min(1).max(1001) }).parse(input);
+        this.#validateExternalQuerySources();
+        this.#database.exec(`CREATE TEMP TABLE IF NOT EXISTS canonical_run_page(position INTEGER PRIMARY KEY,run_id TEXT NOT NULL UNIQUE);
+          CREATE TEMP TABLE IF NOT EXISTS canonical_run_page_state(id INTEGER PRIMARY KEY CHECK(id=1),generation INTEGER NOT NULL,
+            data_version INTEGER NOT NULL,source_changes INTEGER NOT NULL,workflow TEXT);`);
+        const generation = this.getMeta().authorityGeneration;
+        const dataVersion = readIntPragma(this.#database, "data_version");
+        const changes = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
+        const state = z.strictObject({ generation: z.number().int(), data_version: z.number().int(), source_changes: z.number().int(),
+          workflow: z.string().nullable() }).optional().parse(this.#database.prepare("SELECT generation,data_version,source_changes,workflow FROM canonical_run_page_state WHERE id=1").get());
+        if (state?.generation !== generation || state.data_version !== dataVersion || state.source_changes !== changes || state.workflow !== (workflow ?? null)) {
+          this.#database.exec("DELETE FROM canonical_run_page; DELETE FROM canonical_run_page_state");
+          this.#database.prepare(`INSERT INTO canonical_run_page SELECT row_number() OVER (
+            ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id),id FROM runs ${workflow === undefined ? "" : "WHERE workflow=?"}`)
+            .run(...(workflow === undefined ? [] : [workflow]));
+          this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(generation,dataVersion,workflow ?? null);
+        }
+        return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
+          WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
+      },
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
       `).all(workflow).map((row) => runRecordFromRow(row))),
@@ -5057,6 +5085,21 @@ export class AuthorityDatabase implements Disposable {
       throw new Error(`write attempt ${writeAttemptId} is ${attempt.outcome.state}; only an attempting attempt may transition`);
     }
     return attempt;
+  }
+
+  #writeFenceRefusal(
+    intent: Extract<WriteIntentRecord, { status: "attempting" }>,
+    claim: z.infer<typeof RunClaimTokenSchema>,
+  ): RunRecordRefusal | undefined {
+    const run = this.#readRunRow(intent.runId);
+    const held = run === undefined ? undefined : runClaim(run);
+    if (held === undefined || held.workerId !== claim.workerId || held.claimGeneration !== claim.claimGeneration) {
+      return { reason: "lost" };
+    }
+    if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.envelope.attempt !== intent.runAttempt) {
+      return { reason: "invalid-state" };
+    }
+    return undefined;
   }
 
   #assertBusinessWriteAdmission(intent: WriteIntentRecord): void {

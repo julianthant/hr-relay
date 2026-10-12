@@ -42,6 +42,7 @@ describe("cross-date search snapshot token", () => {
       const query = { q: "separations", scope: "workflow" as const, facets: {}, limit: 20 };
       const page = service.search(query);
       assert.match(page.snapshot.token, /^ss1\./u);
+      CLOCK.advanceWall(1);
       assert.deepEqual(service.searchSelected(query, page.snapshot.token), page);
 
       const restarted = searchService(database, 0x42);

@@ -9,7 +9,7 @@ const authority = { envelope: { runId: RUN, traceId: "fpo-120000-0002", attempt:
 function repository(records: readonly TimelineEventRecord[], calls: unknown[]): TimelineRepository {
   return { withReadSnapshot: read => read(), highWaterMark: () => records.at(-1)?.cursor ?? 0,
     page: request => { calls.push(request); return records.filter(record => record.cursor > (request.after ?? 0)).slice(0, request.limit ?? 500); },
-    append: () => { throw new Error("read-only fixture"); }, get: () => undefined, pruneBefore: () => 0 };
+    confirmedActionHeads: () => [], append: () => { throw new Error("read-only fixture"); }, get: () => undefined, pruneBefore: () => 0 };
 }
 describe("native run log source", () => {
   it("pages snapshots by exact run and resumes the authoritative cursor", () => {

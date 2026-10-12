@@ -124,7 +124,7 @@ export function fanOutQueuedRuns(
   }
   for (const entry of planned) {
     // An authority read error here aborts the whole fan-out — never "continue
-    // and enqueue anyway" (ref dashboard-surfaces §2.4 Enqueue).
+    // and enqueue anyway" (ref dashboard-surfaces  Enqueue).
     const active = activeRunsForItem(repositories, envelope.workflow, entry.itemId);
     if (descriptor.enqueue === "reject-active" && active.length > 0) {
       refuse(

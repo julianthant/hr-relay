@@ -1,4 +1,5 @@
-import { admitProtectedInput } from "../start/protected-input.js";
+import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
 import { WorkerRetirementProofSchema, type WorkerPoolRosterAdmission } from "../../../models/run/worker-slot.js";
 import { PreflightAdmissionRefusal, type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
@@ -54,7 +55,7 @@ import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../start
 import { type ExplorerEditApplyRequest, ExplorerEditApplyResultSchema, type ExplorerEditApplyResult } from "../../../models/dashboard/explorer.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsReadbackSchema, type ProtectedSettingsReadback } from "../../../models/config/protected-settings.js";
 
-/* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
+/* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
   "failure-resolution": ["annotate-failure"],
@@ -639,7 +640,7 @@ function executeRetry(
     commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
     runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
     runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
-  }, descriptor, { title: planning.title(value), subtitle: planning.subtitle(value), actorId: request.requestedBy }));
+  }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
   return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId)], [
     { target: runTarget(record.envelope.runId), before: 0, after: record.version },
   ]);
@@ -1077,7 +1078,7 @@ function executeIntake(
       }
       const held = current.bindings.find((entry) => entry.targetFieldId === request.payload.targetFieldId);
       if (held !== undefined && held.sourceColumnId === request.payload.sourceColumnId) return noOp();
-      // THE one mint (ref data-intake-and-edit-data §2.5). It re-proves both checks above against the
+      // THE one mint (ref data-intake-and-edit-data ). It re-proves both checks above against the
       // projection and the detected columns; a suggestion cannot reach it.
       const binding = confirmBinding({
         projection,
@@ -1328,7 +1329,7 @@ function executeIntake(
 
           shape: "single",
           // A spreadsheet fan-out is the definition of bulk, and this is a
-          // server stamp rather than a caller claim (ref dashboard-surfaces §1.1).
+          // server stamp rather than a caller claim (ref dashboard-surfaces ).
           priority: "bulk",
           dryRun: request.payload.dryRun,
           ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),

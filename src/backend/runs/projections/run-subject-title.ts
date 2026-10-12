@@ -2,7 +2,7 @@
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 
-/** The narrow authority read this needs — ref workflow-model §5.7's "latest compatible attempt wins". */
+/** The narrow authority read this needs — ref workflow-model's "latest compatible attempt wins". */
 export interface SubjectCheckpointSource {
   latestCheckpoint(
     workflowId: string,

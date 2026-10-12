@@ -1,8 +1,8 @@
 import { IntakeOutcomeSkeleton, IntakeSkeleton } from "../shared/loading/loading.js";
 import { observeResource } from "../../state/async-resource.js";
 import { Checkbox as HeroCheckbox } from "@heroui/react";
-/** The spreadsheet intake workspace — ref data-intake-and-edit-data §2.2's upload → map → validate →
- * run, and ref dashboard-surfaces §11's surface contract . */
+/** The spreadsheet intake workspace — ref data-intake-and-edit-data's upload → map → validate →
+ * run, and ref dashboard-surfaces's surface contract . */
 import {
 Check,
 CheckCircle2,

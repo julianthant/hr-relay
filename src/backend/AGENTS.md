@@ -20,10 +20,9 @@ task starts at the repository root.
 - Run resources first admit exact run membership through RunRecordService.read, then bind evidence
   to the immutable run/digest and retained capture metadata. Never reconstruct evidence from current
   inputs or infer purge from a deadline; preserve safe download headers.
-- Boot/upgrade follows the current authority floor and boot/upgrade contract. Old integration-lineage lessons are
-  history, not permission to migrate an existing database during ordinary startup.
+- Boot/upgrade follows the current authority contract; ordinary startup never converts an incompatible database.
 
-Before changing a seam, search [LESSONS.md](LESSONS.md) for its evidence and traps. Read the relevant
+Before changing a seam, read the relevant
 `docs/rebuild/reference/frontend-backend-integration.md`, `dashboard-surfaces.md`, and
 `clock-config-secrets.md` contract before changing behavior. Exact routes and composition order
-belong in source and their tests; requested new lessons belong in the ledger.
+belong in source and their tests.

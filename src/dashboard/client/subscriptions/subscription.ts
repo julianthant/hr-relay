@@ -1,4 +1,4 @@
-/** The resumable dashboard-day subscription (ref frontend-backend-integration §3.5), client side. */
+/** The resumable dashboard-day subscription (ref frontend-backend-integration ), client side. */
 import { z } from "zod";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import {

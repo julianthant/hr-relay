@@ -105,7 +105,7 @@ export const NormalizeContact = defineTaskContract({
   subject: { kind: "none", reason: "pure per-record normalization advice resolves no person" },
   freshness: {
     // Provider-derived facts age; a day-old geocode observation must not ride
-    // a resume into a write unexamined (ref data-intake-and-edit-data §4.2's finite budget).
+    // a resume into a write unexamined (ref data-intake-and-edit-data's finite budget).
     defaultMaxAgeMs: 24 * 60 * 60_000,
   },
   provenance: { default: "derived" },

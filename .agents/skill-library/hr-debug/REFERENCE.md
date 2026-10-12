@@ -6,8 +6,8 @@
 The general method is the global `debug` skill: red gate → minimise → hypothesise → instrument → fix
 → regression test → cleanup. Use `sup_sol` at high reasoning for a subtle seam only when `/supervise`
 or the user explicitly authorizes delegation. This skill adds the repo-specific evidence sources,
-failure classes, and forbidden first moves. Read `docs/rebuild/reference/lessons.md` for the class you
-are in before forming a theory.
+failure classes, and forbidden first moves. Read the owning reference and nearest module `AGENTS.md`
+before forming a theory.
 
 ## 0 · Forbidden first moves
 - "Add a longer wait / pollMs" before you have DISPROVEN timing (read the span timings; the operator has been burned: *"timing is not the cause, don't repeat that"*).
@@ -41,11 +41,11 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 
 ## 3 · Auth / session
 - Authentication is proven by CONTENT (`PS_TOKEN` / `sid` + no sign-in form), never by URL (D120). A 3-second "success" is the public portal.
-- Duo: the WebAuthn counter is per credential, shared across profiles — presented value must be `max(stored+1, nowSec)`; a refused profile is BURNT (only a fresh profile recovers) — read `ref lessons` 2026-08-19 (D243/D244) before deleting anything. "canceled or timed out" in ~1 s = the counter refusal, not a slow prompt.
+- Duo: the WebAuthn counter is per credential, shared across profiles — presented value must be `max(stored+1, nowSec)`; a refused profile is BURNT (only a fresh profile recovers) — read `ref execution-and-sessions` before deleting anything. "canceled or timed out" in ~1 s = the counter refusal, not a slow prompt.
 - `sessionAcquireMs` (60 s) bounds the whole login chain; do not raise it to hide a dead session.
 
 ## 4 · Runtime / singleton
-- BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE fingerprint: `curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint'` vs `src/domain/workflow/generated-build-manifest.ts` after `npm run build:manifest`. Mismatch → restart the BFF; every run it planned is unclaimable.
+- BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE fingerprint: `curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint'` vs `src/workflow-kit/validation/generated-build-manifest.ts` after `npm run build:manifest`. Mismatch → restart the BFF; every run it planned is unclaimable.
 - `ls .tracker/locks/` + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
 - Worker wedged at boot with its own old claim → D200 (lease is the evidence; sweep by workerId). A `claimed` row with an `attempting` intent is refused at startup by design — that is a §4.1 recovery, not a restart.
 

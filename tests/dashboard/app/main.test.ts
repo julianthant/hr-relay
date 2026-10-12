@@ -44,3 +44,21 @@ it("surfaces rejected error delivery once without recursively reporting it, and 
   browser.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("after pagehide") }));
   assert.equal(report.mock.calls.length, 2);
 });
+
+it("reports errors and rejections after persisted pagehide and pageshow, then disposes on final hide", async () => {
+  const browser = new EventTarget();
+  Object.assign(browser, { location: { origin: "http://localhost:5174", pathname: "/" } });
+  vi.stubGlobal("window", browser);
+  vi.stubGlobal("document", { getElementById: () => ({}) });
+  report.mockResolvedValue(undefined);
+  await import("../../../src/dashboard/app/main.js");
+  browser.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: true }));
+  browser.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+  browser.dispatchEvent(Object.assign(new Event("error"), { error: new Error("restored error") }));
+  browser.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("restored rejection") }));
+  assert.deepEqual(report.mock.calls.map(([input]) => input.message), ["restored error", "restored rejection"]);
+  browser.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: false }));
+  browser.dispatchEvent(Object.assign(new Event("error"), { error: new Error("disposed error") }));
+  browser.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("disposed rejection") }));
+  assert.equal(report.mock.calls.length, 2);
+});

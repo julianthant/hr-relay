@@ -8,7 +8,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "d2340abf7aafffccc0ff8dc48ed03f7433a5f36c672da848000b485f0e900b4c",
+    "sha256": "c0b7b9c5d59f24df4611e94823fe16cb8a2e35719e74873e21a9b79f5b612e40",
     "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
   },
   {
@@ -82,11 +82,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "A failing health observer sets diagnosticFailure and keeps the publisher's own state; queue acceptance is still never reported as durable delivery."
   },
   {
-    "path": "src/backend/transports/http/subscriptions/run-logs-stream.ts",
-    "sha256": "5af34a438e459eb337dea3b2037eee2fefff3b5b33f01e69ad5f879d39e4d004",
-    "reason": "Subscriber read failures record the error and require reset; day failures degrade health and rotate generation; native tail failures publish degraded health and refuse new connections until a successful source read recovers."
-  },
-  {
     "path": "src/dashboard/app/navigation/view-route-model.ts",
     "sha256": "8fade512cb492ec8e768b01768c3bac48147d40588712091dbdc51256504b7fb",
     "reason": "Oversized or invalid view-route JSON returns null; the caller treats the route as unreadable instead of rebuilding shell navigation from a default."
@@ -98,7 +93,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "ace82d569ba3e33f30b5bde3faa11e05aeea083ee5858b77c9c72e739b5ce2e7",
+    "sha256": "abe0278a8dbf0b8724123b98a7c2193e89dee189dad756aae9f6cbc2df504a91",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states."
   },
   {

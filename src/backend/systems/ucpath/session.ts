@@ -34,7 +34,8 @@ const LOGIN_CONTROL_NAME = /log in to ucpath/i;
 
 const CAMPUS_RESELECT_ATTEMPTS = 3;
 // PeopleSoft psc and psp routes are application and portal servlets; require application evidence.
-const PEOPLESOFT_APP_SERVLETS = ["/psc/", "/psp/"] as const;
+const PEOPLESOFT_APP_HOST = "ucphrprdpub.universityofcalifornia.edu";
+const PEOPLESOFT_APP_PATHS = ["/psc/ucphrprd/EMPLOYEE/HRMS/", "/psp/ucphrprd/EMPLOYEE/HRMS/"] as const;
 // PS_TOKEN proves the session; PS_TOKENEXPIRE may exist before authentication and cannot substitute.
 const PEOPLESOFT_SESSION_COOKIE = "PS_TOKEN";
 const PEOPLESOFT_COOKIE_DOMAIN = "universityofcalifornia.edu";
@@ -43,23 +44,22 @@ const PEOPLESOFT_SIGNON_SELECTOR = 'input#userid, input#pwd, input[name="userid"
 
 // A UC-host landing is only a wait predicate; the public portal also satisfies it.
 export function isUcpathPostSsoLanding(rawUrl: string): boolean {
-  const url = rawUrl.toLowerCase();
-  return url.includes("universityofcalifornia.edu")
-    && !url.includes(CAMPUS_DISCOVERY_MARKER)
-    && !url.includes("duosecurity.com")
-    && !url.includes("a5.ucsd.edu")
-    && !url.includes("/login")
-    && !url.includes("cmd=login")
-    && !url.includes("cmd=expire")
-    && !url.includes("shibboleth")
-    && !url.startsWith("chrome-error");
+  const url = URL.parse(rawUrl);
+  if (url === null) return false;
+  const path = url.pathname.toLowerCase();
+  return url.protocol === "https:"
+    && (url.host === PEOPLESOFT_APP_HOST || url.host === "ucpath.universityofcalifornia.edu")
+    && !path.includes(CAMPUS_DISCOVERY_MARKER) && !path.includes("/login") && !path.includes("shibboleth")
+    && ![...url.searchParams].some(([key, value]) => key.toLowerCase() === "cmd"
+      && (value.toLowerCase() === "login" || value.toLowerCase() === "expire"));
 }
 
 
 export function isAuthenticatedUcpathAppUrl(rawUrl: string): boolean {
-  const url = rawUrl.toLowerCase();
-  return isUcpathPostSsoLanding(url)
-    && PEOPLESOFT_APP_SERVLETS.some((servlet) => url.includes(servlet));
+  const url = URL.parse(rawUrl);
+  if (url === null) return false;
+  return isUcpathPostSsoLanding(rawUrl) && url.host === PEOPLESOFT_APP_HOST
+    && PEOPLESOFT_APP_PATHS.some(path => url.pathname.startsWith(path));
 }
 
 /** The two-fact proof: PeopleSoft's own session token, and no sign-in form. */
@@ -240,7 +240,7 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
   ceremony: async (context, token): Promise<void> => {
     const { page, config } = context;
     // The portal's login control is the first navigation that can reach the
-    // Duo ceremony, so it runs under the lease (ref execution-and-sessions §10.2).
+    // Duo ceremony, so it runs under the lease (ref execution-and-sessions ).
     await clickPortalLoginControl(context);
 
     // Campus discovery only appears when the IdP has no live session; when it

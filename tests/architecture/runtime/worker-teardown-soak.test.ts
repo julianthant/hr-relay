@@ -41,7 +41,7 @@ const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
 const HEARTBEAT_INTERVAL_MS = 500;
 const CLAIM_STALE_AFTER_MS = 60_000;
 
-/** The measured soak shape, restated in ref execution-and-sessions §7.1's as-built paragraph. */
+/** The measured soak shape, restated in ref execution-and-sessions's as-built paragraph. */
 const SOAK_WORKERS = 3;
 const SOAK_RUNS = 30;
 
@@ -417,7 +417,7 @@ describe("bounded multi-worker soak over one authority database", () => {
       assert.ok(report.outcomes.length > 0, `${report.workerId} never claimed anything`);
     }
 
-    // Ref execution-and-sessions §7's first two rows, measured rather than asserted in the abstract:
+    // Ref execution-and-sessions's first two rows, measured rather than asserted in the abstract:
     // never two rows per worker, and never fewer than the whole fleet at work.
     assert.ok(samples > 100, `only ${String(samples)} claim samples were taken`);
     assert.equal(maxWorkersHoldingWork, SOAK_WORKERS);
@@ -450,7 +450,7 @@ describe("bounded multi-worker soak over one authority database", () => {
     // The real database query proves read-only execution created no transactions.
     assert.deepEqual(createTransactionHistory(database.authority).query({ from: "0001-01-01", to: "9999-12-31" }).rows, []);
 
-    // Recorded in ref execution-and-sessions §7.1's as-built paragraph; printed so a regression in
+    // Recorded in ref execution-and-sessions's as-built paragraph; printed so a regression in
     // the soak's cost is visible in the run rather than only in the wall clock.
     assert.ok(
       elapsedMs > 0 && Number.isFinite(elapsedMs),

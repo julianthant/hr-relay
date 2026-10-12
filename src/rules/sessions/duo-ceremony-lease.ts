@@ -17,7 +17,7 @@ export type DuoCeremonyLeaseHolder = z.infer<typeof DuoCeremonyLeaseHolderSchema
 export const DuoCeremonyLeaseStateSchema = z.enum(["held", "released"]);
 
 export const DuoCeremonyLeaseRecordSchema = z.strictObject({
-  /** The credential identity digest (ref execution-and-sessions §10.1). */
+  /** The credential identity digest (ref execution-and-sessions ). */
   credentialKey: FingerprintSchema,
   /** +1 per acquisition of this credential; never reset. */
   generation: PositiveIntSchema,

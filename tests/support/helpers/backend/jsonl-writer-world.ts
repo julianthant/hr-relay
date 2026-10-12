@@ -19,7 +19,7 @@ export function createJsonlWriterTestWorld() {
     if (repository === undefined) {
       const records: TimelineEventRecord[] = [];
       repository = { withReadSnapshot: read => read(), get: id => records.find(record => record.eventId === id),
-        page: () => records, highWaterMark: () => records.length, pruneBefore: () => 0,
+        page: () => records, highWaterMark: () => records.length, pruneBefore: () => 0, confirmedActionHeads: () => [],
         append(input) {
           const record = TimelineEventRecordSchema.parse({ ...(input as object), cursor: records.length + 1 });
           const previous = records.find(row => row.eventId === record.eventId);

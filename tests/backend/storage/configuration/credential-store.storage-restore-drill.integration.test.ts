@@ -110,7 +110,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       const run = reopened.authority.runs.get(seeded.runId);
       assert.ok(run !== undefined);
       assert.equal(run.claimGeneration, seeded.claimGeneration);
-      assert.equal(run.lifecycle.state, "claimed");
+      assert.equal(run.lifecycle.state, "running");
       assert.deepEqual(
         reopened.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
         WRITE_INTENT_ATTEMPTING,

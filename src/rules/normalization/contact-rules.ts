@@ -1,5 +1,6 @@
 /** Deterministic contact normalization only. */
 import { z } from "zod";
+import { parseUsStateCode } from "../../models/fields/cell-coercion.js";
 
 /** Shared field vocabulary for contact rules and normalization tasks. */
 export const ContactFieldIdSchema = z.enum([
@@ -79,27 +80,8 @@ export function normalizePhoneDigitsRule(raw: string | null | undefined): string
 
 /* ── US state (normalize-contact.ts @ 0034671d) ──────────────────────────── */
 
-const US_STATES: Readonly<Record<string, string>> = Object.freeze({
-  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
-  colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA",
-  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA",
-  kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD",
-  massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO",
-  montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ",
-  "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", ohio: "OH",
-  oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC",
-  "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT",
-  virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY",
-  "district of columbia": "DC",
-});
-
 export function normalizeUsStateRule(raw: string | null | undefined): string | null {
-  if (raw === null || raw === undefined) return null;
-  const trimmed = raw.trim();
-  if (trimmed === "") return null;
-  if (/^[A-Za-z]{2}$/u.test(trimmed)) return trimmed.toUpperCase();
-  const mapped = US_STATES[trimmed.toLowerCase()];
-  return mapped === undefined ? null : mapped;
+  return raw === null || raw === undefined ? null : parseUsStateCode(raw);
 }
 
 /* ── ZIP (normalize-contact.ts @ 0034671d) ───────────────────────────────── */

@@ -17,12 +17,11 @@ import type { TaskLogger } from "../../../workflow-kit/task.js";
 import { ConfirmedActionEventSchema, type ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
 import { registeredUiSensitivity } from "../../systems/browser-shared/semantic-ui-effect.js";
 
-function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): ConfirmedActionEvent {
-  const event = ConfirmedActionEventSchema.parse(input);
-  if (event.eventId !== `${event.workerStreamId}/${String(event.sequence)}`) throw new Error("confirmed-action-stream-identity-mismatch");
-  if (event.action.runId !== authority.envelope.runId
-    || event.action.definitionFingerprint !== authority.envelope.contractFingerprint
-    || event.action.attempt > authority.envelope.attempt) throw new Error("confirmed-action-authority-mismatch");
+function isLocalActionValueEligible(
+  action: ConfirmedActionEvent["action"],
+  authority: RunRecord,
+  source: ConfirmedActionEvent["source"],
+): boolean {
   const declaredAction = (action: ConfirmedActionEvent["action"]) => {
     const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate =>
       candidate.id === action.invocationId && candidate.entryId === action.nodeId
@@ -30,10 +29,10 @@ function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord):
     if (invocation === undefined) throw new Error("confirmed-action-frozen-invocation-missing");
     if (JSON.stringify(action.occurrencePath) !== JSON.stringify(invocation.occurrencePath)
       || action.logicalSessionId !== invocation.operation.session.id
-      || (event.source.kind === "browser"
-        ? invocation.operation.system !== event.source.system
+      || (source.kind === "browser"
+        ? invocation.operation.system !== source.system
           || invocation.operation.session.kind !== "browser"
-          || invocation.operation.session.system !== event.source.system
+          || invocation.operation.session.system !== source.system
         : invocation.operation.system !== "local" || invocation.operation.session.kind !== "local")) {
       throw new Error("confirmed-action-frozen-source-mismatch");
     }
@@ -48,45 +47,51 @@ function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord):
     if (matches.length !== 1) throw new Error("confirmed-action-frozen-action-mismatch");
     return matches[0];
   };
-  const isLocalValueEligible = (action: ConfirmedActionEvent["action"]): boolean => {
-    const declared = declaredAction(action);
-    if (action.value?.consumed.state !== "observed") return true;
-    if (event.source.kind === "browser") {
-      const sensitivity = registeredUiSensitivity(event.source.system, declared.target ?? declared.id);
-      if (sensitivity !== "public" && sensitivity !== "hr") return false;
+  const declared = declaredAction(action);
+  if (action.value?.consumed.state !== "observed") return true;
+  if (source.kind === "browser") {
+    const sensitivity = registeredUiSensitivity(source.system, declared.target ?? declared.id);
+    if (sensitivity !== "public" && sensitivity !== "hr") return false;
+  }
+  const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate => candidate.id === action.invocationId);
+  const slot = invocation?.operation.values.find(candidate => candidate.id === declared.valueSlot);
+  if (slot === undefined || declared.valueSlot !== action.value.slot || slot.source.path !== action.value.fieldPath) {
+    throw new Error("confirmed-action-frozen-value-slot-mismatch");
+  }
+  const reference = slot.source.kind === "contract-output"
+    ? { kind: "task-output" as const, entryId: invocation!.entryId, path: slot.source.path }
+    : invocation?.bindings.find(binding => binding.slot === slot.id)?.value;
+  const producer = action.value.producer;
+  const matches = reference !== undefined && producer.kind === reference.kind && (() => {
+    switch (reference.kind) {
+      case "run-input": return producer.kind === "run-input" && producer.path === reference.path;
+      case "configuration": return producer.kind === "configuration" && producer.key === reference.key && producer.schemaHash === reference.schemaHash;
+      case "constant": return producer.kind === "constant" && producer.valueDigest === reference.valueDigest;
+      case "task-output": case "child-output": return (producer.kind === "task-output" || producer.kind === "child-output")
+        && producer.entryId === reference.entryId && producer.path === reference.path;
+      case "transformation": return producer.kind === "transformation" && producer.transformId === reference.transformId && producer.path === reference.path;
+      default: return false;
     }
-    const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate => candidate.id === action.invocationId);
-    const slot = invocation?.operation.values.find(candidate => candidate.id === declared.valueSlot);
-    if (slot === undefined || declared.valueSlot !== action.value.slot || slot.source.path !== action.value.fieldPath) {
-      throw new Error("confirmed-action-frozen-value-slot-mismatch");
-    }
-    const reference = slot.source.kind === "contract-output"
-      ? { kind: "task-output" as const, entryId: invocation!.entryId, path: slot.source.path }
-      : invocation?.bindings.find(binding => binding.slot === slot.id)?.value;
-    const producer = action.value.producer;
-    const matches = reference !== undefined && producer.kind === reference.kind && (() => {
-      switch (reference.kind) {
-        case "run-input": return producer.kind === "run-input" && producer.path === reference.path;
-        case "configuration": return producer.kind === "configuration" && producer.key === reference.key && producer.schemaHash === reference.schemaHash;
-        case "constant": return producer.kind === "constant" && producer.valueDigest === reference.valueDigest;
-        case "task-output": case "child-output": return (producer.kind === "task-output" || producer.kind === "child-output")
-          && producer.entryId === reference.entryId && producer.path === reference.path;
-        case "transformation": return producer.kind === "transformation" && producer.transformId === reference.transformId && producer.path === reference.path;
-        default: return false;
-      }
-    })();
-    if (!matches) throw new Error("confirmed-action-frozen-value-producer-mismatch");
-    if (event.source.kind === "headless") {
-      return declared.valueSlot !== undefined && declared.valueSlot === action.value.slot
-        && invocation?.operation.values.some(slot => slot.id === declared.valueSlot) === true;
-    }
-    const sensitivity = registeredUiSensitivity(event.source.system, declared.target ?? declared.id);
-    return sensitivity === "public" || sensitivity === "hr";
-  };
-  const safeAction = isLocalValueEligible(event.action) ? event.action : { ...event.action, value: undefined };
+  })();
+  if (!matches) throw new Error("confirmed-action-frozen-value-producer-mismatch");
+  if (source.kind === "headless") {
+    return declared.valueSlot !== undefined && declared.valueSlot === action.value.slot
+      && invocation?.operation.values.some(slot => slot.id === declared.valueSlot) === true;
+  }
+  const sensitivity = registeredUiSensitivity(source.system, declared.target ?? declared.id);
+  return sensitivity === "public" || sensitivity === "hr";
+}
+
+function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): ConfirmedActionEvent {
+  const event = ConfirmedActionEventSchema.parse(input);
+  if (event.eventId !== `${event.workerStreamId}/${String(event.sequence)}`) throw new Error("confirmed-action-stream-identity-mismatch");
+  if (event.action.runId !== authority.envelope.runId
+    || event.action.definitionFingerprint !== authority.envelope.contractFingerprint
+    || event.action.attempt > authority.envelope.attempt) throw new Error("confirmed-action-authority-mismatch");
+  const safeAction = isLocalActionValueEligible(event.action, authority, event.source) ? event.action : { ...event.action, value: undefined };
   if (event.kind === "trace") return ConfirmedActionEventSchema.parse({ ...event, action: safeAction });
   const verifier = event.proof.verifier;
-  const safeVerifier = isLocalValueEligible(verifier) ? verifier : { ...verifier, value: undefined };
+  const safeVerifier = isLocalActionValueEligible(verifier, authority, event.source) ? verifier : { ...verifier, value: undefined };
   return ConfirmedActionEventSchema.parse({ ...event, action: safeAction,
     proof: { ...event.proof, verifier: safeVerifier } });
 }
@@ -231,12 +236,37 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
     if (Date.parse(action.at) > deps.clock.now().getTime()) {
       throw new Error("browser action occurred after note append time");
     }
-    const durableAction = action.operation?.value?.consumed.state === "redacted"
-      ? (() => {
-        const { value: _rawValue, ...withoutRawValue } = action;
-        return withoutRawValue;
-      })()
-      : action;
+    const occurrence = action.operation;
+    const observed = occurrence?.value?.consumed.state === "observed";
+    let eligible = false;
+    if (occurrence !== undefined) {
+      if (occurrence.runId !== authority.envelope.runId
+        || occurrence.definitionFingerprint !== authority.envelope.contractFingerprint
+        || occurrence.attempt > authority.envelope.attempt) throw new Error("confirmed-action-authority-mismatch");
+      const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate =>
+        candidate.id === occurrence.invocationId);
+      if (invocation === undefined) throw new Error("confirmed-action-frozen-invocation-missing");
+      const session = invocation.operation.session;
+      let source: ConfirmedActionEvent["source"];
+      if (session.kind === "browser") {
+        if (session.system === undefined) throw new Error("confirmed-action-frozen-source-mismatch");
+        source = { kind: "browser", system: session.system };
+      } else {
+        source = { kind: "headless", system: "workflow" };
+      }
+      const admitted = isLocalActionValueEligible(occurrence, authority, source);
+      eligible = observed && admitted;
+    }
+    const { value: rawValue, ...withoutRawValue } = action;
+    const durableAction: BrowserAction = {
+      ...withoutRawValue,
+      ...(eligible && rawValue !== undefined && occurrence?.value?.consumed.state === "observed"
+        && rawValue === occurrence.value.consumed.value ? { value: rawValue } : {}),
+      ...(observed && !eligible && occurrence.value !== undefined ? { operation: {
+        ...occurrence, value: { ...occurrence.value,
+          consumed: { state: "withheld", reason: "classification-required" } },
+      } } : {}),
+    };
     return write({
       workflow: input.workflow,
       address: input.address,

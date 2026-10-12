@@ -683,17 +683,20 @@ export function summarizeBackupHealth(
   input: unknown,
   liveAuthorityGeneration: number | undefined,
   clock: Clock = systemClock,
-): "current" | "stale" | "missing" {
+): "current" | "stale" | "missing" | "unavailable" {
   const options = BackupSummaryOptionsSchema.parse(input);
   const directory = resolve(options.backupDirectory);
   if (basename(directory) !== "authority" || basename(dirname(directory)) !== "backups") {
     throw new Error("backup-summary-directory-shape-mismatch");
   }
   const activeIdentity = AuthorityDatabase.sourceDatabaseIdentity(join(dirname(dirname(directory)), "state.db"));
-  if (!existsSync(directory)) return "missing";
-  const manifests = readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".manifest.json"))
-    .map(({ name }) => name);
+  let manifests: string[];
+  try {
+    if (!lstatSync(directory).isDirectory()) return "missing";
+    manifests = readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".manifest.json"))
+      .map(({ name }) => name);
+  } catch (error) { return errnoCode(error) === "ENOENT" ? "missing" : "unavailable"; }
   let newest: { createdAtMs: number; authorityGeneration: number } | undefined;
   for (const name of manifests) {
     let createdAtMs: number;
@@ -701,10 +704,14 @@ export function summarizeBackupHealth(
     try {
       const manifest = parseBackupManifestFile(join(directory, name));
       if (manifest.sourceDatabaseIdentity !== activeIdentity) continue;
+      const copy = lstatSync(join(directory, manifest.backupFileName));
+      if (!copy.isFile() || copy.size !== manifest.byteSize) continue;
       createdAtMs = Date.parse(manifest.createdAt);
       authorityGeneration = manifest.authorityGeneration;
-    } catch {
-      // Unparseable manifests are invalid in the doctor; the summary reports their closed-enum uncertainty.
+    } catch (error) {
+      const code = errnoCode(error);
+      if (/^E[A-Z]+$/u.test(code) && code !== "ENOENT") return "unavailable";
+      // An invalid manifest or missing copy cannot be a usable backup.
       continue;
     }
     // Ties on created-at break by generation: two backups in one clock tick

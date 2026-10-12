@@ -8,8 +8,8 @@
       "canonicalId": "crm.onboarding.search-result-rows",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.live.json"
       }
     },
     {
@@ -20,8 +20,8 @@
       "canonicalId": "crm.onboarding.search-result-row-cells",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.live.json"
       }
     },
     {
@@ -32,8 +32,8 @@
       "canonicalId": "crm.onboarding.search-result-name-link",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.live.json"
       }
     },
     {
@@ -44,8 +44,8 @@
       "canonicalId": "crm.onboarding.record-field-value",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.live.json"
       }
     },
     {
@@ -56,8 +56,8 @@
       "canonicalId": "crm.onboarding.history-rows",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/crm/onboarding.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/crm/onboarding.live.json"
       }
     },
     {
@@ -68,8 +68,8 @@
       "canonicalId": "kuali.action-list.document-link",
       "evidence": {
         "verifiedAt": "2026-08-20",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/action-list.live.json"
       }
     },
     {
@@ -80,8 +80,8 @@
       "canonicalId": "kuali.action-list.search-input",
       "evidence": {
         "verifiedAt": "2026-08-20",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/action-list.live.json"
       }
     },
     {
@@ -92,8 +92,8 @@
       "canonicalId": "kuali.action-list.search-go-button",
       "evidence": {
         "verifiedAt": "2026-08-20",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/action-list.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/action-list.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/action-list.live.json"
       }
     },
     {
@@ -104,8 +104,8 @@
       "canonicalId": "kuali.rrss-document.employee-name-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -116,8 +116,8 @@
       "canonicalId": "kuali.rrss-document.eid-field",
       "evidence": {
         "verifiedAt": "2026-08-04",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/rrss-document.live.json"
       }
     },
     {
@@ -128,8 +128,8 @@
       "canonicalId": "kuali.rrss-document.last-day-worked-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -140,8 +140,8 @@
       "canonicalId": "kuali.rrss-document.separation-date-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -152,8 +152,8 @@
       "canonicalId": "kuali.rrss-document.termination-type-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -164,8 +164,8 @@
       "canonicalId": "kuali.rrss-document.location-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -176,8 +176,8 @@
       "canonicalId": "kuali.rrss-document.request-acknowledged-checkbox",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -188,8 +188,8 @@
       "canonicalId": "kuali.rrss-document.timekeeper-field",
       "evidence": {
         "verifiedAt": "2026-08-04",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/rrss-document.live.json"
       }
     },
     {
@@ -200,8 +200,8 @@
       "canonicalId": "kuali.rrss-document.timekeeper-comments-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -212,8 +212,8 @@
       "canonicalId": "kuali.rrss-document.termination-effective-date-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -224,8 +224,8 @@
       "canonicalId": "kuali.rrss-document.department-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -236,8 +236,8 @@
       "canonicalId": "kuali.rrss-document.payroll-title-code-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -248,8 +248,8 @@
       "canonicalId": "kuali.rrss-document.payroll-title-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -260,8 +260,8 @@
       "canonicalId": "kuali.rrss-document.submitted-template-checkbox",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -272,8 +272,8 @@
       "canonicalId": "kuali.rrss-document.transaction-number-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -284,8 +284,8 @@
       "canonicalId": "kuali.rrss-document.final-pay-student-radio",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/separation-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/separation-document.live.json"
       }
     },
     {
@@ -296,8 +296,8 @@
       "canonicalId": "kuali.rrss-document.save-button",
       "evidence": {
         "verifiedAt": "2026-08-04",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/kuali/rrss-document.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/kuali/rrss-document.live.json"
       }
     },
     {
@@ -308,8 +308,8 @@
       "canonicalId": "new-kronos.employee-search.open-button",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -320,8 +320,8 @@
       "canonicalId": "new-kronos.employee-search.query-field",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -332,8 +332,8 @@
       "canonicalId": "new-kronos.employee-search.submit-button",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -344,8 +344,8 @@
       "canonicalId": "new-kronos.employee-search.no-results-text",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -356,8 +356,8 @@
       "canonicalId": "new-kronos.employee-search.result-select-checkbox",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -368,8 +368,8 @@
       "canonicalId": "new-kronos.employee-search.result-slat",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -380,8 +380,8 @@
       "canonicalId": "new-kronos.employee-search.close-button",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -392,8 +392,8 @@
       "canonicalId": "new-kronos.employee-search.go-to-button",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -404,8 +404,8 @@
       "canonicalId": "new-kronos.employee-search.go-to-timecard-option",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -416,8 +416,8 @@
       "canonicalId": "new-kronos.timecard.employee-id",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -428,8 +428,8 @@
       "canonicalId": "new-kronos.timecard.period-trigger-button",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -440,8 +440,8 @@
       "canonicalId": "new-kronos.timecard.period-label",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -452,8 +452,8 @@
       "canonicalId": "new-kronos.timecard.select-range-button",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -464,8 +464,8 @@
       "canonicalId": "new-kronos.timecard.range-start-field",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -476,8 +476,8 @@
       "canonicalId": "new-kronos.timecard.range-end-field",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -488,8 +488,8 @@
       "canonicalId": "new-kronos.timecard.range-apply-button",
       "evidence": {
         "verifiedAt": "2026-08-12",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/new-kronos/timecard.live.json"
       }
     },
     {
@@ -506,8 +506,8 @@
       "canonicalId": "ucpath.smart-hr.template-input",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -518,8 +518,8 @@
       "canonicalId": "ucpath.smart-hr.transaction-date-input",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -530,8 +530,8 @@
       "canonicalId": "ucpath.smart-hr.create-transaction-button",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -542,8 +542,8 @@
       "canonicalId": "ucpath.smart-hr.reason-code-select",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -554,8 +554,8 @@
       "canonicalId": "ucpath.smart-hr.continue-button",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -566,8 +566,8 @@
       "canonicalId": "ucpath.smart-hr.save-and-submit-button",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -578,8 +578,8 @@
       "canonicalId": "ucpath.smart-hr.delete-selected-button",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -590,8 +590,8 @@
       "canonicalId": "ucpath.smart-hr.initiator-comments-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -602,8 +602,8 @@
       "canonicalId": "ucpath.smart-hr.transaction-comments-field",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -614,8 +614,8 @@
       "canonicalId": "ucpath.smart-hr.override-ldw-checkbox",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -626,8 +626,8 @@
       "canonicalId": "ucpath.smart-hr.last-date-worked-input",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -638,8 +638,8 @@
       "canonicalId": "ucpath.person-org.navigation-link",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -650,8 +650,8 @@
       "canonicalId": "ucpath.person-org.eid-input",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -662,8 +662,8 @@
       "canonicalId": "ucpath.person-org.last-name-input",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -674,8 +674,8 @@
       "canonicalId": "ucpath.person-org.given-name-input",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -686,8 +686,8 @@
       "canonicalId": "ucpath.person-org.search-button",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -698,8 +698,8 @@
       "canonicalId": "ucpath.person-org.eid-display",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -710,8 +710,8 @@
       "canonicalId": "ucpath.person-org.name-display",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -722,8 +722,8 @@
       "canonicalId": "ucpath.person-org.assignments-grid",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -734,8 +734,8 @@
       "canonicalId": "ucpath.person-org.no-results-status",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -755,8 +755,8 @@
       ],
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -767,8 +767,8 @@
       "canonicalId": "ucpath.person-org.results-grid",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -779,8 +779,8 @@
       "canonicalId": "ucpath.person-org.result-drill-in",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -791,8 +791,8 @@
       "canonicalId": "ucpath.person-org.return-to-search",
       "evidence": {
         "verifiedAt": "2026-08-02",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/person-org.live.json"
       }
     },
     {
@@ -812,8 +812,8 @@
       ],
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -824,8 +824,8 @@
       "canonicalId": "ucpath.ss-smart-hr.approval-status-display",
       "evidence": {
         "verifiedAt": "2026-08-04",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/ss-smart-hr.live.json"
       }
     },
     {
@@ -836,8 +836,8 @@
       "canonicalId": "ucpath.ss-smart-hr.search-button",
       "evidence": {
         "verifiedAt": "2026-08-14",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/smart-hr-termination.live.json"
       }
     },
     {
@@ -848,8 +848,8 @@
       "canonicalId": "ucpath.ss-smart-hr.receipt-display",
       "evidence": {
         "verifiedAt": "2026-08-04",
-        "fixtureEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json",
-        "liveReadOnlyEvidenceRef": "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json"
+        "fixtureEvidenceRef": "tests/support/fixtures/ui/ucpath/ss-smart-hr.fixture.json",
+        "liveReadOnlyEvidenceRef": "tests/support/fixtures/ui/ucpath/ss-smart-hr.live.json"
       }
     }
   ]

@@ -1,53 +1,38 @@
 # Documentation
 
-Start with the [current codebase map](rebuild/reference/codebase-structure.md).
-Reference contracts own requirements; workflow migration records retain verification evidence.
-A design, finding, or historical live result is not proof of current implementation.
+Start with the [codebase map](rebuild/reference/codebase-structure.md) to find source, test, and documentation owners. For workflow changes, use the [workflow authoring guide](rebuild/guides/workflow-authoring.md).
+
+Read the [root instructions](../AGENTS.md) for task rules. Use the [repository operating reference](../.agents/skill-library/repository-work/REFERENCE.md) for environment, porting, and conventions.
 
 ## Folder map
 
-```text
-docs/
-├── rebuild/
-│   ├── reference/        Contracts, current codebase map, lessons, and store catalog
-│   ├── evidence/         Sanitized selector evidence, organized by system
-│   ├── guides/           Practical instructions grounded in the contracts and code
-│   └── guard-inventory.json  Reviewed guard manifest
-```
-
-## Evidence location
-
-Briefs, receipts and task evidence live in the main checkout's gitignored `.work/` folder, outside
-disposable worktrees.
-Selector fixture and live-read-only evidence now lives under `rebuild/evidence/selectors/<system>/`;
-retained semantic registries name the evidence used by verification. Legacy migration/provenance
-inventories live outside the repository in task evidence. Current architecture checks use only
-their reader-owned behavior fixtures. Both relocations preserve payload bytes and stay separate from operator runtime
-state; ignored `config/test-data.local.json` remains private local test input. Active source links use
-the current `src/backend/`, `src/models/`, `src/rules/` and `src/workflow-kit/` layout;
-source-pinned excerpts and frozen records keep their original paths to retain the cited revision.
-These path updates do not rerun or change historical gate results.
-
-## Find the right document
-
-| Work | Start here |
+| Path | Contents |
 | --- | --- |
-| Find a requirement's owner | `ref <slug>` means `rebuild/reference/<slug>.md`; each reference names its owned concepts |
-| Find current source/test folders and dependency boundaries | [Codebase structure](rebuild/reference/codebase-structure.md) |
-| Add or change a workflow | [Workflow authoring guide](rebuild/guides/workflow-authoring.md), then its migration record in task evidence |
-| Investigate a previous failure | Search [shared lessons](rebuild/reference/lessons.md) by seam or decision; module instructions point to scoped ledgers |
-| Run checks or operate the repository | [Repository operating reference](../.agents/skill-library/repository-work/REFERENCE.md) and [root instructions](../AGENTS.md) |
+| `rebuild/reference/` | Current contracts, codebase map, and store catalog. |
+| `rebuild/guides/` | Workflow authoring guide. |
+| `rebuild/guard-inventory.json` | Registered guards and their owners. |
+| `roadmap/roadmap.md` | Roadmap source. |
+| `roadmap/index.html` | Generated roadmap site. |
+| `images/` | Images used by the repository README. |
+
+## Reference index
+
+| Topic | References |
+| --- | --- |
+| Source and tests | [Codebase map](rebuild/reference/codebase-structure.md), [guards and tests](rebuild/reference/guards-and-tests.md) |
+| Workflows and tasks | [Workflow model](rebuild/reference/workflow-model.md), [task contract](rebuild/reference/task-contract.md) |
+| Writes, sessions, and evidence | [Write safety](rebuild/reference/write-safety.md), [execution and sessions](rebuild/reference/execution-and-sessions.md), [operator trust](rebuild/reference/operator-trust.md) |
+| Configuration and intake | [Clock, configuration, and secrets](rebuild/reference/clock-config-secrets.md), [data intake and Edit Data](rebuild/reference/data-intake-and-edit-data.md) |
+| Store bindings and catalog | [Stores](rebuild/reference/stores.md) |
+| Dashboard | [Frontend and backend integration](rebuild/reference/frontend-backend-integration.md), [dashboard surfaces](rebuild/reference/dashboard-surfaces.md) |
+| Planned UCPath receipt acceptance | [Charter](rebuild/reference/charter.md) |
 
 ## Generated documents
 
-| Output | Source and command |
-| --- | --- |
-| [Store catalog, §2](rebuild/reference/stores.md) | Store declarations through [src/backend/app/registries/task-registry.ts](../src/backend/app/registries/task-registry.ts); `npm run stores:catalog`, then `npm run stores:catalog:check` |
+The catalog section in [Stores](rebuild/reference/stores.md) is generated from [the task registry](../src/backend/app/registries/task-registry.ts). Run `npm run stores:catalog`, then `npm run stores:catalog:check`.
 
-Edit generated content at its source. The remaining sections of the store reference are authored
-prose.
+The [roadmap site](roadmap/index.html) is generated from [the roadmap source](roadmap/roadmap.md). Run `npm run roadmap`, then `npm run roadmap:check`.
 
-## Earlier paths
+## Evidence
 
-Workflow porting records live in task evidence. Guides live under `docs/rebuild/guides/`. Source-pinned citations retain their revision and original path. They describe
-that revision rather than the current tree.
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Selector manifests used by semantic registry tests live under [`tests/support/fixtures/ui/`](../tests/support/fixtures/ui/).

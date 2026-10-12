@@ -77,7 +77,7 @@ export const MemberPlanEntrySchema = z.strictObject({
 });
 export type MemberPlanEntry = z.infer<typeof MemberPlanEntrySchema>;
 
-/* ── named predicates (ref dashboard-surfaces §4.2 mechanism 1) ──────────────────────────── */
+/* ── named predicates (ref dashboard-surfaces  mechanism 1) ──────────────────────────── */
 
 /** A shared eligibility predicate, a named export in a shared module so two workflows can agree on "signed with a resolved EID" without importing each other's configuration. */
 export interface NamedPredicate {
@@ -282,7 +282,7 @@ export function defineCompletionProgram<const Program extends CompletionProgram>
   });
 }
 
-/* ── what a launching coordinator declares it consumes (ref dashboard-surfaces §4.3) ─────── */
+/* ── what a launching coordinator declares it consumes (ref dashboard-surfaces ) ─────── */
 
 export const CompletionConsumptionSpecSchema = z.strictObject({
   /** Fan-out children are stamped `operation-member` only when the intent is a coordinator. */

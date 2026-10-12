@@ -95,7 +95,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   async function startSeededServer(
     input: Readonly<{ distDir: string; bundle: ParityBundleProof; dateNavigation?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
   ): Promise<SeededServer> {
-    // Ref frontend-backend-integration §7: the same working-tree proof the fixture adapter demands —
+    // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
     assertServedBundle(input.distDir, input.bundle);
     const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-parity-seeded-")));

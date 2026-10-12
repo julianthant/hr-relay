@@ -60,7 +60,7 @@ describe("person-lookup full walk", () => {
     assert.equal(harness.sessions.logins(), 2);
     assert.deepEqual(harness.sessions.closeReasons(), []);
 
-    // Exact span sequence (ref workflow-model §6 / ref dashboard-surfaces §1.1 identities).
+    // Exact span sequence (ref workflow-model / ref dashboard-surfaces  identities).
     const trace = TraceIdSchema.parse(run.envelope.traceId);
     const node = (id: string) => NodeIdSchema.parse(id);
     const spans = harness.emitter.events().map((event) => [

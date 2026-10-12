@@ -4,6 +4,23 @@ import type { DashboardStreamConnection } from "../../../../../src/backend/trans
 import { dashboardEventStreamBody } from "../../../../../src/backend/transports/http/subscriptions/sse-response.js";
 
 describe("SSE lifecycle settlement", () => {
+  it("closes an admitted connection when its started diagnostic fails, preserving that error", () => {
+    let closed = 0;
+    const failure = new Error("database-writer-unavailable");
+    const connection: DashboardStreamConnection = { initial: [], pending: 0,
+      next: async () => undefined, close: () => { closed++; throw new Error("cleanup-failed"); } };
+    assert.throws(() => dashboardEventStreamBody(connection, () => { throw failure; }), error => error === failure);
+    assert.equal(closed, 1);
+  });
+  it("releases the connection if initial serialization fails", () => {
+    let closed = 0;
+    const failure = new Error("initial-encode-failed");
+    const envelope = { toJSON() { throw failure; } } as unknown as DashboardStreamConnection["initial"][number];
+    const connection: DashboardStreamConnection = { initial: [envelope], pending: 0,
+      next: async () => undefined, close: () => { closed++; } };
+    assert.throws(() => dashboardEventStreamBody(connection), error => error === failure);
+    assert.equal(closed, 1);
+  });
   it("records connect and one actual close across cancellation races", async () => {
     const events: string[] = [];
     let closed = 0;

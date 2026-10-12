@@ -30,7 +30,7 @@ export const ServerClockWireSchema = z.strictObject({
 /** Store failure throws; no reduced handle can report an intermediate availability. */
 export const StorageHealthSummaryWireSchema = z.strictObject({
   authority: z.enum(["healthy", "unavailable"]),
-  backup: z.enum(["current", "stale", "missing"]),
+  backup: z.enum(["current", "stale", "missing", "unavailable"]),
   checkedAt: IsoInstantSchema,
 });
 

@@ -32,7 +32,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
       canonicalPerson: (runId) => database.canonicalPerson(runId),
-      // Ref dashboard-surfaces §1.2: the one stored node output a queue row reads — the
+      // Ref dashboard-surfaces: the one stored node output a queue row reads — the
       // subject's name, at the leaf the descriptor declares.
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),

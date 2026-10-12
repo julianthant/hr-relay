@@ -1,3 +1,4 @@
+import { fenceWriteFixture, writeFenceFixtureInput } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -187,12 +188,12 @@ function fixture(faultStep?:string) {
     claim:{workerId:worker,claimGeneration:1},lifecycle:{state:"running",workerId:worker,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"termination"},now:NOW});
   expect(running.state).toBe("applied");
   if(running.state !== "applied")throw new Error("fixture run failed");
+  fenceWriteFixture(db, {intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT});
   const parkedRun=db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:running.run.version,
     claim:{workerId:worker,claimGeneration:1},lifecycle:run.lifecycle,now:NOW});
   expect(parkedRun.state).toBe("applied");
   if(parkedRun.state !== "applied")throw new Error("fixture park admission failed");
   expect(parkedRun.run).toEqual(run);
-  db.authority.writeIntents.fenceAttempt({intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT});
   const reason=deriveWriteAuthorityReason("recovery-probe-unknown","probe","offline indeterminate probe");
   db.authority.writeIntents.parkAttempt({writeIntentId:WRITE_INTENT_ATTEMPTING.writeIntentId,generation:1,expectedVersion:1,
     code:"unknown",message:"offline indeterminate probe",authorityReason:reason,now:NOW});
@@ -362,9 +363,9 @@ afterEach(_afterEachFixture0);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
       fencedAt:LATEST,version:4,updatedAt:LATEST};
     const attempt={...WRITE_ATTEMPT,writeAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,fencedAt:LATEST,recordedAt:LATEST};
-    f.db.authority.writeIntents.refenceRetryable({expectedVersion:3,intent,attempt});
+    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:3});
     f.restart();
-    expect(f.db.authority.runs.get(f.run.envelope.runId)?.version).toBe(6);
+    expect(f.db.authority.runs.get(f.run.envelope.runId)?.version).toBe(9);
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)?.generation).toBe(2);
     expect(canonicalJsonStringify(f.db.authority.writeAttempts.get(f.original.writeAttemptId))).toBe(canonicalJsonStringify(f.original));
     const audit=f.db.authority.commandAudits.get(UUID_6);
@@ -474,13 +475,13 @@ afterEach(_afterEachFixture0);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
       fencedAt:LATER,version:4,updatedAt:LATER};
     const attempt={...WRITE_ATTEMPT,writeAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,fencedAt:LATER,recordedAt:LATER};
-    f.db.authority.writeIntents.refenceRetryable({expectedVersion:3,intent,attempt});
+    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:3});
     const outcome={...COMMITTED_OUTCOME,confirmedAt:LATEST};
     const transaction={...LEDGER_PAYLOAD,traceId:f.run.envelope.traceId,intentGeneration:2,bindingProofDigest:digest,fencedAt:LATER,confirmedAt:LATEST};
     const committedSpan={...SPAN_OUTBOX_PAYLOAD,traceId:f.run.envelope.traceId,intentGeneration:2,bindingProofDigest:digest,occurredAt:LATEST,outcome};
     const patch=fault === "run" ? {runId:UUID_8}:fault === "workflow" ? {workflowId:"other-workflow"}:fault === "item" ? {itemId:UUID_8}
-      :fault === "attempt" ? {attempt:2}:fault === "execution-generation" ? {claimGeneration:2}:fault === "descriptor" ? {descriptorVersion:2}:{contractFingerprint:"b".repeat(64)};
-    const checkpoint=RunCheckpointRecordSchema.parse({...positive(f).checkpoint,...patch,output:{schemaHash:deriveSchemaHash(TransactionOutcomeSchema,"output"),value:outcome},writtenAt:LATEST});
+      :fault === "attempt" ? {attempt:2}:fault === "execution-generation" ? {claimGeneration:3}:fault === "descriptor" ? {descriptorVersion:2}:{contractFingerprint:"b".repeat(64)};
+    const checkpoint=RunCheckpointRecordSchema.parse({...positive(f).checkpoint,claimGeneration:2,...patch,output:{schemaHash:deriveSchemaHash(TransactionOutcomeSchema,"output"),value:outcome},writtenAt:LATEST});
     const commit={writeIntentId:intent.writeIntentId,generation:2,completionProof:LEDGER_PAYLOAD.proof,confirmedAt:LATEST,outcome,transaction,committedSpan};
     const generation=f.db.getMeta().authorityGeneration;
     expect(()=>f.db.commitWriteAttempt(commit,checkpoint)).toThrow();
@@ -496,11 +497,11 @@ afterEach(_afterEachFixture0);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
       fencedAt:LATER,version:4,updatedAt:LATER};
     const attempt={...WRITE_ATTEMPT,writeAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,fencedAt:LATER,recordedAt:LATER};
-    f.db.authority.writeIntents.refenceRetryable({expectedVersion:3,intent,attempt});
+    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:3});
     const outcome={...COMMITTED_OUTCOME,confirmedAt:LATEST};
     const transaction={...LEDGER_PAYLOAD,traceId:f.run.envelope.traceId,intentGeneration:2,bindingProofDigest:digest,fencedAt:LATER,confirmedAt:LATEST};
     const committedSpan={...SPAN_OUTBOX_PAYLOAD,traceId:f.run.envelope.traceId,intentGeneration:2,bindingProofDigest:digest,occurredAt:LATEST,outcome};
-    const checkpoint=RunCheckpointRecordSchema.parse({...positive(f).checkpoint,output:{schemaHash:deriveSchemaHash(TransactionOutcomeSchema,"output"),value:outcome},writtenAt:LATEST});
+    const checkpoint=RunCheckpointRecordSchema.parse({...positive(f).checkpoint,claimGeneration:2,output:{schemaHash:deriveSchemaHash(TransactionOutcomeSchema,"output"),value:outcome},writtenAt:LATEST});
     const commit={writeIntentId:intent.writeIntentId,generation:2,completionProof:LEDGER_PAYLOAD.proof,confirmedAt:LATEST,outcome,transaction,committedSpan};
     if(fault !== undefined)f.setFault(fault);
     const generation=f.db.getMeta().authorityGeneration;
@@ -521,10 +522,13 @@ afterEach(_afterEachFixture0);
           processId:process.pid,requestedBy:"local-operator",now:LATEST}).state).toBe("started");
         return slot.workerId;
       });
+      const current=f.db.authority.runs.get(f.run.envelope.runId)!;
+      expect(f.db.authority.runs.requeue({runId:current.envelope.runId,expectedVersion:current.version,
+        cause:"recovery",now:LATEST}).state).toBe("applied");
       const claim=f.db.authority.runs.claimNext({workflow:f.run.envelope.workflow,workerId:worker,now:LATEST});
       expect(claim.state).toBe("claimed");
       if(claim.state !== "claimed")throw new Error("later current claim failed");
-      expect(claim.run.claimGeneration).toBe(2);f.restart();
+      expect(claim.run.claimGeneration).toBe(3);f.restart();
       expect(f.db.authority.writeIntents.getPublication(intent.writeIntentId)).toEqual(publication);
       expect(reconstructConfirmedOperation(f.db.authority,publication.timeline)).toEqual({ledger:transaction,span:committedSpan});
       expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);

@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../write-fence-fixture.js";
 import { browserSessionSpanPath,workerSpanPath } from "../../../../../src/backend/logs/span-emitter.js";
 import { buildRunResult } from "../../../../../src/backend/runs/lifecycle/run-result.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -256,7 +257,7 @@ function fenceAndParkWrite(world: SeedWorld, run: RunRecord): void {
     afterPrepareSpanPath: "terminate/prepare",
   };
   const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
-  const fenced = world.database.authority.writeIntents.fenceAttempt({
+  const fenced = fenceWriteFixture(world.database, {
     intent: {
       writeIntentId: uuidOf(906),
       workflowId: WORKFLOW_ID,

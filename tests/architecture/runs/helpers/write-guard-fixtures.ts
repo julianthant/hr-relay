@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 
 import assert from "node:assert/strict";
 import type { TestClock } from "../../../../src/rules/time/clock.js";
@@ -45,7 +46,7 @@ export function foreignAttemptingIntent(runId: string, attemptId: string) {
   const intent = {
     writeIntentId: UUID_7,
     workflowId: WRITE_FIXTURE_WORKFLOW_ID,
-    itemId: WRITE_FIXTURE_ITEM_ID,
+    itemId: runId,
     taskId: "ucpath/submit-write-fixture",
     system: "ucpath",
     idempotencyKey: WRITE_FIXTURE_KEY,
@@ -137,7 +138,7 @@ export function parkedAttemptingWriteFixture(
     outcome: { state: "attempting" },
     recordedAt: now,
   };
-  assert.equal(database.authority.writeIntents.fenceAttempt({ intent, attempt }).state, "fenced");
+  assert.equal(fenceWriteFixture(database, { intent, attempt }).state, "fenced");
 
   const parked = database.authority.runs.transition({
     runId: WRITE_FIXTURE_RUN_ID,

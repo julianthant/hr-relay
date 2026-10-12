@@ -1,7 +1,7 @@
 # CRM store
 
 ACT CRM onboarding reads for Person Lookup. Raw Playwright access and locator recipes stay under
-`driver/`; tasks import only the task-safe declaration at `../declaration.ts` and the schema-first
+`driver/`; tasks import only the task-safe declaration at `driver-declaration.ts` and the schema-first
 domain driver contract.
 
 ## Person Lookup invariants
@@ -18,10 +18,11 @@ domain driver contract.
   `ProcessStageText → Completed` transition. `Date Signed` is not completion.
 - Blank dates become absence only after the record's displayed EID and the exact page state have
   been verified. Missing selectors and malformed nonblank dates throw.
+- Wait for the SSO form before choosing Active Directory, verify the selected option value after reload, and distinguish the Communities login form from an authenticated landing.
+- Scope login controls by verified IDs and names; realm-dependent labels do not prove the selected realm.
 
 ## Further reading
 
-Before changing login, selectors, or history interpretation, search [LESSONS.md](LESSONS.md) and
-read the matching entries; its Provenance section preserves the port sources. Use `driver/` for
+Before changing login, selectors, or history interpretation, read `session.ts` and `driver/` for
 current recipes and `docs/rebuild/reference/stores.md` for the current task catalog.
-Requested lessons go in that ledger. Root rules apply.
+Root rules apply.

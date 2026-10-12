@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -225,7 +226,7 @@ afterEach(_afterEachFixture0);
     assert.equal((await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot)).exitCode, 0);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
     const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "newer-write" }, CLOCK);
-    try { newer.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); }
+    try { fenceWriteFixture(newer, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); }
     finally { newer.close(); }
     const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
     assert.equal(restore.exitCode, 0, restore.output);
@@ -471,7 +472,7 @@ try {
         workerId: owningWorkerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString(),
         currentNodeId: checkpoint.nodeId } });
     assert.equal(running.state, "applied");
-    initial.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    fenceWriteFixture(initial, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
   } finally { initial.close(); }
   const before = inspect(p.authorityPath);
   assert.equal(before.lifecycle, "running"); assert.equal(before.outcome, "attempting");

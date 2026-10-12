@@ -1,2882 +1,456 @@
-# 12 — Operator Trust, Semantic UI Vocabulary, Diagnostics, Knowledge & Workflow Authoring
-
-Status: **binding contract; as-built through Phase 2j, Track B (D227/D237), D262's gate-park
-publisher, and D283's closed Explorer safe-edit subset, re-verified against the code 2026-08-28.**
-This document owns the human-facing foundation that turns the typed executor into a system the
-single operator can understand, debug, extend and trust. It is **local-first with deliberate
-multi-user seams** (D75, reaffirmed D193 — §7): no RBAC,
-no user management, no remote administration, no distributed coordination, but four seams that keep
-a later multi-user migration configuration rather than a second rebuild. It retains correctness
-controls, PII/secret redaction, local-only network defaults, durable recovery and evidence, because
-this tool reads and writes real HR records.
-
-**Where the code and this document disagreed on 2026-08-20, the code won and the sentence changed.**
-A contract that is designed but unbuilt now says so by name in its own section instead of being
-written in the present tense; each such gap names the node that owns it. The standing shape
-decisions this doc still carries: the DSL graph-authoring mode is trimmed (§5.4, D79a), the Workflow
-Explorer's broader authoring/edit half remains deferred behind a named trigger while D283 closes its
-safe existing-workflow subset (§5.3, D186/D283), UI knowledge is copy-ported
-with provenance into a repository that shares no module graph with legacy (§1.3, D93), and the
-minimal durable `FailureRecord` is Phase 1f's while automatic bundles, receipts and `explain` are
-Phase 2g's (§2).
-
-## D361 — Complete local operator evidence · 2026-10-01
-
-New authorized local diagnostic captures, observed facts and receipt composition 5 retain each
-complete supplied value with its original classification (`state: allowed`, `transform: allow`).
-Local display and exports preserve supplied identifiers, failure prose and every collected result
-field; CSV formula safety, typed XLSX cells, snapshot membership/order/limits and access rules remain.
-This includes secret or credential-file values already supplied to an authorized local capture;
-it does not authorize reading or discovering additional credentials. Missing original historical
-values stay explicitly unavailable: no digest, suffix, count or basename is reconstructed as a value.
-Historical records and receipt compositions 1–4 retain their exact derivations and stored bytes.
-Archives admit composition 5 alongside supported historical compositions 3 and 4.
-
-D346 provider and OS-notification egress remains separately classified. `redactValue` and the closed
-classification/transform policy still govern provider facts. Failure advisory prose and identifiers
-remain dropped; contact advice still excludes fields whose canonical transform forbids provider use.
-`retainLocalEvidenceValue` and local diagnostic/receipt capture do not bypass that policy. Provider
-prompt schemas reject nonpermitted complete local fields, and OS notifications retain their
-repository-authored-only origin rule. The startup proposal to disclose complete advisory values is
-deferred; this local amendment does not authorize it. Credential-reader and environment guards remain
-active, and the existing credential-named diagnostic interpolation guard is retained.
-
-Identity keys, checksums, request fingerprints, permanent-write digests and exact durable joins retain
-their byte derivations. Existing Host/Origin admission, loopback access, session ownership, storage
-permissions, external-write safety and artifact identity remain required.
-
-## UI catalog retirement amendment — operator-approved 2026-10-01
-
-The generated UI catalog feature is retired: no catalog navigation or URL keys, endpoint/client
-method, projection schema, generator, selector-search command, generated JSON, or per-system catalog
-documents remain. The semantic UI registries and their stable IDs, live verification/evidence,
-selector recipes, effect classification, write proofs and safety assertions remain authoritative.
-The Workflow Explorer remains; its task links are built by
-`src/backend/systems/ui-task-links.ts` from those registries and preserve commit-task attribution.
-This amendment supersedes the catalog-specific requirements in D177, D274, D295 and D303; the
-dated decision and UI-contract history remains below as history, not current product scope.
-
-<a id="scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02"></a>
-
-## Scenario and parity test retirement amendment — operator-approved 2026-10-02
-
-The operator retired `tests/scenario/` and `tests/parity/`. Workflow-declared scenario identifiers
-and semantic UI verification/provenance records remain data contracts; none proves a test ran or
-current visual acceptance. Future scenario and visual-test design is operator-led. The Explorer's
-scenario source links remain honestly unresolved after suite removal. Do not invent replacement
-paths or wire fields; Explorer edits that require scenario compile evidence are blocked pending that
-operator-led design. Missing rehearsal manifests report unavailable before execution.
-
-## Ownership (D1)
-
-| This doc **OWNS** | Imports from the owning sibling |
-|---|---|
-| Canonical UI vocabulary: `ElementId`, `ScreenId`, `PageStateId`, `ObservationId`, semantic registry records, and the typed system-driver boundary | Task contract/store/session model → ref task-contract; page leases → ref execution-and-sessions |
-| Operator evidence receipt, failure record, diagnostic bundle, `explain run`, and redaction policy | Event/storage wire and retention → ref dashboard-surfaces; write-binding proof/write ledger → ref write-safety; secrets → ref clock-config-secrets |
-| Evidence references and semantic UI verification scenarios | Task `example` and errors → ref task-contract; graph outcomes → ref workflow-model; active test tiers and future scenario-test design → ref guards-and-tests |
-| Structured knowledge lifecycle and the AI-assisted `FixRecord` ledger | Existing lessons are migration inputs, not another authority |
-| Read-only workflow explorer and the staged, constrained workflow editor | Descriptor/graph/delegation model → ref workflow-model; spans/projections → ref dashboard-surfaces |
-| The webpage-ready base capability inventory (§8) | Build order → the phase docs |
-
-This doc does **not** redefine task, graph, command, event, write-safety, config, or storage
-contracts. It defines the semantic/operator layer those contracts project into.
-
-All interfaces shown here are readable views of strict, versioned zod schemas; implementation
-types are inferred from those schemas. The registry, scenario, failure, evidence, diagnostic,
-knowledge, fix and editor-draft boundaries reject unknown keys recursively.
-Canonical ids/digests/instants are branded. A generic metadata map may exist only inside an opaque,
-schema-versioned diagnostic attachment that no workflow, command, projection, or policy reads.
-
----
-
-## 0. Why this is foundation work, not dashboard polish
-
-
-The old codebase already contains many correct selectors, identity checks, screenshots, lessons,
-and queue actions, but they are difficult to reuse consistently:
-
-- A selector registry key is usually a TypeScript property path, not a stable phrase the operator
-  can use in a workflow description. The same visible control can acquire multiple names in code,
-  comments, lessons, and AI prompts.
-- Browser tasks receive a raw Playwright `Page`, so a task can bypass the registry, page-state
-  checks, action tracing, redaction, and subject verification even when better infrastructure
-  exists.
-- A terminal row says `failed` and often preserves only a message. Reconstructing why it failed
-  requires correlating tracker rows, logs, screenshots, session events, and source code manually.
-- A `done` row does not present a compact receipt of inputs, observations, decisions, writes,
-  verification, checkpoint reuse, and uncertainty. The operator therefore rechecks automation that
-  should be trustworthy.
-- Lessons accumulate as prose. New guidance is mixed with stale/superseded history, so an AI tool
-  can follow the wrong lesson confidently.
-- The existing workflow modifier edits presentation and shows mined operations, but the rebuild
-  plan did not say whether the new graph is only documentation or a safe editing surface.
-
-These are base concerns because every later workflow otherwise invents names, debug output,
-scenarios, evidence, and editor behavior independently—the same drift the descriptor rebuild is
-meant to remove.
-
----
-
-## 1. Canonical UI vocabulary and typed system drivers
-
-
-### 1.1 Four identifiers with one job each
-
-
-```ts
-export type ElementId = Brand<string, "ElementId">;          // "ucpath.smart-hr.save-submit"
-export type ScreenId = Brand<string, "ScreenId">;            // "ucpath.smart-hr.transaction"
-export type PageStateId = Brand<string, "PageStateId">;      // "ucpath.smart-hr.ready-to-submit"
-export type ObservationId = Brand<string, "ObservationId">;  // "new-kronos.timecard.employee-eid"
-```
-
-- **Element** = one interactive or observable UI thing: field, button, row, dialog, header.
-- **Screen** = a stable operator-recognizable area or route.
-- **Page state** = a validated state of that screen, expressed by positive and negative evidence.
-- **Observation** = a typed fact read from the UI, such as the employee EID displayed by the
-  currently open timecard.
-
-IDs are stable kebab-case dotted names, never generated from a TypeScript file/property path. A
-source rename does not rename the operator vocabulary. Every id has one canonical human label and
-zero or more search terms. Search terms help humans/AI find the canonical id; they never create another
-identity.
-
-These semantic ids are definitions, not event occurrences. Receipt/evidence rows therefore carry a
-separate `EvidenceEntryId`; operator-correction `supersedes` links point to that prior entry id.
-`ObservationId` is never reused as generic evidence-row identity.
-
-**As-built.** The four ids are `brandedText<…>(QUALIFIED_ID_PATTERN, …)` at `src/domain/ids.ts:43-46`
-and are re-exported — never redeclared — by `src/domain/ui/contracts.ts:13-25` (D101). An
-`EvidenceEntryId` is **derived**, not minted: `deriveEvidenceEntryId(receiptId, kind, key)`
-(`src/domain/trust/evidence-identity.ts:46-54`) over a receipt id itself derived from `(runId,
-attempt)`, which is what lets §2.3.2 re-derive one run's receipt to the same bytes. A random UUID
-there would have made determinism impossible.
-
-### 1.2 Registry record
-
-
-```ts
-// Server-only definition under stores/<system>/driver/. Client/task code receives generated ids and
-// safe catalog projections, never locator recipes.
-export interface UiElementDefinition<ValueSchema extends z.ZodType = z.ZodType> {
-  id: ElementId;
-  system: BrowserSystemId;
-  screen: ScreenId;
-  label: string;                         // "Save and Submit"
-  searchTerms: readonly string[];        // "submit button", "finalize transaction"
-  role: "button" | "field" | "grid" | "row" | "dialog" | "heading" | "link" | "status";
-  effect: "observe" | "navigate" | "prepare" | "external-commit";
-  value?: CanonicalJsonSchema<ValueSchema>;
-  sensitivity: "public" | "hr" | "restricted"; // controls logs/screenshots/diagnostic export
-  locator: LocatorRecipe;                // closed recipe union, interpreted by the driver
-  requiredStates: readonly PageStateId[];
-  verification: {
-    verifiedAt: DateOnly;
-    fixtureEvidenceRef: string;
-    liveReadOnlyEvidenceRef: string;
-    scenarios: readonly [ScenarioId, ...ScenarioId[]];
-  };
-  supersedes?: readonly ElementId[];
-}
-
-export interface PageStateDefinition {
-  id: PageStateId;
-  system: BrowserSystemId;
-  screen: ScreenId;
-  label: string;
-  evidence: readonly StateEvidenceRule[]; // closed all/any/not locator/URL/observation rules
-  timeoutMs: number;
-  verification: {
-    verifiedAt: DateOnly;
-    fixtureEvidenceRef: string;
-    liveReadOnlyEvidenceRef: string;
-    scenarios: readonly [ScenarioId, ...ScenarioId[]];
-  };
-}
-
-export interface UiObservationDefinition<S extends z.ZodType> {
-  id: ObservationId;
-  system: BrowserSystemId;
-  screen: ScreenId;
-  label: string;
-  schema: CanonicalJsonSchema<S>;
-  read: ObservationRecipe;               // closed recipe; implementation lives server-side
-  authoritativeFor: readonly [
-    "subject" | "completion" | "page-state",
-    ...("subject" | "completion" | "page-state")[],
-  ];
-  sensitivity: "public" | "hr" | "restricted";
-  verification: {
-    verifiedAt: DateOnly;
-    fixtureEvidenceRef: string;
-    liveReadOnlyEvidenceRef: string;
-    scenarios: readonly [ScenarioId, ...ScenarioId[]];
-  };
-}
-```
-
-`LocatorRecipe`, `StateEvidenceRule`, and `ObservationRecipe` are closed discriminated unions—not
-arbitrary callbacks—but the registry that contains them is still **server-only**. Bundle-safe domain
-contracts contain branded ids and public metadata schemas, not locator recipes. System drivers
-interpret the recipes. A
-specialized live-only read may reference a named driver operation, but that operation must resolve
-from the same system registry and carry a fixture/test.
-
-**As-built — the record above is the SHAPE, not one shared type.** There is no single
-`UiElementDefinition` in the tree and deliberately so (§1.5): each store owns its own schema family
-under `stores/<system>/driver/ui-registry.ts` — `src/stores/ucpath/driver/ui-registry.ts:181-274`,
-`crm/…:62,114,155`, `kuali/…:183,277,318`, `new-kronos/…:129,182,223` — because a locator recipe is
-a fact about ONE system's DOM and a shared union would have to admit every system's arms at once.
-What IS shared is the cross-store vocabulary and the safe projection: `src/domain/ui/contracts.ts`
-holds `UiSemanticKindSchema` / `UiSensitivitySchema` / `UiRoleSchema` / `UiEffectSchema` (`:27-32`),
-`UiCatalogVerificationSchema` (`:45-53`) and the `UiCatalogEntrySchema` union §1.3 projects
-(`:154-172`).
-
-Three shipped fields the record above does not show, and one it shows that does not exist. A real
-element carries **`provenance`** (`LegacySelectorProvenanceSchema`: the pinned legacy commit, path,
-key, source line and blob — the copy-with-provenance rule made structural), **`scope`**
-(`"page" | "content-frame"`, because PeopleSoft renders inside an iframe and a recipe that does not
-say which document it means is a recipe that resolves twice) and **`portContext`**; `supersedes` is
-a required array rather than optional. The `value?: CanonicalJsonSchema<…>` shown above is **not**
-how a value type is declared — the shipped field is a flat `valueType` enum (`"eid" | "text" |
-"rows" | "none"`), narrow on purpose. All 406 ported keys are pinned to a fixed legacy commit's
-blobs by `legacy-selector-port-provenance`, so legacy moving on cannot invalidate the provenance
-(and, per the charter, live re-verification at each migration is what keeps the SELECTOR current).
-
-### 1.3 One canonical catalog for the operator and AI tools
-
-**Superseded by the operator-approved 2026-10-01 retirement amendment above.** The feature has no
-current generated projection, catalog surface, selector-search command or per-system catalog
-document. Semantic registries remain live; the Workflow Explorer builds its task links from them.
-The D177 text below records the previous contract and must not be used as current implementation
-scope.
-
-
-The build generates a **safe projection** at `generated/ui-catalog.json` and one per-system
-`UI-CATALOG.md` from the server registry. Each entry includes canonical id, label, search terms,
-screen/state, role/effect, verified date plus fixture/live evidence refs, sensitivity classification, tasks that use it,
-related observations, and an exact registry source link. It deliberately omits locator/state/read
-recipes and captured values. Search resolves labels and search terms to exactly one canonical id; a
-search-term collision fails generation with both definitions named. The dashboard receives this projection; it
-never imports the server registry.
-
-Examples of operator language that resolve without source archaeology:
-
-- “the New Kronos employee EID in the open timecard” →
-  `new-kronos.timecard.employee-eid` (`ObservationId`)
-- “UCPath Save and Submit” → `ucpath.smart-hr.save-submit` (`ElementId`)
-- “the OnBase import form is ready” → `onbase.import.ready` (`PageStateId`)
-
-Existing `SELECTORS.md` and `selector:search` are porting evidence, never runtime inputs. Verified
-recipes are copy-ported into the rebuild repo's `src/`, recording the legacy-repo commit hash plus
-the source path/key, verification date, and rebuild tests; the
-generated catalog may display the legacy property path as provenance text, not a resolvable search term.
-No rebuilt module imports legacy selector code — with the two repos sharing no module graph (D93),
-that import is structurally impossible rather than merely banned — and the legacy repo remains
-preserved through cutover.
-
-**As-built.** `npm run ui:catalog` (`scripts/generate-ui-catalog.ts`) is the ONE writer;
-`buildSafeUiCatalog()` (`src/stores/ucpath/driver/catalog.ts:146-354`) merges all four registries
-into `generated/ui-catalog.json` plus **four** markdown projections —
-`src/stores/{ucpath,kuali,crm,new-kronos}/UI-CATALOG.md`. The projection SET is derived from the
-catalog's own `system` values (`uiCatalogSystems`, `catalog.ts:376-378`), not from a list, and
-`semantic-ui-registry` proves that derivation both ways: a store that ships a `driver/ui-registry.ts`
-appears in the catalog and its markdown is guarded. `assertSafeUiCatalogFresh` (`catalog.ts:356-363`)
-rebuilds and compares, throwing `generated UI catalog is stale; run npm run ui:catalog` — which is
-why §5.8's surface may serve the committed bytes without ever regenerating them. A fifth resolution
-example, added by D261 (2026-08-20): "the Kuali Action List row for this document number" →
-`kuali.action-list.document-link` (`ElementId`), beside
-`kuali.action-list.matched-document-number` (`ObservationId`) — both declared in
-`src/domain/ui/kuali-action-list.ts:44-60`.
-
-### 1.4 Tasks do not receive raw `Page`
-
-
-Raw Playwright access is confined to `stores/<system>/driver/**`, worker-owned session
-infrastructure, and the registry interpreter. Browser task contexts receive a typed driver:
-
-```ts
-// src/domain/ui/driver.ts:43-62 — the shipped shape. The id sets are TYPE PARAMETERS a store fills.
-export interface SystemDriver<
-  S extends BrowserSystemId,
-  Screens extends ScreenId,
-  States extends PageStateId,
-  Fields extends Readonly<Record<string, string>>,
-  Observations extends Readonly<Record<string, string>>,
-  Clicks extends ElementId = never,
-> {
-  readonly system: S;
-  goto(screen: Screens): Promise<PageStateProof>;
-  waitFor(state: States): Promise<PageStateProof>;
-  fill<I extends keyof Fields & ElementId>(id: I, value: Fields[I]): Promise<UiActionProof>;
-  read<I extends keyof Observations & ObservationId>(id: I): Promise<Observations[I]>;
-  click(id: Clicks): Promise<UiActionProof>;
-}
-
-/** The only generic path to an element declared `external-commit`, and a SEPARATE interface: a
- * store that cannot write does not carry the method at all. Prepare/read ctx cannot supply the
- * unforgeable capability; the driver validates its intent generation + subject digest. */
-export interface CommitCapableSystemDriver<Commits extends ElementId = never> {
-  commit(id: Commits, capability: MutationCapability): Promise<UiActionProof>;
-}
-```
-
-Two things the shape above says that an earlier draft of this section did not. A per-system driver
-is an **intersection**, not an instantiation — `UcpathStoreDriver` is the joined navigation driver
-plus `Pick<>` of exactly the named operations that store publishes
-(`src/domain/ui/ucpath-driver.ts:37-47`), and its `read` deliberately accepts BOTH id families
-because the kernel calls it at ref write-safety beat ③ with whichever observation the running
-contract declared. And there is **no `choose` verb**: `fill` is typed by the element's declared
-`valueType`, and a combobox, checkbox or radio is staged through the store's own named prepare
-operation (separations' one-pass ten-field staging) rather than a fourth generic method that would
-give one control two ways in.
-
-Every driver action automatically records the task/span, element id, page state before/after,
-duration, and selector recipe actually used. A task can still call a complex named driver method
-for a PeopleSoft grid or iframe workflow, but that method is registered with declared inputs,
-outputs, used elements/states, and scenarios. It cannot take an untracked raw locator from the task.
-Any named operation that reaches an `external-commit` element must accept and validate
-`MutationCapability`; this is checked through its dependency graph. Subject observation uses
-`driver.read(spec.observe)`, but normalization/comparison and `SubjectProof` construction belong to
-the kernel so a driver cannot assert its own match. Extra screenshots are requested through ref task-contract's
-kernel/decorator capture surface, not an unrestricted task driver method.
-
-This preserves the port-first rule: live-verified leaf functions may initially move behind a
-driver operation with zero logic change. The boundary changes immediately; internal locator logic
-is improved incrementally only after its fixtures/live checks exist.
-
-### 1.5 Registry separation—no “one giant task store” ambiguity
-
-
-| Concern | Canonical owner | Reuse meaning |
-|---|---|---|
-| Business/system operation (“search Person Org”, “fill termination”) | System task store (ref task-contract) | Compose the proven operation in workflows |
-| UI vocabulary/locator/page-state/observation | UI registry + system driver (this doc) | All system tasks share one named UI fact/control |
-| Completed output within a run/item | Checkpoint store (ref workflow-model) | Resume/replay without rescanning when freshness permits |
-| Pure workflow-specific transform/join | Workflow mini-store (ref task-contract) | Peer-reuse typed computation, no browser |
-
-The task store prevents repeated reinvention of *operations*. The UI registry prevents repeated
-reinvention of *selectors and page truth*. Checkpoints prevent repeated work *within a run/item*.
-The workflow mini-store prevents repeated pure transformation code. A workflow never treats one as
-an informal substitute for another.
-
-### 1.6 Verification evidence is conjunctive, and a staging anchor needs the stronger arm
-
-
-_Ratified 2026-08-01 as the Phase-1d UI seam (D98 · D99 · D101), amended 2026-08-14 (D208).
-The four rulings amend §1.2's `verification` block and what §1.3 may project; they are stated
-here rather than in a dated block at the top of the file._
-
-- **D98 — verification is conjunctive, not singular.** Every runtime/catalog element recipe,
-  page-state rule, or observation recipe carries both a required deterministic fixture-evidence ref
-  and a required read-only live-evidence ref. Candidate port-inventory rows carry neither and cannot
-  enter a runtime registry or generated catalog. The old singular `verified` field is retired.
-- **D99 — UI verification scenarios are UI-owned.** Registry scenario refs resolve against a small,
-  strict UI verification-scenario schema/corpus owned beside the UI registry. It imports the
-  canonical `ScenarioId` grammar and enforces global uniqueness with the existing trust scenario
-  corpus; it does not distort `ScenarioManifest` before 1e. Every actual registry fact resolves at
-  least one scenario non-vacuously.
-- **D101 — semantic ids are imported.** UI modules import/re-export the existing `ElementId`,
-  `ScreenId`, `PageStateId`, and `ObservationId` schemas/types from `src/domain/ids.ts`; no driver or
-  registry redeclares those closed identities.
-- **D208 (2026-08-14) — "resolves to exactly one node" and "resolves to exactly one EDITABLE node"
-  are different evidence strengths, and a write-surface anchor requires the second.** D98 made
-  verification conjunctive but left every positive assertion at one strength:
-  `exactly-one-visible` says a recipe resolved to a single node and says nothing about whether that
-  node could have been typed into. That is the whole of the evidence a **read-only** record can
-  supply, and it is not the evidence a **staging** anchor needs — a Kuali document rendered at a
-  step that owns no edit right resolves each control to exactly one node, disabled, and reads as
-  verified. `UiVerificationAssertionSchema` therefore carries a strictly stronger arm,
-  **`exactly-one-editable`**: the recipe resolved to one node AND that node was live-observed
-  `isEditable()` (text controls) or `isEnabled()` (select, checkbox, radio). The rules that follow
-  from it are normative:
-  1. An element recipe whose declared `UiEffect` is `prepare` or `external-commit` must carry
-     `exactly-one-editable` in its live-read-only manifest, or carry a named, dated exception
-     pointing at STRONGER evidence — a controlled commit on that exact control is stronger than any
-     assertion in this vocabulary, and `kuali/timekeeper-field` stands on D135's for exactly that
-     reason.
-  2. `exactly-one-editable` claims nothing about a WRITE. `externalWriteAttempted` stays
-     `z.literal(false)` in every manifest: a value staged into a control and discarded by a reload
-     never left the browser, and a manifest that could say otherwise would be the one place in this
-     tree where read-only evidence can assert an external effect.
-  3. The arm is **additive to** `exactly-one-visible`, never a rename of it. A read-only screen's
-     observation recipes keep the weaker arm truthfully; downgrading them would claim editability
-     nobody looked for, and upgrading the enum in place would silently restate every historical
-     manifest as evidence it never gathered.
-
-  As-built: nine of the ten separations-finalization controls in
-  `evidence/ui/kuali/separation-document.live.json` at `verifiedAt: 2026-08-14`
-  (the workflow's task evidence §9.12 item 3).
-
-  **Enforcement status, stated rather than assumed.** The schema arm exists and
-  `semantic-ui-registry` resolves every manifest assertion against the registry as before; rule 1 is
-  an **authoring** obligation today, not a machine check, because the one standing exception
-  (`kuali/timekeeper-field`, on D135's controlled commit) has nowhere structured to live — an
-  element cannot yet cite evidence stronger than an assertion arm. The trigger that ends that is the
-  second such exception: at two, the registry element gains a closed
-  `strongerEvidence: { kind: "controlled-commit"; decision: DecisionId }` field and
-  `semantic-ui-registry` refuses a `prepare`/`external-commit` element that carries neither
-  `exactly-one-editable` nor that field. One exception is a fact; two is a pattern, and a pattern is
-  what a guard can hold without inventing a schema for a sample of one (D79a's own argument).
-
-### 1.7 As-built — what the four registries hold today
-
-
-_Counted from the committed `generated/ui-catalog.json` on 2026-08-20; the catalog is the projection,
-so these are the facts the operator and an AI can actually resolve._
-
-| system | screens | page states | elements | observations |
-|---|---|---|---|---|
-| `ucpath` | 7 | 10 | 30 | 4 |
-| `kuali` | 2 | 5 | 20 | 6 |
-| `new-kronos` | 2 | 4 | 16 | 1 |
-| `crm` | 3 | 4 | 5 | 1 |
-
-120 entries in all. By declared `UiEffect`: 33 `observe`, 18 `navigate`, 17 `prepare` and **three**
-`external-commit` — `ucpath.smart-hr.save-and-submit-button`,
-`ucpath.smart-hr.delete-selected-button` and `kuali.rrss-document.save-button`. Those three are the
-whole surface §1.4's `commit` seam and ref write-safety's fence exist for; every other element in
-the tree is structurally unable to leave a mark on a real system.
-
-Provenance is pinned rather than described: **406** ported legacy selector keys resolve to their
-exact source line in a FIXED legacy commit's blobs (`legacy-selector-port-provenance`), so legacy
-moving on cannot invalidate the record — what keeps a selector *current* is the charter's live
-re-verification at each workflow's migration, not a diff against legacy.
-
-**One gap, stated because a guard's inventory sentence reads wider than what it executes.**
-`semantic-ui-registry`'s structural audit calls `auditUcpathUiRegistry`, `auditCrmUiRegistry` and
-`auditNewKronosUiRegistry` and cross-checks id uniqueness across those three.
-`auditKualiUiRegistry` and `auditKualiUiEvidenceBindings`
-(`src/stores/kuali/driver/ui-registry.ts:1036`, `:1163`) exist and carry real business rules — global
-id uniqueness within Kuali, search-term collision, cross-screen dependency resolution, the Save
-button's `external-commit` assertion, D261's anchored-recipe restriction — and **nothing calls
-them**. Kuali is therefore proved today at the zod-schema level and through catalog freshness
-(`buildSafeUiCatalog` does include it), not through its own structural audit. The fix is one call
-site in the guard; until it lands, §9's first row is narrower than it sounds.
-
----
-
-## 2. Trust evidence: what happened, why the result is credible, and what remains uncertain
-
-
-**The schemas landed first, then the tables.** Phase 1b (2026-07-31) built the strict
-boundary; schema v10 (D134, 2026-08-04) built the durable tables the rest of this section
-writes to.
-
-Strict schemas now exist for failures, redacted diagnostic bundles, terminal evidence receipts,
-scenario manifests, preflight scenarios, and knowledge/fix records. Receipt invariants reject false
-verified completion, unresolved mandatory evidence, invalid warning/failure combinations, and
-duplicate evidence-entry identities. Every top-level evidence row schema is present in the strict
-boundary catalog and exercised against recursive unknown-key injection. This is the schema
-foundation only: evidence persistence/projection, `explain`, semantic UI registries/drivers, and
-authoring/explorer surfaces remain with their later owning work items.
-
-Authority schema **v10** creates every durable table this doc's §2.2/§2.3/§4 records need, so no
-later 2g slice has to touch the released migration chain:
-
-| Table | Owns | Column-bound facts (boot invariants check them against `record_json`) |
-|---|---|---|
-| `diagnostic_bundles` | §2.2 | run, origin kind, failure id, content digest, retention kind, purge instant. `purge_after` exists **exactly** when retention is `ordinary`; a failure id exists **exactly** when the origin is not `operator-request`. |
-| `diagnostic_attachments` | §2.2 | one row per `(bundle, artifact)`, with kind/digest/sensitivity, so an artifact is findable without scanning bundle JSON. The bundle's `attachments` array length must equal its indexed row count. |
-| `evidence_receipts` | §2.3 | one receipt per terminal run (`run_id` UNIQUE), with result, confidence, and failure id. `failed` is the only result that may name a failure and the only one that must; `verified-done` may only carry `verified` confidence. |
-| `knowledge_records` · `fix_records` | §4.1/§4.2 | status column for the active-only view; `fix_records.failure_fingerprint` is indexed for `explain failure`. |
-
-`failures` also gains a searchable `fingerprint` column with an index and a not-null insert trigger,
-and `FailureRepository` gains `listByFingerprint`/`countByFingerprint` — §2.1's "same failure seen
-before" and §4.2's `explain failure <fingerprint>` are lookups, and the ref dashboard-surfaces repeat-threshold
-notification trigger needs a count, not a scan over parsed JSON.
-
-**Deliberately conservative, and named as such.** Knowledge and fix repositories are insert-only.
-§4.3's audit ("marks stale records `unverified`") needs a CAS on a record version, and
-`KnowledgeRecordSchema` carries no `version` — adding one is a schema decision the maintenance slice
-should ratify rather than something this foundation guesses. §4.1's `knowledge/records/` file layout
-and the generated per-system `KNOWLEDGE.md` remain that slice's work; the table is the authority the
-generator reads.
-
-Not landed with D134: the receipt builder, `explain run`/`explain failure`, and the dashboard
-projections — all three land below in D140–D143, which is where the `evidence-receipt` guard becomes
-**active**. `notification-durability` and `knowledge-fix-integrity` activate with D138/D139 below.
-
-### 2.1 Durable `FailureRecord`
-
-**D360 — Concise operator presentation (approved R1/F2 and expanded cases, 2026-09-30).**
-Logs use R1 evidence comparisons for identity/resolve and F2 write-outcome-first failure/recovery.
-The primary failure block exposes the six distinct write states, expected/observed display-safe
-identity, and next steps from the served remediation family. An uncertain or in-flight submission
-always says not to retry; committed and verified writes say not to submit again. Transience is not
-retry permission. Controls still come from current server descriptors.
-
-`FailureDetailWire.display` is an additive concise classification projected by the BFF from an
-exact error code. It does not parse raw messages or change the durable record. Unclassified codes
-use a neutral problem heading and direct the operator to the recorded error. Old wires use the same pure classification. The complete safe
-summary, code, cause chain, trace IDs, remediation messages, follow-up controls and advisory
-availability remain in Details; Archive keeps its existing detailed view. Inline failure captures
-join the exact validated diagnostic bundle, never a nearby timestamp. They appear once in the failure
-block; unrelated and non-image artifacts keep their existing capture gallery.
-
-Identity comparisons preserve disagreement order, exact names and employee IDs. Employment and
-name-search rows use their typed packet facts for concise display; original comparisons and notes
-remain accessible. All candidates remain visible, and the confirmation dialog exposes the complete
-bound write plan. Typed EID membership, deliberate candidate choice, required rejection reason,
-authority-change refusal and transport uncertainty keep their existing semantics. Employment
-observations do not introduce a job-selection command or new approval.
-
-Write recovery starts with one verification entry and an unselected choice among the served
-present/absent commands. The choice opens the existing bound proof ceremony and sends no command.
-All required proof fields and schema/generation/subject bindings remain intact. Forms group fields,
-use full-width comment textareas, and keep fixed values and constraints accessible. Date-specific
-confirmation remains unavailable until its owning workflow serves a supported packet; visual approval
-does not create a new transaction capability.
-
-
-A failed task/run persists a structured failure; `span.ended.error?: string` alone is retired.
-
-```ts
-// src/domain/trust/failure.ts:72-103 — the shipped strict schema, read as an interface.
-export interface FailureRecord {
-  diagnosticSafetyVersion?: 1;          // absent = historical opaque diagnostics
-  failureId: FailureId;
-  fingerprint: FailureFingerprint;     // stable normalized task/code/state/element signature
-  runId: RunId; traceId: TraceId; attempt: PositiveInt;
-  workflowId: WorkflowId; nodeId?: NodeId; taskId?: TaskId;
-  code: ErrorCode; summary: string; transient: boolean;
-  writeState: "not-attempted" | "prepared" | "attempting" | "committed" | "verified" | "unknown";
-  subject?: { expected?: SubjectEvidenceWire; observed?: SubjectEvidenceWire;
-              proofRef?: WriteBindingProofId };            // at least one of the three
-  page?: { screen?: ScreenId; state?: PageStateId; urlRedacted?: string; titleRedacted?: string };
-  action?: { elementId?: ElementId; operation?: UiActionKind; sequence?: PositiveInt };
-  causeChain: readonly FailureCause[];  // 1–12, EXACTLY ONE `primary`; the rest are secondary
-  diagnosticBundleId?: DiagnosticBundleId;
-  writeAuthorityReason?: {              // authority-only; never crosses an operator projection
-    version: 1; code: WriteAuthorityReasonCode;
-    evidence: { kind: WriteAuthorityEvidenceKind; digest: Fingerprint };
-  };
-  remediation: readonly RemediationAction[];               // at least one
-  occurredAt: IsoInstant;
-}
-```
-
-Four invariants the shape alone does not show, all enforced in the schema's own `superRefine`: the
-cause chain carries exactly one `primary` and the record's `transient` flag must EQUAL that primary
-cause's; a `subject`, `page` or `action` block may not be present-but-empty; and a `writeState` of
-`attempting` or `unknown` requires `action.operation === "commit"` — the failure of a run that may
-have left a mark on a real system cannot be recorded without naming the act that might have left
-it. Both page strings are redacted at the point they are written (`titleRedacted`, not `title`).
-
-The event stream carries `{ failureId, code, summary, transient }`; the full record lives in
-SQLite/diagnostic storage and is fetched on demand. Failure fingerprints power “same failure seen
-before” links without treating message text as identity.
-
-**Diagnostic safety is versioned, and history is never rewritten.** The stamp is an admission
-decision, not a creation-date marker: a current producer writes `diagnosticSafetyVersion: 1` only
-when every projected sentence comes from a closed typed/sanitized category. `run-failure` therefore
-keeps arbitrary `Error.message` text and caller-supplied entry-validation problems in authority on
-an unstamped record; only its fixed non-`Error` fallback sentence is admitted. Run detail, Queue,
-Explain, receipts and Archive never replay an unstamped summary/cause/remediation/note sentence:
-they reconstruct bounded text from typed codes, states and digests, leaving the source row
-byte-for-byte unchanged. The failed task span names only its fixed task id and the structured
-failure-record door; it never copies the task error's sentence. The terminal run transition retains
-the exact authority summary but copies the paired `FailureRecord`'s optional admission stamp instead
-of inferring one from the current producer. A current write refusal may additionally retain
-`writeAuthorityReason` in authority: a closed reason code plus a digest of the exception, probe,
-proof, settlement, fence or session evidence. That block is stripped from every operator projection;
-its presence causes even a stamped failure's opaque sentences to be reconstructed.
-
-**Delivery boundary.** Phase 1f persists this exact strict record in non-rebuildable authority for
-every failed task/run and atomically associates its `failureId` with the failure transition. The
-minimum service can insert/read by id and detect conflicting replay; it does not synthesize a
-`diagnosticBundleId`. Phase 2g added automatic bundle capture (§2.2.1), evidence receipts (§2.3),
-fingerprint search (`FailureRepository.listByFingerprint`/`countByFingerprint` over the indexed
-`failures.fingerprint` column) and `explain run` (§2.5.1). There is no smaller Phase-1 failure schema
-and no Phase-2 replacement record.
-
-**`explain failure <fingerprint>` is NOT built.** The composer's own usage line names it, and its
-subject dispatch accepts only `run` (`src/server/explain/compose.ts:39-44`). The lookup it needs
-exists; the command does not. Owned by `{#workflow-write-mechanics}` beside the knowledge surface (§4.3),
-and named again in §4.2 where the doc used to describe it in the present tense.
-
-#### 2.1.1 The failure section serves content through a whitelist schema (D142)
-
-
-`FailureDetailWireSchema` names every field it projects off the durable `FailureRecord`. That is doc
-11's "unclassified fields drop" applied structurally: a field added to the durable record later
-reaches no surface until someone decides how it is classified, rather than relying on a filter
-someone has to remember to update. Subject identity travels as a digest plus an already-redacted
-display suffix, the page as `urlRedacted`/`titleRedacted`. `sameFingerprintSeen` is §2.1's "same
-failure seen before" as a count — what the operator acts on, answerable without projecting other
-runs' subjects onto this panel. An absent diagnostic bundle names why there is no action; a present
-id opens E29's exact-id readback, which verifies the attachment index and each stored digest before
-it returns its strict wire or the canonical durable manifest.
-
-The receipt section serves the WHOLE `RunEvidenceReceipt`: §2.2 puts redaction at capture time, every
-value already carries its classification and transform, and a second wire projection could only lose
-them. Because the receipt now rides the run-detail wire, `src/domain/redaction.ts` is
-browser-reachable and drops `node:crypto`/`node:path` for `sha256Hex` and a two-separator basename.
-
-### 2.2 Automatic diagnostic bundle
-
-
-On an unexpected state, task failure, subject mismatch, recovery park, or operator-requested
-snapshot, the kernel captures one bounded bundle:
-
-- failure record and causal chain;
-- redacted URL/title, active `ScreenId`/`PageStateId`, and last N driver actions;
-- expected vs observed subject proof, or the allowlisted unscoped binding proof for a genuinely
-  subjectless file/catalog commit;
-- screenshot(s) allowed by sensitivity policy;
-- accessibility/DOM excerpt around the failed element, not an unbounded page dump;
-- visible error banners and selector recipes attempted;
-- relevant browser console/network failures with request bodies/credentials removed;
-- parsed input digest and schema/fingerprint—not unrestricted raw SSN/PII;
-- descriptor/task/config/build fingerprints, resolved prod/test instance;
-- worker, lease, claim generation, clock health, disk/DB health;
-- checkpoint ids/freshness/provenance summaries and prior retry lineage.
-
-Plan 1 may optionally attach an exact frozen action identity to a diagnostic bundle. The existing
-capture service admits it before writing artifacts; the repository independently rereads the
-run-scoped retained Notes through RuntimeAdmission's state root. Admission compares the complete
-identity, including attempt, claim, occurrence path, physical session and confirmation. It consumes
-at most 128 bounded slices of 200 lines and 256 KiB each; missing evidence or an exceeded bound
-refuses by name. It never drains buffered Notes, changes a write window, guesses an occurrence or
-downgrades an invalid anchor to an unbound capture. The optional identity participates in the bundle
-content digest; absent identities retain the existing digest grammar. The five trigger policies and
-unbound capture API remain unchanged. Logs may inline an image only at its exact served occurrence;
-unbound and unloaded captures retain the existing verified gallery.
-
-Bundles are content-addressed and indexed by `DiagnosticBundleId`. Retention is explicit: an
-ordinary bundle's `purgeAfter` is its own capture instant plus **30 days**
-(`DIAGNOSTIC_ORDINARY_RETENTION_DAYS`, `src/domain/trust/diagnostic-capture.ts:44` — D86's notes
-floor, which is where the number comes from), unless the bundle is pinned by an active knowledge or
-fix record or a write-recovery case, which stores a named `reason` and no instant at all. Restricted
-fields are redacted at capture time. Redaction is not deferred to the UI.
-
-**As-built: the sweep is built, tested, and has no caller.** `createDiagnosticRetentionSweep`
-(`src/services/trust/diagnostic-retention.ts:45-85`) reads the `(retention_kind, purge_after)` index,
-re-derives each disposition and throws if it disagrees with the row, purges bundle and attachment
-rows together, and REPORTS the artifact ids whose last diagnostic reference it just removed. Nothing
-in `compose.ts`, in `src/cli.ts` or on any timer calls it, so **no bundle has ever been purged on
-this machine** — scheduling it, and the content-store reference count that would let those reported
-bytes be reclaimed, are `{#def-retention}`, dispositioned `wont-build-unless-asked` by D193 (the
-reasoning is in §2.2.1). Read §10's fourth residual through this: a restricted bundle is local, and
-it is not short-lived.
-
-**"14/8/5" names no constant in this tree.** The phrase reaches the tree node and
-ref dashboard-surfaces from an early draft; the shipped schedule is ONE number — 30 days from the
-bundle's own capture instant — with no tiering by kind, sensitivity or age. Cite the constant, not
-the phrase.
-
-#### 2.2.1 As-built — a bundle is captured at the trigger, redacted at capture, and bound to its failure (D137)
-
-
-The trigger set is **closed and is the sentence §2.2 opens with**: unexpected state, task failure, subject
-mismatch, recovery park, operator-requested snapshot. Each maps one-to-one onto a stored
-`DiagnosticBundle.origin` arm, and the mapping is what decides whether a `failureId` or a
-`requestedBy` actor is mandatory — a mis-triggered capture fails before an artifact is written.
-
-**Redaction is schema-owned and happens at capture.** `redactDiagnosticFields` DROPS every field it
-cannot classify, with a warning naming its index; nothing unclassified is "passed through for the UI
-to hide". A second lock refuses a bundle in which a never-exportable key (any secret name, cookie,
-storage state, SSN) survived as an `allowed` value, so a mis-classification fails loud instead of
-exporting. Only a screenshot may stay `restricted`; every other attachment arm is redacted text.
-
-**The failure and its bundle land in one transaction, and the ordering is forced.**
-`diagnostic_bundles.failure_id` references `failures(record_key)` while
-`FailureRecord.diagnosticBundleId` is a forward reference the failure row must already carry — so
-neither can be written second on its own. Capture is therefore two phases: `prepare` redacts and
-writes attachments to the content-addressed store (nothing durable in authority has moved; a crash
-leaves at most an unreferenced artifact, which that writer already tolerates), and the interpreter
-then terminalizes the failure carrying the prepared `bundleId` and `persist`s the bundle inside the
-SAME authority transaction as the terminal CAS. A failure can never point at a bundle that does not
-exist, and a bundle can never outlive its failure. Injecting the capture port without an authority
-transaction fails loud rather than settling half of it.
-
-**Retention is a bounded delete, and a pin is a recorded fact.** An ordinary bundle's `purgeAfter` is
-derived from its OWN capture instant plus the D86 notes floor, never from wall-clock now at sweep
-time. The sweep reads the `(retention_kind, purge_after)` index, so a pinned bundle is structurally
-unreachable from it; purging a pinned bundle by name, or one whose instant has not passed, throws.
-Attachment rows and the bundle row are deleted together so the boot invariant tying a bundle's
-`attachments` array to its indexed rows can never observe a half-purged bundle.
-
-The content-addressed **artifact bytes are not deleted**. They are shared by digest, so a receipt, a
-second bundle, or a scenario fixture may still hold exactly those bytes; the sweep reports the
-now-unreferenced artifact ids and reclaiming them needs a reference count the artifact store does
-not keep. That is a named residual, not an oversight.
-
-**Disposition, operator 2026-08-12 (D193): both storage remainders are `wont-build-unless-asked`.**
-The two open items in this area — **scheduling** the 14/8/5 retention sweep (the sweep function
-above is built and tested; nothing in the running system calls it on a cadence) and the
-**content-store refcount** that would let those unreferenced artifact bytes be reclaimed — move off
-"deferred with an owner" and onto **nobody's milestone**. They are not planned, not owed by any
-slice, and no future gate is blocked on them.
-
-**The operator's reasoning, recorded because it is the part that generalizes: this authority
-database stores records of COMPLETIONS, not primary records.** The real record of a completed HR
-transaction lives in **the external system itself** — the UCPath transaction, the Kuali document —
-and can be checked there, in more than one way. What the rows here carry is **how** a thing was
-completed and **whether** it completed; once a thing is completed and approved, those rows mean
-little going forward. That is why backup is **non-critical at this scope**, and why a manual folder
-copy of `.tracker-rebuild/` taken with the app stopped is an acceptable backup for one person on
-one machine — and why disk growth is not a problem worth a durable reference count.
-
-**What that reasoning does not say.** It is about the standing value of *old* rows, not about
-durability *during* a write: a `write_intents` fence, its binding proof, and the parked-intent rows
-are load-bearing for the run that is in flight, and the fail-closed guarantees in ref write-safety rest on
-them being durable at the instant they are written. Nothing here weakens that. Equally, **nothing
-already built is removed** — capture, capture-time redaction, the pin/purge invariants, the
-`purgeAfter` derivation from the bundle's own instant, and the sweep's own refusals stay exactly as
-designed, so scheduling it remains a small addition the day the operator asks. The decision is about
-*further investment*, not about what exists: **no further storage/retention work happens unless the
-operator asks for it.**
-
-**Named seams.** The interpreter terminalizes after its driver lease has closed, so it holds no page:
-screenshots and accessibility excerpts arrive through an injected `attachmentsFor` seam that the
-system-driver layer fills in. Absent, the bundle carries structured evidence only — never a
-fabricated screenshot. `FailureRecord.summary` is deliberately not copied into the bundle: it is
-free text that can carry a name or an EID, it already lives in the failure row the bundle joins to,
-and duplicating it into an exportable artifact widens the blast radius for nothing.
-
-**E29 readback.** `GET /api/v1/diagnostic-bundles/:bundleId` accepts only the stored UUID and joins
-the D137 row to its exact attachment index. It recomputes the bundle digest, drains every referenced
-content-addressed artifact, and compares each byte count and digest before serving captured time,
-total attachment bytes, redaction facts, and the strict content list. Missing ids answer
-`TARGET_NOT_FOUND`; a malformed index, digest, or artifact answers the typed
-`DIAGNOSTIC_BUNDLE_CORRUPT` failure instead of serving a plausible record. The companion
-`/manifest` route sends the canonical durable bundle JSON with attachment disposition; the browser
-does not reconstruct an export. It is deliberately a bundle metadata/export surface, **not** the
-unserved generic artifact-byte route in ref frontend-backend-integration §3.6.
-
-#### 2.2.2 Selected browser-lease screenshots (D306)
-
-The Run Options checkbox is an explicit operator-requested diagnostic policy, stored on the start
-plan and copied unchanged to the run envelope. It defaults on for a new dashboard plan and resets
-on when the modal closes; an omitted historical/programmatic field means no periodic screenshot.
-When selected, the worker takes one viewport PNG after every successful browser-driver lease and,
-when the task throws, attempts the same capture before poison-close. Transaction leases use the
-same boundary. Capture happens while the resource still owns its page, before reset or close.
-
-This is load-bearing when selected: a worker without the persistence port, a browser resource
-without screenshot capability, or a capture/persist failure fails the lease by name. If the task
-and capture both fail, both remain in an `AggregateError`; capture never masks the task failure.
-The browser factory returns only PNG bytes and exact dimensions—not a Page or filesystem path—and
-the existing `operatorRequestedCapture` service persists them as `restricted`, content-addressed
-attachments attributed to `local-operator`. Only closed safe metadata (`browserSystem` and
-`leaseOutcome`) accompanies the image. The ordinary 30-day retention and verified D291/D292 byte
-read apply unchanged; there is no second screenshot store or duplicate byte route.
-
-### 2.3 `RunEvidenceReceipt`
-
-
-- [x] a previewed run's receipt derives `partial` with `unknown` confidence, so `verified-done` is structurally unreachable for a preview (§2.3.7, D215/D238)
-- [x] the envelope's `dryRun` and the terminal preview result must AGREE or the derivation throws
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/evidence-receipt.ts:707-761; the preview terminal's receipt shape is as chunk 6c recorded it
-
-Every terminal run—success, failure, cancellation, or partial outcome—has a server-derived receipt:
-
-Every `EvidenceFact`, `DecisionEvidence`, `ActionEvidence`, `VerificationEvidence`, `ReuseEvidence`,
-and `UncertaintyEvidence` row has its own `id: EvidenceEntryId`, DERIVED from
-`(receiptId, kind, key)` so a re-derivation reproduces it (§1.1). The semantic observation that a row
-refers to remains a dotted `ObservationId` in the UI/task vocabulary.
-
-```ts
-export interface RunEvidenceReceipt {
-  composition?: 2 | 3;                     // absent = composition 1 (see the composition rule below)
-  receiptId: EvidenceReceiptId;
-  runId: RunId; traceId: TraceId; workflowId: WorkflowId; attempt: PositiveInt;
-  generatedAt: IsoInstant;
-  descriptorFingerprint: Fingerprint;
-  configFingerprint: Fingerprint;
-  retryOf: { state: "absent" } | { state: "present"; value: RunId };
-  failure: { state: "absent" } | { state: "present"; value: FailureId };  // `failed` only
-  input: readonly EvidenceFact[];          // redacted canonical values + immutable input hash
-  observations: readonly EvidenceFact[];   // source, observedAt, task, checkpoint origin
-  decisions: readonly DecisionEvidence[];  // branch/gate/identity/dedupe decisions + reason
-  actions: readonly ActionEvidence[];      // external reads/prepares/commits/local projections
-  verification: readonly VerificationEvidence[];
-  output: readonly EvidenceFact[];
-  reuse: readonly ReuseEvidence[];         // fresh live, checkpoint, corrected, prior proof
-  warnings: readonly UncertaintyEvidence[];
-  confidence: "verified" | "partial" | "unknown";
-  result: "verified-done" | "done-with-warnings" | "failed" | "cancelled" | "partial";
-}
-```
-
-The `verified-done` result key is displayed as **Done** only when the descriptor's declared
-completion criteria all have evidence and `confidence === "verified"`. `done-with-warnings` is legal only for
-declared, non-load-bearing optional observations whose absence cannot change a transaction or core
-result. Unknown/ambiguous mandatory facts force `partial`/`failed`/parked state and can never be
-hidden by a green status. A transaction's expected/observed subject and proof source are visible
-alongside its receipt. Read-only workflows still show source observations and decisions so their
-output is auditable. A receipt invariant test rejects `verified-done` with anything but verified
-confidence or any unresolved mandatory evidence obligation.
-
-**As-built** (`src/domain/trust/evidence.ts:118-184`, `src/core/evidence-receipt.ts`). The two enums
-above are exact and closed; **`rehearsal` is not one of them** (§2.3.7). The `superRefine` on the
-schema — not a separate test — is what refuses `verified-done` beside a warning, a failure or an
-unresolved mandatory obligation, refuses `done-with-warnings` with no non-load-bearing warning, and
-makes `failed` the only arm that may (and must) name a failure; authority repeats the pair it can
-express in SQL, `CHECK (result <> 'verified-done' OR confidence = 'verified')`
-(`src/infra/sqlite/migrations.ts:167`). The verdict itself is derived, never authored: `confidence`
-is `unknown` when a mandatory fact or obligation is unresolved or absent, `partial` when any warning
-stands, else `verified`; `result` then reads off the terminal outcome and that confidence
-(`evidence-receipt.ts:840-861`).
-
-**The composition rule (2026-08-29; composition 2 originated in Track F ledger 2 D16–D22).** The
-receipt is composition-versioned: `composition: 2` added `actions[].proved`; composition 3 keeps
-that derivation and admits only digest-safe diagnostic sentences and gate identity references. An
-ABSENT stamp IS composition 1 — the exact shape every receipt stored before either extension.
-Because a stored receipt is immutable and must re-derive byte-identically (D141/D199),
-`ensureRunEvidenceReceipt` re-derives a stored composition 1 or 2 receipt AT ITS OWN composition and
-never upgrades it in place; only a run with no stored receipt derives composition 3
-(`LATEST_RECEIPT_COMPOSITION`). Operator projection serves composition 3. Composition 1/2 remains
-available as immutable authority evidence but is returned through a named `withheld` arm because
-its free text predates diagnostic safety; no evidence row is rewritten or backfilled. That exact
-re-derivation includes composition-1/2's original permanent-key wording. The raw natural key remains
-authority-only behind the withheld projection; composition 3 alone derives the digest wording used
-by current operator surfaces.
-
-**The commit action's `proved` block (same rows).** A commit action at composition 2 or 3 carries what
-proved the write, beside the write it proves, from durable authority alone: the fenced intent's
-`system` and `idempotencyKeyDigest` (the digest — the natural key embeds the person's EID and the
-raw half stays in authority), the commit contract's declared `completion` arm, the durable
-`TransactionOutcome`'s own `proofSource`, the completion proof's leaves redacted through the
-declared `write-proof` classification scope (§2.3.1's table; an undeclared proof leaf fails the
-derivation by name), and the outcome's recorded instant. `proved` is refused on any non-commit
-action, and its absence on a composition-2 commit means "no settled write intent reached authority"
-— the UI names that, and names a composition-1 receipt's absence differently. The D20/D21 reading
-(confirmation verdict, read-back verdict) is DERIVED from the served `(completion, proofSource)`
-pair by total folds in `src/dashboard/surfaces/trust-model.ts`, never stored twice. The staged form
-values remain unrecorded (a prepare is `checkpoint: "in-memory-only"`) — the value table is the
-completion proof, the values the system showed back for the write.
-
-#### 2.3.1 Evidence classification and cross-source obligations are DECLARED (D140)
-
-
-`src/domain/trust/evidence-classification.ts` binds every leaf of every workflow input, task output,
-and workflow result to one ref clock-config-secrets §6 classification plus one permitted transform. Three rules make
-it enforcement rather than decoration:
-
-- **An undeclared leaf fails loud.** `redactDiagnosticFields` drops an unclassified *diagnostic*
-  field with a warning because that channel accepts free-form payloads. A receipt's leaves come from
-  schemas this repository owns, so an undeclared leaf is a missing declaration — a code gap, closed
-  the way `pending-impl-bindings.json` closes one. Dropping it would make a receipt look complete
-  while hiding what the run read or wrote.
-- **The leaf rule is the provenance collector's.** An array is a leaf, an empty object is a leaf, a
-  populated object recurses — exactly `src/core/task-provenance.ts`. A finer rule would produce
-  facts no stored `FactProvenance` row could date, forcing the receipt to guess an observation
-  instant.
-- **The transform is refused at DECLARATION time.** `evidenceTransformAllowed` backs both the
-  diagnostic-field schema and the classification schema, so a `secret`/`allow` line cannot sit in
-  the table looking reviewed until the first run that carries that field.
-
-Business values (`employeeStatus`, `rawStage`, `documentNumber`, onboarding dates, page-state ids,
-proof sources) are `safe-diagnostic`: they describe the transaction, not the person, and the queue
-row already shows them. Person identifiers are `direct-identifier`/`last4`. A LIST of people is
-`sensitive-hr`/`count` — "one candidate matched" is the fact that decides whether a search was
-unambiguous, answerable without naming anyone who was not selected.
-
-`evidence-obligations.ts` is what makes the receipt a double-check rather than a transcript. Each
-obligation names its sources by `(workflow input | node output, dotted path)` and a closed rule, and
-the receipt carries the SERVER's verdict with the facts it compared. The operator never eyeballs two
-redacted identifiers: the receipt already did the comparison. A source that is absent is reported
-absent — the comparison never silently shrinks to one side and calls that agreement.
-
-#### 2.3.1a Retry receipts remain separate evidence (D289 amendment, 2026-09-03)
-
-A retry links to its predecessor through `retryOf`, but each attempt's receipt remains an
-independent statement of what that attempt observed, reused, decided, wrote, and verified. The
-dashboard does not calculate or present a field-level diff between two receipts. The operator opens
-each attempt and reads its ordinary facts; the product does not choose which differences matter or
-collapse two attempts into one derived comparison.
-
-D289's closed Separations comparison registry, comparison wire, endpoint, and receipt-tab panel are
-retired. The immutable receipts themselves, their `retryOf` relation, attempt numbers, reuse rows,
-and privacy classifications remain unchanged.
-
-#### 2.3.2 The receipt is a pure function of authority, derived and then pinned (D141)
-
-
-The receipt is **not** written inside the terminal settlement transaction. Two reasons, in order of
-weight. First, authority must never depend on a projection to terminalize: a receipt-shaped problem
-must not be able to block or unwind a settlement of a real HR transaction. Second, the runs this
-program has already produced — the live person-lookup exit run and the controlled Kuali commit —
-terminalized before the builder existed, and a mint-only design could never explain them.
-
-The safety a mint-at-settlement design would have bought is bought differently: every identity folds
-from the run identity, and `generatedAt` is the terminal settlement instant rather than a clock read,
-so re-deriving one run yields the same bytes. `ensureRunEvidenceReceipt` always routes through
-`evidenceReceipts.insert`, whose immutable-insert check refuses a divergent rebuild **by name**. A
-receipt that disagrees with authority is louder than no receipt.
-
-`generatedAt = lifecycle.endedAt` is a stated reading: the receipt describes the run AS OF the
-instant its evidence closed. Nothing about the run changes after that, so a "when was this rendered"
-stamp would carry no information and would destroy determinism.
-
-A conditional node that did not run carries a `DecisionEvidence` with its closed reason and an
-`absent`, **non-mandatory** obligation. An absence the descriptor authored and D114's terminal record
-closed is a correct outcome, not an unresolved one; treating it as unresolved would push every
-correct run with a skipped node to `partial`.
-
-#### 2.3.3 The receipt binds to the surfaces its derivation consumes, not to the descriptor's closure (D199)
-
-
-- [x] the receipt binds to the SURFACES its derivation consumes, not to the descriptor's 31-file closure (D199)
-- [x] `declared-evidence` takes the stored receipt row as its baseline — the only check that can see a declaration living outside the closure
-- [x] no waiver arm: chunk 2's five split three re-derived byte-identically, two frozen by design
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/receipt-derivation-binding.ts; the six-row check table matches the code
-
-**D141's "re-deriving one run yields the same bytes" was true only within one commit.**
-`buildRunEvidenceReceipt` stamped `descriptorFingerprint` from the CURRENT build's
-`descriptor.contractFingerprint`, so any edit anywhere in a ~31-file descriptor closure changed every
-already-settled run's derived receipt and `evidenceReceipts.insert` correctly refused it. Chunk 2's
-five live-proof `separations-kuali-read` receipts (`sd-140241-ca44`, `sd-140505-28ff`,
-`sd-140917-2b9e`, `sd-140921-3385`, `sd-140921-c0af`) were stranded exactly this way by a
-raw-control-byte fix that changed no semantics at all, and `explain run` answered
-`evidence receipt … already exists with different content` for all five. Re-running the documents was
-not available either: a read workflow whose identity is the thing it reads runs once per subject
-(the workflow's task evidence §"the re-run wall").
-
-Stamping the current build was also a **false statement** in its own right — the receipt claimed the
-run executed under whatever tree happened to be checked out. `descriptorFingerprint` is now the run's
-OWN retained `envelope.contractFingerprint`: a fact about the run, read from authority like
-everything else in a receipt.
-
-**The closure hash is neither necessary nor sufficient here, and that is the whole finding.** D136
-established the "not necessary" half for parked writes — nearly every edit in a closure leaves every
-consumed surface intact. A receipt adds the other direction: the declared redaction table
-(`src/domain/trust/evidence-classification.ts`) and the declared cross-source obligations live
-OUTSIDE every descriptor's import closure, so they move with `contractFingerprint` byte-identical.
-D197 moved one and two receipts changed content under a frozen hash. A hash that can be equal when
-the answer moved is not a binding.
-
-So resolvability is stated directly, one named check at a time, against exactly what
-`buildRunEvidenceReceipt` reads — the workflow id, the descriptor version, the runtime node walk,
-`descriptor.details`, the terminal execution's `dependsOn`, the declared obligations, and the declared
-redaction. Everything else it reads is a durable authority row, which is immutable and cannot move.
-
-| check | baseline | what a move means |
-|---|---|---|
-| `workflow-identity` | `run.envelope.workflow` | this descriptor is not the run's graph |
-| `descriptor-version` | `run.envelope.descriptorVersion` | the author declared that semantics moved |
-| `canonical-input` | `run.input.parsed.schemaHash` | the input facts would be redacted under a declaration authored for a different shape |
-| `evidence-graph` | checkpoint / terminal-dependency / write-intent rows | a node the run's evidence names left the graph |
-| `terminal-dependency-set` | the stored `RunResultRecord` | the mandatory-evidence set would move |
-| `declared-evidence` | **the stored receipt row** | the redaction, detail or obligation declaration this receipt was written under has changed |
-
-`declared-evidence` is the only check whose baseline is the receipt itself, and it is the only one
-that can see a declaration living outside the closure. It runs on re-derivation, attributes every
-divergent path to the ONE declaration that owns it (`declared-redaction`, `declared-details`,
-`declared-obligations`, `terminal-dependency-set`, `run-identity`, `receipt-composition`), and
-refuses — so a genuinely moved declaration reads as *what* moved instead of "the bytes differ".
-The refusal names only that closed schema path, row-count movement and bounded digests of the stored
-and derived evidence. It never interpolates either sentence. Redacted canonical-value roots are
-opaque to the path walker, so a dynamic evidence key cannot become diagnostic text either.
-`evidenceReceipts.insert`'s immutable check stays underneath as the backstop for any caller that does
-not come through `ensureRunEvidenceReceipt`; this path never skips it.
-
-A refusal prints the whole check table with both fingerprints, `[held]`/`[MOVED]`/`[skip]` distinct
-and an unevaluated check never reported as held. **There is no waiver, override, or force arm.** A
-settled run's receipt is an operator-facing record of a real HR transaction; when a declaration truly
-moved, the honest outcomes are to restore it or to accept that the receipt is frozen — never to
-overwrite it with a newer story about what happened. Chunk 2's own five split exactly that way: the
-three whose only change was the closure re-derive byte-identically, and the two that also crossed
-D197's classification fix stay frozen and now say so by name.
-
-Owned by `src/core/receipt-derivation-binding.ts`; pinned by
-`tests/unit/receipt-derivation-binding.test.ts` and the `evidence-receipt` guard.
-
-#### 2.3.4 A gate's evidence is a `gate_results` row, so the approver reaches the receipt (D204)
-
-
-- [x] a gate's durable evidence is its `gate_results` row, so the approver reaches the receipt (D204)
-- [x] the decision arm is DECLARED per `(workflow, gate)`; an undeclared gate and an unlisted arm value both fail loud
-- [x] redaction extends by a `gate-result` scope rather than a hole; the operator's reasoning is shown, not redacted
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/evidence-receipt.ts and src/domain/trust/gate-decisions.ts
-
-> **`gate_results` is a repository name, not a table.** `authority.gateResults` stores its records in
-> `checkpoint_payloads` keyed `<runId>:<gateId>` (`src/infra/sqlite/authority-database.ts`). This
-> section keeps the repository's vocabulary because that is what the code reads; the OPERATOR-facing
-> receipt sentence deliberately does not, and names "the gate result record" with no table at all —
-> a trust artifact read months later must not send its reader hunting for a table nobody created.
-
-**Ratified 2026-08-12.** D202 built the ALWAYS-GATE and put the answer to ref write-safety §14.6 risk 6 ("who
-approved is lost") into authority: the command kernel writes `resolvedBy`/`resolvedAt` onto the
-`gate_results` row inside the same transaction that stores the result and resumes the run, and a
-caller-supplied `approvedBy` beside that would be a claim sitting next to authority. D203 then taught
-the KERNEL that a gate dependency's durable evidence is that row rather than a checkpoint. **The
-receipt was not taught the same thing**, and it derives from checkpoints — so chunk 3's settled live
-run `si-161551-774c` listed `node.identity-approval` as `unknown` and carried no decision row at all.
-Risk 6 was answered durably and not in evidence, which on a trust surface is the same as unanswered:
-the receipt is the artifact an operator reads months later to see the human in the loop.
-
-**The reader moves, for the third time and for D144's reason.** A gate has no checkpoint and never
-will — fabricating one would make a durable record claim a shape it does not have. So
-`buildRunEvidenceReceipt` takes `gateResults` beside `checkpoints`, and a resolved gate node emits:
-
-- **its payload's leaves as observation facts**, sourced through a new `gate-result` arm of
-  `EvidenceSource` carrying the gate id and authority's own `resolvedBy`/`resolvedAt`. The source arm
-  is separate from `system` because a gate owns no task contract: what it dates is a DECISION, not an
-  observation of a page.
-- **one `kind: "gate"` decision**, whose outcome comes from a DECLARED arm table and whose reason
-  names the approver, the instant, the resolving command, and the evidence digest the approval was
-  bound to (ref write-safety §14.5 — an approval is an observation of a specific packet).
-- **a `verified` obligation** for the node, replacing the `unknown` that used to stand for
-  "authority holds nothing", which was false.
-
-**Amended by D309 (2026-09-02):** this remains the receipt shape for the name-resolved branch. When
-the identity gate's declarative condition is false, the executor opens no gate and creates no human
-decision. Provenance and receipt composition independently re-evaluate the condition from canonical
-input and authenticated checkpoints, reject any gate-result/checkpoint collision, and record the
-gate obligation absent/non-mandatory with a branch `not-taken` decision. The downstream identity
-subject then names `machine-verification`, never an approver.
-
-**Why the decision arm is declared and not sniffed.** `DecisionEvidence.outcome` is a closed
-five-value enum and a gate's result payload is authored per gate, so mapping one to the other by
-looking for a field called `decision` would put a plausible-but-wrong word on a record of a human
-decision — a payload arm this build did not recognise would land as `approved` or vanish.
-`src/domain/trust/gate-decisions.ts` declares, per `(workflow, gate)`, the decision leaf, each stored
-value's outcome and operator-facing summary, and the bound-evidence leaf. An undeclared gate and an
-unlisted arm value both fail LOUD, exactly as `classifyEvidenceLeaf` does for an undeclared leaf, and
-the `evidence-receipt` guard fails when a registered descriptor grows a gate node without one.
-
-Redaction extends the same way rather than gaining a hole: `EvidenceValueScope` gains a
-`gate-result` arm scoped by `(workflow, gate)` — not by a task id, which a gate does not have — and
-the identity gate's four leaves are declared there. The approved `eid` is a `direct-identifier`
-taking `last4` like every other identifier on a receipt; the decision, the choice, the digest and the
-operator's own rejection reason are the DECISION and are shown, because a receipt whose job is to
-display the human in the loop cannot redact the human's reasoning out of it.
-
-The D199 check table gains no new check. `evidence-graph` grows one row-source: a gate result whose
-node left the graph, or whose node is no longer a gate, is a graph gap named as such — the second
-case is the stronger break, since the row would otherwise read as a decision about a step that no
-longer asks a human anything.
-
-**One consequence, recorded rather than waived.** A receipt stored BEFORE this decision cannot
-re-derive under it — `declared-evidence` moves, correctly, naming `receipt-composition` (four new
-observation rows) and `declared-obligations` (`verification[3].verdict: "unknown" → "verified"`).
-D199 has no waiver arm and gains none here. The two `separations-identity-check` receipts the chunk-3
-proof session minted were dropped from the standing authority database as an explicit operator
-repair — both describe read-only identity checks, both were minted under a build that structurally
-could not see the gate row, and §14.9 had already recorded that incompleteness as an open defect —
-and then re-derived under D204. That is a data decision about a pre-production database, taken and
-written down; it is not a code path, and no code path exists to take it.
-
-Owned by `src/core/evidence-receipt.ts` and `src/domain/trust/gate-decisions.ts`; pinned by the
-`evidence-receipt` guard against the REAL gated descriptor, with a foreign gate row, a gate that left
-the graph, and an undeclared arm value as negative controls.
-
-#### 2.3.5 A settled gate's panel names the verdict, the approver and the instant (D237)
-
-
-**Ratified 2026-08-19.** D202 put the approver into authority, D203 taught the kernel to read a
-`gate_results` row as a dependency's evidence, and D204 taught the RECEIPT the same thing. The
-**panel** was never taught it. `run-detail`'s `resolved` gate arm was keyed on the span stream's
-`resolutionKey`, and the command service emits the literal `resolved` for every gate — deliberately,
-with a comment naming the deferral (*"Until gate descriptors declare display keys (2h Review), the
-one honest key is the fact of resolution itself"*). So the approve/reject arm was **structurally
-unreachable**: every settled gated run's panel reported `gate: { state: "absent", reason: "gate
-identity-approval resolved with key resolved, which is not an approve/reject verdict" }`, a sentence
-that reads like a data problem and was a vocabulary deferral. Separations §9.17 item 7(a) recorded
-it against a real settled run; this closes it.
-
-**The source is the durable row, and it is the SAME row the receipt reads.** The panel query takes
-`authority.gateResults.listByRun(runId)` — D204's own read — and derives the verdict through D204's
-declared arm table (`src/domain/trust/gate-decisions.ts`), with `resolvedBy` and `resolvedAt` taken
-off the row the kernel wrote inside the resolving transaction. The span stream is not consulted for
-the verdict at all, which is the point: a projection of an event's display key was never authority
-for what a human decided, and the two surfaces an operator reads side by side — the panel and the
-receipt — now cannot disagree about who answered a gate. The wire's `resolved` arm therefore carries
-`resolvedBy` as a REQUIRED field; requiring it is safe precisely because the arm was unreachable, so
-no served wire and no archived record can hold a `resolved` gate that predates it, and an optional
-field would have bought read-forward safety for a shape nothing ever wrote at the price of a settled
-gate that renders without naming a human.
-
-**Where the panel and the receipt deliberately DIVERGE: what a gap does.** The receipt REFUSES to
-derive at all when a gate is undeclared or stores an arm value no declaration lists (D204) — it is
-the durable artifact, and a trust record that guessed would be worse than no record. The panel must
-still render the run it exists to explain, so each way the read can fail to produce a verdict is a
-NAMED absence instead: no durable row beside a folded `gate.resolved` span (stated as exactly that
-divergence, so a lost decision never reads as a workflow that asked for none), no declaration for
-`(workflow, gate)` naming the file that owes one, an arm value no declaration lists naming both what
-was stored and what is declared, and a declared outcome that is not an approve/reject verdict. In
-neither surface does anything guess the word.
-
-**What the operator sees.** The panel draws a DECISION RECORD in the run's own stream at
-`resolvedAt` — the settled counterpart of the open gate's decision card, in the same geometry —
-carrying the verdict, the approver and the instant. The archived detail's Decision card names the
-approver for the same reason. Ref dashboard-surfaces owns the presentation; this section owns the derivation.
-
-Owned by `src/server/dashboard/queries/run-detail.ts` and `src/domain/dashboard/run-detail.ts`,
-over `src/domain/trust/gate-decisions.ts`; pinned by
-`tests/unit/server/run-detail-gate-outcome.test.ts` with every named absence as a negative control.
-
-#### 2.3.6 A transaction node IS a terminal dependency — the named gap, closed by D144
-
-
-**Closed 2026-08-04 (D144, ref write-safety §3.1).** The gap was real: the sequencer stored a transaction
-checkpoint under the durable `TransactionOutcome` schema hash while the descriptor factory's
-terminal `build` demanded the COMMIT CONTRACT's output schema hash, and the interpreter never
-registered a transaction checkpoint as terminal evidence at all — so the then-current annotation
-proof could not reach terminal `done` and the controlled commit had no receipt in authority. The
-stored hash was the correct one; the terminal side moved. The current owner is
-`tests/unit/separations-kuali-finalization-terminal-proof.test.ts`: it drives the real finalization
-descriptor through executor, sequencer and authority to terminal `done`, derives the verified
-receipt, and proves that hiding beat ⑦'s checkpoint or bypassing the executor cannot satisfy the
-terminal/receipt oracle.
-
-#### 2.3.7 A DRY RUN is a rehearsal, and the label is derived from the verdict (D215/D238)
-
-
-**Ratified 2026-08-19.** `done → verified-done` used to be mechanical, so a preview that wrote
-nothing wore the label reserved for an independently verified real completion — while its own
-receipt already said otherwise. Nothing had to be invented: a previewed run derives
-`result: "partial"` from the receipt builder itself, because its `completion.terminal-result`
-obligation is `unknown` and its `DRY_RUN_PREVIEW` warning is load-bearing, which makes
-`verified-done` structurally unreachable for a preview (`evidence-receipt.ts:707-761`).
-
-Two facts about that arm are worth keeping. **The preview's two shapes are both recorded**: a
-staged-and-observed preview and one that settled at the probe (D215's `not-observed` subject
-verdict, the ordinary separations subject) produce different warning text, because a rehearsal that
-never staged anything is a different rehearsal. And **the two facts are cross-checked**: the
-envelope's `dryRun` flag and a terminal result bound to `RunDryRunPreviewResultSchema`'s hash must
-AGREE, and a mismatched pair throws rather than picking one (`:713-721`).
-
-The **label** lives one layer out, on the dashboard wire, and deliberately not on the receipt:
-`OutcomeWireSchema` carries `rehearsal: z.literal(true).optional()` beside the same five-arm
-`result`, with a refinement making `rehearsal === true` and `verified-done` unrepresentable
-(`src/domain/dashboard/run-detail.ts:286-300`). It is not a sixth result and not a new confidence
-tier — it is D6's envelope fact, already on the queue row, said again where an operator reads the
-outcome. `terminalOutcomeText` (`src/dashboard/surfaces/log-panel-model.ts:67-72`) is a pure
-exported function for the reason D187 taught: this tree renders no React in the unit lane, so an
-operator-facing sentence is only as pinned as the parity corpus unless it is extracted.
-
-#### 2.3.8 The demo's `receiptInvariant` Banner is structurally unnecessary here (ledger 2 D11)
-
-
-**Answered 2026-08-21.** The demo's Receipt renders a `receiptInvariant` Banner that fires when a
-receipt claims `result: "verified-done"` without `confidence: "verified"` — a defensive display for
-a pairing the demo's own data could carry. The question ledger 2 D11 left open was whether this
-tree's receipt can hold that pairing at all; it cannot, at two independent layers, so the Banner has
-no case to ever draw.
-
-**The authority layer.** `evidence_receipts`' DDL carries `CHECK (result <> 'verified-done' OR
-confidence = 'verified')` (`src/infra/sqlite/migrations.ts:167`) — SQLite refuses the INSERT before
-the row exists.
-
-**The domain layer, independently.** `RunEvidenceReceiptSchema`'s `superRefine`
-(`src/domain/trust/evidence.ts:123,162`) rejects the same pairing at PARSE time: `if
-(receipt.result === "verified-done") { if (receipt.confidence !== "verified") context.addIssue(...)
-}`. This is the schema the wire and every in-process consumer read through — it makes the pair
-unrepresentable before a byte reaches the database, not merely after.
-
-Both checks encode the SAME invariant `receiptInvariant` exists to warn about, so no receipt this
-tree can construct — durable or in-memory — ever reaches `receipt.tsx`/`trust.tsx`'s
-`ReceiptEvidenceBody` in the state the Banner is for. Building the Banner would be dead code: a
-warning for a state the type system and the database both already refuse to let exist. This is
-distinct from D238's `rehearsal`/`verified-done` refinement (§2.3.7) — that pair is about a DIFFERENT
-mismatch (a dry run wearing the verified label) enforced on `OutcomeWireSchema`, one layer out on
-the dashboard wire; this one is about `result`/`confidence` on the receipt itself, enforced at
-authority and at the domain schema both.
-
-#### 2.3.9 The declaration is the OBSERVED LOG's redaction too (D270)
-
-
-**Ratified 2026-08-21; transaction lane completed 2026-08-25.** §2.3.1's table stopped being a
-receipt-only contract. Every point a task records through `ctx.recordData` is captured and stamped
-at record time for a `data.observed` event (doc 03.1 §Observed logs), and each leaf is pushed through
-`redactEvidenceLeaf` — the SAME function, over the SAME table, that the receipt uses. There is
-deliberately no second redaction implementation: a log that leaked a value the receipt would have
-dropped is the same defect from a different surface, and the two channels are then provably
-consistent about one leaf rather than consistent by review.
-
-Probe, prepare and verify redact and emit synchronously. Commit is the only delivery exception:
-its points and one Clock instant are frozen in `ctx.recordData`, then redaction and emission wait
-until the callback settles. A commit task may legally record a page fact before invoking its
-driver, so synchronous delivery there would put the fallible span writer between a durable fence
-and the external click. The flush emits the kernel's strict `transaction.fenced` arm first, then
-the commit batches in call order; an undeclared commit leaf parks rather than preventing the click.
-
-Three consequences follow, and each is enforced rather than described.
-
-**The refusal message is channel-neutral.** `classifyEvidenceLeaf` used to end *"a receipt never
-drops a leaf silently"*; it now names both channels, because the author it is talking to may never
-have opened a receipt.
-
-**A leaf is undeclared until somebody declares it, fixtures included.** The executor's own fixture
-contracts borrow the manifest-known id `ocr/extract-form-page` — they must, because
-`resolveTaskImplFingerprint` fails loud on an id the generated build manifest does not carry — and
-their six test-local paths are DECLARED rather than exempted. A fixture bypass would mean the
-refusal is never exercised by a composed run, and the executor's fixtures are the only composed runs
-the unit lane has. The two person identifiers there carry the same `last4` as everywhere else, so a
-fixture cannot become the surface that proves a raw identifier reaches a stream.
-
-Plan 1 form fixtures borrow existing manifest ids and wrap their additional task output in
-`fictional`, a namespace absent from active output schemas. Those leaves have explicit declarations;
-the employee uses `last4`, and both free-text comments use `drop`. Action values remain governed by
-the separate sealed operation-slot policy. The fixture namespace adds no active workflow capability.
-
-The write-sequencer corpus injects its fixed implementation fingerprint instead. Its five sealed
-task contracts export their exact ids as `WRITE_FIXTURE_TASK_IDS`; the orphan-classification guard
-adds only that derived set to the manifest/runtime baseline. Its probe/prepare/commit/verify leaves
-remain ordinary declarations and pass through the production refusal — the set is accounting for
-an executable test runtime, not a redaction bypass.
-
-**Presentation preserves the arm boundary.** The dashboard's combined log renderer reads the strict
-row union in its served sequence: only `data.observed` supplies direction, redacted value facts and
-any browser system its exact descriptor origin declares. `transaction.fenced` is the durable authority beat preceding a commit batch,
-not a page observation, so the surface does not manufacture a system chip, read/write arrow or value
-pill for it. A note remains prose. This keeps a redacted page fact, an authority fact and an operator
-message distinguishable even when their clocks are equal.
-
-**The orphan rule's baseline widened to the build manifest.** `evidence-receipt.test.ts` used to
-refuse a `task-output` scope naming a task no registered descriptor composes. That is the wrong
-baseline once the emission exists: the executor runs whatever a composed descriptor names, so a
-registered task that no descriptor composes YET is not an orphan — a DELETED one is, and the wider
-rule still catches it. D184's rot check is intact.
-
-**Transaction roles do not borrow declarations.** The four idempotency probes and four post-fence
-verifiers each have their own task scope in §2.3.1's table. UCPath EIDs use `last4`; states, dates,
-document numbers and transaction numbers are transaction facts and use `allow`. A verifier is the
-landing authority and cannot inherit its probe's declaration merely because their shapes happen to
-match.
-
-##### What is recorded and still NOT classified
-
-Every one of the eighteen task nodes across the five registered descriptors was already declared, so
-the original emission added no production declaration. The transaction lane now declares its eight
-roles. Five descriptor-less `recordData` call sites remain unclassified: four data-service tasks and
-one OCR task. They are listed rather than guessed at because no run can reach them yet:
-
-| Task | Why it is not declared here |
-|---|---|
-| `extraction/extract-spreadsheet` · `extraction/extract-pdf-pages` · `normalization/read-contact-advice` · `roster/match-spreadsheet` | wired into no descriptor, so no run can reach them; declaring a shape nothing has executed would be a guess. |
-| `ocr/extract-form-page` — its OWN output leaves | same, plus a real finding: the task records `pageFingerprint` and `hasRecord`, and `AdmittedExtractionSchema` carries neither, so `finalizeRead` would refuse it (`task provenance path … does not exist in the output`) the first time a descriptor composed it. Declaring `AdmittedExtraction`'s leaves would hide that; it is recorded here instead, unowned, for whoever wires the OCR route. |
-
-#### 2.3.10 D346 — retained original values for the local operator (2026-09-24)
-
-New observed points and evidence receipt facts retain the original JSON leaf
-alongside the classified transform. The local dashboard displays the original
-when present and the retained transform for older records without one. Failure,
-note, diagnostic bundle and receipt read projections serve retained text and
-values, including older archives. This changes local presentation and persistence; the
-classification table still names each leaf and provider prompts retain their
-separate redaction rule. A dropped historical value is not recoverable.
-
-#### 2.3.x — D307: an asserted node is present, never verified (2026-09-01)
-
-When the operator omitted a step at start, the receipt says so in three closed places and never lets a
-typed value read as an observation:
-
-- **Fact source `operator-assertion { taskId, step, assertedAt }`** — every leaf of an asserted node's
-  marked checkpoint row (`assertion: { step, assertedAt }`, every provenance entry `operator` with no
-  `correctedAt`) carries this source. An `operator`-sourced leaf that is neither a correction
-  (`correctedAt`) nor backed by the row's `assertion` is a contradiction the receipt refuses.
-- **Decision `kind: "assertion"`, outcome `taken`**, one per asserted node, naming the omitted step and
-  the instant; the node's `node.<id>` obligation is **`present` and mandatory** — the value existed and
-  drove the run — never `verified` (nothing observed it) and never `absent`.
-- **Warning `OPERATOR_OMITTED_STEP`**, once per omitted step key, load-bearing: a `done` run with an
-  omitted step folds to `partial`, not `verified-done`.
-
-Nodes of an omitted step that nothing rebuilt (every transaction, some tasks) keep the ordinary not-run
-shape with the closed reason `step-omitted`; their obligation is `absent` and not mandatory. The receipt
-reconciles an asserted terminal dependency against the exact marked row (step, instant, output schema
-hash and output digest) in both directions: a cited assertion without its row, and a marked row the
-terminal record cites as not-run or does not cite, both refuse by name. Explain (§2.5) lists the run's
-omitted step keys and renders an asserted node with the `operator-asserted` disposition; typed fact
-VALUES never appear in a receipt, an Explain, a span or a wire — only step keys and field keys.
-
-### 2.4 Attempt transparency
-
-
-A retry preserves the logical queue item, receives the next attempt number, and links to the prior
-run through `retryOf`. The target presentation is one queue row for that item with separately
-selectable attempts. Each attempt keeps its own run detail, timeline, logs, receipt, failure, and
-reuse facts. The dashboard renders those facts normally and never labels replayed data as newly
-observed. It does not produce an automatic before/after interpretation; the operator may inspect
-the attempts and compare them directly. The queue projection currently emits one top-level row per
-run, so item-row folding remains unbuilt.
-
-### 2.5 `explain run`
-
-
-The retained explanation transport formats the canonical diagnostic view.
-
-It resolves the operation tree and prints, in this order: state, node timeline, checkpoint reuse,
-subject bindings, failure, last successful action, open gate, open dependency, command history,
-notifications, write intent/proof, evidence receipt, and the concrete next safe action
-(`src/server/explain/explain-run.ts:317-346`).
-
-**Three sections do not print what this paragraph once promised, and each says why rather than
-printing an empty heading — which is the whole discipline of this command.** `--bundle` **REFUSES**
-by name (§2.5.1): exporting a diagnostic package missing the capture evidence its manifest claims is
-worse than refusing. `command history` is absent because authority indexes commands by id, not by
-run, and the by-run projection is ref dashboard-surfaces's queue projection rather than this
-command's.
-
-The `notifications` section is absent too, and **its reason has gone stale**: it reads *"no
-notification trigger is wired yet … so this run has none rather than none being shown"*
-(`src/server/explain/explain-run.ts:256-260`), which was true when it was written and stopped being
-true at D262. `gate-park.ts` publishes a RUN-SCOPED row for a run parked at a gate (§6), so the one
-sentence a run explanation must never get wrong — *this run has none* — can now be false on exactly
-the runs an operator is most likely to explain. The honest arms are to read the inbox for the run's
-own links, or to narrow the reason to "this command does not read the inbox". It is a one-line
-reason string and a reader of a trust surface has no way to know it is old; recorded here rather
-than fixed, because this pass changes documents and not code.
-
-#### 2.5.1 `explain run` and the receipt are one derivation (D143)
-
-
-`cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
-sections in §2.5's order. For a settled run it derives the SAME receipt the dashboard serves, so a
-terminal explanation and a terminal receipt cannot disagree. Every section an operator could misread
-as "nothing happened" says why instead. `--bundle` **refuses**: exporting a diagnostic package
-missing the capture evidence its manifest claims is worse than refusing, because the recipient
-cannot tell.
-
----
-
-## 3. Scenario corpus: workflows improve safely as new cases are discovered
-
-**Historical test-tier record.** The executable `tests/scenario/` suite and its parity companion
-were retired on 2026-10-02. The dated corpus and tier state below are retained as history; use the
-current operator amendment above and `ref guards-and-tests` for test policy. Semantic UI verification
-scenarios and their proof requirements remain separate from those retired suites.
-
-
-### 3.1 `example` is not a scenario
-
-
-Ref task-contract's contract `example` remains the canonical happy-path output used for type checks and cheap
-stubs. A scenario includes inputs, page/data fixtures, timing/failure injection, expected actions,
-evidence, and terminal outcome. The previous plan's hand-scripted failure/cancel matrix is replaced
-by a registered corpus rather than remaining an unnamed side list.
-
-```ts
-export interface ScenarioManifest {
-  id: ScenarioId;                       // "new-kronos/stale-timecard-after-search"
-  title: string;
-  scope: { taskId?: TaskId; workflowId?: WorkflowId; nodeId?: NodeId };
-  kind: "happy" | "expected-absence" | "schema-failure" | "unexpected-state" |
-        "wrong-subject" | "transient" | "permanent" | "timeout" | "cancel" |
-        "parallel" | "branch" | "gate" | "delegation" | "command" | "proof" |
-        "crash" | "recovery" | "storage";
-  fixture: FixtureRef;
-  input: JsonValue;
-  injections: readonly ScenarioInjection[];
-  expect: ScenarioExpectation;
-  contractFingerprint: Fingerprint;
-  requiredAssertions: readonly [ScenarioAssertionId, ...ScenarioAssertionId[]];
-  source?: { failureFingerprint?: string; knowledgeId?: KnowledgeId; fixId?: FixId };
-}
-```
-
-The manifest schema is strict and runtime-parsed. Fixture payloads are sanitized before check-in;
-restricted live captures remain local content-addressed artifacts and tests use derived/synthetic
-equivalents. `input` is a generic canonical-JSON envelope only because one corpus serves every
-contract; corpus load resolves `scope`, parses it through that exact task/workflow input schema, and
-stores the parsed value plus schema fingerprint before any scenario can execute.
-
-**As-built — two distinct executable mechanisms (3.1.11.1).**
-`PREFLIGHT_SCENARIO_MANIFESTS` in `src/domain/trust/preflight-scenarios.ts` declares fourteen
-preflight fault scenarios. `tests/fixtures/preflight/corpus.ts` parses and executes each manifest
-through the production runtime detector factory and strict report authority against private inputs.
-Registry-derived expansion covers each secret name, endpoint route, browser asset and feature-provider
-alternative. The corpus checks healthy controls, the injected result, explicit restoration, terminal,
-failure and evidence expectations, report digests, unchanged authority bytes and intercepted external
-effects. The active `preflight-coverage` architecture guard rejects absent/extra executions, mismatched
-evidence and registry drift; the companion unit suite rejects a deliberately false-healthy detector.
-`storage.backup` is exercised together with corrupt authority: D322 does not make an absent backup a
-failure for healthy storage. This is synthetic local proof; current target systems and live acceptance
-remain 3.1.19 work.
-
-The workflow corpus under `tests/scenario/**` independently uses
-`ScenarioCoverageClaim { scenarioId, covers }` in `tests/scenario/coverage-claims.ts`. Each claim is
-asserted against the path its test exercises. Those workflow claims do not execute preflight manifests,
-and preflight corpus completion does not credit workflow scenarios.
-
-### 3.2 Minimum scenario coverage
-
-
-- [ ] regression scenarios for separations' close-out
-- [ ] knowledge records for separations — blocked on a CALLER, not on a schema: the store, the admission audit and the projection are built and unreachable (§4.1)
-- [ ] capability dispositions
-> 2026-08-20 | docs-cohesion operator-trust | verified the three doc-side close-out obligations against the code; all three open, and the knowledge half needs one composition-root wire rather than a design
-
-- Every task: happy path, every declared business absence/error code, schema-invalid input/output.
-- Every browser task: expected page state, unexpected page state, selector missing, cancellation,
-  and subject mismatch for subject-scoped tasks.
-- Every transaction: dry-run preview, prepare failure, probe unknown/ambiguous/present/absent,
-  probe-age expiry, fence CAS loss, commit failure before/after click, proof failure, crash recovery,
-  repeated same key.
-- Every child-run/delegation: zero/one/many children, child fail/block/partial policy, parent cancel,
-  child retry and parent resume, duplicate fan-out replay, two independent delegations joining.
-- Queue/control: stale command version, authoritative target mismatch, DB unavailable, partial bulk
-  failure, hide/restore, enqueue coalesce/reject/supersede/parallel.
-- Storage: disk full, corrupt DB, missing/torn WAL, failed migration, backup restore, projector lag.
-
-**As-built, and being restructured.** Sixteen files under `tests/scenario/` walk the corpus today,
-and `scenario-coverage` audits it in BOTH directions — every branch, gate, delegation and
-transaction coverage point the graph derives is claimed, and every claim resolves to a real point
-AND a real file; D185 added a corpus-layout audit so a scenario title that parses as a `ScenarioId`
-must resolve rather than being read as prose. The list above is a coverage POLICY, and it is not met
-in full: nothing in the tree proves that every declared business absence code, every selector-missing
-arm or every storage fault has a scenario, because the audit is over graph-derived points, not over
-a contract's error enum.
-
-**Where the policy is moving.** R10 (operator, 2026-08-20) reorganizes `tests/` by what a test NEEDS
-— a no-dry-run tier and a dry-run tier built on a live `dryRun=true` run of each workflow with
-checkpoints asserted over authority — and the owning spec is **ref guards-and-tests §Testing tiers**,
-tracked as `{#workflow-authoring-core}` with workflow cases under the two 3.2 acceptance tasks. This section keeps the operator-trust half (what a scenario IS, and why
-`example` is not one) and stops being the place the tier layout is described.
-
-### 3.3 Unexpected states become data, never fallbacks
-
-
-If a page does not match a declared `PageStateId`, the driver returns/throws `UnexpectedPageState`
-with captured evidence and parks/fails according to the descriptor. It does not try an unlabeled
-fallback selector and continue. The diagnostic bundle makes the new state observable; when the
-operator fixes it, the fix adds a new state/transition or adjusts the existing definition and adds
-a scenario. The system therefore grows from real use without silently claiming an unmodeled case
-completed.
-
-### 3.4 Bug-to-regression rule
-
-Every non-trivial fix must link to a scenario that failed before and passes after. If the bug cannot
-be reproduced safely, the `FixRecord` must say why and link to the closest deterministic invariant
-test plus live evidence. A failure fingerprint may not be marked resolved with only a code diff.
-
----
-
-## 4. Structured knowledge and AI-assisted fix history
-
-
-### 4.1 LESSONS are migration input, not the new authority
-
-
-The plan does **not** move `LESSONS.md` wholesale into each rebuilt store. During a store/workflow
-migration, each relevant old lesson is triaged into one of three destinations:
-
-1. active reusable guidance → a `KnowledgeRecord`;
-2. historical incident/context → incident history linked from a record/scenario;
-3. superseded/incorrect/duplicate → retained only in git history, not the generated active guide.
-
-The old file remains authoritative for preserved legacy code. The rebuilt system
-uses only the structured store and its generated active view, eliminating a permanent dual source.
-
-```ts
-export interface KnowledgeRecord {
-  id: KnowledgeId;
-  status: "active" | "superseded" | "retired" | "unverified";
-  scope: { system?: SystemId; workflow?: WorkflowId; task?: TaskId;
-           element?: ElementId; pageState?: PageStateId };
-  title: string;
-  symptom: string;
-  trigger: string;
-  rootCause: string;
-  invariant: string;
-  fix: string;
-  regressionScenarios: readonly ScenarioId[];
-  evidence: readonly EvidenceRef[];
-  verifiedAt?: IsoInstant;
-  supersedes?: readonly KnowledgeId[];
-  sourceCommits?: readonly string[];
-}
-```
-
-Records are strict-schema JSON; one generated `KNOWLEDGE.md` per system shows **active only**
-guidance for humans/AI. Incident history and superseded records remain queryable but are not
-injected into ordinary prompts/search results unless explicitly requested.
-
-**As-built — the authority is the TABLE, and the generator has no caller.** The `knowledge/records/`
-on-disk layout was never built and is not owed: `knowledge_records` / `fix_records` (schema v10) are
-the authority, and `projectKnowledgePages` / `renderKnowledgeMarkdown`
-(`src/domain/trust/knowledge-projection.ts:147-209`) render the ACTIVE view from it, with
-`writeKnowledgeProjection` (`src/services/trust/knowledge-service.ts:86-102`) writing the files
-behind a path-escape guard. D139 recorded that wiring the generator to an npm script was 2i's work,
-"with the explorer". **It did not happen.** Nothing in `src/cli.ts`, `compose.ts`, `src/dashboard/**`
-or `package.json` constructs the knowledge service or calls the projection, so no `KNOWLEDGE.md`
-exists in this tree and no record has ever been written by the running system. The store, the
-admission audit (§4.5) and the projection are real and unit-tested; the operator has no way to reach
-them. Owned by `{#workflow-write-mechanics}`, which carries the former first-migration software close-out.
-
-### 4.2 `FixRecord`—what Codex/Claude changed and how it was proven
-
-
-```ts
-export interface FixRecord {
-  id: FixId;
-  failureFingerprint?: FailureFingerprint;
-  status: "draft" | "verified";
-  requestedBy: "operator" | "codex" | "claude";
-  summary: string;
-  affected: readonly (TaskId | WorkflowId | ElementId | PageStateId)[];
-  files: readonly string[];
-  scenarios: readonly ScenarioId[];
-  verification: readonly EvidenceRef[];
-  commit?: string;
-  knowledge?: readonly KnowledgeId[];
-  createdAt: IsoInstant;
-}
-```
-
-Raw chats, AI explanations, and uncommitted reasoning are never runtime authority. A fix becomes
-trusted only through code + schemas + scenarios/tests/live evidence + an optional linked knowledge
-record. `status:"verified"` requires a commit id and non-empty verification evidence; an uncommitted
-or unproven change remains a visible draft and is excluded from active guidance.
-
-`cli explain failure <fingerprint>` — which would show prior fixes and whether the same scenario
-still passes — **is not built** (§2.1). The indexed `fix_records.failure_fingerprint` column and
-`FailureRepository.listByFingerprint` exist for it; the command does not.
-
-### 4.3 Maintenance and search
-
-
-- New record creation checks for matching scope/symptom/element/scenario before adding; suspected
-  duplicates require an explicit supersedes/related link.
-- A scheduled/manual audit validates referenced ids/files/scenarios/commits and marks stale records
-  `unverified`; it never silently leaves dead guidance active.
-- Search defaults to `status:active`, current descriptor/task fingerprints, and the current UI ids.
-
-**As-built: the first bullet is built, the other two are not, and one of them cannot be built as
-written.** Duplicate admission IS enforced, inside the insert transaction (§4.5). The **audit**
-needs a CAS on a record version and `KnowledgeRecordSchema` carries no `version` — D134 named that
-as a schema decision the maintenance slice must ratify rather than guess, and it has not been taken,
-so nothing marks a stale record `unverified`. **Search does not exist**: there is no CLI command, no
-BFF route and no surface over knowledge or fix records at all. Both remainders belong to
-`{#workflow-write-mechanics}` beside §4.1's generator, and neither is blocking anything today for the
-plain reason that the table is empty.
-
-### 4.4 Optional AI assistance reads the evidence; it never becomes the evidence
-
-
-The old `services/llm` capabilities are explicitly dispositioned rather than disappearing behind a
-proxy. Shared provider/key/rate-limit clients move under infra because OCR and contact normalization
-also consume them. The operator-facing adapters remain on-demand and advisory:
-
-| Legacy capability | Native disposition |
-|---|---|
-| failure triage | optional explanation over a `FailureRecord` + redacted bundle index; cannot set retryability or issue a command |
-| run summary | optional narrative over the deterministic `RunEvidenceReceipt`; receipt facts/outcome always render beside it |
-| record sanity check | deterministic schema/rule issues are authoritative; optional model issues are separately labelled suggestions and never auto-block/approve |
-| selector suggestion | development-only candidate recipe/element-id brief from a redacted accessibility snapshot; it cannot edit the registry or stamp verification |
-| contact normalization | ref data-intake-and-edit-data's typed normalization task; every proposed change shows source/confidence and requires the owning review policy |
-
-Every invocation parses a strict request, applies schema-driven redaction **before** provider use,
-and parses a closed result. It records `promptTemplateVersion`, redacted input digest/evidence refs,
-provider/model, start/end, result-schema fingerprint, and one outcome:
-`advisory-produced | unavailable | invalid-response`. Pool exhaustion, missing keys, provider error,
-and invalid JSON are visible `unavailable/invalid-response`, never an empty “looks fine” result.
-Advisories can be copied into a draft `FixRecord` only by an explicit operator action through the dashboard;
-they cannot transition a run, resolve evidence, select identity, acknowledge a warning, create a UI
-registry entry, or call the command/mutation services.
-- A migrated selector/element id updates records through the canonical registry mapping; free text
-  is not used as the join key.
-
-#### 4.4.1 As-built — the prompt, the answer schema, and the zero-authority edge (D178)
-
-
-**What a prompt is made of, and what it is NOT.** `src/domain/trust/advisory.ts` assembles every
-prompt from the subject record's LEAVES, each pushed through the ONE `redactValue` implementation
-under a `(classification, transform)` pair declared in that file. An undeclared leaf is a loud
-refusal naming the exact path — never a silent drop, which is how a prompt starts carrying a field
-nobody reviewed. A dropped leaf still APPEARS in the prompt as its redacted arm, because "this fact
-exists and was withheld" is information the model should have while absence is not.
-
-The declaration produced a finding worth stating plainly: **`FailureRecord.summary` is
-`error.message` verbatim**, so a task that threw *"no candidate matched EID 10456789"* would have
-put an employee id on the wire. `summary`, `causeChain.summary` and `remediation.message` are
-therefore declared `sensitive-hr`/`drop`, and `page.urlRedacted` / `page.titleRedacted` /
-`subject.*.displayRedacted` are `direct-identifier`/`drop`. What the model actually receives is the
-CLOSED vocabularies beside them — code, node, task, write state, page state, remediation kind,
-cause codes — which is enough to explain a failure CLASS, the only thing this section asks an
-advisory to do. **Only `safe-diagnostic` may leave the process as a value**, and the guard enforces
-that rather than the weaker "the pairing is permitted".
-
-The advisory leaf rule is deliberately FINER than the receipt's (`evidence-classification.ts`
-treats an array as one leaf because every receipt fact must be dated by a stored `FactProvenance`
-row). A prompt carries no provenance obligation, so it classifies per element FIELD:
-`causeChain.code` goes and `causeChain.summary` does not. Under the receipt's rule the whole array
-would need one verdict and the useful half would have gone out with the unsafe half.
-
-**The answer schema travels with the question.** The prompt carries the closed advice schema's own
-JSON-Schema projection and its fingerprint (D151's "one instruction, generated from the registry" —
-a hand-written prompt and a strict parser drift apart the first time the schema grows), and the
-consumer parses the answer through that exact schema. A non-conforming answer is `invalid-response`
-whose reason names the failing PATHS and never echoes the model's text. **That rule caught a real
-leak in D161's adapter:** `JSON.parse`'s own message QUOTES the offending input
-(`Unexpected token 'I', "I think the"…`), so the shared transport now reports only the error's
-NAME beside the answer's length.
-
-**One adapter, per-consumer schemas.** `src/backend/processing/providers/gemini-advisory.ts` is transport +
-provenance only — it stamps provider/model and passes the model's JSON through VERBATIM as
-`answer`, and the CONSUMER owns the closed shape. `gemini-transport.ts` is the half it shares with
-D161's OCR adapter (endpoint, header-borne key, the 429 → `rate-exhausted` mapping with the
-provider's own `Retry-After`, fenced-JSON tolerance): two private copies of that would have drifted
-on exactly how a rate limit is reported to the admission kernel.
-
-**Admission binds the SUBJECT run, and says so honestly.** An on-demand operator advisory has no
-claimed run, no node and no task to inherit an execution identity from, so
-`ProviderExecutionIdentitySchema` became a plain union of two strict objects: the v9 run-node arm
-with its bytes UNCHANGED (durable `provider_admissions` rows parse strictly at read — a required
-discriminator would have stopped every stored admission from parsing, the D133 defect exactly) and
-an advisory arm `{runId, attempt, surface}`. `#providerAdmissionContext` still validates the run's
-existence, its retained attempt and its own stored config snapshot (D116's discipline: the target
-run's retained identity, never recomputed from current config); only the "is executing this node"
-check is skipped, because a finished run is not executing anything and claiming a node the
-descriptor never reached would make the row lie about what happened (D144).
-
-**The zero-authority edge is a property of the wiring.** `src/services/trust/advisory.ts` holds
-exactly a clock and an admitted `ProviderClient<"ai.advisory">` — no store, no transaction, no
-command service, no run handle — so it cannot transition a run, resolve evidence, select identity
-or acknowledge a warning even by accident. The caller reads the `FailureRecord` from authority and
-hands the VALUE over. The ONE durable footprint an advisory leaves is its `provider_admissions` row
-and the capability counter beside it, because D112 budgets every provider call and grants a read no
-exemption; `advisory-zero-authority.test.ts` proves a produced/refused/unavailable round trip
-leaves every other authority family byte-identical.
-
-**The surface asks, it does not prefetch.** The advisory is `POST /api/v1/runs/:runId/advisory` and
-deliberately NOT a run-detail section: a section is fetched whenever the server advertises it, and
-this call spends a provider budget — every operator opening a failed run would have made a model
-call. `FailureAdvisoryPanel` renders inside the failure record BELOW its remediation ladder (the
-record is the evidence; the advisory is a reading of it), behind an explicit "Explain this failure"
-button, and every produced advisory carries provider/model/template-version/input-digest plus the
-standing sentence that it is advisory, is not evidence, and cannot change the run. `unavailable`
-and `invalid-response` render as a `Refusal` with the closed code and the reason — never a blank.
-
-**The bootstrap's `ai-advisory` deferral came off.** `featureAvailability` now reports a fact about
-THIS process — `available` when keys composed a pool, `not-configured` naming the environment
-family when they did not — and the panel is its first consumer, keeping its control and stating the
-server's reason rather than vanishing (the instance selector's house rule).
-
-**Two boundary widenings, both deliberate and both named in `provider-capability-boundary`:**
-`src/services/trust/advisory.ts` may type `ProviderClient` (it is the first provider consumer
-outside a run task, which receives clients through `ctx.providers`), and
-`src/server/dashboard/compose.ts` may import the admission module (it became a second
-admitted-provider composition root). The BFF query it hands the closure to names no provider type
-at all. `createTimeoutDeadlineScheduler` moved out of the worker composition root to
-`src/server/scheduling/` for the same reason — two roots needing one timer is how a second ad-hoc
-`setTimeout` gets born, and a bound armed on one of those is invisible to the kernel.
-
-**Deferred at D178, dispositioned at D192.** §4.4's table names five adapters; two landed (failure
-triage, and ref data-intake-and-edit-data §4.2's contact normalization). Of the remaining three, run summary and the
-development-only selector-suggestion brief are now **retired** (D192, below); the record sanity
-check stays **open**, deferred to order-8. `AdvisorySurfaceIdSchema` carries no arm for any of them
-— a surface nothing can answer is a dead vocabulary, and retirement keeps it that way rather than
-adding one later only to delete it. `evidenceRefs` on the recorded invocation is served as the
-wire's `failureId` beside the outcome rather than a separate list; a receipt-scoped advisory will
-need the fuller form.
-
-**Proof:** `tests/unit/advisory-redaction.test.ts`, `tests/unit/advisory-strict-output.test.ts`,
-`tests/unit/advisory-provider-exhaustion.test.ts`, `tests/unit/advisory-zero-authority.test.ts`,
-`tests/unit/architecture/ai-advisory-no-authority.test.ts`, and the two new executable scenarios in
-`tests/scenario/normalization-contact.scenario.test.ts`. No test contacts a live provider: the
-production adapter takes its `fetch` by injection precisely so these can exist.
-
-#### 4.4.2 The three producerless adapters get their dispositions (D192, closed 2026-08-18)
-
-
-dispositions.**
-
-- **Run summary → RETIRED.** `RunEvidenceReceipt` (D141/D144) is already the run's structured,
-  byte-reproducible, per-field-redaction-declared summary, derived from authority and served by both
-  `cli explain run <traceId|runId>` and the run-detail receipt section. An LLM digest over the same
-  facts would duplicate it and reintroduce paraphrase risk on the exact surface D141 built to
-  eliminate.
-- **Selector suggestion → RETIRED as an operator surface.** An operator-facing LLM selector
-  suggestion is an unverified selector reaching a live driver — the fail-loud, no-unverified-fallback
-  pattern root `CLAUDE.md` bans outright. The deterministic catalog half (`npm run selector:search`)
-  stays primary and is unaffected; selector discovery/repair remains the dev-time live-verification
-  loop the charter already pre-authorizes.
-- **Record sanity check → RETIRED (operator ruling, 2026-08-18), its deferral condition having
-  been MET deterministically.** D192 deferred it to the order-8 separations migration, where it was
-  to render as prose beside the ref write-safety §14 ALWAYS-GATE identity approval. Separations arrived, and
-  the gate packet's own server-computed `comparisons` array (§14.2 — the deterministic side-by-side
-  of disconfirming evidence, Kuali beside UCPath, leading the packet) now occupies exactly that
-  slot; §9.17's live pass flagged the condition as materially satisfied and left the closure to the
-  operator, who ruled: **no AI feature — the deterministic comparison IS the sanity check.**
-  `AdvisorySurfaceIdSchema` stays closed at its D178 two-value shape; no surface arm is ever added
-  for it. Reopening requires a fresh decision, not a build.
-
-`config/legacy-capabilities.json` carries all three dispositions (all three AI advisory tools now
-`retired`: `legacy-tool-ops-summarize-run`, `legacy-tool-ops-selector-suggest`, and — as of
-2026-08-18 — `legacy-tool-ops-sanity-check-record`), and the `legacy-capability-disposition` guard
-(D184) validates the shapes.
-
-### 4.5 As-built — knowledge is admitted before it is inserted, and supersession is expressed forward (D139)
-
-
-The knowledge/fix tables are insert-only (D134), so a duplicate that lands cannot be retracted.
-Admission is therefore audited INSIDE the insert transaction. Two ACTIVE records may not claim the
-same scoped rule — identical scope plus either the same normalized title or a shared regression
-scenario — unless the successor explicitly supersedes the predecessor. An unknown supersedes ref, a
-self-reference, and a duplicate id are each refused with the conflict named.
-
-**Supersession is expressed forward by the new record**, and the active view subtracts every
-superseded id. Nothing rewrites the older row, so the generated guide stops showing stale advice
-without any record mutating and without the `version` field §4.3's audit would need. §4.3's
-"mark stale records `unverified`" still awaits that schema decision — this slice does not guess it.
-
-The generated per-system `KNOWLEDGE.md` is the ACTIVE view alone: superseded, retired, and
-unverified records never reach it, and its header says it is generated so it cannot read as a second
-authority. §4.1's `knowledge/records/` on-disk file layout is not built; the table is the authority
-and `writeKnowledgeProjection(root)` is the generator. Wiring it to an npm script was 2i's, with the
-explorer — **it did not happen, and §4.1 now says so where a reader will look for it.**
-
-A verified `FixRecord` requires a commit plus non-empty verification evidence plus a regression
-scenario; a draft may claim neither commit nor evidence; a verified fix may not link knowledge that
-is missing or itself `unverified`. **A raw appended lesson is not authority**: `triageLesson` has
-exactly one arm, and it returns the obligations the author still owes — there is no path from prose
-to a record.
-**What that 2026-08-04 sentence left open, settled here (2026-08-20).** Automatic bundle capture
-triggers LANDED — the interpreter captures and persists inside the terminal transaction (§2.2.1).
-The retention sweep is built and has no caller (§2.2). Notification trigger wiring landed for TWO of
-seven event kinds (§6.3). `explain failure` is still not built (§2.1, §4.2). Both guards named there
-are now **active**: `notification-durability` and `knowledge-fix-integrity` execute in the suite and
-are registered in `guard-inventory.json` — the second covers both halves of §9's fix→scenario and
-active-knowledge rules.
-
----
-
-## 5. Workflow explorer/editor—staged hybrid, one graph
-
-
-### 5.1 Decision
-
-
-Build a **read-only workflow explorer in Phase-2 tail 2i**, with closed presentation/policy editing
-alongside it after graph, validation, versioning, and evidence are proven. A free-form visual
-programmer and DSL/codegen are rejected: graph/composition, arbitrary code, selectors, and
-write-proof logic remain reviewed source work.
-
-### 5.2 Phase A—read-only explorer (Phase-2 tail 2i)
-
-
-The explorer is a projection of the exact descriptor and live span/checkpoint data—not a mined or
-parallel graph. It shows:
-
-- workflow input schema, surfaces, identity, enqueue policy, actions, systems, secrets;
-- nodes/edges, branch conditions, parallel joins, delegation policies, gates;
-- each task's input/output/error/effect/freshness/provenance/scenarios;
-- UI elements/page states/observations used by each browser task;
-- transaction subject-binding, probe, fence, proof, and dry-run boundary;
-- editable vs read-only checkpoint fields;
-- source links to descriptor, contract, impl, driver, scenarios, knowledge;
-- on a selected live run: the same graph overlaid with timings, attempts, checkpoint reuse,
-  failures, children, evidence, and current safe actions.
-
-This serves both operator debugging and AI code changes: “the failure is at
-`separations/ucpath-transaction → ucpath.smart-hr.ready-to-submit`” resolves to stable ids and source
-locations without reverse-engineering row prose.
-
-The scenario source-link entries currently remain unresolved because their test suite was removed.
-Do not fabricate a replacement link or wire field. Explorer changes that require scenario compile
-evidence remain blocked pending operator-led test design.
-
-**Phase A shipped in 2i-G and is as-built in §5.7 (the derivation and its two named exclusions),
-§5.8 (the catalog surface) and §5.9 (the node panel's derived field census).** Those three sections
-amend this one; they keep their own numbers because the tree's `{#p2-2i}` and `{#track-b}` nodes
-cite them.
-
-#### 5.2.1 The six extra facts the surface shows, admitted here by D275 (2026-08-26)
-
-D275 item 5 rules that the *"Explorer shows demo facts unless an extra enters its owning contract"*
-(`ref dashboard-surfaces` §"D275 — standing conventions"). This is that contract, and these six
-extras enter it. **The list is closed:** a fact not shown above and not named here is one the
-surface does not mint.
-
-1. **The node LABEL beside the stable id** — in the list row and in the node panel's header meta,
-   and only where the label says more than the id already does. A label that merely re-slugs its id
-   (`crm-dates` · `CRM Dates`) is suppressed; one that does not (`annotate-timekeeper` ·
-   `Kuali Timekeeper Annotation`) travels. The id stays first and loud, because it is the half a
-   failure resolves to (§5.2's own argument) and the half an operator arrives holding.
-2. **A per-node contract count** in the list row's micro-fact strip (`3 contracts`) — the same
-   census §5.9 derives from each contract's zod shape, printed where the reader picks a node rather
-   than only after opening one.
-3. **`re-runs on every attempt`** in that strip, on a task node whose replay is `always-rerun` — the
-   one checkpoint value that changes what a retry does, so it is legible before the retry, not
-   after it.
-4. **A `Replay` fact row on the node panel's task arm** — the `checkpoint` value and the node's
-   `condition` (its kind, or `always runs` when the node has none). The same two facts as (3),
-   named in full where the panel has room to name them.
-5. **A `Detail projections` fact row** — one chip per `node.details` entry, carrying the field path
-   and titled with the projection's key and display. It carries **no** pencil: editability is a
-   property of a field, so the mark rides the field's own contract row (D275 item 6), and drawing it
-   twice would let two places disagree.
-6. **A second paragraph in the node ⓘ popover** — `{label} — a {kind} node of {workflow}` — which
-   places the node in its graph for a reader who reached the popover by deep link rather than by
-   scrolling the list.
-
-All six are projections of the descriptor and the wire the explorer already serves (§5.7). None is a
-new wire field, none is a new stable id, and none is derived from anything the projection does not
-already carry — which is exactly the boundary D275 item 5's rejected alternatives sit outside of
-(B mints vocabulary; C drops stable ids).
-
-#### 5.2.2 How those facts are DRAWN, ruled by D299 (2026-09-01)
-
-§5.2 and §5.2.1 settle WHICH facts the Explorer shows. These four rules settle how the panel spends
-its space on them. Each removes a repetition; none removes a fact.
-
-1. **The identity band names each system once, and never names `category`.** The band draws one
-   chip for the whole `systems` set (`systems crm · ucpath`, singular label at one), because
-   `system crm` `system ucpath` spent the label twice on a fact already taken — and it was the
-   second chip that pushed the band onto a second line on the workflow with the FEWEST systems,
-   against the ONE-row rule §5.2 gives the band. `category` leaves the band outright: it is the
-   same value the Presentation row below serves as editable (§5.3), so the band was printing a
-   second copy of an editable fact, and the two would eventually disagree.
-2. **The Presentation fields are one wrapping row, not one full-width row each.** Three values of a
-   word or two do not each earn a 44px band with the value stranded beside a 9rem label column.
-   The pair travels together on the recessed plane, and the row wraps rather than scrolls.
-3. **The row prints the SHORT field name and the door keeps the long one.** `Label` · `Icon` ·
-   `Category` inside a section headed `Presentation` inside a panel headed with the workflow —
-   the qualifier the row is standing inside is not spelled a fourth time. The edit door stays
-   `Edit workflow label` / `Edit workflow icon` / `Edit workflow category` as its ACCESSIBLE name
-   (§5.4, D283): a door is reached with no section around it. Its 44px floor becomes the
-   coarse-pointer arm the rest of the bundle spends, rather than an unconditional one.
-4. **Scenarios is a two-column table: the id, then the file that walks it.** The list it replaces
-   put the whole source path in a chip on every row, so each row repeated `walks tests/scenario/`
-   and each id repeated the workflow segment, while the two facts a reader compares sat at
-   opposite ends of a line whose width changed on every row. The word `walks` becomes the column
-   head `Walked by`. A **resolved** file prints its base name and carries the whole path on the
-   cell. An **unresolved** one keeps its warning chip and prints the attempted path WHOLE — §5.7's
-   rule that a miss is never silent and never guessed is a rule about the failing arm, so the arm
-   that is an answer may be short and the arm that is a failure may not. A workflow with no
-   registered scenario says so in a sentence; a heading over nothing reads as a region that failed
-   to draw.
-
-   The section is ONE CARD PER GROUP, grouped by the id's first path segment, and the table inside
-   a card carries only what follows it. `separations` registers 50 scenarios across seven
-   harnesses, so a run of a dozen rows was the same leading segment printed over and over with the
-   part that told them apart starting after it; the segment is the card's title and the rows are
-   the remainder. The split is on the FIRST slash — a deeper id keeps every later segment on its
-   row — and a group sits where its first member sat, so grouping re-orders nothing. The whole id
-   stays on the row for quoting. The card is `DESIGN.md`'s own nesting (a Panel on the page, a Card
-   in a Panel): full-bleed against the panel's edges the head strip read as a second panel header
-   rather than as this section's own.
-
-   A card's two columns are FIXED at 50/50. Sized to content, column one is set by its longest
-   cell, so a short leaf ends up hundreds of pixels from its own file; handing the slack to column
-   two instead collapses column one to min-content and wraps every leaf. Equal halves put the file
-   at the same x on every row of every card. A leaf past half the card WRAPS at the boundaries it
-   already carries, because the id is the string a failure resolves to and may never be cut.
-
-#### 5.2.3 Recipe view — Explorer shows the authored workflow (D311, 2026-09-02)
-
-
-For a D311/D317 workflow, the Explorer's primary graph list is grouped by the compiled workflow definition:
-one group per timeline tuple, in outer-array order, headed by the tuple's stable key, label and task
-count. Tasks appear in tuple order. Opening one still shows the complete descriptor-derived contract,
-inputs, outputs, dependencies, replay policy, evidence and source links specified by §§5.2 and 5.9;
-the recipe view groups those facts and does not create a second description of them.
-
-The server projects this view from the compiled workflow supplied by the registry. The client never
-infers groups from folders, workflow ids, labels or span prose, and a workflow adds no
-Explorer-specific wiring when it uses this generic projection. Until the workflow compiler ships,
-the existing descriptor graph remains the truthful view. During conversion, recipe and descriptor
-projections must compare equal before the recipe becomes authoritative; Explorer never chooses
-between disagreeing sources at runtime.
-
-#### 5.2.4 Branching timeline presentation — 2026-09-26
-
-The operator selected Explorer A: an ordered explanation of the authored workflow, with branch
-selectors and nested delegated work. Timeline groups, task order, conditions, dependency edges,
-parallel joins and child policies come from the served descriptor/compiled recipe. Selecting an
-authored branch case changes the case-dependent path; shared continuation remains visible when
-the graph establishes a rejoin. A stopped or nonjoining path must not appear to continue.
-Selections are hypothetical path previews, not live run observations or changes to execution.
-
-A selector's scenario is an authored branch case. Executable scenario identifiers remain separate
-source/proof references; absent mapping between a test scenario and branch cases is not inferred.
-Nested branches, multiple controllers and parallel work retain their actual dependency semantics.
-Delegations nest under their caller, naming their declared wait, return, join or fire-and-forget
-policy. Child detail may be shown only from served child metadata, with unavailable detail stated
-explicitly. The legacy Separations identity delegation is design context, not evidence that the
-rebuild executes it. Exact browser-session counts or button-level instructions require authored
-metadata; the client must not manufacture them from system names or prose.
-
-Contract inspection, stable identifiers, source links, presentation editing, version-registry
-navigation and registered scenario evidence remain reachable as secondary detail. This presentation
-amends the former default graph-list layout without weakening its projection or editing boundaries.
-
-### 5.3 Phase B—safe edits only
-
-
-> **D186 timing superseded for the safe subset by D283 (2026-08-28).** Phase B's strict closed
-> subset is built. D186's rationale still governs its safety shape, and new-workflow authoring is
-> still deferred. The earlier timing record follows for history: Phase B was **not built**, and this was a
-> decision rather than a slip. The argument is D79a's own, one level down: an editor exists to
-> avoid a code change per tweak **across many workflows**. At the 2026-08-09 decision point the tree
-> had ONE production workflow (`person-lookup`) plus the one-node annotation transaction proof;
-> editing source was therefore cheaper and more reviewable, and a Phase-B pipeline would have been
-> — in §5.4's own words about the trimmed DSL — "a pipeline whose only user is its own test".
-> Building it against that single
-> consumer would also fix its closed policy union and its override schema against a sample of
-> one, which is precisely how an authoring surface acquires the wrong shape.
->
-> **What holds the line now.** Phase A remains a projection of the ONE composition root, and
-> `workflow-editor-compile-integrity` asserts that boundary plus D79a's no-DSL trim in both
-> directions. DCC4 adds its Phase-B safe-subset arms to that guard: only the strict label/icon/category
-> override can validate and apply. Nothing about that subset creates descriptor, executable-code,
-> policy, notification or Edit Data authority.
->
-> **The remaining trigger, named so it is checkable.** The SECOND operator workflow whose
-> presentation, notification preference, or allowlisted policy value an operator wants to change
-> *without* a code change. D283 deliberately superseded that timing only for the reviewed existing
-> label/icon/category subset. At that point the broader set has two consumers to be shaped by; its
-> authority requires a fresh owner/reader decision and §5.4's code-change brief remains the only
-> result for everything outside the subset. The criterion is not waived; it remains reassigned to
-> the migration that first needs it.
-
-The D283-safe existing-workflow subset is workflow label/icon/category; a category with no complete
-authority reader is omitted and named unavailable rather than accepted and dropped. Future additions
-still require an exact owner:
-
-- presentation labels/order/grouping and notification preferences;
-- choose explicitly allowlisted presentation and operational policy values from closed unions;
-- configure descriptor-allowlisted Edit Data fields.
-
-It may not author arbitrary JavaScript, new task implementations, selectors/locator recipes,
-page-state evidence, subject matchers, mutation helpers, proof schemas, idempotency keys, or secrets.
-Those remain code changes. The editor may generate a patch scaffold naming the exact required files
-and failed obligations.
-
-### 5.4 Compile/apply protocol
-
-**D337 — workflow appearance overrides use SQLite (operator decision, 2026-09-06).**
-The editable workflow label, icon and category remain the same closed presentation-only set. Store
-those override values, revision and successful command/audit records in the existing SQLite authority,
-in one transaction. Preserve descriptor/version checks, validation, preview/diff, exact replay,
-conflict refusal, hot readback and the source-authored workflow boundary. Do not maintain an
-independently authoritative JSON override file, prepared file claim or file/SQLite recovery protocol.
-A user-requested restore of a prior appearance is an ordinary revisioned update, not a filesystem rollback.
-
-**Ownership amendment — operator-approved, 2026-09-13.**
-Phase 3.1.9 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-establish-independent-dashboard-boundaries.md`)
-owns the complete conversion of existing overrides and removal of the old mechanism: SQLite migration,
-atomic command/audit binding, reader/writer cutover, conversion/recovery proof and guard-inventory
-changes. 3.1.9.4 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-4-finish-workflow-explorer-and-catalog-editing.md`)
-retains editor work over the accepted prerequisite. This replaces the earlier Task 9-4 conversion
-allocation; no sibling shares its migration or root-composition writer. Import existing valid overrides
-once, refuse conflicting/malformed sources, and prove old files cannot influence appearance after
-conversion. The 3.1.9 A candidate appends migration 51 without changing released migrations 1–50
-or recovery floor 46. Its conversion and focused evidence are recorded in the approved task owner;
-operator integration and B's completion remain separate release steps.
-
-
-Every edit is a draft with a base descriptor version/fingerprint. “Validate” runs the same builder,
-schema, graph, guard, and scenario checks as source-authored descriptors. “Generate patch” produces:
-
-- canonical descriptor JSON/TypeScript patch;
-- human-readable semantic diff (nodes, edges, effects, policies, UI ids, evidence obligations);
-- impacted workflows/tasks/scenarios;
-- new descriptor version/fingerprint requirement.
-
-> **DSL-authored mode is TRIMMED (D79a, operator 2026-07-24).** This section previously defined
-> two authoring modes and a whole second pipeline for the DSL one: exclusive per-workflow mode,
-> deterministic codegen into `descriptor.generated.ts`, an isolated-output-directory build,
-> restart-gated atomic apply, and exact-hash rollback. It is cut. Two reasons, both from the plan's
-> own text: §b question 12 expects everything real to stay source-authored, and the Phase-2 proof
-> would have needed a *synthetic* workflow because no real candidate was ever named — a pipeline
-> whose only user is its own test. **Every workflow is source-authored.** Reconsideration requires
-> a new explicit operator architecture decision; migration questionnaires cannot enable it.
-
-**As built 2026-08-28 (DCC4).** Drafts bind descriptor version, contract fingerprint and override
-revision. Validation traverses the live factory-built Explorer projection and records a strict
-five-arm compile attestation at that exact identity: builder seal, workflow/task schema hashes,
-graph identities plus edge fingerprint and coverage points, the runtime-registry arm of
-`workflow-editor-compile-integrity`, and every registered scenario's exact resolved source. Those
-arms say `held`, not `passed`: the BFF does not pretend to have executed Vitest or a scenario. A
-source-change brief instead marks builder/schema/graph/guard/scenario checks all `required` after
-the patch. Workflow label, icon and category are the complete applyable presentation set. Timeline
-label/order are omitted from the strict draft union and named unavailable because no complete
-hot-apply reader owns them. Notification preferences likewise have no descriptor owner and remain
-unavailable. Operational policy has no descriptor-declared value allowlist, and Edit Data changes
-runtime correction authority, so both yield a reviewed code-change brief; an unallowlisted field
-refuses. That brief contains one canonical JSON patch document and a one-for-one TypeScript property
-replacement plan whose expressions must themselves be canonical values of the closed policy/Edit
-Data schemas. Patch changes and replacements are equal-length and kind-aligned in exact order, and
-each replacement must change its reviewed source value. The semantic policy rows equal those
-operations' path/before/after values exactly; presentation, graph edges, effects and UI ids are
-required unchanged, while Edit Data node ids derive from the exact before/after field sets. It also
-states impacted workflow/tasks/scenarios/source files, exact current version/fingerprint, required
-next version, and a `must-change` fingerprint obligation. Mixed hot-apply/source drafts refuse rather
-than dropping either half; all-no-op drafts refuse as `empty-diff`, and a draft mixing a no-op with
-an effective source target refuses as `partial-no-op` without silently rewriting the reviewed draft.
-Arbitrary code, selectors, page-state evidence,
-matchers, mutation helpers, proof schemas, idempotency keys, secrets and unknown workflows are
-outside the strict union.
-
-Apply uses the sole typed command-kernel path. Its durable replay identity is the complete strict
-envelope: command id, requested-at/by, source, reason, exact descriptor/override bases and changes.
-The command kernel passes its transaction-owned Explorer repository into the executor. Override
-values, next revision, immutable command and applied audit settle in the same SQLite transaction;
-audit failure rolls all four back. The repository enforces revision compare/replace and strict
-readback, and commit validates exact command/audit identity, targets, version changes and the empty
-dependency-effect vector. Exact replay reads the existing successful journal outcome; a divergent
-envelope refuses. Operator labels reject credential- and regulated-value-shaped text before persistence.
-
-Stopped storage upgrade alone reads the released `explorer-overrides.json` source. It refuses pending
-`.claim`, `.pending` or `.claim.pending` files and requires recovery with the original compatible
-release. Valid source documents must exactly match the presentation history reconstructed from
-successful command/audit records, including inherited values and every workflow. Missing records,
-revision gaps, divergent fingerprints and malformed/aliased sources refuse before conversion effects.
-The append-only upgrade receipt binds the source document and byte digest, database identity and
-verified backup digest. Source file identity is rechecked at admission and immediately before commit.
-Pre-commit failure rolls back schema/import/journal together; post-commit retry consumes the SQLite
-receipt, including when old files have changed. Current-schema runtime reads, edits and restarts never
-consult obsolete files. Backups and restores preserve overrides with command/audit authority in SQLite.
-
-Each Explorer GET or validation request captures one recursively frozen override view under an
-authority read snapshot. Every workflow row and validation's revision/presentation basis uses that
-view. A later request captures current authority again; a concurrent commit cannot change an already
-captured response, and no cross-request cached view or per-workflow file read can substitute for it.
-
-**Historical DCC4 schema is not active edit authority.** The original immutable SQLite v19
-review/outbox DDL, table classification, stored-record validation and released digest remain intact.
-Its token-issuing/consuming repositories and outbox projection service are no longer composed or
-callable through the command protocol. Retaining that dormant schema does not authorize broad
-hot-apply or reinterpret any old records as current overrides. Conflicting branch migration
-lineages require a separately reviewed integration disposition; no drop/rewrite/renumber or live
-database conversion follows from this protocol reconciliation.
-
-**What remains after the trim.** There are two apply levels. **Presentation-only** changes write the
-strict versioned SQLite override in the command transaction and can hot-apply.
-**Graph/composition/code-only policy** changes never mutate a live descriptor; the editor emits a
-**reviewed code-change brief** and
-cannot apply the edit itself. Anything the closed editable set cannot express produces a
-**code-change brief**, never partial config and never a second authority.
-
-_The rejected DSL pipeline's own design text — codegen, isolated build, restart-gated apply,
-exact-hash rollback — is preserved verbatim at
-`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-operator-trust-5.4-dsl-authoring.md`. It is history,
-not a design to implement._
-
-### 5.5 New-workflow authoring path
-
-
-> **NOT BUILT; D283 superseded D186 timing only for §5.3's safe existing-workflow subset.** New
-> workflow authoring remains deferred under D186/D79a. No scaffold flow, CLI command or
-> generator exists: `src/cli.ts` registers `dashboard`, `worker`, `explain`, `ocr` and `storage` and
-> nothing else, and a repo-wide search for a scaffold/authoring path returns nothing. The section
-> below is the design, written in the present tense because it describes what the flow must do when
-> it is built — it does not describe anything an operator can run today. It travels with
-> `{#def-explorer-edit}` (the operator's ruling, 2026-08-20) rather than getting a node of its own,
-> even though authoring a NEW workflow and editing an existing one's policy are different
-> capabilities: both wait on the same explorer half, and one deferral with a named trigger is more
-> honest than two.
-
-The design: the same explorer provides a guided scaffold flow so adding a workflow does not begin
-with string search and copied boilerplate:
-
-1. choose a unique workflow id/code/category and strict input/result schemas from canonical fields;
-2. search registered tasks by intent/system/input/output, inspect their scenarios/UI dependencies,
-   and compose task/transaction/branch/parallel/child/gate nodes;
-3. define stable item identity, input subject, result derivation, enqueue/actions, delegation,
-   freshness, evidence, and notification expectations;
-4. receive an automatically generated “missing obligations” list—unbound fields, uncovered branch,
-   missing subject observation, result dependency, proof/probe, scenario, UI id, or secret;
-5. generate a source-authored workflow/scenario scaffold plus code-change brief; no DSL or runtime
-   generated descriptor is produced.
-
-The authoring UI never invents a task because a name looks similar. It shows exact schemas and
-requires an explicit binding. New browser behavior starts in the UI registry/driver/task contract,
-then becomes selectable by workflows; this is the “fix once, reuse everywhere” path.
-
-### 5.6 What happens to the old workflow modifier
-
-
-Its useful presentation editing and operation mining are port inventory. The preserved legacy
-modifier stays inside the legacy repo; with no shared module graph (D93) it cannot be proxied or
-imported. The new read-only explorer replaces mined operations with descriptor tasks and
-driver UI ids. Presentation overrides enter only D283's strict authority and round-trip through the
-same descriptor projection. Generated `config/workflow-design/*.md` files are not runtime
-authority; the descriptor and validated draft history are.
-
-### 5.7 Phase A as-built — the explorer is a projection, and it proves it (2026-08-09, D176)
-
-
-Phase A landed in 2i-G. §5.2's list is served, with two named exclusions below.
-
-**The derivation, and why it is the whole contract.** `buildWorkflowExplorer`
-(`src/server/dashboard/queries/explorer.ts`) reads the ONE composition root — `WORKFLOW_MODULES` —
-plus each descriptor's factory-sealed `workflowProjections` / `descriptorRuntimeNodes` /
-`workflowTerminalResultExecution`, the generated build manifest, `config/pending-impl-bindings.json`,
-and the in-code UI registries. There is no literal node list, no per-workflow switch, and no
-hand-maintained table anywhere in it. A workflow appears because it is registered and a node appears
-because the factory returned it. `workflow-editor-compile-integrity` asserts that over the REAL
-registry in both directions, so "this is the as-built graph" is a checkable claim rather than a
-caption.
-
-**Source links RESOLVE; they are never interpolated.** A path is rendered to a human — or to an AI
-about to open it — as "the file that owns this fact", so every path is a candidate looked up in a
-real listing: the manifest's own fingerprinted source closure for a contract and its store
-implementation, the scenario directory listing for a scenario. A miss is reported `unresolved`
-carrying the exact path it tried and why. Printing `src/domain/contracts/<id>.ts` because the
-convention usually holds is the plausible-but-wrong value the charter forbids. A workflow
-mini-store's `workflow:` scheme is translated to a path segment in exactly one place, and the result
-is then checked like every other candidate.
-
-**UI links are reversed out of the catalog's own `taskUses`, not re-derived.** The relationship is
-already data in the driver registries (§1.2); walking recipes to recompute it would produce a second
-answer that could disagree with the one `semantic-ui-registry` pins.
-
-**A closure is reported as its presence, never as decompiled prose.** `bind`, `choose`,
-`derive`, and the write-safety key function are shown as the shape they sit in plus their source
-file. (`when` was in that list until D228 removed it from the list of closures entirely — see §5.9.) `inputSubject` states whether it is a declared constant or a function of the input rather than
-being evaluated against a fabricated input to print a specimen answer. A freshness bound of
-`Infinity` crosses the wire as the word `unbounded`: as a raw number `JSON.stringify` turns it into
-`null`, which reads as a MISSING bound rather than a deliberate one.
-
-**Two exclusions, each with its reason.**
-
-- **The live-run overlay** (§5.2's last bullet — the same graph carrying timings, attempts,
-  checkpoint reuse, failures, children, evidence and safe actions) is NOT in this slice. Ref dashboard-surfaces's
-  run-detail timeline already serves those facts per run; joining the two projections is its own
-  work with its own wire, and shipping half of it would put a second, thinner run view beside the
-  one operators already use.
-- **Scenario coverage CLAIMS** are absent by construction. What a scenario claims to cover lives in
-  the executable corpus (`tests/scenario/coverage-claims.ts`), `scenario-coverage` already audits
-  those claims against the graph in both directions, and `src/` importing a test module to re-serve
-  them would put a second copy of that relationship in the product. Each node's own derived coverage
-  points are served instead — those come from the graph, which is where they are true.
-
-**Phase B's safe subset is active, and the guard says exactly how.**
-`workflow-editor-compile-integrity` is `active` over the Phase-A projection and DCC4's strict
-label/icon/category draft, validation and apply arms. It has no generic descriptor, code, policy,
-notification, Edit Data or new-workflow arm; those requests remain unavailable or become a reviewed
-code-change brief rather than extending this protocol.
-
-**Presentation as-built delta (2026-08-14 — no contract change, no new wire field).** The surface
-is now the operator demo's three-panel explorer (`src/dashboard/surfaces/explorer.tsx`, provenance
-`hr-automation@1bffbd65`) over the SAME `/api/v1/explorer` projection this section describes. Where
-the demo draws a fact this wire does not serve, the port omits or restates rather than fabricates:
-the toolbar slot the demo's run picker occupies carries the workflow identity band (the run overlay
-stays excluded per the first exclusion above — the demo's per-node run state, recorded values,
-provenance lines and delegation child rows are ALL that one exclusion, seen from four angles); the
-node panel's contract table listed TASK ARMS, not contract fields, with its header counting arms and
-the ⓘ saying so in as many words — **superseded by §5.9 (D227), which serves a derived field census
-and counts fields**; the graph header omits the demo's file-count segment (a per-run
-fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
-(a descriptor-authored phase remains outside §5.3's closed editable set); and
-the demo's `Version registry` header action now opens the actual Archive registry — `4e09fb49` gives
-the Explorer the matching `ghost` button with the `Eye` icon and moves Archive's view selection into
-the dashboard route as `?archive=&archiveView=versions`. `archive.tsx` renders `<Table label="Workflow
-version registry">` inside that selected `Versions & bumps` view (`D179/D223`); the Explorer's door
-therefore replaces its takeover with the destination it names, rather than creating a local registry
-or leaving the operator one click short (ledger 3 EX5). The conditional-node line printed "runs when the descriptor's own when() predicate
-holds" — honest, and less than the demo's authored sentence — and the recorded fix named an authored
-`whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
-refused**: `purpose` and `summary` are authored data (§5.9, D229), while `whenLabel` is refused
-because a sentence beside a predicate is a second description of one rule — the `when` itself became
-a DECLARED condition instead (ref workflow-model §3.3, D228). Read-only under D186 outside D283's
-safe subset: DCC5 adds exact field-row affordances only for label, icon and category, with draft
-review and exact refreshed readback; no other explorer fact becomes editable.
-
-### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
-
-**Historical D177 contract, superseded 2026-10-01.** The surface and all catalog-specific
-navigation, route, projection, generation and search requirements are retired. See the current
-[retirement amendment](#ui-catalog-retirement-amendment--operator-approved-2026-10-01); semantic
-registries, verification, provenance and write-safety requirements remain in force.
-
-
-§1.3's catalog was reachable only from `npm run selector:search` and two markdown projections. It
-now has a read-only surface — `Settings -> Help -> UI catalog` since D295; ref dashboard-surfaces
-§9.5.3 owns where it lives — and two rules make it trustworthy.
-
-**It serves the committed bytes and never regenerates.** `npm run ui:catalog` is the ONE writer. A
-surface that regenerated on read would silently heal a stale checkout mid-session — precisely the
-defect the 2026-08-03 tracked-artifact lesson records. So the query opens
-`generated/ui-catalog.json` read-only, parses it, and then asserts through the drivers' own
-`assertSafeUiCatalogFresh` that what is on disk still equals what the registries compose. A stale
-artifact **throws with the generator's own remediation** rather than being served: a catalog that
-disagrees with the drivers describes selectors the system does not use, and an operator or an AI
-acting on it would be acting on fiction.
-
-**Provenance sits beside the id, not behind it — and since D303 (2026-09-01) the id is a rail row
-and its provenance is split across the row and the record.** §10 says plainly that the registry
-cannot make a stale live verification current, so the rule stands that no provenance may sit behind
-a disclosure a hurried reader skips. The surface is the Explorer's shape at system scope (ref
-dashboard-surfaces §9.5.3): a `listbox` rail of every id, nested under the screen each entry's
-`screen` field names and grouped by system, beside one record that prints the selected entry whole.
-The approved Settings design amendment (2026-09-26) makes the RAIL label-led: each row shows the
-entry's human-readable label, then its kind and `verifiedAt` in the shared description style.
-The full stable id remains in the row's title and accessible name and in the selected RECORD.
-The RECORD prints both evidence refs, the owner, every scenario by name and every task by name,
-one click away and never collapsed. Selected and hovered rows retain a visible gap.
-That is the one deliberate bend of the 2026-08-09 wording ("both evidence refs on the same line as
-the id"), ratified by the operator over a two-line ledger that kept them on the row, because the
-seven-line chip block it replaced put five of 118 entries on a screen and repeated one system's
-owner and refs on every row. Screen/child nesting and stable selection identities remain unchanged;
-an entry whose screen the catalog does not serve throws by id rather than being filed under a
-made-up heading.
-
-### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
-
-
-§5.7's presentation delta recorded that the ported node panel listed TASK ARMS where the operator's
-demo lists contract FIELDS, and that the header counted arms with the ⓘ saying so. That gap is
-closed: the panel is a field table, `Field · System · Recorded`, and no part of it is authored.
-
-**The census is a projection of the contract's own zod shape.** `contractSchemaLeaves`
-(`src/validation/contract-boundary.ts`) walks the SAME schema object `deriveSchemaHash` fingerprints
-into `inputSchemaHash` / `outputSchemaHash`, so the field list and the hash on the arm band above it
-describe one shape. A hand-maintained field list beside a schema hash is the classic pair that
-eventually disagrees, and there is nowhere in this tree to author one.
-
-Three rules decide the census, and each is borrowed rather than invented:
-
-- **An array is ONE leaf**, exactly as `evidenceLeaves` and the freshness / provenance `byField`
-  prefix rule already treat it. Indexing rows would be a census of a specimen run, not of a
-  contract — and a `Recorded` verdict would then resolve at a granularity no policy can name.
-- **A union contributes the UNION of its arms' leaves**, and a path missing from any arm is
-  `sometimes`. That is `schemaOwnsPath`'s `every`/`some` split seen from the producing side. A field
-  that is `z.null()` in one arm and an OBJECT in another is listed as its children only: the bare
-  null row would count a container as a field, and the children's `sometimes` already carries "this
-  may hold no record".
-- **An unrecognised zod tag throws by name.** A tag this walker does not understand may be a
-  container, and emitting one row for it would under-report a whole subtree while looking complete.
-
-**`Recorded` is a fact about provenance, never a value.** No run is laid over this graph (§5.7's
-first exclusion), so the recorded VALUE of a field is not a fact the registry holds. What it does
-hold is the descriptor's declaration, and every arm of `ExplorerFieldRecordedWireSchema` is a
-statement the registry can actually make: a read arm's output leaf is `observed` with its provenance
-source (longest declared prefix, the kernel's own rule) and its freshness bound (whole-path match,
-also the kernel's own rule — the two genuinely differ and the explorer states each the way its
-consumer enforces it); an INPUT leaf is `bound`, because the graph binds it and nothing observes it;
-a prepare arm's output is `not-recorded`, because its checkpoint is in-memory-only; a commit arm's
-output is `checkpointed` in the transaction outcome (D144). The fifth arm is `unknown`, and it is
-deliberately reachable — a read contract whose provenance this projection did not receive leaves its
-outputs undeclared, and the column then says so by name rather than printing the `live` most reads
-happen to declare. Substituting the common answer for the missing one is the plausible-but-wrong
-value the charter forbids.
-
-**Drawn as arm cards, not a table (2026-09-01, D302).** The census above is unchanged; how it is
-DRAWN is. The demo's `Field · System · Recorded` table exists for a third column that varies per row
-— what one run recorded. Here that column carried the arm's policy, and a policy is the same on every
-output row of its arm: the ported table printed `from live · fresh unbounded · override audited`
-three chips wide on every one of nine rows, and `System` printed the node's own chip nine more times.
-The panel now draws **one `Card` per task arm**, headed by the arm's id, verb and title plus the chips
-that are facts about the whole contract (`no implementation`, `proof`, `checkpoint`, `artifacts`).
-Inside it, **an `Inputs · N` group and an `Outputs · N` group**, in that order, each headed by the
-fact every row of that side shares: inputs are `bound by the graph`; a read arm's outputs carry the
-arm's DEFAULT `from` / `fresh` / `override` (`provenance.default`, `freshness.defaultMaxAge`,
-`freshness.defaultOverride`) or a warning `unknown` when the arm declares no policy; a prepare arm's
-outputs are `not recorded`; a commit arm's are `stored in the transaction checkpoint`. A side with no
-leaf keeps its head and says `none declared` — a card with one group looks like a card that failed to
-draw the other. **A row draws only its departure from the head**: the server's per-field `recorded`
-remains the row's authority, and `contractFieldGroups` (`explorer-model.ts`) compares it facet by
-facet with the head's default, so a `byField` freshness rule is one `fresh` chip on the one row it
-names, and a row whose STATE contradicts its head — the wire does not forbid it — is a warning chip
-naming that state, never folded into the head. Rows are list items (`<ul aria-label="<task> inputs">`)
-at `--ds-h-row`: path (with the D275 item 6 pencil), deviation chips, kind and `sometimes`. The
-`in ·`/`out ·` row prefix is retired with the table, because the group head is the side; the
-`System` column is retired because `nodeBindings` already puts every system an arm binds on the
-node's chip row. No wire field is added or dropped and every `ExplorerFieldRecordedWireSchema` arm
-keeps a slot. The pin is `explorer-contract-groups.test.ts` (the fold, and a render count proving
-the bound is drawn fewer times than there are output rows) and the EX114 pencil test re-homed on
-`</li>`.
-
-**The arm's record is in the same card (2026-09-01, D304).** What §5.2 asks of each task beyond its
-fields — implementation, subject binding, write safety, errors, requires, UI vocabulary, scenarios,
-source, hashes — used to be a `TaskRecord` section at the foot of the panel, re-headed with the arm's
-verb, id and title, with every value a `Chip`. Two of its rows said the Outputs head's fact again
-(`Freshness`, `Provenance`), and its ids clipped: `observes kuali.action-list.match…`, reachable by
-pointer only. The record now sits inside the arm's card under its two groups, so the arm is headed
-once, and `Freshness`/`Provenance` are gone — the group head carries the default and the rows carry
-every `byField` departure. Values are `FactLine`s: `label value` pairs on a wrapping line, mono
-values, middle-dot separators, `break-words`; UI ids group by kind in `ExplorerUiLinkWireSchema`'s
-own order with the kind named once per line; the driver is named only when it is not the store's
-own name. `Write safety` keeps its chips (its warning tones are the fact) and an unresolved source
-keeps its warning chip (the miss is the exception). `FactRow` labels are caps in a 7rem column, and
-the node-level rows sit above the arm cards. The pin is `explorer-arm-record.test.ts`: one text node
-per arm id, no `Freshness`/`Provenance`, and every error code and catalog id printed whole outside any
-`whitespace-nowrap` or `truncate` span.
-
-**2026-09-01 — the arm record is a two-column table.** D304's stacked `FactRow`s put eight facts,
-most of them two or three wrapping lines of ids, one above the other with nothing between the pairs,
-and at that density the eye lost which line belonged to which label. The record is now a
-`RecordTable` (the ds `Table`, `layout="fixed"`, labelled `<task id> record`): one `RecordRow` per
-fact, the label a `<th scope="row">` in the same caps ink and the same 7rem column, the value a `<td>`
-holding the unchanged `FactLine`/`FactChips`/`SourceLink` treatment, a hairline under every row but
-the last, and no horizontal cell inset so the labels stay in line with the node-level rows above the
-cards. The schema-hash `MetaLine` stays below the table. The node-level rows keep `FactRow`; only
-the arm record is a table. The a11y half of `explorer-transaction` now carries a `table` per arm.
-Two things the first cut got wrong, seen on the live rail: the record's labels are the panel's
-longest and broke over two lines in 7rem, so the table's own column is 8.5rem (measured: `Subject
-binding` is 118px in caps); and the middle-dot runs let the browser break inside a value with the
-dot stranded at a line end, so `FactLine` is now a flex-wrap of pairs — the line breaks BETWEEN
-pairs, a pair breaks only when one value is wider than the column, the column gap is the visible
-separator and a `sr-only` comma is the spoken one. The record's container also lost its `border-t`:
-the Outputs group's last row already rules that seam, and the two lines read as a double rule.
-
-**A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
-when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is
-**D228** (ref workflow-model §3.3): the condition is DECLARED data, the executor evaluates it and the surface
-renders it through `describeNodeCondition` — one value, two readers, so the sentence cannot disagree
-with the rule. §5.7's "a closure is reported as its presence" is unchanged for `bind`, `choose`,
-`derive` and the write-safety key; `when` simply stopped being a closure. The wire's
-`shape.conditional: boolean` is replaced by `shape.condition`, and a condition the closed vocabulary
-cannot express is a compile error in the descriptor rather than a plausible sentence here.
-
-**The descriptor's own words (D229).** §5.7 recorded that the ⓘs open with the DERIVATION ("this
-graph is the as-built descriptor, read from …") where the demo opens with the descriptor's own
-sentence, and named authored prose as the fix. A descriptor now carries `summary` — one sentence
-about the workflow — and `nodePurposes`, one sentence per node, both plain data on the broad
-descriptor view beside `subjectProjection` and `timeline`. A declared node-purpose list is
-**exhaustive**, checked by the factory for D225's reason: a node quietly missing its sentence is a
-node the surface stops explaining while every gate stays green. The derivation note has not gone —
-it moved one paragraph down, because the descriptor's sentence is what the reader came for and the
-derivation is how they know to trust it.
-
-The wire carries `{state:"authored"} | {state:"absent", reason}` rather than throwing, and the
-choice is deliberate: the explorer serves every registered workflow in ONE document, so refusing the
-whole surface over a missing sentence would take the operator's index of the system down for a piece
-of prose. The `absent` reason names the file that owes one, because the reader of this surface is
-exactly the person — or the AI — who would author it, and nothing composes a sentence from a
-two-word label. **`explorer-prose-declared` is what makes the arm unreachable in the product**: a
-registered workflow with no summary, or a node with no purpose, fails the build. A fixture
-descriptor is out of scope by design — it is not in the composition root, and prose about a graph
-nobody runs is prose nobody reads.
-
-**The header counts fields now.** A read is one field a read arm observes FROM a system — an output
-leaf; a write is one field a commit arm writes TO a system — an input leaf. A prepare arm stages the
-values its commit then writes, so its inputs are deliberately not counted, or every write would be
-reported twice. The demo's third segment (`1 file`) stays absent for the reason §5.7 already gave.
-
----
-
-## 6. Notifications—durable, event-derived, and actionable
-
-<a id="notifications-behavior-amendment-2026-09-14"></a>
-
-**Approved operator behavior amendment — 2026-09-14 (3.1.9.5; implementation pending).**
-The complete task brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md`)
-and dashboard-surfaces §2.6 amendment
-ratify the current behavior where the historical sections below differ. Eight existing event kinds
-are in scope; the broader policy examples below do not create new trigger arms in this task.
-
-Durable notification-owned source identities and health observations make the same source replay a
-no-op while a new distinct occurrence folds once. Source identity and inbox change commit atomically.
-Processing metadata supersedes D134's historical assumption that no folded-source rows exist; it does
-not weaken ledger immutability or introduce OS-attempt history. Existing row adoption preserves
-operator state. D262's memory-only restart behavior is superseded by durable source identity;
-failed publication remains retryable and exposed, with serialized observation and awaited shutdown.
-
-The third distinct retained workflow/step/error-class failure crosses the repeating threshold,
-including verified archived sources; no time window applies. Later distinct failures fold that
-alert. Canonical verified receipts alone admit verified-done: dry-run, warning/partial results,
-missing historical receipt and incompatible evidence cannot be promoted. Unsupported frozen evidence
-is a named diagnostic. Private archive source data never crosses the notification wire or OS payload.
-
-Read/unread and snooze are independent. Actor/CAS and exact/divergent replay rules stay; pinned
-backfill rows are immutable and permanently retained. Dismissal only closes UI. Archive transfer
-preserves notification/publication metadata; canonical deletion removes the associated metadata.
-Opening a notification resolves current live date/exact failure/saved report/Storage or an explicit
-missing/deleted result and respects the existing dirty-Settings guard, including cancellation.
-
-Silent desktop Pings require explicit drawer enablement, durable commit and one same-origin tab owner
-while the dashboard is open. Initial baseline, restart/reload/reconnect, duplicate snapshots,
-read/snooze changes and owner handover do not replay historical toasts. Inbox-only events never
-notify the desktop. Permission denial, unsupported API and synchronous/asynchronous delivery failure
-stay explicit without changing the durable row; API submission is not proof of human visibility.
-Applicable storage thresholds and D322's narrow actual-failed/corrupt-backup exception are owned by
-dashboard-surfaces; no automatic or
-missing/stale-backup alerting and no retired outbox are restored.
-
-At discovery base `9f9dfe3566084e165bd508ae8b66dc3ebe325010`, only gate and server-proven backfill
-publishers are wired. The following older as-built counts and storage-cadence claims are historical;
-they do not prove the approved producer or browser behavior has been implemented.
-
-
-The notification wire is owned by ref dashboard-surfaces; this section defines operator behavior. Notifications
-are produced server-side from durable state/event transitions, never solely from a React effect.
-They survive dashboard reloads and dedupe by stable fingerprint.
-
-Notify only when the operator would need to know or act after missing a toast:
-
-- run failed/Done (`verified-done` key)/Done with warnings/cancelled/partial;
-- operator gate opened or resolution failed;
-- write recovery needs proof/absence confirmation;
-- subject mismatch;
-- storage/backup/integrity/disk health failure;
-- repeated failure fingerprint crossed a threshold;
-- capture or blocking local projection completed/failed.
-
-Transient acknowledgements (“copied”, “saved draft”, “retry requested”) remain ephemeral UI
-messages. Every durable notification links to a run/failure/gate/command/storage incident and offers
-only actions currently authorized by the server projection. Reading/snoozing affects the
-notification, never the underlying run or failure.
-
-That list is the POLICY. §6.3 records the older discovery-base producer coverage; the later W2/W2a
-implementation and feedback status is owned by dashboard-surfaces D366.
-
-### 6.1 The fold is an UPDATE, and that is not a weakened ledger (D134)
-
-
-A repeated identical trigger folds into the **one row** its `(actorId, dedupeFingerprint)` already
-owns: `count` increments, `lastSeenAt` advances, `status` returns to `unread` (a repeat is news
-again), and `version` advances exactly once. Schema v10 adds the unique `(actor_id,
-dedupe_fingerprint)` index and SQLite triggers that freeze `notificationId`, `actorId`,
-`dedupeFingerprint`, and `createdAt`, refuse a `version` that does not advance by exactly one, and
-refuse a `seen_count` that rewinds. `AuthorityRepositories.notifications` is therefore the one
-authority repository with a mutation surface (`fold`, `updateState`) rather than insert-only.
-
-**Why an update and not append-and-fold.** The folded firings leave no rows behind, so `count` and
-`lastSeenAt` are not derivable from any history — an append-only encoding would have to invent a row
-per firing purely to be counted, and ref dashboard-surfaces §2.6 explicitly says a repeat must NOT spam the inbox.
-Read/unread and snooze are per-notification operator state by nature; folding them would make the
-unread inbox a projection rather than the authority ref dashboard-surfaces names it.
-
-**Why it does not touch the ledger's immutability.** A notification is derived operator-facing state
-about something else that happened; the ledger is the record of what was really filed against a live
-HR system. Those are different classes of fact and schema v10 keeps them structurally different:
-`ledger_projections` and `ledger_partitions` carry `BEFORE DELETE` triggers that abort, a projection
-may make exactly one `assigned → appended` transition and can never have its `seq`, digest, or
-partition rewritten, and `ledger/*.jsonl` is append-only and never pruned. Nothing about the
-notification fold is available to the ledger, and nothing in the ledger is mutable.
-
-### 6.2 The durable row is committed BEFORE any delivery, and a failed toast changes nothing (D138)
-
-
-`publish` settles create-or-fold in one authority transaction and only then attempts OS delivery.
-A delivery that throws is **reported and never written back**: status, count, and version are
-untouched, so the operator who missed the toast still finds an unread item — that, not the toast, is
-the alert (§6, ref dashboard-surfaces §10.4). No per-attempt delivery state is stored; storing one would invite a
-retry loop that mutates the record the operator is reading. A missing desktop channel reports
-`no-channel`, never success.
-
-Ref dashboard-surfaces §2.6's event list routes onto D79b's six trigger keys: run failure and subject mismatch →
-`failed`; open operator gate → `gate-waiting`; unknown write outcome → `write-parked`; repeat
-threshold → `repeating`; storage degradation, stalled lease/outbox, and failed backup → `storage`;
-and the verified-done receipt → `verified-done`. The first five ping; `verified-done` is inbox-only.
-
-**A notification carries no free text.** Every trigger-event arm is ids, closed codes, and counts,
-and the title/summary are composed from those — because §2.6 forbids raw secrets and captured form
-contents in notification text, and the only way to guarantee that is to give leakage nowhere to
-enter. The dedupe fingerprint covers what makes two firings the same trigger and never the
-occurrence, the instant, or the count, so a repeat folds (§6.1) instead of minting a row. Snooze
-suppresses delivery only: it never flips status, and marking read never clears a snooze.
-
----
-
-### 6.3 Historical as-built at discovery base — the closed vocabulary, two publishers, and five arms with no producer
-
-
-- [x] the notification square — `gate-park.ts` publishes `gate-opened` for a run parked at a gate, on transitions only (D262)
-- [ ] `failed`, `subject-mismatch` and `write-parked` have no producer, so the square is filled for the GATE arm alone (§6.3)
-- [!] there is no OS delivery implementation in the tree, so every publish settles `no-channel` — the durable row is the whole alert
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/services/notifications/{gate-park,storage-health,inbox}.ts and src/server/dashboard/compose.ts; left: four unreachable trigger arms and the delivery channel
-
-**The vocabulary is closed twice over.** `NotificationTriggerSchema`
-(`src/domain/notifications.ts:12-19`) has six arms — `failed`, `gate-waiting`, `write-parked`,
-`repeating`, `storage`, `verified-done` — and the EVENT a producer constructs,
-`NotificationTriggerEventSchema` (`src/domain/notification-triggers.ts:54-102`), has seven kinds,
-because `run-failed` and `subject-mismatch` both project to `failed`. `projectNotificationTrigger`
-(`:151-217`) is the one place an event becomes a row: it composes the trigger, the channel, the
-title, the summary and the links from ids, closed codes and counts, which is what makes D138's "a
-notification carries no free text" enforceable rather than aspirational.
-
-**Two producers exist, and both were built for a reason this doc should keep.**
-
-| event kind → trigger | producer | driven by | discipline |
-|---|---|---|---|
-| `storage-degraded` → `storage` | `src/services/notifications/storage-health.ts:62-92` (D222) | a 15-minute backup tick plus one boot beat (`compose.ts:268,442-486`) | publishes on state TRANSITIONS only, and advances its in-process memory ONLY after the durable publish resolves, so a throw leaves the transition pending and the next tick retries |
-| `gate-opened` → `gate-waiting` | `src/services/notifications/gate-park.ts:92-145` (D262) | a 5-second watch re-deriving `authority.runs.listParkedAtGate()` (`compose.ts:303,495-522`) | keyed `(runId, gateId)`, remembered only after the publish commits, and FORGOTTEN when the park leaves the observed set — so a re-park is news again |
-
-Both are watches over authority rather than hooks on a transition, which is D218's lesson applied
-before it could bite: a hook fires in the process that owns the emitter, and the worker is a
-different process from the BFF.
-
-**Five event kinds have no producer at all** — `run-failed`, `subject-mismatch`, `write-parked`,
-`repeating-failure` and `verified-done` — which leaves four of the six trigger arms (`failed`,
-`write-parked`, `repeating`, `verified-done`) unreachable in the running system. Every one of them
-is schema-valid, dedupe-folded and rendered the moment something publishes it; nothing does. Read
-the policy list above with that in mind: a run that fails, a subject that mismatches and a write that
-parks are exactly the events §6 exists for, and today the operator learns about them from the queue
-row and the run panel, not from the inbox. The wiring is per-node work: the failed/subject-mismatch/
-write-parked arms belong with `{#separations-compiled-acceptance}` and each admitted workflow's notification delta,
-`repeating` needs the `countByFingerprint` threshold §2.1 already indexes for, and `verified-done` is
-the one inbox-only arm.
-
-**Three more facts a reader of the wire will otherwise get wrong.** *Severity is not durable*: no
-record carries one, and `notificationWireOf` (`src/domain/dashboard/projection.ts:736-764`) derives
-`error` for `failed`/`write-parked`, `info` for `verified-done` and `warning` for the rest at
-projection time. *There is no notifications route*: the rows ride the one `DashboardDayWire`
-(`run-queue-projection.ts:1518-1520`), so the bell moves when the day snapshot does. And *there is no
-OS delivery implementation in this tree at all* — `OsNotificationDelivery` is an interface
-(`inbox.ts:43-45`), the production inbox is constructed without one (`compose.ts:444-448`), so every
-publish settles `no-channel` and the `ping` channel names an INTENT, not a delivery that happened.
-D138's guarantee still holds and is doing the work it was designed for: the row is the alert.
-
-**Read / unread / snooze are commands, CASed on the row's own `version`** — which the fold advances
-on every publish, so a bell action races a fold that is designed to happen. A stale one comes back
-`rejected` with `invalid-state` naming the version it moved to (`command-kernel.ts:993-1040`); the
-notification family does not currently produce the `conflict` arm, and the bell handles both through
-`settleCommandResult` regardless, because D253's defect was a surface that branched on one refusal
-and let the other fall through to success.
-
-## 7. Local-FIRST scope, the multi-user seams, and the retained safety floor
-
-
-**Amended 2026-07-23 (D75).** The operator intends to open this tool to other people later and
-wants that to be *configuration, not a second rebuild*. So the scope statement is no longer
-"local-only" but **local-first with four deliberate seams**. Everything below about what is *not*
-built is unchanged; what changes is that four cheap structural decisions are now load-bearing and
-**may never be trimmed as ceremony**, because retrofitting any of them later means touching every
-command, every run, and every stored record.
-
-| Seam | What it means today | Why it must exist now |
-|---|---|---|
-| **Actor attribution** | every new command, run, approval, gate resolution, ledger entry, fix record and operator XLSX evidence v2 carries `requestedBy`/`actor`, constant `"local-operator"`; pre-D75 XLSX evidence v1 remains explicitly unattributed | retrofitting an actor onto an existing immutable ledger and command history is impossible — the old rows have no honest answer |
-| **One identity checkpoint** | the first BFF middleware every request passes through returns only the strict configured local operator and exposes it to command routes; request JSON/query/headers are not identity inputs | one place to change later; without it, authorization logic scatters across routes |
-| **Credential-set-keyed sessions** | browser sessions/logins keyed by credential set, with exactly one set configured | a future user brings their own HR logins and their own Duo; pre-keying makes that config |
-| **Per-actor notification/read state** | the inbox is actor-keyed with one actor | read-state is per-person by nature; a global unread flag cannot be split later |
-
-The checkpoint owns authentication identity, not the command body. Every existing schema-valid
-command envelope (`commands`, `commands/bulk`, and the read-only preflight command) must agree with
-the derived actor before its handler authority runs. The XLSX request is deliberately actor-free;
-its service receives the derived actor as a separate argument and persists it only as the actor id
-in immutable evidence v2. Because the export is also a browser-reachable durable mutation, its route
-shares the command ingress guard: exact same-origin loopback Host/Origin and `application/json` are
-required before body parsing, workbook generation, artifact writes, or authority mutation. Schema
-v24 preserves v1 exactly with no backfill and rejects any v2 JSON/column attribution mismatch.
-
-This does **not** soften the safety floor and does not add scope: no RBAC, no permissions UI, no
-user management, no teams, no network deployment or TLS, no per-user dashboards, no remote sync.
-The dashboard still binds loopback. D79c follows directly from this: commands keep `version` +
-`actor` in the wire shape **everywhere**, while CAS enforcement stays only where a real race exists
-(cancel-tree, edit-vs-resume, gate resolution, write-recovery) — the seam is in the shape, not in
-the enforcement cost.
-
-Not built now: user accounts/RBAC, tenant separation, remote/cloud deployment, distributed
-consensus, external audit signing, high availability, public API compatibility, or enterprise
-plugin ecosystems.
-
-**Reaffirmed 2026-08-12 (D193) — solo is the shape; cooperation is a LATER layer on top of it, if
-ever.** The operator restated the scope in its sharpest form: the system is fully local to the one
-person using it, solo-operator only, and is **never hosted**. That does not retire the four seams —
-they are already built, they cost nothing to keep, and they are exactly what keeps a later
-cooperation mode a configuration rather than a second rebuild — but it does settle their
-*direction*: multi-user is built **over** the solo system later, so **no slice designs for it now**
-and none may claim scope, ceremony, or abstraction in its name. The charter's Non-negotiables carry
-the normative statement, including the second named future item (packaging the local system as a
-locally-run app) and the reading rule that "production" in these plans means the D89 local cutover,
-never a hosting platform.
-
-Still mandatory:
-
-- bind the operator dashboard/API to loopback only; native LAN/remote operator mode is rejected;
-- permit no remote ingress. D294 retires the former mobile-capture exception; any future remote
-  feature requires a new threat model and explicit decision;
-- never log/export secrets; restrict and redact SSN/I-9/HR data in notes/bundles/screenshots;
-- durable DB integrity/backups/restore because local single-operator state is irreplaceable;
-- fail-closed writes, subject binding, typed commands, and immutable write receipts;
-- schema validation at every persisted/transport boundary;
-- reproducible diagnostics and scenarios.
-
-These are correctness and recoverability requirements, not production-scale ceremony.
-
----
-
-## 8. Base capability inventory (webpage-ready)
-
-
-The following is the canonical list Claude may use to build an explanatory webpage. It describes
-what the **base** implements before workflow-specific leaf behavior is migrated.
-
-**Read it as as-built EXCEPT where an item names its own gap in brackets** — re-checked against the
-code 2026-08-20, and eleven items now carry one. An item with no bracket is a capability an operator
-can reach today.
-
-1. Strict runtime-validated domain types and branded ids.
-2. Read / prepare / commit task effects with typed inputs, outputs, errors, freshness, provenance,
-   examples, and scenarios.
-3. Per-system task stores, service stores, and pure workflow mini-stores.
-4. Canonical semantic UI registry with stable element/screen/page-state/observation names.
-5. Typed system drivers; no raw Playwright page in workflow/task code.
-6. Workflow descriptor as the single source for graph, UI, actions, identity, gates, and policies.
-7. Typed DAG nodes: read, transaction, branch, parallel join, child run, and gate.
-8. Standard delegation contract for one/many children, joins, failure, cancellation, retry, and
-   partial outcomes.
-9. Workflow-constant input plus typed checkpoint context and start-at-node validation.
-10. Field-level provenance, freshness checks, and safe Edit Data patches.
-11. Server-authoritative enqueue/coalesce/supersede policies and versioned command engine.
-12. Standard queue operations: cancel, retry, bump, hide/restore; destructive purge is separate.
-13. Explicit per-workflow worker counts, one active item per worker, visible backpressure, and authored fresh-browser-session boundaries.
-14. Page reset/poison isolation and context-exclusive write transactions.
-15. Automated Duo login for every authenticated browser session, including production; service-only
-    runs do not acquire a browser or invoke Duo.
-16. Fail-closed fresh subject binding before every real person/file-scoped write fence; declared
-    subject assertions are also available to high-risk reads.
-17. Permanent write intents, same-key concurrency fence, typed landing proof, and at most one
-    unattended commit attempt per intent generation; recovery needs typed positive proof or a
-    sequence of authoritative negative observations all captured after the propagation window,
-    otherwise it
-    parks, and there is no generic “force done”.
-18. Never-pruned ordered actor-attributed write ledger projected from atomic outboxes; hash-chain/
-    tail-anchor tamper evidence is deferred until multi-user.
-19. Content-addressed immutable artifacts and idempotent outbox-based mutable projections.
-20. Append-only span/note streams and server-side queue/timeline/session projections.
-21. Durable actor-keyed typed notifications with read/unread state and optional snooze
-    **[at the 2026-08-20 discovery checkpoint: no OS delivery was wired and two of seven triggers
-    had a producer — historical §6.3; later W2 status is recorded in dashboard-surfaces]**.
-22. Structured failure records and automatic redacted diagnostic bundles.
-23. Per-run evidence receipts showing inputs, observations, decisions, actions, verification,
-    output, reuse, and uncertainty.
-24. `explain run` CLI/API **[`explain failure` is not built, and `--bundle` portable export
-    REFUSES rather than exporting a package it cannot complete — §2.1, §2.5]**.
-25. Registered scenario corpus with wrong-page/wrong-subject/crash/control/storage cases
-    **[sixteen executable scenarios audited both ways; §3.2's full coverage policy is not proved,
-    and the tiers move to ref guards-and-tests under R10]**.
-26. Bug-fix rule requiring a linked regression scenario or explicit evidence exception.
-27. Structured active/superseded/retired knowledge records instead of append-only lessons
-    **[table, admission audit and projection built; nothing in the running system writes or reads
-    them — §4.1]**.
-28. AI FixRecord ledger linking code changes, failures, scenarios, evidence, and commits
-    **[same — the store exists, no surface reaches it]**.
-29. Read-only workflow explorer over the descriptor design **[the LIVE-EXECUTION overlay is a named
-    exclusion, not a slip: run facts stay on the run-detail timeline — §5.7]**.
-30. Constrained, versioned editing of closed presentation and operational-policy fields
-    **[DCC4/5 implement only the D283-safe label/icon/category subset; D186 still defers broader
-    policy, notification, Edit Data and authoring work — §5.3]**; graph/composition changes remain
-    source-authored code changes.
-31. Operator-defined spreadsheet mappings keyed by stable target-field path (not just concept),
-    with projection fingerprints, duplicate-safe source columns, per-cell schema errors, and saved
-    layout maps.
-32. One command envelope with strict run, gate, and notification arms; typed gate results
-    live in authority while events carry only their immutable reference/hash.
-33. Raw ingress transformed exactly once into canonical input; every authority read revalidates a
-    transform-free/default-free canonical schema and semantic changes require explicit migration.
-34. Immutable per-run config/instance snapshots and one injectable clock.
-35. Fail-loud fiscal-year configuration and one secrets accessor.
-36. SQLite startup doctor, WAL/disk monitoring, native online backups whose completed copy
-    self-reports its authority generation, pre-migration backup, tested restore, and read-only
-    rescue mode.
-37. Full type/lint/architecture/fixture/stub/live guard umbrella with non-vacuity checks, zero-debt
-    rebuild linting, and fingerprinted shrink-only legacy test-lint debt during coexistence.
-38. Bidirectional runtime/state/import isolation plus one global cutover interlock; no per-run
-    legacy/native generation or gradual production flip.
-39. Immutable intake admission manifests and hash-diffed reruns showing every valid, rejected, and
-    explicitly excluded source row.
-40. Guided new-workflow scaffolding with task/schema search and a generated missing-obligations list
-    **[not built; no scaffold command exists — §5.5]**.
-41. Loopback-only single-operator control runtime, with only the short-lived token-scoped mobile
-    capture ingress exception; no RBAC/team/HA/remote operator deployment machinery in the base.
-42. Generated UI catalog plus exact source links for operator/Codex/Claude reference — generated
-    views are never a competing authority **[the ACTIVE-KNOWLEDGE catalog's generator has no caller,
-    so no `KNOWLEDGE.md` exists — §4.1]**.
-43. Durable restart-safe mobile capture sessions with immutable photo refs, idempotent ordering,
-    retryable bundle outbox, and atomic PDF→intake/OCR handoff.
-44. Typed contact/address normalization that distinguishes unchanged, ambiguous, and provider-
-    unavailable results and preserves the source of every proposed field change.
-45. Closed provider capabilities for OCR/geocoding/AI, with narrowed injected clients, infra-only
-    SDK/network adapters, timeout/abort/concurrency/rate/cost budgets, preflight, evidence, and
-    produced/unavailable/invalid outcomes—remote I/O cannot hide in an import.
-46. Optional schema-bounded AI **triage** assistance over redacted structured evidence, with no
-    command, identity, registry-write, completion or mutation authority **[the sanity-check, selector
-    and summary adapters are RETIRED, not pending — D192 and the 2026-08-18 ruling, §4.4.2]**.
-47. Machine-checked legacy capability disposition so every old service/route/UI/CLI/tool is native,
-    replaced, retired in the target, or visibly blocking cutover; it never authorizes old-source deletion.
-48. One exhaustive runtime-dependency inventory covering every browser system, provider,
-    endpoint, env/config/secret consumer, and preflight check in both directions.
-49. One typed environment doctor **[the storage/authority half powers startup and Settings health
-    and was drilled at 2j (D181); DCC1–DCC3 add resolver-owned settings edit/readback and preflight
-    rerun, while the workflow-preflight RUNNER and `test-login` remain unbuilt. `{#cross-cutting}` /
-    `{#def-settings}` own the remaining scope]**.
-
-### What is better than the old codebase
-
-- Fix a selector/page-state once in the system driver; every task using the canonical id benefits.
-- Fix an operation once in the task store; workflows compose it rather than copy it.
-- A field rename breaks consumers at compile time and invalid external/persisted data fails at
-  runtime boundaries instead of leaking inward.
-- Wrong/stale person pages are blocked by authoritative observed identity, not inferred from what
-  the operator searched for.
-- Queue/delegation behavior is kernel-owned and uniform instead of workflow-specific route logic.
-- A run cannot claim success without evidence; reruns disclose what was reused and why.
-- Failures arrive with a stable fingerprint, context bundle, prior fixes, and a safe next action.
-- New scenarios discovered during real use become regression fixtures instead of silent fallbacks.
-- AI tools read current generated guidance and stable ids, not a pile of contradictory lessons.
-- The workflow editor explains the real graph first and edits only what the contracts can prove.
-
----
-
-## 9. Mechanical guards
-
-Ref guards-and-tests owns the register; this is the row set that answers for THIS doc, checked
-against `docs/rebuild/guard-inventory.json` and `tests/unit/architecture/` on 2026-08-20. Ten guards
-name `reference/operator-trust.md` as an owner, nine of them `active`.
-
-| the rule this doc states | the guard that holds it | status |
-|---|---|---|
-| canonical UI ids and search terms unique; every task-used element/state/observation resolves; catalogs byte-fresh and recipe-free; legacy candidate ids cannot enter a runtime catalog | `semantic-ui-registry` | active — **but it audits ucpath · crm · new-kronos only; Kuali's own audit functions exist and are never called (§1.7)** |
-| raw `Page`/`Locator`, `getBy*`, `evaluate`, `$` and frame access confined to the driver/session owners and `src/infra/browser/**` | `task-driver-boundary` | active (AST **and** transitive import graph) |
-| subject-scoped browser tasks have registered authoritative observations and mismatch scenarios | `subject-before-fence` (ref write-safety) for the ORDER, `ucpath-person-org-strict` for that one store's read discipline | active — **no general per-store guard exists; the rule is enforced by the sequencer at runtime and by one store's own suite** |
-| strict runtime schemas parse every UI-registry, scenario, knowledge, fix, evidence, failure and diagnostic boundary; no persisted open `Record` outside the opaque diagnostic attachment | `strict-boundary-schemas` (ref guards-and-tests) | active — recursive, including union and lazy members |
-| a receipt is strict at every level, carries a source and instant per fact, and refuses `verified-done` for non-verified confidence, an unresolved mandatory obligation, any warning or a failure id — each proven by a violating fixture; redaction is DECLARED | `evidence-receipt` | active |
-| every non-trivial fix links a registered regression scenario or a stated evidence exception; generated active knowledge shows no superseded/retired/unverified record; admission is audited inside the insert transaction | `knowledge-fix-integrity` | active |
-| a notification is a durable record FIRST and a delivery second — a delivery that throws leaves the row unread with count and version untouched | `notification-durability` | active (the load-bearing arm injects a throwing delivery) |
-| the explorer round-trips from the REAL registries in both directions, and only the strict label/icon/category override can edit | `workflow-editor-compile-integrity` | active — Phase A plus DCC4's strict safe-subset draft/validate/apply arms; no generic descriptor, code, policy, notification, Edit Data or new-workflow arm (§5.3) |
-| every registered workflow serves the descriptor's own `summary` and every node its own `purpose`, compared byte-for-byte against the declaration | `explorer-prose-declared` | active (D229) |
-| the advisory closure's value-import graph reaches no authority writer | `ai-advisory-no-authority` | active (D178) |
-| every declared runtime dependency has a preflight scenario exercising its FAILURE, not merely its presence | `preflight-coverage` | **planned** — re-owned by D188; activates with the first migration that adds a preflight runner (§3.1) |
-
-Two rules this section used to claim that no guard holds, stated rather than dropped. **Diagnostic
-redaction fixtures**: `redaction-surface-scan` (D183, owned by ref guards-and-tests) is the 2j sweep
-that proves no classified value reaches a wire, durable row, ledger file, notification or provider
-unreviewed, and `evidence-receipt` holds the declared-classification half — but there is no fixture
-asserting that a restricted EXAMPLE value cannot appear in an exported bundle, because §2.5's
-`--bundle` export does not exist to be scanned. **Workflow-editor drafts cannot modify active run
-snapshots**: DCC4's safe-subset draft validates only an existing descriptor/override base and cannot
-carry run state; generic run-aware editing remains absent.
-
-## 10. Explicit residuals
-
-
-- [x] every residual re-checked against the code and classified closed / open / standing, with the owning node named (§10)
-- [x] one residual was FALSE as written — restricted bundles are local but not short-lived, because nothing purges them
-- [!] four residuals have NO node: the uncalled Kuali registry audits, `explain failure`, the absent OS delivery channel, and `explain run`'s notifications reason, stale since D262
-> 2026-08-20 | docs-cohesion operator-trust | the four unowned items are reported to the plan, not adopted here — this doc may not mint a node
-
-Re-checked item by item against the code on 2026-08-20. Each row is **closed** (the mechanism
-exists — the residual was a gap and is not one now), **open** with the node that owns it, or
-**standing** (a true fact about the world that no build closes). Four items this pass found have no
-node at all; they are listed under the table and reported to the plan rather than quietly adopted.
-
-| residual | verdict | who owns it |
-|---|---|---|
-| Locator/page-state correctness ultimately depends on live system behaviour; the registry cannot make a stale live verification current | **standing** — and the registry's job is to make staleness VISIBLE, which it does: every element, state and observation carries `verifiedAt` plus both evidence refs at the same weight as its id (§1.2, §5.8) | every migration's live re-verification (`{#migrations}` and each `order-N`). D150 retired legacy change accounting on exactly this argument: a selector checked against the live system beats one diffed against legacy's copy |
-| Some pages expose no authoritative subject identity, so a subject-scoped write there cannot auto-commit — it must gain a verified cross-page observation or park for typed operator confirmation | **closed as a mechanism** (the fact about those pages stands): the park and the `operator-confirmed-absent` settlement arm are built and were exercised live — D128's controlled commit parked `unknown` with zero checkpoint, ledger and terminal rows | ref write-safety §4.1 owns the arm; nothing is owed here |
-| A constrained visual editor cannot express every complex workflow; falling back to reviewed code is expected | **open beyond DCC4/5's safe subset** — label/icon/category use a strict existing-workflow override; broader policy, notifications, Edit Data and authoring remain code-change/later-workflow scope (§5.3) | `{#def-explorer-edit}`, trigger named: the SECOND production workflow whose policy an operator wants to change without a code change |
-| Diagnostic screenshots may carry unavoidable HR context; capture-time redaction cannot promise perfect VISUAL redaction | **standing** — only a screenshot may stay `restricted`; every other attachment arm is redacted text, and a never-exportable key surviving as `allowed` fails the capture (§2.2.1) | this doc; no build closes it |
-| …“restricted bundles remain local and **short-lived** unless pinned” | **CORRECTED — the second half was false.** They are local. They are not short-lived: the sweep is built, tested, and has no caller, so no bundle has ever been purged on this machine (§2.2) | `{#def-retention}`, status `never` — D193 dispositioned scheduling AND the content-store refcount as `wont-build-unless-asked` |
-| `explain failure <fingerprint>` (§2.1, §4.2) | **open** — the indexed column and `listByFingerprint` exist; the command does not | **unowned** (see below) |
-| The knowledge/fix store has no writer, no reader and no surface; §4.3's audit needs a `version` field nobody has ratified (§4.1, §4.3) | **open** — table, admission audit and projection are built and unit-tested; nothing in the running system reaches them | `{#workflow-write-mechanics}`' software close-out line |
-| Five of seven notification event kinds have no producer, leaving four trigger arms unreachable (§6.3) | **open** | `{#separations-compiled-acceptance}` and each admitted workflow's notification delta for `failed` / `subject-mismatch` / `write-parked`; `repeating` and `verified-done` are **unowned** |
-| A rerun's field-level diff against the prior run (§2.4) | **retired by the 2026-09-03 D289 amendment** — attempts remain separately inspectable and the product performs no automatic comparison | none |
-| `preflight-coverage` is `planned`; nothing executes the preflight fault manifests (§3.1) | **open** | `{#cross-cutting}` — D188 re-owned it; it activates with the first migration that adds a preflight runner |
-| §3.2's minimum coverage policy is not proved in full (the audit is over graph-derived points, not a contract's error enum) | **open** | `{#workflow-authoring-core}` (R10), spec `ref guards-and-tests §Testing tiers` |
-
-**Four residuals no node names — reported, not adopted.** This doc may not mint a node, so each is
-stated here and carried to the plan.
-
-1. **Kuali's registry audit functions are never called.** `auditKualiUiRegistry` and
-   `auditKualiUiEvidenceBindings` hold real rules and no test invokes them, so
-   `semantic-ui-registry`'s structural audit covers three of the four stores (§1.7). One call site
-   closes it.
-2. **`explain failure <fingerprint>` has no owner.** It is a CLI capability rather than a workflow
-   close-out; the nearest home is `{#cross-cutting}`'s non-workflow capability inventory, which does
-   not list it today.
-3. **No OS delivery channel exists at all.** `OsNotificationDelivery` is an interface with no
-   production implementation, so every publish settles `no-channel` and the `ping` channel names an
-   intent (§6.3). D138's guarantee holds — the row IS the alert — but "the operator missed the
-   toast" describes a toast that cannot be shown.
-4. **`explain run`'s notifications absence reason went stale at D262** and can now tell an operator
-   *"this run has none"* about a run that has a `gate-opened` row (§2.5). A one-line reason string on
-   a trust surface, where a reader has no way to know it is old.
-
-## D273/D275/D276 trust-surface presentation boundary (2026-08-26)
-
-D273's receipt/failure ports render only served truth (including refusal, uncertainty and remediation)
-and retain the schema's unrepresentable invariant-banner absence; D275/D276 require the Explorer's
-contract-led demo vocabulary, reachable field-row affordance and deletion of structurally unreachable
-arms. The rejected alternatives are respectively fabricated/hidden evidence, surplus unsupported
-facts or an inaccurate edit association; the detailed grouped alternatives are normative in
-`ref dashboard-surfaces` §10. These are presentation requirements awaiting ports, not new trust
-facts, wire fields, or implementation claims.
-
-**D275 item 5's admission door is §5.2.1 (2026-08-26).** "Unless an extra enters its owning
-contract" needs a place to enter, and for the Explorer that place is §5.2 — where §5.2.1 now admits
-six named extras as a closed list. An Explorer fact that is neither in §5.2's bullets nor in
-§5.2.1's six is minted vocabulary and does not ship.
-
-## Diagnostic evidence and resolution
-
-**2026-09-08 — approved, pending implementation.**
-Side task `side/diagnostics` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md`) combines the approved renames
-`diagnostic_bundles` → `diagnostic_snapshots`, `diagnostic_attachments` → `diagnostic_files`, and
-`evidence_receipts` → `run_receipts` with retirement of `knowledge_records` and `fix_records`.
-The operator superseded the earlier suggested lesson/fix renames with removal: workflow/module and
-agent guidance belongs in existing linked documentation, not an automatically populated database
-lesson or repair ledger. §4's unwired database projection/search obligations are retired by this
-assignment; unrelated roadmap completion is not implied and authored lesson files are preserved.
-
-Keep immutable diagnostic/receipt evidence and its exact identities, shared artifacts, sensitivity
-and pin/retention semantics. Historical knowledge/fix pins must not silently become purgeable.
-Retiring nonempty tables requires verified preservation bound to the stopped pre-upgrade backup;
-historical references are not fabricated resolution or automatically published agent guidance.
-
-Failure follow-up is a separately versioned resolution annotation on the same `run_failures` row,
-with status, admitted actor/time and optional short note. Original failure bytes/fingerprint and
-all receipt derivation bindings remain unchanged. Resolution records an operator assertion that the
-problem was addressed; it does not prove a fix, change the failed outcome or resolve uncertain
-external writes. Dashboard surfaces owns explicit actions
-and live/archived presentation. This amendment is approved design, not implementation or permission
-to apply a database upgrade. The parallel execution binding (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) assigns shared diagnostic
-storage/retirement to prerequisite B and operator resolution to an independent peer after B.
-
-### Phase 2.6 naming and XLSX evidence amendment — 2026-09-09
-
-R owns naming-only diagnostic_snapshots, diagnostic_files and run_receipts, preserving existing
-protection and evidence semantics. F/G consolidate each XLSX export's request/completion/verified
-file evidence into one generated_artifacts row and retire operator_xlsx_exports; prior separate-table
-requirements are superseded. Preserve independent export identities, immutable issued receipt fields,
-exact snapshot selection, byte verification and authorized downloads. Owners:
-artifact conversion and proof (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md`)
-and naming scope (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md`).
-This is an approved future contract, not implementation evidence.
-
-## Activity search and export privacy — 2026-09-21
-
-The operator approved the 3.1.12 search/export amendment.
-Search subjects come only from approved displayed metadata; raw inputs, arbitrary checkpoint/capture
-contents and private counting identities are excluded. Recorded actors, versions, typed failure codes
-and evidence availability retain explicit historical unavailability. Search/export coverage must not
-invent missing facts. Activity person identity and protected-derived digests remain inside the server
-counting boundary and cannot escape in exports, logs or provenance.
-
-The diagnostic download is a redacted JSON manifest of the reviewed search snapshot and its filters,
-coverage, statuses, failure codes and evidence availability. Full bundles and captures remain
-3.1.14.4. Page/CSV/XLSX use the same accepted Activity snapshot. Formula-safe text encoding and verified
-selection/body metadata are required; issued XLSX actor attribution, immutable historical bytes and
-readability survive new schema versions. A cancelled download does not undo committed export custody.
-This ratifies requirements for the assigned implementation, not a runtime acceptance claim.
-
-## C0 archived evidence and privacy — 2026-09-09
-
-After A transfers a run, the archive displays captured resolution read-only, superseding any earlier
-requirement for a live annotation lookup from the archive viewer. Live Mark resolved/Reopen remains
-D's versioned annotation, separate from immutable failure/receipt/completion identity and external
-write state. L supplies the common capture contract; A freezes it before deleting owned live rows;
-H renders the generic report. No current workflow or failure parser is needed to view that evidence.
-
-Archive files have durable verified custody independent of live pruning. Explicit deletion removes
-only exclusively owned files; old issued receipt/download references remain authenticated against
-canonical live/archive membership and immutable version bytes. Historical knowledge/fix records and
-pins receive verified preservation before retirement; they are never automatically published as
-agent instructions. Source/archive digests are separate, neither reconstructed from current values.
-
-Queue/Activity summaries may retain validated canonical identity only inside the server counting
-boundary. Activity returns protected aggregates and explicit unavailable counts; no identity or
-protected-derived digest may escape via responses, exports, logs or provenance. Preserve existing
-non-Activity authorized projections and retained protected-input authentication. No new key/pseudonym
-mechanism replaces the retired Activity tables.
-
-This is the C0-admitted target contract, not a claim of implemented behavior. The Phase 2.6 owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
-
-### F implementation baseline — 2026-09-09
-
-F adds separately versioned failure annotations and capture/query/command ports, with unavailable action capability. Immutable failure/diagnostic/receipt JSON remains unchanged. Knowledge/fix live authority is retired only with verified historical preservation; D owns live resolution actions.
-
-Implementation, frozen interfaces and focused evidence: F execution owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md`).
-This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.
-
-
-## D resolution history admission — 2026-09-09
-
-The approved 2.6.6.2 D01–D05 brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md`)
-closes the missing timeline representation for the already required atomic resolution history.
-D owns a strict resolution payload in `src/events/timeline.ts`, appended through the existing
-transaction/repository with ordinary retention. Preserve original failure/receipt/completion
-identities, historical payloads and execution-span semantics. Optional notes follow existing
-protected-text rules; public projection must not leak protected text. This admits implementation,
-not a new run transition, retention policy, SQL migration or already verified feature.
+# Operator trust
+
+Relay keeps operator evidence locally. Receipts describe retained authority, failures describe the
+recorded error and write state, and diagnostic captures bind their metadata to verified files.
+Local evidence can contain complete HR values. Provider requests and desktop notifications are
+separate boundaries; a local classification does not authorize sending a value outside Relay.
+
+This reference owns evidence, diagnostics, receipts, and notification trust. [Write safety](write-safety.md)
+owns external-write admission and recovery. [Clock, config, and secrets](clock-config-secrets.md)
+owns credentials and runtime authority. [Dashboard surfaces](dashboard-surfaces.md) owns the rendered
+operator views. [Workflow model](workflow-model.md) owns the registered workflow definition.
+
+## Local evidence and redaction
+
+`src/rules/redaction/redaction-policy.ts` defines five classifications and six transforms. The
+closed transform policy used by `redactValue` is:
+
+| Classification | Permitted transforms |
+| --- | --- |
+| `secret` | `drop`, `digest` |
+| `credential-file` | `drop`, `digest` |
+| `direct-identifier` | `drop`, `digest`, `last4` |
+| `sensitive-hr` | `drop`, `digest`, `count` |
+| `safe-diagnostic` | `allow`, `count`, `basename` |
+
+`redactValue` in `src/rules/redaction/redaction.ts` refuses a forbidden pair. Digests use
+`redactionDigest` over canonical JSON, with a versioned domain prefix. `basename` recognizes both
+path separators. `count` returns a string or array length, object-key count, or one for another
+JSON value. These transforms do not recover an original value.
+
+Local evidence uses `retainLocalEvidenceValue` instead. It retains the complete supplied JSON as
+`state: "allowed", transform: "allow"`, with the original classification. It validates a supplied
+non-`allow` transform before retaining the value. `refineLocalEvidenceTransformPair` permits
+`allow` for every classification in local evidence schemas. This includes values supplied as
+`secret` or `credential-file`; the function does not read a credential source.
+
+`redactDiagnosticFields` uses that local-retention function for each valid classified field.
+Malformed fields produce warnings containing the candidate JSON. A non-array input produces a
+warning containing the input JSON. `assertDiagnosticExportSafe` in
+`src/models/trust/diagnostic-capture.ts` parses `RedactionResultSchema`; it does not scan keys or
+remove complete values. The names `redaction`, `RedactedFieldSchema`, and
+`assertDiagnosticExportSafe` therefore do not promise that local evidence lacks HR or secret values.
+
+`directIdentifierDisplay` returns the supplied identifier. `directIdentifierDigestReference`
+produces a bounded digest reference when a caller selects that representation.
+`idempotencyKeyDigestReference` displays the authority digest, or
+`protected transaction key (withheld)` for protected transaction input. Natural transaction keys
+remain separate from that operator reference.
+
+### Classified receipt and observation leaves
+
+`src/models/trust/evidence-classification.ts` owns `EVIDENCE_FIELD_CLASSIFICATIONS`. Every declaration
+names a scope, dotted leaf path, classification, and permitted transform. The scopes are
+`workflow-input`, `workflow-result`, `task-output`, `gate-result`, and `write-proof`. A gate scope
+uses the workflow and gate identities because a gate owns no task contract.
+
+`evidenceLeaves` sorts object keys, recurses into populated objects, and treats an array or empty
+object as one leaf. `classifyEvidenceLeaf` refuses an undeclared leaf by its scope and path.
+`redactEvidenceLeaf` uses the declaration through `redactDiagnosticFields`, so its current local
+output retains the supplied value. The declaration remains mandatory even when local retention
+changes its output transform to `allow`.
+`run-logs.ts` resolves observations from exactly one descriptor data origin for the node/task pair; a service origin without a browser system stays absent, and missing or ambiguous origins refuse.
+
+`src/backend/logs/observed-data.ts` and `src/backend/runs/provenance/evidence-receipt.ts` share this
+classification owner. A fixture's extra leaves also need declarations. A task's input binding,
+output provenance, and receipt source remain distinct facts.
+
+### Diagnostic text and browser summaries
+
+`sanitizeDebugText` in `src/rules/redaction/redaction.ts` removes credential-named JSON values,
+credential assignments, Bearer or Basic authorization text, private-key blocks, and URL credentials,
+query strings, and fragments. It preserves other text. It is a text sanitizer, not a general HR-value
+redactor.
+
+`src/backend/logs/debug-events.ts`, `src/backend/logs/emergency-faults.ts`,
+`src/backend/runtime/execution/run-failure.ts`, and the note/timeline writers under
+`src/backend/storage/events/` apply that sanitizer at their respective text boundaries.
+The worker logger in `src/backend/app/composition/worker-compose.ts` sanitizes its message and
+string-valued fields. Local diagnostic-field retention is a separate path.
+
+`attachBrowserDiagnostics` in `src/backend/runtime/browser/browser-diagnostics.ts` collects bounded
+console kinds, request methods, error-response statuses, and instants. Each console or network list
+holds at most 128 rows. Its summaries omit console text, page-error text, request bodies, headers,
+and URLs, and record the omission count. These summaries do not substitute for a screenshot.
+
+## 2.1 Failures and follow-up
+
+`FailureRecordSchema` in `src/models/trust/failure.ts` carries run, trace, attempt, workflow, optional
+node/task, code, summary, cause chain, remediation, fingerprint, and occurrence time. Its write states
+are `not-attempted`, `prepared`, `attempting`, `committed`, `verified`, and `unknown`.
+
+The schema requires exactly one primary cause, and the record's `transient` flag must match that
+cause. A subject, page, or action block cannot be empty. `attempting` and `unknown` require an action
+whose operation is `commit`. Transience does not establish retry permission.
+
+`src/backend/runtime/execution/run-failure.ts` builds failure records and bounded debug details.
+The optional `diagnosticSafetyVersion: 1` remains a recorded field.
+`projectFailureForOperator` currently parses and returns the failure as recorded; it does not use
+that stamp to withhold or reconstruct prose. Names such as `urlRedacted`, `titleRedacted`, and
+`displayRedacted` describe producer fields, not a second redaction pass at projection.
+
+`src/backend/runs/queries/run-detail/receipts-failures.ts` projects the explicit
+`FailureDetailWireSchema` fields. It checks the failure's exact run/workflow/trace/attempt identity
+through `assertTrustEvidenceIdentity` in `src/backend/runs/trust/run-reader.ts`. A diagnostic link
+must name that failure's exact bundle and agree with the run-indexed bundle record. A nearby capture
+or matching timestamp cannot replace the named record.
+
+`src/models/dashboard/failure-display.ts` derives concise display from typed failure information.
+The detailed record retains summary, code, causes, remediation, and write state. Available controls
+come from the server's command descriptors; a display label does not grant a retry or submission.
+
+Failure follow-up is a separate versioned annotation. `src/models/trust/failure-resolution.ts`
+defines `unresolved` and `resolved`, with actor, instant, and an optional note on the resolved arm.
+`src/backend/runs/queries/failure-resolution.ts` requires the annotation when reading its failure.
+Its protected-input projection withholds a resolved note when required. The annotation does not
+change the failure fingerprint, run outcome, receipt, or uncertain write state.
+
+## 2.2 Diagnostic captures
+
+`DiagnosticBundleSchema` in `src/models/trust/diagnostic.ts` defines the capture manifest.
+`src/backend/logs/diagnostics/diagnostic-capture.ts` owns `createDiagnosticCaptureService`.
+The service supports `prepare`, `persist`, `discard`, and `capture`.
+
+`DiagnosticCaptureTriggerSchema` in `src/models/trust/diagnostic-capture.ts` admits
+`unexpected-state`, `task-failure`, `subject-mismatch`, `recovery-park`, and `operator-request`.
+`diagnosticOriginOfTrigger` requires a failure identity for an automatic capture and a requesting
+actor for an operator capture. It forbids the other identity before artifact work.
+
+`prepare` validates the origin, supplied operation identity, classified fields, attachments, and
+retention. It stages attachments and derives a manifest digest from the run, origin, capture time,
+config and descriptor fingerprints, retained fields, attachments, and optional operation identity.
+`persist` admits only its owned preparation or a matching stored replay. Attachment publication and
+the repository insert use `insertPrepared`; cleanup distinguishes unpublished stages from committed
+artifacts. A failed cleanup remains a failure rather than disappearing.
+
+The service accepts these attachment types:
+
+| Kind | Media types | Sensitivity and size |
+| --- | --- | --- |
+| `screenshot` | `image/png`, `image/jpeg` | `redacted` or `restricted`, required width and height, at most 10 MiB |
+| `accessibility-excerpt` | `text/yaml` | `redacted`, at most 1 MiB |
+| `network-summary` | `application/json` | `redacted`, at most 1 MiB |
+| `console-summary` | `application/json` | `redacted`, at most 1 MiB |
+
+Attachments must contain bytes, and the total bundle limit is 50 MiB. Only screenshots may remain
+`restricted`. The capture service validates the declared sensitivity and shape; it does not inspect
+image pixels or sanitize arbitrary attachment text itself. The producer owns the supplied content.
+
+`src/backend/logs/diagnostics/run-diagnostic-capture.ts` classifies structured failure fields and
+selects the failure trigger. It adds attachments only through its optional `attachmentsFor` port.
+A capture without that port has structured fields and no invented image. The worker composition
+binds the failure capture and selected browser-screenshot capture separately.
+
+Failure settlement uses the prepared bundle identity and persists the capture with the terminal
+failure transaction. The execution owner is `src/backend/runtime/execution/run-executor.ts`.
+Receipt derivation remains separate from terminal settlement.
+
+### Selected browser screenshots
+
+`createRunBrowserScreenshotCapture` in
+`src/backend/logs/diagnostics/run-diagnostic-capture.ts` uses `operatorRequestedCapture` and
+`local-operator`. It records the browser system, lease outcome, and any capture-unavailable reason.
+A successful capture carries viewport PNG bytes, dimensions, and `restricted` sensitivity. Browser
+console and network summaries may accompany it.
+
+`src/backend/runtime/workers/worker-sessions.ts` captures before lease teardown. Successful leases
+capture when the run selects screenshots. Failed operations attempt a capture whenever the worker
+holds run screenshot context, even if the success-capture flag is false. The browser-session factory
+in `src/backend/runtime/browser/browser-session-factory.ts` supplies the bytes. Missing capture
+support or failed persistence remains a failure, and combined failures remain an `AggregateError`.
+Diagnostic screenshots do not create a phone upload or remote capture service.
+
+### Verified readback and downloads
+
+`src/backend/runs/queries/diagnostic-bundle.ts` owns `readDiagnosticBundle`,
+`readDiagnosticBundleAttachment`, and diagnostic artifact membership reads. It admits the canonical
+run through `requireTrustRun`, validates the exact bundle identity, recomputes the content digest,
+and compares every attachment-index row with the manifest. It verifies byte count and digest through
+`src/backend/storage/artifacts/server-verified-artifact-reader.ts` before returning the wire or
+canonical manifest.
+
+The reader rechecks run membership and unchanged bundle authority after byte verification.
+Attachment downloads bind the exact artifact to the verified bundle and use a verified byte lease.
+A loose artifact id does not establish access. Missing targets, purged captures, missing bytes,
+operational read failures, and corrupt evidence remain distinct refusals. The route handlers under
+`src/backend/transports/http/` retain the download headers and exact membership checks.
+
+`src/backend/runs/queries/run-captures.ts` builds the run's verified capture view. Optional operation
+identity binds a capture to an exact retained action occurrence. Unbound captures remain captures;
+the query does not manufacture an association from current inputs or a timestamp.
+`run-captures.ts` joins an artifact only when its complete verified metadata agrees and retains every same-run diagnostic-bundle origin; run status and nearby failures never supply provenance.
+
+### Retention and custody
+
+`planDiagnosticRetention` in `src/models/trust/diagnostic-capture.ts` derives an ordinary deadline
+from the capture instant plus `DIAGNOSTIC_ORDINARY_RETENTION_DAYS`, which is 30. A pin carries a
+reason and no purge deadline.
+
+`createDiagnosticRetentionSweep` in `src/backend/logs/diagnostics/diagnostic-retention.ts` reads due
+records, re-evaluates their disposition at one instant, and delegates purge to the canonical
+lifecycle service. It reports purged records, vanished records, and artifact ids without a remaining
+diagnostic reference. No production caller schedules this sweep. A deadline alone does not prove
+that bytes were purged, and the sweep's report does not prove another evidence owner released them.
+
+`src/backend/storage/sqlite/migrations.ts` creates `diagnostic_snapshots`, `diagnostic_files`,
+`run_failures`, and `run_receipts`. The repository API retains names such as `diagnosticBundles` and
+`evidenceReceipts`; API names do not imply tables with the same names. Canonical deletion and file
+custody belong to `src/backend/storage/sqlite/native-run-deletion.ts` and the lifecycle service.
+
+## 2.3 Run receipts
+
+`RunEvidenceReceiptSchema` in `src/models/trust/evidence.ts` accepts composition `5`.
+It carries the receipt/run/trace/workflow identities, attempt, terminal instant, descriptor and config
+fingerprints, `retryOf`, optional failure, input, observations, decisions, actions, verification,
+output, reuse, warnings, confidence, and result.
+
+`src/backend/runs/provenance/evidence-receipt.ts` derives those facts from the canonical run,
+immutable terminal result or failure, checkpoints and provenance, durable gate results, write
+intents, and write attempts. `src/backend/runs/trust/receipt-service.ts` supplies these records
+inside an authority transaction. It uses the run's retained contract and config fingerprints.
+It does not claim the current checkout executed an older run.
+
+`ensureRunEvidenceReceipt` refuses a non-terminal run and a terminal `interrupted` run awaiting
+recovery. Receipt identity derives from the run and attempt, evidence-entry identity derives from
+the receipt/kind/key, and `generatedAt` is the terminal instant. Sorted leaf traversal preserves a
+deterministic fact order.
+
+A stored receipt is immutable. `ensureRunEvidenceReceipt` re-derives it, evaluates compatibility
+through `src/backend/runtime/writes/receipt-derivation-binding.ts`, and uses the repository's immutable insert.
+A divergent derivation refuses instead of overwriting the record. Classification and obligation
+changes can change a receipt even when a descriptor's import fingerprint does not change.
+The compatibility checks compare workflow identity, descriptor version, canonical input, evidence
+graph, terminal dependency set, and declared evidence. Each reports `held`, `moved`, or
+`not-evaluated`; no waiver authorizes replacing an incompatible receipt.
+
+### Facts, decisions, and write proof
+
+Every evidence row has an `EvidenceEntryId`. Satisfied facts contain their declared local value and
+source. Unresolved facts contain a reason. Source arms distinguish input, system, checkpoint,
+gate result, external gate-source event, operator correction, derived evidence, and operator
+assertion. The derivation checks that cited evidence rows exist in the receipt.
+
+`src/models/trust/evidence-obligations.ts` declares cross-source comparisons. The receipt records
+the comparison verdict and supporting facts. Missing sources remain absent or unknown rather than
+becoming agreement between the remaining sources.
+
+`src/models/trust/gate-decisions.ts` declares gate outcome arms. Receipt derivation reads
+`authority.gateResults`, including its recorded actor and instant, rather than a span's display key.
+An undeclared gate or outcome refuses derivation. A conditional gate that does not run carries its
+declared branch reason rather than an invented approval.
+
+A commit action may carry `proved`, with system, public transaction-key digest, declared completion
+kind, proof source, classified proof values, and recorded instant. The completion kinds are
+`receipt`, `save-verify`, and `upload-verify`. Proof sources are `normal-output`, `recovery-probe`,
+`operator-attestation`, `durable-intent`, and `live-probe`. A non-commit action cannot carry that
+block. A verified write action requires a binding-proof reference.
+
+A prepare output stays in memory under its task contract. A transaction checkpoint records the
+transaction outcome and its completion evidence. A graph walk alone does not prove that the executor
+read that checkpoint or terminalized from it.
+
+### Verdicts and uncertainty
+
+The receipt schema enforces these combinations:
+
+| Result | Required evidence |
+| --- | --- |
+| `verified-done` | `verified` confidence, no unresolved mandatory facts or unknown/ambiguous mandatory verification, no warnings, and no failure |
+| `done-with-warnings` | At least one warning, no load-bearing warning, and no unresolved mandatory facts or unknown/ambiguous mandatory verification |
+| `failed` | A failure identity |
+| `cancelled`, `partial` | No failure identity |
+
+Evidence ids must be unique. A `verified` verification row needs evidence. These refinements are in
+`RunEvidenceReceiptSchema`; display text does not establish a verdict. The current SQL baseline
+does not repeat the old `verified-done` confidence check in the `run_receipts` table definition.
+
+Dry-run envelope and terminal preview schema must agree. A transaction preview records
+`DRY_RUN_PREVIEW` as load-bearing uncertainty, with an unknown terminal-result obligation, so its
+receipt is `partial` with `unknown` confidence. A preview does not prove an external write.
+
+An omitted task output carries `operator-assertion` source, an assertion decision, and a mandatory
+`present` obligation rather than `verified`. `OPERATOR_OMITTED_STEP` is load-bearing uncertainty.
+The receipt reconciles the terminal assertion with the exact marked checkpoint, schema hash, output
+digest, step, and instant. An omitted transaction has no invented transaction checkpoint.
+
+Reuse rows preserve source, age, and freshness limit. A replay does not become a fresh observation.
+A retry keeps its own receipt and `retryOf` relation; Relay has no automatic field-level receipt
+comparison. `projectReceiptForOperator` serves the parsed composition-5 receipt without another
+value transform.
+
+## 2.5 Explain and operator exports
+
+`src/backend/app/composition/explain-compose.ts` implements
+`npm run cli -- explain run <traceId|runId> [--json]`. It admits the runtime, resolves the exact run,
+loads the registered descriptor, and uses `createReceiptService` for a settled receipt.
+`src/backend/runs/explain/explain-run.ts` assembles state, omitted steps, node dispositions, debug
+events, reuse, identity decisions, failure, actions, gates, writes, receipt, and next safe action.
+
+The command's `commandHistory` is absent in its current composition. Its `notifications` field is
+always absent and its reason incorrectly says no notification producer is wired. The command does
+not read the inbox, so that absence cannot establish that a run has no notification.
+`--bundle` refuses, and `explain failure <fingerprint>` is not implemented. The separate
+`explain diagnostics` command reads bounded persisted debug pages, or the stopped boot fault spool
+with `--boot`.
+
+`src/backend/runs/exports/search-metadata-export.ts` exports the accepted search metadata snapshot.
+`src/backend/runs/exports/spreadsheet-csv.ts` protects spreadsheet cells against formula execution.
+`operator-xlsx-export-service.ts`, `operator-xlsx-workbook.ts`, and `selection-download.ts` in that
+folder bind issued XLSX files to the accepted selection, actor, metadata, and verified bytes.
+Local exports preserve values their owning projection supplies. An export is evidence of that
+selection and file, not independent proof that an HR transaction completed.
+
+## Provider egress
+
+`ProviderCapabilityIdSchema` in `src/rules/identity/ids.ts` admits `ocr.extract`, `geocode.census`,
+and `geocode.nominatim`. The strict request and response envelopes live in
+`src/models/providers/providers.ts`; `src/workflow-kit/providers.ts` supplies the narrowed injected
+client interfaces. There is no failure-triage, run-summary, selector-suggestion, or other AI advisory
+capability in this implementation.
+
+`src/backend/processing/providers/provider-client.ts` validates execution identity and the retained
+config snapshot. It parses requests, checks adapter capability, refuses reused request ids, and
+applies cancellation and a monotonic deadline. Adapter failure returns an unavailable response
+without retry. Invalid adapter results return `invalid-response`. These envelopes are not a generic
+PII filter over the payload.
+
+For `ocr.extract`, a configured adapter is refused with `OCR provider policy not connected`.
+Calls return `adapter-unavailable` with `OCR provider not connected`.
+`src/backend/processing/ocr/tasks/extract-form-page.ts` maps that result to
+`ocr-provider-not-connected`. No ChatGPT OAuth connection or Responses adapter is present.
+
+### Address requests
+
+`src/backend/processing/normalization/tasks/read-contact-advice.ts` runs deterministic contact
+rules and optionally asks a geocoder when `input.geocode` is true and an address is present.
+Its local `before` values use `retainLocalEvidenceValue`. Its provider payload is separately built
+as `GeocodeRequestSchema` in `src/rules/normalization/geocode.ts`.
+
+The geocode payload contains complete `street`, optional `city`, `state`, `zip`, and `country`.
+It contains no contact name, employee id, telephone, relationship, or `address2`. It does not pass
+those address strings through `redactValue` before transmission.
+`src/backend/processing/providers/geocode-adapters.ts` sends Census address fields as URL query
+parameters to `https://geocoding.geo.census.gov/geocoder/locations`. It sends Nominatim a combined
+address query to `https://nominatim.openstreetmap.org/search`.
+
+The task tries Census first for a US-shaped address and Nominatim otherwise or after an unavailable
+Census answer. It records unavailable answers and proposed changes with source and confidence.
+`no-match` is a produced answer. An unverified match does not apply provider suggestions.
+`src/backend/processing/providers/nominatim-owner.ts` owns the shared local channel and request
+queue; it does not make the external address query local evidence.
+
+## Notifications and delivery
+
+`src/rules/notifications/notification-triggers.ts` owns `NotificationTriggerEventSchema` and
+`projectNotificationTrigger`. Events carry ids, closed codes, counts, and typed storage concerns.
+The projection creates repository-authored title and summary text; it accepts no captured form prose.
+The event-to-inbox mapping is:
+
+| Event | Trigger | Channel |
+| --- | --- | --- |
+| `run-failed`, `subject-mismatch` | `failed` | `ping` |
+| `gate-opened` | `gate-waiting` | `ping` |
+| `write-parked` | `write-parked` | `ping` |
+| `repeating-failure` | `repeating` | `ping` |
+| `storage-degraded` | `storage` | `ping` |
+| `verified-done` | `verified-done` | `inbox` |
+| `backfill-gap` | `backfill-gap` | `ping` |
+
+`src/backend/runs/notifications/inbox.ts` creates or folds the row and records its publication
+source in one authority transaction. Same-source replay is `existing` and leaves the inbox state
+unchanged. Divergent source content refuses. A distinct occurrence with the same actor and dedupe
+fingerprint folds the row. Publication validates a run-linked event against canonical run and
+workflow identity.
+
+`src/backend/storage/sqlite/authority-database.ts` owns notification create, fold, and versioned
+state updates. A fold increments count and version, updates last-seen time, and marks the row unread.
+Read state and snooze are independent. The command kernel applies actor and expected-version checks.
+Backfill-gap rows remain immutable. Notification mutability does not make receipt or write evidence
+mutable.
+
+After durable publication, the inbox reports `suppressed-snoozed`, `no-channel`, or
+`not-requested-existing`. There is no OS delivery implementation, and a `ping` channel does not
+prove that a toast was sent or seen. The current notification renderer uses its own view model;
+its presence does not establish a connected desktop delivery path.
+
+### Production observations
+
+`src/backend/app/composition/dashboard/notification-sources.ts` reads canonical live runs inside
+one authority snapshot. It observes failures, subject mismatch, gate parks, write parks, repeating
+failures, and qualifying stored receipts. It checks exact failure and receipt identities before
+projecting events. A verified-done notification requires a non-dry-run terminal `done` run and a
+`verified-done` receipt with `verified` confidence.
+
+Repeating failures group retained live failures by workflow, node or task, and code. The third
+distinct failure crosses the threshold; later distinct failures fold it. The reader does not include
+archived source generations or infer evidence for a receipt that is missing.
+
+`notification-health.ts` in that composition folder owns durable health observations and threshold
+sampling. `src/backend/runs/notifications/backfill-gap.ts` publishes explicit server-resume gaps;
+a disconnect or timeout alone does not establish a gap.
+
+`createNotificationObserver` in `src/backend/runs/notifications/observation.ts` serializes reads
+and publications, retains failed pending occurrences, exposes closed observation diagnostics, and
+awaits in-flight work on stop. It removes pending occurrences only after durable publication.
+`src/backend/app/composition/dashboard/compose.ts` invokes the observer at startup and on its watch
+interval. The inbox cannot store an alert while its own authority is unavailable; the dashboard's
+storage failure response remains the separate indication of that condition.
+
+## 5.2 Semantic UI and Explorer evidence
+
+`src/models/ui/contracts.ts` defines the shared semantic vocabulary. `ElementId`, `ScreenId`,
+`PageStateId`, and `ObservationId` come from `src/rules/identity/ids.ts`. Evidence-entry occurrence
+identity remains separate from semantic UI identity.
+
+Each system's `src/backend/systems/<system>/driver/ui-registry.ts` owns its locator, page-state,
+and observation recipes. Verification records name both fixture and read-only live evidence under
+`tests/support/fixtures/ui/<system>/`, with registered verification scenarios. A recorded
+`verifiedAt` does not prove the current external page still matches. `exactly-one-visible` and
+`exactly-one-editable` state different observations; neither claims an external write.
+
+`src/models/ui/driver.ts` defines the typed driver boundary, and
+`src/backend/systems/browser-shared/semantic-ui-effect.ts` adapts registered effects and sensitivity.
+Tasks use registered driver operations instead of inventing selectors. The system driver owns raw
+browser access. [Task contract](task-contract.md) and [write safety](write-safety.md) own the task
+context and commit capability.
+
+`src/backend/systems/ui-task-links.ts` derives Explorer links from the semantic registries.
+There is no generated UI catalog, catalog endpoint, or selector-search command.
+`src/backend/runs/queries/explorer.ts` projects registered descriptors, compiled definitions,
+sealed contracts, source manifests, semantic links, and presentation overrides. It reports unresolved
+source links explicitly and does not infer live run observations. Missing `tests/scenario` sources
+remain unresolved references rather than fabricated replacements.
+
+## 5.4 Explorer edits
+
+`src/backend/runs/commands/explorer-edit-service.ts` validates strict drafts against descriptor
+version, fingerprint, and override revision. Its current compile attestation says `held` for the
+builder/schema/graph/guard checks and registered scenario-declaration equivalence. It does not claim
+that validation executes tests or requires every scenario source to resolve.
+
+Hot apply accepts only existing-workflow label, icon, and category overrides. The command kernel
+writes the override, command outcome, and audit in the same SQLite transaction through
+`authority.explorerOverrides`. Revision conflicts and divergent replay refuse. Each read captures
+one current override view. It does not maintain a second JSON-file authority or a cross-request
+cache. Policy and Edit Data changes produce a reviewed code-change brief; mixed hot-apply/source
+changes refuse. Arbitrary code, selectors, proof logic, identity rules, secrets, and new workflows
+remain outside the hot-apply protocol.
+
+## Not built yet
+
+- Settings must connect OCR through Sign in with ChatGPT, OAuth with PKCE and loopback redirect,
+  the Responses API, and tokens held in the local credential store.
+- Notification wiring must connect the approved drawer controls and silent desktop Pings with
+  explicit enablement, one same-origin tab owner, and no toast replay on startup or reconnect.
+- Workflow acceptance must prove real receipt, failure, capture, and notification behavior through
+  the served dashboard and a dry run before operator sign-off.

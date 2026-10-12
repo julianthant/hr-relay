@@ -32,8 +32,8 @@ export interface BootstrapQueryDeps {
   readonly projection: Pick<RunQueueProjection, "generation">;
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
-  // Use manifest age and generation for the cheap indicator; the doctor performs byte verification.
-  readonly backupSummary: () => "current" | "stale" | "missing";
+  // The summary checks copy shape; the doctor verifies its contents.
+  readonly backupSummary: () => "current" | "stale" | "missing" | "unavailable";
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
 }

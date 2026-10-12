@@ -478,7 +478,7 @@ async function composeDashboardRuntimeStartup(
     reason: "backups are written only on operator command (npm run cli -- storage backup)",
   });
 
-  const readBackupSummary = (): "current" | "stale" | "missing" => {
+  const readBackupSummary = (): ReturnType<typeof summarizeBackupHealth> => {
     let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
     try {
       liveGeneration = { state: "known", value: database.getMeta().authorityGeneration };
@@ -632,7 +632,7 @@ async function composeDashboardRuntimeStartup(
     }
   });
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
-  // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
+  // Ref write-safety's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
 
   const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({

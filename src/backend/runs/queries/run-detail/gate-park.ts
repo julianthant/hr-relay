@@ -130,7 +130,7 @@ export function buildRunGate(
   return settledGateWire(runId, run.envelope.workflow, stored.at(-1), row?.resolvedGates.at(-1));
 }
 
-/* ── the parked-write section (ref write-safety §4.1) ──────────────────────────────── */
+/* ── the parked-write section (ref write-safety ) ──────────────────────────────── */
 
 // Serve current data only through exact registered origin declarations; uncertain evidence stays distinct.
 function parkedWriteSubject(proof: WriteBindingProof): unknown {

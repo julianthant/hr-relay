@@ -268,6 +268,7 @@ const MEMBER_PREVIEW_LIMIT = 3;
 
 interface LinkedRunView {
   readonly runId: string;
+  readonly partitionDay: string;
   readonly workflowId: string;
   readonly label: string;
   readonly panelKind: "run" | "member" | "group";
@@ -1001,6 +1002,7 @@ export class RunQueueProjection {
   #linkedRuns(children: readonly RunRecord[]): readonly LinkedRunView[] {
     return children.filter((child) => child.envelope.shape !== "operation-member").map((child) => ({
       runId: child.envelope.runId,
+      partitionDay: localDatePart(new Date(child.envelope.enqueuedAt)),
       workflowId: child.envelope.workflow,
       label: this.#deps.descriptors.resolve(child.envelope.workflow)?.label ?? child.envelope.workflow,
       panelKind: panelKindOf(child.envelope.shape),

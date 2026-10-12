@@ -23,7 +23,7 @@ export function atomicWriteCheckpoint(input: unknown) {
 }
 
 /** Unit fixtures retain an actual owner; timeline history may never manufacture it. */
-export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown, path: string): void {
+export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown, path: string, preferredPoolIndex?: number): void {
   const commit = currentAtomicWriteFixture(input);
   const ledger = commit.transaction;
   const existing = database.authority.runs.get(ledger.runId);
@@ -49,11 +49,12 @@ export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown
   }));
   const slot = database.withAuthorityTransaction(repositories => {
     const currentSlots = repositories.workerSlots.list(ledger.workflowId).filter(slot => slot.retiredAt === null);
-    let admitted = currentSlots.find(slot => !repositories.runs.listByWorker(slot.workerId).some(run =>
+    let admitted = currentSlots.find(slot => (preferredPoolIndex === undefined || slot.poolIndex === preferredPoolIndex)
+      && !repositories.runs.listByWorker(slot.workerId).some(run =>
       ["claimed", "validating", "running"].includes(run.lifecycle.state)));
     if (admitted === undefined) {
       const occupied = new Set(currentSlots.map(slot => slot.poolIndex));
-      const poolIndex = [1, 2, 3].find(index => !occupied.has(index));
+      const poolIndex = (preferredPoolIndex === undefined ? [1, 2, 3] : [preferredPoolIndex]).find(index => !occupied.has(index));
       if (poolIndex === undefined) throw new Error("fixture has no unheld worker slot");
       admitted = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: ledger.workflowId,
         poolIndex, expectedPoolVersion: repositories.workerPools.get(ledger.workflowId)?.version ?? 0,

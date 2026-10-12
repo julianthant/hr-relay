@@ -49,8 +49,8 @@ import {
 } from "../../../../models/ui/new-kronos-timecard.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
-const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json";
-const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json";
+const FIXTURE_EVIDENCE = "tests/support/fixtures/ui/new-kronos/timecard.fixture.json";
+const LIVE_EVIDENCE = "tests/support/fixtures/ui/new-kronos/timecard.live.json";
 const SEARCH_SCENARIO = "ui/new-kronos-employee-search";
 const TIMECARD_SCENARIO = "ui/new-kronos-timecard-read";
 
