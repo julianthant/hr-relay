@@ -89,7 +89,7 @@ const STORAGE_USAGE = [
   "       storage recover-restore --operation <id> --from <manifest.json> --outcome <unchanged|replaced> [--json]",
   "       storage relocate --plan <command-id> | --resume <operation-id> | --status [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
-  "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
+  "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces); exit 0 only when",
   "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated",
   "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
   "           this command is the only backup writer — the dashboard runs no cadence",
