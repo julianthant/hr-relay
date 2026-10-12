@@ -15,6 +15,7 @@ import { absentProbeEvidence, writeFixtureDescriptor, writeFixtureParallelDescri
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, NOW, UUID_1, UUID_8 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
@@ -127,7 +128,7 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
     void runId; void runAttempt; void currentAttemptId; void bindingProof; void bindingProofDigest; void fencedAt;
     orphan.database.authority.writeIntents.recordObservedPresent({ ...baseIdentity, status: "observed-present", observedProof: completionProof, observedAt: confirmedAt });
     seedCorruptWriteFenceFixture(orphan.database, { intent: fenced,
-      attempt: { ...attempt, outcome: { state: "attempting" } } });
+      attempt: { ...attempt, outcome: { state: "attempting" } } }, DatabaseSync);
     assert.equal(orphan.database.authority.runs.get(one.envelope.runId), undefined);
     const otherCommand = orphan.ids.uuid();
     const key = repeatOccurrenceKey(unresolved.occurrence.businessKeyDigest, otherCommand, unresolved.occurrence.nodeId);

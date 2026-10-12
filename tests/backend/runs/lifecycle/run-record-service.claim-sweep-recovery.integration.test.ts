@@ -148,7 +148,7 @@ describe("expired-claim sweep write-intent gate", () => {
     seedCorruptWriteFenceFixture(database, {
       intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
-    });
+    }, DatabaseSync);
 
     const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), { staleBefore: MUCH_LATER, now: MUCH_LATER });
     assert.equal(swept.length, 1);
@@ -269,7 +269,7 @@ describe("expired-claim sweep write-intent gate", () => {
     seedCorruptWriteFenceFixture(database, {
       intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
-    });
+    }, DatabaseSync);
 
     const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), {
       workerId: WORKER_ID,

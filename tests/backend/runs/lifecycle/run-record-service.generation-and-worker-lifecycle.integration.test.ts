@@ -3,6 +3,7 @@ import { createRunRecordServiceTestWorld } from "../../../support/helpers/backen
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import ts from "typescript";
 import { afterEach, describe, it } from "vitest";
 import { lifecycleCommandId, requireLifecycleApplied, runContinuationPort, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -205,7 +206,7 @@ describe("worker lifecycle service capability", () => {
       intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
         runId: absentRunId, bindingProof, bindingProofDigest },
       attempt: { ...WRITE_ATTEMPT, runId: absentRunId, bindingProof, bindingProofDigest },
-    });
+    }, DatabaseSync);
     assert.equal(database.authority.writeIntents.listByRun(run.envelope.runId).length, 0);
     const generation = database.getMeta().authorityGeneration;
     assert.equal(database.authority.writeIntents.listAttemptingByItem({

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync as DatabaseSyncInstance } from "node:sqlite";
 import { WriteFenceRecordsSchema } from "../../../src/backend/storage/sqlite/write-commit-contracts.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { runClaim } from "../../../src/models/run/record.js";
@@ -57,7 +57,8 @@ export function fenceWriteFixture(database: AuthorityDatabase, input: unknown, p
   return result;
 }
 
-export function seedCorruptWriteFenceFixture(database: AuthorityDatabase, input: unknown): void {
+export function seedCorruptWriteFenceFixture(database: AuthorityDatabase, input: unknown,
+  DatabaseSync: new (location: string) => DatabaseSyncInstance): void {
   const { intent, attempt } = WriteFenceRecordsSchema.parse(input);
   if (intent.status !== "attempting") throw new Error("corruption fixture intent is not attempting");
   const raw = new DatabaseSync(syntheticDatabasePath(database));
