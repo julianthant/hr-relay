@@ -9,7 +9,7 @@ It does not prove live workflow or service readiness.
 
 ```sh
 npm run test:parity
-npm run test:parity -- frontend-controls.spec.ts
+npm run test:parity -- frontend-controls.test.ts
 npm run test:parity -- --grep "keyboard-only"
 ```
 
@@ -27,7 +27,7 @@ The default lane is headless Chromium, 1280×720, device scale factor 1, no touc
 emulation. Default reference captures use the `graphite-warm` theme with `data-demo-theme="dark"`.
 It uses two workers, `fullyParallel: true`, no retries, and a 120-second test timeout.
 Individual desktop interaction specs cover resize, zoom-related canvas behavior,
-keyboard access, and reduced motion. `workflow-batches.spec.ts` explicitly tests light and dark
+keyboard access, and reduced motion. `workflow-batches.test.ts` explicitly tests light and dark
 outside the default reference axis. Do not add phone or coarse-pointer variants.
 
 `tests/parity/helpers/global-setup.ts` builds or verifies the bundle once before workers start.
@@ -49,7 +49,7 @@ a subtle uniform color change can remain below it, so token and semantic tests s
 references fail in assert mode. One update switch refreshes all halves together.
 
 `helpers/reference-scenes.ts` and the surface scene modules name key captures.
-`dashboard-reference.spec.ts` covers shell scenes and access variants. `kit-reference.spec.ts`
+`dashboard-reference.test.ts` covers shell scenes and access variants. `kit-reference.test.ts`
 captures the real specimen full-page. Interaction specs assert transient behavior that a resting
 screenshot cannot establish.
 

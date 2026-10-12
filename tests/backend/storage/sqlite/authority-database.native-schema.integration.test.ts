@@ -1,0 +1,82 @@
+import assert from "node:assert/strict";
+
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, describe, it } from "vitest";
+
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+
+import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
+
+import { manualClock } from "../../../../src/rules/time/clock.js";
+
+import { COMMAND_FIXTURES, NOW, UUID_1 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+
+const roots: string[] = [];
+const openDatabases: AuthorityDatabase[] = [];
+const databasePaths = new WeakMap<AuthorityDatabase, string>();
+const CLOCK = manualClock(new Date(NOW));
+
+function databasePath(name = "authority.sqlite"): string {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-sqlite-"));
+  roots.push(root);
+  return join(root, name);
+}
+
+function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
+  const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
+  openDatabases.push(database);
+  databasePaths.set(database, path);
+  return database;
+}
+
+afterEach(() => {
+  for (const database of openDatabases.splice(0)) database.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("native SQLite authority schema", () => {
+
+  it("creates every registered table with its exact authority classification and required pragmas", () => {
+    const database = openDatabase();
+    const inspection = database.inspectSchema();
+    assert.deepEqual(inspection.tables, [...AUTHORITY_TABLE_REGISTRY]
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map(({ name, classification }) => ({ name, classification })));
+    assert.equal(inspection.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(inspection.authorityGeneration, 0);
+    assert.deepEqual(inspection.pragmas, {
+      journalMode: "wal",
+      foreignKeys: 1,
+      synchronous: 2,
+      busyTimeoutMs: 250,
+    });
+  });
+
+  it("reopens an already-current database without rerunning the migration", () => {
+    const path = databasePath();
+    const first = openDatabase(path);
+    first.authority.commands.insert(COMMAND_FIXTURES[0]);
+    const before = first.getMeta();
+    first.close();
+    const reopened = openDatabase(path);
+    assert.deepEqual(reopened.getMeta(), before);
+    assert.deepEqual(reopened.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
+  });
+
+  it("fails when another connection holds the migration/write lease", () => {
+    const path = databasePath();
+    openDatabase(path).close();
+    const locker = new DatabaseSync(path);
+    locker.exec("BEGIN EXCLUSIVE");
+    const contender = openDatabase(path, 10);
+    assert.throws(() => contender.authority.commands.insert(COMMAND_FIXTURES[0]), /database is locked/);
+    assert.equal(contender.getMeta().authorityGeneration, 0);
+    locker.exec("ROLLBACK");
+    locker.close();
+  });
+});

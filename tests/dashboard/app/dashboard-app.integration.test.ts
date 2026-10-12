@@ -1,0 +1,404 @@
+import { vi } from "vitest";
+import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m0 } from "../../parity/helpers/workflow-composition.js";
+// @vitest-environment jsdom
+import assert_m0 from "node:assert/strict";
+import { act as act_m0,createElement as createElement_m0,Fragment as Fragment_m0 } from "react";
+import { createRoot as createRoot_m0,type Root as Root_m0 } from "react-dom/client";
+import { it as it_m0 } from "vitest";
+import { RUN_START_DOOR_ID as RUN_START_DOOR_ID_m0 } from "../../../src/dashboard/app/dashboard-app-model.js";
+import { DashboardApp as DashboardApp_m0 } from "../../../src/dashboard/app/dashboard-app.js";
+import { createDashboardClient as createDashboardClient_m0,type DashboardClient as DashboardClient_m0 } from "../../../src/dashboard/client/index.js";
+import { DashboardClientProvider as DashboardClientProvider_m0 } from "../../../src/dashboard/state/client-context.js";
+import { importSpreadsheet as importSpreadsheet_m0 } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js";
+import { registeredSpreadsheetWorkbook as registeredSpreadsheetWorkbook_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m0,useSpreadsheetMocks as useSpreadsheetMocks_m0,type RegisteredSpreadsheet as RegisteredSpreadsheet_m0 } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
+import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m1 } from "../../parity/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../support/fixtures/dashboard/fixture-queue.js";
+import { createFixtureBff as createFixtureBff_m0 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
+// @vitest-environment jsdom
+import assert_m1 from "node:assert/strict";
+import { act as act_m1,createElement as createElement_m1 } from "react";
+import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
+import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from "vitest";
+import { DashboardApp as DashboardApp_m1 } from "../../../src/dashboard/app/dashboard-app.js";
+import { parseRoute as parseRoute_m1 } from "../../../src/dashboard/app/navigation/url-state.js";
+import { createDashboardClient as createDashboardClient_m1,type DashboardClient as DashboardClient_m1 } from "../../../src/dashboard/client/index.js";
+import { DashboardClientProvider as DashboardClientProvider_m1 } from "../../../src/dashboard/state/client-context.js";
+import { LocalDateSchema as LocalDateSchema_m1 } from "../../../src/rules/identity/ids.js";
+import { FIXTURE_BOOTSTRAP as FIXTURE_BOOTSTRAP_m1 } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1,FIXTURE_IDS as FIXTURE_IDS_m1 } from "../../support/fixtures/dashboard/fixture-queue.js";
+import { createFixtureBff as createFixtureBff_m1 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
+
+
+{
+
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+let root: Root_m0 | undefined;
+let registeredFiles: readonly RegisteredSpreadsheet_m0[] = [];
+function RegistryProbe() { registeredFiles = useSpreadsheetMocks_m0().files; return null; }
+const _afterEachFixture0 = async () => {
+  await act_m0(async () => root?.unmount()); root = undefined;
+  resetSpreadsheetMocks_m0(); vi.unstubAllGlobals();
+  document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, "", "/");
+};
+async function settle() { await act_m0(async () => { await new Promise(resolve => setTimeout(resolve, 35)); }); }
+function button(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll("button")].find(node => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);
+  assert_m0.ok(found, `missing ${name}`); return found;
+}
+async function click(node: HTMLElement) { await act_m0(async () => { node.focus(); node.click(); }); await settle(); }
+async function key(value: string) {
+  await act_m0(async () => { (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", {key:value,bubbles:true,cancelable:true})); });
+  await settle();
+}
+async function mount(overrides: Partial<DashboardClient_m0> = {}) {
+  window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE_m0.day}`);
+  localStorage.setItem("hr-dashboard.workflow-panel", "icon");
+  const { app } = createFixtureBff_m0();
+  const client: DashboardClient_m0 = {
+    ...createDashboardClient_m0({baseUrl:"http://fixture",fetchImpl:async (url,init) => app.request(String(url),init)}),
+    subscribeDay(input) { input.onDay(FIXTURE_DAY_WIRE_m0); input.onState({state:"live"}); return {close() {}}; },
+    ...overrides,
+  };
+  const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
+  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(Fragment_m0, null, createElement_m0(DashboardApp_m0, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m0 }), createElement_m0(RegistryProbe))})));
+  await settle();
+}
+async function chooseSpreadsheet() {
+  vi.stubGlobal("Worker", class {
+    onmessage?: (event: MessageEvent) => void;
+    terminate() {}
+    postMessage(request: { kind: string; name: string; data: ArrayBuffer }) {
+      assert_m0.equal(request.kind, "import");
+      void importSpreadsheet_m0(request.name, request.data).then(value => this.onmessage?.(new MessageEvent("message", { data: { state: "ready", value } })));
+    }
+  });
+  const bytes = new TextEncoder().encode("Name,Employee ID\nJordan Lee,10800000\n");
+  const file = new File([bytes], "Focus roster.csv", { type: "text/csv" });
+  Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="Open XLSX or CSV"]'); assert_m0.ok(input);
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+  await act_m0(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+  await settle();
+  assert_m0.ok(document.querySelector('[role="dialog"]'));
+}
+for (const launch of ["external button", "keyboard shortcut"] as const) {
+  for (const dismissal of ["Cancel", "Escape", "Close"] as const) {
+    it_m0(`${launch}: ${dismissal} restores the Run launch control after the real dialog unmounts`,async () => {
+try {
+
+
+      await mount();
+      const door=button("Start a run"); assert_m0.equal(door.id,RUN_START_DOOR_ID_m0);
+      if(launch === "external button") await click(door);
+      else { button("Settings").focus(); await key("r"); }
+      const dialog=document.querySelector('[role="dialog"]'); assert_m0.ok(dialog);
+      assert_m0.ok(dialog.contains(document.activeElement),"opening must move focus into the dialog");
+      if(dismissal === "Escape") await key("Escape"); else await click(button(dismissal));
+      assert_m0.ok(document.querySelector('[role="dialog"]') === null);
+      assert_m0.ok(document.activeElement === door, `focus returned to ${document.activeElement?.tagName}, not the Run door`);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+  }
+}
+
+it_m0("spreadsheet import is a Settings destination and leaves the Run launch focus intact", async () => {
+try {
+
+
+  let uploads = 0;
+  await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
+  await click(button("Start a run"));
+  assert_m0.equal(document.querySelectorAll('input[type="file"]').length, 0);
+  await key("Escape"); assert_m0.ok(document.activeElement === button("Start a run"));
+  await click(button("Settings"));
+  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
+  await click(link);
+  await click(button("Import spreadsheet"));
+  await chooseSpreadsheet();
+  await click(button("Import selected columns"));
+  assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
+  assert_m0.ok(document.body.textContent?.includes("Spreadsheet imported"));
+  const imported = registeredFiles.find(file => file.name === "Focus roster.csv"); assert_m0.ok(imported);
+  const workbook = registeredSpreadsheetWorkbook_m0(imported);
+  assert_m0.equal(workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
+  assert_m0.equal(String(workbook.sheets[0].rows[1].cells[1].value), "10800000");
+  assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+it_m0.each(["Cancel", "Escape", "Close"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
+try {
+
+
+  let starts = 0;
+  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
+  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
+  const before = registeredFiles.map(file => file.id);
+  await click(button("Import spreadsheet"));
+  await chooseSpreadsheet();
+  if (dismissal === "Escape") await key("Escape"); else await click(button(dismissal === "Cancel" ? "Cancel import" : dismissal));
+  assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
+  assert_m0.deepEqual(registeredFiles.map(file => file.id), before);
+  assert_m0.equal(starts, 0);
+  assert_m0.equal(document.activeElement, button(dismissal === "Cancel" ? "Import spreadsheet" : "Review import"));
+  assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+}
+
+{
+
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+let root: Root_m1 | undefined;
+const _afterEachFixture0 = async () => {
+  await act_m1(async () => root?.unmount());
+  root = undefined;
+  vi.restoreAllMocks();
+  document.body.innerHTML = "";
+  localStorage.clear();
+  window.history.replaceState(null, "", "/");
+};
+async function settle() { await act_m1(async () => { await new Promise(resolve => setTimeout(resolve, 35)); }); }
+function button(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll("button")].find(node => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);
+  assert_m1.ok(found, `button ${name}`);
+  return found;
+}
+function workflowButton(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflows"] button')]
+    .find(node => node.textContent?.trim().startsWith(name));
+  assert_m1.ok(found, `workflow ${name}`);
+  return found;
+}
+async function click(node: HTMLElement) { await act_m1(async () => node.click()); await settle(); }
+async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}, panelMode: "icon" | "sidebar" = "icon", workflowComposition = PARITY_WORKFLOW_COMPOSITION_m1) {
+  window.history.replaceState(null, "", `/${search}`);
+  localStorage.setItem("hr-dashboard.workflow-panel", panelMode);
+  const { app } = createFixtureBff_m1();
+  const client: DashboardClient_m1 = {
+    ...createDashboardClient_m1({baseUrl:"http://fixture",fetchImpl: async (url, init) => app.request(String(url), init)}),
+    subscribeDay(input) { input.onDay(FIXTURE_DAY_WIRE_m1); input.onState({state:"live"}); return {close() {}}; },
+    ...overrides,
+  };
+  const host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
+  await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { workflowComposition })})));
+  await settle();
+}
+async function historyMove(direction: "back" | "forward") { window.history[direction](); await settle(); await settle(); }
+
+describe_m1("mounted shell navigation", () => {
+afterEach_m1(_afterEachFixture0);
+
+  it_m1("remembers the selected workflow across navigation and remount, then falls back if it is no longer served", async () => {
+    const first = FIXTURE_BOOTSTRAP_m1.workflows[0]; assert_m1.ok(first);
+    const workflows = [first, { ...first, id: "separations", code: "sp", label: "Separations" }];
+    const bootstrap = async () => ({ ...FIXTURE_BOOTSTRAP_m1, workflows });
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap }, "sidebar");
+    await click(workflowButton("Separations"));
+    assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
+    assert_m1.ok(workflowButton("Separations").querySelector('[aria-label="0 active of 0 in Separations"]'));
+    assert_m1.doesNotMatch(document.querySelector('nav[aria-label="Workflows"]')?.textContent ?? "", /active\s*│\s*all/iu);
+    assert_m1.equal(localStorage.getItem("hr-dashboard.selected-workflow"), "separations");
+    await click(button("Settings"));
+    await historyMove("back");
+    assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
+
+    await act_m1(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, { bootstrap }, "sidebar");
+    assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
+
+    await act_m1(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {}, "sidebar");
+    assert_m1.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
+  });
+  it_m1("reports detail failure and never calls it an empty selection", async () => {
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&run=missing-run`);
+    assert_m1.match(document.body.textContent ?? "", /Run unavailable/);
+    assert_m1.doesNotMatch(document.body.textContent ?? "", /No run open/);
+  });
+  it_m1("joins a deep-linked run to its served workflow even when it is not the first workflow", async () => {
+    const first = FIXTURE_BOOTSTRAP_m1.workflows[0]; assert_m1.ok(first);
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.runningRun}`, {
+      bootstrap: async () => ({...FIXTURE_BOOTSTRAP_m1,workflows:[{...first,id:"another-workflow",label:"Another workflow"},first]}),
+    });
+    const selected = document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`);
+    assert_m1.ok(selected, "selected run must belong to the visible queue");
+  });
+  it_m1("Settings gear toggles the surface and competing keys resolve one takeover", async () => {
+    await mount("?settings=keyboard&archive=&explore=missing");
+    assert_m1.ok(document.querySelector('[aria-label="Settings"]'));
+    const cursor = Number(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"));
+    await click(button("Settings"));
+    assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
+    await click(button("Settings"));
+    assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
+    assert_m1.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), cursor + 2);
+    await historyMove("back");
+    assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
+    await historyMove("forward");
+    assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
+    await click(button("Settings"));
+    assert_m1.equal(new URLSearchParams(location.search).has("archive"),false);
+    assert_m1.equal(new URLSearchParams(location.search).has("explore"),false);
+  });
+});
+
+async function editNavigationTimeout() {
+  const field = document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]'); assert_m1.ok(field);
+  await act_m1(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set?.call(field,"111");
+    field.dispatchEvent(new Event("input",{bubbles:true}));
+  });
+}
+it_m1("keeps the Settings editor and draft across ordinary-section native history", async () => {
+try {
+
+
+  await mount("?settings=performance");
+  await editNavigationTimeout();
+  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "General"); assert_m1.ok(general);
+  await click(general);
+  await historyMove("back");
+  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
+  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
+  const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert_m1.ok(analytics);
+  await click(analytics);
+  assert_m1.equal(document.querySelector("h1")?.textContent, "Analytics");
+  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
+  await historyMove("back");
+  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
+  await click(button("Settings"));
+  await click(button("Discard changes"));
+  assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+it_m1.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("keeps retired Archive URL %s explicit and returns to the queue", async search => {
+try {
+
+
+  await mount(search);
+  assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
+  assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
+  assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
+  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 11);
+  await click(button("Return to dashboard"));
+  assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
+  assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
+  assert_m1.ok(document.querySelector('[data-demo-row-id]'));
+
+} finally {
+await _afterEachFixture0();
+}
+});
+it_m1("hidden queue shortcuts do not open a run behind Settings",async()=>{
+try {
+
+
+  await mount("?settings=keyboard");
+  const before=location.search;
+  for(const key of ["j","k","n","r","w","1"]){
+    await act_m1(async()=>window.dispatchEvent(new KeyboardEvent("keydown",{key,bubbles:true,cancelable:true})));
+  }
+  assert_m1.equal(location.search,before);
+  assert_m1.equal(document.querySelector('[role="dialog"][aria-label="Workflow Panel"]'),null);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+it_m1("failed and delayed day snapshots never render an empty or stale queue",async()=>{
+try {
+
+
+  let current: Parameters<DashboardClient_m1["subscribeDay"]>[0] | undefined;
+  let old: Parameters<DashboardClient_m1["subscribeDay"]>[0] | undefined;
+  await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.runningRun}`,{
+    subscribeDay(input){old=current;current=input;if(input.day===FIXTURE_DAY_WIRE_m1.day) input.onDay(FIXTURE_DAY_WIRE_m1);return{close(){}};},
+  });
+  await act_m1(async()=>{
+    window.history.pushState({hrDashboardRouteCursor:1},"","/?day=2026-08-02");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  assert_m1.ok(document.querySelector('[role="status"][aria-label="Loading queue"][aria-busy="true"]'));
+  await act_m1(async()=>old?.onDay(FIXTURE_DAY_WIRE_m1));
+  assert_m1.equal(document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`),null);
+  await act_m1(async()=>current?.onDay({...FIXTURE_DAY_WIRE_m1,day:LocalDateSchema_m1.parse("2026-08-02"),queueSurfaces:[],statusCounts:[],workflowCounts:[],monthCounts:[]}));
+  assert_m1.equal(document.querySelector('[role="status"][aria-label="Loading queue"]'), null);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+it_m1("an empty catalog is not a fabricated workflow queue",async()=>{
+try {
+
+
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...PARITY_WORKFLOW_COMPOSITION_m1(workflows), catalogIncludesMocks: false, servedDay: true }));
+  assert_m1.match(document.body.textContent??"",/No workflows available/);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+it_m1("a failed day displays its error, with no zero-count status controls",async()=>{
+try {
+
+
+  const {DashboardClientError}=await import("../../../src/dashboard/client/index.js");
+  await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`,{subscribeDay(input){input.onState({state:"stopped",error:new DashboardClientError({kind:"network",message:"Queue transport failed"})});return{close(){}};}});
+  assert_m1.match(document.body.textContent??"",/Could not load queue/);
+  assert_m1.match(document.body.textContent??"",/Queue transport failed/);
+  assert_m1.equal(document.querySelector('[aria-label="Filter the queue by status"]'),null);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+
+it_m1("native date history preserves a dirty Settings draft, then restores the accepted date", async () => {
+try {
+
+
+  await mount("?day=2026-08-02", {
+    subscribeDay(input) {
+      input.onDay({ ...FIXTURE_DAY_WIRE_m1, day: LocalDateSchema_m1.parse(input.day), queueSurfaces: [], statusCounts: [], workflowCounts: [], monthCounts: [] });
+      input.onState({ state: "live" }); return { close() {} };
+    },
+  });
+  await click(button("Settings"));
+  const performance = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Performance"); assert_m1.ok(performance);
+  await click(performance);
+  const width = document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]'); assert_m1.ok(width);
+  await act_m1(async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value"); if (descriptor?.set === undefined) throw new Error("input value setter missing");
+    descriptor.set.call(width, "1777"); width.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await historyMove("back"); // Settings root retains its editor.
+  await historyMove("back");
+  await click(button("Keep editing"));
+  assert_m1.equal(width.value, "1777");
+  assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
+  await historyMove("back"); await click(button("Discard changes")); await settle();
+  assert_m1.equal(new URLSearchParams(location.search).get("day"), "2026-08-02");
+  assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
+
+} finally {
+await _afterEachFixture0();
+}
+});
+}

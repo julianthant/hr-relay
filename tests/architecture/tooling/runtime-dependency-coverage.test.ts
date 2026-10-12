@@ -3,14 +3,6 @@ import { describe, it } from "vitest";
 import { BrowserSystemIdSchema } from "../../../src/rules/identity/ids.js";
 import { auditRuntimeDependencyCoverage, PREFLIGHT_CHECKS, ProviderIdSchema, RUNTIME_DEPENDENCY_REGISTRY, RuntimeCapabilitySchema, SYSTEM_RUNTIME_SPECS } from "../../../src/models/runtime/runtime-dependencies.js";
 
-
-
-
-function capabilitiesFor(prefix: string): readonly string[] {
-  return RuntimeCapabilitySchema.options.filter((capability) => capability.startsWith(prefix));
-}
-
-/** Membership by value, so a drifted id is a data mismatch rather than a type error. */
 const RUNTIME_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>(RuntimeCapabilitySchema.options);
 
 describe("runtime dependency coverage", () => {
@@ -21,7 +13,6 @@ describe("runtime dependency coverage", () => {
   it("gives every browser system a production route and credential", () => {
     const rebuild = [...BrowserSystemIdSchema.options].sort();
 
-    // Each system must be reachable through its production route and credential.
     const checkIds = new Set(PREFLIGHT_CHECKS.map(({ id }) => String(id)));
     for (const system of rebuild) {
       const spec = SYSTEM_RUNTIME_SPECS.find((candidate) => String(candidate.system) === system);
@@ -42,9 +33,7 @@ describe("runtime dependency coverage", () => {
     const checkCapabilities = new Set(PREFLIGHT_CHECKS.flatMap(({ capabilities }) => capabilities.map(String)));
     const uncovered = RuntimeCapabilitySchema.options.filter((capability) => !checkCapabilities.has(capability));
     assert.deepEqual(uncovered, [], "capabilities with no preflight check; owner src/models/runtime/runtime-dependencies.ts");
-    assert.equal(capabilitiesFor("system.").length, BrowserSystemIdSchema.options.length);
-    assert.equal(capabilitiesFor("provider.").length, ProviderIdSchema.options.length);
+    assert.equal(RuntimeCapabilitySchema.options.filter((capability) => capability.startsWith("system.")).length, BrowserSystemIdSchema.options.length);
+    assert.equal(RuntimeCapabilitySchema.options.filter((capability) => capability.startsWith("provider.")).length, ProviderIdSchema.options.length);
   });
-
-
 });

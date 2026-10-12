@@ -88,33 +88,29 @@ retain runtime workflow IDs and the existing task/store namespace semantics.
 
 ## Tests, support and evidence
 
-The reviewed architecture owner map is:
+Tests mirror their asserted source module. Source paths under `src/` drop that prefix; scripts and other repository source paths retain their full path.
 
 ```text
 tests/
 ├── architecture/{app,dashboard,logs,models,processing,runs,runtime,storage,support,systems,tooling,workflow-kit}/
-├── integration/
-│   ├── backend/{app,logs,processing,runs,runtime,storage,systems,transports}/
-│   ├── dashboard/{app,client,state,surfaces}/
-│   ├── tooling/{dashboard-launcher,scripts,test-runner,workflow-builder}/
-│   └── workflows/separations/
+├── backend/{app,logs,processing,runs,runtime,storage,systems,transports}/
+├── dashboard/{app,client,ds,lib,state,surfaces}/
+├── duo-autopilot/src/
+├── {models,rules,scripts,workflow-kit,workflows}/
 ├── parity/
 ├── perf/
-├── support/
-│   ├── fixtures/{dashboard,documents,dry-run,integration,preflight}/
-│   ├── helpers/{architecture,backend,dashboard,database-foundation,failure-resolution,integration,storage,trust}/
-│   └── processes/
+├── support/{fixtures,helpers,processes}/
 ├── types/
-└── unit/
-    ├── backend/{app,logs,processing,runs,runtime,storage,systems,transports}/
-    ├── dashboard/{app,client,ds,lib,state,surfaces}/
-    └── {models,rules,tooling,workflow-kit,workflows}/
+├── cli.test.ts
+├── vite.dashboard.config.test.ts
+└── vitest.config.integration.test.ts
 ```
 
+Unit files use `.test.ts`; integration files use `.integration.test.ts` beside them. Large module groups use topic suffixes. Helper contract tests live beside their helper in `tests/support/`; type-input contract tests live beside their input in `tests/types/`. The `tests/architecture/test-layout.test.ts` guard checks canonical filenames and mirrored existing tracked source paths.
+
 Architecture fixtures/helpers are colocated under dashboard, logs, models, runs, runtime, storage,
-support, systems and tooling owners. Unit and integration tests follow the same source-family split
-as production code. Shared fixtures, helpers and child-process entrypoints stay under
-`tests/support/`; helpers build fresh native authority and expose its actual timeline, claim and profile ports. Archive and old-format conversion fixtures are absent. Activity integration and parity share `fixtures/dashboard/fixture-activity.ts`; intake shares `fixtures/dashboard/fixture-intake-authority.ts`. The desktop parity suite remains the screenshot/accessibility
+support, systems and tooling owners. Unit and integration tests share the same module paths as production code. Shared fixtures, helpers and child-process entrypoints stay under
+`tests/support/`; helpers build fresh native authority and expose its actual timeline, claim and profile ports. Archive and old-format conversion fixtures are absent. Activity integration and parity share `fixtures/dashboard/fixture-activity.ts`; intake shares `fixtures/dashboard/fixture-intake-authority.ts`. Parity and served profiles allocate separate fixture values through common setup bodies in `helpers/dashboard/profiles/`; seeded lifecycle functions live in `helpers/dashboard/served-fixtures/seeded-lifecycle.ts`. The desktop parity suite remains the screenshot/accessibility
 contract; its reference files are not refreshed to make wiring pass. Role-derived path helpers do
 not imply current files or coverage. Exact test move counts and retirement dispositions remain with
 the owning evidence records.
@@ -132,8 +128,8 @@ Semantic registries keep current selector keys and verified fixture/live evidenc
 path and blob records belong in task evidence. Runtime environment inventories describe only current
 repository readers; production isolation remains in `config/runtime-isolation.json`.
 The retained field audit helper is `tests/architecture/models/helpers/canonical-field-registry-audit.ts`.
-Receipt composition tests live in `tests/integration/backend/runs/provenance/evidence-receipt/evidence-receipt-composition.test.ts`;
-step omission gate proofs live in `tests/integration/backend/runtime/execution/run-executor/step-omission-gates.test.ts`.
+Receipt composition tests live in `tests/backend/runs/provenance/evidence-receipt.live-workflow-composition.integration.test.ts`;
+step omission gate proofs live in `tests/backend/runtime/execution/run-executor.step-omission-gates.integration.test.ts`.
 Unused earlier receipt-composition snapshots are absent; current receipts derive from complete native evidence.
 The ignored `config/test-data.local.json` remains private local test input.
 
@@ -146,6 +142,6 @@ step-result presentation and capture association remain Phase 5; the v1 event ca
 artifact. `config/snapshot.ts` owns strictly current immutable snapshots: every current required leaf is present, stored reads apply no live defaults, and stored reads preserve complete snapshot values. `config/schema.ts` owns the current settings grammar; `run/session.ts` owns batches minted by start plans or intake manifests. `trust/` owns current failure, diagnostic, receipt and scenario grammars. There is no `models/logs/` package. A desktop/Electron shell remains future work and has no
 placeholder folder.
 
-Current native store tests cover baseline opening and version refusal (`storage/sqlite/migrations/native-baseline.test.ts`), maintenance custody (`storage/admission/admission/native-maintenance-capability.test.ts`), bounded transaction selection and retained deletion evidence (`storage/sqlite/transaction-history/`), and same-item retries (`runs/queries/item-attempt-history/`).
+Current native store tests cover baseline opening and version refusal (`tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts`), maintenance custody (`tests/backend/storage/sqlite/backup-inspection.integration.test.ts`), bounded transaction selection and retained deletion evidence (`tests/backend/storage/sqlite/transaction-history.integration.test.ts`), and same-item retries (`tests/backend/runs/queries/item-attempt-history.integration.test.ts`).
 
 `src/rules/redaction/redaction.ts` owns classified transforms and diagnostic text sanitization.

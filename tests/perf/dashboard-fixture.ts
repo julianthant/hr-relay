@@ -65,6 +65,9 @@ export const PERF_FIXTURE_WORKFLOW = personLookupDescriptor.id;
 const CONTRACT_FINGERPRINT = personLookupDescriptor.contractFingerprint;
 const CONFIG_FINGERPRINT = CONFIG_SNAPSHOT.fingerprint;
 const INGRESS_SCHEMA_HASH = "a".repeat(64);
+const PERSON_LOOKUP_INPUT_HASH = deriveSchemaHash(PersonLookupCanonicalInput, "output");
+const SEPARATIONS_INPUT_HASH = deriveSchemaHash(SeparationsCanonicalInput, "output");
+const ACTIVE_STATUS_OUTPUT_HASH = deriveSchemaHash(ReadActiveStatus.output, "output");
 const FAILURE_FINGERPRINT = "c".repeat(64);
 const CONFIG_SNAPSHOT_ID = CONFIG_SNAPSHOT.configSnapshotId;
 const APP_VERSION = "0.1.0";
@@ -188,7 +191,7 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
       raw: rawInput,
       parsed: {
         protectedBindings: spec.separations === true ? [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: uuidOf(spec.seed + ID_SPACE.item) }] : [],
-        schemaHash: deriveSchemaHash(spec.separations === true ? SeparationsCanonicalInput : PersonLookupCanonicalInput, "output"),
+        schemaHash: spec.separations === true ? SEPARATIONS_INPUT_HASH : PERSON_LOOKUP_INPUT_HASH,
         value: parsedInput,
       },
       ingressSchemaHash: INGRESS_SCHEMA_HASH,
@@ -362,7 +365,7 @@ function terminalizeFailed(context: SeedContext, run: RunRecord, seed: number): 
   });
 }
 
-function terminalizeDone(context: SeedContext, run: RunRecord, _seed: number): void {
+function terminalizeDone(context: SeedContext, run: RunRecord): void {
   const now = run.envelope.enqueuedAt;
   const checkpoint = RunCheckpointRecordSchema.parse({
     workflowId: run.envelope.workflow,
@@ -372,7 +375,7 @@ function terminalizeDone(context: SeedContext, run: RunRecord, _seed: number): v
     claimGeneration: 1,
     runId: run.envelope.runId,
     output: {
-      schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"),
+      schemaHash: ACTIVE_STATUS_OUTPUT_HASH,
       value: {
         state: "active",
         reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
@@ -394,7 +397,7 @@ function terminalizeDone(context: SeedContext, run: RunRecord, _seed: number): v
       { state: "resolved", nodeId: "active-status", checkpoint },
       { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
     ],
-    manualClock(new Date(now)),
+    context.clock,
   );
   const result = built.record;
   context.database.terminalizeSuccess({
@@ -487,7 +490,7 @@ function seedClaimedRuns(context: SeedContext, tally: SeedTally): void {
     taskSpan(context, run, "searching", "done");
     taskSpan(context, run, "cross-verify", "done");
     taskSpan(context, run, "active-status", "done");
-    terminalizeDone(context, run, seed);
+    terminalizeDone(context, run);
     tally.doneRunIds.push(run.envelope.runId);
     remember(tally, run, day);
   }
@@ -547,7 +550,7 @@ function seedClaimedRuns(context: SeedContext, tally: SeedTally): void {
       );
       taskSpan(context, run, "searching", "done");
       taskSpan(context, run, "active-status", "done");
-      terminalizeDone(context, run, seed);
+      terminalizeDone(context, run);
       tally.doneRunIds.push(run.envelope.runId);
       remember(tally, run, neighbouringDay);
     }

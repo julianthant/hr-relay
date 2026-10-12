@@ -38,7 +38,7 @@ Read the assigned brief and the relevant owning reference contract before implem
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`), recording
   "X looked safe and did Y", each naming its decision. Before kernel / driver / dashboard /
   write-safety work, search by seam/decision and read the matching entries; do not append historical lessons or retrospective comments as part of ordinary execution.
-- `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/unit/architecture/`
+- `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/architecture/`
   must match it exactly, both directions.
 
 **A decision is not ratified until it lands in its owning doc, in the same commit that records it.**
@@ -359,7 +359,7 @@ from "the check passed / found nothing." `catch { won = true }`, `catch { return
 corrupted input are bugs, not resilience.
 
 This tree is zero-debt from its first file: `npm run lint` carries `--max-warnings 0` and there is
-no debt manifest. The mechanical arms live in `tests/unit/architecture/helpers/ratchet-arms.ts`
+no debt manifest. The mechanical arms live in `tests/architecture/tooling/helpers/ratchet-arms.ts`
 (fail-loud-catch-default, nullish-literal-data-fallback, wait-for-timeout, inline selectors,
 evaluate-named-fn, import cycles, layer matrix, code conventions, tailwind palette), each executed
 against a violating fixture by `guard-manifest.test.ts` so a dead arm cannot stand in for

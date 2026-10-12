@@ -8,7 +8,7 @@ captureParityPair,
 installTheme,
 type ParityTheme,
 } from "./capture.js";
-import { type FixtureServer } from "./fixture-bff.js";
+import { type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { assertShellGeometry } from "./geometry.js";
 import { REFERENCES,dismissWorkflowWindow,failOnPageErrors } from "./reference-harness.js";

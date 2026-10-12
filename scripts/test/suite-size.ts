@@ -1,35 +1,25 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { isDirectExecution, resolveScopeFiles } from "./scope-files.js";
-
-const ROOT = process.cwd();
-// Each named Vitest project owns one independent subtree.
-const FAMILIES = [
-  ["unit", "tests/unit"],
-  ["integration", "tests/integration"],
-  ["architecture", "tests/architecture"],
-] as const;
+import { globSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { REBUILD_TEST_PROJECTS } from "../../vitest.config.js";
+import { isDirectExecution } from "./scope-files.js";
 
 export interface SuiteSize {
   readonly family: string;
   readonly files: number;
   readonly lines: number;
-  readonly state: "active" | "planned-absent";
+  readonly state: "active";
 }
 
-export function measureSuiteSize(): SuiteSize[] {
-  return FAMILIES.map(([family, path]) => {
-    const root = resolve(ROOT, path);
-    if (!existsSync(root)) {
-      return { family, files: 0, lines: 0, state: "planned-absent" };
-    }
-    const scope = resolveScopeFiles(root, [".ts", ".tsx"]);
-    const files = scope.files
-      .filter((file) => file.endsWith(".test.ts") || file.endsWith(".test.tsx"));
+export function measureSuiteSize(root = process.cwd()): SuiteSize[] {
+  return REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => {
+    const excluded = new Set(globSync([...exclude], { cwd: root }));
+    const files = [...new Set(globSync([...include], { cwd: root }))]
+      .filter((file) => !excluded.has(file)).sort();
+    if (files.length === 0) throw new Error(`${name}: project collects no tests`);
     return {
-      family,
+      family: name,
       files: files.length,
-      lines: files.reduce((sum, file) => sum + readFileSync(file, "utf8").split("\n").length, 0),
+      lines: files.reduce((sum, file) => sum + readFileSync(join(root, file), "utf8").split("\n").length, 0),
       state: "active",
     };
   });

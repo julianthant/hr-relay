@@ -1885,7 +1885,7 @@ Two deviations from §3's sketch, both as-built:
 
 `tests/types/flow-graph.typecheck.ts` is item 1e's mandated real-scale proof: a 21-node
 representative graph plus sixteen `@ts-expect-error` controls, so a transform that collapses to a top
-type fails the proof rather than passing it vacuously. `tests/integration/flow-type-budget.test.ts` records
+type fails the proof rather than passing it vacuously. `tests/types/flow-graph.integration.test.ts` records
 `tsc --extendedDiagnostics` over that file alone and fails outside the 5s / 1 GiB budget (measured
 0.47s / 215 MiB on the baseline machine).
 

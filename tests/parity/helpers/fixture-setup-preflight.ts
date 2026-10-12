@@ -5,7 +5,7 @@ import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transp
 import { failureStatus } from "../../../src/backend/transports/http/routes/failure-status.js";
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
 import { registerSettingsPreflightRoutes } from "../../../src/backend/transports/http/routes/settings-preflight.js";
-import { createFixtureBff, startFixtureServer } from "./fixture-bff.js";
+import { createFixtureBff, startFixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { PARITY_DIST_DIR, assertParityBundleIsCurrent, readBundleStamp } from "./bundle.js";
 import { servedPreflightRuntime, type SetupScene } from "../../support/fixtures/preflight/served-runtime.js";
 

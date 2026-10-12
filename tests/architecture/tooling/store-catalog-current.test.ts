@@ -1,4 +1,3 @@
-
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,18 +18,14 @@ import { REPO_ROOT } from "../support/helpers/guard-files.js";
 const DOC = readFileSync(join(REPO_ROOT, STORE_CATALOG_DOC_PATH), "utf8");
 const PENDING = readPendingImplBindings(REPO_ROOT);
 
-function checkedInSection(): string {
-  const start = DOC.indexOf(STORE_CATALOG_START_MARKER);
-  const end = DOC.indexOf(STORE_CATALOG_END_MARKER);
-  assert.ok(start >= 0 && end > start, `${STORE_CATALOG_DOC_PATH} lost its store-catalog markers`);
-  return DOC.slice(start + STORE_CATALOG_START_MARKER.length, end).trim();
-}
-
 describe("generated store catalog (ref stores §2)", () => {
   it("keeps the checked-in catalog current", () => {
     const rendered = renderStoreCatalogSection(taskStoreRegistry, PENDING);
+    const start = DOC.indexOf(STORE_CATALOG_START_MARKER);
+    const end = DOC.indexOf(STORE_CATALOG_END_MARKER);
+    assert.ok(start >= 0 && end > start, `${STORE_CATALOG_DOC_PATH} lost its store-catalog markers`);
     assert.equal(
-      checkedInSection(),
+      DOC.slice(start + STORE_CATALOG_START_MARKER.length, end).trim(),
       rendered.trim(),
       "run `npm run stores:catalog` and commit the result",
     );

@@ -15,7 +15,7 @@ import {
   TestTargetWorkflowArmsSchema,
   type TestTargetRegistryEntry,
 } from "../../../src/backend/app/registries/test-target-registry.js";
-import { testDataInputSource } from "../../integration/backend/app/registries/test-target-registry/test-data-source.js";
+import { testDataInputSource } from "../../support/helpers/test-data/test-data-source.js";
 
 
 const SOLE_SUBJECT_LABEL = "finalization-canary";

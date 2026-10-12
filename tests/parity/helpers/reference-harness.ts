@@ -1,7 +1,7 @@
 import { expect,test } from "@playwright/test";
 import { resolve } from "node:path";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./bundle.js";
-import { startFixtureServer,type FixtureServer } from "./fixture-bff.js";
+import { startFixtureServer,type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./fixture-queue.js";
 import { FIXTURE_SEPARATIONS_START_PLAN,FIXTURE_START_PICKER_BOOTSTRAP,FIXTURE_START_PICKER_DAY_WIRE,FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./fixture-start.js";

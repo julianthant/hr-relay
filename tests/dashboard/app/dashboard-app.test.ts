@@ -1,0 +1,693 @@
+import { URL as FileURL } from "node:url";
+// @vitest-environment jsdom
+import assert_m0 from "node:assert/strict";
+import { readFileSync as readFileSync_m0 } from "node:fs";
+import { resolve as resolve_m0 } from "node:path";
+import { describe as describe_m0,it as it_m0 } from "vitest";
+import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../parity/helpers/fixture-settings.js";
+import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m1 } from "../../parity/helpers/workflow-composition.js";
+// @vitest-environment jsdom
+
+import assert_m1 from "node:assert/strict";
+import { act as act_m1,createElement as createElement_m1,type ReactNode as ReactNode_m1 } from "react";
+import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
+import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from "vitest";
+import {
+RUN_START_DOOR_ID as RUN_START_DOOR_ID_m1
+} from "../../../src/dashboard/app/dashboard-app-model.js";
+import { DashboardApp as DashboardApp_m1 } from "../../../src/dashboard/app/dashboard-app.js";
+import type { DashboardClient as DashboardClient_m1 } from "../../../src/dashboard/client/index.js";
+import { TakeoverFrame as TakeoverFrame_m1 } from "../../../src/dashboard/ds/primitives/primitives-layout.js";
+import { DashboardClientProvider as DashboardClientProvider_m1 } from "../../../src/dashboard/state/client-context.js";
+import { FrontendBootstrapWireSchema as FrontendBootstrapWireSchema_m1 } from "../../../src/models/dashboard/bootstrap.js";
+import { CalendarWireSchema as CalendarWireSchema_m1 } from "../../../src/models/dashboard/calendar.js";
+import { DashboardDayWireSchema as DashboardDayWireSchema_m1 } from "../../../src/models/dashboard/projection.js";
+// @vitest-environment jsdom
+import { default as assert_m2,default as assert_m3 } from 'node:assert/strict';
+import { readFileSync as readFileSync_m3 } from "node:fs";
+import { act as act_m2,createElement as createElement_m2 } from 'react';
+import { createRoot as createRoot_m2,type Root as Root_m2 } from 'react-dom/client';
+import { afterEach as afterEach_m2,describe as describe_m2,describe as describe_m3,it as it_m2,it as it_m3 } from 'vitest';
+import { DashboardApp as DashboardApp_m2 } from '../../../src/dashboard/app/dashboard-app.js';
+import { createDashboardClient as createDashboardClient_m2 } from '../../../src/dashboard/client/index.js';
+import { DashboardClientProvider as DashboardClientProvider_m2 } from '../../../src/dashboard/state/client-context.js';
+import { DashboardDayWireSchema as DashboardDayWireSchema_m2,type DashboardDayWire as DashboardDayWire_m2 } from '../../../src/models/dashboard/projection.js';
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../parity/helpers/fixture-queue.js';
+import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m2 } from "../../parity/helpers/workflow-composition.js";
+import { createFixtureBff as createFixtureBff_m2 } from '../../support/helpers/dashboard/fixture-bff.js';
+
+
+{
+
+
+const DASHBOARD_APP = resolve_m0(import.meta.dirname, "../../../src/dashboard/app/dashboard-app.tsx");
+
+function sliceBetween(source: string, openMarker: string, closeMarker: string, label: string): string {
+  const opens = source.indexOf(openMarker);
+  if (opens === -1) {
+    throw new Error(`${label}: dashboard-app.tsx no longer contains the opening landmark ${JSON.stringify(openMarker)}`);
+  }
+  const closes = source.indexOf(closeMarker, opens);
+  if (closes === -1) {
+    throw new Error(`${label}: dashboard-app.tsx no longer contains the closing landmark ${JSON.stringify(closeMarker)}`);
+  }
+  return source.slice(opens, closes);
+}
+
+function bulkDispatchRejectionArm(): string {
+  const source = readFileSync_m0(DASHBOARD_APP, "utf8");
+  return sliceBetween(
+    source,
+    "const dispatchBulk = useCallback(",
+    "const runAction = useCallback(",
+    "dispatchBulk",
+  );
+}
+
+describe_m0("dispatchBulk's rejection arm (the selection band's bulk post)", () => {
+  it_m0("preserves uncertainty from a post-dispatch throw", () => {
+    const arm = bulkDispatchRejectionArm();
+    assert_m0.doesNotMatch(
+      arm,
+      /\(caught: unknown\) => \{\s*toast\(\{\s*tone: "danger",\s*title: "Nothing was recorded"/u,
+      "the rejection handler still hardcodes the negative this client is not entitled to make",
+    );
+    assert_m0.match(
+      arm,
+      /\(caught: unknown\) => \{[\s\S]*?commandFailureToast\(\{\s*stage: "after-dispatch",\s*caught\s*\}\)/u,
+      "the rejection handler must settle through the same honest fold dispatchCommand uses",
+    );
+  });
+});
+}
+
+{
+
+
+class MeasurementFreeResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
+
+const FIXTURE_FINGERPRINT = "a".repeat(64);
+const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
+  wireVersion: 1,
+  appVersion: "0.1.0",
+  descriptorHash: FIXTURE_FINGERPRINT,
+  settingsSchemaHash: FIXTURE_FINGERPRINT,
+  protectedSchemaHash: FIXTURE_FINGERPRINT,
+  projectionGeneration: 1,
+  actor: { id: "local-operator", label: "Local operator" },
+  serverClock: { now: "2026-08-27T18:00:00.000Z", zone: "America/Los_Angeles" },
+  storage: { authority: "healthy", backup: "current", checkedAt: "2026-08-27T18:00:00.000Z" },
+  workflows: [{
+    id: "fixture-workflow",
+    code: "fw",
+    label: "Fixture workflow",
+    categoryId: "operations",
+    descriptorFingerprint: FIXTURE_FINGERPRINT,
+    availability: { state: "available" },
+    role: { kind: "standalone" },
+    start: {
+      enqueue: "reject-active",
+      version: 1,
+
+      spreadsheetIntake: false,
+      steps: [{
+        key: "fixture-step",
+        label: "Fixture step",
+        includedByDefault: true,
+        control: { state: "required", reason: "Fixture step is required." },
+      }],
+    },
+  }],
+  systemInstances: [],
+  settingsSections: [],
+  featureAvailability: [],
+});
+const APP_DAY = DashboardDayWireSchema_m1.parse({
+  day: "2026-08-27",
+  descriptorHash: FIXTURE_FINGERPRINT,
+  projectionGeneration: 1,
+  snapshotCursor: "pc:1",
+  monthCounts: [{ day: "2026-08-26", count: 0 }, { day: "2026-08-27", count: 0 }],
+  workflowCounts: [{ workflowId: "fixture-workflow", count: 0, statusCounts: [] }],
+  statusCounts: [],
+  queueSurfaces: [],
+  workerCards: [],
+  workerPools: [],
+  notifications: [],
+});
+
+const EDITABLE_SETTINGS = FIXTURE_EDITABLE_SETTINGS_m1;
+const CALENDAR = ({ month, day }: { month: string; day: string }) => CalendarWireSchema_m1.parse({
+  month,
+  day,
+  today: "2026-08-27",
+  authorityGeneration: 1,
+  monthCounts: [],
+  firstDay: null,
+  lastDay: null,
+  previousDay: null,
+  nextDay: null,
+});
+
+let mounted: Root_m1 | undefined;
+
+const _afterEachFixture0 = async () => {
+  const root = mounted;
+  mounted = undefined;
+  if (root !== undefined) {
+    await act_m1(async () => {
+      root.unmount();
+    });
+  }
+  document.body.replaceChildren();
+  window.history.replaceState(null, "", "/");
+};
+
+/** The takeover's own root — the `section` the frame renders and names. */
+function frameOf(label: string): HTMLElement {
+  const node = document.querySelector(`section[aria-label="${label}"]`);
+  assert_m1.ok(node instanceof HTMLElement, `no takeover frame is labelled "${label}"`);
+  return node;
+}
+
+
+async function mountTakeover(label: string, children: ReactNode_m1[]): Promise<void> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot_m1(host);
+  mounted = root;
+  await act_m1(async () => {
+    root.render(createElement_m1(TakeoverFrame_m1, { label, children }));
+  });
+}
+
+
+async function mountSurface(client: DashboardClient_m1, children: ReactNode_m1): Promise<void> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot_m1(host);
+  mounted = root;
+  await act_m1(async () => {
+    root.render(createElement_m1(DashboardClientProvider_m1, { client, children }));
+  });
+}
+
+/** The whole app client is closed: an unserved read is a fixture defect, not an empty answer. */
+function appClient(): DashboardClient_m1 {
+  const served = {
+    bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
+    subscribeDay: (input: Parameters<DashboardClient_m1["subscribeDay"]>[0]) => {
+      input.onDay(APP_DAY);
+      input.onState({ state: "live" });
+      return { close: () => undefined };
+    },
+    calendar: (input: Parameters<DashboardClient_m1["calendar"]>[0]) => Promise.resolve(CALENDAR(input)),
+
+    intakeSession: () => new Promise<never>(() => undefined),
+    editableSettings: () => Promise.resolve(EDITABLE_SETTINGS),
+  } as unknown as DashboardClient_m1;
+  return new Proxy(served, {
+    get(target, property, receiver) {
+      if (!(property in target)) {
+        throw new Error(`the focus fixture does not serve DashboardClient.${String(property)}`);
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+}
+
+async function mountDashboard(search: string): Promise<void> {
+  window.history.replaceState(null, "", `/${search}`);
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+  await act_m1(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+  await act_m1(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function moveHistory(direction: "back" | "forward"): Promise<void> {
+  await act_m1(async () => {
+    window.history[direction]();
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, 20); });
+  });
+}
+
+async function settleHistory(): Promise<void> {
+  await act_m1(async () => {
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, 20); });
+  });
+}
+
+async function mountSettingsAtThirdHistoryEntry(): Promise<void> {
+  window.history.replaceState({ hrDashboardRouteCursor: 0 }, "", "/");
+  window.history.pushState({ hrDashboardRouteCursor: 1 }, "", "/?day=2026-08-26");
+  window.history.pushState({ hrDashboardRouteCursor: 2 }, "", "/?settings=display");
+  await mountDashboardAtCurrentHistoryEntry();
+}
+
+function buttonNamed(label: string): HTMLButtonElement {
+  const button = [...document.querySelectorAll("button")].find((candidate) => (
+    candidate.getAttribute("aria-label") === label || candidate.textContent?.trim() === label
+  ));
+  assert_m1.ok(button instanceof HTMLButtonElement, `no button is named "${label}"`);
+  return button;
+}
+
+async function press(button: HTMLButtonElement): Promise<void> {
+  await act_m1(async () => {
+    button.focus();
+    button.click();
+    await Promise.resolve();
+  });
+}
+
+async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value: boolean }> {
+  const row = document.querySelector('[data-settings-path="browser.headless"]');
+  const input = row?.querySelector('[role="switch"]');
+  const control = row?.querySelector(".ds-switch-control");
+  assert_m1.ok(input instanceof HTMLInputElement && control instanceof HTMLElement, "Settings browser switch did not mount");
+  const value = !input.checked;
+  await act_m1(async () => control.click());
+  assert_m1.equal(input.checked, value);
+  return { input, value };
+}
+
+// jsdom does not implement Tab navigation; assert the first enabled descendant order directly.
+function takeFirstTab(frame: HTMLElement): HTMLElement {
+  const first = frame.querySelector<HTMLElement>(
+    "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
+  );
+  assert_m1.ok(first instanceof HTMLElement, "the takeover has no first Tab target");
+  first.focus();
+  assert_m1.equal(document.activeElement, first);
+  return first;
+}
+
+describe_m1("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
+afterEach_m1(_afterEachFixture0);
+
+  it_m1("focuses its own labelled section on mount", async () => {
+    await mountTakeover("Activity report", [
+      createElement_m1("button", { key: "b", type: "button" }, "Export"),
+    ]);
+    assert_m1.equal(document.activeElement, frameOf("Activity report"));
+  });
+
+  it_m1("leaves the door it was opened from — focus does not stay on the trigger", async () => {
+
+    const door = document.createElement("button");
+    door.type = "button";
+    door.id = "the-door";
+    document.body.append(door);
+    door.focus();
+    assert_m1.equal(document.activeElement, door, "the fixture must start with the door focused");
+
+    await mountTakeover("Archive", [createElement_m1("button", { key: "b", type: "button" }, "Back")]);
+    assert_m1.notEqual(document.activeElement, door);
+    assert_m1.equal(document.activeElement, frameOf("Archive"));
+  });
+
+  it_m1("is a focus target, not a tab stop", async () => {
+    await mountTakeover("Workflow explorer", []);
+    assert_m1.equal(frameOf("Workflow explorer").getAttribute("tabindex"), "-1");
+  });
+
+  it_m1("paints no focus ring — the UA's included", async () => {
+    await mountTakeover("Workflow explorer", []);
+    const cls = frameOf("Workflow explorer").className.split(/\s+/u);
+    // Chromium applies focus-visible to programmatic focus; suppress the frame outline.
+    assert_m1.ok(cls.includes("outline-none"), `the frame must suppress the UA ring: ${cls.join(" ")}`);
+    // And it must not have opted INTO the product ring by accident.
+    assert_m1.ok(!cls.includes("ds-focus"), "the frame is not an interactive control");
+  });
+
+  it_m1("does not steal focus from a descendant that took it in the same commit", async () => {
+    // React autoFocus commits before passive effects; preserve a child control that already took focus.
+    await mountTakeover("Settings", [
+      createElement_m1("input", { key: "q", type: "search", autoFocus: true, "aria-label": "Search settings" }),
+    ]);
+    const focused = document.activeElement;
+    assert_m1.ok(focused instanceof HTMLInputElement, `expected the search input to keep focus, got ${String(focused?.tagName)}`);
+    assert_m1.equal(focused.getAttribute("aria-label"), "Search settings");
+    assert_m1.notEqual(focused, frameOf("Settings"));
+  });
+});
+
+describe_m1("the two remaining takeovers use the shared focus boundary (UF-FU-1)", () => {
+afterEach_m1(_afterEachFixture0);
+
+
+  it_m1("the retired UI catalog URL shows an explicit removal notice without mounting its reader", async () => {
+    await mountDashboard("?settings=ui-catalog");
+
+    const frame = frameOf("Settings");
+    assert_m1.equal(document.activeElement, frame);
+    assert_m1.equal(
+      document.querySelector('section[aria-label="UI catalog"]'),
+      null,
+      "the catalog must no longer mount a frame of its own",
+    );
+    assert_m1.match(frame.textContent ?? "", /UI catalog removed/u);
+    assert_m1.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
+    assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Back to dashboard");
+    assert_m1.equal(
+      document.querySelector('[aria-label="Close the UI catalog"]'),
+      null,
+      "a section may not carry a second exit from the page that contains it",
+    );
+  });
+});
+
+describe_m1("closing a route-backed takeover restores its toolbar door", () => {
+afterEach_m1(_afterEachFixture0);
+
+
+  it_m1("returns intake focus to Start a run after the route unmounts", async () => {
+    await mountDashboard("?intake=e1f2a3b4-0000-4000-8000-000000000001");
+    await press(buttonNamed("Close"));
+
+    const door = buttonNamed("Start a run");
+    assert_m1.equal(door.id, RUN_START_DOOR_ID_m1);
+    assert_m1.equal(document.activeElement, door);
+    assert_m1.equal(
+      [...document.querySelectorAll("button")].find(
+        (button) => button.textContent?.trim() === "Import spreadsheet",
+      ),
+      undefined,
+      "the toolbar's Import spreadsheet door is retired — the Run Modal carries the handoff",
+    );
+  });
+});
+
+describe_m1("Settings exits share the page-owned draft guard", () => {
+afterEach_m1(_afterEachFixture0);
+
+  it_m1("retains the same draft across catalog subroutes, restores cancelled-dialog focus and exits to gear", async () => {
+    await mountDashboard("?settings=general");
+    const { input, value } = await dirtyBrowserSettings();
+    const frame = frameOf("Settings");
+    const themeRow = [...document.querySelectorAll<HTMLElement>(".ds-switch-row")].find(row => row.textContent?.includes("Dark theme"));
+    const themeSwitch = themeRow?.querySelector("input");
+    const themeControl = themeRow?.querySelector(".ds-switch-control");
+    assert_m1.ok(themeSwitch instanceof HTMLInputElement && themeControl instanceof HTMLElement);
+    const initialTheme = themeSwitch.checked;
+    await act_m1(async () => themeControl.click());
+    assert_m1.equal(themeSwitch.checked, !initialTheme);
+    const notifications = document.querySelector(".rail-notification-toggle");
+    assert_m1.ok(notifications instanceof HTMLButtonElement);
+    assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
+    await press(notifications);
+    assert_m1.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
+    assert_m1.equal(input.checked, value, "browser appearance and notification controls preserve runtime edits");
+    await press(notifications);
+    const sectionLink = (label: string): HTMLAnchorElement => {
+      const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
+        .find(candidate => candidate.textContent?.trim() === label);
+      assert_m1.ok(link instanceof HTMLAnchorElement, `missing section ${label}`);
+      return link;
+    };
+    const editorLabel = sectionLink("General").textContent?.trim();
+    assert_m1.equal(editorLabel, "General");
+    await act_m1(async () => sectionLink("Keyboard").click());
+    assert_m1.match(window.location.search, /settings=keyboard/u);
+    assert_m1.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
+    const dashboard = buttonNamed("Back to dashboard");
+    await press(dashboard);
+    await press(buttonNamed("Keep editing"));
+    assert_m1.equal(document.activeElement, dashboard, "cancelling the shell exit restores focus to its persistent navigation control");
+    assert_m1.match(window.location.search, /settings=keyboard/u);
+    await press(dashboard);
+    await act_m1(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await Promise.resolve();
+    });
+    assert_m1.equal(document.querySelector('[role="dialog"]'), null, "Escape closes the pending dirty-exit dialog");
+    assert_m1.equal(document.activeElement, dashboard, "Escape restores focus to the persistent navigation control");
+    await act_m1(async () => sectionLink("General").click());
+    const restored = document.querySelector('[data-settings-path="browser.headless"] [role="switch"]');
+    assert_m1.ok(restored instanceof HTMLInputElement);
+    assert_m1.equal(restored.checked, value);
+    await press(buttonNamed("Back to dashboard"));
+    await press(buttonNamed("Discard changes"));
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.equal(window.location.search.includes("catalog"), false);
+    assert_m1.equal(document.activeElement?.id, "settings-gear");
+  });
+
+  it_m1("requires a discard before persistent rail navigation unmounts a dirty Settings draft", async () => {
+    await mountDashboard("?settings=display");
+    await dirtyBrowserSettings();
+
+    await press(buttonNamed("Back to dashboard"));
+    assert_m1.ok(frameOf("Settings"), "a dirty rail navigation must leave Settings mounted for confirmation");
+    assert_m1.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    const discard = buttonNamed("Discard changes");
+    await press(discard);
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.ok(document.getElementById("dashboard-main-region"));
+  });
+
+  it_m1("allows persistent rail navigation immediately when the Settings draft is clean", async () => {
+    await mountDashboard("?settings=display");
+    await press(buttonNamed("Back to dashboard"));
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
+    assert_m1.ok(document.getElementById("dashboard-main-region"));
+  });
+
+  it_m1("reconciles a dirty native popstate until the operator chooses an exit", async () => {
+    await mountSettingsAtThirdHistoryEntry();
+    await dirtyBrowserSettings();
+
+    await moveHistory("back");
+    assert_m1.ok(frameOf("Settings"));
+    assert_m1.equal(window.location.search, "?settings=display", "the dirty route is restored before confirmation");
+    await press(buttonNamed("Keep editing"));
+    assert_m1.ok(frameOf("Settings"));
+    assert_m1.equal(window.location.search, "?settings=display");
+    await moveHistory("back");
+    await press(buttonNamed("Discard changes"));
+    await settleHistory();
+    assert_m1.equal(window.location.search, "?day=2026-08-26", "discard replays the original destination rather than skipping it");
+
+    await moveHistory("forward");
+    assert_m1.equal(window.location.search, "?settings=display", "the cancellation preserves the entry ahead of the original destination");
+  });
+
+  it_m1("accepts a clean native popstate immediately", async () => {
+    await mountSettingsAtThirdHistoryEntry();
+    await moveHistory("back");
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.equal(window.location.search, "?day=2026-08-26");
+  });
+
+  it_m1("preserves both native history entries when a dirty Settings exit is cancelled", async () => {
+    await mountSettingsAtThirdHistoryEntry();
+    await dirtyBrowserSettings();
+    const cursor = window.history.state as { hrDashboardRouteCursor: number };
+    await moveHistory("back");
+    await press(buttonNamed("Keep editing"));
+    assert_m1.ok(frameOf("Settings"));
+    assert_m1.deepEqual(window.history.state, cursor, "cancelled navigation keeps the stable history cursor");
+    await moveHistory("back");
+    await press(buttonNamed("Discard changes"));
+    await settleHistory();
+    assert_m1.equal(window.location.search, "?day=2026-08-26");
+    await moveHistory("forward");
+    assert_m1.equal(window.location.search, "?settings=display", "cancelled navigation preserves the forward entry");
+  });
+
+  it_m1("accepts clean browser history navigation and preserves its forward destination", async () => {
+    await mountSettingsAtThirdHistoryEntry();
+    await moveHistory("back");
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    await moveHistory("forward");
+    assert_m1.equal(window.location.search, "?settings=display");
+    assert_m1.ok(frameOf("Settings"));
+  });
+});
+}
+
+{
+
+
+Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
+Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+let root: Root_m2 | undefined;
+const disposers: (() => void)[] = [];
+const _afterEachFixture0 = async () => {
+  await act_m2(async () => root?.unmount()); root = undefined;
+  for (const dispose of disposers.splice(0)) dispose();
+  document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, '', '/');
+};
+async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
+
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; product?: boolean; search?: string } = {}) {
+  const { app } = createFixtureBff_m2();
+  const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
+  const requests: { url: string; resume?: string | null }[] = [];
+  let open = true;
+  const publish = (stream: ReadableStreamDefaultController<Uint8Array>, message: unknown) => stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
+  const snapshot = (stream: ReadableStreamDefaultController<Uint8Array>, day: DashboardDayWire_m2) => {
+    publish(stream, { type: 'hello', wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor });
+    publish(stream, { type: 'snapshot', topic: 'dashboard-day', cursor: day.snapshotCursor, payload: day });
+  };
+  const client = createDashboardClient_m2({ baseUrl: 'http://fault.test', fetchImpl: async (url, init) => {
+    const headers = new Headers(init?.headers);
+    requests.push({ url, resume: headers.get('last-event-id') });
+    if (url.endsWith('/bootstrap')) {
+      if (options.boot) return options.boot;
+      if (options.bootFailure) return Response.json({ code: 'FIXTURE_UNAVAILABLE', message: 'Synthetic boot unavailable' }, { status: 503 });
+    }
+    if (url.includes('/events/v1?')) {
+      const body = new ReadableStream<Uint8Array>({ start(controller) {
+        streams.push(controller);
+        if (!options.delayDay) snapshot(controller, FIXTURE_DAY_WIRE_m2);
+        const abort = () => { try { controller.close(); } catch { /* The fixture may already be disconnected. */ } };
+        init?.signal?.addEventListener('abort', abort, { once: true });
+        disposers.push(() => init?.signal?.removeEventListener('abort', abort));
+      } });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    }
+    assert_m2(open, 'no request after fixture disposal');
+    return app.request(url, init);
+  } });
+  window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
+  localStorage.setItem('hr-dashboard.workflow-panel', 'sidebar');
+  const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
+  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, options.product ? {} : { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m2 }) })));
+  await settle(); disposers.push(() => { open = false; });
+  return { host, requests, streams,
+    deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },
+    disconnect: async () => { await act_m2(async () => streams.at(-1)!.error(new Error('Synthetic disconnect'))); await settle(); },
+    stale: async (day: DashboardDayWire_m2) => { await act_m2(async () => publish(streams.at(-1)!, { type: 'snapshot', topic: 'dashboard-day', cursor: day.snapshotCursor, payload: day })); await settle(); },
+  };
+}
+function withTitle(title: string, cursor: string, revision: number): DashboardDayWire_m2 {
+  return DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: cursor,
+    queueSurfaces: FIXTURE_DAY_WIRE_m2.queueSurfaces.map(row => row.surfaceKind === 'single' ? { ...row, title, rowRevision: revision, actions: row.actions.map(action => action.kind === "command" ? { ...action, expectedVersion: revision } : action) } : row) });
+}
+
+describe_m2('real mounted dashboard through the typed mock transport', () => {
+afterEach_m2(_afterEachFixture0);
+
+  it_m2('uses only mock workflow data in the product even when bootstrap registers served workflows', async () => {
+    const h = await mount({ product: true });
+    assert_m2.equal(h.streams.length, 0);
+    assert_m2.equal(h.requests.some(request => request.url.includes('/events/v1?')), false);
+    assert_m2.match(h.host.textContent ?? '', /Person Lookup/u);
+    assert_m2(h.host.querySelector('[data-parity-ready="true"]'));
+  });
+  it_m2('keeps an unknown launch workflow in the explicit unavailable destination', async () => {
+    const view = encodeURIComponent(JSON.stringify({ launchWorkflow: 'unregistered-workflow' }));
+    const h = await mount({ product: true, search: `start=1&view=${view}` });
+    assert_m2.match(h.host.textContent ?? '', /Destination unavailable/u);
+    assert_m2.match(h.host.textContent ?? '', /This launch workflow is not registered/u);
+    assert_m2.equal(h.streams.length, 0);
+  });
+  it_m2('keeps slow bootstrap in loading geometry until a parsed response arrives', async () => {
+    let resolve!: (response: Response) => void;
+    const boot = new Promise<Response>(done => { resolve = done; });
+    const h = await mount({ boot });
+    assert_m2(h.host.querySelector('[aria-busy="true"]'));
+    assert_m2.doesNotMatch(h.host.textContent ?? '', /No workflows|No .* runs|Could not load/u);
+    const { app } = createFixtureBff_m2();
+    await act_m2(async () => resolve(await app.request('/api/v1/bootstrap'))); await settle();
+    assert_m2(h.host.querySelector('[aria-label="Queue"]'));
+  });
+  it_m2('shows an unavailable bootstrap without fixture success or a misleading empty queue', async () => {
+    const h = await mount({ bootFailure: true });
+    assert_m2(h.host.querySelector('[data-parity-ready="failed"]'));
+    assert_m2.equal(h.host.querySelector('[aria-label="Queue"]'), null);
+    assert_m2.equal(h.streams.length, 0);
+  });
+  it_m2('keeps an initially slow stream distinct from a loaded empty day', async () => {
+    const h = await mount({ delayDay: true });
+    assert_m2(h.host.querySelector('[aria-busy="true"]'));
+    assert_m2.doesNotMatch(h.host.textContent ?? '', /No Person Lookup runs/u);
+    await h.deliver(FIXTURE_DAY_WIRE_m2);
+    assert_m2(h.host.querySelector('[aria-label="Queue"]'));
+  });
+  it_m2('ignores an older cursor after the current exact queue snapshot', async () => {
+    const h = await mount();
+    await h.deliver(withTitle('Current synthetic record', 'pc:200', 200));
+    assert_m2.match(h.host.textContent ?? '', /Current synthetic record/u);
+    await h.stale(withTitle('Stale synthetic record', 'pc:199', 199));
+    assert_m2.doesNotMatch(h.host.textContent ?? '', /Stale synthetic record/u);
+    assert_m2.match(h.host.textContent ?? '', /Current synthetic record/u);
+  });
+  it_m2('retains the last queue during reconnect and resumes with its exact cursor', async () => {
+    const h = await mount();
+    await h.deliver(withTitle('Before disconnect', 'pc:200', 200)); await h.disconnect();
+    assert_m2.match(h.host.textContent ?? '', /Before disconnect/u);
+    for (let count = 0; count < 100 && h.streams.length < 2; count++) await settle();
+    assert_m2.equal(h.streams.length, 2);
+    assert_m2.equal(h.requests.filter(request => request.url.includes('/events/v1?')).at(-1)?.resume, 'pc:200');
+    await h.deliver(withTitle('After reconnect', 'pc:201', 201));
+    assert_m2.match(h.host.textContent ?? '', /After reconnect/u);
+    assert_m2.doesNotMatch(h.host.textContent ?? '', /Before disconnect/u);
+  });
+});
+}
+
+{
+
+const APP = readFileSync_m3(new FileURL("../../../src/dashboard/app/dashboard-app.tsx", import.meta.url), "utf8");
+const OVERLAY = readFileSync_m3(new FileURL("../../../src/dashboard/ds/primitives/base-toast.tsx", import.meta.url), "utf8");
+
+function sourceSlice(source: string, start: string, end: string, label: string): string {
+  const from = source.indexOf(start);
+  const to = source.indexOf(end, from);
+  assert_m3.ok(from >= 0 && to > from, `could not read ${label} from its source boundary`);
+  return source.slice(from, to);
+}
+
+describe_m3("shell and queue structural fidelity", () => {
+
+  it_m3("places the floor-bearing root outside both providers", () => {
+    const rootStart = APP.indexOf("<div\n      data-app-root=\"\"");
+    const tooltipStart = APP.indexOf("<TooltipProvider delayDuration={200}>", rootStart);
+    const toastStart = APP.indexOf("<ToastProvider>", tooltipStart);
+    const toastEnd = APP.indexOf("</ToastProvider>", toastStart);
+    const tooltipEnd = APP.indexOf("</TooltipProvider>", toastEnd);
+    const rootEnd = APP.indexOf("</div>", tooltipEnd);
+
+    assert_m3.ok(rootStart >= 0, "the app root must be a real outer DOM node");
+    assert_m3.ok(rootStart < tooltipStart && tooltipStart < toastStart, "providers must be descendants of the root");
+    assert_m3.ok(toastEnd < tooltipEnd && tooltipEnd < rootEnd, "the root must close after both providers");
+    assert_m3.match(
+      APP.slice(rootStart, tooltipStart),
+      /"--ds-toast-inset-bottom": "calc\(var\(--ds-h-bar\) \+ var\(--ds-space-loose\)\)"/u,
+      "the outer root is the one place that sets the Session-bar toast floor",
+    );
+    assert_m3.match(
+      OVERLAY,
+      /bottom-\[var\(--ds-toast-inset-bottom,16px\)\]/u,
+      "the fixed toast viewport must consume the shell-owned floor",
+    );
+  });
+
+  it_m3("retains the desktop canvas floor and internal viewport clip", () => {
+    const root = sourceSlice(APP, "<div\n      data-app-root=\"\"", ">\n    <TooltipProvider", "the app root opening tag");
+    for (const token of ["h-screen", "min-h-[var(--ds-h-desktop-min)]", "min-w-[var(--ds-w-desktop-min)]", "overflow-hidden"]) {
+      assert_m3.ok(root.includes(token), `the desktop canvas must retain ${token}`);
+    }
+    assert_m3.doesNotMatch(root, /min-h-0/u, "min-h-0 belongs to the root's flex child, not the demo root");
+  });
+});
+}

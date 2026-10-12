@@ -28,9 +28,9 @@ const kualiDriver = declareDriverFor<KualiFieldsDriver>()("kuali", "semantic-rea
 const ucpathDriver = declareDriverFor<UcpathFieldsDriver>()("ucpath", "semantic-ready");
 export const fictionalSeparationDocument: DocumentFields = { employee: "10800000", documentNumber: "SIM-48216", lastDayWorked: "09/25/2026", separationDate: "09/25/2026", holidayPay: "09/25/2026", department: "Fictional Dining", title: "Student Assistant", reason: "Resign - Accept Another Job" };
 export const separationCommentTemplate: OperationTemplate = { id: "separation-comment", variables: [{ id: "effective", slot: "effective-date" }, { id: "last-day", slot: "last-day-worked" }, { id: "holiday", slot: "holiday-pay" }, { id: "document", slot: "document-number" }], segments: [
-  { kind: "literal", value: "Termination eff " }, { kind: "variable", variable: "effective" }, { kind: "literal", value: ". Last Day Worked " }, { kind: "variable", variable: "last-day" }, { kind: "literal", value: "." },
-  { kind: "optional", when: { kind: "is-present", variable: "holiday" }, segments: [{ kind: "literal", value: " Holiday Pay on " }, { kind: "variable", variable: "holiday" }, { kind: "literal", value: "." }] },
-  { kind: "literal", value: " Kuali form #" }, { kind: "variable", variable: "document" }, { kind: "literal", value: "." },
+  { kind: "literal", value: "Termination eff " }, { kind: "variable", variable: "effective" }, { kind: "literal", value: ". Last Day Worked " }, { kind: "variable", variable: "last-day" }, { kind: "literal", value: "./" },
+  { kind: "optional", when: { kind: "is-present", variable: "holiday" }, segments: [{ kind: "literal", value: " Holiday Pay on " }, { kind: "variable", variable: "holiday" }, { kind: "literal", value: "./" }] },
+  { kind: "literal", value: " Kuali form #" }, { kind: "variable", variable: "document" }, { kind: "literal", value: "./" },
 ], join: { separator: "", trim: "none" } };
 export function reconcileFictionalSeparation(input: unknown): DraftFields {
   const source = documentFields.parse(input);
