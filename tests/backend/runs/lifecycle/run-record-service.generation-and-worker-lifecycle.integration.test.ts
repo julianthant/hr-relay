@@ -1,3 +1,4 @@
+import { seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -200,7 +201,7 @@ describe("worker lifecycle service capability", () => {
     const absentRunId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
     const bindingProof = { ...WRITE_INTENT_ATTEMPTING.bindingProof, runId: absentRunId };
     const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
-    database.authority.writeIntents.fenceAttempt({
+    seedCorruptWriteFenceFixture(database, {
       intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
         runId: absentRunId, bindingProof, bindingProofDigest },
       attempt: { ...WRITE_ATTEMPT, runId: absentRunId, bindingProof, bindingProofDigest },

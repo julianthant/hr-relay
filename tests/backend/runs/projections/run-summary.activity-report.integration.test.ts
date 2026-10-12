@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { join } from "node:path";
 import { deriveCanonicalPerson } from "../../../../src/backend/runs/projections/run-summary.js";
 import { DeletedRunRecordSchema,type DeletedRunRecord } from "../../../../src/models/run/deleted-run.js";
@@ -702,7 +703,7 @@ describe("the Activity report's write-ledger block", () => {
   ): void {
     const f = ledgerCommitFixture(seq, { ...overrides, runId: fixtureUuid(`activity-history-${String(seq)}`), itemId: fixtureUuid(`activity-history-item-${String(seq)}`) });
     seedAtomicWriteOwner(w.database, f.commit, join(w.stateRoot, "authority.db"));
-    w.database.authority.writeIntents.fenceAttempt({ intent: f.intent, attempt: f.attempt });
+    fenceWriteFixture(w.database, { intent: f.intent, attempt: f.attempt });
     w.database.commitWriteAttempt(f.commit, atomicWriteCheckpoint(f.commit));
   }
 

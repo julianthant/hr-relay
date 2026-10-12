@@ -1,3 +1,4 @@
+import { fenceWriteFixture, seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { sweepWorkerClaims } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle,testRunService,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -108,7 +109,7 @@ describe("expired-claim sweep write-intent gate", () => {
   it("parks a running run with an attempting intent as parked-write instead of requeueing", () => {
     const database = openDatabase();
     claimAndRun(database, "running");
-    database.authority.writeIntents.fenceAttempt({
+    fenceWriteFixture(database, {
       intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
@@ -144,7 +145,7 @@ describe("expired-claim sweep write-intent gate", () => {
   it("leaves a claimed run with an attempting intent unclaimable under its expired claim", () => {
     const database = openDatabase();
     claimAndRun(database, "claimed");
-    database.authority.writeIntents.fenceAttempt({
+    seedCorruptWriteFenceFixture(database, {
       intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
@@ -236,7 +237,7 @@ describe("expired-claim sweep write-intent gate", () => {
   it("parks — never requeues — the named worker's running row that holds an attempting intent", () => {
     const database = openDatabase();
     claimAndRun(database, "running");
-    database.authority.writeIntents.fenceAttempt({
+    fenceWriteFixture(database, {
       intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
@@ -265,7 +266,7 @@ describe("expired-claim sweep write-intent gate", () => {
   it("leaves the named worker's CLAIMED row with an attempting intent held, and says so", () => {
     const database = openDatabase();
     claimAndRun(database, "claimed");
-    database.authority.writeIntents.fenceAttempt({
+    seedCorruptWriteFenceFixture(database, {
       intent: PERSON_LOOKUP_ATTEMPTING_INTENT,
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
@@ -284,7 +285,7 @@ describe("expired-claim sweep write-intent gate", () => {
   it("does not gate a run in a DIFFERENT workflow/item on this item's intent", () => {
     const database = openDatabase();
     claimAndRun(database, "running");
-    database.authority.writeIntents.fenceAttempt({
+    fenceWriteFixture(database, {
       intent: {
         ...PERSON_LOOKUP_ATTEMPTING_INTENT,
         // The intent belongs to ANOTHER logical item entirely.

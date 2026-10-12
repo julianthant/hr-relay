@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -58,7 +59,7 @@ function fence(database: AuthorityDatabase): void {
   const path = paths.get(database);
   assert.ok(path);
   seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
-  const result = database.authority.writeIntents.fenceAttempt({
+  const result = fenceWriteFixture(database, {
     intent: WRITE_INTENT_ATTEMPTING,
     attempt: WRITE_ATTEMPT,
   });
@@ -206,7 +207,7 @@ describe("atomic write authority commit", () => {
       bindingProof: UNSCOPED_PROOF,
       bindingProofDigest,
     };
-    assert.equal(database.authority.writeIntents.fenceAttempt({ intent, attempt }).state, "fenced");
+    assert.equal(fenceWriteFixture(database, { intent, attempt }).state, "fenced");
     const transaction = {
           ...ATOMIC_WRITE_COMMIT.transaction,
           system: "onbase",

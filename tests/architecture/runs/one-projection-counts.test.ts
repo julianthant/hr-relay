@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { ledgerCommitFixture, fixtureUuid } from "../../support/fixtures/ledger-projection-fixtures.js";
 import { seedAtomicWriteOwner, atomicWriteCheckpoint } from "../../support/helpers/timeline-write-fixture.js";
@@ -231,7 +232,7 @@ describe("one-projection-counts", () => {
       const fixture = ledgerCommitFixture(index, { instance, confirmedAt: instantOffsetOf(0),
         runId: fixtureUuid(`one-projection-run-${String(index)}`), itemId: fixtureUuid(`one-projection-item-${String(index)}`) });
       seedAtomicWriteOwner(world.database, fixture.commit, join(world.stateRoot, "authority.db"));
-      assert.equal(world.database.authority.writeIntents.fenceAttempt({ intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
+      assert.equal(fenceWriteFixture(world.database, { intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
       world.database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
     }
     const report = world.projection.buildActivityReportWire(DAY, DAY);

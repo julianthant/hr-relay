@@ -896,8 +896,10 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     atomicOutbox(LEDGER_OUTBOX_PAYLOAD),
     { ...atomicOutbox(SPAN_OUTBOX_PAYLOAD), projection: { state: "projected", projectedAt: ABSENCE_1.observedAt, projectionFingerprint: HASH_A } },
   ], openFixturePaths: ["payload.outcome.output.value"] },
-  { name: "WriteFenceInput", schema: WriteFenceInputSchema, fixtures: [{ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }] },
+  { name: "WriteFenceInput", schema: WriteFenceInputSchema, fixtures: [{ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT, claim: { workerId: "fixture-worker", claimGeneration: 1 } }] },
   { name: "PermanentWriteResolution", schema: PermanentWriteResolutionSchema, fixtures: [
+    { state: "refused", refusal: { reason: "lost" } },
+    { state: "refused", refusal: { reason: "invalid-state" } },
     { state: "fenced", intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT },
     { state: "recorded-observed-present", intent: WRITE_INTENT_FIXTURES[0] },
     { state: "existing", intent: WRITE_INTENT_FIXTURES[2] },

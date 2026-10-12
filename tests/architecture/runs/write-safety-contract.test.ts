@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { testRunContinuation, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -213,7 +214,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     const w = recoveryWorld();
     parkedAttemptingWriteFixture(w.database, w.clock);
     const second = foreignAttemptingIntent("55555555-5555-4555-8555-555555555555", "66666666-6666-4666-8666-666666666666");
-    const resolution = w.database.authority.writeIntents.fenceAttempt(second);
+    const resolution = fenceWriteFixture(w.database, second);
     assert.equal(resolution.state, "existing", "the permanent primary key is the same-key mutex");
     if (resolution.state === "existing") {
       assert.equal(resolution.intent.idempotencyKey, WRITE_FIXTURE_KEY);

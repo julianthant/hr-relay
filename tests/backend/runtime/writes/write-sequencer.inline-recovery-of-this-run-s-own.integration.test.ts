@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -14,7 +15,7 @@ describe("inline recovery of this run's own attempting intent", () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     assert.equal(
-      h.database.authority.writeIntents.fenceAttempt(attemptingIntentFixture(WRITE_FIXTURE_RUN_ID)).state,
+      fenceWriteFixture(h.database, attemptingIntentFixture(WRITE_FIXTURE_RUN_ID)).state,
       "fenced",
     );
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));

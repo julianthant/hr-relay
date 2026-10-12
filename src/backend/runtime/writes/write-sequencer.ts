@@ -2019,12 +2019,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         refuseRequestedCancellation(context);
         try {
           const resolution = refenceExpectedVersion === undefined
-            ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord })
+            ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord, claim: context.claim })
             : deps.authority.authority.writeIntents.refenceRetryable({
               expectedVersion: refenceExpectedVersion,
+              claim: context.claim,
               intent: intentRecord,
               attempt: attemptRecord,
             });
+          if (resolution.state === "refused") throw new RunLifecycleRefusedError(resolution);
           if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
           if (resolution.state !== "fenced") {
             throw new Error(

@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
@@ -238,7 +239,7 @@ describe("composed worker runtime", () => {
       now: NOW,
     });
     assert.ok(running.state === "applied");
-    crashed.authority.writeIntents.fenceAttempt({
+    fenceWriteFixture(crashed, {
       intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: WORKFLOW_ID, itemId: ITEM_ID },
       attempt: WRITE_ATTEMPT,
     });

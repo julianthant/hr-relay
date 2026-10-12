@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createStorageRestoreTestWorld, type DrillPaths } from "../../../support/helpers/backend/storage-restore-world.js";
 import { randomUUID } from "node:crypto";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
@@ -68,7 +69,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
         workerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString(),
         currentNodeId: checkpoint.nodeId } });
     assert.equal(running.state, "applied");
-    initial.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    fenceWriteFixture(initial, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
   } finally { initial.close(); }
   const before = inspect(p.authorityPath);
   assert.equal(before.lifecycle, "running"); assert.equal(before.outcome, "attempting");

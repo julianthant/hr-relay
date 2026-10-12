@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { personLookupDescriptor, separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -15,7 +16,7 @@ afterEach(cleanup);
 
 function parkLegacyAttemptingIntent(database: AuthorityDatabase, message: string): void {
   const attempting = attemptingIntentFixture(UUID_5);
-  assert.equal(database.authority.writeIntents.fenceAttempt(attempting).state, "fenced");
+  assert.equal(fenceWriteFixture(database, attempting).state, "fenced");
   database.authority.writeIntents.parkAttempt({
     writeIntentId: attempting.intent.writeIntentId,
     generation: attempting.intent.generation,
@@ -150,7 +151,7 @@ describe("beat ④ — budget expiry and CAS races discard the staged page", () 
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const foreign = attemptingIntentFixture(UUID_5);
     h.world.onPrepare = () => {
-      assert.equal(h.database.authority.writeIntents.fenceAttempt(foreign).state, "fenced");
+      assert.equal(fenceWriteFixture(h.database, foreign).state, "fenced");
     };
     await assert.rejects(h.execute(contextFor(run, claim)), /lost the race .* nothing was clicked/s);
     assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
@@ -200,7 +201,7 @@ describe("beat ① — durable same-key dedupe", () => {
   it("refuses loudly while another run is mid-submit, before any probe or browser", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);
-    assert.equal(h.database.authority.writeIntents.fenceAttempt(attemptingIntentFixture(UUID_5)).state, "fenced");
+    assert.equal(fenceWriteFixture(h.database, attemptingIntentFixture(UUID_5)).state, "fenced");
     await assert.rejects(
       h.execute(contextFor(run, claim)),
       /another run .* is mid-submit .* refusing to double-fence/s,
@@ -261,8 +262,9 @@ describe("retryable re-fence (only a settled retryable key mints a new generatio
   it("fences generation 2 with a fresh binding proof and commits", async () => {
     const h = harness();
     const now = h.clock.now().toISOString();
-    const settled = attemptingIntentFixture(UUID_5);
-    assert.equal(h.database.authority.writeIntents.fenceAttempt(settled).state, "fenced");
+    const { run, claim } = claimRunning(h.database, h.clock);
+    const settled = attemptingIntentFixture(run.envelope.runId);
+    assert.equal(fenceWriteFixture(h.database, settled).state, "fenced");
     h.database.withAuthorityTransaction((repositories) => {
       repositories.writeIntents.settleRetryable({
         writeIntentId: settled.intent.writeIntentId,
@@ -280,7 +282,6 @@ describe("retryable re-fence (only a settled retryable key mints a new generatio
       });
     });
 
-    const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const outcome = await h.execute(contextFor(run, claim));
     assert.equal((outcome as { disposition: string }).disposition, "committed");

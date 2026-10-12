@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { RunClaimTokenSchema } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
@@ -157,7 +158,7 @@ describe("inline recovery of this run's own attempting intent", () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     const own = attemptingIntentFixture(WRITE_FIXTURE_RUN_ID);
-    assert.equal(h.database.authority.writeIntents.fenceAttempt(own).state, "fenced");
+    assert.equal(fenceWriteFixture(h.database, own).state, "fenced");
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
 
     const outcome = await h.execute(contextFor(run, claim));
@@ -187,7 +188,7 @@ describe("service-backed shared settlement", () => {
         fence.intent.idempotencyKey = `protected-document:${documentNumber}`;
         fence.intent.idempotencyKeyDigest = deriveIdempotencyKeyDigest("ucpath", fence.intent.idempotencyKey);
       }
-      assert.equal(h.database.authority.writeIntents.fenceAttempt(fence).state, "fenced");
+      assert.equal(fenceWriteFixture(h.database, fence).state, "fenced");
       const intent = h.database.authority.writeIntents.get(fence.intent.writeIntentId);
       assert.ok(intent?.status === "attempting");
       const bundle = buildCommittedSettlement({ descriptor: writeFixtureDescriptor, nodeId: WRITE_FIXTURE_NODE_ID,

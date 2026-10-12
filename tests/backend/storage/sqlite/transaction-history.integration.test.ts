@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { afterEach, describe, it, vi } from "vitest";
@@ -337,7 +338,7 @@ afterEach(_afterEachFixture0);
       migrationOwner: "timeline-replay-test" }, manualClock(new Date(ts)));
     try {
       seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
-      database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+      fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
       database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
       const records = database.authority.timelineEvents.page({});
       expect(records.map((record) => record.payload.kind)).toEqual(["checkpoint-recorded", "operation-confirmed"]);

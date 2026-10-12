@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,7 +34,7 @@ describe("dry-run write-safety evidence query", () => {
     );
     databases.push(database);
 
-    database.authority.writeIntents.fenceAttempt({
+    fenceWriteFixture(database, {
       intent: WRITE_INTENT_ATTEMPTING,
       attempt: WRITE_ATTEMPT,
     });
