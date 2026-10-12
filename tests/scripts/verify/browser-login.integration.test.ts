@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -8,10 +8,16 @@ import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admi
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
-import { SessionAcquisitionTimeoutError, SESSION_ACQUISITION_TIMEOUT_TEXT } from "../../../src/backend/runtime/workers/worker-sessions.js";
+import { WorkerSessionManager, SessionAcquisitionTimeoutError, SESSION_ACQUISITION_TIMEOUT_TEXT } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
+import { deleteOwnedBrowserProfile, PlaywrightWorkerSessionFactory, workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
 import { FingerprintSchema, WorkerIdSchema } from "../../../src/rules/identity/ids.js";
+
+import { createBrowserSessionFactoryFixtures } from "../../support/helpers/browser/session-factory-fixtures.js";
+import { ManualScheduler } from "../../support/helpers/phase1f-executor-harness.js";
+import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 
 const clock = manualClock(new Date("2026-10-11T10:00:00.000Z"));
 const credentialKey = FingerprintSchema.parse("ab".repeat(32));
@@ -163,6 +169,135 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(database.authority.workerSlots.list()[1].retiredAt).toBeNull();
     expect(database.authority.duoCeremonyLeases.get(credentialKey)).toBeUndefined();
     expect(database.authority.workerPools.get("person-lookup")?.desiredWorkers).toBe(1);
+  });
+
+  it("performs one manager/factory fresh-profile recovery under its own retained Duo lease", async () => {
+    const { database, gates } = fixture();
+    const scheduler = new ManualScheduler(clock);
+    const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
+    await helpers.withTempRuntime(async ({ config, root }) => {
+      const processLockRoot = join(root, "locks");
+      const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+      try {
+        let current = helpers.fakeLauncher();
+        const first = current;
+        let launches = 0;
+        let logins = 0;
+        const binding = helpers.recordingBindings().ucpath;
+        if (binding === undefined) throw new Error("fixture ucpath binding unavailable");
+        await withSmokeWorker(database, async (slot, ownedGates) => {
+          const factory = new PlaywrightWorkerSessionFactory({ config, protectedSecrets: protectedSecretSource({
+            ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }), isolation: rebuildRuntimeIsolation,
+            clock, scheduler, slotOrdinal: () => slot.ordinal,
+            newSessionId: () => `00000000-0000-4000-8000-00000000000${launches}`,
+            launcher: { launch: input => {
+              if (launches > 0) current = helpers.fakeLauncher();
+              launches += 1;
+              return current.launcher.launch(input);
+            }, observeProcess: (directory, pid) => {
+              if (current.launcher.observeProcess === undefined) throw new Error("fixture process observer unavailable");
+              return current.launcher.observeProcess(directory, pid);
+            } },
+            admitProfile: createSmokeProfileAdmission({ processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+              workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot: config.paths.browserProfileRoot }),
+            bindings: { ucpath: { ...binding, login: context => context.duoCeremony.withCeremony(async token => {
+              logins += 1;
+              expect(token.holder.workerId).toBe(slot.workerId);
+              expect(database.authority.duoCeremonyLeases.get(credentialKey)?.generation).toBe(1);
+              if (logins === 1) throw new DuoTerminalRefusalError("ucpath", "fixture refusal", "https://api.example.test/");
+              return "logged-in" as const;
+            }) } },
+          });
+          const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow,
+            stores: taskStoreRegistry, factory, clock, scheduler, acquireDeadlineMs: 60000,
+            duoCeremony: { openGate: input => { const gate = gates.openGate(input); ownedGates.add(gate); return gate; } } });
+          manager.bindRunConfigFingerprint(credentialKey);
+          const errors: unknown[] = [];
+          try {
+            await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
+              new AbortController().signal, async driver => { expect(driver.system).toBe("ucpath"); });
+          } catch (error) { errors.push(error); }
+          await closeSmokeSessions(manager, () => { deleteOwnedBrowserProfile(config.paths.browserProfileRoot,
+            join(config.paths.browserProfileRoot, `w${slot.ordinal}`)); }, errors);
+        }, clock);
+        expect(launches).toBe(2);
+        expect(logins).toBe(2);
+        expect(first.contextClosed()).toBe(true);
+        expect(current.contextClosed()).toBe(true);
+        expect(existsSync(join(config.paths.browserProfileRoot, "w1"))).toBe(false);
+        expect(database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)).toEqual([]);
+        expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("released");
+      } finally { lock.release(); }
+    });
+  });
+
+  it("times out a real manager/factory acquisition and removes its slot, profile and lease", async () => {
+    const { database, gates } = fixture();
+    const scheduler = new ManualScheduler(clock);
+    const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
+    await helpers.withTempRuntime(async ({ config, root }) => {
+      const processLockRoot = join(root, "locks");
+      const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+      try {
+        let loginStarted: () => void = () => undefined;
+        const started = new Promise<void>(resolve => { loginStarted = resolve; });
+        const harness = helpers.fakeLauncher();
+        let releaseClose: () => void = () => undefined;
+        let closeStarted: () => void = () => undefined;
+        const heldClose = new Promise<void>(resolve => { releaseClose = resolve; });
+        const closing = new Promise<void>(resolve => { closeStarted = resolve; });
+        let attemptedDeletion = false;
+        const binding = helpers.recordingBindings().ucpath;
+        if (binding === undefined) throw new Error("fixture ucpath binding unavailable");
+        const operation = withSmokeWorker(database, async (slot, ownedGates) => {
+          const factory = new PlaywrightWorkerSessionFactory({ config, protectedSecrets: protectedSecretSource({
+            ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }), isolation: rebuildRuntimeIsolation,
+            clock, scheduler, slotOrdinal: () => slot.ordinal, newSessionId: () => "00000000-0000-4000-8000-000000000001",
+            launcher: { ...harness.launcher, launch: async input => {
+              const context = await harness.launcher.launch(input);
+              const close = context.close.bind(context);
+              context.close = async options => { closeStarted(); await heldClose; await close(options); };
+              return context;
+            } }, admitProfile: createSmokeProfileAdmission({ processLockRoot,
+              acquisitionId: z.uuid().parse(lock.acquisitionId), workerId: slot.workerId, ordinal: slot.ordinal,
+              system: "ucpath", profileRoot: config.paths.browserProfileRoot }),
+            bindings: { ucpath: { ...binding, login: context => context.duoCeremony.withCeremony(async () => {
+              expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("held");
+              loginStarted();
+              return new Promise<never>((_resolve, reject) => {
+                context.signal.addEventListener("abort", () => { reject(context.signal.reason instanceof Error ? context.signal.reason : new Error("fixture acquisition cancelled")); }, { once: true });
+              });
+            }) } },
+          });
+          const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow,
+            stores: taskStoreRegistry, factory, clock, scheduler, acquireDeadlineMs: 1000,
+            duoCeremony: { openGate: input => { const gate = gates.openGate(input); ownedGates.add(gate); return gate; } } });
+          manager.bindRunConfigFingerprint(credentialKey);
+          const errors: unknown[] = [];
+          try { await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
+            new AbortController().signal, async () => { throw new Error("timed-out driver callback reached"); }); }
+          catch (error) { errors.push(error); }
+          await closeSmokeSessions(manager, () => { attemptedDeletion = true; deleteOwnedBrowserProfile(config.paths.browserProfileRoot,
+            join(config.paths.browserProfileRoot, `w${slot.ordinal}`)); }, errors);
+        }, clock);
+        const completed = operation.then(() => undefined, (error: unknown) => error);
+        await started;
+        clock.advanceMonotonic(1000);
+        const deadline = scheduler.pending().find(entry => entry.deadlineMonotonicMs === clock.monotonicMs());
+        if (deadline === undefined) throw new Error("acquisition deadline unavailable");
+        deadline.fire();
+        await closing;
+        try {
+          await new Promise<void>(resolve => { setImmediate(resolve); });
+          expect(attemptedDeletion).toBe(false);
+        } finally { releaseClose(); }
+        expect(await completed).toBeInstanceOf(SessionAcquisitionTimeoutError);
+        expect(harness.contextClosed()).toBe(true);
+        expect(database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)).toEqual([]);
+        expect(existsSync(join(config.paths.browserProfileRoot, "w1"))).toBe(false);
+        expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("released");
+      } finally { lock.release(); }
+    });
   });
 
   it("re-admits only its exact already-admitted profile once for fresh-profile recovery", async () => {

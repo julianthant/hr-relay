@@ -12,6 +12,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
 import { withBrowserActionSession } from "../../systems/browser-shared/action-notes.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
+import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
 import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "../gates/duo-ceremony-gate.js";
 import {
   BrowserSessionIdSchema,
@@ -347,6 +348,7 @@ export class WorkerSessionManager {
   readonly #retained = new Map<string, Readonly<{ openedAt: string; factory: WorkerBrowserSessionFactory; acquireMs: number; duo: DuoCeremonyGateFactory; defaultMode: BrowserPresentationMode }>>();
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
   readonly #poisoned = new Set<BrowserSystemId>();
+  readonly #acquisitionCleanupFailures = new Map<BrowserSystemId, Error>();
   readonly #starting = new Map<BrowserSystemId, Promise<WorkerBrowserResource>>();
   readonly #tails = new Map<BrowserSystemId, Promise<void>>();
   #closingReason: "parked" | "worker-stop" | undefined;
@@ -631,14 +633,27 @@ export class WorkerSessionManager {
       const systems = new Set<BrowserSystemId>([
         ...this.#resources.keys(),
         ...this.#starting.keys(),
+        ...this.#acquisitionCleanupFailures.keys(),
         ...this.#tails.keys(),
       ]);
       for (const system of systems) {
+        const starting = this.#starting.get(system);
         try {
           await this.#withSystemTurn(
             system,
             new AbortController().signal,
-            () => this.#closeSystem(system, reason),
+            async () => {
+              if (starting !== undefined) {
+                try { await starting; }
+                catch (error) {
+                  if ((error instanceof AggregateError || error instanceof DuoCeremonyReleaseFailedError)
+                    && !this.#acquisitionCleanupFailures.has(system)) failures.push(error);
+                }
+              }
+              await this.#closeSystem(system, reason);
+              const cleanupFailure = this.#acquisitionCleanupFailures.get(system);
+              if (cleanupFailure !== undefined) failures.push(cleanupFailure);
+            },
           );
         } catch (error) {
           failures.push(error);
@@ -760,6 +775,8 @@ export class WorkerSessionManager {
     signal: AbortSignal,
     envelope: AcquisitionEnvelope,
   ): Promise<WorkerBrowserResource> {
+    const cleanupFailure = this.#acquisitionCleanupFailures.get(need.system);
+    if (cleanupFailure !== undefined) throw cleanupFailure;
     if (this.#poisoned.has(need.system)) {
       throw new Error(`${need.system} browser session has an unresolved failed-close proof`);
     }
@@ -786,6 +803,12 @@ export class WorkerSessionManager {
     this.#starting.set(need.system, started);
     try {
       return await started;
+    } catch (error) {
+      if (error instanceof DuoCeremonyReleaseFailedError
+        || error instanceof AggregateError && !this.#resources.has(need.system)) {
+        this.#acquisitionCleanupFailures.set(need.system, error);
+      }
+      throw error;
     } finally {
       if (this.#starting.get(need.system) === started) this.#starting.delete(need.system);
     }

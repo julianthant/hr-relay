@@ -1,6 +1,6 @@
 import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { BrowserLoginError, BrowserLandingStallError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { isAuthenticatedUcpathAppUrl, isUcpathPostSsoLanding, ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../../../src/backend/systems/ucpath/session.js";
 import { NEVER_SETTLES, type FakeCookie, type FakePageScript } from "../../../support/helpers/browser/fake-login-page.js";
@@ -448,6 +448,27 @@ describe("ucpath login recipe", () => {
       assert.equal(observedTimeout, 300);
       return true;
     });
+  });
+
+  it("bounds a stuck diagnosis before the acquisition deadline", async () => {
+    const { context } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
+        "sso-submit": {}, "sso-username": {}, "sso-password": {},
+      },
+    });
+    context.page.title = async () => await new Promise<string>(() => undefined);
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    try {
+      await assert.rejects(ucpathLoginRecipe({ ...context, acquisitionRemainingMs: () => 150 }), error => {
+        assert.ok(error instanceof BrowserLandingStallError);
+        assert.equal(error.code, "landing-probe-unavailable");
+        assert.equal(error.title, "");
+        return true;
+      });
+      assert.ok(timers.mock.calls.some(([, delay]) => delay === 50));
+    } finally { timers.mockRestore(); }
   });
 
   it("recovers a visible Shibboleth stale request once inside the same ceremony deadline", async () => {

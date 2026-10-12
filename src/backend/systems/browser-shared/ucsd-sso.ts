@@ -255,7 +255,7 @@ export async function waitForAuthenticatedLanding(
     const observed = URL.parse(context.page.url());
     let title = "";
     let diagnosis: BrowserLandingStallCode | "duo-refused" = "landing-probe-unavailable";
-    const budget = Math.max(1, Math.min(1_000, context.acquisitionRemainingMs?.() ?? 1_000));
+    const budget = Math.max(1, Math.min(900, (context.acquisitionRemainingMs?.() ?? 1_000) - 100));
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const result = await raceCancellation(Promise.race([
