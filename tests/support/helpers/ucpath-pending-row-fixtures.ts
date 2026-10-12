@@ -14,3 +14,18 @@ export function createUcpathPendingRowFixtures(EID: UcpathTransactionRow["emplId
   }
   return { row };
 }
+
+export function createDeterministicUcpathDriverRow(EID: UcpathTransactionRow["emplId"]) {
+  function transactionRow(overrides: Partial<UcpathTransactionRow> = {}): UcpathTransactionRow {
+    return {
+      transactionId: "T009000001",
+      emplId: EID,
+      action: "TER",
+      approvalStatus: "Pending",
+      startDate: "06/11/2026",
+      displayedName: "Person, Deterministic",
+      ...overrides,
+    };
+  }
+  return { transactionRow };
+}

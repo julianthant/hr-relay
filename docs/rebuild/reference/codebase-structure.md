@@ -123,6 +123,8 @@ Authored dry-run records share their fixture owner; raw Kuali inputs use the imp
 
 Terminal-run, preview and settings fixtures use their shared worlds. Notification execution uses `helpers/backend/notification-inbox-world.ts`; dashboard input and identity fixtures use `helpers/dashboard-model-fixtures.ts` and `helpers/dashboard/identity-ceremony-fixtures.ts`. Omission definitions live in `helpers/workflow/omission-definition-fixtures.ts`, Kuali driver helpers in `helpers/backend/kuali-task-world.ts`, and queue seeding in `helpers/seeded-dashboard-world.ts`. Claim, lease and separation planning builders live under `helpers/backend/`.
 
+Kernel stub and member fixtures live in `helpers/backend/kernel-stub-command-fixtures.ts` and `kernel-reject-member-run.ts`. Person Lookup start, checkpoint and receipt fixtures live in `helpers/backend/person-lookup-start-fixtures.ts`, `person-lookup-provenance-checkpoint.ts` and `person-lookup-receipt-database.ts`. Confirmed history and first-install custody fixtures live in `helpers/storage/confirmed-retention-fixtures.ts` and `first-install-custody-fixtures.ts`. The run-queue projection world owns settled-run seeding; the pending-row owner also builds deterministic driver rows.
+
 Client day, awaiting queue and settings editor inputs have shared dashboard fixture owners. Stream backpressure and preflight port setup live under `helpers/backend/`, backup and admission child setup under `helpers/storage/`, and pending transaction rows in `helpers/ucpath-pending-row-fixtures.ts`. Worker pool plan inputs use `helpers/backend/worker-supervision-world.ts`; kernel start inputs use the existing command-kernel harness.
 
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;

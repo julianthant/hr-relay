@@ -1,5 +1,5 @@
 import { createSeededDashboardWorld } from "../seeded-dashboard-world.js";
-import { makeWorld, type DashboardWorld } from "./dashboard-harness.js";
+import { claimEventOf, makeWorld, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "./dashboard-harness.js";
 
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
@@ -36,8 +36,27 @@ export function createRunQueueProjectionTestWorld() {
   }
 
 
+  /** Exactly the exit run's node walk, at one run attempt. */
+  function seedExitRunShape(w: DashboardWorld): void {
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    taskEventsOf(w, 1, "searching", "done");
+    taskEventsOf(w, 1, "cross-verify", "done");
+    taskEventsOf(w, 1, "active-status", "done");
+    taskEventsOf(w, 1, "crm-dates", "skipped", "condition-false");
+    w.writer.emit({
+      t: "span.ended", kind: "run", ts: w.clock.now().toISOString(), workflow: "person-lookup",
+      runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1), outcome: "done",
+    });
+    w.authority.put(runRecordOf({
+      seed: 1,
+      lifecycle: { state: "terminal", outcome: "done", endedAt: "2026-08-03T17:14:30.000Z" },
+      version: 3,
+    }));
+  }
+
   const cleanup = () => {
     for (const w of worlds.splice(0)) w.dispose();
   };
-  return { worlds, world, runRecordOf, queuedEventOf, CLAIM, appendOther, seedWorld, otherConnection, cleanup };
+  return { worlds, world, runRecordOf, queuedEventOf, CLAIM, appendOther, seedWorld, otherConnection, seedExitRunShape, cleanup };
 }

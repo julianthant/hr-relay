@@ -205,7 +205,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/dashboard/awaiting-queue-fixtures.ts` | awaiting queue fixtures |
 | `helpers/backend/stream-backpressure-fixtures.ts` | stream backpressure fixtures |
 | `helpers/storage/backup-fixtures.ts` | backup fixtures |
-| `helpers/ucpath-pending-row-fixtures.ts` | ucpath pending row fixtures |
+| `helpers/ucpath-pending-row-fixtures.ts` | Keiichiro pending rows and deterministic driver transaction rows |
 | `helpers/storage/admission-child-fixtures.ts` | admission child fixtures |
 | `helpers/backend/preflight-port-fixtures.ts` | preflight port fixtures |
 | `helpers/dashboard/settings-editor-fixtures.ts` | settings editor fixtures |
@@ -226,3 +226,10 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 - `fixtures/storage/native-authority/migrated-tombstones.json`
 - `fixtures/storage/native-authority/schema40-failure.json`
 - `helpers/dashboard/color-filtered-roster.xlsx`
+| `helpers/backend/kernel-stub-command-fixtures.ts` | createKernelStubCommandFixtures shared fixtures |
+| `helpers/backend/kernel-reject-member-run.ts` | kernelRejectMemberRecord shared fixtures |
+| `helpers/backend/person-lookup-start-fixtures.ts` | createPersonLookupStartFixtures shared fixtures |
+| `helpers/backend/person-lookup-provenance-checkpoint.ts` | createPersonLookupProvenanceCheckpoint shared fixtures |
+| `helpers/storage/confirmed-retention-fixtures.ts` | openConfirmedRetentionDatabase shared fixtures |
+| `helpers/storage/first-install-custody-fixtures.ts` | createFirstInstallCustodyFixture shared fixtures |
+| `helpers/backend/person-lookup-receipt-database.ts` | openPersonLookupReceiptDatabase shared fixtures |
