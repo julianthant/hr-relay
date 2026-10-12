@@ -149,7 +149,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
 
 {
 
-const { WORKFLOW, NOW, stopReceipt, openHarness, stopDirective, stopRequest } = createWorkerSupervisionTestWorld();
+const { WORKFLOW, NOW, stopReceipt, openHarness, stopRequest, planRequest } = createWorkerSupervisionTestWorld();
 
 
 function member(poolIndex: number): WorkerPoolMember {
@@ -339,21 +339,7 @@ describe("stop-worker", () => {
   });
 });
 
-function planRequest(
-  desired: number,
-  members: readonly WorkerPoolMember[],
-  excess: readonly WorkerPoolMember[],
-  at: string = NOW,
-) {
-  return {
-    command: "plan-worker-count" as const,
-    workflowId: WORKFLOW,
-    desiredWorkers: PositiveIntSchema.parse(desired),
-    members,
-    excessMembers: excess,
-    directive: stopDirective(at),
-  };
-}
+
 
 describe("close", () => {
 

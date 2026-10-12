@@ -1,4 +1,5 @@
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
+import { createClientDayFixtures } from "../../support/helpers/dashboard/client-day-fixtures.js";
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -6,70 +7,20 @@ import { describe,it } from "vitest";
 import { applyDashboardDayPatch,createDashboardClient,DashboardClientError,type SubscriptionState } from "../../../src/dashboard/client/index.js";
 
 import type { DashboardDayPatch } from "../../../src/dashboard/client/queries/day-state.js";
-import { DashboardDayWireSchema,type DashboardDayWire } from "../../../src/models/dashboard/projection.js";
+import { type DashboardDayWire } from "../../../src/models/dashboard/projection.js";
 
 const DAY = "2026-08-03";
 const HASH_D = "d".repeat(64);
 const RUN_ID = "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b";
 
+const { surfaceOf: surfaceInput, dayOf: dayInput } = createClientDayFixtures(DAY, HASH_D);
+
 function surfaceOf(rowRevision: number, status = "queued"): Record<string, unknown> {
-  return {
-    surfaceKind: "single",
-    runId: RUN_ID,
-    itemId: "9c8b7a6d-5e4f-43a2-9b8c-7d6e5f4a3b2c",
-    workflowId: "person-lookup",
-    traceId: "pl-104233-3b8f",
-    attempt: 1,
-    lineage: { state: "root" },
-    actorId: "local-operator",
-    appVersion: { state: "present", value: "0.1.0" },
-    descriptorVersion: 1,
-    descriptorHash: HASH_D,
-    configFingerprint: HASH_D,
-    resolvedInstances: [{ system: "ucpath", instance: "prod" }],
-    dryRun: false,
-  priority: "interactive",
-  runNumber: { state: "present", value: 1 },
-  session: { state: "absent", reason: "This fixture has no run session." },
-  containment: "root",
-  linkedRuns: [],
-  facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
-    startedAt: "2026-08-03T17:00:00.000Z",
-    updatedAt: "2026-08-03T17:00:00.000Z",
-    endedAt: { state: "absent", reason: "run is running" },
-    gateOpenedAt: { state: "absent", reason: "no gate has opened on this run" },
-    displayName: { state: "absent", reason: "the operator has not renamed this run" },
-    title: "EID 10873698",
-    subtitle: { state: "absent", reason: "none planned" },
-    status,
-    liveMessage: { state: "absent", reason: "no producer authors a live progress sentence on this wire" },
-    warnings: { state: "absent", reason: "this run has produced no terminal result" },
-    pipeline: [],
-    panelKind: "run",
-    availableSections: ["logs"],
-    // No served controls: this fixture exercises patch application, not the
-    // action projection, and an empty list is a real answer on the wire.
-    actions: [],
-    rowRevision,
-  };
+  return surfaceInput(RUN_ID, rowRevision, "EID 10873698", status);
 }
 
 function dayOf(surfaces: readonly Record<string, unknown>[]): DashboardDayWire {
-  return DashboardDayWireSchema.parse({
-    day: DAY,
-    descriptorHash: HASH_D,
-    projectionGeneration: 7,
-    snapshotCursor: "pc:1",
-    monthCounts: [{ day: DAY, count: surfaces.length }],
-    workflowCounts: surfaces.length === 0
-      ? []
-      : [{ workflowId: "person-lookup", count: surfaces.length, statusCounts: [{ status: "queued", count: surfaces.length }] }],
-    statusCounts: surfaces.length === 0 ? [] : [{ status: "queued", count: surfaces.length }],
-    queueSurfaces: surfaces,
-    workerCards: [],
-    workerPools: [],
-    notifications: [],
-  });
+  return dayInput(surfaces, "pc:1");
 }
 
 function jsonResponse(status: number, body: unknown): Response {

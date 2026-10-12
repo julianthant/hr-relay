@@ -123,6 +123,8 @@ Authored dry-run records share their fixture owner; raw Kuali inputs use the imp
 
 Terminal-run, preview and settings fixtures use their shared worlds. Notification execution uses `helpers/backend/notification-inbox-world.ts`; dashboard input and identity fixtures use `helpers/dashboard-model-fixtures.ts` and `helpers/dashboard/identity-ceremony-fixtures.ts`. Omission definitions live in `helpers/workflow/omission-definition-fixtures.ts`, Kuali driver helpers in `helpers/backend/kuali-task-world.ts`, and queue seeding in `helpers/seeded-dashboard-world.ts`. Claim, lease and separation planning builders live under `helpers/backend/`.
 
+Client day, awaiting queue and settings editor inputs have shared dashboard fixture owners. Stream backpressure and preflight port setup live under `helpers/backend/`, backup and admission child setup under `helpers/storage/`, and pending transaction rows in `helpers/ucpath-pending-row-fixtures.ts`. Worker pool plan inputs use `helpers/backend/worker-supervision-world.ts`; kernel start inputs use the existing command-kernel harness.
+
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector

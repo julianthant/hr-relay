@@ -1,3 +1,4 @@
+import { createAwaitingQueueFixtures } from "../../../support/helpers/dashboard/awaiting-queue-fixtures.js";
 import assert_m0 from 'node:assert/strict';
 import { describe as describe_m0,it as it_m0 } from 'vitest';
 import { queueDisplayGroups as queueDisplayGroups_m0,visibleRunIds as visibleRunIds_m0 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
@@ -9,7 +10,7 @@ import {
 queueGateAge as queueGateAge_m1,
 queueRowAccessibleName as queueRowAccessibleName_m1
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m1 } from "../../../../src/models/dashboard/projection.js";
+
 
 import assert_m2 from "node:assert/strict";
 import { describe as describe_m2,it as it_m2 } from "vitest";
@@ -76,46 +77,7 @@ const HASH_B = "b".repeat(64);
 const NOW = "2026-08-14T17:00:00.000Z";
 const RUN_ID = "11111111-1111-4111-8111-111111111111";
 
-function surface(input: Record<string, unknown>) {
-  return QueueSurfaceWireSchema_m1.parse({
-    runId: RUN_ID,
-    itemId: "99999999-9999-4999-8999-999999999999",
-    workflowId: "person-lookup",
-    traceId: "pl-120000-1111",
-    attempt: 1,
-    lineage: { state: "root" },
-    actorId: "local-operator",
-    appVersion: { state: "present", value: "1.0.0" },
-    descriptorVersion: 1,
-    descriptorHash: HASH_A,
-    configFingerprint: HASH_B,
-    resolvedInstances: [],
-    dryRun: false,
-    priority: "interactive",
-    runNumber: { state: "present", value: 1 },
-    containment: "root",
-    linkedRuns: [],
-    session: { state: "absent", reason: "This fixture has no run session." },
-    facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
-    startedAt: NOW,
-    updatedAt: NOW,
-    endedAt: { state: "absent", reason: "run has not ended" },
-    gateOpenedAt: { state: "absent", reason: "no gate has opened on this run" },
-    displayName: { state: "absent", reason: "the operator has not renamed this run" },
-    title: "Jordan Reyes",
-    subtitle: { state: "absent", reason: "no second identifier" },
-    liveMessage: { state: "absent", reason: "no message" },
-    warnings: { state: "absent", reason: "no warning set has been derived" },
-    pipeline: [],
-    panelKind: "run",
-    availableSections: ["logs"],
-    actions: [],
-    rowRevision: 1,
-    surfaceKind: "single",
-    status: "awaiting-approval",
-    ...input,
-  });
-}
+const { surface } = createAwaitingQueueFixtures(RUN_ID, HASH_A, HASH_B, NOW);
 
 describe_m1("queueGateAge", () => {
   it_m1("measures the SERVED gate instant against the panel's calibrated now", () => {

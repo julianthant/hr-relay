@@ -1,7 +1,7 @@
 import { createWorkerSupervisionTestWorld, FakeWorkerChild, type Harness } from "../../../support/helpers/backend/worker-supervision-world.js";
 import { describe, expect, it } from "vitest";
 import { type WorkerPoolMember } from "../../../../src/backend/runtime/workers/worker-loop.js";
-import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
+
 import { randomUUID } from "node:crypto";
 import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { openAuthorityHarness } from "../../../support/helpers/phase1f-executor-harness.js";
@@ -12,7 +12,7 @@ import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js
 import { BrowserSessionIdSchema } from "../../../../src/rules/identity/ids.js";
 
 {
-const { WORKFLOW, NOW, member, openHarness, stopDirective, stopRequest } = createWorkerSupervisionTestWorld();
+const { NOW, member, openHarness, stopRequest, planRequest } = createWorkerSupervisionTestWorld();
 
 
 /* ── spawn: exact argv and birth proof ───────────────────────────────────── */
@@ -346,21 +346,7 @@ describe("a crashed child", () => {
   });
 });
 
-function planRequest(
-  desired: number,
-  members: readonly WorkerPoolMember[],
-  excess: readonly WorkerPoolMember[],
-  at: string = NOW,
-) {
-  return {
-    command: "plan-worker-count" as const,
-    workflowId: WORKFLOW,
-    desiredWorkers: PositiveIntSchema.parse(desired),
-    members,
-    excessMembers: excess,
-    directive: stopDirective(at),
-  };
-}
+
 
 }
 

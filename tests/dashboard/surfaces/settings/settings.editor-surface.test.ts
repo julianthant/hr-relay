@@ -1,3 +1,4 @@
+import { mountSettingsEditorFixtures } from "../../../support/helpers/dashboard/settings-editor-fixtures.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
@@ -81,33 +82,8 @@ describe("editable Settings surface", () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     let exitGuard: ((proceed: () => void) => void) | undefined;
-    const client = {
-      editableSettings: () => Promise.resolve(DOCUMENT),
-      applySettings: (command: unknown) => {
-        applied.push(command);
-        return Promise.resolve({ state: "applied", commandId: "00000000-0000-4000-8000-000000000001", affectedTargets: [{ family: "settings", revision: 2 }], restartRequired: true });
-      },
-    } as unknown as DashboardClient;
-    host = document.createElement("div");
-    document.body.append(host);
-    await act(async () => {
-      root = createRoot(host as HTMLElement);
-      root.render(createElement(DashboardClientProvider, {
-        client,
-        children: createElement(SettingsPage, { onClose: () => undefined,
-          storage: STORAGE,
-          sections: [],
-          workflowLabels: new Map<string, string>(),
-          section: "performance",
-          actorId: "local-operator",
-          descriptorFingerprint: "d".repeat(64),
-          preflight: [],
-          onSection: () => undefined,
-          onExitGuardChange: guard => { exitGuard = guard; },
-        }),
-      }));
-    });
-    await act(async () => undefined);
+    host = await mountSettingsEditorFixtures(DOCUMENT, STORAGE, applied,
+      value => { host = value; }, value => { root = value; }, guard => { exitGuard = guard; });
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
 
@@ -153,33 +129,8 @@ describe("editable Settings surface", () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     let exitGuard: ((proceed: () => void) => void) | undefined;
-    const client = {
-      editableSettings: () => Promise.resolve(DOCUMENT),
-      applySettings: (command: unknown) => {
-        applied.push(command);
-        return Promise.resolve({ state: "applied", commandId: "00000000-0000-4000-8000-000000000001", affectedTargets: [{ family: "settings", revision: 2 }], restartRequired: true });
-      },
-    } as unknown as DashboardClient;
-    host = document.createElement("div");
-    document.body.append(host);
-    await act(async () => {
-      root = createRoot(host as HTMLElement);
-      root.render(createElement(DashboardClientProvider, {
-        client,
-        children: createElement(SettingsPage, { onClose: () => undefined,
-          storage: STORAGE,
-          sections: [],
-          workflowLabels: new Map<string, string>(),
-          section: "performance",
-          actorId: "local-operator",
-          descriptorFingerprint: "d".repeat(64),
-          preflight: [],
-          onSection: () => undefined,
-          onExitGuardChange: guard => { exitGuard = guard; },
-        }),
-      }));
-    });
-    await act(async () => undefined);
+    host = await mountSettingsEditorFixtures(DOCUMENT, STORAGE, applied,
+      value => { host = value; }, value => { root = value; }, guard => { exitGuard = guard; });
     vi.useFakeTimers();
     const ocrDisclosure = [...(host?.querySelectorAll(".settings-performance-disclosure button") ?? [])].find(candidate => candidate.textContent?.includes("OCR processing"));
     if (!(ocrDisclosure instanceof HTMLButtonElement)) throw new Error("missing OCR processing disclosure");
