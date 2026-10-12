@@ -1,37 +1,14 @@
-import { useCallback,useEffect,useMemo,useRef,useState } from "react";
-import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
-import { type PanelTab } from "../../surfaces/run-detail/log-panel-model.js";
-import { type NavControls } from "../../surfaces/shell/navigation-controls.js";
-import {
-canGoBack,
-canGoForward,
-currentPlace,
-goBack,
-goForward,
-initNavHistory,
-navDestinationLabel,
-pushPlace,
-type NavHistory,
-} from "./nav-history.js";
-import type { NativeRouteHistory,PopstateRouteHandler,RouteHistoryTarget } from "./route-history-model.js";
-import {
-type AppRouteState
-} from "./url-state.js";
+import { useCallback, useRef } from "react";
+import type { NativeRouteHistory, PopstateRouteHandler, RouteHistoryTarget } from "./route-history-model.js";
+import type { AppRouteState } from "./url-state.js";
+
 export type SettingsExitGuard = (proceed: () => void) => void;
 
-export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId, setActiveWorkflowId,
- tab, dayWire, workflowLabelOf, onPopstateRef, nativeHistory }: {
- route: AppRouteState; setRoute: (next: AppRouteState) => void; day: string;
- activeWorkflowId: string; setActiveWorkflowId: (id: string) => void;
- tab: PanelTab | undefined; onTab: (tab: PanelTab | undefined) => void;
- dayWire: DashboardDayWire | undefined; workflowLabelOf: (id: string) => string;
- onPopstateRef: {current: PopstateRouteHandler | undefined}; nativeHistory: NativeRouteHistory;
+export function useDashboardNavigation({ route, onPopstateRef, nativeHistory }: {
+  route: AppRouteState;
+  onPopstateRef: { current: PopstateRouteHandler | undefined };
+  nativeHistory: NativeRouteHistory;
 }) {
-  const [navHistory, setNavHistory] = useState<NavHistory>(() =>
-    initNavHistory({ day, followToday: route.day === undefined, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }),
-  );
-  const applyingNav = useRef(false);
-  const observedInitialPlace = useRef(false);
   const settingsExitGuard = useRef<SettingsExitGuard | undefined>(undefined);
   const onSettingsExitGuardChange = useCallback((guard: SettingsExitGuard | undefined): void => {
     settingsExitGuard.current = guard;
@@ -46,8 +23,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
     guard(proceed);
   }, [route.settings]);
 
-    // Browser Back/Forward changes the address before it emits `popstate`. A dirty
-  // Settings page returns to its stable cursor, then replays the target atomically.
+  // Popstate changes the address first; restore dirty Settings before its exit guard.
   onPopstateRef.current = (target: RouteHistoryTarget): void => {
     if (route.settings === undefined || target.route.settings !== undefined) {
       nativeHistory.accept(target);
@@ -56,74 +32,5 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
     nativeHistory.restore(target, () => leaveSettings(() => nativeHistory.replay(target)));
   };
 
-  useEffect(() => {
-    if (!observedInitialPlace.current) {
-      if (dayWire === undefined) return;
-      observedInitialPlace.current = true;
-      setNavHistory(initNavHistory({ day, followToday: route.day === undefined, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
-      return;
-    }
-    if (applyingNav.current) {
-      applyingNav.current = false;
-      return;
-    }
-    setNavHistory((prev) =>
-      pushPlace(prev, { day, followToday: route.day === undefined, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }));
-  }, [day, activeWorkflowId, route.day, route.run, tab, dayWire]);
-
-  const travel = useCallback(
-    (direction: "back" | "forward"): void => {
-      const next = direction === "back" ? goBack(navHistory) : goForward(navHistory);
-      const place = currentPlace(next);
-      if (next === navHistory || place === undefined) return;
-      leaveSettings(() => {
-        applyingNav.current = true;
-        setNavHistory(next);
-        setActiveWorkflowId(place.workflow);
-                // Every takeover clears, exactly as the switcher does: a place is a spot in the QUEUE.
-        // the QUEUE, and the day moves with the run so a restore never lands on the wrong partition.
-        setRoute({
-          ...route,
-          intake: undefined,
-          archive: undefined,
-          archiveView: undefined,
-          archiveDashboard: undefined,
-          archiveWorkflow: undefined,
-          activity: undefined,
-          explore: undefined,
-          catalog: undefined,
-          catalogView: undefined,
-          settings: undefined,
-          day: place.followToday === true ? undefined : place.day,
-          run: place.runId ?? undefined,
-          section: place.tab ?? undefined,
-        });
-      });
-    },
-    [navHistory, route, setRoute, leaveSettings, setActiveWorkflowId],
-  );
-
-  /** what each control will actually do */
-  const nameRun = useCallback(
-    (runId: string): string | undefined =>
-      dayWire?.queueSurfaces.find((surface) => String(surface.runId) === runId)?.title,
-    [dayWire],
-  );
-
-  const navBackTo = navDestinationLabel(navHistory, "back", nameRun, workflowLabelOf);
-  const navForwardTo = navDestinationLabel(navHistory, "forward", nameRun, workflowLabelOf);
-  /** The bar's history controls, as ONE object per change rather than per render. */
-  const nav = useMemo(
-    (): NavControls => ({
-      canBack: canGoBack(navHistory),
-      canForward: canGoForward(navHistory),
-      ...(navBackTo === undefined ? {} : { backTo: navBackTo }),
-      ...(navForwardTo === undefined ? {} : { forwardTo: navForwardTo }),
-      onBack: () => travel("back"),
-      onForward: () => travel("forward"),
-    }),
-    [navHistory, navBackTo, navForwardTo, travel],
-  );
-
-return { nav, leaveSettings, onSettingsExitGuardChange };
+  return { leaveSettings, onSettingsExitGuardChange };
 }

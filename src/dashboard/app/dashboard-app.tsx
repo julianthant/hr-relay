@@ -253,7 +253,6 @@ function LoadedApp({
   onFilter,
   openWells,
   onWells,
-  tab,
   onTab,
   sort,
   onSort,
@@ -410,8 +409,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   );
 
   const { leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
-    route, setRoute, day, activeWorkflowId, setActiveWorkflowId, tab, onTab, dayWire,
-    workflowLabelOf, onPopstateRef, nativeHistory,
+    route, onPopstateRef, nativeHistory,
   });
 
   const selectWorkflow = useCallback((next: string): void => {
