@@ -1,9 +1,9 @@
 import { createWorkerSupervisionTestWorld, FakeWorkerChild, type Harness } from "../../../support/helpers/backend/worker-supervision-world.js";
 import { describe, expect, it } from "vitest";
 import { WORKER_GRACEFUL_STOP_TIMEOUT_MS, WORKER_SIGTERM_TIMEOUT_MS, type WorkerPoolMember } from "../../../../src/backend/runtime/workers/worker-loop.js";
-import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 
-const { WORKFLOW, NOW, member, DIRECTIVE_WRITE_VERSIONS, openHarness, stopDirective, stopRequest, stopPolicy } = createWorkerSupervisionTestWorld();
+
+const { NOW, member, DIRECTIVE_WRITE_VERSIONS, openHarness, stopRequest, stopPolicy, planRequest } = createWorkerSupervisionTestWorld();
 
 async function runningHarness(): Promise<{ harness: Harness; target: WorkerPoolMember }> {
   const harness = openHarness();
@@ -213,21 +213,7 @@ describe("pause-worker / resume-worker", () => {
   });
 });
 
-function planRequest(
-  desired: number,
-  members: readonly WorkerPoolMember[],
-  excess: readonly WorkerPoolMember[],
-  at: string = NOW,
-) {
-  return {
-    command: "plan-worker-count" as const,
-    workflowId: WORKFLOW,
-    desiredWorkers: PositiveIntSchema.parse(desired),
-    members,
-    excessMembers: excess,
-    directive: stopDirective(at),
-  };
-}
+
 
 describe("plan-worker-count", () => {
   it("keeps count reduction pending until exit and refuses unavailable native profile closure", async () => {

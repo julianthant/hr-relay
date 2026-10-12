@@ -1,3 +1,4 @@
+import { createBackupFixtures } from "../../../support/helpers/storage/backup-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -9,7 +10,7 @@ import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage
 import { AuthorityBackupManifestSchema, StorageDoctorReportSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { AuthorityBackupService, AuthorityDatabase, composeStorageCommand, doctorAuthorityStorage, syntheticStateRoot, verifyBackupManifestAtPath } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase, composeStorageCommand, doctorAuthorityStorage, syntheticStateRoot, verifyBackupManifestAtPath } from "../../../support/helpers/synthetic-storage-admission.js";
 
 {
 
@@ -29,39 +30,9 @@ function temporaryRoot(prefix: string): string {
   return root;
 }
 
-function openCurrentWorld() {
-  const root = temporaryRoot("hrauto-v3-backup-");
-  const stateRoot = join(root, ".tracker");
-  mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
-  const authorityPath = join(stateRoot, "state.db");
-  const database = AuthorityDatabase.open({
-    path: authorityPath,
-    busyTimeoutMs: 250,
-    migrationOwner: "backup-test",
-  }, CLOCK);
-  databases.push(database);
-  return {
-    stateRoot,
-    authorityPath,
-    database,
-    backupDirectory: join(stateRoot, "backups", "authority"),
-  };
-}
+const { openCurrentWorld, takeBackup } = createBackupFixtures(temporaryRoot, databases, CLOCK);
 
-async function takeBackup(world: ReturnType<typeof openCurrentWorld>) {
-  const service = new AuthorityBackupService(world.database, { directory: world.backupDirectory }, CLOCK);
-  const report = await service.request({
-    trigger: "operator",
-    requiredGeneration: world.database.getMeta().authorityGeneration,
-  });
-  const manifest = report.manifests[0];
-  assert.ok(manifest !== undefined);
-  return {
-    report,
-    manifest,
-    manifestPath: join(world.backupDirectory, `${manifest.backupFileName}.manifest.json`),
-  };
-}
+
 
 describe("DB-only authority backups", () => {
 afterEach(_afterEachFixture0);
