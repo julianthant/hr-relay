@@ -39,14 +39,11 @@ const COMMUNITIES_LOGIN_SELECTOR = 'input#username, input[name="username"], inpu
 
 
 export function isAuthenticatedCrmUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    const path = url.pathname;
-    return url.protocol === "https:" && url.host === CRM_APP_HOST
-      && (path === "/hr" || path.startsWith("/hr/")) && !path.toLowerCase().includes("login");
-  } catch {
-    return false;
-  }
+  const url = URL.parse(rawUrl);
+  if (url === null) return false;
+  const path = url.pathname;
+  return url.protocol === "https:" && url.host === CRM_APP_HOST
+    && (path === "/hr" || path.startsWith("/hr/")) && !path.toLowerCase().includes("login");
 }
 
 /** The two-fact proof: Salesforce's own session cookie, and no sign-in form. */

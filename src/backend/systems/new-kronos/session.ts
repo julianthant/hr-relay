@@ -41,14 +41,11 @@ const SSO_FORM_SELECTOR =
 
 
 function isAuthenticatedNewKronosUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    const path = url.pathname;
-    return url.protocol === "https:" && url.host === NEW_KRONOS_APP_HOST
-      && (path === NEW_KRONOS_APP_PATH || path.startsWith(`${NEW_KRONOS_APP_PATH}/`));
-  } catch {
-    return false;
-  }
+  const url = URL.parse(rawUrl);
+  if (url === null) return false;
+  const path = url.pathname;
+  return url.protocol === "https:" && url.host === NEW_KRONOS_APP_HOST
+    && (path === NEW_KRONOS_APP_PATH || path.startsWith(`${NEW_KRONOS_APP_PATH}/`));
 }
 
 

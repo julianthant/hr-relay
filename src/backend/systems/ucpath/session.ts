@@ -44,28 +44,22 @@ const PEOPLESOFT_SIGNON_SELECTOR = 'input#userid, input#pwd, input[name="userid"
 
 // A UC-host landing is only a wait predicate; the public portal also satisfies it.
 export function isUcpathPostSsoLanding(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    const path = url.pathname.toLowerCase();
-    return url.protocol === "https:"
-      && (url.host === PEOPLESOFT_APP_HOST || url.host === "ucpath.universityofcalifornia.edu")
-      && !path.includes(CAMPUS_DISCOVERY_MARKER) && !path.includes("/login") && !path.includes("shibboleth")
-      && ![...url.searchParams].some(([key, value]) => key.toLowerCase() === "cmd"
-        && (value.toLowerCase() === "login" || value.toLowerCase() === "expire"));
-  } catch {
-    return false;
-  }
+  const url = URL.parse(rawUrl);
+  if (url === null) return false;
+  const path = url.pathname.toLowerCase();
+  return url.protocol === "https:"
+    && (url.host === PEOPLESOFT_APP_HOST || url.host === "ucpath.universityofcalifornia.edu")
+    && !path.includes(CAMPUS_DISCOVERY_MARKER) && !path.includes("/login") && !path.includes("shibboleth")
+    && ![...url.searchParams].some(([key, value]) => key.toLowerCase() === "cmd"
+      && (value.toLowerCase() === "login" || value.toLowerCase() === "expire"));
 }
 
 
 export function isAuthenticatedUcpathAppUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    return isUcpathPostSsoLanding(rawUrl) && url.host === PEOPLESOFT_APP_HOST
-      && PEOPLESOFT_APP_PATHS.some(path => url.pathname.startsWith(path));
-  } catch {
-    return false;
-  }
+  const url = URL.parse(rawUrl);
+  if (url === null) return false;
+  return isUcpathPostSsoLanding(rawUrl) && url.host === PEOPLESOFT_APP_HOST
+    && PEOPLESOFT_APP_PATHS.some(path => url.pathname.startsWith(path));
 }
 
 /** The two-fact proof: PeopleSoft's own session token, and no sign-in form. */
