@@ -23,13 +23,13 @@ has zero Background Check nodes, gates or transactions. There are no implemented
 permanent keys, `when` clauses or result schemas to list.
 
 Current authoring uses a `workflow.ts` definition compiled into descriptor/module views at
-[the workflow registry](../../../src/control/workflow-registry.ts), rather than requiring separately
+[the workflow registry](../../../src/backend/app/registries/workflow-registry.ts), rather than requiring separately
 authored descriptor/module files. Follow the existing
 [Person Lookup definition](../../../src/workflows/person-lookup/workflow.ts) and
 [workflow-authoring guide](../../../docs/rebuild/guides/workflow-authoring.md) when implementation is admitted.
 
-The [ServiceNow store](../../../src/stores/servicenow/index.ts) and
-[SharePoint store](../../../src/stores/sharepoint/index.ts) both have empty task maps and unwired
+The [ServiceNow store](../../../src/backend/systems/servicenow/task-registry.ts) and
+[SharePoint store](../../../src/backend/systems/sharepoint/task-registry.ts) both have empty task maps and unwired
 drivers. Their session-provider shells exist, but that does not establish a working authenticated
 driver. Neither store currently has a store-specific AGENTS.md or Background Check task binding.
 
@@ -75,7 +75,7 @@ retry; its schema and the source-system lookup capable of reconciling it remain 
   the source roster and shared original. Template identity and field-map compatibility must be checked.
 - Canary subjects: **UNKNOWN — no Background Check label exists in the public
   [subject registry](../../../config/test-data.json).** Provision an operator-approved test target
-  and its safe disposition through [the typed test-data reader](../../../src/control/test-data.ts)
+  and its safe disposition through [the typed test-data reader](../../../src/backend/app/registries/test-data.ts)
   before live write proof. Existing Person Lookup/Separations labels are not substitutes.
 - Subjects that must not be used: an ordinary applicant cohort is not an implied controlled-write
   target. Burnt/submitted Background Check subjects are **UNKNOWN — there is no migration live
@@ -120,7 +120,7 @@ opening/editing an online workbook does not update a separately uploaded attachm
 
 ## Tests it owes
 
-No Background Check scenarios exist in [the scenario tree](../../../tests/scenario).
+No Background Check scenarios exist in the absent `tests/scenario/` tree.
 Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.md).
 
 - T1a structural: **OWED** — compiled definition, declared task-store bindings, gates and transactions.
@@ -133,7 +133,7 @@ Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.
   request identity and stale-artifact refusal. Use synthetic applicant fixtures.
 - Controlled write: **OWED** — mismatch refusal before fencing, one source-verified request, permanent
   already-present replay, failure around upload/submit, reconciliation and approved target disposition,
-  under [write-safety §3.2](../../../docs/rebuild/reference/write-safety.md).
+  under [write safety](../../../docs/rebuild/reference/write-safety.md).
 - Implementation gates: `npm run typecheck`, `npm run lint`, `npm run test:coverage`; refresh/check
   the build manifest when the descriptor import closure changes. Platform run/session behavior remains
   owned by [execution-and-sessions](../../../docs/rebuild/reference/execution-and-sessions.md).
@@ -148,12 +148,7 @@ Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.
   Reconcile and bind approval/submission to the exact artifact version.
 - 2026-09-08 discovery: an open Excel web review can hold a shared-use lock during replacement.
   Resolve the owned review session and verify upload completion; never overwrite a shared original.
-- Transferable [lesson ledger](../../../docs/rebuild/reference/lessons.md) findings, not claims of
-  ServiceNow implementations: D310 (2026-09-02) binds selection to stable record identity rather than
-  positional checkbox IDs; 2026-08-14 separates a located field from its typed expected value;
-  D174 (2026-08-09) requires derived replay identities and honest artifact-manifest shapes.
-- The same ledger's 2026-08-25 write-count lesson requires run-scoped intent attribution for dry-run
-  evidence. No Background Check, ServiceNow or SharePoint-specific ledger entry was found.
+- Bind selection to stable record identity, distinguish located controls from expected values, and derive replay identities from retained authority; [write safety](../../../docs/rebuild/reference/write-safety.md) owns run-scoped dry-run evidence.
 - Debug new failures through [hr-debug](../hr-debug/REFERENCE.md); use its selector-repair loop and
   content-level authentication checks. Do not add a longer wait as the first fix.
 
@@ -168,7 +163,7 @@ Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.
 
 ## Record when you are done
 
-Create the workflow's migration record under [migrations](../../../docs/rebuild/migrations) when its
+Create the workflow's migration record under the assigned brief’s `.work/` evidence folder when its
 admitted implementation begins. Record dated, attributable dry-run/controlled-write evidence there;
 refresh this resource from the actual definition, registry, stores and tests.
 Individual request progress belongs in dashboard run authority/evidence, not roadmap task statuses.

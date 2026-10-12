@@ -260,7 +260,7 @@ export type RerunStage =
     changedInputs: readonly RerunChangedInput[];
   }>;
 
-/** Why a column was proposed — ref data-intake-and-edit-data §2.5's scorer, said out loud. */
+/** Why a column was proposed — ref data-intake-and-edit-data's scorer, said out loud. */
 const SUGGESTION_WHY_LABEL: Record<Suggestion["why"][number], string> = {
   "alias-exact": "known header",
   "label-exact": "matches the field label",

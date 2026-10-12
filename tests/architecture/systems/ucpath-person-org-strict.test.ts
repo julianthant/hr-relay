@@ -87,7 +87,7 @@ describe("strict UCPath Person Org operation", () => {
 
   it("records current-live zero-match legacy accessible-name recipes as rejected", () => {
     const evidence = UiVerificationEvidenceManifestSchema.parse(JSON.parse(readFileSync(
-      resolve(REPO_ROOT, "docs/rebuild/evidence/selectors/ucpath/person-org.live.json"),
+      resolve(REPO_ROOT, "tests/support/fixtures/ui/ucpath/person-org.live.json"),
       "utf8",
     )));
     assert.deepEqual(evidence.rejectedCandidates, [

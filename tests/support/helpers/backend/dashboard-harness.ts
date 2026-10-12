@@ -95,7 +95,7 @@ export interface AuthorityFake {
   readonly activityPersonPseudonyms: ActivityPersonPseudonymEvidence[];
   listActivityPersonPseudonyms(runIds: readonly string[]): readonly ActivityPersonPseudonymEvidence[];
   putActivityPersonPseudonym(record: unknown): void;
-  /** Ref write-safety §4.1: the durable write-safety rows the parked-write section reads. */
+  /** Ref write-safety: the durable write-safety rows the parked-write section reads. */
   readonly writeIntents: Map<string, WriteIntentRecord>;
   getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
   putWriteIntent(record: WriteIntentRecord): void;

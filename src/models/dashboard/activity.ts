@@ -16,7 +16,7 @@ import { ActivityVolumeSchema, chooseActivityVolumeGranularity } from "./activit
 /** How many exemplar run ids an aggregate row may carry; one bound for every sample on this wire, because two caps would be two promises. */
 export const ACTIVITY_SAMPLE_LIMIT = 5;
 
-/** The durable terminal outcomes ref workflow-model §4 closes over. */
+/** The durable terminal outcomes ref workflow-model closes over. */
 export const ActivityOutcomeSchema = z.enum([
   "done", "failed", "cancelled", "partial", "superseded", "discarded", "interrupted",
 ]);

@@ -24,7 +24,7 @@ export interface IntakeUploadRequest {
 
 export interface IntakeQueries {
 
-  /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back. */
+  /** Ref data-intake-and-edit-data step 1 — the bytes go up, a durable session comes back. */
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
 
   /** The durable session joined with its re-derived parse view and hints. */

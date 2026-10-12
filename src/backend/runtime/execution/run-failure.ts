@@ -134,7 +134,7 @@ export interface EntryValidationFailureInput {
   readonly occurredAt: unknown;
 }
 
-/** Ref workflow-model §5.4: one failure lists ALL problems; no node executed, so no nodeId. */
+/** Ref workflow-model: one failure lists ALL problems; no node executed, so no nodeId. */
 export function buildEntryValidationFailureRecord(input: EntryValidationFailureInput): FailureRecord {
   const run = RunRecordSchema.parse(input.run);
   if (input.problems.length === 0) {

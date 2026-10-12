@@ -87,7 +87,7 @@ import {
 import { versionTag } from "../shared/status/format.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 
-/** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
+/** the surface id this command family is audited under (ref frontend-backend-integration ) */
 
 /** What the app composes from the descriptor and bootstrap projections. The
  * dialog reads exactly this and imports no workflow module. */

@@ -62,14 +62,14 @@ import {
 } from "../../../../models/ui/kuali-separation-finalization.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
-const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json";
-const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json";
+const FIXTURE_EVIDENCE = "tests/support/fixtures/ui/kuali/rrss-document.fixture.json";
+const LIVE_EVIDENCE = "tests/support/fixtures/ui/kuali/rrss-document.live.json";
 const IDENTITY_SCENARIO = "ui/kuali-rrss-document-identity";
 const SHARED_FINALIZATION_CONTROLS_SCENARIO = "ui/kuali-rrss-shared-finalization-controls";
 
 // Separate evidence manifests retain each surface's own verification timestamp.
-const READ_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json";
-const READ_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/separation-document.live.json";
+const READ_FIXTURE_EVIDENCE = "tests/support/fixtures/ui/kuali/separation-document.fixture.json";
+const READ_LIVE_EVIDENCE = "tests/support/fixtures/ui/kuali/separation-document.live.json";
 const READ_SURFACE_SCENARIO = "ui/kuali-separation-document-read-surface";
 
 // Structural finalization evidence is not proof that controls accept writes.
@@ -77,8 +77,8 @@ const FINALIZATION_SURFACE_SCENARIO = "ui/kuali-rrss-finalization-write-surface"
 
 
 const ACTION_LIST_VERIFIED_AT = "2026-08-20";
-const ACTION_LIST_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json";
-const ACTION_LIST_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/action-list.live.json";
+const ACTION_LIST_FIXTURE_EVIDENCE = "tests/support/fixtures/ui/kuali/action-list.fixture.json";
+const ACTION_LIST_LIVE_EVIDENCE = "tests/support/fixtures/ui/kuali/action-list.live.json";
 const ACTION_LIST_SCENARIO = "ui/kuali-action-list-resolve-surface";
 
 const EID_PORT_KEY = "separationForm.eid()";

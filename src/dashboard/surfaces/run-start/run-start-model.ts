@@ -1,5 +1,5 @@
 /** The Run Modal's pure half — its vocabularies and its
- * one fold (ref frontend-backend-integration §8.14). */
+ * one fold (ref frontend-backend-integration ). */
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import {
   stepOmissionFactsSchema,

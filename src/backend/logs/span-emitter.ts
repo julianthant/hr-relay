@@ -29,7 +29,7 @@ import { RequeueCauseSchema } from "../../models/run/record.js";
 
 const SpanPathSchema = z.string().min(1);
 
-/** Ref dashboard-surfaces §1.1's task/run outcome vocabulary; `skipped` is a task-span outcome. */
+/** Ref dashboard-surfaces's task/run outcome vocabulary; `skipped` is a task-span outcome. */
 export const SpanOutcomeSchema = z.enum([
   "done",
   "failed",
@@ -43,7 +43,7 @@ export const SpanOutcomeSchema = z.enum([
 
 export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
 
-/** Run/task span identity — `(runId, attempt, spanPath)` (ref dashboard-surfaces §1.1). */
+/** Run/task span identity — `(runId, attempt, spanPath)` (ref dashboard-surfaces ). */
 const RunSpanIdentityFields = {
   runId: RunIdSchema,
   attempt: PositiveIntSchema,
@@ -52,7 +52,7 @@ const RunSpanIdentityFields = {
   parentSpanPath: SpanPathSchema.optional(),
 } as const;
 
-/** Worker/browser span identity — `(workerId, spanPath)` (ref dashboard-surfaces §1.1). */
+/** Worker/browser span identity — `(workerId, spanPath)` (ref dashboard-surfaces ). */
 const WorkerSpanIdentityFields = {
   workerId: WorkerIdSchema,
   spanPath: SpanPathSchema,
@@ -103,7 +103,7 @@ export const ExecutorSpanEventSchema = z.union([
     ...RunSpanIdentityFields,
     outcome: SpanOutcomeSchema,
     failureId: FailureIdSchema.optional(),
-    /** Display-safe summary; never the only failure evidence (ref dashboard-surfaces §1.1). */
+    /** Display-safe summary; never the only failure evidence (ref dashboard-surfaces ). */
     errorSummary: z.string().min(1).optional(),
     diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
 
@@ -177,7 +177,7 @@ export interface SpanEmitter {
   emit(event: ExecutorSpanEvent): void;
 }
 
-/** Run span path: the frozen trace id itself (ref workflow-model §6). */
+/** Run span path: the frozen trace id itself (ref workflow-model ). */
 export function runSpanPath(traceId: TraceId): string {
   return traceId;
 }
@@ -193,7 +193,7 @@ export function taskSpanPath(
     + `.${String(PositiveIntSchema.parse(taskAttempt))}`;
 }
 
-/** Worker span path: `worker/<workflow>/<workerId>` (ref dashboard-surfaces §1.1's example form). */
+/** Worker span path: `worker/<workflow>/<workerId>` (ref dashboard-surfaces's example form). */
 export function workerSpanPath(workflowId: WorkflowId, workerId: WorkerId): string {
   return `worker/${workflowId}/${workerId}`;
 }

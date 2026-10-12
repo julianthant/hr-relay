@@ -1,8 +1,8 @@
 ---
 name: hr-workflow
 description: >-
-  Internal-resource creator for hr-automation-rebuild. `/hr-workflow WORKFLOW_ID` learns one
-  workflow from its definition, compiled registries, stores, migration record, roadmap, lessons,
+  Internal-resource creator for Relay. `/hr-workflow WORKFLOW_ID` learns one workflow from its
+  definition, registries, stores, the active brief's assigned evidence folder, roadmap, references,
   and public canary subjects, then creates or refreshes a `.agents/skill-library/` reference for
   `hr-manage`. Use for workflow-specific run, monitor, dry-run, verification, debug, and recording
   guidance; it does not author workflow code or execute a workflow.
@@ -35,13 +35,14 @@ source and compiled projections; this skill still produces a `hr-manage` runbook
    are under `src/backend/systems/<system>/`, processing stores under
    `src/backend/processing/<service>/`, and workflow mini-stores under `src/workflows/<id>/`.
    `docs/rebuild/reference/stores.md` §2 is derived from the task-store registry; code wins.
-4. `docs/rebuild/migrations/<id>.md` if present (separations is the worked example — §1
-   questionnaire, §9 live records).
+4. The active brief's assigned evidence folder in the main checkout's `.work/` contains verified
+   task records; confirm current workflow state in code and authority.
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume),
-   `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate),
-   `execution-and-sessions`, `guards-and-tests` §3.14 (focused and phase-exit cadence), and
+   `write-safety` (controlled-commit proof and identity gate),
+   `execution-and-sessions`, `guards-and-tests` (verification cadence), and
    `dashboard-surfaces`.
-6. `docs/rebuild/reference/lessons.md` — grep the workflow id and each system; every hit becomes a line in "Known failure modes".
+6. Read the owning reference for the failure class and nearest module `AGENTS.md`; carry verified
+   findings into "Known failure modes".
 7. `config/test-data.json` (`subjects`; D341) for public canary labels. Private values resolve
    only through the typed reader and ignored `config/test-data.local.json`; never read or print
    them. Scenario and parity suites are retired; declared `scenarios` are contract data, not test
@@ -82,7 +83,8 @@ Stop when you can fill every template section from evidence. A section you canno
 - Run modal / `surfaces.inputRun`: <what the operator types, examples declared in `workflow.ts`
   and confirmed in the compiled descriptor>
 - Canary subjects: <labels from the current public registry under ref guards-and-tests §10.5; private values resolve through its typed reader, never `.env` or report text — a missing subject is `blocked: needs <label>`, never `failed`>
-- Subjects that must NOT be used / are burnt: <from the migration doc's live records>
+- Subjects that must NOT be used / are burnt: <from the active brief's assigned evidence folder,
+  confirmed against current authority>
 
 ## Run it (details in hr-manage)
 - Processes: `npm run dashboard` (BFF 3938 + vite 5174) and
@@ -103,18 +105,20 @@ Stop when you can fill every template section from evidence. A section you canno
 - Focused tests, lint, and affected static/generated checks: <existing paths and verified outcomes from the owning task>
 - Phase-exit gates: <only the gates required by the active phase plan, with actual outcomes or not run>
 - Do not infer test execution from declared scenario ids or revive retired scenario/parity
-  obligations. Follow root `AGENTS.md` and `ref guards-and-tests` §3.14 for cadence.
+  obligations. Follow root `AGENTS.md` and `ref guards-and-tests` for cadence.
 
-## Known failure modes (from ref lessons + migration doc + store AGENTS.md)
-- <date / D-number: one line each — the symptom, the cause, where the fix lives. Link the lesson.>
+## Known failure modes (from the owning reference and nearest module AGENTS.md)
+- <one line per verified issue: the symptom, cause, owning reference, and nearest module
+  `AGENTS.md`>
 - Debug anything new through `.agents/skill-library/hr-debug/REFERENCE.md`; selectors use its
   selector-repair loop; never "add a longer wait" first.
 
 ## Live record
-- <dated lines: run/trace ids, subject label, dry/controlled, durable counts, result — copied from docs/rebuild/migrations/<id>.md §9, newest first>
+- <task-specific run evidence from the active brief's assigned evidence folder, checked against
+  current authority>
 
 ## Record when you are done
-- dated line in `docs/rebuild/migrations/<id>.md`; store/dashboard AGENTS.md only for invariants; lesson-worthy findings → tell the operator ("this looks lesson-worthy: …") — `/hr-lesson` is theirs to invoke.
+- Record task notes in the active brief's assigned evidence folder under `.work/`; keep lasting invariants in the owning module `AGENTS.md`.
 ```
 
 ## 4 · Verify the generated resource
@@ -123,7 +127,7 @@ Stop when you can fill every template section from evidence. A section you canno
   its router.
 - Every concrete path it cites exists (`ls` them); paths containing `<…>` are templates until
   resolved. Every table entry matches the current definition and its compiled descriptor.
-- No secret values, no EIDs, no document numbers of real people outside the "Live record" lines the migration doc already carries.
+- No secret values, no EIDs, no document numbers of real people in the resource.
 - Recap: the file path, the short-id mapping, the sections left `UNKNOWN` and what fills them.
 
 ## Refresh mode (`/hr-workflow <id>` when `.agents/skill-library/hr-<short-id>` exists)

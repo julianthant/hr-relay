@@ -51,7 +51,7 @@ export const SeparationsMatchIdentity = defineTaskContract({
     kind: "none",
     reason: "a pure fold over the UCPath reads this run already performed",
   },
-  /** A pure transform can never be fresher than its inputs (ref workflow-model §5.5 ages them). */
+  /** A pure transform can never be fresher than its inputs (ref workflow-model ages them). */
   freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
   provenance: { default: "derived" },
   scenarios: [

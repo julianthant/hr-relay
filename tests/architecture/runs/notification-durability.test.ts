@@ -71,7 +71,7 @@ const RUN_FAILED = {
   code: "CRM_UNAVAILABLE",
 } as const;
 
-/** One representative event per closed trigger, ref dashboard-surfaces §2.6's whole list. */
+/** One representative event per closed trigger, ref dashboard-surfaces's whole list. */
 const EVERY_EVENT = [
   RUN_FAILED,
   {

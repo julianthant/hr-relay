@@ -107,7 +107,7 @@ export const separationsKualiReadWorkflow = defineWorkflow({
       display: "text",
     },
   ],
-  /** Ref dashboard-surfaces §1.2: `Document 4510` becomes the person off the form's own employee-name
+  /** Ref dashboard-surfaces: `Document 4510` becomes the person off the form's own employee-name
    *  control; its absent arm keeps the document number, the only honest thing a blank control could mean. */
   subjectProjection: { nodeId: "document", fieldPath: "employee.name.value" },
   identity: {

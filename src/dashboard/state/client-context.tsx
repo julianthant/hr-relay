@@ -1,4 +1,4 @@
-/** The ONE client, handed to the tree once (ref frontend-backend-integration §2).
+/** The ONE client, handed to the tree once (ref frontend-backend-integration ).
  * Surfaces never construct a client, a transport, a `fetch`, or a stream */
 import { createContext, useContext, type ReactNode } from "react";
 import type { DashboardClient } from "../client/index.js";

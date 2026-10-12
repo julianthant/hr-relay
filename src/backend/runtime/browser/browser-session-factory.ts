@@ -162,7 +162,7 @@ export function assertDuoAutopilotReady(config: Config): void {
     throw new Error(`Duo Autopilot extension is not loadable: ${manifest} is not a regular file`);
   }
   // `requireSecretFile` is the ONLY credential-file reader; it also enforces
-  // the 0600-or-stricter permission and size limits ref clock-config-secrets §6 requires.
+  // the 0600-or-stricter permission and size limits ref clock-config-secrets requires.
   requireSecretFile("duoWebauthnCredential", config);
 }
 

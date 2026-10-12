@@ -25,7 +25,7 @@ export const MatchSpreadsheetInputSchema = z.strictObject({
   rosterFileRef: ArtifactRefSchema,
   /** Which worksheet holds the roster. Absent means the first. */
   sheet: z.string().min(1).optional(),
-  /** The roster is operator-mapped too (ref data-intake-and-edit-data §2). */
+  /** The roster is operator-mapped too (ref data-intake-and-edit-data ). */
   mapping: ColumnMappingSchema,
   /** When the roster is being read — resolves coercion exactly on replay. */
   readAt: IsoInstantSchema,

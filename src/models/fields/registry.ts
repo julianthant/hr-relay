@@ -171,7 +171,7 @@ export function isFactoryDefinedCanonicalField(candidate: CanonicalField): boole
   return FACTORY_DEFINED_FIELDS.has(candidate);
 }
 
-/** Ref data-intake-and-edit-data §2.3's header normalization — one definition, used everywhere. */
+/** Ref data-intake-and-edit-data's header normalization — one definition, used everywhere. */
 export function normalizeHeader(header: string): string {
   return header.trim().toLowerCase().replace(/\s+/g, " ");
 }

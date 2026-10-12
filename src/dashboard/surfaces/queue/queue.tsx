@@ -61,7 +61,7 @@ import {
   useAttentionAnnounce,
 } from "./queue-model.js";
 
-/** ── the queue's client-owned view state (ref frontend-backend-integration §4) ─────────────────────── */
+/** ── the queue's client-owned view state (ref frontend-backend-integration ) ─────────────────────── */
 
 export interface QueueViewState {
   /** the row the detail panel is showing */
@@ -74,7 +74,7 @@ export interface QueueViewState {
   /** The workflow this queue is scoped to. A row of that workflow does not reprint its label —
  * the panel header already said it. */
   panelWorkflowId?: string;
-  /** Display-only "now", from the app's bootstrap-calibrated clock (ref frontend-backend-integration §4
+  /** Display-only "now", from the app's bootstrap-calibrated clock (ref frontend-backend-integration
  * last row). Passed in rather than read here so elapsed values are a pure */
   nowIso: string;
 }

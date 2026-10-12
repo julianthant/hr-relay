@@ -29,7 +29,7 @@ export type PanelKind = z.infer<typeof PanelKindSchema>;
 type RunDetailSection = z.infer<typeof RunDetailSectionSchema>;
 
 export interface RowSurfaceSpec {
-  /** The wire value itself — the identifier IS the interface (ref dashboard-surfaces §9.5.3). */
+  /** The wire value itself — the identifier IS the interface (ref dashboard-surfaces ). */
   readonly key: RowSurfaceKind;
   readonly name: string;
   /** What this shape IS, in one sentence. */

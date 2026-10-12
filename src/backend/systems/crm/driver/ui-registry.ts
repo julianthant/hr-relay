@@ -36,8 +36,8 @@ import {
 } from "../../../../models/ui/crm-onboarding.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
-const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json";
-const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/crm/onboarding.live.json";
+const FIXTURE_EVIDENCE = "tests/support/fixtures/ui/crm/onboarding.fixture.json";
+const LIVE_EVIDENCE = "tests/support/fixtures/ui/crm/onboarding.live.json";
 const SEARCH_SCENARIO = "ui/crm-onboarding-search-results";
 const RECORD_SCENARIO = "ui/crm-onboarding-record-identity";
 const HISTORY_SCENARIO = "ui/crm-onboarding-history-transitions";

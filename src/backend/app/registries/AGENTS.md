@@ -5,7 +5,7 @@ These frozen registries admit work before runtime composition. They do not opera
 `subjects` member of `config/test-data.json`, loaded by `test-data.ts`, the ONE test-data reader.
 Private test inputs come only from ignored `config/test-data.local.json` through the opaque
 `TestDataInputSource` (private half in `src/backend/storage/configuration/test-data-local.ts`), never from Settings,
-credentials or `.env`. Read `ref guards-and-tests` §10.5 for the detour's acceptance status and the
+credentials or `.env`. Read `ref guards-and-tests` and the
 actual owners for current exports, labels, schema versions and availability; never cache those
 changing facts in instructions.
 
@@ -26,6 +26,5 @@ changing facts in instructions.
 - Maintain the manifest/registry/CLI correspondence in both directions. Preserve named blocked
   reasons and the observation date without leaking secret values.
 
-Before admission changes, read `docs/rebuild/reference/guards-and-tests.md` §10.5 and the registry's
-unit/architecture tests. Search [LESSONS.md](LESSONS.md) for historical failures; requested new
-lessons go there. Root rules apply.
+Before admission changes, read `docs/rebuild/reference/guards-and-tests.md` and the registry's
+unit/architecture tests. Root rules apply.

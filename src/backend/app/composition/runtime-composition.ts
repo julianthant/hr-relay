@@ -56,7 +56,7 @@ export function parseDashboardCommandOptions(rest: readonly string[]): Dashboard
 type ExplainComposer = (isolation: RuntimeIsolation, args: readonly string[]) => string;
 
 type OcrComposer = (args: readonly string[]) => { readonly output: string; readonly exitCode: number };
-/** The worker seam speaks the loop's exact schema-backed report (ref execution-and-sessions §3). */
+/** The worker seam speaks the loop's exact schema-backed report (ref execution-and-sessions ). */
 type WorkerComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],

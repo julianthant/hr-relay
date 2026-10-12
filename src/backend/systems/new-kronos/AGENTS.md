@@ -21,9 +21,11 @@ another. Do not split one inseparable visit into tasks that assume an unproven b
   headers. Refuse ambiguous controls and header/cell count disagreement.
 - Return unknown pay codes explicitly; do not drop or classify them by guess. Locator fallbacks,
   range entry, session proof, and top-level/frame search contexts require their recorded live proof.
+- Prove replacement on a prefilled range field as well as an empty one; synchronous DOM writes alone do not prove framework settlement.
+- Browser-state-producing reads use `always-rerun`; checkpoint replay restores values, not an open timecard.
+- Prove login with the application cookie and absent sign-in forms; a host match alone is insufficient.
 
-Before driver changes, read the relevant `driver/` source and search [LESSONS.md](LESSONS.md),
-including its Live map and Provenance sections. Those dated measurements are evidence, not current
-availability or timing guarantees. Read the workflow's task evidence §4b for workflow behavior;
+Before driver changes, read `session.ts` and the relevant `driver/` source.
+Read the assigned workflow brief for workflow behavior;
 use `docs/rebuild/reference/stores.md` and source contracts for the current task/output inventory.
-Requested lessons go in the ledger. Root rules apply.
+Root rules apply.

@@ -5,7 +5,7 @@ import type { DashboardApp } from "./api-types.js";
 import type { ExplorerRouteDeps } from "./explorer-types.js";
 
 export function registerExplorerRoutes(app: DashboardApp, deps: ExplorerRouteDeps): void {
-  /** Ref operator-trust §5.2–§5.4: exact graph read plus strict safe-edit draft validation. */
+  /** Ref operator-trust –§5.4: exact graph read plus strict safe-edit draft validation. */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
   app.post("/api/v1/explorer/validate", async (c) => {
     if (deps.explorerEdits === undefined) {

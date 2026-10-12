@@ -268,7 +268,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.deepEqual(queueRowActions(undefined, factsFor("queued")), []);
   });
 
-  /** Ref dashboard-surfaces §2.4's closed condition rules narrow a policy; they never widen it. */
+  /** Ref dashboard-surfaces's closed condition rules narrow a policy; they never widen it. */
   it("honours a descriptor condition that narrows an enabled action", () => {
     const policy = WorkflowActionPolicySchema.parse({
       enabled: ["retry", "cancel", "bump", "rename"],

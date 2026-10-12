@@ -124,7 +124,7 @@ export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
 /** The terminal record of a PREVIEWED run: it stops at its first transaction node, so no declared result was derived and none is fabricated. */
 export const RunDryRunPreviewResultSchema = z.strictObject({
   kind: z.literal("dry-run-preview"),
-  /** The transaction node the run stopped at — its first (ref task-contract §10.1). */
+  /** The transaction node the run stopped at — its first (ref task-contract ). */
   stoppedAtNodeId: NodeIdSchema,
   externalCommit: z.literal("none"),
   preview: TransactionDryRunPreviewSchema,

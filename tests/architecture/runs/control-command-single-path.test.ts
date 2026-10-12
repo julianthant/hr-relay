@@ -136,7 +136,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   },
 ]);
 
-/* ── the ratified Phase-1f partition (ref dashboard-surfaces §Phase-1f authority) ────────── */
+/* ── the partition (ref dashboard-surfaces authority) ────────── */
 
 const EXPECTED_ACTIVE = {
   "failure-resolution": ["annotate-failure"],

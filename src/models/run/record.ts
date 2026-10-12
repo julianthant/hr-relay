@@ -59,7 +59,7 @@ const ClaimFields = {
 export const RunLifecycleSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("queued"),
-    /** Retry backoff rides here; a worker never sleeps holding a run (ref execution-and-sessions §3). */
+    /** Retry backoff rides here; a worker never sleeps holding a run (ref execution-and-sessions ). */
     notBefore: IsoInstantSchema.optional(),
     requeuedFrom: RequeueCauseSchema.optional(),
   }),
@@ -74,7 +74,7 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     state: z.literal("parked-gate"),
     gateId: GateIdSchema,
     parkedAt: IsoInstantSchema,
-    /** The node execution resumes at once the gate resolves (ref workflow-model §4). */
+    /** The node execution resumes at once the gate resolves (ref workflow-model ). */
     resumeAt: NodeIdSchema,
     /** A source subscription is bound to retained run authority at the park boundary. */
     sourceBinding: z.strictObject({
@@ -93,7 +93,7 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     writeIntentId: WriteIntentIdSchema,
     intentGeneration: PositiveIntSchema,
     parkedAt: IsoInstantSchema,
-    /** Ref write-safety §4 park codes; there is no generic Done/Retry from here. */
+    /** Ref write-safety park codes; there is no generic Done/Retry from here. */
     code: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
     message: z.string().min(1),
   }),
@@ -102,7 +102,7 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     outcome: RunOutcomeSchema,
     endedAt: IsoInstantSchema,
     failureId: FailureIdSchema.optional(),
-    /** Display-safe summary; never the only failure evidence (ref dashboard-surfaces §1.1). */
+    /** Display-safe summary; never the only failure evidence (ref dashboard-surfaces ). */
     errorSummary: z.string().min(1).optional(),
     diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
     verdict: VerdictKeySchema.optional(),
@@ -149,7 +149,7 @@ const LEGAL_RUN_TRANSITIONS: ReadonlyMap<RunState, readonly RunState[]> = new Ma
   ["validating", ["validating", "running", "queued", "terminal"]],
   ["running", ["running", "parked-gate", "parked-write", "queued", "terminal"]],
   // A gate or write resolution re-enqueues; the fresh claim reacquires sessions
-  // (ref workflow-model §4). A parked run holds no worker, so it can never resume in place.
+  // (ref workflow-model ). A parked run holds no worker, so it can never resume in place.
   ["parked-gate", ["parked-gate", "queued", "terminal"]],
   ["parked-write", ["parked-write", "queued", "terminal"]],
   ["terminal", ["queued"]],

@@ -1,4 +1,4 @@
-/** `separations-identity-check` — the UCPath identity passage, provable ALONE and read-only, carrying write-safety §14's identity-authority policy: one gate condition, and a result no write binds without authority. */
+/** `separations-identity-check` — the UCPath identity passage, provable ALONE and read-only, carrying write-safety's identity-authority policy: one gate condition, and a result no write binds without authority. */
 import { z } from "zod";
 import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
 import { EidSchema } from "../../../../rules/identity/ids.js";
@@ -177,7 +177,7 @@ export const separationsIdentityCheckWorkflow = defineWorkflow({
       display: "text",
     },
   ],
-  /** Ref dashboard-surfaces §1.2: the start input's `employeeName` is the KUALI FORM'S CLAIM, so before
+  /** Ref dashboard-surfaces: the start input's `employeeName` is the KUALI FORM'S CLAIM, so before
    *  Job Summary answers the row keeps the claim; after, it states UCPath's record instead. */
   subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
   identity: {

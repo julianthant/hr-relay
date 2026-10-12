@@ -11,13 +11,13 @@ export interface CaptureMetadata {
   readonly stateId: string;
   readonly viewport: string;
   readonly theme: string;
-  /** which adapter produced the data — "fixture" or "seeded" (ref frontend-backend-integration §7.2) */
+  /** which adapter produced the data — "fixture" or "seeded" (ref frontend-backend-integration ) */
   readonly adapter: string;
   readonly fixtureId: string;
   readonly descriptorHash: string;
   readonly appVersion: string;
   readonly capturedAt: string;
-  /** keyboard-only / reduced-motion variants (ref frontend-backend-integration §7.1) */
+  /** keyboard-only / reduced-motion variants (ref frontend-backend-integration ) */
   readonly variant: string;
 }
 

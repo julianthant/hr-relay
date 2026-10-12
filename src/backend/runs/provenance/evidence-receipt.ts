@@ -477,7 +477,7 @@ export function deriveRunEvidenceReceipt(
     });
   }
 
-  /** The descriptor's OWN declaration of what matters on a surface (ref workflow-model §1.5). */
+  /** The descriptor's OWN declaration of what matters on a surface (ref workflow-model ). */
   const declaredDetails = new Set(
     descriptor.details.map((detail) => `${detail.source.nodeId}\u0000${detail.source.fieldPath}`),
   );

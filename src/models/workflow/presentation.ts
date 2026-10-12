@@ -54,7 +54,7 @@ export const VerdictDefinitionSchema = z.strictObject({
 });
 export type VerdictDefinition = z.infer<typeof VerdictDefinitionSchema>;
 
-/* ── command / action policy (ref dashboard-surfaces §2.4) ───────────────────────────────── */
+/* ── command / action policy (ref dashboard-surfaces ) ───────────────────────────────── */
 
 export const EnqueuePolicySchema = z.enum(["reject-active", "supersede-active", "allow-parallel"]);
 export type EnqueuePolicy = z.infer<typeof EnqueuePolicySchema>;
@@ -104,7 +104,7 @@ export const EditDataPolicySchema = z.union([
 export const WorkflowCapabilitiesSchema = z.strictObject({
   /** A Review panel exists for this workflow's rows. */
   review: z.boolean(),
-  /** Checkpoint fields may be corrected from the Context rail (ref data-intake-and-edit-data §6). */
+  /** Checkpoint fields may be corrected from the Context rail (ref data-intake-and-edit-data ). */
   editData: EditDataPolicySchema,
   /** How this workflow's children render when it delegates. */
   delegationDisplay: z.enum(["inline", "linked", "hidden-unless-failed"]).optional(),

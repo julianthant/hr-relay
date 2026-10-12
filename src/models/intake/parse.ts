@@ -17,7 +17,7 @@ export type IntakeParseRefusalCode = z.infer<typeof IntakeParseRefusalCodeSchema
 export const IntakeLayoutSchema = z.strictObject({
   headerRowIndex: z.number().int().nonnegative(),
   columns: z.array(DetectedColumnSchema),
-  /** Ref data-intake-and-edit-data §2.3's order-insensitive layout identity, over these exact columns. */
+  /** Ref data-intake-and-edit-data's order-insensitive layout identity, over these exact columns. */
   headerFingerprint: FingerprintSchema,
     /* Data rows, header-relative and in file order, with wholly blank rows dropped: source row N is `rows[N - 1]`, and counting a blank row would reject a person who is not in the file. */
   rows: z.array(z.array(z.string())),

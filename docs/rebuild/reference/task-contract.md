@@ -1,1715 +1,520 @@
-# The task contract — `defineTaskContract`/`defineTask`, effects, drivers, provenance, and the per-system task stores
+# Task contract
 
-**What this doc is.** The contract every unit of real work in this system is written against: what a
-task IS (§2), where its implementation lives (§3), how it is instrumented (§4), what it asks of the
-workflow builder (§5), and how authentication and dry-run reach it (§6). It is a REFERENCE spec —
-cited as `ref task-contract §N`, never actionable on its own. What is scheduled and what is left
-lives in the phase docs `docs/rebuild/00`–`05` and in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`.
+A task declares one bounded operation, its input and output schemas, its effect, and its failures.
+`defineTaskContract` declares the browser-safe contract. `defineTask` binds its implementation.
+The runtime validates both sides before another node can consume the output.
 
-**It is as-built, not aspiration.** The contract shipped in Phase 1d (2026-08-01) and has executed
-every run since 1f. Current schema and implementation locations are recorded in the
-[codebase structure map](codebase-structure.md): task schemas and contract shapes live under
-`src/models/`; shared task and store factories live under `src/workflow-kit/`; backend-loaded
-system, processing and workflow implementations register through `task-registry.ts` files. The
-store types and namespace IDs retain their existing contract. Four guards in
-`docs/rebuild/guard-inventory.json` name this doc as an owner: `task-contract-sealing`,
-`task-store-boundaries`, `artifact-effect-boundary` and `provider-capability-boundary`.
+This reference owns task declarations, task context, observations, failures, and task registration.
+[Workflow model](workflow-model.md) owns composition and replay.
+[Write safety](write-safety.md) owns fenced writes, proof, recovery, and parked resolution.
+[Execution and sessions](execution-and-sessions.md) owns worker and browser lifetime.
+[Operator trust](operator-trust.md) owns evidence classification and serving.
+[Stores](stores.md) lists the registered tasks.
 
-**How to read it.** §1 is the legacy grounding — the four failure shapes the contract exists to
-kill. §2 is the contract: §2.1–§2.7 the platform half (types, the contract/impl split, the ctx, the
-error taxonomy, naming, the boundary, the authoring floor), then §2.8–§2.12 the **store
-conventions the order-8 migration settled**, each pinned to the store that forced it. §3 is where
-implementations live, §4 decoration, §5 the obligations this contract imposes on `ref
-workflow-model`'s builder, §6 auth and dry-run. §8 is the rot table, §9 three worked examples, §10
-the settled questions. Where the code and an earlier sentence disagreed, the sentence was corrected
-to the code (cohesion plan R9/D252) and the correction says which file settled it.
+## 1. Task ownership
 
-Conforms to `reference/charter.md`.
+A browser task belongs to one system. A processing task belongs to one service namespace.
+A workflow task is a pure fold over declared inputs. Cross-system work belongs in the workflow graph.
 
-## Ownership (D1 — this doc owns / this doc references)
+Contracts live under `src/models/{systems,processing,workflows}/`.
+Implementations live in the owning system, service, or workflow's `tasks/` folder.
+The [codebase map](codebase-structure.md) owns exact paths and dependency direction.
 
-| This doc **owns** (siblings reference, never redefine) |
-|---|
-| The task contract and **contract/impl split** (`defineTaskContract` + `defineTask`), system/workflow namespace grammar + closed `SystemId` (D2/D3/D42) |
-| Error taxonomy (`TaskError`, declared `errorCodes`) |
-| Effect classes + dry-run mechanics (D6/D7), `freshness` + provenance contract fields (D8/D34), and the content-addressed read-artifact boundary (D45) |
-| Strict runtime-schema rules, branded domain scalar/id policy, absence semantics, and the task-side subject-binding declaration (D46/D47) |
-| The **read-extraction width** convention — one task per page visit, one fixed strict output, consumers project downstream (§2.8, D194), plus the as-built rules the first store BUILT (§2.9, D196), the first store CUSTOMIZED (§2.10, D197), the first store to split judgment out of a read (§2.11, D201) and the first store to gain a WRITE family beside a read family (§2.12, D206) settled |
-| Retry policy |
-| Task-facing confirmed action and declared-result API (`ctx.confirmed` signatures and verifier-purpose rules, D364) |
-| Decoration (`decorateTask`, hook semantics, error-propagation rule) — **designed, not built**; §4 states the absence |
-| Task stores — browser, service, and pure workflow mini-stores (D4/D42), session providers + the single login signature, shared leaf-code homes (`stores/common/`) |
-| The task **boundary** statement — tasks are bounded; what is NOT a task (D5's task side) |
-
-| This doc **references** (owner) |
-|---|
-| Workflow builder API (the single API), descriptor shape, RunEnvelope, run-state machine incl. **gates/parks**, checkpoint/resume + the freshness enforcement walk → **ref workflow-model** |
-| Span/event wire schema, notes stream, completion (fan-out/approval) union, storage + SSE → **ref dashboard-surfaces** |
-| `WriteSafety<In, Out, Proof>` shape attached to `CommitTaskContract` (typed proof/verify + idempotency probe + key, D22/D31) → **ref write-safety** |
-| Canonical `ElementId`/`PageStateId`/`ObservationId`, typed `SystemDriver`, scenarios, diagnostics, and knowledge records → **ref operator-trust** |
-| The store CATALOG — every store, every task, and the REUSE / CUSTOMIZE / BUILD reading a migration starts from → **`docs/rebuild/reference/stores.md`** (`ref stores`; derived from code; code wins on any disagreement) |
-
-## § numbers, and what moved (2026-08-21)
-
-Section numbers are load-bearing: thirteen tree nodes carry a `ref:task-contract §N` ref that the
-retired roadmap binding guard resolved against a real heading (§2, §2.1.1, §2.7, §2.8, §2.9, §2.10,
-§2.11, §2.12, §3.1, §6.2, §9.1, §9.1.1, §9.2), and code comments and sibling docs cite others. So
-**no section was renumbered.** What moved is narrative, not numbering:
-
-| was | is now |
-|---|---|
-| the opening `Status:` paragraph and its six dated amendment clauses | this header, which states what the doc IS rather than when it changed |
-| the grounding paragraph of legacy paths, above §1 | inside §1, whose whole subject it is |
-| `## Phase 1b as-built domain foundation` | folded into §2.1.1 (cohesion plan R9 item 1) |
-| `## Phase 1d ratified seam decisions` + `### Phase 1d as-built — sealed task-contract core` | folded into §2.1 (D96/D101) and §2.2 (the factory as it shipped) |
-| `### Phase 1d as-built — bounded task/store/session/provider/artifact seam` | folded into §2.3 (ctx, artifacts, providers) and §3.2 (the store factories) |
-| `### Phase 1d as-built — the first `stores/common/` leaf` | folded into §3.3 (the port rules it settled) with the layout half in §3.1 |
-| `## Phase 1f executor ratification` | folded into §2.3 — provenance collection and provider admission are both ctx contracts |
-| `## 7. Alternative shapes for the core contract` + `### A/B/C` | `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-21-task-contract-7.md`; shape B is normatively stated in §2.2 |
-
-`### 2.11` stood between §2.8 and §2.9 since 2026-08-12; the four store sections now read
-§2.9 → §2.10 → §2.11 → §2.12, which is also their chronological order.
-
----
-
-## 1. What today's code teaches us (the problems the contract must kill)
-
-**Grounding — read, not imagined.** Every path in this block is a **legacy-repo** path
-(`hr-automation`, the frozen production reference, D93/D94); unqualified `src/` everywhere else in
-this doc is the rebuild repo's own `src/`. `src/core/kernel/types.ts`
-(WorkflowConfig/Ctx/SystemConfig), `src/workflows/person-lookup/workflow.ts` (the `dataString()`
-untyped-blob hacks, screenshot sprinkling, `ctx.data.crmMatch as string`),
-`src/workflows/person-lookup/lookup.ts` + `src/systems/ucpath/person-org-summary.ts` (the real
-search shapes §9.1's worked example wraps), `src/workflows/oath-signature/workflow.ts:240-300` (the
-deferAuth + `loginToUCPath` + `if (!ok) throw` boilerplate), `src/infra/auth/duo-login-flows.ts`
-(the well-factored login table — the shape to imitate), `src/systems/ucpath/selectors.ts` (registry
-pattern + `// verified` stamps), `src/systems/onbase/LESSONS.md` (single-app-session-per-identity
-constraint), `src/workflows/ocr/orchestrator.ts:1562` (`operationTraceCode` — the cautionary
-stringly re-encoding switch).
-
-1. **Systems are loose function bags.** `src/systems/ucpath/person-org-summary.ts` exports raw
-   `(page, args) => result` functions with hand-written TS types. Nothing declares which system
-   session a function needs, whether it mutates, what it throws, or how to retry it. Callers
-   (workflows) re-invent all of that per call site.
-2. **Workflow handlers are god functions.** person-lookup's handler + step functions are ~800 lines
-   mixing navigation, business rules, screenshot policy, and tracker stamping. Output flows through
-   `ctx.updateData` — an untyped `Record<string, unknown>` string blob read back with
-   `dataString(...)` / `as string` casts. The compiler protects nothing across steps.
-3. **Auth is copy-pasted.** `deferAuth: true` + a hand-rolled `ctx.step("ucpath-auth", ...)` +
-   `loginToUCPath(page, ...)` + `if (!ok) throw` appears near-identically in 5 workflows.
-4. **Names are re-encoded stringly.** `operationTraceCode` re-declares codes that `defineWorkflow`
-   already owns; a new workflow compiles fine with the switch stale.
-5. **What is already right:** the selectors registries (JSDoc + `// verified` dates + catalog),
-   `DUO_LOGIN_FLOWS` (one table, uniform adapter signature, both smoke test and live test derive
-   from it), `ctx.retry`'s signal-aware linear backoff, and the leaf drivers themselves (iframe
-   handling, employment-instance expansion). These **port verbatim** and get wrapped — the wrapping
-   shims themselves (e.g. the login-result adapter, §6.1) are new code and are named as such.
-
-**What the rebuild actually did with each.** (1) and (2) are structurally dead: a task declares its
-`sessions`, `effect`, `errorCodes` and retry, and there is no `ctx.data` blob to cast out of — see
-§2.1 and §4.3. (3) is dead: nine stores declare one `SessionProvider` each and the worker executes
-the login (§6.1). (4) is only PARTLY dead: nothing re-encodes task ids in a switch today, but the
-`KnownTaskId` codegen §2.5 and §8 row 2 name as the mechanical guard **was never built** — what
-holds the line instead is that `TaskId` is a branded literal type minted by `taskId(...)` and every
-projection derives from the contract corpus (§3.2). (5) held: each store's `driver/**` carries the ported
-leaves with provenance (there is no `impl/` directory — §3.1), and `legacy-selector-port-provenance` pins 406 keys to a fixed legacy
-commit's blobs.
-
-## 2. The Task contract
-
-
-**Historical status snapshot — 2026-08-21.** The checklist's 39-contract count and Phase 1 paths
-record that dated tree. Current locations and dependency boundaries are in
-[codebase structure](codebase-structure.md); keep contract/store semantics and acceptance guards
-from this document.
-
-§2.1–§2.7 are the platform half of the contract — the types, the split, the ctx, the errors, the
-naming, the boundary and the authoring floor. §2.8–§2.12 are the **store conventions** the order-8
-separations migration settled: how wide a read is, and what a store owes when it is built, when it
-is customized, when judgment must leave a read, and when a write family joins a read family.
+## 2. Task declaration
 
 ### 2.1 Core types
 
-Task and contract shapes live in `src/models/`; task factories and store registration live in
-`src/workflow-kit/`; server-side implementations live under `src/backend/` or beside their workflow
-in `src/workflows/<id>/tasks/`. A workflow main definition is `workflow.ts`; a chunk-harness
-definition is `steps/<step>/step.ts` and remains browser-safe. The sketch below is the contract they encode; **where it and the files differ, the files win** and the difference is
-a defect in this doc.
-
-**Every closed identity is imported, never re-declared (D101).** `src/rules/identity/ids.ts` owns
-`BrowserSystemId`, `ServiceSystemId`, `ProviderCapabilityId`, `TaskId`, `TaskStoreId`, the semantic
-UI ids and every branded scalar; contract and store modules re-export them and never mint a second
-union. Adding a system is a one-line edit in ONE file (D2).
-
-```ts
-// src/rules/identity/ids.ts — the closed unions (D2/D101)
-BrowserSystemId  = "ucpath" | "crm" | "onbase" | "kuali" | "servicenow"
-                 | "i9" | "new-kronos" | "old-kronos" | "sharepoint";   // 9, named after the REAL
-                                                                        // systems: old-kronos = UKG,
-                                                                        // new-kronos = WFD/Dayforce
-ServiceSystemId  = "extraction" | "normalization" | "ocr" | "roster";   // system-less work (D4, §3.4)
-SystemId         = BrowserSystemId | ServiceSystemId;
-ProviderCapabilityId = "ocr.extract" | "geocode.census" | "geocode.nominatim" | "ai.advisory"; // D63
-TaskStoreId      = SystemId | `workflow:${WorkflowId}`;                  // §3.5's mini-stores
-
-/** A BRANDED string, not a template type: one regex pins `<registered-store>/<kebab-case-operation>`
- *  for all 13 namespaces plus `workflow:<id>`. `taskId("ucpath/search-person-org")` parses AND keeps
- *  the literal in the type as LiteralTaskId<"ucpath/search-person-org">, which is what lets
- *  NamespaceOf<C> resolve a store from a contract without a second declaration. */
-const id = taskId("ucpath/search-person-org");
-```
-
-```ts
-// src/models/task/task-contract.ts — what every contract carries
-interface TaskContractBase<Id, Input, Output, Codes> {
-  readonly id: Id;                        // TaskId, parsed by the factory
-  readonly title: string;                 // the DEFAULT for the descriptor's step label (D16);
-                                          // the only override layer is operator presentation
-  readonly input: Input;                  // zod, recursively strict
-  readonly output: CanonicalJsonSchema<Output>;   // rejects `any` and non-JSON at compile time
-  readonly errorCodes: readonly [string, ...string[]];   // kebab-case, unique, non-empty
-  readonly requires?: readonly SecretName[];             // shape owned by ref clock-config-secrets
-  readonly providers?: readonly ProviderCapabilityId[];  // service-store reads ONLY (D63)
-  readonly subject: SubjectBindingSpec;   // explicit; never omitted
-  readonly scenarios: readonly ScenarioId[];             // non-empty except for a workflow: read
-  readonly example: z.input<Output>;      // mandatory canonical output value
-  readonly operation?: TaskOperationDeclaration; // D355 reusable bundle-safe display structure
-}
-
-// the three effect arms
-ReadTaskContract    += { effect: "read"; freshness: FreshnessPolicy; provenance: ProvenancePolicy;
-                         artifacts?: "content-addressed" }
-PrepareTaskContract += { effect: "prepare"; checkpoint: "in-memory-only" }
-CommitTaskContract  += { effect: "commit"; writeSafety: WriteSafety<Input, Output, Proof> }  // ref write-safety
-```
-
-**D355 display structure stays task-owned.** `operation` is an optional, versioned declaration in
-`src/models/workflow/operation-display.ts`, sealed with this exact contract. It names stable
-semantic actions, logical session/page/form identity, schema-resolved input/output slots, templates
-and pure transforms; it has no driver implementation, selector, execution authority, or scenario
-id. A complete workflow display instantiates that reusable operation at an occurrence and binds
-values, rather than copying the action tree into `workflow.ts`. The factory refuses a declaration
-whose system, semantic ids, schema paths, continuations, templates, or transforms are invalid.
-
-**`effect` is the whole safety story in one field.** `read` observes; `prepare` mutates only
-ephemeral browser state and is legal only as the first arm of a transaction node (ref
-workflow-model); `commit` is the sole class whose ctx carries a `MutationCapability` and therefore
-the sole class that can reach an external-write primitive (§2.3, ref write-safety §3). The
-verb↔effect table is enforced, not advisory (§2.5).
-
-**Freshness and provenance are mandatory on every read (D8/D34), and both are field-resolvable.**
-
-```ts
-FreshnessPolicy  = { defaultMaxAgeMs: number | Infinity;
-                     defaultOverride?: "forbidden" | "audited";
-                     byField?: { path: ContractFieldPath; maxAgeMs; override? }[] }
-ProvenancePolicy = { default: "live" | "derived";
-                     byField?: { path: ContractFieldPath; source: "live" | "derived" }[] }
-```
-
-`ContractFieldPath` is a branded dot path the factory resolves against the **exact output schema**
-(`assertSchemaOwnsPath`), so a policy naming a field the output does not have fails at module load
-rather than silently applying to nothing. A duplicate or contradictory `byField` provenance rule is
-refused by the schema itself. `Infinity` is legal, must be written literally, and is the one place
-a non-finite number may appear in this system (§2.1.1). The freshness ENFORCEMENT walk — which
-checkpoint may feed which commit on resume — is kernel behaviour owned by ref workflow-model;
-`live` versus `derived` is checked per execution by the collector in §2.3.
-
-**The subject binding is declarative, and its `none` arm is two different facts.**
-
-```ts
-SubjectBindingSpec =
-  | { kind: "none"; reason?: string; reviewedReasonId?: UnscopedCommitReasonId }
-  | { kind: "person";   expected: { fromInput: ContractFieldPath;
-                                    identity: "eid" | "name" | "eid-and-name" };
-      observe: ObservationId; match: "normalized-exact-eid" | "normalized-exact-name" | "eid-and-name";
-      requiredAt: "before-subject-read" | "after-prepare-before-fence" }
-  | { kind: "artifact"; expected: { fromInput: ContractFieldPath;
-                                    identity: "artifact-id" | "sha256" | "document-id" };
-      observe: ObservationId; match: "exact"; requiredAt: … }
-```
-
-The two `none` fields are mutually exclusive and the factory decides which by EFFECT: a
-non-commit contract must give free-text `reason` and may not claim review; an **unscoped commit**
-must name a `reviewedReasonId` present in `UNSCOPED_COMMIT_REASON_REGISTRY` and may NOT give free
-text (ref write-safety). `identity` and `match` must agree for a person (`eid` ⇒
-`normalized-exact-eid`, and so on), the observation must belong to the contract's own system, and a
-person-scoped or artifact-scoped **commit** must observe `after-prepare-before-fence` — any other
-timing is refused at definition. A service or workflow contract cannot declare a browser
-observation at all.
-
-```ts
-// src/models/sessions/session.ts — what an impl declares it needs (D96)
-SessionNeed = { system: BrowserSystemId;
-                access: "read" | "transaction";        // must agree with effect: read→read,
-                                                       // prepare/commit→transaction
-                session: "reuse-worker" | "fresh";     // a fresh boundary is explicit
-                exclusive?: true;                      // OnBase ONLY — one live app session per
-                                                       // identity, held by a cross-process SQLite
-                                                       // lease from before the context opens until
-                                                       // after it closes (D15; ported from legacy
-                                                       // src/systems/onbase/LESSONS.md)
-                acceptDownloads?: true }               // legal only on a content-addressed read
-
-RetryPolicy = { attempts: 2 | 3; backoffMs: number; retryOn: "transient" }
-```
-
-`SessionsFor<C>` computes the need TUPLE from the contract, so most of that agreement is a compile
-error rather than a runtime one: a headless contract gets `readonly []`, a browser read gets
-`access: "read"` with `acceptDownloads` admitted only when the contract declares
-`artifacts: "content-addressed"`, a prepare/commit gets `access: "transaction"` with downloads
-forbidden, and `exclusive: true` is REQUIRED on `onbase` and impossible elsewhere. `validateTaskBinding`
-re-checks every one of those at module load, because a type is not a runtime guarantee.
-`retryOn` has exactly one value: business failures are never retried, because retrying a wrong
-answer is a silent fallback in disguise. Retry is legal only on a read — the prepare/commit pair's
-recovery is ref write-safety's, never a generic re-run.
-
-### 2.1.1 Strict schema and absence rules (D46)
-
-
-- Every contract input/output/proof/example/scenario and every persisted or transported object is
-  defined with `z.strictObject(...)` (or a strict discriminated union of strict objects). Plain
-  TypeScript interfaces are implementation views, never trust-boundary validators.
-- Unknown keys are errors at the boundary. They are not stripped silently, because a misspelled
-  field that disappears is exactly the “workflow says done but used no value” class of bug.
-- `optional()` means the producer did not supply a field; `nullable()` means the authoritative
-  source was read and has no value. An operation that could not determine a value returns a
-  discriminated `unknown`/`ambiguous` outcome, never `null`, empty string, or omitted data.
-- `undefined`, `Date`, `Map`, class instances, `NaN`, and `Infinity` values are not persisted.
-  `Infinity` is permitted only in **freshness policy metadata**, not task data.
-- Dates use branded `DateOnly`/`IsoInstant` schemas; EIDs use the canonical `Eid` schema; money uses
-  integer minor units plus currency, never binary floating-point dollars; ids use distinct brands.
-- Open records are legal only as explicitly declared presentation/diagnostic extension data that is
-  never used for control, identity, writes, or completion. Durable decision-driving shapes may not
-  contain `Record<string, unknown|JsonValue>`.
-- The kernel runs `safeParse` at ingress and persistence reads, converts the full zod issue tree
-  into a typed boundary failure naming path/value/source, and never falls back to a TypeScript cast.
-
-**As built (1b, 2026-07-31 — the foundation these rules sit on).** The strict branded schemas for
-core ids and scalars, canonical JSON, explicit absence/uncertainty and structured boundary failures
-landed as work item 1b, ahead of the task factory itself. Two identity rules from that slice are
-still load-bearing here: semantic UI observations use stable dotted `ObservationId` values owned by
-ref operator-trust, while dynamic receipt/evidence rows use the separate UUID-backed
-`EvidenceEntryId` — so a row occurrence can never masquerade as an observation recipe — and
-`TraceId` accepts local `HHMMSS` hours only from `00` through `23`. Unit and strict-boundary tests
-pin the neighbouring invalid shapes, recursively reject unknown object keys, and keep exported
-boundary types schema-derived.
-
-**The recursion is the point.** `assertContractBoundarySchema` walks a contract schema through
-arrays, unions, lazy nodes and wrappers rather than checking its top level, because every escape
-this rule exists to close is nested: an `any` three levels down, a `z.record` inside an array, an
-open object behind an optional. `CanonicalJsonSchema<Output>` closes the compile-time half — a
-schema whose output is not JSON-representable resolves to `never`, so the contract does not type —
-and the factory's `output.parse(example)` plus `canonicalJsonStringify` is the runtime backstop.
-
-### 2.2 The contract/impl split (D3)
-
-A task is **two files**:
-
-- **contract** — plain data, bundle-safe, at `src/domain/contracts/<store>/<verb-object>.ts`: id,
-  zod input/output, `title`, `effect`, `errorCodes`, `subject`, `scenarios`, a mandatory `example`,
-  optional D355 reusable `operation` display structure, plus `freshness`/`provenance` (reads) or
-  `writeSafety` (commits). Descriptors (ref
-  workflow-model) and the dashboard import contracts ONLY.
-- **impl** — `run` + session needs + read retry, at `src/stores/<store>/tasks/<verb-object>.ts`. It
-  imports the store's driver declaration and its typed driver API. Only `src/stores/*/driver/**`
-  and `src/infra/browser/**` may touch Playwright (guard `task-driver-boundary`).
-  `defineTask(driver, contract, impl)` binds a browser task; a headless service or workflow task
-  uses `defineTask(contract, impl)`. The store is the only impl registry.
-
-**There is no contract barrel, and nothing needs one.** `src/domain/contracts/index.ts` re-exports
-`base.ts` and `write-safety.ts` and nothing else; each contract module is imported by name where it
-is used. The **contract corpus** — the closed `(id, effect)` list every reference resolves against
-— is projected from the REGISTERED STORES in `src/backend/app/task-registry.ts` (`corpusFor`), so a contract
-that no store binds is not in the corpus at all, and `defineTaskStoreRegistry` refuses both
-directions: a registered task absent from the corpus, and a corpus id with no implementation. This
-is the correction to a long-standing sentence in this doc: the barrel was the design, the store
-registry is the as-built, and the store registry is strictly stronger — a barrel can list a
-contract nobody implements.
-
-**`example` is a checked fixture, and its original consumer was never built.** The factory parses
-it through `output` and the SEALED contract carries the PARSED canonical value in its place
-(`Sealed<Contract, Output>` replaces `example: z.input<Output>` with `z.output<Output>`), so
-`contract.example` is always canonical, always JSON-stringifiable and always schema-true. Three
-guards read it: `descriptor-coverage` re-parses every registered contract's example,
-`write-safety-contract` runs the commit proof round-trip over it, and `evidence-receipt` walks its
-leaves to prove every one has a declared redaction classification. What does NOT read it is an e2e
-stub lane — `maybeWrapE2EStub` and the per-workflow stub map were designed in D3 and never ported
-(`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-guards-and-tests-stub-lane.md`, verified against the tree
-2026-08-20). Behavioural coverage comes from the registered `ScenarioManifest` corpus (ref
-operator-trust) and, from R10 onward, from live dry-run scenarios; the example is a value fixture
-and never coverage.
-
-```ts
-// src/domain/contracts/base.ts — one overload per effect (D7), `const Codes` keeps the tuple literal
-defineTaskContract(read)    → SealedReadContract
-defineTaskContract(prepare) → SealedPrepareContract
-defineTaskContract(commit)  → SealedCommitContract
-```
-
-**What the factory refuses, at module load.** `RuntimeTaskContractDefinitionSchema` is an exact
-effect-discriminated union of strict objects, so a raw JavaScript caller cannot add an outer key,
-submit an empty `errorCodes` list, give a prepare contract a durable checkpoint, or attach
-read-only `artifacts` metadata to a write contract. On top of that, `assertCommon` refuses: an id
-outside the namespace grammar; an empty title; a non-strict or `any`-bearing input/output; an
-`example` that does not parse or canonicalize; duplicate error codes; an unknown store namespace;
-`providers` on anything but a service read; a prepare/commit outside a browser namespace; an empty
-`scenarios` list anywhere except a `workflow:` read; a subject observation crossing systems or
-naming an input path the schema does not own; an identity/match pair that disagrees; an unscoped
-commit with free text instead of a reviewed id, or with a reason id the registry has not reviewed;
-a commit subject observed anywhere but `after-prepare-before-fence`; and a verb that disagrees with
-the effect (§2.5). Reads additionally resolve every freshness and provenance field path against the
-output schema. Commits additionally run the whole `writeSafety` round trip: the proof reconstructs
-the canonical output, the present-probe proof equals the output proof, the idempotency probe and
-the completion verifier are same-store READ task ids, and `recoveryAbsence` parses as a negative
-settlement policy. An `upload-verify` completion that declares `unverifiableByPage` must match an
-entry in `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` **by task id and by reason text** and must exercise
-an `operator-attestation` proof arm — the reviewed list is `contracts: []` today, so the field is
-currently unusable by construction, which is the correct state until OnBase's OQ2 is answered
-(order 7).
-
-**The seal is a runtime identity, not a flag.** `defineTaskContract` deep-copies and freezes the
-declarative metadata (`sealDeclarativeMetadata`, which refuses any non-plain object), replaces
-`example` with its parsed value, stamps `__sealed`, and registers the object in a module-private
-WeakSet. `assertFactorySealedTaskContract` is what `defineTask` calls, so a hand-built object that
-satisfies the TYPE — `__sealed: true` included — is refused by identity. Zod schemas and the
-proof/key FUNCTIONS keep their original unfrozen identities, because freezing a schema breaks it.
-Dynamic idempotency keys are validated only when execution has real parsed input: sealing makes no
-claim about a key it cannot compute.
-
-**`defineTask` re-checks everything the type already said.** Four overloads (browser read, browser
-prepare, browser commit, headless read) plus a runtime backstop that refuses an impl with an
-unknown field, a missing `run`, a session count other than one for a browser task, a session system
-that is not the store's, an access that disagrees with the effect, `exclusive: true` outside OnBase
-or absent on OnBase, `acceptDownloads` without a content-addressed read contract, a retry policy on
-a prepare or commit, a headless task with a session or a driver, and a workflow mini-store task
-declaring artifacts. The bound task is frozen and registered in a second WeakSet, so
-`defineBrowserStore` can refuse anything `defineTask` did not mint.
-
-**The driver declaration is INVARIANT, and that is the whole point.**
-`DriverDeclaration<Driver>` carries a private identity function `(driver: Driver) => Driver` under
-a unique symbol, which makes `Driver` invariant: a task bound to one concrete driver API cannot be
-registered against another, and a semantic driver cannot be type-erased to `{ system }`.
-`declareDriverFor<KualiRrssDocumentDriver>()("kuali", "semantic-ready")` mints one; `declareDriver`
-mints the empty `unwired` form for a store that has no semantic operations yet. Both go through the
-same factory, which registers the declaration in a WeakSet — so `assertFactoryDeclaredDriver`
-refuses a forged one, and `defineBrowserStore` requires *object identity* with the store's own
-declaration, not merely a matching system. This is the rule `CLAUDE.md` states as "browser tasks
-bind the store's exact invariant `DriverDeclaration<ConcreteDriver>`", and §2.10's first as-built
-rule is what it looks like when a store grows a fifth task.
-
-**`z.input` vs `z.output` (D15, review #4).** A node's bind produces `z.input` — a field with
-`.default(false)` is *omittable* at the mapping site — and `run` receives the parsed `z.output`
-value with defaults and transforms applied, returning a `z.input` of the output schema that the
-kernel parses before anything downstream sees it. Conflating the two (`z.infer` everywhere) would
-make every defaulted field required in mappings and defeat transforms.
-
-**A type-level test pins the negative.** `ctx.fail("undeclared-code", …)` must fail `tsc`; that is
-what `const Codes` inference and `taskFailer(contract)` exist for.
-
-### 2.3 The task ctx (narrow by construction)
-
-```ts
-// src/base/task.ts
-interface TaskCtxCommon<Codes> {
-  readonly signal: AbortSignal;
-  readonly log: TaskLogger;                    // debug/info/warn with flat structured fields
-  readonly fail: (code: Codes[number], message: string,
-                  options?: { subject?; transient?; cause? }) => never;
-  readonly recordData: (point: DataPoint | readonly DataPoint[]) => void;   // D115, always present
-}
-type      PureTaskCtx    = TaskCtxCommon;                             // workflow: mini-store reads
-interface ServiceTaskCtx extends TaskCtxCommon { providers: ProviderClientSubset<Capabilities> }
-interface BrowserTaskCtx extends TaskCtxCommon { driver: Driver }     // the store's CONCRETE driver
-interface CommitTaskCtx  extends BrowserTaskCtx { mutation: MutationCapability }
-// a read declaring artifacts: "content-addressed" additionally receives
-//   { artifacts: ContentAddressedArtifactWriter }
-```
-
-`ReadTaskCtx` and `PrepareTaskCtx` are aliases of `BrowserTaskCtx`: what distinguishes a commit is
-the `MutationCapability`, and **no seam here mints one**. The token's brand is declare-only, so the
-type cannot make it unforgeable; the runtime registry in `src/base/mutation-capability.ts` does,
-through a module-private WeakSet whose only permitted minting caller is
-`src/core/write-sequencer.ts` (guard `task-driver-boundary`, D122). A driver's `commit` operation
-verifies the token before it clicks.
-
-**What TaskCtx deliberately does NOT have:** `updateData` (the untyped blob — display fields are
-projections of typed task outputs, ref dashboard-surfaces), `step` (the graph node owns
-orchestration), `delegateTo` (delegation is workflow-level composition, ref workflow-model),
-free-form `retry` (retry is declared, kernel-executed), and **any wait or park primitive** (§2.6).
-
-**Provenance is a data channel the executor owns, never an inference from logs (D115, 1f).** Every
-`TaskCtxCommon` carries a real collector: production `recordData` cannot be omitted, replaced by a
-no-op, or reconstructed from log prose, and `fakeCtx` must supply an explicit recording fake so a
-unit test cannot accidentally prove a production no-op. Each point is parsed through the strict
-`DataPoint` boundary — `{ direction: "read" | "write", field: ContractFieldPath, value: JsonValue }`
-— and the collector stamps the run/trace/attempt/workflow/node/task identity and the Clock instant
-(`src/domain/task-provenance.ts`). Before a read output may become a checkpoint or a terminal-result
-dependency, the kernel checks the contract's resolved `provenance` policy: every `live` field has a
-point recorded **during that execution**, and every `derived` field receives the complete declared
-upstream provenance and retains its **oldest** contributing `observedAt`. Missing or contradictory
-provenance fails the task before durable output. The declared upstream set is resolved from
-factory-authenticated descriptor metadata, never from a caller's claim, and undeclared evidence is
-rejected. Two arms of that evidence exist, because a gate is not a checkpoint: `checkpoints` are
-whole authority `run_checkpoints` rows, and `gateResults` are `gate_results` rows contributing
-exactly ONE `operator`-sourced fact dated at `resolvedAt` and no output leaves (D203 — a task that
-declared a gate as a dependency was structurally unrunnable until the READER moved).
-
-**Providers are admitted, never ambient (D63/D100/D112, 1f).** A service contract declares
-`providers: [...]` and `ctx.providers` is narrowed to exactly those capability keys; a task with no
-declaration has no client at all, and a browser or workflow contract may not declare one. Every
-call enters ONE capability-indexed admission path before an adapter can perform remote I/O: it
-applies the run's immutable config snapshot for timeout/abort, concurrency, rate, daily usage and
-cost; records reservations and outcomes with the provider evidence; and returns a typed
-`unavailable` result when admission cannot be granted. The task-visible client accepts only the
-strict canonical payload — no caller-supplied signal, timeout, deadline, budget, adapter or
-admission id — while the ADAPTER boundary separately exposes a conservative local `estimate` and
-one `invoke` that receives only the kernel-composed abort signal, monotonic deadline and durable
-admission id. The kernel reserves first, invokes outside SQLite, and durably settles before
-returning produced data; failure to settle after remote I/O is an explicit uncertain outcome and
-never leaks the response. Abort and deadline RACE the invocation, so an adapter that ignores its
-signal still releases the worker turn while the durable reservation retains conservative
-accounting. Counters and leases whose reset would change an admission decision survive worker
-restart in authority storage, so a task can neither hold a worker while sleeping for capacity nor
-bypass admission through an SDK or raw-network import (guard `provider-capability-boundary`).
-
-**Artifacts are content-addressed, and identity is not content (D97/D45).** A read that downloads
-or generates a file declares `artifacts: "content-addressed"` and receives
-`ContentAddressedArtifactWriter` — `put(bytes | Readable, { mediaType }) → ArtifactRef` and
-`open(ref) → Readable`, nothing else. The public reference is
-`{ id: ArtifactId, sha256: Fingerprint, bytes: number, mediaType }`: a UUID for the reference, a
-digest for the CONTENT, and **never a filesystem path or root**. Byte-identical puts return the
-same reference across writer instances; conflicting media metadata for one digest is refused; reads
-match on id, digest and metadata exactly. The real writer accepts only
-`.tracker-rebuild/artifacts` beneath a non-symlinked absolute workspace (the workspace path itself
-is `lstat`-checked) and publishes through temp write → file fsync → atomic no-replace hard link →
-temp unlink → directory fsync. There is no digest lock to strand: concurrent same-digest writers
-race at publication and every loser validates the winner before returning its exact ref. A crash
-may leave an unpublished temp whose name records its owner PID; a retry removes it only after the
-OS reports that PID absent, never because an age threshold elapsed (guard
-`artifact-effect-boundary`).
-
-**D291 — private verified-byte serving (2026-08-30; implemented and integration-proven).** The task-facing
-`ContentAddressedArtifactWriter` stays exactly `put/open`; producer publication, durable
-JSON/base64 envelope, identity, deduplication and owner-temp recovery rules above do not change.
-A server-only reader may expose verify/prepare and an opaque, single-use verified-byte lease
-for diagnostic serving. No path, seek handle or new task capability may cross that boundary.
-
-All scoped diagnostic verification/preparation must use a compatible incremental lower reader,
-not the current eager public open or a silent fallback to it. Preserve the existing accepted
-JSON/strict-schema/canonical-base64 language, including member order, escapes and last-key-wins
-duplicates; do not silently narrow it to writer-canonical JSON or add an artifact-size/depth cap.
-If equivalent acceptance and the agreed buffer bound cannot be achieved at this seam, report the
-concrete conflict rather than changing durable format or acceptance policy.
-
-Private request-lifetime scratch is authorized under validated rebuild ownership: exclusive
-private handles, names unlinked before sensitive writes on the supported platform, no published
-artifact/cache/retention service or broad orphan sweeper. Failed unlink refuses before sensitive
-writes. A crash-window empty entry must remain identifiable for reported, exact owned cleanup;
-it is not silently swept or evidence of a successful read. Unsupported unlink semantics refuse,
-not fall back to eager allocation. Cleanup remains owned until actual settlement through success,
-abort, error and shutdown; request cancellation alone is not resource release.
-
-The accepted tradeoff is proportional transient disk/I/O with payload buffers bounded per active
-read (including the lower parser/decoder and queues), not a host-wide RSS, disk-capacity or
-concurrent-admission guarantee. Selected retained bytes must be fully prepared and verified
-before publishing the lease, and delivery must not reopen the mutable source. No real HR data
-inspection or producer/write-path rewrite is authorized. Ref frontend-backend-integration §3.6
-owns complete bundle/selected-pass verification, HTTP transfer, disposal and operational errors.
-
-### 2.4 Error taxonomy
-
-```ts
-// src/base/errors.ts — as built
-export class TaskError<Code extends string = string> extends Error {
-  readonly taskId: TaskId;
-  readonly code: Code;                  // ∈ the task's declared errorCodes, or "unhandled"
-  readonly subject: string | undefined; // the offending value: EID, doc id, filename, intent
-  readonly transient: boolean;          // retry eligibility — false unless the throw site proves it
-}
-export function wrapUnhandledTaskError(taskId, error): TaskError<"unhandled">;
-```
-
-- The message form is `[<taskId>] <code>: <message>`, composed in the constructor and pinned by
-  unit test. Nothing escapes a task without a task name attached — a trace line alone identifies the
-  broken task (charter target #1).
-- `wrapUnhandledTaskError` wraps anything non-`TaskError` escaping `run` as `code: "unhandled"`,
-  `transient: false`, preserving `cause`, and preserving the message when the thrown value was an
-  `Error` (a non-`Error` throw becomes "task threw a non-Error value", which is itself the
-  diagnosis).
-- `instanceof`/`code` branching replaces today's ad-hoc `WorkflowError` subclasses; the two real
-  branching cases (`EmplIdNotRecognizedError`, `RetryPageError`) become declared codes.
-- `taskFailer(contract)` produces the `ctx.fail` bound to that contract's literal code tuple, which
-  is what makes an undeclared code a compile error.
-- **The `decoratedBy` and `hookErrors` fields this section described until 2026-08-21 do not
-  exist.** They belong to §4's decoration model, which has no module in `src/` — see §4. The rule
-  they encode (a hook failure never replaces the base error) is still the right rule and is stated
-  where it will be built, not here as though it shipped.
-
-### 2.5 Identity & naming scheme
-
-- `id = "<store>/<verb-object>"`, kebab-case (D2): `ucpath/search-person-org`,
-  `crm/read-onboarding-record`, `extraction/extract-spreadsheet`, `roster/match-spreadsheet`,
-  `workflow:separations/match-identity`. ONE regex in `src/domain/ids.ts` pins the whole grammar
-  for all thirteen system namespaces plus `workflow:<id>`, and `taskId(...)` parses it while
-  keeping the literal in the type.
-- **Verb prefixes are enforced, and the read list is wider than a first reading suggests.**
-  `EFFECT_VERBS` (`src/domain/contracts/base.ts`) is the whole table:
-
-  | effect | verbs |
-  |---|---|
-  | `read` | `read-` `search-` `list-` `extract-` `match-` `verify-` |
-  | `prepare` | `fill-` `stage-` |
-  | `commit` | `save-` `submit-` `upload-` `create-` `update-` `delete-` |
-
-  `match-` and `verify-` are READ verbs on purpose: a matcher is a pure fold over an earlier read
-  (`workflow:separations/match-identity`), and a write's **verifier** is a read of the page after
-  the fact (`ucpath/verify-termination`) — ref write-safety's completion arm requires exactly that,
-  and `assertReadTaskReference` refuses a probe or verifier whose verb is not on the read line.
-  `fill-and-submit-` is impossible: it is not a verb, and a task cannot carry two effects.
-- **`KnownTaskId` codegen was never built.** §8 row 2 and the old text here promised a generated
-  union derived from contract barrels; there are no barrels (§2.2) and no generator. What holds the
-  line instead is structural: `TaskId` is branded, `taskId(...)` is the only mint, `LiteralTaskId`
-  keeps the literal so `NamespaceOf<C>` resolves a store from a contract, and every projection
-  (descriptor, dashboard index, corpus) is derived from the registered stores rather than a
-  hand-kept list. What is genuinely missing is the ratchet that would forbid a task-id STRING
-  LITERAL outside contracts/stores/descriptors; nothing in the tree carries one today, and nothing
-  would fail if one appeared.
-
-### 2.6 The task boundary — tasks are bounded; waits are not tasks (D5)
-
-**A task is a run-to-completion Promise with bounded duration** (minutes, not hours). The executor
-races every task invocation against an injected monotonic deadline and the run AbortSignal:
-`taskDeadlineMs` is a REQUIRED dependency of the worker loop with no default, composed from the
-run's immutable config snapshot (`timeouts.taskMs`, 180 s by default —
-`src/server/worker/compose.ts`), and both invocation arms race the same deadline controller so a
-driver that ignores its signal still lands terminal `failed` with its session poison-closed (guard
-`bounded-task-deadline`, ref execution-and-sessions §5.5). Acquiring the driver has its own,
-shorter bound — `timeouts.sessionAcquireMs`, 60 s (D125). `timeouts.transactionMs` (300 s) is
-declared in the config schema and **read by nothing**: a transaction's beats are bounded by the
-per-task deadline and by the node's own `probeToFenceMaxMs`, so the leaf is either an unwired
-intention or dead config, and it is recorded here rather than described as enforcement.
-
-A timeout before a fence may restart preflight; after a fence it enters ref write-safety recovery
-and is never a generic retry. The things today's code does that do NOT fit the bounded shape are
-explicitly **not tasks**:
-
-- **Long waits — OCR approval, child-signature watching, external signals** (oath-upload's
-  `subscribeToApproval` park + hours-long wait-signatures watch) are **gate nodes** declared in the
-  descriptor and owned by **ref workflow-model's run-state machine**; their wire form is ref
-  dashboard-surfaces's `gate.opened`/`gate.resolved` events. A task never contains an unbounded
-  poll.
-- **Session policy at a park (kernel rule, stated here because stores implement it):** a parked
-  run **RELEASES its browser sessions** — holding a Duo'd UCPath page across an overnight approval
-  wastes a browser and rots the session anyway. On resume the kernel reacquires via the store's
-  session provider; `login` is idempotent (§6.1), so reacquisition is just another login call that
-  usually short-circuits to `"already-authenticated"` or re-runs Duo. Exclusive leases (§2.1) are
-  released with the session.
-- **Duo is fully automated — never a gate (charter §9).** Duo Autopilot clears the MFA WebAuthn
-  ceremony hands-off inside the session provider's `login`, for ALL runs — production included.
-  There is no phone-approval poll anywhere in the new design; `login` ends by succeeding or
-  throwing within seconds and never parks the run. (`duo-poll.ts` and its manual-approval wait do
-  not port.) The one thing that DOES serialize across workers is the Duo ceremony itself — one
-  credential, one server-side signature counter (D243/D244) — which is why the parallel-run work
-  carries a durable per-credential ceremony lease (`{#duo-lease}`, owner ref
-  execution-and-sessions). That is a session concern, not a task one: no task waits on it.
-
----
-
-### 2.7 The authoring floor — three declaration tiers (D79f, 2026-07-24)
-
-
-**The problem this solves.** As written across the reference specs, every task owes roughly ten
-artifacts: input/output schemas, `errorCodes`, freshness, provenance classification, subject spec, a
-mandatory `example`, a non-empty scenario tuple, naming compliance — and a commit adds `writeSafety`
-plus crash/subject scenarios. For a UCPath commit that is exactly right. For a pure transform in a
-workflow mini-store — a date-window calculation, a roster row projection — it is ceremony that
-makes workflows #2–#10 unpleasant to write, and unpleasant-to-write is how a codebase acquires
-copy-paste.
-
-**Three tiers. The floor scales with what the task can break.**
-
-| Tier | Applies to | Required | Optional until |
-|---|---|---|---|
-| **Light** | `workflow:<id>/…` mini-store pure reads and transforms (`sessions: []`, no page, no provider) | input/output schemas + `example` | scenarios required at the **first incident** — a bug fix here lands its regression scenario like any other |
-| **Standard** | browser `read` tasks | Light + freshness/provenance classification + subject spec + `errorCodes` + a happy scenario and its no-match/empty sibling | — |
-| **Full** | every `prepare`/`commit` (i.e. every task that can touch a real HR system) | Standard + `writeSafety` (completion arm + proof schema + idempotency) + probe policy + subject matcher + crash/mismatch/proof-unknown scenarios | nothing — a commit pays full fare, always |
-
-The tier is **derived, never declared**: it follows from `effect` + store kind, so a task cannot opt
-itself into a cheaper tier. **As built, the derivation is the factory's own refusals rather than a
-separate audit** — `assertCommon` requires scenarios for every namespace except `workflow:`, reads
-require `freshness` and `provenance` in the type AND at runtime, commits require the whole
-`writeSafety` round trip, and `defineTask` refuses a headless task that is not a sessionless read.
-Promoting a light task later (a second workflow wants it, so it moves to a system store) raises its
-tier automatically and fails the build until the additional artifacts exist — which is the correct
-moment to pay, not before.
-
-**The scaffold generators D79f ratified with it were never built.** `scaffold new-task` and
-`scaffold new-workflow` — contract skeleton, impl stub, example, scenario stubs and store
-registration, each with `TODO` markers failing their guards until filled — do not exist in
-`scripts/` and have no `package.json` script. The declaration toil is therefore still paid by hand,
-which is a live cost against "will workflows #2–#10 be pleasant to write" and belongs on whoever
-schedules the next store. Nine stores' worth of evidence says the floor itself held; nothing says
-the toil was acceptable, because nobody measured it.
-
-### 2.8 The rich-extraction convention — one task per PAGE VISIT (D194, ratified 2026-08-12)
-
-§2.7 answers *how much a task owes*. This answers the neighbouring question the store libraries
-forced open at the order-8 separations migration: **how wide a read task's output should be.** The
-operator ratified the rich-extraction convention on 2026-08-12; the options it was chosen from, and
-the measured duplication that motivated it, are recorded in the workflow's task evidence §2.6.
-
-**The convention.** A read task's identity is **"I visited this page and read what it has"** — not
-"a caller asked me for these fields."
-
-1. **One task per page visit.** A task navigates to one page (or proves one page state) and returns
-   the **full useful surface** that page carries, not only the fields today's first consumer needs.
-   Two genuinely different page visits stay two tasks: the convention groups by visit, it never
-   merges a second navigation into the first.
-2. **The output schema is FIXED and strict, and is never a function of a runtime argument.** A
-   contract has one output schema and one schema hash, and runs, checkpoints, terminal results and
-   evidence receipts all bind that hash plus the produced value's digest (D110/D114/D82). A
-   `read(fields…)` shape — where the caller names the fields and the output shape follows — is
-   therefore **banned**: satisfying a variable field set means either one wide all-optional record
-   (which no longer proves what was actually read, and would not survive `strict-boundary-schemas`)
-   or a separate contract per field set. It also conflates *which page do I visit* with *which
-   fields do I want*, so a caller could change navigation by editing a field list.
-3. **Consumers project; they never re-scrape.** A downstream node that wants one field binds the
-   field path out of a prior node's output, or folds it in a pure workflow mini-store task (§3.5).
-   Adding a field to a later workflow must be a `bind`, not a new driver operation.
-4. **Every field that can legitimately be blank declares an explicit absent arm** — the proven
-   `{state:"absent", reason}` shape — reported only *after* the page state and the subject are
-   proven, and a malformed non-blank value still throws (§2.1.1's absence rules, unchanged). This is
-   load-bearing, not decorative: the executor validates that provenance covers **every** canonical
-   output leaf on every run, so a rich field with no absent arm can fail a workflow that never
-   needed it. Absence is reported as data; it is never a silent blank.
-5. **Every leaf declares its redaction classification at authoring time** (ref operator-trust §D140 — an
-   undeclared leaf fails loud). A wider read owes a wider classification table up front; that is the
-   one-time authoring cost the convention accepts.
-6. **The tier does not change.** A rich read is still a §2.7 **Standard**-tier task; what grows is
-   the per-leaf obligation inside it, not the artifact list around it.
-
-**Scope, and what this decision does NOT do.** The convention binds every **new** task from
-2026-08-12 and every task authored by a migration from order 8 onward. It does **not** trigger a
-rewrite of existing tasks: a store merges its duplicate extractions when it is next touched for
-other reasons, because re-authoring a shipped task's output schema moves a schema hash that existing
-run records, checkpoints and receipts already bind. The first known merge target is `crm` —
-`crm/read-onboarding-record` and `crm/read-onboarding-dates` share an entire page visit (the same
-search, drill-in and record page) and the record page already holds `First Day of Service`, which
-the record task drops from its output and the dates task re-runs the whole search to read again. The
-CRM **history** page is a second visit and stays its own task under this convention.
-
----
-
-### 2.9 The first store authored under §2.8 — `new-kronos` as-built (D196, 2026-08-12)
-
-- [x] two tasks because two page visits — `new-kronos/search-employee` and `new-kronos/read-separation-timecard`, both live-proven (D196, 2026-08-12; `src/stores/new-kronos/tasks/`)
-- [x] the completeness INVARIANT over the virtualized grid: the scroll loop and the fold share ONE implementation, `timecardRangeCoverage`, and the loop terminates on coverage rather than on the widget (D205, 2026-08-13; `src/stores/new-kronos/driver/grid-scroll.ts:130`)
-- [x] columns bound by header NAME, read from the same container as the cells, with the counts compared (D205)
-- [x] the store is structurally read-only: no `commit` contract, no `MutationCapability` in its import graph, and the UI-registry audit refuses an `external-commit` element by name
-- [ ] the pay-rule WRITE family — order 6, below
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/new-kronos/{index.ts,declaration.ts,tasks/,driver/grid-scroll.ts} and src/domain/ui/new-kronos-timecard.ts; left: nothing in this section — the write family is `{#order-6}`'s
-
-- [ ] BE the `new-kronos` store gains its pay-rule write family: a `commit` contract with `writeSafety`, a `CommitCapableSystemDriver` operation, and the `external-commit` element the registry audit refuses today — the capability is added deliberately by that slice and cannot be inherited (§2.9)
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified: `src/stores/new-kronos/` has read tasks only and its driver declares no commit operation; the rest of order 6 (the canonical-EID audit gate, work-study) is owned by 03c and ref data-intake-and-edit-data §1
-Separations chunk 1 (the workflow's task evidence §3) is the first slice authored under the
-rich-extraction convention and the first new browser store since the platform was built, so what it
-settled is normative for every store slice after it.
-
-**Two tasks, because two page visits.** `new-kronos/search-employee` is the Employee Search results
-panel; `new-kronos/read-separation-timecard` is the Timecard. The migration doc's §2.4 inventory
-sketches FIVE tasks (`open-timecard`, `verify-timecard-subject`, `set-timecard-range`,
-`read-separation-timecard`) — that table predates §2.8, which was ratified later in the same
-document. Go To, the subject proof, the range apply and the grid read are one visit to one page and
-cannot be re-entered independently; a separate "set the range" task would hand the next task a page
-it could not prove it was still standing on. **The rule this settles: a navigation-plus-state-change
-sequence on ONE page is ONE task, and the split is at the page boundary, never at the step
-boundary.**
-
-**A rich read owes an INVARIANT over its completeness, not just a wider schema.** The WFD timecard
-grid is virtualized: a 73-day window renders 51 date rows at `scrollTop: 0`, so a single DOM read
-returns a plausible, wrongly-truncated timecard. The task therefore accumulates across scroll and
-then asserts a property the complete set must satisfy — WFD renders one row per calendar day, so a
-complete read holds every day in the applied window — and refuses when it does not. Generalise it:
-**when a page virtualizes, a wide read must state what the complete set must contain and assert
-that, rather than trusting the loop that gathered it.** §2.8's obligations (absent arms, declared
-classification) are about each leaf; this one is about the SET, and it is the same class of
-obligation.
-
-**As built, that invariant is also the loop's TERMINATION condition (D205, 2026-08-13).** The first
-implementation stopped scrolling when `scrollTop` refused to advance, which was a true statement
-about the wrong thing: the position was being written to ui-grid's pinned viewport, which drives no
-virtualization, so a 14-of-35-day read reported itself whole and the fold accepted it. The loop now
-continues until `timecardRangeCoverage` says every day of the applied window is present and refuses
-when it cannot get there — **the same function the fold refuses on**, shared as ONE implementation
-(`src/stores/new-kronos/driver/grid-scroll.ts`). Two corollaries came with it and generalise past
-this store: an algorithm inside a `page.evaluate` closure is untestable by construction, so the
-harvest moved behind a port a fake grid can run; and terminating on what the gathered SET must
-contain is the only form of the rule that survives a widget lying about itself.
-
-**A rich read binds its columns by NAME — read from the same container as the cells.** Legacy
-addressed the grid by fixed cell index; a column inserted upstream would silently re-point "Pay
-code" at "Transfer". The task resolves the live header row and fails loud naming the missing or
-ambiguous header. The first version of that fix was a different hardcoded offset wearing a safer
-name: it queried header names `document`-wide, catching the PINNED `Date` header, while the cells
-came from a body row that has none — nothing threw, and every column was off by one (D205). Read
-the names from the container the cells came from and compare the counts. A positional read is
-exactly the substitution `no-positional-identity` bans one level up.
-
-**The page's own subject is an OUTPUT, not an internal check.** The timecard read returns the EID and
-the display name the timecard itself showed, beside the ones the run expected. The wrong-person
-control is still the contract's `subject` binding, which fails the run — but the receipt carries what
-was observed, which is what lets an operator finish the double-check without opening UKG.
-
-**A value the classifier does not recognise is REPORTED, never dropped.** The ported sick/holiday
-rules are two regexes; the live window carried two pay codes neither matches. They surface as
-`unclassifiedPayCodes`. A rich read that silently discards what it could not classify is narrower
-than it looks, and here the discarded value could move a real termination's effective date.
-
-**Distinct negatives are distinct ERROR CODES.** Where a migration's answer is "all of these fail"
-(separations §4b) but the values must stay distinguishable, the distinct durable value is
-`FailureRecord.code`: `employee-not-found`, `search-returned-no-match` and `search-no-signal` are
-three codes, not one boolean. A timeout is never a negative.
-
-**Session facts** (ref execution-and-sessions §4.1 owns the contract; recorded here because they were settled in this
-slice): New Kronos does **not** hop through `a5.ucsd.edu` — its SSO chain lands on ForgeRock under
-`*.prd.mykronos.com`, serving the same UCSD credential form. D120's two independent facts are the
-application-issued `kronosAuthToken` on the WFD host plus the absence of both the UCSD SSO form and
-ForgeRock's XUI login shell. The IDP's own JWT was rejected as the positive fact: it proves the
-identity provider authenticated somebody, and it is scoped to a parent domain that includes the
-sign-on host.
-
-**The store is structurally read-only.** No `commit` operation, no `MutationCapability` in its import
-graph, and the UI-registry audit refuses an `external-commit` element by name. A later write slice
-adds the capability deliberately; it cannot be inherited.
-
----
-
-### 2.10 The first store CUSTOMIZED under §2.8 — `kuali` as-built (D197, 2026-08-12)
-
-- [x] a fifth task extended the ONE `DriverDeclaration<KualiRrssDocumentDriver>` rather than minting a second (D197, 2026-08-12; `src/stores/kuali/declaration.ts`)
-- [x] catalog attribution splits by FACT where a read and a write share one document, and the Save button stays the commit task's alone
-- [x] the registry invariant became PER SUBJECT IDENTITY — one `eid` observation, at most one `document-number` observation — rather than being relaxed to "at least one"
-- [x] a person field's `state`/`reason` arms are transaction facts, not identifiers; only `value` carries the identifier (D140 refinement)
-- [x] the store is ten tasks at HEAD, still on the one declaration — D261's Action-List resolver (`kuali/search-separation-action`) is the latest, added 2026-08-20
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/kuali/{declaration.ts,tasks/ (10 files)} and src/domain/ui/{kuali-rrss-document,kuali-separation-document,kuali-action-list}.ts; left: nothing in this section
-§2.9 settled what a store BUILT whole owes. Separations chunk 2 is the other case ref stores §1
-distinguishes — a **CUSTOMIZE** of an existing semantic-ready store — and it settles five more rules
-that are normative for every store slice that extends one rather than creating one.
-
-**A sibling task family extends the ONE driver declaration; it never mints a second.** The Kuali
-store already had a `DriverDeclaration<KualiRrssDocumentDriver>` bound by four write-family tasks.
-The separation read is a fifth task on that SAME declaration, and its operation is added to the same
-driver schema. `defineTask(driver, contract, impl)` binds the store's exact invariant declaration
-(the `task-driver-boundary` rule), so a second declaration for one store is not a style choice — it
-is the thing that boundary exists to refuse. Where the new surface is much wider than the old, the
-SCHEMAS may live in their own module; the DECLARATION may not.
-
-**A read surface and a write surface on one page share a screen, so catalog attribution splits by
-FACT, not by screen.** `new-kronos` could attribute per screen because its two tasks visit two
-pages. Kuali's read and write stand on the same document: three facts are genuinely shared (the EID
-field and its observation, the timekeeper field and its observation), fourteen belong to the read
-alone, and the Save button still belongs to the commit task alone — because the catalog is what an
-operator reads to answer "what can click this?", and naming a read task there would be a lie.
-
-**A registry invariant meets a second legitimate case by becoming PER-KIND, not by being relaxed.**
-Kuali's audit required "exactly one subject-authoritative observation" — correct when the store's
-only binding was the write's PERSON subject. The separation read's subject is the DOCUMENT (§2.1's
-`artifact` kind with `identity:"document-id"`), because the run names a document and DISCOVERS the
-person. The rule is now exactly one PER SUBJECT IDENTITY: one `eid` observation and at most one
-`document-number` observation. Widening it to "at least one" would have made both unprovable.
-
-**A control the live page carries and legacy has no key for stays DRIVER-INTERNAL.** This is
-§2.9's rule applied in the harder direction: it is tempting, when fourteen of eighteen controls port
-cleanly, to publish the other four with an invented provenance row. Four fields (Division, Employee
-Type, Student Title Code, the optional comments box) and three of four Final Pay radios are read
-through their exact live accessible names in the driver, listed together in one named block, and
-each re-asserts the exactly-one count on every read. A fabricated port row is worse than an
-unpublished element.
-
-**A person field's ARM DISCRIMINATOR is not the person (D140 refinement).** A rich read's fields are
-`{state, value}` / `{state, reason}` unions, and declaring the whole field `direct-identifier`
-pushes `state` through `last4`. The live proof run on real document 4502 produced a receipt reading
-`employee.name.state = "sent"` and `employee.name.reason = "alue"` — not redaction, but a receipt
-telling the operator something false. Only the `value` leaf carries the identifier; `state` and
-`reason` describe the READ, which is a transaction fact. The general consequence is worth stating
-because it is a migration hazard: **changing the evidence classification table moves receipt BYTES
-for every already-settled run**, and `evidenceReceipts.insert` correctly refuses the divergent
-rebuild by name — so a classification fix strands the receipts of runs settled before it.
-
----
-
-### 2.11 The third store authored under §2.8 — `ucpath/read-job-summary` (D201, 2026-08-12)
-
-- [x] `ucpath/read-job-summary` returns the whole Employment Instances grid verbatim and classifies nothing; the disposition is a pure fold in `src/domain/separations/job-summary-classification.ts` (D201, 2026-08-12)
-- [x] structural cells (empl record, HR status, business unit) refuse a blank; the nine descriptive cells carry `{state:"absent", reason}`
-- [x] one page visit, two parses — the search keeps its own preferred-assignment derivation rather than widening a shipped output schema
-- [x] a settle wait proves that SOME outcome rendered and a pure verdict function says which; the four-result page that broke the old three-arm `.or()` is a pinned case (D213, 2026-08-14)
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/contracts/ucpath/read-job-summary.ts, src/domain/separations/job-summary-classification.ts and src/domain/ui/ucpath-job-summary.ts; left: nothing in this section — the gate half is ref write-safety §14 and ref workflow-model §5.5
-Separations chunk 3 mints the UCPath side of §2.8's convention, and it settles two authoring rules the
-first two stores did not have to answer.
-
-**A page's read task reports what the page showed; the JUDGMENT is a separate fold.**
-`ucpath/read-job-summary` returns the whole *Employment Instances* grid — every row's empl record,
-verbatim HR status, business unit, effective dates, department, job code, title, FTE and class — plus
-the page-displayed person identity, the row count, and the **render context** that says whether the
-grid is complete. It classifies nothing. "All rows terminated", "two concurrent jobs" and "already
-separated" are a pure fold over that output
-(`src/domain/separations/job-summary-classification.ts`). Legacy computes those same facts as THROWS
-inside its page module, and only when the search happened to render a multi-row grid — so they exist
-only in a log, and a single-employment person who is already terminated is never checked at all (S22,
-found live on a real person). A read that refuses on the shape of its own answer cannot serve a gate
-whose whole job is to SHOW the operator that answer.
-
-**Absent arms are for genuinely-optional CELLS, and the STRUCTURAL ones refuse.** Empl record, HR
-status and business unit are required on every rendered row: a blank one means the extraction read
-something that is not an employment row. The nine descriptive cells each carry
-`{state:"absent", reason}`. The dividing line is *what a blank MEANS*, not what is convenient: a blank
-structural cell is a broken read, a blank descriptive cell is a real page state. S24's unreadable
-department is therefore data with a reason rather than a refusal — refusing there would fail an
-identity check over a cell the identity check does not use, and the consumer that NEEDS a department
-is the one that refuses.
-
-**A settle wait proves that SOME outcome rendered; a pure function says WHICH (D213,
-2026-08-14).** UCPath's `#PTS_CRITTEXT_DISP` was modelled as a positive "no results" marker and is
-the search-CRITERIA banner, which renders on every result list stating the count. Waiting on a
-three-arm `.or()` therefore CLAIMED the arms were mutually exclusive, and the first subject whose
-name matched four people rendered banner and grid together, resolved two elements and threw — while
-the classifier behind it would have read that ordinary page as "ambiguous". The wait now asks
-whether any outcome has rendered (`.first()`) and a pure verdict function decides which, so the
-decision is testable; its load-bearing arm is the REFUSAL — a count banner with no grid beside it
-throws by name rather than answering not-found, because reading a four-result page as "nobody
-matched" is a silent wrong value about a person. Two subjects were not enough to find this: both
-earlier ones matched exactly one person, where UCPath auto-navigates to the detail page, so only one
-arm had ever matched and the mapping stayed internally consistent and externally wrong. When a
-registry LABEL asserts something the live page disproves, move the LABEL — durable catalogs and
-selector provenance bind the id.
-
-**One extraction, two parses.** `searchPersonOrg` and `readJobSummary` share the same page visit and
-the same cell read. They do not share a parse: the search keeps its exact preferred-assignment
-derivation, which refuses a blank department because a CANDIDATE without one is unusable, while the
-job-summary read gives that same cell an absent arm. Widening the search's own output instead would
-have moved a schema hash shipped run records already bind (D110/D114/D82) — which is the cost §2.8
-warned about, paid the way §2.8 said to pay it: a new contract beside the old one.
-
-### 2.12 One store, two screen families, TWO write transactions — `ucpath`'s termination family (D206, 2026-08-14)
-
-- [x] two transaction nodes in one graph, and the DELETE is its own transaction with its own probe, verifier and permanent key (D206, 2026-08-14; `src/stores/ucpath/tasks/`, ten tasks)
-- [x] ONE rich page read, TWO probe folds (`src/stores/ucpath/termination-verdict.ts`)
-- [x] the subject binds UCPath's own `PERSON_NAME_NAME_DISPLAY`, kept driver-internal because legacy has no key for it — the anchor renders zero nodes until UCPath resolves a person, so the subject observation and the `emplid-not-recognized` refusal are one check
-- [x] the closed vocabulary accepts both surfaces' spellings (`TER` and `Terminatn`), neither arm fuzzy, and a value matching neither falls through
-- [ ] the controlled commit on a real subject — historical canary 4537 is evidence only; current admission and writes are owned by `{#acceptance-admission}` then `{#separation-filing-finalization}`
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/ucpath/{tasks/ (10 files),termination-verdict.ts,driver-declaration.ts} and src/domain/ui/{ucpath-driver,ucpath-smart-hr-termination,ucpath-ss-smart-hr}.ts; left: the live commit, which is Track A's PROOF row
-Separations chunk 4 is the first slice to add a WRITE family to a store that already had a read
-family, and the first to compose **two transaction nodes in one graph**. Five rules fall out, and
-each was forced by something live rather than chosen.
-
-**A store's ONE driver declaration joins unrelated screen families, and a fixture answers only its
-own half.** The `ucpath` store's Person Organizational Summary family and its Smart HR termination
-family share nothing but the system id — different route, different frame model (Person Org lives
-inside `#main_target_win0`, Smart HR renders **no iframe at all**), different anchor style. D197
-rule 1 still binds: `defineTask(driver, …)` takes the store's exact invariant declaration, so the
-type is joined (`src/domain/ui/ucpath-driver.ts`) while the schemas stay in their own modules. The
-consequence a fixture cannot dodge is that it must satisfy BOTH halves structurally — and it must
-not IMPLEMENT both, because a Person Org fixture that quietly answered a termination scan would be
-inventing HR transactions. Each half therefore refuses the other's operations **by name**.
-
-**ONE rich page read, TWO probe folds.** Ref write-safety §5 wants two probe kinds — "is this person already
-being terminated effective THIS DATE?" and "does this person have ANY in-progress termination?" —
-and they are two questions about the same rows, not two page visits. `scanTerminationTransactions`
-returns every transaction the SS Smart HR surface shows and classifies nothing; the folds live in
-`src/stores/ucpath/termination-verdict.ts`. That is §2.8/D194 and D201's shape applied to a WRITE's
-preconditions, and it is what lets the sweep and the filing share one read while keeping two
-independent permanent keys.
-
-**A DELETE is an external write, so it gets its own transaction — not a step inside a prepare.**
-Legacy's `deletePendingTransaction` removes every in-progress `Terminat*` row for the EID and is, in
-legacy, *the first mutation the run performs*, with no fence, no permanent key and no read-back
-(S30/S31). Here it is `ucpath/delete-pending-terminations`, composed BEFORE the filing, with its own
-probe, its own verifier and its own key (the person alone, because no date qualifies "this person has
-no in-progress rows"). A crash between a hidden delete and a submit would otherwise leave a run that
-had mutated UCPath while claiming to have staged nothing.
-
-**A subject binding may be the NAME, and here it must be.** The wizard's Empl ID field holds the
-run's own input echoed back; `#PERSON_NAME_NAME_DISPLAY` is UCPath's own answer to it. Legacy reads
-that name **nowhere** in the termination flow — checked against the pinned commit, where
-`PERSON_NAME_NAME_DISPLAY` appears only in the Person Profile and PayPath families — which is the
-structural cause of the `T002173685` wrong-person termination. The live read then made the anchor
-stronger than the design: it renders **zero nodes** until UCPath resolves a person, so the beat-③
-subject observation and the `emplid-not-recognized` refusal (S48) are the same check. Because legacy
-has no key for it, it stays DRIVER-INTERNAL rather than being published with a fabricated port row —
-the rule `new-kronos` set and `kuali` re-applied.
-
-**A closed vocabulary must be read off the surface that renders it, and one system may have two.**
-`isUcpathTerminationAction` shipped testing legacy's `/Terminat/i` prefix; the SS Smart HR search
-grid and its transaction detail render the PeopleSoft CODE `TER`, and only the *Transactions in
-Progress* grid renders `Terminatn`. Legacy uses both matchers, in two different modules, without
-saying so. The first live read therefore found a probe that would have answered `absent` about a
-person with a Pending termination — the duplicate-filing failure the probe exists to prevent. The
-fix accepts either form and neither arm is fuzzy: one is equality against a closed code, the other is
-legacy's own prefix. The general rule: **when two surfaces of one system render "the same" field,
-read both before assuming one vocabulary**, and let a value that matches neither (`(blank)`, live)
-fall through rather than be widened into.
-
----
-
-## 3. Task stores per system plus pure workflow mini-stores
-
-### 3.1 Layout in the rebuild repo's `src/`
-
-**Current path amendment — 2026-10-01.** Use the [current codebase map](codebase-structure.md) for
-folders and dependency direction. The tree diagram below is the earlier Phase 1 store snapshot;
-its store boundaries and namespace rules remain, while paths have moved. `src/models/` owns task
-schemas and shared shapes; `src/workflow-kit/` owns task/workflow factories and shared validation;
-`src/backend/systems/<id>/` and `src/backend/processing/<id>/` own system and processing task
-implementations; `src/workflows/<id>/workflow.ts` is the browser-safe operator definition; Separations chunk harnesses
-live at `src/workflows/separations/steps/<step>/step.ts`. Workflow path helpers derive source and
-potential future scenario locations from role; no scenario suite is current after the 2026-10-02
-operator retirement. Workflow IDs do not change. Declared scenario IDs remain contract metadata, not
-test evidence. Missing rehearsal manifests report unavailable before execution; future scenario
-requirements are operator-led. Workflow-specific `task-registry.ts` and `tasks/` remain
-backend-loaded, and renderer/lower-level code cannot import implementations. Registration filename
-`task-registry.ts` replaces the former `store.ts` convention. `RegisteredTaskStore`, store factories,
-and task namespace IDs retain their semantics.
-
-**Scenario-test amendment — operator-approved 2026-10-02.** `tests/scenario/` and `tests/parity/`
-are retired. The dated T1/T2/T3 checklists and corpus claims below are history, not current proof or
-acceptance. `scenario-coverage` retains pure graph checks only; a unit fixture that injects scenario
-data does not establish production scenario execution. See [guards and tests](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02)
-for the current suite and guard policy.
-
-The tree diagram and D4–D42 path statements below are the dated Phase 1 layout snapshot. Keep them
-for their store-boundary history; use the current map and the current-path amendment above for
-implementation paths. Catalog-specific statements there are superseded by the 2026-10-01 operator
-retirement amendment in `ref operator-trust`.
-
-- [ ] BE the `i9` store is a declaration only — `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`, zero tasks, no `driver/`, no `BROWSER_SYSTEM_BINDINGS` entry; order 1 builds its driver, login recipe and tasks into exactly the layout below
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/i9/{index.ts,session.ts} and src/infra/browser/system-bindings.ts; the rest of order 1 (person-lookup's Search + Match modes) is owned by 03c and ref dashboard-surfaces §9
-
-- [ ] BE the `sharepoint` and `old-kronos` stores are declarations only, same shape as `i9`; order 2 gives them drivers, login recipes and download tasks
-- [ ] BE the first content-addressed download task — `artifacts: "content-addressed"` plus `acceptDownloads: true`, which §2.1's session type admits only together; `stores/common/spreadsheet-grid.ts` is the shared leaf already waiting for the roster half
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/{sharepoint,old-kronos}/, src/stores/common/spreadsheet-grid.ts and src/base/artifacts.ts; no task in the tree declares `artifacts` today
-
-```
-src/                            # the rebuild repo's code root (D93)
-  domain/
-    contracts/                # bundle-safe: zod + src/domain/** ONLY (guard task-contract-sealing)
-      base.ts                 # defineTaskContract, the effect arms, the seal
-      write-safety.ts         # the WriteSafety runtime schema a commit contract binds
-      index.ts                # re-exports those two — there is NO per-store barrel (§2.2)
-      ucpath/                 # one file per contract, named for the task
-        search-person-org.ts  read-job-summary.ts  stage-termination.ts  create-termination.ts …
-      crm/ …  kuali/ …  new-kronos/ …  extraction/ …  normalization/ …  ocr/ …  roster/ …
-      person-lookup/          # a workflow mini-store's contracts (ids are workflow:person-lookup/…)
-      separations/            # nine of them
-    ui/                       # the semantic driver types every store's driver implements
-  base/                       # task.ts (defineTask + the ctx types), store.ts, session.ts,
-                              # errors.ts, artifacts.ts, providers.ts, mutation-capability.ts
-  stores/
-    index.ts                  # BROWSER_STORES / TASK_STORES + the two registries and their corpus
-    ucpath/
-      index.ts                # defineBrowserStore("ucpath", ucpathDriver, ucpathSession, tasks)
-      driver-declaration.ts   # declareDriverFor<UcpathStoreDriver>()("ucpath", "semantic-ready")
-      session.ts              # the LOGIN RECIPE — a sanctioned raw-browser owner
-      session-provider.ts     # the composition-safe SessionProvider value tasks' graphs can see
-      driver/                 # the ONLY task-adjacent layer allowed raw Page/Locator access
-        interpreter.ts        # the semantic driver over a live page
-        ui-registry.ts        registry-locators.ts   catalog.ts   fake.ts
-        person-org-operation.ts  smart-hr-operation.ts    # the ported leaves live HERE
-      tasks/                  # one file per task; defineTask(driver, contract, impl)
-      termination-verdict.ts  # pure folds over a task output (§2.12)
-      UI-CATALOG.md           # generated; stable ids/labels/search terms/evidence/task uses
-      CLAUDE.md               # the store's own as-built notes
-    crm/ · kuali/ · new-kronos/          # the other three wired browser stores
-    i9/ · old-kronos/ · onbase/ · servicenow/ · sharepoint/   # declaration + session only
-    extraction/ · normalization/ · ocr/ · roster/             # service stores (D4, §3.4)
-    person-lookup/ · separations/                             # workflow mini-stores (§3.5)
-    common/                   # shared leaf code, NOT a store: timecard.ts, spreadsheet-grid.ts
-  workflows/<id>/             # descriptor.ts (bundle-safe) + module.ts (server composition)
-  control/workflow-registry.ts # the ONE WORKFLOW_MODULES tuple every registry derives from
-```
-
-Two naming corrections against what this section used to show: task impl files are
-`tasks/<verb-object>.ts`, not `*.task.ts`, and there is no per-store `impl/` directory — the
-verbatim-ported leaves live under `driver/` beside the interpreter that calls them, because they
-are the layer that touches a page and the boundary guard is drawn at `driver/**`. A workflow
-mini-store's contracts sit at `domain/contracts/<workflow-id>/`, not under a `workflows/` folder.
-
-### 3.2 The store factories — one impl registry per task namespace
-
-
-```ts
-// src/workflow-kit/task-registry.ts — three factories, one registry
-defineBrowserStore(namespace, driver, session, tasks) → BrowserTaskStore
-defineServiceStore(namespace, tasks)                  → HeadlessTaskStore
-defineWorkflowStore(workflowId, tasks)                → HeadlessTaskStore<`workflow:${Id}`>
-defineTaskStoreRegistry(stores, corpus)               → TaskStoreRegistry
-```
-
-There is no single `defineStore` with overloads; three named factories are what shipped, and the
-names are load-bearing because the three enforce different things.
-
-- **`defineBrowserStore`** parses the namespace, requires the driver declaration by OBJECT IDENTITY
-  (`assertFactoryDeclaredDriver`), requires the session provider's system to match, requires
-  `exclusive: true` on OnBase and refuses it everywhere else, and then validates every task:
-  camelCase key, factory-minted (`assertFactoryDefinedTask`), an id prefixed by this namespace, the
-  store's exact driver declaration, no duplicate id. A driver-bound task cannot be registered in a
-  headless store and vice versa.
-- **`defineServiceStore`** additionally requires every task to be a sessionless READ.
-- **`defineWorkflowStore`** requires the same and also refuses `artifacts` or `providers` — a
-  mini-store may not acquire hidden filesystem state or network reach (§3.5).
-- **`defineTaskStoreRegistry`** requires stores minted by those factories, refuses a duplicate
-  namespace or task id, and then matches the store set against the **corpus** in BOTH directions: a
-  registered task missing from the corpus fails, a corpus id with no implementation fails, an effect
-  disagreement fails, and `assertTaskContractReferences` resolves every scenario id and every
-commit's probe/verifier against that corpus. Two registries are composed in `src/backend/app/registries/task-registry.ts`
-  — `browserStoreRegistry` (the nine browser stores, the declaration view ref
-  execution-and-sessions' coverage guard consumes) and `taskStoreRegistry` (all sixteen, the
-  executable task index).
-
-**A store cannot contain a task that touches another store's system.** Cross-system behaviour
-(person-lookup's UCPath + CRM dance) is workflow composition, never a task.
-
-**What actually guards this, by name.** The six numbered "coverage ratchets" this section used to
-promise map onto the tree like this — three exist under different names, two are the factories
-themselves, and one was never built:
-
-| the promise | what enforces it at HEAD |
-|---|---|
-| pairing — every contract bound by exactly one impl, both directions | `defineTaskStoreRegistry`'s corpus match (above) plus `descriptor-coverage`'s D107 audit of `src/backend/app/registries/pending-impl-bindings.json`, which is checked-in EMPTY and must gain an entry in the same commit as an unbound contract |
-| reachability — a task file the store forgot | structural: the corpus is projected FROM `store.tasks`, so a task no store exports does not exist as far as the registry, the descriptor and the dashboard are concerned |
-| bundle safety — a contract reaching server code | `task-contract-sealing`'s AST plus transitive import-graph audit over every `src/**/contracts/**` module (forged seals, casts and dynamic imports included), and `descriptor-coverage`'s bundle-safe value-import closure over every descriptor |
-| the `example` parses through `output` | `descriptor-coverage` re-parses every registered contract's example, and the factory parses it at definition (§2.2) |
-| freshness/provenance | the factory (both required on a read, field paths resolved against the exact output schema) and the executor's provenance collector (§2.3). **The `maxAgeMs: Infinity` justification-comment ratchet does not exist**: seven contracts declare `Infinity` today and every one carries its argument in an adjacent comment, which is a convention held by review, not by a gate |
-| artifacts | `artifact-effect-boundary` |
-
-### 3.3 Porting selectors + knowledge (copy verified recipes; never import legacy runtime)
-
-- **Verified selector recipes are copied/ported into the rebuilt driver with provenance.** The
-  rebuild repo never imports or re-exports the legacy repo's `src/systems/**` — under D93 that is
-  **structural**, not policed: the two repos share no module graph, so a runtime import across them
-  is impossible to write. Each ported module records the **legacy commit hash and source path** in
-  its header (`src/stores/ucpath/session.ts` names
-  `hr-automation@793abe1f…` and `src/infra/auth/login.ts`), and
-  `legacy-selector-port-provenance` pins all 406 registry keys to that FIXED commit's blobs, so
-  legacy moving on cannot invalidate the guard. `ui-registry.ts` assigns stable ref operator-trust
-  `ElementId`s; tasks call the typed driver.
-- **Cross-repo change accounting is RETIRED (D150, 2026-08-05).** This section required D90
-  accounting — every legacy maintenance change booked in the workflow's task evidence
-  against the affected rebuilt ids — and that is no longer true in either direction: nothing here
-  reads legacy's working tree, and legacy work never blocks a rebuild gate. The file remains as a
-  frozen historical record and is read by nothing. **What replaced it is stronger for the risk it
-  covered** (a ported selector going stale after legacy fixed it): mandatory **live
-  re-verification at each workflow's migration**, which the charter already makes standing and
-  pre-authorized. A selector checked against the live system beats one diffed against legacy's copy
-  of it.
-- **Two-commit rule per store:** commit 1 is a faithful copy/port (only the import-path edits the
-  rebuild's own `src/` requires — reviewable as a zero-logic diff against the legacy source at the
-  recorded commit hash); commit 2 wraps it in `defineTask` shells and contract files.
-  Re-derivation is forbidden (charter): `// verified <date>` stamps, `.or()` fallback chains,
-  `getContentFrame`, employment-instance expansion and Duo two-phase factor logic are copied
-  faithfully with source provenance, and the legacy originals stay in place.
-- **A port is allowed to change a BOUNDARY, and each change is named.** `src/stores/common/`'s
-  first shared leaf — the Kronos timecard check, ported from legacy `src/services/timecard/index.ts`
-  (commit `793abe1f`, blob `91c5b930`) — split along this doc's own boundary: pure Clock-injected
-  period/date resolution went to `src/domain/timecard-period.ts`, the orchestration both Kronos
-  stores bind went to `src/stores/common/timecard.ts`. Four boundary changes were made, each
-  removing a silent fallback or a banned primitive rather than reshaping the algorithm, and each
-  pinned by a test: **no raw `Page`** (the semantic timecard driver is page-free; concrete drivers
-  own their Playwright internals); **no `waitForTimeout`** (the legacy 3 s sleeps after navigation
-  and after a period switch become semantic page-state waits owned by the driver operation);
-  **navigation failure throws** (`goToTimecard(): Promise<boolean>` made "could not open the
-  timecard" indistinguishable from "no punch entries exist" — both surfaced as `null`); and **the
-  driver cannot assert its own switch** (`switchPeriod(): Promise<boolean>` becomes a typed
-  `TimecardPeriodSwitch` carrying before/after period labels that the helper compares, so "there is
-  no previous period" is a declared arm and never an inferred `false`). The window helper also
-  computes bounds in calendar days rather than `n * 86_400_000` ms, because the legacy arithmetic
-  lands an hour off local midnight across a DST transition and day-granularity rounding then shifts
-  a bound by a whole day. `TimecardDateRange`, `TimecardMonthDay` and `VisibleTimecardMonthDays` are
-  strict schemas in the boundary catalog, because the month/day half of every timecard date is
-  parsed from an untrusted grid.
-- Existing LESSONS do **not** move wholesale. Each referenced lesson is triaged during migration:
-  active invariant → structured `KnowledgeRecord`; incident-only context → linked incident history;
-  superseded/duplicate/incorrect → excluded from the generated active guide. The old LESSONS file
-  stays with the legacy repo's store through the single cutover. See ref operator-trust §4.
-- **Historical catalog note, superseded 2026-10-01:** `ui:catalog`, `selector:search`, generated
-  `UI-CATALOG.md` files and the generated JSON were retired. Semantic registries, selector evidence,
-  provenance, proof and write-safety requirements remain; see `ref operator-trust`'s retirement
-  amendment. The task-store catalog remains generated by `npm run stores:catalog`.
-- The current task/driver boundary and folders are in the [codebase structure map](codebase-structure.md);
-  the source paths named in this Phase 1 snapshot are historical.
-
-### 3.4 Service stores — system-less work has a home (D4)
-
-
-Pure compute and non-browser pipelines get **service stores** under the same contract:
-
-- **`extraction`** — CSV + PDF extraction (onboarding's `extraction` step, filename parsing).
-  Deterministic, no I/O beyond the filesystem. Its outputs land in workflow input fields via
-  **operator-defined column mapping** (charter §11): the operator connects a source column title to
-  a canonical field, and mapped values parse through the workflow's zod input schema, so ingest is
-  validated by construction. Full design: ref data-intake-and-edit-data.
-- **`ocr`** — the OCR provider pipeline: model calls, fabrication tiering, tolerant-field handling.
-  External I/O, no browser; its contract declares `providers: ["ocr.extract"]` and receives only the
-  injected admitted client.
-- **`roster`** — spreadsheet matching over the same operator-defined column mapping onto canonical
-  fields (charter §11). Full design: ref data-intake-and-edit-data.
-- **`normalization`** — reusable contact/address cleanup. Deterministic phone/state/ZIP rules,
-  geocoder reads and optional model suggestions return a strict discriminated result with one
-  provenance-labelled change per field (`rule|census|nominatim|ai`) plus explicit
-  `unchanged|ambiguous|unavailable`; provider exhaustion or error can never become “no change.” The
-  workflow decides whether an advisory enters an approval gate. Shared provider adapters live under
-  `src/backend/processing/providers/` and may also serve OCR; one store never imports another store's implementation.
-
-Rules:
-
-- Same contract types, same id grammar (`extraction/extract-spreadsheet`), same error taxonomy, same
-  `example`/`freshness` obligations. A service read that feeds a write (roster match → OnBase
-  upload) declares `freshness` like any other read.
-- `sessions: []` is legal only in headless service/workflow stores; browser stores are
-  type-constrained to exactly one need for their own system, and a browser-store task with empty or
-  cross-system sessions fails both the type and the factory.
-- A service ctx has no driver member (type-level) and no session provider; `defineServiceStore`
-  takes no `SessionProvider`. Remote I/O is not ambient: direct provider SDK, `fetch` or
-  HTTP-client imports are confined to `src/backend/processing/providers/**`, a service task declares
-  `providers`, and `ctx.providers` is narrowed to exactly those capabilities. Pure extraction and
-  roster tasks declare none and cannot call the network.
-- Provider adapters apply the immutable Clock/config snapshot, timeout, abort, admission,
-  redaction, request/response schema, usage/cost and evidence policy once. Provider failure is a
-  typed unavailable/invalid outcome or a declared task error; no adapter returns an empty value
-  that can mean success. Budgets and scheduling are owned by ref execution-and-sessions.
-- A read that downloads or creates a local file declares `artifacts: "content-addressed"` and
-  receives the kernel writer (§2.3); direct mutable-path writes from a task fail
-  `artifact-effect-boundary`. A retry can therefore recreate the same cache artifact but cannot
-  append a workbook or mutate operator-owned state. Mutable local projections use stable-keyed
-  SQLite outboxes and serialized projectors (refs dashboard-surfaces / data-intake-and-edit-data),
-  never task `run` side effects.
-- What service stores are NOT: a home for waits. Tracker-subscription waiting (oath-upload's
-  approval park) is a **gate** (§2.6, ref workflow-model) and must not be smuggled in as a task.
-
-The old `services/timecard` is **not** another service store. Its pure calendar/range/year functions
-moved to Clock-injected domain code and its current→previous orchestration to
-`src/stores/common/timecard.ts` over a typed timecard-driver interface (§3.3); Old and New Kronos
-retain only their driver implementations. Raw `Page`, fixed sleeps, optional `new Date()` defaults
-and a `null` that conflates navigation failure with a verified no-punch result did not cross the
-boundary (D61).
-
-### 3.5 Workflow mini-stores — pure specialization, never a system-policy bypass
-
-
-`src/stores/<workflow-id>/` holds only pure, sessionless `effect:"read"` tasks whose contract ids
-use `workflow:<id>/<verb-object>`. These are workflow-specific transforms and joins that are still
-worth reusing peer-to-peer. Two exist: `workflow:person-lookup` (one task) and
-`workflow:separations` (nine — the identity match, the employment fold, the date reconciliation,
-the department and termination-type resolutions, the plan, and the two `verify-` folds over an
-approval and a receipt). Every one of them is a fold over an earlier node's output, which is what
-§2.8 rule 3 means by "consumers project; they never re-scrape".
-
-If a task navigates a browser, stages a form, commits, or calls a system-specific external API, it
-belongs in that system or service store instead. The descriptor coverage guard proves each
-`workflow:<id>` namespace matches a real descriptor id, and `defineWorkflowStore` makes
-prepare/commit, sessions, artifacts and providers impossible — a mini-store cannot obtain a driver
-or a `MutationCapability`, so it cannot become a quiet second path to a system. Their contract and
-impl files may not import workflow descriptors or another mini-store's implementation, so peer
-reuse cannot create a runtime module cycle.
-
-## 4. Customization / decoration model
-
-
-**The decorator model below is a contract for a mechanism that does not exist yet.** D364's
-`ctx.confirmed` API is a separate, as-built task boundary and does not add hooks, screenshots, or
-mutable task-output decoration. §4.2's old "today's automatic screenshots" sentence described the
-LEGACY system, not this one. A workflow that needs a side action still puts it in the driver
-operation or makes it a graph node; it does not invent a decorator.
-
-### 4.1 The invariant
-
-**A decorated task is the same task.** Decoration returns a value of the *same* type `T` — same
-contract, same schemas, same effect, same sessions. Hooks can observe, add side actions
-(screenshots, extra validation, waits), and veto by throwing — they can never change the input,
-replace the output, or swallow the error.
-
-```ts
-// src/base/decorate.ts — NOT BUILT; the shape the model requires when it is
-export interface TaskHooks<C extends AnyTaskContract> {
-  before?: (args: { input: TaskInput<C>; ctx: HookCtx }) => Promise<void>;
-  after?:  (args: { input: TaskInput<C>; output: TaskOutput<C>; ctx: HookCtx }) => Promise<void>;
-  /** Observe only. The kernel ALWAYS rethrows the base TaskError; if this
-   *  hook itself throws, its failure is attached as TaskError.hookErrors —
-   *  secondary metadata, never a replacement (D15). */
-  onError?: (args: { input: TaskInput<C>; error: TaskError; ctx: HookCtx }) => Promise<void>;
-}
-
-export function decorateTask<T extends AnyTask>(
-  base: T, hooks: TaskHooks<T["contract"]>, label: string,
-): T
-```
-
-- `HookCtx` = `{ driver (read-only capabilities for the task's system), capture, log, signal }` — no
-  `fail` with the task's codes. A `before`/`after` hook that throws produces `code:"decorator-failed"`,
-  `decoratedBy: label` — a broken decoration is never attributed to the base task. An `onError`
-  hook that throws does NOT produce a new error at all: the base error propagates with the hook
-  failure in `hookErrors`. **Both fields are part of THIS design**; the shipped `TaskError` has
-  neither (§2.4), so building decoration means extending that class in the same commit.
-- `after` throwing = extra validation failing loud (e.g. oath-signature asserting the saved page
-  shows the expected signature date). The output is still the base task's output — a workflow that
-  wants a transformed value does it in the next node's input mapping (§5), pure and typed.
-- Stacking: `decorateTask(decorateTask(t, a, "x"), b, "y")` — hooks run outside-in for `before`,
-  inside-out for `after` (standard middleware order), to be pinned by a unit test.
-
-### 4.2 Where instrumentation attaches
-
-| Layer | Mechanism | Example | Built? |
-|---|---|---|---|
-| One step of one workflow | `.decorate("transaction", hooks, label)` on ref workflow-model's builder | pre/post-submit form screenshots in oath-signature | **no** |
-| Every step of one workflow | `.instrument(hooks)` on ref workflow-model's builder | per-step audit screenshot policy | **no** |
-| Every task everywhere | kernel-level span hooks (ref dashboard-surfaces) | step timing, task/browser/run span kinds | **yes** — the executor's span emission |
-
-The table describes decorator hooks; D364's runtime-owned task API is a separate, as-built
-mechanism. `TaskCtxCommon.confirmed` is optional and carries `ConfirmedTaskActions` only for a
-complete frozen operation display; legacy invocations have no structured action proof.
-
-    export interface ConfirmedTaskActions {
-      read<T extends JsonValue>(action: ConfirmedActionRef, perform: () => Promise<T>,
-        verification: ConfirmedVerification): Promise<T>;
-      fill(action: ConfirmedActionRef, expected: JsonValue, perform: () => Promise<unknown>,
-        readback: ConfirmedVerification): Promise<void>;
-      click(action: ConfirmedActionRef, perform: () => Promise<unknown>,
-        verification: ConfirmedVerification): Promise<void>;
-      keypress(action: ConfirmedActionRef, perform: () => Promise<unknown>,
-        verification: ConfirmedVerification): Promise<void>;
-      verify(verification: ConfirmedVerification & Readonly<{ purpose: "read-validation" }>): Promise<JsonValue>;
-      confirmOutcome(reference: ConfirmedOutcomeReference,
-        verification: ConfirmedOutcomeVerification): Promise<ConfirmedOutcomeObservation>;
-      result(): DeclaredStepResult;
-    }
-
-`ConfirmedActionRef` is the frozen action's `{ id, targetId }` pair. `ConfirmedVerification` carries
-its verifier reference, purpose (`read-validation`, `readback`, `interaction-effect` or
-`saved-effect`), async JSON observation and matcher; `ConfirmedOutcomeReference` is a frozen outcome
-value, and its verifier uses `read-validation`. Outcome observations distinguish `value`, `empty` and
-`unavailable`; unavailable is refused for confirmation.
-
-The runtime requires `read-validation` for reads and verification, `readback` for fills, and
-`interaction-effect` for clicks and keypresses; fill also compares the expected JSON value with its
-readback. Click and keypress reject undeclared or `external-commit` targets. `confirmOutcome`
-accepts only a value declared by the frozen invocation. `result()` selects from exact confirmed
-evidence and returns the declared-result union; the frozen identities and selection rules live in ref
-workflow-model, and its wire event and timestamp contract lives in ref dashboard-surfaces. A task
-cannot publish a successful submit through these methods: the protected transaction path owns
-saved-effect proof (ref write-safety §3).
-
-### 4.3 Why adding a task cannot break neighbors
-
-This one IS as built, and it holds without decoration:
-
-- Tasks are **frozen values with no shared mutable state**. There is no `ctx.data` blob a new task
-  could clobber (person-lookup's `startDate`-clobbering bug — active-status overwriting the CRM
-  value — is structurally impossible: each output is its own typed record, and `defineTask` freezes
-  the bound task).
-- The only inter-task coupling is the **explicit input mapping** (§5). Adding node N+1 adds a key
-  to the outputs record; existing mappings do not see it. Removing or renaming an output field
-  breaks the *consuming mapping* at compile time — the failure surfaces at the edit, not at
-  runtime.
-- Decoration, when it exists, returns the same type, so a decorated step slots anywhere the base
-  did and hooks cannot alter data flow.
-
----
-
-## 5. Composition — what the contract requires of the builder
-
-
-**The workflow builder API itself — read/transaction/branch/fork/child/gate nodes, replay, and
-resume — is owned and specified only by ref workflow-model.** This section states the obligations
-task contracts impose on that builder; it deliberately does not publish a second API sketch.
-
-- **Compile-time:** every node bind must return exactly `TaskInput<T>` (`z.input`, §2.2) and can
-  only read workflow input plus declared upstream node outputs. Rename a task output field → every
-  consuming read/transaction/branch/child mapping fails `tsc`. That is the charter's "a contract
-  change on one side must fail to compile on the other." Ref workflow-model's builder accumulates
-  both exact node outputs and each node's concrete contract tuple, so a decorated node would stay
-  typed without reducing non-task graph outputs to a broad top type.
-- **Runtime:** the kernel parses the mapped value through `contract.input` before `run`
-  (`src/core/run-executor.ts:915`) — zod is the second wall, and this is also ref workflow-model's
-  "start from graph node N" entry validation, where replayed checkpoints flow into `outputs` and
-  any missing required data fails the parse loudly, naming the task and field. `run`'s return is
-  parsed through `contract.output` (`:1053`), so a task cannot leak an out-of-contract shape
-  downstream: the class of bug where a stub emitted the display label `"A"` instead of the enum
-  dies at the boundary it was born at.
-- Branching, fan-out, gate nodes and checkpoint/replay are ref workflow-model's scope; the contract
-  here only fixes what a step IS.
-
-## 6. Auth and dry-run as contract concerns
-
-
-### 6.1 Auth: store-provided, kernel-executed, boilerplate deleted
-
-```ts
-// src/base/session.ts — as built
-export interface SessionProvider<S extends BrowserSystemId, Handle = unknown> {
-  readonly system: S;
-  /** THE one login signature (D15 — review #7 found three incompatible ones).
-   *  Idempotent: safe on an already-authenticated context, returns
-   *  "already-authenticated"; throws on failure. It takes the worker-owned
-   *  AUTHENTICATION HANDLE, never a Playwright page — browser and context
-   *  creation belong to the session factory, and a store declaration that
-   *  exported a page would put Playwright in a task's import graph. */
-  readonly login: (handle: Handle, options: { instance?: string; signal?: AbortSignal })
-    => Promise<"logged-in" | "already-authenticated">;
-  readonly prepareLogin?: (handle: Handle) => Promise<void>;
-  readonly resetUrl?: string;
-  readonly idleRefresh?: { intervalMs: number };
-  readonly exclusive?: true;              // OnBase only, checked by the factory both ways
-}
-defineWorkerSessionProvider(system, options?)   // the 1f runtime provider: one bounded
-                                                // handle.authenticate(system, options) call
-```
-
-- **A workflow's session set is DERIVED, never declared.** `build()` folds every composed
-  contract's namespace into the descriptor's browser-system set, alongside its scenario set, its
-  required secrets and its dry-run support (`src/base/workflow.ts:1161`). There is no
-  per-workflow `systems:` list to keep in sync with what the graph actually touches, which is the
-  defect this replaced.
-- **Acquisition is lazy for every system, and there is no `auth(...)` policy to override it.** This
-  section used to promise an eager parallel-staggered Duo chain as the default with
-  `auth: { ucpath: "on-first-use" }` as the per-workflow escape. Neither exists: the interpreter
-  takes a driver inside `WorkerSessionManager.withDriver` at the node that needs one
-  (`src/core/run-executor.ts:1039`), so *everything* is on-first-use, and the deferred-auth case
-  (oath-signature: UCPath only after OCR approval) is satisfied by node ORDER rather than by
-  policy. Login remains worker-owned session infrastructure, not a fake task contract or
-  checkpoint, and each acquisition emits its own browser/session span. Whether an eager chain is
-  ever worth building is a scheduling question for the parallel-run work (`{#parallel-runs}`), not
-  a contract question — and D243/D244's shared Duo counter is an argument AGAINST unserialized
-  eager logins.
-- **Only four systems can authenticate today.** `BROWSER_SYSTEM_BINDINGS`
-  (`src/infra/browser/system-bindings.ts`) binds `ucpath`, `crm`, `kuali` and `new-kronos` — each
-  to its concrete driver, its login recipe and its authenticated-application proof. The other five
-  stores declare a provider whose `handle.authenticate` has no binding behind it, so an attempt
-  fails loud rather than producing an unauthenticated page; wiring one is part of that system's
-  migration order (§3.1).
-- **Park/resume (D5):** when a run parks at a gate (ref workflow-model), the kernel closes its
-  contexts and only then releases identity-exclusive leases; on resume it reacquires by calling
-  `login` again. Idempotency is what makes release-on-park safe. Duo is cleared hands-off by Duo
-  Autopilot inside `login` (§2.6, charter §9) — a login either finishes or throws; it never parks.
-- **`DUO_LOGIN_FLOWS` did not port as a table.** Its role — one place both the smoke test and the
-  live test derive from — is now `BROWSER_SYSTEM_BINDINGS` plus each store's own `session.ts`
-  recipe, and the login CONTRACT that makes a recipe trustworthy is
-  `defineVerifiedLoginRecipe`: every system declares a verifier proving two independent facts (a
-  server-issued session artifact and the absence of every sign-in form) and it runs on EVERY return
-  path, including `already-authenticated` (D120 — a URL is never a proof).
-
-### 6.2 Dry-run: a graph composition, not a task flag
-
-- [x] `executeDryRun` PROBES before it previews (D215, 2026-08-14): an ordinary subject with nothing pending settles `already-present` and the preview REPORTS that settlement — no checkpoint, no observed-present intent, no transition — instead of staging a page with no row to bind and refusing
-- [x] the preview's `prepare`/`subject` fields moved inside the `would-prepare` arm, so a preview that staged nothing cannot spell an empty staged page
-- [x] where the real path refuses — ambiguous, unknown, parked, mid-submit — the preview refuses too
-- [x] the composed separations graph reached its gate, took a real approval and ran on (D214's claim generation is what made the second execution of an `always-rerun` node representable)
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/core/write-sequencer.ts (`executeDryRun`, `TransactionDryRunPreview`) and src/domain/write-safety-primitives.ts; the run-level half is ref workflow-model §5.7 and §2.1
-
-- [ ] PROOF the `would-prepare` preview arm observed on a live composed dry run of the full separations graph — the probing preview is built and pinned, and the arm that stages a page has not been walked live end to end since D215 landed
-> 2026-08-21 | docs-cohesion 5.1 task-contract | this doc owns only the dry-run CONTRACT; Track A's other rows (the three controlled commits, `probeToFenceMaxMs` per beat, the close-out) are 03b's and ref write-safety's
-
-- `dryRun` rides the **RunEnvelope** (kernel-owned, ref workflow-model — D6), never workflow input
-  or TaskCtx.
-- Read nodes execute normally. A transaction node executes its `prepare` arm under a retained page
-  lease, records an honest `transaction.previewed` span, and ends the run at the node when the
-  node's dry-run policy is `stop-after-prepare`. Its `commit` arm is absent from the executable
-  plan.
-- **The preview probes first (D215).** `executeDryRun` runs beat ①'s idempotency probe before it
-  stages anything, because the real path does: for the ordinary separations subject — one with no
-  pending transaction — the real run settles `already-present` at the probe, and a preview that
-  skipped it staged a grid with no row to bind and refused. A rehearsal that fails where the
-  performance succeeds is a false rehearsal. So the preview REPORTS the settlement the real path
-  would reach without performing it: no checkpoint, no observed-present intent, no transition. Its
-  fourth subject verdict `not-observed` exists for exactly that case, and it is the arm that killed
-  a live worker when the wire leaf and the kernel union had forked over it (separations §9.15) —
-  both now enumerate the same four values.
-- **How a dry run ENDS is D210, normative in ref workflow-model §2.1:** the outcome is `done`
-  (§10.1's "stops successfully", discriminated by `envelope.dryRun`, which is already the durable
-  record of the request), and the terminal result is a preview result — the prepare output plus the
-  beat-③ subject observation, `externalCommit: "none"` — bound to the PREVIEW schema hash rather
-  than the workflow's declared result, so no consumer can read a preview as a completed write. The
-  authored `derive` is never invoked and no `TransactionOutcome` is fabricated to make it fold.
-- A prepare task has no `MutationCapability`; a commit task is never invoked in a dry run. Ported
-  external-write helpers accept `CommitTaskCtx["mutation"]`, so read/prepare code cannot call them.
-- **`dryRun: "unsupported"` belongs on the transaction NODE, and previewability is derived from the
-  graph (D209).** `deriveDryRunSupport` (`src/base/workflow.ts:422`) answers `supported` with the
-  first transaction node as its `stopsAt` only when EVERY transaction node declares
-  `stop-after-prepare`; otherwise it answers `unsupported` naming either the offending node
-  (`node-declares-unsupported`) or `no-transaction-node` — a graph with nothing to preview refuses
-  by name rather than trivially succeeding, since previewing it would be indistinguishable from
-  running it. An authored `supportsDryRun` is REFUSED rather than overwritten, because silently
-  replacing a declaration is how a descriptor comes to say one thing and mean another. The executor
-  and the START PLAN both read that one derivation.
-- A genuine no-op established by durable history or a live prewrite probe short-circuits before
-  commit and yields ref workflow-model's typed `TransactionOutcome{disposition:"already-present"}`
-  reconstructed from validated proof. The commit impl is not called and no ledger entry claims this
-  run filed it. It is not a dry-run simulation.
-- Transaction-node validation proves prepare and commit require the same browser system and
-  context, the prepare arm is `in-memory-only`, and there is no gate or checkpoint boundary between
-  them (guard `transaction-pairing`).
-
----
-
-## 8. Adversarial self-review — rot vectors and their guards
-
-Every row's right column names what enforces it **at HEAD**, by guard file or by the code that
-makes the rot unrepresentable. Two rows are honest gaps and say so; a promised guard that does not
-exist is worse than no promise, because a reviewer stops looking.
-
-| # | How it rots back | What actually holds it |
-|---|---|---|
-| 1 | **Parallel lists return** — someone hand-maintains a task list beside the stores | Contracts + stores are the only sources. `defineTaskStoreRegistry` matches the store set against the corpus in both directions, the corpus is PROJECTED from `store.tasks`, and `descriptor-coverage` audits `src/backend/app/registries/pending-impl-bindings.json`
-(checked-in empty) both ways (§3.2) |
-| 2 | **Stringly dispatch** — `switch (taskId)` re-encoding store knowledge (the `operationTraceCode` pattern) | **Partly a gap.** `TaskId` is branded and minted only by `taskId(...)`, which keeps the literal in the type, and every projection derives from the corpus — but the promised `KnownTaskId` codegen and the ratchet forbidding a task-id literal outside contracts/stores/descriptors were never built (§2.5). Nothing in the tree carries such a literal today; nothing would fail if one appeared |
-| 3 | **Silent fallbacks in wrappers** — `catch { return { results: [] } }` in a task shell | The `fail-loud-catch-default` and `nullish-literal-data-fallback` ratchet arms (`tests/unit/architecture/helpers/ratchet-arms.ts`), each executed against a violating fixture by `guard-manifest` so a dead arm cannot stand in for enforcement |
-| 4 | **Effect misdeclaration** — an external write hides in read/prepare code | The FACTORY refuses a verb that disagrees with its effect (`EFFECT_VERBS`, §2.5) — this is definition-time, not a separate grep. `MutationCapability` exists only on `CommitTaskCtx`, is minted by `src/backend/runtime/writes/write-sequencer.ts` through the shared capability in `src/workflow-kit/mutation-capability.ts`, and is verified by the driver before its click (`task-driver-boundary`, D122). A dry-run plan contains zero commit nodes (§6.2) |
-| 5 | **God tasks** — a task grows into a mini-workflow spanning systems | A browser store's sessions are constrained to its own system in the type AND at binding; service and workflow stores are sessionless with no driver. Cross-system logic can only be graph composition |
-| 6 | **The untyped blob returns** — an `any` / `Record<string, unknown>` side channel for display data | Stronger than the allowlist this row used to promise: `assertContractBoundarySchema` refuses `record`, `map` and `set` OUTRIGHT anywhere in a contract schema, recursively, alongside `any`/`unknown`/open objects; `CanonicalJsonSchema` makes a non-JSON output `never` at compile time; `TaskCtx` has no `updateData` |
-| 7 | **Auth boilerplate re-accretes** — a workflow hand-rolls a login step | There is no login VERB, so a login task contract cannot be named; `task-driver-boundary` refuses a task or workflow module whose import graph reaches a system's `session.ts` or `src/backend/runtime/browser/**`; acquisition is the worker's (§6.1) |
-| 8 | **Retry as a fallback** — cranking attempts to paper over a broken selector | `attempts` is typed `2 \| 3`, `retryOn` has one value, retry is legal only on a read, and a business error is transient only if the throw site says so (§2.1) |
-| 9 | **Decoration forks** — copying a base task file to tweak it | **A gap, and a smaller one than it was.** One task per file plus duplicate-id refusal at registration is what exists; the >90 %-identical-`run`-body heuristic this row promised was never built. It also has nothing to fork yet — decoration itself is unbuilt (§4) |
-| 10 | **Verified legacy knowledge drifts after it is ported** | D93 made cross-runtime import structurally impossible (two repos, no shared module graph). D90 change accounting is RETIRED (D150) and the workflow's task evidence is a frozen record read by nothing; what carries the risk is mandatory **live re-verification at each workflow's migration** plus `legacy-selector-port-provenance`, which pins 406 keys to a FIXED legacy commit's blobs so legacy moving on cannot invalidate it (§3.3) |
-| 11 | **Contract/impl drift** — a contract edited without its impl, or a contract quietly importing server code | The impl's `run` is typed against the contract's schemas, so a schema edit fails `tsc` at the impl; `task-contract-sealing`'s AST + transitive import-graph audit protects every `src/**/contracts/**` module from runtime imports, forged seals, casts and dynamic-import bypasses; the example re-parses on every run of `descriptor-coverage` |
-| 12 | **Stale reads feeding writes** — a resumed run replays an old checkpoint into a commit | `freshness` + `provenance` are mandatory on every read and field-resolved against the exact output schema; derived outputs retain their oldest contributing observation; the enforcement walk is ref workflow-model's; graph dependencies are declared, never inferred by executing bind functions. The `Infinity`-justification ratchet does not exist (§3.2) |
-| 13 | **Undeclared error codes** — `ctx.fail` drifting to arbitrary strings | `const Codes` literal-tuple inference plus the checked-in type-level test `tests/types/task-contracts.typecheck.ts`, whose `@ts-expect-error` arms pin that an undeclared code, a service driver in a browser ctx, `readCtx.mutation`, a `z.any()` output and a cross-system driver binding each fail `tsc` |
-| 14 | **A read task hides a mutable local write** — a retry duplicates a workbook row or overwrites an operator edit | `artifact-effect-boundary`: the writer is the only path, the ref exposes no root or path, and direct mutable filesystem primitives are refused in task and workflow code |
-| 15 | **A TypeScript interface mistaken for runtime validation** | `strict-boundary-schemas` over every durable, wire and config boundary; the kernel parses on ingress and on persistence reads and never falls back to a cast |
-| 16 | **Person input mistaken for page identity** — a stale employee remains open after a search | Explicit `subject` on every contract; `subject-before-fence` proves prepare-end < fresh subject observation < fence < mutation call on one lease, with mismatch/unknown producing zero fence and zero click; `identity-gate-before-commit` proves every separation write and identity-bearing terminal crosses the shared identity-authority task, with the exact name-resolved gate condition pinned separately (D202/D309) |
-| 17 | **Selector duplication returns behind task helpers** | `task-driver-boundary`: raw Playwright, locator/frame/`getBy`/`newPage`/`evaluate`/`$` operations and private driver/session ownership are confined to `src/backend/systems/<system>/driver/`, `session.ts` and `src/backend/runtime/browser/`, transitively |
-| 18 | **One example masquerades as behavioral coverage** | `scenario-coverage` retains pure graph-point auditing and negative controls. Scenario-file lookup, registered execution claims and corpus-directory assertions were retired with `tests/scenario/`; see the 2026-10-02 current test amendment above and `ref guards-and-tests` |
-| 19 | **A service task hides provider/network I/O in an import** | `provider-capability-boundary`: capability→budget mapping, one durable admission kernel, whole-`src` and transitive task import scans confining vendor modules to `src/backend/processing/providers/**`, and the D68 declared-inventory reconciliation both ways |
-
-Honest residual risks with no mechanical guard: (a) *output schemas that are too loose*
-(`z.string()` where an enum belongs) — mitigated by review and by the mandatory `example` pinning
-one canonical value per contract; (b) *the ported driver layer quietly growing new underived logic*
-— mitigated by the two-commit rule (§3.3) but ultimately review discipline; (c) rows 2 and 9 above.
-
-## 9. Worked examples — one shipped, two designed
-
-§9.1 and §9.1.1 are transcriptions of contracts that exist and run; §9.2 and §9.3 are DESIGNS for
-stores that are declarations today (order 7) and for a mechanism that is unbuilt (§4). Each says
-which it is at its head, because a worked example is the first thing an author copies.
-
-### 9.1 `ucpath/search-person-org` (read) — the canonical example (D16)
-
-- [x] the contract and its impl exist and are live-proven — `src/domain/contracts/ucpath/search-person-org.ts` + `src/stores/ucpath/tasks/search-person-org.ts`, run `4ebf7275` against real UCPath + CRM (D74, 2026-08-04)
-- [x] the CRM half is two contracts under the same rules (§9.1.1), each with its own `subject-mismatch` code
-- [x] `workflow:person-lookup/read-active-status` is the mini-store fold beside them — the whole store, one task
-- [ ] PROOF the T1 structural fixture scenario and its T3 dry-run pair (R10) — person-lookup has neither
-> 2026-08-21 | docs-cohesion 5.1 task-contract | transcribed from the shipped contract, which differs from the 2026-07-17 sketch this section used to show; the workflow-level half is ref workflow-model §8
-
-**Defined once, here; ref workflow-model §8 composes it.** This is the shipped contract, abridged —
-the sketch that stood here until 2026-08-21 was written before the store existed and differed from
-it in four ways that matter to anyone copying it (below).
-
-```ts
-// src/domain/contracts/ucpath/search-person-org.ts — bundle-safe: zod + domain ids only
-const UcpathCandidateSchema = z.strictObject({
-  emplId: EidSchema, name: z.string().min(1),
-  department: z.string().min(1), jobTitle: z.string().min(1),
-  employeeStatus: z.enum(["active", "inactive", "terminated", "unknown"]),
-  hdh: z.boolean(),                       // Housing/Dining/Hospitality — the operator may keep or drop
-});
-
-/** The SELECTION is a discriminated union, and each arm carries its own invariant. */
-const UcpathPersonSelectionSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("resolved"),  selected: UcpathCandidateSchema,
-                   candidateEids: z.array(EidSchema).min(1) }),
-  z.strictObject({ status: z.literal("ambiguous"), selected: z.null(),
-                   candidateEids: z.array(EidSchema).min(2), searchName: z.string().min(1) }),
-  z.strictObject({ status: z.literal("not-found"), selected: z.null(),
-                   candidateEids: z.array(EidSchema).max(0), searchName: z.string().min(1) }),
-]);
-
-export const SearchPersonOrg = defineTaskContract({
-  id: taskId("ucpath/search-person-org"),
-  title: "Searching",                     // the DEFAULT step label (D16), so it reads as one
-  effect: "read",
-  input: z.union([
-    z.strictObject({ kind: z.literal("by-eid"),  emplId: EidSchema }),
-    z.strictObject({ kind: z.literal("by-name"), name: z.string().min(1), keepNonHdh: z.boolean() }),
-  ]),
-  output: z.strictObject({ results: z.array(UcpathCandidateSchema),
-                           selection: UcpathPersonSelectionSchema }),
-  errorCodes: ["search-unavailable", "unexpected-page-state"],
-  // The search IS identity resolution, so there is no prior subject to bind:
-  // the by-name arm has no EID to expect, and requiring one would force every
-  // caller to already know the answer.
-  subject: { kind: "none", reason: "the person search resolves identity rather than confirming it" },
-  freshness: { defaultMaxAgeMs: 4 * 60 * 60 * 1000, defaultOverride: "forbidden" },
-  provenance: { default: "live" },
-  scenarios: ["person-lookup/happy-by-eid", "person-lookup/ambiguous-name",
-              "person-lookup/not-found", "person-lookup/ucpath-drill-subject-mismatch"],
-  example: { /* one canonical resolved row, parsed and frozen by the factory */ },
-});
-```
-
-```ts
-// src/stores/ucpath/tasks/search-person-org.ts — server-side impl
-export const searchPersonOrgTask = defineTask(ucpathDriver, SearchPersonOrg, {
-  sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
-  retry: { attempts: 2, backoffMs: 2_000, retryOn: "transient" },
-  async run({ input, ctx }) {
-    const output = SearchPersonOrgOutputSchema.parse(await ctx.driver.searchPersonOrg(input));
-    ctx.recordData([
-      { direction: "read", field: "results",   value: output.results },
-      { direction: "read", field: "selection", value: output.selection },
-    ]);
-    return output;
-  },
-});
-```
-
-**Four things the pre-build sketch got wrong, and why the shipped shape is better.**
-
-1. **The candidate is SIX fields, not a 17-field mirror of legacy's `EidResult`.** The rich-read
-   convention (§2.8) came later and applies to a task's page visit, not to copying a legacy
-   interface: what the workflow needs is an identity, a status and enough context to choose
-   between two people. The rest of the Person Org grid is `ucpath/read-job-summary`'s (§2.11),
-   which is a different question about the same page and has its own contract.
-2. **The selection is a discriminated union with per-arm invariants**, not a flat record with a
-   `status` enum and a nullable `selected`. `ambiguous` REQUIRES at least two candidate EIDs and a
-   search name; `not-found` requires exactly zero; `resolved` requires the selected row and at
-   least one EID. The flat shape could spell "ambiguous with one candidate", which is a state no
-   page produces and every consumer would have to defend against.
-3. **`recordData` records the output FIELDS, not a summary.** Provenance covers every canonical
-   output leaf (§2.3), so recording a candidate COUNT would leave both real fields uncovered and
-   fail the read before its output could become a checkpoint.
-4. **`keepNonHdh` is required, so the closing note about `z.input` defaults does not apply to this
-   contract.** The `z.input`/`z.output` distinction is still exactly as §2.2 states it — it is just
-   not what this example demonstrates. What it does demonstrate is a two-arm input union where the
-   arms carry different fields, which is how a "search by X or by Y" task avoids a bag of
-   optionals.
-
-Note what vanished versus legacy's `searchingStep`: no `ctx.updateData` stamping (projection's
-job), no inline screenshot policy, no `dataString` casts, and no per-call-site error prose ("never
-stamp prose into emplId" is structurally dead — `emplId` is not a writable blob field).
-
-### 9.1.1 CRM Person Lookup reads — source semantics and subject binding (D108)
-
-`crm/read-onboarding-record` retains the source's exact non-empty Process Stage label as
-`rawStage`; it does **not** fabricate a normalized status or an `updatedAt` timestamp that the live
-record page does not prove. The record identity is the URL record id plus the displayed UCPath EID
-and full name. `crm/read-onboarding-dates` owns exactly three business dates: `invitedOn` is the
-Onboarding History transition whose New Value is `Offer Letter Sent`, `startsOn` is the record's
-First Day of Service, and `completedOn` is the history transition whose New Value is `Completed`.
-`Date Signed` is not a completion timestamp and may not substitute for one. A verified blank
-becomes that field's explicit `{state:"absent", reason}` arm — the dates contract's own `example`
-ships one, which is how the shape stays honest — while a missing selector, malformed history row,
-or indeterminate page state throws.
-
-Both tasks bind a typed subject beside the extracted output and both declare `subject-mismatch` in
-`errorCodes`. A found record proves the registered displayed-EID observation; a genuine zero-result
-search proves the exact EID query and may return only an absent result. The task compares the
-requested EID, the binding EID and every output EID before returning. Any mismatch uses the
-declared code; it never becomes an empty record, a first result, or a name-based guess. The two
-freshness policies differ deliberately: the record is one hour `forbidden`, the dates one hour
-`audited`.
-
-### 9.2 OnBase import — separate prepare/commit contracts, one transaction lease
-
-- [-] **DESIGN, not as-built.** The `onbase` store is a declaration only — `declareDriver("onbase", "unwired")`, zero tasks, no `driver/`, no `BROWSER_SYSTEM_BINDINGS` entry — and it is the one store that must declare `exclusive: true` on both its session provider and every task session (§2.1, D15)
-- [ ] BE the two contracts below, their driver and their login recipe, at order 7
-- [ ] BE OQ2 — whether the upload is verifiable by page at all. If it is not, `unverifiableByPage` requires an entry in `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` (empty today), `policy: "always-park"` and an `operator-attestation` proof arm (§2.2)
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/onbase/{index.ts,session.ts} and src/domain/contracts/write-safety.ts; the ServiceNow half of order 7 and the propagation windows are 03c's
-
-The shape a prepare/commit pair takes, written before the store exists so the store is built into
-it rather than around it:
-
-```ts
-export const FillImport = defineTaskContract({
-  id: taskId("onbase/fill-import"),
-  title: "Fill OnBase import",
-  effect: "prepare",
-  checkpoint: "in-memory-only",
-  subject: { kind:"person", expected:{fromInput:"emplId", identity:"eid"},
-             observe:"onbase.import.employee-eid", match:"normalized-exact-eid",
-             requiredAt:"after-prepare-before-fence" },
-  scenarios: ["onbase/import/prepare", "onbase/import/wrong-subject", "onbase/import/form-missing"],
-  input: z.strictObject({
-    pdf: ArtifactRefSchema, docType: z.string().min(1),
-    emplId: EidSchema, personName: z.string().min(1),
-  }),
-  output: z.strictObject({ stagedFields: z.array(z.enum(["docType", "emplId", "personName"])) }),
-  errorCodes: ["import-form-missing", "field-rejected", "session-held-elsewhere"],
-  example: { stagedFields: ["docType", "emplId", "personName"] },
-});
-
-export const SubmitImport = defineTaskContract({
-  id: taskId("onbase/submit-import"),
-  title: "Submit OnBase import",
-  effect: "commit",
-  subject: { …the same person binding — a commit MUST observe after prepare, before the fence },
-  scenarios: ["onbase/import/commit", "onbase/import/proof-unknown", "onbase/import/crash-after-click"],
-  input: z.strictObject({ emplId: EidSchema, documentDigest: Sha256Schema }),
-  output: z.strictObject({ proof: OnBaseUploadProofSchema }),
-  errorCodes: ["upload-unverified", "session-held-elsewhere"],
-  example: { proof: ONBASE_UPLOAD_PROOF_EXAMPLE },
-  writeSafety: onBaseUploadSafety,        // ref write-safety: typed state/artifact proof
-});
-
-export const fillImport = defineTask(onbaseDriver, FillImport, {
-  sessions: [{ system: "onbase", access: "transaction", session: "reuse-worker", exclusive: true }],
-  run: async ({ input, ctx }) => ({ stagedFields: await ctx.driver.fillImportFields(input) }),
-});
-export const submitImport = defineTask(onbaseDriver, SubmitImport, {
-  sessions: [{ system: "onbase", access: "transaction", session: "reuse-worker", exclusive: true }],
-  run: async ({ input, ctx }) => {
-    await ctx.driver.commitImport("onbase.import.submit", ctx.mutation);
-    return { proof: await ctx.driver.verifyImportedDocument(input) };
-  },
-});
-```
-
-Ref workflow-model pairs these in one `transaction` node. The kernel retains the same OnBase
-page/context and the global identity lease from the first prepare action through commit
-verification. A dry run executes `fillImport` and stops; `submitImport` is not in the executable
-plan. The pattern to copy is `ucpath`'s termination family (§2.12), which is the same shape built
-against a live system.
-
-### 9.3 Decorating (oath-signature's transaction audit shots)
-
-- [-] **DESIGN.** `decorateTask` does not exist (§4), and neither does any screenshot capture — so the audit-shot example below cannot be written today
-- [ ] BE order 4 is the first workflow that WANTS it (oath-signature's pre/post-submit form shots). Whoever builds it lands `src/base/decorate.ts`, the builder's `.decorate(...)`, `TaskError.decoratedBy`/`hookErrors` (§2.4) and a capture port in one change — or decides the shots belong in the driver operation and retires §4
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified by absence in src/; order 4's other rows (the operation fan-out, the approval gates, the UCPath enter/fill commits) are 03c's and ref dashboard-surfaces §4's
-
-```ts
-const auditedSave = decorateTask(ucpathStore.tasks.saveOathSignature, {
-  before: async ({ ctx }) => ctx.capture("oath-staged"),
-  after:  async ({ ctx }) => ctx.capture("oath-saved"),
-}, "oath-form-audit");
-// same type as the base — slots into any step the base fits; on the builder,
-// the equivalent is .decorate("transaction", hooks, "oath-form-audit") (ref workflow-model).
-```
-
-The composed person-lookup flow — binding, conditional nodes, gates — lives in ref workflow-model
-§8 and imports §9.1's contract verbatim (D16).
-
----
-
-## 10. Settled design questions
-
-1. ~~Dry-run continuation~~ — **resolved 2026-07-21, and built:** a dry run stops successfully
-   after the first transaction prepare arm. D209 made previewability a derived property of the
-   graph and D210 made the terminal a preview result; both are in §6.2. A later preview-only graph
-   may continue only through nodes whose inputs do not depend on a commit output.
-2. ~~Session lifetime ownership for OnBase exclusivity~~ — **resolved:** a cross-process SQLite
-   lease covers the authenticated context lifetime and the context closes before the lease is
-   released (§2.1). Unexercised: no OnBase task exists yet (§9.2).
-3. ~~`errorCodes` granularity~~ — **resolved 2026-07-21:** contracts declare per-task literal
-   tuples. Shared error-code constants may live in a store, but each task selects its own subset;
-   near-duplicate codes are preferable to a broad code a task can never emit. §2.9's three distinct
-   negatives (`employee-not-found`, `search-returned-no-match`, `search-no-signal`) are that rule
-   paying off on a live grid.
-4. ~~Screenshot policy default~~ — **resolved 2026-07-21, NOT built.** The resolution was that
-   browser tasks capture the automatic terminal audit screenshot through a kernel hook, service and
-   workflow tasks have none, and additional shots are explicit decoration. The rebuild captures no
-   screenshots at all: the only visual/diagnostic capture is the failure-time redacted bundle
-   (D137). Re-decide it when §4 is built or when an operator asks for a shot, not by accident.
-5. ~~`KnownTaskId` codegen timing~~ — **the question is void: the codegen was never built** (§2.5,
-   §8 row 2). The 2026-07-21 answer ("checked in for reviewable diffs, generated in the normal
-   build, a freshness guard fails on a diff") describes a file that does not exist. What replaced
-   it in practice is the branded `TaskId` plus corpus-derived projections; what is genuinely open
-   is whether a task-id string literal outside contracts/stores/descriptors should be a guarded
-   violation.
+`src/models/task/task-contract.ts` owns `TaskEffectSchema`, `SubjectBindingSpecSchema`,
+`FreshnessPolicySchema`, `ProvenancePolicySchema`, and `defineTaskContract`.
+Every contract has the following fields.
+
+| Field | Contract |
+| --- | --- |
+| `id` | Branded `TaskId`, minted by `taskId`, with a registered namespace and a verb matching the effect. |
+| `title` | Nonempty default step label. |
+| `input`, `output` | Recursively strict Zod boundary schemas. Output is canonical JSON. |
+| `errorCodes` | Nonempty tuple of unique kebab-case codes. |
+| `subject` | Explicit `none`, `person`, or `artifact` binding. |
+| `scenarios` | Declared `ScenarioId` values. Empty is allowed only in a `workflow:` namespace. |
+| `example` | Required output fixture, parsed and canonicalized at declaration. |
+| `requires` | Optional declared secret names. Resolution belongs to [clock, config, and secrets](clock-config-secrets.md). |
+| `providers` | Optional capability list, allowed only on service reads. |
+| `operation` | Optional reusable display structure, checked against this contract. |
+
+The effect adds these fields and capabilities.
+
+| Effect | Declaration | Runtime capability |
+| --- | --- | --- |
+| `read` | Required `freshness` and `provenance`. Optional `artifacts: "content-addressed"`. | Observes data. Generic read retry is optional. |
+| `prepare` | `checkpoint: "in-memory-only"`. | Stages ephemeral browser state within a transaction. No mutation token. |
+| `commit` | Required `writeSafety`. | Receives `MutationCapability` through the protected transaction path. |
+
+`src/rules/identity/ids.ts` owns the closed system identities. Browser namespaces are `ucpath`,
+`crm`, `onbase`, `kuali`, `servicenow`, `i9`, `new-kronos`, `old-kronos`, and `sharepoint`.
+Service namespaces are `extraction`, `normalization`, `ocr`, and `roster`.
+`TaskStoreId` also accepts `workflow:<workflow-id>`.
+
+`operation` uses `TaskOperationDeclaration` in `src/models/workflow/operation-display.ts`.
+It declares semantic actions, logical session and page identity, schema-resolved value slots,
+templates, and pure transforms. It contains no selector or execution authority.
+`assertTaskOperationDeclaration` validates it during sealing.
+
+#### Freshness and provenance policies
+
+`FreshnessPolicy` contains `defaultMaxAgeMs`, optional `defaultOverride`, and optional `byField`
+rules with `path`, `maxAgeMs`, and `override`. Overrides are `forbidden` or `audited`.
+Limits are nonnegative finite integer milliseconds or `Infinity`.
+`Infinity` is policy metadata, never persisted task output.
+
+`ProvenancePolicy` contains `default: "live" | "derived"` and optional `byField` rules with
+`path` and `source`. Duplicate or conflicting provenance paths fail schema validation.
+`assertRead` resolves every freshness and provenance path against the exact output schema.
+Checkpoint freshness enforcement belongs to [workflow model](workflow-model.md).
+
+#### Subject binding
+
+A scoped subject names an input path, an observation, a matcher, and required observation timing.
+`assertCommon` resolves the input path and refuses cross-system observations.
+Service and workflow contracts cannot bind browser observations.
+
+| Kind | Expected identity | Matcher |
+| --- | --- | --- |
+| `person` | `eid`, `name`, or `eid-and-name` | Corresponding `normalized-exact-eid`, `normalized-exact-name`, or `eid-and-name`. |
+| `artifact` | `artifact-id`, `sha256`, or `document-id` | `exact`. |
+| `none`, non-commit | Nonempty free-text `reason`. | No observation. |
+| `none`, commit | `reviewedReasonId` from `UNSCOPED_COMMIT_REASON_REGISTRY`. Free text is refused. | Reviewed unscoped write policy. |
+
+`requiredAt` is `before-subject-read` or `after-prepare-before-fence`.
+Every scoped commit requires `after-prepare-before-fence` at declaration.
+`src/backend/runtime/writes/write-sequencer.ts` observes and verifies the subject on the retained
+transaction page before it obtains a fence. Echoed input is not independent subject proof.
+
+#### Sessions and retry
+
+`SessionNeedSchema` and `RetryPolicySchema` live in `src/models/sessions/session.ts`.
+`SessionsFor<C>` in `src/workflow-kit/task.ts` derives the allowed session tuple.
+`validateTaskBinding` checks the same constraints at runtime.
+
+- A browser task needs exactly one session for its own system. Reads use `access: "read"`.
+  Prepare and commit tasks use `access: "transaction"`.
+- `session` is `reuse-worker` or `fresh`.
+- OnBase requires `exclusive: true` on both the session need and store provider.
+  Other systems cannot declare exclusivity.
+- `acceptDownloads: true` is allowed only on a read declaring content-addressed artifacts.
+- Headless tasks have `sessions: []` and no driver.
+- Only reads can declare retry. `attempts` is `2` or `3`, `backoffMs` is a nonnegative integer,
+  and `retryOn` is `transient`.
+
+`src/backend/runtime/policies/task-retry.ts` permits another attempt only when the failure is
+transient and attempts remain. Business failures are nontransient unless the throw site proves otherwise.
+Prepare and commit recovery belongs to the write sequencer.
+
+### 2.1.1 Strict schemas and absence
+
+`assertContractBoundarySchema` in `src/models/validation/contract-boundary.ts` walks nested
+objects, arrays, unions, wrappers, lazy schemas, pipes, intersections, and tuples.
+It requires a strict object or object union at the root. It refuses `any`, `unknown`, `record`,
+`map`, `set`, and open objects at every depth.
+
+`CanonicalJsonSchema` provides the output type constraint. The factory parses `example` through
+`output`, then calls `canonicalJsonStringify` as its runtime check.
+Dates, EIDs, IDs, and money use the branded scalar schemas in `src/rules/identity/ids.ts`.
+Money is integer minor units. Canonical task data excludes nonfinite numbers and JavaScript objects
+such as `Date`, `Map`, and class instances.
+
+An optional field means the producer can omit it. A nullable or explicit absent arm means the
+contract allows a proved lack of value. An indeterminate extraction needs a distinct outcome or
+failure. A missing selector and a malformed value do not prove absence.
+Structural cells required to identify a row refuse blank values. Descriptive cells may carry
+`{ state: "absent", reason }` when their contract declares that arm.
+
+### 2.2 Contract and implementation
+
+Browser-safe code imports the declaration, never the implementation. A browser implementation uses
+`defineTask(driver, contract, impl)`. A headless read uses `defineTask(contract, impl)`.
+Implementations declare `sessions`, optional read `retry`, and `run`.
+`run` receives parsed `z.output` input, including defaults and transforms, and returns `z.input` output.
+Workflow binds produce `z.input` input.
+
+`defineTaskContract` validates the exact effect-specific shape, boundary schemas, namespace,
+verb, error-code uniqueness, example, subject, and scenario declarations.
+It then copies and freezes declarative metadata through `sealDeclarativeMetadata`.
+Schemas and functions keep their identities. The factory records the resulting object in a private WeakSet.
+`assertFactorySealedTaskContract` refuses a forged `__sealed` property or a copied object.
+
+For commits, `assertWriteSafety` validates the proof round trip and same-store read references.
+Reconstructed output must equal the example, and present-probe proof must equal output proof.
+`recoveryAbsence` parses as `NegativeSettlementPolicy`.
+`unverifiableByPage` needs a reviewed task/reason and `operator-attestation` example.
+The reviewed policy has no entries, so that exception is unavailable.
+
+`defineTask` refuses unknown implementation keys, missing `run`, invalid sessions, a driver on a
+headless task, retry on a write task, and artifacts on a workflow task.
+It freezes the binding and registers it in another private WeakSet.
+
+`declareDriverFor<ConcreteDriver>()` creates an invariant, factory-authenticated driver declaration.
+`declareDriver` creates the system-only unwired form.
+A browser store requires the exact declaration object used by all its tasks.
+
+### 2.3 Task context and observations
+
+`TaskCtxCommon` in `src/workflow-kit/task.ts` exposes `signal`, `log`, `fail`, `recordData`, and
+optional `confirmed`. The remaining members depend on the contract.
+
+| Task | Additional context |
+| --- | --- |
+| Browser read or prepare | Concrete semantic `driver`. |
+| Browser commit | `driver` and `mutation`. |
+| Service read with providers | `providers`, narrowed to the declared capability keys. |
+| Read with artifacts | `artifacts: ContentAddressedArtifactWriter`. |
+| Workflow read | No browser, provider, artifact, or mutation capability. |
+
+The context has no mutable workflow data bag, orchestration method, park primitive, or free-form retry.
+The driver owns raw browser operations. Tasks use its typed semantic methods.
+`src/workflow-kit/mutation-capability.ts` authenticates mutation tokens. The write sequencer mints them
+through the protected write path, and commit driver operations check them before the external action.
+
+#### Output provenance
+
+`createTaskProvenanceCollector` in `src/backend/runs/provenance/task-provenance.ts` owns read evidence.
+`recordData` accepts one `DataPoint` or a nonempty batch:
+`{ direction: "read" | "write", field: ContractFieldPath, value: JsonValue }`.
+The collector stamps execution identity and one Clock instant per batch.
+Duplicate, overlapping, contradictory, and post-finalization points fail.
+
+Before checkpointing, `finalizeRead` parses the output and requires recorded read points covering
+every canonical output leaf. Recorded values must equal the parsed values.
+Object parents can cover their descendants. Arrays are one provenance leaf at their named path.
+A count or prose summary cannot replace the output field's value.
+
+A derived leaf requires declared upstream dependencies. The collector validates the exact dependency
+set against authenticated descriptor metadata and rejects missing or extra evidence.
+Checkpoint evidence includes its complete leaf provenance. Gate results contribute a fact at
+`resolvedAt`, with operator or source provenance according to their arm.
+Conditionally skipped gates are re-evaluated against canonical input and available checkpoints.
+Child evidence binds edge, parent, result schema/identity, checkpoints, and descendants.
+Foreign, extra, cyclic, or fact-free evidence fails.
+Derived leaves retain the oldest contributing `originalObservedAt`.
+
+A workflow task output is incomplete until its implementation records every new leaf.
+A direct implementation test with a no-op recorder cannot prove the executor accepts that output.
+The real task and `createTaskProvenanceCollector` exercise that seam.
+
+Transaction roles use the write sequencer's role-specific collector and settlement path.
+Commit observations publish after the callback settles. Cancellation does not prove an external
+write has stopped. [Write safety](write-safety.md) owns post-fence settlement and saved-effect verification.
+
+#### Provider and artifact capabilities
+
+Current provider IDs are `ocr.extract`, `geocode.census`, and `geocode.nominatim`.
+`src/backend/processing/providers/provider-client.ts` validates the immutable config identity,
+canonical request, adapter capability, response, request ID uniqueness, abort, and deadline.
+Its task-facing client accepts only the schema-bound payload.
+Missing adapters return `unavailable`; malformed adapter responses return `invalid-response`.
+Calls are not retried by this client. OCR returns `adapter-unavailable` while its connection is absent.
+This module does not implement durable provider budgets or accounting.
+
+`ContentAddressedArtifactWriter` in `src/workflow-kit/artifacts.ts` exposes only
+`put(bytes | Readable, { mediaType })` and `open(ref)`.
+`ArtifactRef` carries `id`, `sha256`, `bytes`, and `mediaType`, never a path.
+`src/backend/storage/artifacts/content-addressed-artifact-writer.ts` validates the admitted root,
+rejects symlinks, publishes atomically, deduplicates content, and verifies references on open.
+Direct mutable task filesystem writes are excluded by `artifact-effect-boundary`.
+Server-only diagnostic verification uses `server-verified-artifact-reader.ts` in that folder.
+Its byte-serving and disposal contract belongs to [operator trust](operator-trust.md).
+
+### 2.4 Failures
+
+`src/workflow-kit/errors.ts` owns `TaskError` with `taskId`, `code`, optional `subject`,
+`transient`, and `cause`. Its message is `[<taskId>] <code>: <message>`.
+`transient` defaults to false.
+
+`taskFailer(contract)` constrains `ctx.fail` to the declared literal tuple at compile time.
+The executor wraps a non-`TaskError` escaping a read with `wrapUnhandledTaskError`.
+The wrapper produces `code: "unhandled"`, preserves the cause, and preserves an Error's message.
+A non-Error throw produces `task threw a non-Error value`.
+Runtime `ctx.fail` constructs `TaskError`; it does not recheck membership in `errorCodes`.
+
+Distinct negatives use distinct codes when their meaning matters downstream.
+A timeout is a failure, never a proved no-match result.
+`TaskError` has no `decoratedBy` or `hookErrors` fields.
+Error presentation and the shared failure catalog belong to [dashboard surfaces](dashboard-surfaces.md).
+
+### 2.5 Task names
+
+`TaskIdSchema` in `src/rules/identity/ids.ts` validates
+`<registered-store>/<kebab-case-operation>` and `workflow:<workflow-id>/<kebab-case-operation>`.
+`taskId` retains the string literal in `LiteralTaskId`; `NamespaceOf<C>` derives the namespace.
+`EFFECT_VERBS` in `src/models/task/task-contract.ts` enforces this table.
+
+| Effect | Allowed leading verbs |
+| --- | --- |
+| `read` | `read`, `search`, `list`, `extract`, `match`, `verify` |
+| `prepare` | `fill`, `stage` |
+| `commit` | `save`, `submit`, `upload`, `create`, `update`, `delete` |
+
+Matchers and completion verifiers are reads. One contract has one effect.
+The runtime registry derives its task corpus from registered stores. There is no `KnownTaskId` generator.
+
+### 2.6 Bounded execution
+
+`src/backend/runtime/execution/run-executor.ts` parses bound input, runs a read under the injected
+monotonic `taskDeadlineMs` and run signal, validates provenance, and parses output before checkpointing.
+Browser reads acquire their driver through `WorkerSessionManager.withDriver`.
+The write sequencer bounds transaction-role invocations and retains post-fence settlement ownership.
+
+Long approval waits and external signals are graph gates, not task polling loops.
+Authentication is worker-owned session infrastructure. Duo is part of login, not a workflow gate.
+Session closure and cancellation proof belong to [execution and sessions](execution-and-sessions.md).
+
+### 2.7 Declaration requirements
+
+Requirements follow effect and namespace. Only workflow reads can omit scenario IDs.
+All reads need freshness and provenance. Writes need browser namespaces; commits add write safety.
+No task declares its own tier. There is no scaffold command.
+
+### 2.8 Read extraction
+
+A page read has one fixed strict output. Consumers project or fold downstream.
+Navigation and state changes that prove one page form one operation. A separate visit has its own proof.
+Optional facts declare absence. Evidence classification and provenance cover the entire output,
+including fields the first consumer ignores. Business judgments belong in pure folds.
+
+### 2.9 New Kronos reads
+
+`new-kronos/search-employee` and `new-kronos/read-separation-timecard` use separate page visits.
+The timecard driver returns observed page identity, applied range, raw rows, and extraction metadata.
+
+`readVirtualizedGrid` in `src/backend/systems/new-kronos/driver/grid-scroll.ts` collects virtualized
+rows and refuses incomplete or out-of-window coverage. Both collection and the pure fold use
+`timecardRangeCoverage` in `src/rules/kronos/separation-timecard.ts`.
+A widget reaching its scroll limit does not prove a complete set.
+
+`driver/interpreter.ts` reads headers from the same data container as the body cells,
+compares their counts, and resolves columns by name. A global or pinned header row cannot supply
+the body column offsets. Unrecognized pay codes remain in `unclassifiedPayCodes`.
+The store has read tasks and no commit family.
+
+### 2.10 Kuali task families
+
+`src/backend/systems/kuali/driver-declaration.ts` owns one concrete declaration for the store.
+Its document read, action search, and finalization family all use that declaration.
+A new surface extends the same declaration rather than creating a second one.
+
+Semantic UI attribution follows the fact or control's actual task use.
+An external Save control belongs to the commit task even when a read visits the same document.
+A person field's `state` and `reason` describe the extraction. Only its `value` carries the identifier.
+Evidence classification belongs to `src/models/trust/evidence-classification.ts`.
+
+### 2.11 UCPath job summary
+
+`src/models/systems/ucpath/read-job-summary.ts` declares the Employment Instances output.
+`src/rules/separations/job-summary-classification.ts` owns the business disposition fold.
+The read retains verbatim HR status and render context rather than failing on a business classification.
+
+Employment record, HR status, and business unit are structural values. Descriptive cells declare
+absence where the page permits blank values. Search candidate parsing and rich job-summary parsing
+apply their own schemas to the shared extraction.
+
+`src/backend/systems/ucpath/driver/person-org-operation.ts` waits for a rendered outcome and then
+classifies the observed result state. A criteria banner alone cannot prove no matches.
+Ambiguity remains an explicit selection outcome.
+
+### 2.12 UCPath termination tasks
+
+`src/backend/systems/ucpath/task-registry.ts` binds both families to one driver.
+`termination-verdict.ts` beside it folds one transaction scan into distinct probe questions.
+
+Deleting pending terminations is its own commit and transaction, with its own key, probe, and verifier.
+It is not an action hidden in prepare. Filing a termination is a separate transaction.
+`driver/smart-hr-operation.ts` uses the page's resolved person name as subject evidence rather than
+treating the entered employee ID as readback.
+`isUcpathTerminationAction` accepts the supported `TER` and termination-label forms.
+Unmatched values remain unmatched.
+
+## 3. Task registration
+
+### 3.1 Implementation homes
+
+Each task family registers through its owning `task-registry.ts`.
+System drivers live in `src/backend/systems/<system>/driver/`.
+Shared browser leaf code lives in `src/backend/systems/browser-shared/`.
+Pure reusable decisions live in `src/rules/`.
+Workflows import browser-safe contracts into `workflow.ts`; their implementations remain backend-loaded.
+
+### 3.2 Store factories
+
+`src/workflow-kit/task-registry.ts` exports these factories.
+
+| Factory | Constraints |
+| --- | --- |
+| `defineBrowserStore` | Matching system, provider, factory-authenticated driver, exact task driver identity, and OnBase exclusivity. |
+| `defineServiceStore` | Sessionless read tasks with no browser driver. |
+| `defineWorkflowStore` | Sessionless reads with no browser driver, providers, or artifacts. |
+| `defineTaskStoreRegistry` | Factory-created stores, unique namespaces and IDs, and exact corpus membership and effects. |
+
+Store task keys are camelCase. Task IDs belong to that store's namespace and cannot repeat.
+`assertTaskContractReferences` resolves declared scenario IDs and commit probe/verifier IDs against
+the registry corpus. Probe and verifier contracts must have effect `read`.
+
+`src/backend/app/registries/task-registry.ts` creates `browserStoreRegistry` from `BROWSER_STORES`
+and `taskStoreRegistry` from `TASK_STORES`. `corpusFor` projects IDs and effects from the stores.
+An implementation not exported by a registered store is absent from this executable index.
+The registry does not scan unregistered source files.
+
+### 3.3 Driver boundary
+
+Task implementations call semantic APIs. `task-driver-boundary` checks browser ownership transitively.
+The root instructions and operating reference own copying, source provenance, and live verification.
+
+### 3.4 Service stores
+
+`extraction` extracts spreadsheet and PDF data. `roster` matches spreadsheet rows.
+`normalization` returns deterministic contact advice and declared Census or Nominatim observations.
+`ocr` declares the form-page extraction capability but has no connected OCR adapter.
+Their contracts follow the same schema, example, failure, freshness, and provenance rules as reads.
+Provider policy remains an explicit input and capability declaration.
+A provider outage stays an unavailable outcome rather than an unchanged contact value.
+
+### 3.5 Workflow stores
+
+`src/workflows/person-lookup/task-registry.ts` and `src/workflows/separations/task-registry.ts`
+register pure workflow-specific folds and joins.
+They receive prior output through typed inputs. They cannot acquire browser sessions,
+make an external write, or declare provider or artifact capabilities.
+Reusable system operations belong to their system store. Shared pure rules have one home under `src/rules/`.
+
+## 4. Confirmed actions
+
+`TaskCtxCommon.confirmed` is optional. The executor supplies it for an invocation with a complete
+frozen operation display. `src/backend/logs/confirmed-actions.ts` implements `ConfirmedTaskActions`.
+It validates frozen action and verifier identities, execution occurrence, attempt, and physical session.
+
+### 4.1 Action methods
+
+| Method | Required verifier purpose | Result |
+| --- | --- | --- |
+| `read` | `read-validation` | Performed JSON value and confirmed evidence. |
+| `fill` | `readback` | Confirmation only when observed JSON equals the expected value and the matcher accepts it. |
+| `click`, `keypress` | `interaction-effect` | Confirmation of the declared interaction. Undeclared and `external-commit` targets are refused. |
+| `verify` | `read-validation` | Validated JSON observation. |
+| `confirmOutcome` | `read-validation` | Frozen outcome observation: `value` or `empty`. `unavailable` is refused. |
+| `result` | Exact confirmed outcome evidence | `DeclaredStepResult` for the task role. |
+
+### 4.2 Observation and write confirmation
+
+A completed action alone is not a confirmed fact. Its declared verifier must match the observation
+on the same occurrence and browser session.
+The methods cannot confirm a submit. `src/backend/logs/confirmed-submit.ts` and the write sequencer
+own saved-effect publication after protected transaction verification.
+[Dashboard surfaces](dashboard-surfaces.md) owns event presentation and timestamps.
+
+### 4.3 Output isolation
+
+`defineTask` freezes the task binding. Each node produces its own typed output.
+A later task receives only its declared input mapping. Confirmed-action evidence cannot mutate
+another node's output or replace a contract schema.
+`decorateTask`, workflow `.decorate`, and `.instrument` hooks are absent.
+
+## 5. Workflow composition
+
+`src/workflow-kit/workflow.ts` allows reads in ordinary task nodes and same-system
+prepare/commit pairs in transactions. The write sequencer retains their lease.
+Prepare output is in-memory-only.
+
+The builder types input binds against `z.input` of the contract schema.
+The executor parses bound input before invocation and parses output before persistence.
+Checkpoints bind the output schema hash and canonical value.
+Declared dependencies supply provenance and freshness authority, rather than inferred bind execution.
+[Workflow model](workflow-model.md) owns branches, child runs, gates, replay, and terminal results.
+
+## 6. Authentication and dry runs
+
+### 6.1 Authentication
+
+`SessionProvider` in `src/workflow-kit/session.ts` exposes
+`login(handle, { instance?, signal? })`, returning `logged-in` or `already-authenticated`.
+Tasks receive the semantic driver, never the worker's login handle.
+
+Session acquisition is lazy at the node that needs a driver.
+`src/backend/runtime/browser/system-bindings.ts` binds UCPath, CRM, Kuali, and New Kronos to their
+concrete drivers, login recipes, and authenticated-application verifiers.
+The other browser stores have declarations without runnable system bindings.
+Missing bindings refuse rather than creating an unauthenticated substitute.
+
+A parked run releases sessions through the runtime's close-proof path. Resume reacquires them.
+[Execution and sessions](execution-and-sessions.md) owns authentication proof, Duo, exclusive leases,
+and refusal when closure is uncertain.
+
+### 6.2 Dry runs
+
+`dryRun` belongs to the run envelope, never task input or context.
+`deriveDryRunSupport` in `src/workflow-kit/workflow.ts` derives support from transaction nodes.
+All transaction nodes must declare `stop-after-prepare`. A graph with no transaction, or a node
+marked unsupported, has no supported transaction preview.
+
+`executeDryRun` in `src/backend/runtime/writes/write-sequencer.ts` probes before staging.
+An already-present probe produces an honest preview without a prepare or subject observation.
+The would-prepare arm stages the page and observes the subject under the retained lease.
+Refused or uncertain real-path conditions also refuse preview.
+The preview creates no write intent or fence and invokes no commit implementation.
+
+The executor ends with a preview result bound to its preview schema.
+It does not call the authored terminal-result derivation or fabricate a completed transaction output.
+`externalCommit: "none"` distinguishes the preview from an HR write.
+[Workflow model](workflow-model.md) owns the terminal preview shape and run outcome.
+
+## 8. Enforcement and limits
+
+The factories enforce schema, declaration, effect, session, and registration constraints.
+The executor and write sequencer enforce execution boundaries.
+Architecture checks include `task-contract-sealing`, `task-store-boundaries`, `task-driver-boundary`,
+`artifact-effect-boundary`, and `provider-capability-boundary` under `tests/architecture/`.
+`tests/types/task-contracts.typecheck.ts` covers negative type cases.
+[Guards and tests](guards-and-tests.md) owns the check schedule.
+
+An example proves one schema-valid value. Scenario IDs prove declaration and resolution, not execution.
+The registry does not discover unregistered source files.
+Review determines whether a schema accurately describes the source.
+There is no automatic `Infinity` justification check, task-body similarity check, or task-ID generator.
+
+## 9. Existing task shapes
+
+### 9.1 UCPath search
+
+`src/models/systems/ucpath/search-person-org.ts` declares `SearchPersonOrg`.
+Its implementation records `results` and `selection` under one read session with transient retry.
+Input is `by-eid` with `emplId`, or `by-name` with `name` and required `keepNonHdh`.
+Selection is `resolved` with a selected candidate, `ambiguous` with at least two EIDs,
+or `not-found` with none. The task resolves identity, so its subject is `none` with a reason.
+Freshness is four hours with override forbidden.
+
+### 9.1.1 CRM reads
+
+`src/models/systems/crm/read-onboarding-record.ts` and `read-onboarding-dates.ts` own the schemas.
+Their implementations in `src/backend/systems/crm/tasks/` compare requested EID, parsed binding,
+and output EID. A found record needs displayed-record binding. An absent query cannot produce present dates.
+Contradictions fail with `subject-mismatch`.
+
+The record retains the exact `rawStage`. The dates use `Offer Letter Sent` history for `invitedOn`,
+First Day of Service for `startsOn`, and `Completed` history for `completedOn`.
+`Date Signed` does not substitute for completion.
+Proved blanks use the declared absence arm. Missing selectors or malformed history rows fail.
+
+### 9.2 OnBase declaration
+
+`src/backend/systems/onbase/task-registry.ts` registers an unwired driver and an empty task set.
+Its provider and any future session need require exclusivity.
+There is no import prepare or commit implementation to use as an example.
+
+### 9.3 Instrumentation boundary
+
+The runtime owns spans, observed data, and failure diagnostics. §4 owns confirmed task actions.
+There is no task-facing screenshot capture API.
+
+## 10. Not built yet
+
+- OnBase, I-9, SharePoint, Old Kronos, and ServiceNow need concrete bindings and task families for their planned workflows.
+- New Kronos pay-rule work needs its own explicit commit family, protected transaction, probe, and verifier.
+- OCR needs the operator's ChatGPT connection before `ocr.extract` can execute.
+- Workflow wiring needs defined task failure codes and corresponding dashboard text at each new failure seam.
