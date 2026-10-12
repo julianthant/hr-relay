@@ -102,7 +102,7 @@ import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, SQLITE_MIGRATIONS, auditMigrationTableCoverage, tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
-import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
+import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceRecordsSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
 
 export class AuthoritySchemaVersionError extends Error {
   readonly code = "authority-schema-mismatch";
@@ -2262,7 +2262,7 @@ export class AuthorityDatabase implements Disposable {
       if (currentAttempt.outcome.state !== "attempting") {
         throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
       }
-      WriteFenceInputSchema.parse({ intent: currentIntent, attempt: currentAttempt });
+      WriteFenceRecordsSchema.parse({ intent: currentIntent, attempt: currentAttempt });
       this.#assertAtomicCommitMatchesIntent(parsed, currentIntent);
       const run=this.#readRunRow(currentIntent.runId);
       if(run===undefined || checkpoint.runId!==currentIntent.runId || checkpoint.workflowId!==currentIntent.workflowId
@@ -3727,9 +3727,12 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         fenceAttempt: (input: unknown) => {
-          const { intent, attempt } = WriteFenceInputSchema.parse(input);
+          const { intent, attempt, claim } = WriteFenceInputSchema.parse(input);
+          if (intent.status !== "attempting") throw new Error("write fence requires an attempting intent");
           return this.withAuthorityTransaction(() => {
             this.#assertBusinessWriteAdmission(intent);
+            const refusal = this.#writeFenceRefusal(intent, claim);
+            if (refusal !== undefined) return PermanentWriteResolutionSchema.parse({ state: "refused", refusal });
             const existing = this.#findPermanentWriteIntent(intent.system, intent.idempotencyKey);
             if (existing !== undefined) {
               return PermanentWriteResolutionSchema.parse({ state: "existing", intent: existing });
@@ -3740,11 +3743,13 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         refenceRetryable: (input: unknown) => {
-          const { expectedVersion, intent, attempt } = WriteRefenceInputSchema.parse(input);
+          const { expectedVersion, intent, attempt, claim } = WriteRefenceInputSchema.parse(input);
           if (intent.status !== "attempting") {
             throw new Error(`re-fence of ${intent.writeIntentId} must present an attempting intent, not ${intent.status}`);
           }
           return this.withAuthorityTransaction(() => {
+            const refusal = this.#writeFenceRefusal(intent, claim);
+            if (refusal !== undefined) return PermanentWriteResolutionSchema.parse({ state: "refused", refusal });
             const current = this.#requireWriteIntent(intent.writeIntentId);
             if (canonicalJsonStringify(current.status === "observed-present" ? null : current.occurrence ?? null)
               !== canonicalJsonStringify(intent.occurrence ?? null)) {
@@ -5080,6 +5085,21 @@ export class AuthorityDatabase implements Disposable {
       throw new Error(`write attempt ${writeAttemptId} is ${attempt.outcome.state}; only an attempting attempt may transition`);
     }
     return attempt;
+  }
+
+  #writeFenceRefusal(
+    intent: Extract<WriteIntentRecord, { status: "attempting" }>,
+    claim: z.infer<typeof RunClaimTokenSchema>,
+  ): RunRecordRefusal | undefined {
+    const run = this.#readRunRow(intent.runId);
+    const held = run === undefined ? undefined : runClaim(run);
+    if (held === undefined || held.workerId !== claim.workerId || held.claimGeneration !== claim.claimGeneration) {
+      return { reason: "lost" };
+    }
+    if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.envelope.attempt !== intent.runAttempt) {
+      return { reason: "invalid-state" };
+    }
+    return undefined;
   }
 
   #assertBusinessWriteAdmission(intent: WriteIntentRecord): void {

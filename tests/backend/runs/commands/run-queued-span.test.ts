@@ -6,6 +6,8 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
+import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
+
 const ACTOR = ActorIdSchema.parse("local-operator");
 const SENSITIVE_FACT_VALUE = "06/19/2026-SENSITIVE-SEPARATION-DATE";
 
@@ -58,4 +60,31 @@ describe("runQueuedSpanEvent", () => {
     const ordinary = runQueuedSpanEvent({ run: RunRecordSchema.parse(QUEUED_RUN), actorId: ACTOR, title: "Fixture run" });
     assert.equal(Object.hasOwn(ordinary, "recovery"), false);
   });
+});
+
+
+describe("protected queue publication", () => {
+  for (const subject of [
+    { inputPath: "emplId", name: "personLookupCanaryEid", value: "10873698" },
+    { inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber", value: "synthetic-document-proof" },
+  ] as const) {
+    for (const display of [{ title: "synthetic-unmasked-proof" },
+      { title: "Protected test subject", subtitle: "synthetic-unmasked-proof" },
+      { title: "Protected test subject", subtitle: "" }]) {
+      it(`refuses an unmasked ${subject.inputPath} title/subtitle at publication`, () => {
+        const initial = RunRecordSchema.parse(personLookupQueuedRun());
+        assert.ok(initial.input.parsed);
+        const value = initial.input.parsed.value;
+        assert.ok(value !== null && typeof value === "object" && !Array.isArray(value));
+        const run = RunRecordSchema.parse({ ...initial, input: { ...initial.input, parsed: {
+          ...initial.input.parsed, value: { ...value, [subject.inputPath]: subject.value },
+          protectedBindings: [{ kind: "test-data-local", inputPath: subject.inputPath, name: subject.name,
+            sourceId: "44444444-4444-4444-8444-444444444444" }] } } });
+        assert.throws(() => runQueuedSpanEvent({ run, actorId: ACTOR, ...display }), /protected subject display/u);
+        const event = runQueuedSpanEvent({ run, actorId: ACTOR, title: "Protected test subject" });
+        assert.equal(event.subtitle, undefined);
+        assert.equal(JSON.stringify(event).includes(subject.value), false);
+      });
+    }
+  }
 });

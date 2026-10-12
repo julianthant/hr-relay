@@ -33,8 +33,14 @@ const SSO_FORM_SELECTOR = 'input#ssousername, input[name="j_username"], input[ty
 
 
 function isAuthenticatedKualiUrl(rawUrl: string): boolean {
-  const url = rawUrl.toLowerCase();
-  return url.includes(KUALI_APP_HOST) && !url.startsWith("chrome-error");
+  try {
+    const url = new URL(rawUrl);
+    const path = url.pathname;
+    return url.protocol === "https:" && url.host === KUALI_APP_HOST
+      && (path.startsWith("/app/") || path.startsWith("/build/space/"));
+  } catch {
+    return false;
+  }
 }
 
 // Kuali has no verified authentication-only cookie; prove session with application chrome and absent SSO controls.

@@ -18,6 +18,7 @@ export const UcpathStageTermination = defineTaskContract({
     "ucpath-unavailable",
     "unexpected-page-state",
     "subject-mismatch",
+    "employment-record-mismatch",
     "emplid-not-recognized",
     "reason-code-not-offered",
     "last-date-worked-not-verified",

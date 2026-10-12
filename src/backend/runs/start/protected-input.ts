@@ -4,7 +4,31 @@ import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../.
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { ProtectedInputBindingsSchema, protectedInputBindings, type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
+import { projectFailureDisplay } from "../../../models/dashboard/failure-display.js";
+import { ErrorCodeSchema } from "../../../rules/identity/ids.js";
 import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
+
+
+export function hasProtectedSubject(bindings: readonly ProtectedInputBinding[]): boolean {
+  return bindings.some(({ inputPath }) => inputPath !== "timekeeperName");
+}
+
+export function protectedSubjectDisplay(bindings: readonly ProtectedInputBinding[],
+  display: () => Readonly<{ title: string; subtitle?: string }>): Readonly<{ title: string; subtitle?: string }> {
+  if (hasProtectedSubject(bindings)) return { title: "Protected test subject" };
+  const proposed = display();
+  return { title: proposed.title, ...(proposed.subtitle === undefined ? {} : { subtitle: proposed.subtitle }) };
+}
+
+const PROTECTED_SUBJECT_DISPLAY_CODE = ErrorCodeSchema.parse("PROTECTED_SUBJECT_DISPLAY_REFUSED");
+
+export class ProtectedSubjectDisplayRefusedError extends Error {
+  readonly code = PROTECTED_SUBJECT_DISPLAY_CODE;
+  constructor() {
+    super(projectFailureDisplay({ code: PROTECTED_SUBJECT_DISPLAY_CODE }).observation);
+    this.name = "ProtectedSubjectDisplayRefusedError";
+  }
+}
 
 
 export function protectedSubjectMatchKey(bindings: readonly ProtectedInputBinding[], canonicalInput: unknown): string {

@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
@@ -66,7 +67,7 @@ export function createStorageRestoreTestWorld() {
     seedAtomicWriteOwner(database,HISTORICAL_COMMIT,paths.authorityPath);
     const run=database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);assert.ok(run);
     const claimGeneration=run.claimGeneration;
-    const fenced = database.authority.writeIntents.fenceAttempt({
+    const fenced = fenceWriteFixture(database, {
       intent: WRITE_INTENT_ATTEMPTING,
       attempt: WRITE_ATTEMPT,
     });

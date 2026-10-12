@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
@@ -492,7 +493,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     } },
     { table: "write_intents",prepare:db=>{
       seedAtomicWriteOwner(db,ATOMIC_WRITE_COMMIT,databasePaths.get(db) ?? (() => { throw new Error("missing fixture path"); })());
-      assert.equal(db.authority.writeIntents.fenceAttempt({intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT}).state,"fenced");
+      assert.equal(fenceWriteFixture(db, {intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT}).state,"fenced");
     },mutate:db=>{db.commitWriteAttempt(ATOMIC_WRITE_COMMIT,atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));} },
     { table: "artifacts", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "artifacts", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
@@ -616,6 +617,6 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     } },
     { table: "run_requests", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
     { table: "write_intents", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
-    { table: "write_attempts", prepare: (db) => { seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT, databasePaths.get(db) ?? (() => { throw new Error("missing fixture path"); })()); }, mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
+    { table: "write_attempts", prepare: (db) => { seedAtomicWriteOwner(db, ATOMIC_WRITE_COMMIT, databasePaths.get(db) ?? (() => { throw new Error("missing fixture path"); })()); }, mutate: (db) => { fenceWriteFixture(db, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
   ];
 }

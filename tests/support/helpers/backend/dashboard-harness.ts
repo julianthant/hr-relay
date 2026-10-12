@@ -194,6 +194,7 @@ export interface DashboardWorld {
 
 export function makeWorld(input?: Readonly<{
   reader?: CanonicalRunReader;
+  timeline?: TimelineRepository;
   collectRebuilds?: boolean;
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
@@ -260,7 +261,7 @@ export function makeWorld(input?: Readonly<{
   };
   const scheduledRebuilds: (() => void)[] = [];
   const projection = createRunQueueProjection({
-    timeline,
+    timeline: input?.timeline ?? timeline,
     reader: runReader,
     stateRoot,
     clock,

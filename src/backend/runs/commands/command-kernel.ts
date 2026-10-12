@@ -1,4 +1,5 @@
-import { admitProtectedInput } from "../start/protected-input.js";
+import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
 import { WorkerRetirementProofSchema, type WorkerPoolRosterAdmission } from "../../../models/run/worker-slot.js";
 import { PreflightAdmissionRefusal, type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
@@ -639,7 +640,7 @@ function executeRetry(
     commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
     runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
     runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
-  }, descriptor, { title: planning.title(value), subtitle: planning.subtitle(value), actorId: request.requestedBy }));
+  }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
   return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId)], [
     { target: runTarget(record.envelope.runId), before: 0, after: record.version },
   ]);

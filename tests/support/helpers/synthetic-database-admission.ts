@@ -2,6 +2,13 @@ import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSch
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 
 export type AuthorityDatabase = RealAuthorityDatabase;
+const fixturePaths = new WeakMap<RealAuthorityDatabase, string>();
+
+export function syntheticDatabasePath(database: RealAuthorityDatabase): string {
+  const path = fixturePaths.get(database);
+  if (path === undefined) throw new Error("synthetic database path missing");
+  return path;
+}
 
 type WithoutAdmission<F extends (...args: never[]) => unknown> = Parameters<F> extends [unknown, ...infer Rest] ? Rest : never;
 type OpenOptions = Parameters<typeof RealAuthorityDatabase.open> extends [unknown, unknown, ...infer Rest] ? Rest : never;
@@ -18,7 +25,9 @@ export const AuthorityDatabase = new Proxy(RealAuthorityDatabase, {
     if (property === "open") {
       return (input: unknown, ...rest: OpenOptions) => {
         const path = AuthorityDatabaseOptionsSchema.parse(input).path;
-        return target.open(RuntimeAdmission.syntheticFixture(path), input, ...rest);
+        const database = target.open(RuntimeAdmission.syntheticFixture(path), input, ...rest);
+        fixturePaths.set(database, path);
+        return database;
       };
     }
     if (property === "inspectExistingReadOnly") return (path: string, timeout?: number) =>

@@ -1,3 +1,19 @@
+import { createKernelStubCommandFixtures } from "../../../support/helpers/backend/kernel-stub-command-fixtures.js";
+import { planStart } from "../../../../src/backend/runs/start/plan.js";
+import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { personLookupDescriptor, separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { failureStatus } from "../../../../src/backend/transports/http/routes/failure-status.js";
+import { projectFailureDisplay } from "../../../../src/models/dashboard/failure-display.js";
+import { ErrorCodeSchema } from "../../../../src/rules/identity/ids.js";
+import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
+import { localDatePart } from "../../../../src/rules/time/clock.js";
 import { kernelRejectMemberRecord } from "../../../support/helpers/backend/kernel-reject-member-run.js";
 import { createCommandKernelTestWorld, type Harness } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
@@ -207,4 +223,129 @@ describe("run arms", () => {
     assert.equal(run?.version, live);
     assert.equal(run?.displayName, undefined);
   });
+});
+
+
+const protectedFixtures = createKernelStubCommandFixtures({ roots, openDatabases,
+  prefix: "hrauto-protected-recovery-", migrationOwner: "protected-recovery-test",
+  resolve: workflow => [personLookupDescriptor, separationsDescriptor].find(descriptor => descriptor.id === workflow) });
+const SUBJECT_BINDING = { kind: "test-data-local" as const, inputPath: "emplId" as const,
+  name: "personLookupCanaryEid" as const, sourceId: "44444444-4444-4444-8444-444444444444" };
+const SYNTHETIC_EID = "10873698";
+
+function recoverySource(harness: ReturnType<typeof protectedFixtures.createHarness>, protection: "subject" | "ordinary" | "timekeeper") {
+  if (protection === "timekeeper") {
+    const plan = planStart({ authority: harness.database, clock: harness.clock, ids: harness.plannerIds,
+      planTtlMs: 600_000, protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic signer" }) },
+    { descriptor: separationsDescriptor, submissions: [{ documentNumber: "12345678" }],
+      dryRun: true, priority: "bulk", shape: "single", ...harness.configIdentity, plannedBy: "local-operator" });
+    assert.deepEqual(plan.refused, []);
+    const planned = plan.planned[0];
+    assert.ok(planned);
+    return buildQueuedRun({ descriptor: separationsDescriptor, runId: "11111111-1111-4111-8111-111111111111",
+      itemId: planned.itemId, traceId: "se-120000-1111", rawInput: planned.rawInput, canonicalInput: planned.input,
+      ingressSchemaHash: plan.ingressSchemaHash, ...harness.configIdentity, resolvedInstance: plan.resolvedInstance,
+      shape: "single", priority: "bulk", dryRun: true, attempt: 1, runNumber: 1, appVersion: "0.1.0", now: NOW });
+  }
+  const initial = RunRecordSchema.parse(personLookupQueuedRun());
+  const { sessionId: _sessionId, ...withoutSession } = initial;
+  assert.ok(initial.input.parsed);
+  return RunRecordSchema.parse({ ...withoutSession,
+    envelope: { ...initial.envelope, ...harness.configIdentity, enqueuedAt: NOW },
+    createdAt: NOW, updatedAt: NOW,
+    input: { ...initial.input, parsed: { ...initial.input.parsed,
+      value: initial.input.parsed.value,
+      protectedBindings: protection === "subject" ? [SUBJECT_BINDING] : [] } } });
+}
+
+describe("protected subject recovery publication", () => {
+  for (const type of ["retry", "restart"] as const) {
+    for (const protection of ["subject", "ordinary", "timekeeper"] as const) {
+      it(`${type} retains safe queue display for ${protection} input`, () => {
+        const harness = protectedFixtures.createHarness({ publishQueued: (run, publication) => {
+          assert.ok(publication);
+          createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
+            runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
+        } });
+        const source = recoverySource(harness, protection);
+        assert.equal(harness.database.authority.runs.enqueue(source).state, "inserted");
+        createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
+          runQueuedSpanEvent({ run: source, actorId: ActorIdSchema.parse("local-operator"),
+            title: protection === "subject" ? "Protected test subject" : protection === "timekeeper" ? "Separation 12345678" : `EID ${SYNTHETIC_EID}` }));
+        assert.equal(harness.kernel.execute(protectedFixtures.runCommand("cancel", source.envelope.runId, source.version)).state, "applied");
+        const terminal = harness.database.authority.runs.get(source.envelope.runId);
+        assert.ok(terminal);
+        const result = harness.kernel.execute(protectedFixtures.runCommand(type, terminal.envelope.runId, terminal.version));
+        assert.equal(result.state, "applied");
+        if (result.state !== "applied") throw new Error("recovery not applied");
+        const target = result.affectedTargets[0];
+        assert.ok(target.family === "run");
+        const next = harness.database.authority.runs.get(target.runId);
+        assert.ok(next);
+        assert.deepEqual(next.input, terminal.input);
+        const rows = harness.database.authority.timelineEvents.page({ runId: next.envelope.runId });
+        assert.equal(rows.length, 1);
+        const queued = rows[0].payload;
+        assert.ok(queued.kind === "span" && queued.event.t === "run.queued");
+        const event = queued.event;
+        const expectedTitle = protection === "subject" ? "Protected test subject" : protection === "timekeeper" ? "Separation 12345678" : `EID ${SYNTHETIC_EID}`;
+        assert.equal(event.title, expectedTitle);
+        if (protection === "subject") {
+          assert.equal(event.subtitle, undefined);
+          assert.equal(JSON.stringify(rows).includes(SYNTHETIC_EID), false);
+        }
+        const world = makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
+          timeline: harness.database.authority.timelineEvents,
+          descriptors: { resolve: workflow => [personLookupDescriptor, separationsDescriptor].find(descriptor => descriptor.id === workflow) } });
+        try {
+          world.clock.setWall(harness.clock.now());
+          world.projection.ingestFromTimeline();
+          const day = world.projection.buildDashboardDayWire(localDatePart(harness.clock.now()));
+          const row = day.queueSurfaces.find(row => row.runId === next.envelope.runId);
+          assert.ok(row);
+          assert.equal(row.title, expectedTitle);
+          if (protection === "subject") assert.equal(JSON.stringify(day.queueSurfaces).includes(SYNTHETIC_EID), false);
+        } finally { world.dispose(); }
+      });
+    }
+    it(`${type} rolls back a corrupt unmasked producer and exposes the mapped refusal`, () => {
+      const harness = protectedFixtures.createHarness({ publishQueued: (run, publication) => {
+        assert.ok(publication);
+        createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
+          runQueuedSpanEvent({ run, ...publication, title: "synthetic-unmasked-subject-proof", actorId: ActorIdSchema.parse(publication.actorId) }));
+      } });
+      const source = recoverySource(harness, "subject");
+      assert.equal(harness.database.authority.runs.enqueue(source).state, "inserted");
+      createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
+        runQueuedSpanEvent({ run: source, actorId: ActorIdSchema.parse("local-operator"), title: "Protected test subject" }));
+      assert.equal(harness.kernel.execute(protectedFixtures.runCommand("cancel", source.envelope.runId, source.version)).state, "applied");
+      const terminal = harness.database.authority.runs.get(source.envelope.runId);
+      assert.ok(terminal);
+      const beforeTimeline = harness.database.authority.timelineEvents.page({});
+      let caught: unknown;
+      try { harness.kernel.execute(protectedFixtures.runCommand(type, terminal.envelope.runId, terminal.version)); }
+      catch (error) { caught = error; }
+      assert.ok(caught);
+      const response = failureStatus(caught);
+      assert.equal(response.status, 409);
+      assert.equal(response.body.code, "PROTECTED_SUBJECT_DISPLAY_REFUSED");
+      assert.equal(response.body.message, "The protected subject display was not masked. The run was not queued.");
+      assert.equal(response.body.message, projectFailureDisplay({ code: ErrorCodeSchema.parse("PROTECTED_SUBJECT_DISPLAY_REFUSED") }).observation);
+      assert.deepEqual(harness.database.authority.runs.listByWorkflow(personLookupDescriptor.id), [terminal]);
+      assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeTimeline);
+      assert.equal(JSON.stringify(beforeTimeline).includes("synthetic-unmasked-subject-proof"), false);
+      const world = makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
+        timeline: harness.database.authority.timelineEvents,
+        descriptors: { resolve: workflow => workflow === personLookupDescriptor.id ? personLookupDescriptor : undefined } });
+      try {
+        world.clock.setWall(harness.clock.now());
+        world.projection.ingestFromTimeline();
+        const rows = world.projection.buildDashboardDayWire(localDatePart(harness.clock.now())).queueSurfaces;
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].runId, terminal.envelope.runId);
+        assert.equal(rows[0].title, "Protected test subject");
+        assert.equal(JSON.stringify(rows).includes("synthetic-unmasked-subject-proof"), false);
+      } finally { world.dispose(); }
+    });
+  }
 });

@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
@@ -173,7 +174,7 @@ export function createWriteRecoveryTestWorld() {
       outcome: { state: "attempting" },
       recordedAt: now,
     };
-    assert.equal(h.database.authority.writeIntents.fenceAttempt({ intent, attempt }).state, "fenced");
+    assert.equal(fenceWriteFixture(h.database, { intent, attempt }).state, "fenced");
 
     const parked = h.database.authority.runs.transition({
       runId: WRITE_FIXTURE_RUN_ID,

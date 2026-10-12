@@ -1,4 +1,4 @@
-import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService, type RunRecordServiceDependencies } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -57,7 +57,7 @@ export function createKernelStubCommandFixtures(input: {
     } as const;
   }
 
-  function createHarness(): KernelStubHarness {
+  function createHarness(options: { publishQueued?: RunRecordServiceDependencies["publishQueued"] } = {}): KernelStubHarness {
     const clock = manualClock(new Date(NOW));
     const root = mkdtempSync(join(realpathSync(tmpdir()), input.prefix));
     input.roots.push(root);
@@ -71,7 +71,7 @@ export function createKernelStubCommandFixtures(input: {
     assert.ok(active);
     const configIdentity = { configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint };
     const kernel = createCommandKernel({
-      lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
+      lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: options.publishQueued ?? (() => {}) }),
       appVersion: "0.1.0",
       configIdentity,
       intakeParser: UNWIRED_INTAKE_PARSER,

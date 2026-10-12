@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { authorityMutationCases, type MutationCase } from "../../../support/helpers/backend/authority-accounting-world.js";
 import { createAuthorityAccountingTestWorld } from "../../../support/helpers/backend/authority-accounting-world.js";
 import assert from "node:assert/strict";
@@ -112,7 +113,7 @@ describe("authority generation accounting", () => {
         database.authority.commands.acceptBulk(BULK_COMMAND_ACCEPTANCE);
       } else if (trigger.tableName === "timeline_events") {
         seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
-        assert.equal(database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }).state, "fenced");
+        assert.equal(fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }).state, "fenced");
         database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
       } else if (trigger.tableName !== "database_upgrades") {
         const mutation = cases.find(({ table }) => table === trigger.tableName);

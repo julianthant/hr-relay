@@ -18,8 +18,9 @@ import {
   ParkedWriteResolutionBindingSchema,
 } from "../../../rules/write-safety/write-safety.js";
 import { RunClaimTokenSchema } from "./run-store-contracts.js";
+import { RunRecordRefusalSchema } from "../../../models/config/authority.js";
 
-export const WriteFenceInputSchema = z.strictObject({
+export const WriteFenceRecordsSchema = z.strictObject({
   intent: WriteIntentRecordSchema,
   attempt: WriteAttemptRecordSchema,
 }).superRefine(({ intent, attempt }, context) => {
@@ -52,7 +53,10 @@ export const WriteFenceInputSchema = z.strictObject({
   }
 });
 
+export const WriteFenceInputSchema = WriteFenceRecordsSchema.safeExtend({ claim: RunClaimTokenSchema });
+
 export const PermanentWriteResolutionSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("refused"), refusal: RunRecordRefusalSchema }),
   z.strictObject({
     state: z.literal("fenced"),
     intent: WriteIntentRecordSchema,
@@ -68,7 +72,7 @@ export const PermanentWriteResolutionSchema = z.discriminatedUnion("state", [
   }),
 ]).superRefine((resolution, context) => {
   if (resolution.state === "fenced") {
-    const fence = WriteFenceInputSchema.safeParse({ intent: resolution.intent, attempt: resolution.attempt });
+    const fence = WriteFenceRecordsSchema.safeParse({ intent: resolution.intent, attempt: resolution.attempt });
     if (!fence.success) {
       context.addIssue({ code: "custom", message: "fenced resolution must contain one semantically consistent intent and attempt" });
     }
@@ -179,10 +183,11 @@ export const WriteIntentRetrySettlementRequestSchema = z.strictObject({
 
 export const WriteRefenceInputSchema = z.strictObject({
   expectedVersion: PositiveIntSchema,
+  claim: RunClaimTokenSchema,
   intent: WriteIntentRecordSchema,
   attempt: WriteAttemptRecordSchema,
 }).superRefine(({ intent, attempt }, context) => {
-  const fence = WriteFenceInputSchema.safeParse({ intent, attempt });
+  const fence = WriteFenceRecordsSchema.safeParse({ intent, attempt });
   if (!fence.success) {
     context.addIssue({ code: "custom", message: "a re-fence must contain one semantically consistent attempting intent and attempt" });
   }

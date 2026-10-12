@@ -1,3 +1,4 @@
+import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
@@ -1620,7 +1621,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
     const recordSchemaPath = join(testRoot(), "state.db");
     const recordSchemaDatabase = openDatabase(recordSchemaPath);
-    recordSchemaDatabase.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, recordSchemaPath);
     recordSchemaDatabase.close();
     const badRecordSchema = new DatabaseSync(recordSchemaPath);
     badRecordSchema.prepare("UPDATE write_intents SET payload_json = ? WHERE id = ?")
@@ -1668,7 +1669,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
-    database.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, authorityPath);
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, authorityPath);
     database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
     database.authority.artifactOutbox.insert({...ARTIFACT_OUTBOX,sourceRunId:ATOMIC_WRITE_COMMIT.transaction.runId});

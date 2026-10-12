@@ -1,7 +1,7 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { UcpathStageTermination } from "../../../../models/systems/ucpath/stage-termination.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
-import { UcpathEmplIdNotRecognizedError } from "../../../../models/ui/ucpath-smart-hr-termination.js";
+import { UcpathEmplIdNotRecognizedError, UcpathEmploymentRecordMismatchError } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 // Staging all wizard pages creates no durable footprint before an explicit Save.
@@ -10,6 +10,9 @@ export const stageTerminationTask = defineTask(ucpathDriver, UcpathStageTerminat
   async run({ input, ctx }) {
 
     const staging = await ctx.driver.stageTermination(input).catch((error: unknown) => {
+      if (error instanceof UcpathEmploymentRecordMismatchError) {
+        return ctx.fail("employment-record-mismatch", error.message, { subject: input.emplId, cause: error });
+      }
       if (!(error instanceof UcpathEmplIdNotRecognizedError)) throw error;
       return ctx.fail("emplid-not-recognized", error.message, {
         subject: input.emplId,
@@ -22,6 +25,10 @@ export const stageTerminationTask = defineTask(ucpathDriver, UcpathStageTerminat
         `UCPath staged a termination for EID ${directIdentifierDisplay(staging.emplId)} while the run named ${directIdentifierDisplay(input.emplId)}`,
         { subject: input.emplId },
       );
+    }
+    if (staging.observedEmplRecord.trim().length === 0 || staging.observedEmplRecord !== input.emplRecord) {
+      const error = new UcpathEmploymentRecordMismatchError(input.emplRecord, staging.observedEmplRecord);
+      return ctx.fail("employment-record-mismatch", error.message, { subject: input.emplId, cause: error });
     }
     if (staging.effectiveDate !== input.effectiveDate) {
       return ctx.fail(
