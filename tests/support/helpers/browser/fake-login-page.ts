@@ -160,6 +160,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
 
   const page = {
     url: () => current,
+    title: async () => "Fixture login page",
     context: () => browserContext,
     goto: async (target: string) => {
       actions.push(`goto:${target}`);

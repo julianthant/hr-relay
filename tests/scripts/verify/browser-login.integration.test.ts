@@ -7,7 +7,8 @@ import { closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker } from "../..
 import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
-import { BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
+import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
+import { SessionAcquisitionTimeoutError, SESSION_ACQUISITION_TIMEOUT_TEXT } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 
 const clock = manualClock(new Date("2026-10-11T10:00:00.000Z"));
@@ -162,6 +163,22 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(database.authority.workerPools.get("person-lookup")?.desiredWorkers).toBe(1);
   });
 
+  it("prints fixed acquisition and stall text without free-form error messages", () => {
+    const stall = new BrowserLandingStallError("ucpath", "shibboleth-stale-request",
+      { host: "a5.ucsd.edu", path: "/Shibboleth.sso/SAML2/POST", title: "Web Login Service - Stale Request" });
+    const timeout = new SessionAcquisitionTimeoutError("ucpath");
+    stall.message = "synthetic-message-secret";
+    timeout.message = "synthetic-timeout-secret";
+    const diagnostic = smokeErrorDiagnostic(new AggregateError([timeout, stall]));
+    expect(JSON.parse(diagnostic)).toEqual([{ error: "AggregateError" }, {
+      error: "SessionAcquisitionTimeoutError", system: "ucpath", phase: "acquisition",
+      code: "browser-session-acquisition-timeout", text: SESSION_ACQUISITION_TIMEOUT_TEXT,
+    }, { error: "BrowserLandingStallError", system: "ucpath", phase: "duo-clearance",
+      code: "shibboleth-stale-request", text: BROWSER_LANDING_STALL_TEXT["shibboleth-stale-request"],
+      host: "a5.ucsd.edu", path: "/Shibboleth.sso/SAML2/POST", title: "Web Login Service - Stale Request" }]);
+    expect(diagnostic).not.toContain("secret");
+  });
+
   it("prints safe nested error identities without dumping error objects", () => {
     const setup = new Error("offline setup failed");
     const close = new Error("offline closure failed");
@@ -192,7 +209,7 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(diagnostic).not.toContain("authentication");
     const entries = z.array(z.record(z.string(), z.string())).parse(JSON.parse(diagnostic));
     expect(entries).toContainEqual({ error: "BrowserLoginError", system: "ucpath", phase: "sso-submit", host: "login.example.invalid" });
-    expect(entries).toContainEqual({ error: "DuoTerminalRefusalError", system: "crm", phase: "duo-clearance", host: "login.example.invalid" });
+    expect(entries).toContainEqual({ error: "DuoTerminalRefusalError", code: "duo-terminal-refusal", text: DUO_TERMINAL_REFUSAL_TEXT, system: "crm", phase: "duo-clearance", host: "login.example.invalid", path: "/sso", title: "" });
     expect(entries).toContainEqual({ error: "TypeError" });
     expect(entries.filter(entry => entry.error === "DuoTerminalRefusalError")).toHaveLength(1);
   });

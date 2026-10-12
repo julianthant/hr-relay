@@ -1,7 +1,7 @@
 import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserLoginError, BrowserLandingStallError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { isAuthenticatedUcpathAppUrl, isUcpathPostSsoLanding, ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../../../src/backend/systems/ucpath/session.js";
 import { NEVER_SETTLES, type FakeCookie, type FakePageScript } from "../../../support/helpers/browser/fake-login-page.js";
 
@@ -418,6 +418,34 @@ describe("ucpath login recipe", () => {
       assert.equal(error.step, "duo-clearance");
       assert.match(error.message, /the Duo prompt never cleared/);
       assert.doesNotMatch(error.message, /signCount/);
+      return true;
+    });
+  });
+
+  it("diagnoses a landing before acquisition expires and excludes URL secrets", async () => {
+    const { context } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
+        "sso-submit": { navigatesTo: `${DUO_PROMPT}?token=private#private` },
+        "sso-username": {}, "sso-password": {}, "stale-request": { count: 0 },
+        "duo-refusal": { count: 0 },
+      },
+    });
+    let observedTimeout = 0;
+    context.page.waitForURL = async (_predicate, options) => {
+      observedTimeout = options?.timeout ?? 0;
+      throw new Error("fixture landing timeout with private detail");
+    };
+    context.page.title = async () => "Duo https://auth.example/?private#private";
+    await assert.rejects(ucpathLoginRecipe({ ...context, acquisitionRemainingMs: () => 600 }), error => {
+      assert.ok(error instanceof BrowserLandingStallError);
+      assert.equal(error.code, "duo-prompt-stalled");
+      assert.equal(error.host, "api-ce13a1a7.duosecurity.com");
+      assert.equal(error.path, "/prompt/DA6QL3UFNF54WTIT1EQC");
+      assert.equal(error.title, "Duo [URL]");
+      assert.doesNotMatch(error.message, /private|token=/);
+      assert.equal(observedTimeout, 300);
       return true;
     });
   });

@@ -9,7 +9,7 @@ import { lstatSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
 import { composeDuoCeremonyGateFactory } from "../../src/backend/runtime/gates/duo-ceremony-gate.js";
-import { WorkerSessionManager } from "../../src/backend/runtime/workers/worker-sessions.js";
+import { SessionAcquisitionTimeoutError, SESSION_ACQUISITION_TIMEOUT_TEXT, WorkerSessionManager } from "../../src/backend/runtime/workers/worker-sessions.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { RuntimeInstanceSchema } from "../../src/models/config/instance.js";
@@ -28,7 +28,7 @@ import {
 import type { BrowserDeadlineScheduler } from "../../src/backend/runtime/browser/browser-session-factory.js";
 import { createCredentialSecretSource, readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { probePrimaryDisplay } from "../../src/backend/app/host/primary-display.js";
-import { BrowserLoginError, DuoTerminalRefusalError } from "../../src/backend/systems/browser-shared/login-contract.js";
+import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../src/backend/systems/browser-shared/login-contract.js";
 import type { AuthenticatedApplicationEvidence } from "../../src/backend/systems/browser-shared/login-contract.js";
 import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock, readRuntimeProcessLock } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
@@ -76,7 +76,9 @@ export function smokeErrorDiagnostic(error: unknown): string {
     const current = pending.pop();
     if (!(current instanceof Error) || seen.has(current)) continue;
     seen.add(current);
-    const identity = current instanceof DuoTerminalRefusalError ? "DuoTerminalRefusalError"
+    const identity = current instanceof BrowserLandingStallError ? "BrowserLandingStallError"
+      : current instanceof SessionAcquisitionTimeoutError ? "SessionAcquisitionTimeoutError"
+      : current instanceof DuoTerminalRefusalError ? "DuoTerminalRefusalError"
       : current instanceof BrowserLoginError ? "BrowserLoginError"
       : current instanceof SmokeSessionClosureError ? "SmokeSessionClosureError"
       : current instanceof AggregateError ? "AggregateError"
@@ -88,6 +90,27 @@ export function smokeErrorDiagnostic(error: unknown): string {
       const phase = current.step;
       if (LOGIN_PHASES.has(phase)) diagnostic.phase = phase;
       diagnostic.host = typeof current.observedUrl === "string" ? hostOf(current.observedUrl) : "<unparseable navigation target>";
+    }
+    if (current instanceof SessionAcquisitionTimeoutError) {
+      diagnostic.code = "browser-session-acquisition-timeout";
+      diagnostic.text = SESSION_ACQUISITION_TIMEOUT_TEXT;
+      diagnostic.phase = "acquisition";
+      const system = BrowserSystemIdSchema.safeParse(current.system);
+      if (system.success) diagnostic.system = system.data;
+    }
+    if (current instanceof DuoTerminalRefusalError) {
+      diagnostic.code = "duo-terminal-refusal";
+      diagnostic.text = DUO_TERMINAL_REFUSAL_TEXT;
+      diagnostic.host = current.host;
+      diagnostic.path = current.path;
+      diagnostic.title = current.title;
+    }
+    if (current instanceof BrowserLandingStallError && Object.hasOwn(BROWSER_LANDING_STALL_TEXT, current.code)) {
+      diagnostic.code = current.code;
+      diagnostic.text = BROWSER_LANDING_STALL_TEXT[current.code];
+      diagnostic.host = current.host;
+      diagnostic.path = current.path;
+      diagnostic.title = current.title;
     }
     diagnostics.push(diagnostic);
     pending.push(current.cause);

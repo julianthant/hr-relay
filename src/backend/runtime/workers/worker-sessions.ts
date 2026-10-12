@@ -141,15 +141,14 @@ function abortError(system: BrowserSystemId): Error {
 }
 
 
-function acquisitionDeadlineError(system: BrowserSystemId, boundMs: number): Error {
-  return new Error(
-    `${system} browser-session acquisition (open + login) exceeded its ${String(boundMs)}ms `
-    + "timeouts.sessionAcquireMs bound; the session is treated as dead and this lease fails. "
-    + "This bound is deliberately much shorter than timeouts.taskMs, which covers the READ once a "
-    + "driver is in hand. If this deployment approves Duo by hand rather than through Duo Autopilot, "
-    + "raise timeouts.sessionAcquireMs above timeouts.duoApprovalSeconds — never lengthen taskMs to "
-    + "hide a dead session.",
-  );
+export const SESSION_ACQUISITION_TIMEOUT_TEXT = "Browser-session acquisition (open + login) exceeded its timeouts.sessionAcquireMs bound.";
+export class SessionAcquisitionTimeoutError extends Error {
+  readonly code = "browser-session-acquisition-timeout";
+  readonly phase = "acquisition";
+  constructor(readonly system: BrowserSystemId) {
+    super(SESSION_ACQUISITION_TIMEOUT_TEXT);
+    this.name = "SessionAcquisitionTimeoutError";
+  }
 }
 
 // An acquisition race loser retains its own settlement and teardown evidence.
@@ -692,7 +691,7 @@ export class WorkerSessionManager {
     const handle = this.#scheduler.schedule(
       deadlineMonotonicMs,
       () => {
-        expiry = acquisitionDeadlineError(need.system, this.#acquireDeadlineMs);
+        expiry = new SessionAcquisitionTimeoutError(need.system);
         acquisition.abort(expiry);
       },
     );
@@ -807,7 +806,7 @@ export class WorkerSessionManager {
     try {
       let value: WorkerBrowserResource;
       try {
-        value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate);
+        value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate, envelope);
       } catch (error) {
         if (this.#controlInFlight || !(error instanceof DuoTerminalRefusalError) || !gate.retainedForRecovery()) throw error;
         const discardProfile = this.#factory.discardProfile;
@@ -827,7 +826,7 @@ export class WorkerSessionManager {
           browserMode,
         });
         try {
-          value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate);
+          value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate, envelope);
         } catch (retryError) {
           if (retryError instanceof DuoTerminalRefusalError) {
             throw new Error(
@@ -859,6 +858,7 @@ export class WorkerSessionManager {
     browserMode: BrowserPresentationMode,
     signal: AbortSignal,
     gate: DuoCeremonyGateHandle,
+    envelope: AcquisitionEnvelope,
   ): Promise<WorkerBrowserResource> {
     const store = browserStoreFor(this.#stores, need.system);
     const exclusive = store.session.exclusive === true;
@@ -876,6 +876,7 @@ export class WorkerSessionManager {
       exclusive,
       signal,
       duoCeremony: gate,
+      acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs - this.#clock.monotonicMs()),
     });
     this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
     let login: LoginResult;
