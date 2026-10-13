@@ -998,7 +998,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     for (const raw of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
       try {
         if (table === "database_states") {
-          const row = z.strictObject({id:z.literal(1),schema_version:z.literal(1),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
+          const row = z.strictObject({id:z.literal(1),schema_version:z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
             search_generation:z.number().int().nonnegative().nullable(),search_state:z.enum(["unbuilt","ready","invalid"])}).parse(raw);
           if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
         } else if (table === "runs") runRecordFromRow(raw);
@@ -1168,21 +1168,21 @@ function pendingCounts(database: DatabaseSync) {
   };
 }
 
-let expectedNativeSchema: string | undefined;
+const expectedNativeSchemas = new Map<number, string>();
 function normalizedNativeSchema(database: DatabaseSync): string {
   const schema = z.strictObject({type:z.string(),name:z.string(),table:z.string(),sql:z.string()});
   return canonicalJsonStringify(database.prepare("SELECT type,name,tbl_name AS 'table',sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
     .map(raw => { const row = schema.parse(raw); return {...row,sql:row.sql.trim().replace(/\s+/gu," ")}; }));
 }
-function assertNativeSchema(database: DatabaseSync): void {
-  if (expectedNativeSchema === undefined) {
+function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_SCHEMA_VERSION): void {
+  if (!expectedNativeSchemas.has(version)) {
     const expected = new DatabaseSync(":memory:");
     try {
-      for (const statement of SQLITE_MIGRATIONS[0].statements) expected.exec(statement);
-      expectedNativeSchema = normalizedNativeSchema(expected);
+      for (const migration of SQLITE_MIGRATIONS) if (migration.version <= version) for (const statement of migration.statements) expected.exec(statement);
+      expectedNativeSchemas.set(version, normalizedNativeSchema(expected));
     } finally { expected.close(); }
   }
-  if (normalizedNativeSchema(database) !== expectedNativeSchema) throw new Error("authority-native-schema-shape-mismatch");
+  if (normalizedNativeSchema(database) !== expectedNativeSchemas.get(version)) throw new Error("authority-native-schema-shape-mismatch");
 }
 
 function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: boolean): AuthorityCopyInspection {
@@ -1235,6 +1235,34 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
 export function inspectNormalAuthority(database: DatabaseSync): AuthorityCopyInspection {
   if (!isCurrentAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("normal-authority-schema-mismatch");
   return inspectOpenDatabase(database, false);
+}
+
+/** Only stopped maintenance supplies a writable database or disposable preflight copy. */
+export function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, expectedFingerprint?: string) {
+  requireRuntimeAdmission(admission).assertExclusive();
+  const version = readIntPragma(database, "user_version");
+  if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
+  if (version !== 1) throw new AuthoritySchemaVersionError(version);
+  database.exec("BEGIN EXCLUSIVE");
+  try {
+    if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority-application-mismatch");
+    assertNativeSchema(database, version);
+    const meta = readMetaRow(database);
+    if (meta.schema_version !== version) throw new Error("authority-schema-metadata-mismatch");
+    const fingerprint = authorityContentFingerprint(database);
+    if (expectedFingerprint !== undefined && fingerprint !== expectedFingerprint) throw new Error("source-changed: re-plan upgrade");
+    for (const migration of SQLITE_MIGRATIONS) if (migration.version > version) for (const statement of migration.statements) database.exec(statement);
+    database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+    database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+    const record = AuthorityUpgradeRecordSchema.parse({ recordKey: randomUUID(), upgradeId: fingerprint,
+      phase: "schema-migrated", fromSchemaVersion: version, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+      by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
+    database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,NULL,?,?)")
+      .run(record.recordKey, record.upgradeId, record.phase, canonicalJsonStringify(record), record.recordedAt);
+    const inspection = inspectNormalAuthority(database);
+    database.exec("COMMIT");
+    return { ...inspection, schemaVersion: version, authorityContentFingerprint: fingerprint };
+  } catch (error) { database.exec("ROLLBACK"); throw error; }
 }
 
 function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): AuthorityCopyInspection {
@@ -2660,7 +2688,7 @@ export class AuthorityDatabase implements Disposable {
   #runMigrations(): void {
     this.#database.exec("BEGIN EXCLUSIVE");
     try {
-      for (const statement of SQLITE_MIGRATIONS[0].statements) this.#database.exec(statement);
+      for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) this.#database.exec(statement);
       const now = this.#now();
       this.#database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,?,0,?,0,'ready')")
         .run(CURRENT_AUTHORITY_SCHEMA_VERSION, now);

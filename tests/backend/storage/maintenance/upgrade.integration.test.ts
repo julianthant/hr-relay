@@ -14,6 +14,7 @@ import { createTimelineRepository } from "../../../../src/backend/storage/sqlite
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError, migrateStoppedAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityUpgradeInspectionSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -62,13 +63,25 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(storageTree(f.root),before);
   assert.equal((await f.run()).state,"upgraded");
   const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"upgrade-test"},clock);
-  try {assert.equal(current.getMeta().schemaVersion,2);assert.ok(current.authority.runtimeConfig.get());}finally{current.close();}
+  try {assert.equal(current.getMeta().schemaVersion,2);assert.ok(current.authority.runtimeConfig.get());
+   const inspection=AuthorityUpgradeInspectionSchema.parse(current.readUpgradePhases());
+   assert.equal(inspection.state,"available");
+   if(inspection.state==="available")assert.deepEqual(inspection.phases.map(({phase})=>phase),["baseline","schema-migrated"]);
+  }finally{current.close();}
   const stored=new DatabaseSync(f.path,{readOnly:true});
   try {
    for(const [table,rows] of Object.entries(retained))assert.deepEqual(stored.prepare(`SELECT * FROM ${table}${table==="database_upgrades"?" WHERE phase='baseline'":""}`).all(),rows);
    assert.ok(stored.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get());
   }finally{stored.close();}
   assert.equal((await f.run()).state,"already-upgraded");
+ });
+ it("reacquires stopped installation admission for a retained baseline",async()=>{
+  const f=baselineFixture();
+  const owner=owners.find(row=>row.admission===f.admission);assert.ok(owner);
+  f.admission.release();
+  const admission=acquireEntrypointAdmission(owner.workspace,"exclusive");owner.admission=admission;
+  assert.throws(()=>AuthorityDatabase.open(admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/schema/u);
+  assert.equal((await upgradeStorage(admission,f.input,clock)).state,"upgraded");
  });
  it("refuses baseline metadata disagreement without effects",async()=>{
   const f=baselineFixture(),raw=new DatabaseSync(f.path);
@@ -99,7 +112,7 @@ describe("stopped native upgrade admission",()=>{
   const f=baselineFixture(),raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   try {
    raw.exec("DELETE FROM settings");
-   assert.throws(()=>migrateStoppedAuthority(raw,clock),/settings/u);
+   assert.throws(()=>migrateStoppedAuthority(raw,clock,f.admission),/settings/u);
    assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version,1);
    assert.equal(raw.prepare("SELECT schema_version FROM database_states").get()?.schema_version,1);
    assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get(),undefined);

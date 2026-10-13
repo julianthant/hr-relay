@@ -1,8 +1,10 @@
+import { DatabaseSync } from "node:sqlite";
+import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { AuthorityDatabase, migrateStoppedAuthority } from "../sqlite/authority-database.js";
 import { AuthorityBackupService } from "../sqlite/backup-service.js";
 import { openAuthorityBackupSourceReadOnly, inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
@@ -12,8 +14,8 @@ import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot, observeProc
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 
 export const StorageUpgradeReportSchema = z.strictObject({
-  state: z.enum(["planned", "initialized", "already-upgraded"]),
-  fromSchemaVersion: z.union([z.literal(0), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
+  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
@@ -48,20 +50,39 @@ export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoo
     }finally{source.close();}
   }finally{if(heldRestore===undefined)restore.release();}
 }
+function inspectUpgradeSource(admission: RuntimeAdmission, path: string, clock: Clock) {
+  admission.assertReadOnlyAuthorityDatabase(path);
+  const snapshot = createReadonlyAuthoritySnapshot(path);
+  let database: DatabaseSync;
+  try { database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true }); }
+  catch (error) { snapshot.dispose(); throw error; }
+  try { return migrateStoppedAuthority(database, clock, admission); }
+  finally { try { database.close(); } finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } } }
+}
+
 export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpgradeInput,clock:Clock,
   acquireAdmission=acquireRuntimeRestoreAdmission):Promise<StorageUpgradeReport> {
   requireRuntimeAdmission(admission).assertStateRoot(input.stateRoot);
   const path=join(input.stateRoot,"state.db");admission.assertAuthorityDatabase(path);requireDatabaseSourcePath(path);
   requireStopped(admission,input,clock);
-  const inspection=existsSync(path)?inspectAuthorityBackupReadOnly(admission,path):undefined;
+  const inspection=existsSync(path)?inspectUpgradeSource(admission,path,clock):undefined;
   const report=(state:StorageUpgradeReport["state"])=>StorageUpgradeReportSchema.parse({state,
     fromSchemaVersion:inspection?.schemaVersion??0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   if(input.plan)return report("planned");
   const restore=acquireAdmission({processLockRoot:input.processLockRoot,pid:process.pid},clock);
   try {
     requireStopped(admission,input,clock);
-    if(inspection!==undefined){const again=inspectAuthorityBackupReadOnly(admission,path);
+    if(inspection!==undefined){const again=inspectUpgradeSource(admission,path,clock);
       if(again.authorityGeneration!==inspection.authorityGeneration||again.authorityContentFingerprint!==inspection.authorityContentFingerprint)throw new Error("source-changed: re-plan upgrade");
+      if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+        admission.assertExclusive(); admission.assertAuthorityDatabase(path);
+        const database = new DatabaseSync(path, { enableForeignKeyConstraints: true, timeout: 250 });
+        try { migrateStoppedAuthority(database, clock, admission, inspection.authorityContentFingerprint); }
+        finally { database.close(); }
+        requireStopped(admission,input,clock);
+        inspectAuthorityBackupReadOnly(admission,path);
+        return report("upgraded");
+      }
       const pending = pendingDiagnosticArtifacts(admission);
       if (pending.length === 0) return report("already-upgraded");
       const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "diagnostic-maintenance" }, clock);

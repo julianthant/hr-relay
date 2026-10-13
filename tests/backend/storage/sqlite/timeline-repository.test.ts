@@ -12,7 +12,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 function fixture(path?: string) {
   const database = new DatabaseSync(path ?? ":memory:");
-  if (path === undefined) for (const statement of SQLITE_MIGRATIONS[0].statements) database.exec(statement);
+  if (path === undefined) for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
   const repository = createTimelineRepository({ database, assertOwner: () => {}, read: work => work(),
     mutate: work => { database.exec("BEGIN IMMEDIATE"); try { const result = work(); database.exec("COMMIT"); return result.result; }
       catch (error) { database.exec("ROLLBACK"); throw error; } } });

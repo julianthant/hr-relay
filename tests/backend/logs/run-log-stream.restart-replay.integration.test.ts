@@ -94,7 +94,7 @@ it.each([0, 1000, 10000])("does bounded predecessor query work with %s unrelated
     for (let index = 0; index < count; index++) f.append(`unrelated-${String(index)}`, 1);
     f.append("target", 2);
     identityReads = 0;
-    const heads = f.repository.confirmedActionHeads({ workerStreamIds: ["absent", "target"], before: count + 3 });
+    const heads = f.repository.confirmedActionHeads({ workerStreamIds: ["absent", "target", "target"], before: count + 3 });
     assert.equal(heads.length, 1);
     assert.equal(heads[0].cursor, count + 2);
     assert.ok(identityReads <= 2, `predecessor lookup evaluated ${String(identityReads)} unrelated identities`);

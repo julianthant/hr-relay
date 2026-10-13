@@ -29,7 +29,7 @@ it("uses the existing stopped upgrade maintenance door without changing authorit
   const input = { stateRoot, processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), plan: false };
   try {
     const noWork = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade"], clock, root, admission);
-    assert.deepEqual(noWork, { output: "storage upgrade: already-upgraded (v1 → v1)\ncredentials: unchanged", exitCode: 0 });
+    assert.deepEqual(noWork, { output: "storage upgrade: already-upgraded (v2 → v2)\ncredentials: unchanged", exitCode: 0 });
     const writer = createContentAddressedArtifactWriter({ admission });
     const ordinary = await writer.stageDiagnostic(Buffer.from("ordinary pending"), { mediaType: "application/json" }, "ordinary"); ordinary.publish();
     const pinned = await writer.stageDiagnostic(Buffer.from("protected pending"), { mediaType: "application/json" }, "pinned"); pinned.publish();
@@ -48,7 +48,7 @@ it("uses the existing stopped upgrade maintenance door without changing authorit
     assert.equal(existsSync(join(artifactRoot, `${pinned.ref.sha256}.artifact`)), true);
     assert.deepEqual(pendingDiagnosticArtifacts(admission), [pinned.ref]);
     const cli = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade"], clock, root, admission);
-    assert.deepEqual(cli, { output: "storage upgrade: already-upgraded (v1 → v1)\ncredentials: unchanged\ndiagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-accounted", exitCode: 0 });
+    assert.deepEqual(cli, { output: "storage upgrade: already-upgraded (v2 → v2)\ncredentials: unchanged\ndiagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-accounted", exitCode: 0 });
     assert.deepEqual(readFileSync(databasePath), databaseBytes);
     const after = AuthorityDatabase.inspectExistingReadOnly(admission, databasePath);
     assert.equal(after.authorityGeneration, inspection.authorityGeneration);
@@ -75,7 +75,7 @@ function fixture() {
 describe("native authority admission",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each([0,2,48,99])("refuses version %i without rewriting its header or retained rows",version=>{
+  it.each([0,1,48,99])("refuses version %i without rewriting its header or retained rows",version=>{
     const f=fixture();f.open().close();
     const db=new DatabaseSync(f.path);db.exec(`PRAGMA user_version=${String(version)}`);
     const baseline=db.prepare("SELECT * FROM database_upgrades").all();db.close();
