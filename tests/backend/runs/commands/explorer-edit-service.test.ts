@@ -152,7 +152,7 @@ describe("Explorer edit service", () => {
       ...base,
       changes: [{
         kind: "edit-data-fields",
-        fields: [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" }],
+        fields: [{ nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" }],
       }],
     });
     assert.equal(brief.state, "code-change-required");
@@ -162,11 +162,10 @@ describe("Explorer edit service", () => {
     assert.deepEqual(brief.brief.semanticDiff.policies, [{
       path: "capabilities.editData.fields",
       before: JSON.stringify([
-        { fieldPath: "invitedOn.value", label: "Invited on", nodeId: "crm-dates" },
-        { fieldPath: "startsOn.value", label: "Starts on", nodeId: "crm-dates" },
-        { fieldPath: "completedOn.value", label: "Completed on", nodeId: "crm-dates" },
+        { fieldPath: "employmentDate", label: "Employment date", nodeId: "crm-dates" },
+        { fieldPath: "oathDate", label: "Oath date", nodeId: "crm-dates" },
       ]),
-      after: JSON.stringify([{ fieldPath: "startsOn.value", label: "Starts on", nodeId: "crm-dates" }]),
+      after: JSON.stringify([{ fieldPath: "employmentDate", label: "Employment date", nodeId: "crm-dates" }]),
     }]);
 
     const mixed = service().validate({
@@ -202,7 +201,7 @@ describe("Explorer edit service", () => {
         { kind: "enqueue-policy", value: "reject-active" },
         {
           kind: "edit-data-fields",
-          fields: [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" }],
+          fields: [{ nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" }],
         },
       ],
     });

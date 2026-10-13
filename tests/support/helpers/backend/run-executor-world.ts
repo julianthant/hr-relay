@@ -1,3 +1,11 @@
+import { ucpathDriver } from "../../../../src/backend/systems/ucpath/driver-declaration.js";
+import { ucpathSession } from "../../../../src/backend/systems/ucpath/session-provider.js";
+import { ucpathStore } from "../../../../src/backend/systems/ucpath/task-registry.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { crmStore } from "../../../../src/backend/systems/crm/task-registry.js";
+import { crmDriver } from "../../../../src/backend/systems/crm/driver-declaration.js";
+import { crmSession } from "../../../../src/backend/systems/crm/session-provider.js";
+import { defineBrowserStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { plan1Parent, plan1Workflows } from "../../fixtures/plan1-operation-workflows.js";
 import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
@@ -67,7 +75,7 @@ export function createRunExecutorTestWorld() {
     const deps: RunExecutorDependencies = {
       lifecycle: testRunLifecycle(authority.database, authority.clock),
       descriptor: options.descriptor ?? personLookupDescriptor,
-      stores: options.stores ?? taskStoreRegistry,
+      stores: options.stores ?? (options.descriptor?.id === ACTION_BINDING_WORKFLOW_ID ? actionBindingRegistry : taskStoreRegistry),
       authority: authority.database,
       sessions: manager,
       emitter: emitter.emitter,
@@ -171,6 +179,8 @@ export function createRunExecutorTestWorld() {
     manifest: fixtureBuildManifest([ACTION_BINDING_WORKFLOW_ID]),
   });
 
+  const actionBindingRegistry = registryWithUcpathSearch(directUcpathSearchFixtureTask);
+
   function readPersistedNotes(database: AuthorityDatabase) {
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap(record => record.payload.kind === "note" ? [NoteWireSchema.parse(record.payload.note)] : []);
   }
@@ -228,7 +238,7 @@ export function createRunExecutorTestWorld() {
             const [input] = args;
             if (input.kind !== "by-eid") throw new Error("action binding fixture requires an EID search");
             if (options.failBeforeGesture === true) {
-              throw new TaskError(SearchPersonOrg.id, "search-unavailable", "synthetic pre-gesture failure");
+              throw new TaskError(SearchPersonOrg.id, "person-lookup-ucpath-search-failed", "synthetic pre-gesture failure");
             }
             if (options.openedTarget !== undefined) recordBrowserAction("opened", options.openedTarget);
             if (options.lifecycle === true) {
@@ -254,4 +264,26 @@ export function createRunExecutorTestWorld() {
     for (const dispose of disposers.splice(0)) dispose();
   };
   return { disposers, executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup };
+}
+
+export function registryWithCrmSearch(task: typeof crmStore.tasks.searchOnboardingRecords) {
+  const replacement = defineBrowserStore("crm", crmDriver, crmSession, { ...crmStore.tasks, searchOnboardingRecords: task });
+  const stores = taskStoreRegistry.stores.map(store => store.namespace === "crm" ? replacement : store);
+  return defineTaskStoreRegistry(stores, taskStoreRegistry.corpus);
+}
+
+export const directUcpathSearchFixtureTask = defineTask(ucpathDriver, SearchPersonOrg, {
+  sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
+  retry: { attempts: 2, backoffMs: 2000, retryOn: "transient" },
+  async run({ input, ctx }) {
+    const output = await ctx.driver.searchPersonOrg(input);
+    ctx.recordData(Object.entries(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
+    return output;
+  },
+});
+
+export function registryWithUcpathSearch(task: typeof ucpathStore.tasks.searchPersonOrg) {
+  const replacement = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { ...ucpathStore.tasks, searchPersonOrg: task });
+  const stores = taskStoreRegistry.stores.map(store => store.namespace === "ucpath" ? replacement : store);
+  return defineTaskStoreRegistry(stores, taskStoreRegistry.corpus);
 }

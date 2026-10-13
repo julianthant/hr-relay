@@ -1,3 +1,4 @@
+import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../support/helpers/run-integration-world.js";
 import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.js";
 import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
@@ -152,7 +153,7 @@ function instantOf(day: string, seed: number): Date {
 function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
   const descriptor = spec.separations === true ? separationsDescriptor : personLookupDescriptor;
   const rawInput = spec.separations === true ? { documentNumber: String(4510 + spec.seed), timekeeperName: "Synthetic Timekeeper" } : { emplId: "10873698" };
-  const parsedInput = spec.separations === true ? SeparationsInput.parse(rawInput) : { emplId: "10873698", keepNonHdh: false, includeCrmDates: false };
+  const parsedInput = spec.separations === true ? SeparationsInput.parse(rawInput) : { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false };
   const resolvedInstance = spec.separations === true ? { kuali: "prod", ucpath: "prod", "new-kronos": "prod" } : { ucpath: "prod", crm: "prod" };
   const runId = uuidOf(ID_SPACE.run + spec.seed);
   const traceId = traceOf(spec.seed);
@@ -376,11 +377,7 @@ function terminalizeDone(context: SeedContext, run: RunRecord): void {
     runId: run.envelope.runId,
     output: {
       schemaHash: ACTIVE_STATUS_OUTPUT_HASH,
-      value: {
-        state: "active",
-        reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-        hdh: true,
-      },
+      value: PERSON_LOOKUP_ACTIVE,
     },
     descriptorVersion: run.envelope.descriptorVersion,
     contractFingerprint: CONTRACT_FINGERPRINT,
@@ -390,10 +387,15 @@ function terminalizeDone(context: SeedContext, run: RunRecord): void {
   });
   context.database.authority.runCheckpoints.insert(checkpoint);
 
+  const identityEvidence = personLookupTerminalIdentityEvidence(run);
+  for (const entry of identityEvidence) {
+    if (entry.state === "resolved") context.database.authority.runCheckpoints.insert(entry.checkpoint);
+  }
   const built = buildRunResult(
     personLookupDescriptor,
     run,
     [
+      ...identityEvidence,
       { state: "resolved", nodeId: "active-status", checkpoint },
       { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
     ],

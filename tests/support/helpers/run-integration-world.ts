@@ -1,3 +1,4 @@
+import { jsonLeafPaths } from "../../../src/backend/runs/provenance/task-provenance.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,26 +20,31 @@ import { type AuthorityTerminalizationHooks, AuthorityDatabase } from "./synthet
 
 
 export const PERSON_LOOKUP_ACTIVE = ReadActiveStatus.output.parse({
-  state: "active", reason: "", code: null, datesEid: null, hdh: true, candidateEids: ["10873698"],
+  state: "active", ucpathSelection: "resolved", reason: "UCPath reports an active HDH appointment", code: null, datesEid: null, hdh: true, candidateEids: ["10873698"],
   details: { search: "10873698", name: "Fixture, Person", eid: "10873698", department: "Housing", hrStatus: "Active",
     ucpath: "Found", crm: "Not found", startDate: null, endDate: null, terminationReason: null,
     foundInUcpath: null, matchedEid: null, matchedName: null },
 });
 
-export function personLookupTerminalIdentityEvidence(run: import("../../../src/models/run/record.js").RunRecord) {
-  const identity = ReadResolvedIdentity.output.parse({ shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null,
-    state: "resolved", selected: { emplId: "10873698", name: "Fixture, Person", department: "Housing", jobTitle: "Assistant",
+const TERMINAL_IDENTITY = ReadResolvedIdentity.output.parse({ shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null,
+    state: "resolved", crmIdentity: null, selected: { emplId: "10873698", name: "Fixture, Person", department: "Housing", jobTitle: "Assistant",
       employeeStatus: "active", hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "", hdh: true },
     crmRecord: null, candidateEids: ["10873698"], recoveryEid: null, crmState: "Not found", method: "ucpath" });
+const TERMINAL_IDENTITY_HASH = deriveSchemaHash(ReadResolvedIdentity.output, "output");
+const TERMINAL_IDENTITY_PATHS = jsonLeafPaths(TERMINAL_IDENTITY);
+
+export function personLookupTerminalIdentityEvidence(run: import("../../../src/models/run/record.js").RunRecord) {
+  const observedAt = run.updatedAt;
+
   return [
-    ...["search-identity", "crm-identity"].map(nodeId => ({ state: "resolved", nodeId,
+    ...["search-identity", "crm-identity"].map(nodeId => ({ state: "resolved" as const, nodeId,
       checkpoint: RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId, runId: run.envelope.runId,
         nodeId, attempt: run.envelope.attempt, claimGeneration: run.claimGeneration,
-        output: { schemaHash: deriveSchemaHash(ReadResolvedIdentity.output, "output"), value: identity },
+        output: { schemaHash: TERMINAL_IDENTITY_HASH, value: TERMINAL_IDENTITY },
         descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, implFingerprint: HASH_B,
-        provenance: [{ path: "state", source: "derived", observedAt: NOW, originalObservedAt: NOW }], writtenAt: NOW }) })),
-    { state: "not-run", nodeId: "matching", reason: "condition-false" },
-    { state: "not-run", nodeId: "crm-selected-record", reason: "condition-false" },
+        provenance: TERMINAL_IDENTITY_PATHS.map(path => ({ path, source: "derived", observedAt, originalObservedAt: observedAt })), writtenAt: observedAt }) })),
+    { state: "not-run" as const, nodeId: "matching", reason: "condition-false" },
+    { state: "not-run" as const, nodeId: "crm-selected-record", reason: "condition-false" },
   ];
 }
 

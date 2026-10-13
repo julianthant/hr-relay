@@ -10,7 +10,7 @@ import { canonicalJsonStringify } from "../../../../../src/rules/validation/cano
 import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
 import { initialProtectedStoreRecord } from "../../../../../src/models/config/protected-settings.js";
 import { createProtectedSettingsRuntimeReader } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
-import { type SettingsFactsWire } from "../../../../../src/models/dashboard/settings.js";
+import { SettingsFactsWireSchema, type SettingsFactsWire } from "../../../../../src/models/dashboard/settings.js";
 import { buildSettingsFacts } from "../../../../../src/backend/runs/queries/settings.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 
@@ -18,9 +18,15 @@ import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-
 export function createFixtureSettingsSetup({ FIXTURE_NOW }: {
 FIXTURE_NOW: typeof FixtureIdentityTypes.FIXTURE_NOW;
 }) {
-  const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
+  const facts = buildSettingsFacts({
     config: resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date(FIXTURE_NOW))).config,
     descriptors: [personLookupDescriptor],
+  });
+
+  const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = SettingsFactsWireSchema.parse({
+    ...facts,
+    workflowCapabilities: facts.workflowCapabilities.map(row => row.workflowId === "person-lookup"
+      ? { ...row, editData: { state: "declared", editableFields: 3 } } : row),
   });
 
   function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1) {

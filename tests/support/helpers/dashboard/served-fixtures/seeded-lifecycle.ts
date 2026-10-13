@@ -1,3 +1,4 @@
+import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../run-integration-world.js";
 import { fenceWriteFixture } from "../../write-fence-fixture.js";
 import { browserSessionSpanPath,workerSpanPath } from "../../../../../src/backend/logs/span-emitter.js";
 import { buildRunResult } from "../../../../../src/backend/runs/lifecycle/run-result.js";
@@ -91,7 +92,7 @@ function enqueueRun(world: SeedWorld, spec: SeedSpec): RunRecord {
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
         // Synthetic ordinary caller input, carrying the production admission source marker.
         protectedBindings: [],
-        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+        value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
       },
       ingressSchemaHash: INGRESS_SCHEMA_HASH,
     },
@@ -358,11 +359,7 @@ function terminalizeDone(world: SeedWorld, run: RunRecord, _outboxId: string): v
     runId: run.envelope.runId,
     output: {
       schemaHash: deriveSchemaHash(ReadActiveStatus.output, "output"),
-      value: {
-        state: "active",
-        reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-        hdh: true,
-      },
+      value: PERSON_LOOKUP_ACTIVE,
     },
     descriptorVersion: run.envelope.descriptorVersion,
     contractFingerprint: CONTRACT_FINGERPRINT,
@@ -372,10 +369,15 @@ function terminalizeDone(world: SeedWorld, run: RunRecord, _outboxId: string): v
   });
   world.database.authority.runCheckpoints.insert(checkpoint);
 
+  const identityEvidence = personLookupTerminalIdentityEvidence(run);
+  for (const entry of identityEvidence) {
+    if (entry.state === "resolved") world.database.authority.runCheckpoints.insert(entry.checkpoint);
+  }
   const built = buildRunResult(
     personLookupDescriptor,
     run,
     [
+      ...identityEvidence,
       { state: "resolved", nodeId: "active-status", checkpoint },
       { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
     ],

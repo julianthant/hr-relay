@@ -398,7 +398,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       attempt: input.attempt ?? 1,
       enqueuedAt,
     },
-    input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, protectedBindings: [], value: { emplId: "10873698" } }, ingressSchemaHash: HASH_A },
+    input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, protectedBindings: [], value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false } }, ingressSchemaHash: HASH_A },
     lifecycle,
     claimGeneration,
     ...(completion === undefined ? {} : {completion}),

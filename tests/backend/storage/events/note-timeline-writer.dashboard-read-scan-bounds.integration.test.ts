@@ -300,7 +300,7 @@ describe("a logs GET opens only its run partitions", () => {
     });
     const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
-    assert.deepEqual(section.payload.notes[0]?.fields, [{ key: "ssn", kind: "text", value: "951-57-1700" }]);
+    assert.deepEqual(section.payload.notes[0]?.fields, [{ key: "ssn", kind: "text", value: "[SSN masked]" }]);
   });
 
   it("refuses a same-run observation whose trace is not the run authority trace", () => {

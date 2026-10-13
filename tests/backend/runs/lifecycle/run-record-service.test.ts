@@ -639,7 +639,7 @@ describe("truthful immutable final evidence",()=>{
     const f=foundationFixture();try{
       const queued={...QUEUED_RUN,input:f.run.input,envelope:{...QUEUED_RUN.envelope,
         configSnapshotId:f.run.envelope.configSnapshotId,configFingerprint:f.run.envelope.configFingerprint,
-        contractFingerprint:f.run.envelope.contractFingerprint,runId:id_m2(220),itemId:id_m2(220)}};
+        descriptorVersion:f.run.envelope.descriptorVersion,contractFingerprint:f.run.envelope.contractFingerprint,runId:id_m2(220),itemId:id_m2(220)}};
       f.db.authority.runs.enqueue(queued);
       const service=new RunRecordService({database:f.db,clock:f.clock,ids:sequentialIdFactory(),publishQueued:()=>{}});
       const request={commandId:id_m2(221),runId:queued.envelope.runId,expectedVersion:queued.version,lifecycle:{state:"terminal",outcome,endedAt:NOW_m2}};
@@ -664,7 +664,7 @@ describe("truthful immutable final evidence",()=>{
     const f=foundationFixture();try{
       const parent=RunRecordSchema.parse({...QUEUED_RUN,input:f.run.input,envelope:{...QUEUED_RUN.envelope,
         configSnapshotId:f.run.envelope.configSnapshotId,configFingerprint:f.run.envelope.configFingerprint,
-        contractFingerprint:f.run.envelope.contractFingerprint,runId:id_m2(230),itemId:id_m2(230),shape:"operation"}});
+        descriptorVersion:f.run.envelope.descriptorVersion,contractFingerprint:f.run.envelope.contractFingerprint,runId:id_m2(230),itemId:id_m2(230),shape:"operation"}});
       const child=RunRecordSchema.parse({...parent,envelope:{...parent.envelope,runId:id_m2(231),itemId:id_m2(231),shape:"operation-member",
         parent:{runId:parent.envelope.runId,tracePrefix:parent.envelope.traceId,edgeId:"synthetic-child"}}});
       f.db.authority.runs.enqueue(parent);f.db.authority.runs.enqueue(child);

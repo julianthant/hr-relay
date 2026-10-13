@@ -28,7 +28,7 @@ export function createNotificationCompositionTestWorld() {
     if (active === undefined) throw new Error("missing fixture settings");
     const queued = { ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
       runId: desired.envelope.runId, itemId: desired.envelope.itemId,
-      traceId: desired.envelope.traceId, contractFingerprint: personLookupDescriptor.contractFingerprint,
+      traceId: desired.envelope.traceId, descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
       configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId } };
     f.db.authority.runs.enqueue(queued);
     if (desired.lifecycle.state === "queued") return f.db.authority.runs.get(queued.envelope.runId)!;

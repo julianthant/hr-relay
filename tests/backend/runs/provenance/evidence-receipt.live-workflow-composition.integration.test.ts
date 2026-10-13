@@ -1,3 +1,4 @@
+import { CrmSearchOnboardingRecords } from "../../../../src/models/systems/crm/search-onboarding-records.js";
 import { openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
 import assert from "node:assert/strict";
@@ -136,26 +137,27 @@ describe("the live person-lookup exit run explains itself", () => {
     assert.ok(identity.evidence.length >= 2, "the verdict cites both sides it compared");
 
     // ── "what did CRM actually show?" ────────────────────────────────────
-    assert.equal(shownScalar(receipt, "observations", "record.recordId"), EXIT_CRM_RECORD_ID);
-    assert.equal(shownScalar(receipt, "observations", "record.rawStage"), "Completed");
+    const observed = CrmSearchOnboardingRecords.output.parse({ state: "checked", records: shownScalar(receipt, "observations", "records") });
+    assert.equal(observed.state, "checked");
+    if (observed.state !== "checked") throw new Error("unreachable");
+    const records = observed.records;
+    assert.equal(records[0]?.recordId, EXIT_CRM_RECORD_ID);
+    assert.equal(records[0]?.emplId, "10873698");
+    assert.equal(records[0]?.firstDayOfService, "07/15/2026");
 
     // ── "what is the answer, and why?" ───────────────────────────────────
     assert.equal(shownScalar(receipt, "output", "activeStatus.state"), "active");
     assert.equal(shownScalar(receipt, "output", "activeStatus.hdh"), true);
-    const reason = shownScalar(receipt, "output", "activeStatus.reason");
-    assert.equal(typeof reason, "string");
-    assert.match(
-      reason as string,
-      new RegExp(EXIT_CRM_RECORD_ID),
-      "the verdict's own reason names the CRM record it was cross-verified against",
-    );
+    assert.equal(shownScalar(receipt, "output", "activeStatus.details.eid"), "10873698");
+    assert.equal(shownScalar(receipt, "output", "activeStatus.details.crm"), "Found");
+    assert.equal(shownScalar(receipt, "output", "activeStatus.details.startDate"), "07/15/2026");
 
 
     const searchReuse = receipt.reuse.find((entry) => entry.freshnessLimitMs === 4 * 60 * 60 * 1000);
     assert.ok(searchReuse !== undefined, "the UCPath search's freshness budget is on the receipt");
     assert.equal(searchReuse.kind, "checkpoint", "attempt 1's search was REPLAYED, not re-observed");
     assert.ok(searchReuse.ageMs > 0 && searchReuse.ageMs < searchReuse.freshnessLimitMs);
-    const crmObservation = fact(receipt, "observations", "record.emplId");
+    const crmObservation = fact(receipt, "observations", "records");
     assert.equal(crmObservation.source.kind, "system", "the CRM read was fresh-live after the second claim");
 
     // ── "what did it NOT do, and why?" ───────────────────────────────────

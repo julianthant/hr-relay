@@ -271,7 +271,7 @@ describe("protected subject recovery publication", () => {
         assert.equal(harness.database.authority.runs.enqueue(source).state, "inserted");
         createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
           runQueuedSpanEvent({ run: source, actorId: ActorIdSchema.parse("local-operator"),
-            title: protection === "subject" ? "Protected test subject" : protection === "timekeeper" ? "Separation 12345678" : `EID ${SYNTHETIC_EID}` }));
+            title: protection === "subject" ? "Protected test subject" : protection === "timekeeper" ? "Separation 12345678" : SYNTHETIC_EID }));
         assert.equal(harness.kernel.execute(protectedFixtures.runCommand("cancel", source.envelope.runId, source.version)).state, "applied");
         const terminal = harness.database.authority.runs.get(source.envelope.runId);
         assert.ok(terminal);
@@ -288,7 +288,7 @@ describe("protected subject recovery publication", () => {
         const queued = rows[0].payload;
         assert.ok(queued.kind === "span" && queued.event.t === "run.queued");
         const event = queued.event;
-        const expectedTitle = protection === "subject" ? "Protected test subject" : protection === "timekeeper" ? "Separation 12345678" : `EID ${SYNTHETIC_EID}`;
+        const expectedTitle = protection === "subject" ? "Protected test subject" : protection === "timekeeper" ? "Separation 12345678" : SYNTHETIC_EID;
         assert.equal(event.title, expectedTitle);
         if (protection === "subject") {
           assert.equal(event.subtitle, undefined);

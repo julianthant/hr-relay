@@ -131,6 +131,7 @@ describe("the executor runs no entry of an omitted step and never asks for value
     envelope.workflow = String(descriptor.id);
     envelope.traceId = `${descriptor.code}-170000-4444`;
     envelope.contractFingerprint = descriptor.contractFingerprint;
+    envelope.descriptorVersion = descriptor.version;
     if (stepOmissions !== undefined) envelope.stepOmissions = stepOmissions;
     const input = run.input as { raw: unknown; parsed: Record<string, unknown> };
     input.raw = { emplId: "10873698", expectedName: "Fixture, Person" };

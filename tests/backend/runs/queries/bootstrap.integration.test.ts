@@ -99,7 +99,7 @@ describe("bootstrap start-surface block", () => {
       expect([...served.keys()].sort())
         .toEqual(WORKFLOW_DESCRIPTORS.map((d) => String(d.id)).sort());
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
-        "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": [], "crm-dates": ["crm"] },
+        "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "crm-dates": ["crm"] },
         separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
       };
       for (const descriptor of WORKFLOW_DESCRIPTORS) {

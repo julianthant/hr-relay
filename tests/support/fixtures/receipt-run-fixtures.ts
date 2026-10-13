@@ -1,3 +1,5 @@
+import { jsonLeafPaths } from "../../../src/backend/runs/provenance/task-provenance.js";
+import { JsonValueSchema } from "../../../src/rules/validation/canonical-json.js";
 import { resolvePersonLookupIdentity, derivePersonLookupOutcome } from "../../../src/rules/matching/person-lookup.js";
 import { PersonLookupInput } from "../../../src/models/workflows/person-lookup/input.js";
 import { ReadResolvedIdentity } from "../../../src/models/workflows/person-lookup/read-resolved-identity.js";
@@ -296,7 +298,7 @@ export function seedPersonLookupExitRun(
     ["crm-selected-record", CrmVerifyOnboardingRecord.output, discovery],
   ] as const;
   const identityCheckpoints = identityCheckpointInputs.map(([nodeId, schema, value]) => checkpoint({ nodeId, attempt: 1, claimGeneration: claimed.run.claimGeneration,
-    schema: schema as Parameters<typeof deriveSchemaHash>[0], value, provenance: provenance(["state"], "derived", CROSS_VERIFY_OBSERVED_AT), writtenAt: CROSS_VERIFY_OBSERVED_AT }));
+    schema: schema as Parameters<typeof deriveSchemaHash>[0], value, provenance: provenance(jsonLeafPaths(JsonValueSchema.parse(value)), nodeId === "crm-selected-record" ? "live" : "derived", CROSS_VERIFY_OBSERVED_AT), writtenAt: CROSS_VERIFY_OBSERVED_AT }));
   for (const record of identityCheckpoints) database.authority.runCheckpoints.insert(record);
   const crossVerify = checkpoint({
     nodeId: "cross-verify",
@@ -304,17 +306,7 @@ export function seedPersonLookupExitRun(
     claimGeneration: claimed.run.claimGeneration,
     schema: CrmSearchOnboardingRecords.output,
     value: discovery,
-    provenance: provenance(
-      [
-        "state",
-        "record.recordId",
-        "record.emplId",
-        "record.fullName",
-        "record.rawStage",
-      ],
-      "live",
-      CROSS_VERIFY_OBSERVED_AT,
-    ),
+    provenance: provenance(["state", "records"], "live", CROSS_VERIFY_OBSERVED_AT),
     writtenAt: CROSS_VERIFY_OBSERVED_AT,
   });
   const activeStatus = checkpoint({
@@ -324,7 +316,7 @@ export function seedPersonLookupExitRun(
     schema: ReadActiveStatus.output,
     value: derivePersonLookupOutcome({ input: canonical, identity: resolvedIdentity }),
     provenance: provenance(
-      ["state", "reason", "hdh"],
+      jsonLeafPaths(JsonValueSchema.parse(derivePersonLookupOutcome({ input: canonical, identity: resolvedIdentity }))),
       "derived",
       ACTIVE_STATUS_AT,
     ),
@@ -367,7 +359,7 @@ export function seedPersonLookupExitRun(
   const terminal = database.authority.runs.get(EXIT_RUN_ID);
   if (terminal === undefined)
     throw new Error("exit run vanished after terminalization");
-  return { run: terminal, checkpoints: [searching, crossVerify, activeStatus] };
+  return { run: terminal, checkpoints: database.authority.runCheckpoints.listByItem(terminal.envelope.workflow, terminal.envelope.itemId) };
 }
 
 /* ── separations-kuali-finalization: deterministic receipt evidence ──────── */

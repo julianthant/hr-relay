@@ -204,8 +204,8 @@ _No tasks registered — this store is a declaration-only placeholder._
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `workflow:person-lookup/read-resolved-identity` | Identity cross-check | read | read | — (sessionless) | — | `input`, `person`, `match`, `crm` | `shouldCheckCrm`, `ucpathFound`, `crmErrorCode`, `state`, `selected`, `crmRecord`, `candidateEids`, `recoveryEid`, `crmState`, `method` | ∞ | bound |
-| `workflow:person-lookup/read-active-status` | Read employment status | read | read | — (sessionless) | — | `input`, `identity`, `verifiedCrm`, `recovered`, `match` | `datesEid`, `state`, `reason`, `code`, `hdh`, `candidateEids`, `details` | ∞ | bound |
+| `workflow:person-lookup/read-resolved-identity` | Identity cross-check | read | read | — (sessionless) | — | `input`, `person`, `match`, `crm` | `shouldCheckCrm`, `ucpathFound`, `crmErrorCode`, `state`, `crmIdentity`, `selected`, `crmRecord`, `candidateEids`, `recoveryEid`, `crmState`, `method` | ∞ | bound |
+| `workflow:person-lookup/read-active-status` | Read employment status | read | read | — (sessionless) | — | `input`, `identity`, `verifiedCrm`, `recovered`, `match` | `ucpathSelection`, `datesEid`, `state`, `reason`, `code`, `hdh`, `candidateEids`, `details` | ∞ | bound |
 
 ### `roster`
 

@@ -13,6 +13,7 @@ export function createPersonLookupProvenanceCheckpoint(input: {
   readonly contractFingerprint: string;
   readonly implFingerprint: string;
   readonly now: string;
+  readonly descriptorVersion?: number;
 }) {
   function checkpointFrom(
     nodeId: string,
@@ -32,7 +33,7 @@ export function createPersonLookupProvenanceCheckpoint(input: {
         schemaHash: deriveSchemaHash(outputSchema, "output"),
         value: JsonValueSchema.parse(outputSchema.parse(output)),
       },
-      descriptorVersion: 1,
+      descriptorVersion: input.descriptorVersion ?? 1,
       contractFingerprint: input.contractFingerprint,
       implFingerprint: input.implFingerprint,
       provenance,

@@ -38,7 +38,7 @@ it("withholds protected values and repeated display text while retaining exact p
   assert.ok(first.privateInput.includes("10873698"));
   assert.equal(JSON.stringify(first.wire).includes("10873698"), false);
   assert.equal(JSON.stringify(first.publicInput).includes("10873698"), false);
-  assert.deepEqual(first.publicInput, { emplId: { kind: "test-data-local", inputPath: "emplId",
+  assert.deepEqual(first.publicInput, { mode: "search", crmCheck: true, emplId: { kind: "test-data-local", inputPath: "emplId",
     name: "personLookupCanaryEid", sourceId: id(9302) }, keepNonHdh: false, includeCrmDates: false });
 });
 

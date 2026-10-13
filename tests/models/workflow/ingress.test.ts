@@ -68,6 +68,7 @@ describe("run-surface ingress", () => {
     assert.deepEqual(submission, { emplId: "10873698", keepNonHdh: false });
 
     assert.deepEqual(personLookupDescriptor.input.parse(submission), {
+      mode: "search", crmCheck: true,
       emplId: "10873698",
       keepNonHdh: false,
       includeCrmDates: false,
@@ -379,7 +380,7 @@ describe("a declared input-run example", () => {
     const surface = InputRunSurfaceSchema.parse(personLookupDescriptor.surfaces.inputRun);
     assert.deepEqual(
       (surface.examples ?? []).map((example) => example.key),
-      ["one-eid", "eid-and-name"],
+      ["one-eid"],
     );
   });
 });

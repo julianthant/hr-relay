@@ -37,6 +37,7 @@ const SEPARATIONS_DRY_RUN = evaluateT1bManifest(process.cwd(), "tests/support/fi
 afterEach(cleanup);
 
 const CANONICAL_INPUT = PersonLookupCanonicalInput.parse({
+  mode: "search", crmCheck: true,
   emplId: EXECUTOR_EID,
   keepNonHdh: false,
   includeCrmDates: false,

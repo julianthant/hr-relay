@@ -50,7 +50,7 @@ export const RUN_INPUT = {
   parsed: {
     schemaHash: HASH_C,
     protectedBindings: [],
-    value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+    value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
   },
   ingressSchemaHash: HASH_A,
 };

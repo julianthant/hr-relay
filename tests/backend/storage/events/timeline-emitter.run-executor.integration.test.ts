@@ -1,4 +1,7 @@
-import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { crmDriver } from "../../../../src/backend/systems/crm/driver-declaration.js";
+import { CrmSearchOnboardingRecords } from "../../../../src/models/systems/crm/search-onboarding-records.js";
+import { registryWithCrmSearch, createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
@@ -29,11 +32,19 @@ describe("failure, retry, and resume", () => {
       },
       crm: () => Object.freeze({
         system: "crm" as const,
-        readOnboardingRecord: (): Promise<never> => Promise.reject(new Error("CRM exploded")),
+        searchOnboardingRecords: (): Promise<never> => Promise.reject(new Error("CRM exploded")),
         readOnboardingDates: (): Promise<never> => Promise.reject(new Error("unused")),
       }),
     });
-    const first = executorHarness({ sessions: failingCrm });
+    const failingSearch = defineTask(crmDriver, CrmSearchOnboardingRecords, {
+      sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
+      async run({ input, ctx }) {
+        const output = { state: "checked" as const, records: await ctx.driver.searchOnboardingRecords(input) };
+        ctx.recordData(Object.entries(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
+        return output;
+      },
+    });
+    const first = executorHarness({ sessions: failingCrm, stores: registryWithCrmSearch(failingSearch) });
     const { database, clock } = first.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const failed = await executeClaimedRun(first.deps, { ...claimed, signal: SIGNAL });

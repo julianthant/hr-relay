@@ -6,7 +6,7 @@ import { explorerAuthorityFixture } from "../../support/fixtures/explorer-author
 
 const FIRST = "11111111-1111-4111-8111-111111111111";
 const SECOND = "22222222-2222-4222-8222-222222222222";
-const SOURCE_FIELD = { nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" };
+const SOURCE_FIELD = { nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" };
 
 function draft(f: ReturnType<typeof explorerAuthorityFixture>, changes: readonly unknown[] = [{ kind: "workflow-label", value: "People search" }]) {
   return { draftVersion: 1, workflowId: f.descriptor.id, baseDescriptorVersion: f.descriptor.version,

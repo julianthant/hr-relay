@@ -186,7 +186,7 @@ afterEach(_afterEachFixture0);
 const CLOCK = manualClock(new Date(NOW));
 const PLAN_TTL_MS = 10 * 60 * 1000;
 const PERSON_EID_MATCH_KEY = "eid:10873698";
-const PERSON_NAME_MATCH_KEY = "name:Battistessa, Johnnie";
+const PERSON_NAME_MATCH_KEY = "name:battistessa, johnnie";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
@@ -251,11 +251,12 @@ afterEach(_afterEachFixture0);
       PERSON_NAME_MATCH_KEY,
     ]);
     assert.equal(plan.planned[0].itemId, deriveItemId("person-lookup", PERSON_EID_MATCH_KEY));
-    assert.equal(plan.planned[0].title, "EID 10873698");
-    assert.equal(plan.planned[0].subtitle, "person lookup");
+    assert.equal(plan.planned[0].title, "10873698");
+    assert.equal(plan.planned[0].subtitle, "Person Lookup");
     // The canonical snapshot carries resolved defaults, bound to the canonical
     // schema's own hash rather than the ingress schema's.
     assert.deepEqual(plan.planned[0].input.value, {
+      mode: "search", crmCheck: true,
       emplId: "10873698",
       keepNonHdh: false,
       includeCrmDates: false,

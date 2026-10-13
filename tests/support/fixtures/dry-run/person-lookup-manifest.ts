@@ -6,7 +6,7 @@ import {
 
 const CHECKPOINT_KEY = ["workflow", "item", "node", "attempt", "claimGeneration"] as const;
 
-const READ_NODES = ["searching", "cross-verify", "active-status"] as const;
+const READ_NODES = ["searching", "search-identity", "cross-verify", "crm-identity", "crm-selected-record", "active-status"] as const;
 
 export const PERSON_LOOKUP_LIVE_READ: DryRunScenarioManifest = parseDryRunScenarioManifest({
   scenarioId: "person-lookup/live-read",
@@ -20,7 +20,7 @@ export const PERSON_LOOKUP_LIVE_READ: DryRunScenarioManifest = parseDryRunScenar
       subjectKind: "search-by-eid",
       why: "the ordinary Search mode: one current person resolved by EID, cross-verified against the CRM, folded to a verdict; the CRM dates arm stays off by the start box's declared constant",
       nodesReached: [...READ_NODES],
-      nodesExcluded: ["crm-dates"],
+      nodesExcluded: ["matching", "crm-only-recovery", "crm-dates"],
 
       checkpoints: READ_NODES.map((node) => ({ node, attempt: 3, keyedBy: [...CHECKPOINT_KEY] })),
       gateResults: [],
@@ -30,7 +30,12 @@ export const PERSON_LOOKUP_LIVE_READ: DryRunScenarioManifest = parseDryRunScenar
         confidence: "verified",
         verification: [
           { obligation: "node.searching", verdict: "verified", mandatory: false },
+          { obligation: "node.matching", verdict: "absent", mandatory: false },
+          { obligation: "node.search-identity", verdict: "verified", mandatory: true },
           { obligation: "node.cross-verify", verdict: "verified", mandatory: false },
+          { obligation: "node.crm-identity", verdict: "verified", mandatory: true },
+          { obligation: "node.crm-selected-record", verdict: "verified", mandatory: true },
+          { obligation: "node.crm-only-recovery", verdict: "unknown", mandatory: false },
           { obligation: "node.active-status", verdict: "verified", mandatory: true },
           { obligation: "node.crm-dates", verdict: "absent", mandatory: false },
           { obligation: "completion.terminal-result", verdict: "verified", mandatory: true },
