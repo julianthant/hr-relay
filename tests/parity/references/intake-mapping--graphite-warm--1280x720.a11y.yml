@@ -81,11 +81,11 @@
             - columnheader "Bound column"
             - columnheader "Suggestion"
         - rowgroup:
-          - row "Employee ID (EID) emplIdcanonical eid 10873698 · 10001573 · 10-4567 no proposal":
+          - row "Employee ID (EID) emplIdcanonical eid 10873698 · 10101010 · 10-4567 no proposal":
             - cell "Employee ID (EID) emplIdcanonical eid"
-            - cell "10873698 · 10001573 · 10-4567":
+            - cell "10873698 · 10101010 · 10-4567":
               - combobox "Source column for Employee ID (EID)": UCPath ID
-              - text: 10873698 · 10001573 · 10-4567
+              - text: 10873698 · 10101010 · 10-4567
             - cell "no proposal"
           - row "Full Name namecanonical fullName Employee Name Bind Employee Name known header, its values parse (1.00)":
             - cell "Full Name namecanonical fullName"

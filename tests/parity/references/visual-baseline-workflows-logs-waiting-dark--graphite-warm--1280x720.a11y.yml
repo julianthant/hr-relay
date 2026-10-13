@@ -63,9 +63,9 @@
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
     - text: Needs you 3
-    - button "Blirea, Glaundi — review · 16m 0s":
-      - text: Blirea, Glaundi Review Waiting on identity review 9:47 AM
-      - button "Attempts for Blirea, Glaundi": "#1"
+    - button "Morrow, Bea — review · 16m 0s":
+      - text: Morrow, Bea Review Waiting on identity review 9:47 AM
+      - button "Attempts for Morrow, Bea": "#1"
       - text: PL04236388 18m 0s
       - button "Cancel run"
     - button "Rehire eligibility sweep — review · 43m 0s":
@@ -80,9 +80,9 @@
             - cell "Tran, Bao person lookup":
               - button "Tran, Bao person lookup": Tran, Bao
             - cell "Failed"
-          - row "Blirea, Glaundi person lookup Review":
-            - cell "Blirea, Glaundi person lookup":
-              - button "Blirea, Glaundi person lookup": Blirea, Glaundi
+          - row "Morrow, Bea person lookup Review":
+            - cell "Morrow, Bea person lookup":
+              - button "Morrow, Bea person lookup": Morrow, Bea
             - cell "Review"
           - row "EID 10120933 person lookup Done":
             - cell "EID 10120933 person lookup":
@@ -239,9 +239,9 @@
       - text: PL44344042 2m 0s
       - button "Rerun"
       - button "Delete group"
-    - button "EID 10001573 — done" [pressed]:
-      - text: EID 10001573 Done 9:35 AM
-      - button "Attempts for EID 10001573": "#1"
+    - button "EID 10101010 — done" [pressed]:
+      - text: EID 10101010 Done 9:35 AM
+      - button "Attempts for EID 10101010": "#1"
       - text: PL62100434 5m 0s
       - button "Rerun"
       - button "Delete run"
