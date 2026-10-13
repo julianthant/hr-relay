@@ -93,6 +93,7 @@ function settledGateWire(
   return {
     state: "resolved",
     gateId: deterministicUuid(`gate:${runId}:${gateId}`),
+    nodeId: stored.nodeId,
     label: gateId,
     resolution: arm.outcome,
     resolvedBy: stored.resolvedBy,
@@ -122,6 +123,7 @@ export function buildRunGate(
     return {
       state: "open",
       gateId: deterministicUuid(`gate:${runId}:${run.lifecycle.gateId}`),
+      nodeId: run.lifecycle.gateId,
       label: gate === undefined ? run.lifecycle.gateId : runtimeNodeLabel(gate),
       openedAt: run.lifecycle.parkedAt,
       revision: 1,

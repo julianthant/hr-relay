@@ -228,7 +228,7 @@ export async function verifyShellCommandEffect(
     const value = request.payload.result.value;
     const decision = typeof value === "object" && value !== null && "decision" in value ? value.decision : undefined;
     return detail.rowRevision > request.target.expectedVersion && detail.gate.state === "resolved"
-      && detail.gate.gateId === request.target.gateId && detail.gate.resolvedBy === request.requestedBy
+      && detail.gate.nodeId !== undefined && String(detail.gate.nodeId) === String(request.target.gateId) && detail.gate.resolvedBy === request.requestedBy
       && detail.gate.resolution === decision ? { state: "matched", evidence: detail } : mismatch(detail);
   }
   if (request.family === "run" && request.type === "delete") {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema,QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
-import { CaptureListSchema,RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { GateDecisionWireSchema,CaptureListSchema,RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { failureDetailWireFixture,receiptWireFixture } from "../../support/helpers/trust/trust-wire-fixtures.js";
 
 const { BOOTSTRAP, RUN_1, RUN_2, NOTE_1, RECORD_1, HASH_A, HASH_B, NOW, QUEUE, DAY, DETAIL, NOTE_PAGE, REVIEW_PAGE, PEOPLE_PAGE, ARTIFACT } = createDashboardModelFixtures();
@@ -170,4 +170,18 @@ describe("lazy detail and artifact resources", () => {
     assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [capture, other] }).success, false);
     assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [capture, { ...other, origins: capture.origins }] }).success, true);
   });
+});
+
+
+it("admits exact gate nodes while frozen open and resolved fixtures may omit them", () => {
+  for (const gate of [
+    { state: "open", gateId: NOTE_1, label: "Approve", openedAt: NOW, revision: 1 },
+    { state: "resolved", gateId: NOTE_1, label: "Approve", resolution: "approved", resolvedBy: "local-operator", resolvedAt: NOW, revision: 2 },
+  ]) {
+    assert.equal(GateDecisionWireSchema.safeParse(gate).success, true);
+    const wire = GateDecisionWireSchema.parse({ ...gate, nodeId: "identity-approval" });
+    assert.ok(wire.state === "open" || wire.state === "resolved");
+    assert.equal(wire.nodeId, "identity-approval"); assert.equal(wire.gateId, NOTE_1);
+    assert.equal(GateDecisionWireSchema.safeParse({ ...gate, nodeId: "invalid gate node" }).success, false);
+  }
 });
