@@ -54,13 +54,13 @@ describe("native note writer and classified fields", () => {
     });
     const fields = note.fields ?? [];
     assert.deepEqual(fields, [
-      { key: "ssn", kind: "text", value: canarySsn },
+      { key: "ssn", kind: "text", value: "[SSN masked]" },
       { key: "resultCount", kind: "text", value: "3" },
       { key: "invalidFields", kind: "count", value: 2 },
     ]);
     const bytes = nativeLines(root, "notes")[0].text;
     assert.equal(bytes.includes(canaryPassword), false);
-    assert.equal(bytes.includes(canarySsn), true);
+    assert.equal(bytes.includes(canarySsn), false);
   });
 
   it("keeps generic note ingress append-at-now without authority scoping", () => {
@@ -143,11 +143,65 @@ describe("native note writer and classified fields", () => {
           value: { slot: "empl-id", fieldPath: "emplId", producer: { kind: "run-input", path: "emplId" },
             consumed: { state: "observed", value: "951-57-1700" } } }) },
     }, run);
-    assert.equal(note.message, 'Typed "951-57-1700" into ucpath person org eid input');
+    assert.equal(note.message, 'Typed "[SSN masked]" into ucpath person org eid input');
     assert.equal(projectNoteForOperator(note, true).message, note.message);
     const bytes = nativeLines(root, "notes")[0].text;
-    assert.equal(bytes.includes("951-57-1700"), true);
+    assert.equal(bytes.includes("951-57-1700"), false);
     assert.equal(bytes.includes("ucpath.person-org.eid-input"), true);
+  });
+
+  it("masks SSN leaves in persisted admitted actions and keeps ordinary HR values", () => {
+    const root = stateRoot();
+    const run = boundBrowserRun();
+    const clock = manualClock(new Date(run.updatedAt));
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
+    for (const value of ["951-57-1700", "951571700", { nested: ["123 45 6789", "10873698"] }, "10873698"]) {
+      const operation = DeclaredActionOccurrenceSchema.parse({ runId: run.envelope.runId,
+        definitionFingerprint: run.envelope.contractFingerprint,
+        nodeId: run.envelope.operationDisplaySnapshot.invocations[0].entryId,
+        taskId: "ucpath/search-person-org", attempt: 1, claimGeneration: 1, taskAttempt: 1,
+        invocationId: "search-operation", occurrencePath: run.envelope.operationDisplaySnapshot.invocations[0].occurrencePath,
+        logicalActionId: "fill-eid", occurrence: 1, logicalSessionId: "ucpath-worker",
+        physicalSessionId: "00000000-0000-4000-8000-000000000001",
+        value: { slot: "empl-id", fieldPath: "emplId", producer: { kind: "run-input", path: "emplId" },
+          consumed: { state: "observed", value } },
+      });
+      const note = writer.emitRunAction({ workflow: run.envelope.workflow,
+        address: { runId: run.envelope.runId, attempt: run.envelope.attempt,
+          traceId: run.envelope.traceId, spanPath: `${run.envelope.traceId}/searching#1` },
+        action: { kind: "typed", targetId: "ucpath.person-org.eid-input", at: clock.now().toISOString(), operation,
+          ...(typeof value === "string" ? { value } : {}) },
+      }, run);
+      for (const ssn of ["951-57-1700", "951571700", "123 45 6789"]) assert.equal(JSON.stringify(note).includes(ssn), false);
+      if (value === "10873698" || typeof value === "object") assert.equal(JSON.stringify(note).includes("10873698"), true);
+      assert.deepEqual(note.action?.operation?.value?.producer, operation.value?.producer);
+    }
+    const persisted = nativeLines(root, "notes").map(line => line.text).join("\n");
+    for (const ssn of ["951-57-1700", "951571700", "123 45 6789"]) assert.equal(persisted.includes(ssn), false);
+    assert.equal(persisted.includes("10873698"), true);
+  });
+
+  it("refuses malformed screenshot artifact associations before durability", () => {
+    const root = stateRoot();
+    const run = RunRecordSchema.parse(personLookupQueuedRun());
+    const clock = manualClock(new Date(run.updatedAt));
+    const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
+    for (const value of [undefined, "private screenshot text", "not-a-uuid:not-a-uuid"]) {
+      assert.throws(() => writer.emitRunAction({
+        workflow: run.envelope.workflow,
+        address: { runId: run.envelope.runId, attempt: run.envelope.attempt,
+          traceId: run.envelope.traceId, spanPath: `${run.envelope.traceId}/searching#1` },
+        action: { kind: "screenshot", targetId: "ucpath.browser-capture", at: clock.now().toISOString(), value },
+      }, run));
+    }
+    assert.deepEqual(nativeLines(root, "notes"), []);
+    const association = "aaaaaaaa-aaaa-4aaa-8aaa-a123456789aa:bbbbbbbb-bbbb-4bbb-8bbb-b123456789bb";
+    const note = writer.emitRunAction({ workflow: run.envelope.workflow,
+      address: { runId: run.envelope.runId, attempt: run.envelope.attempt,
+        traceId: run.envelope.traceId, spanPath: `${run.envelope.traceId}/searching#1` },
+      action: { kind: "screenshot", targetId: "ucpath.browser-capture", at: clock.now().toISOString(), value: association },
+    }, run);
+    assert.equal(note.action?.value, association, "validated structural artifact identity remains exact");
   });
 
   it("drops a protected declared action value again at the durable note boundary", () => {

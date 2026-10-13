@@ -191,6 +191,13 @@ export function redactDiagnosticFields(input: unknown): z.infer<typeof Redaction
   return RedactionResultSchema.parse({ fields, warnings });
 }
 
+const StructuralUuidSchema = z.uuid();
+
+export function maskSsnText(text: string): string {
+  if (text.length === 36 && StructuralUuidSchema.safeParse(text).success) return text;
+  return text.replace(/(?<!\d)\d{3}[- ]?\d{2}[- ]?\d{4}(?!\d)/gu, "[SSN masked]");
+}
+
 // Diagnostic text never carries authorization material or URL query values.
 export function sanitizeDebugText(text: string): string {
   const credentialKey = /password|passwd|token|cookie|authorization|private[-_ ]?key|challenge|signature/iu;
@@ -229,7 +236,7 @@ export function sanitizeDebugText(text: string): string {
     redacted += text.slice(retainedFrom, start) + '"[removed]"';
     retainedFrom = end;
   }
-  text = (redacted + text.slice(retainedFrom)).replace(/(?<!\d)\d{3}[- ]?\d{2}[- ]?\d{4}(?!\d)/gu, "[SSN masked]");
+  text = maskSsnText(redacted + text.slice(retainedFrom));
   return text.replace(/https?:\/\/[^\s<>"']+/gu, raw => {
     try { const url = new URL(raw); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); }
     catch { return "[invalid-url]"; }
