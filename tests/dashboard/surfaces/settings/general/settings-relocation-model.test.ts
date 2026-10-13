@@ -106,3 +106,66 @@ for (const path of ["reload", "conflict-refresh"] as const) {
     assert.equal(commands.length, path === "reload" ? 0 : 1);
   });
 }
+
+it("maps transport uncertainty to relocation guidance while retaining the exact replay lock", async () => {
+  let view = INITIAL;
+  const reads: Promise<StorageRelocationPlanView>[] = [];
+  const commands: string[] = [];
+  let failFirstCommand = true;
+  const transportClient = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+    if (url.endsWith("/settings/storage-relocation")) return Response.json(view);
+    assert.equal(url, "http://fixture.test/api/v1/commands");
+    if (typeof init?.body !== "string") throw new Error("relocation body missing");
+    commands.push(init.body);
+    if (failFirstCommand) { failFirstCommand = false; throw new Error("fixture response lost after dispatch"); }
+    const command = StorageRelocationCommandRequestSchema.parse(JSON.parse(init.body));
+    if (command.type !== "plan-storage-relocation") throw new Error("expected plan");
+    view = StorageRelocationPlanViewSchema.parse({ ...view, revision: 1, pending: { commandId: command.commandId,
+      writeId: command.payload.writeId, desiredPair: command.payload.desiredPair,
+      desiredDigest: command.payload.desiredDigest, requestFingerprint: command.payload.requestFingerprint } });
+    return Response.json(CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+      affectedTargets: [{ family: "storage-relocation", revision: 1 }] }));
+  } });
+  const client: DashboardClient = { ...transportClient, storageRelocationPlans: () => {
+    const promise = transportClient.storageRelocationPlans(); reads.push(promise); return promise;
+  } };
+  let executor: CommandExecutor | undefined;
+  function Surface() {
+    executor = useDashboardCommandExecutor();
+    _currentController = useStorageRelocation({ actorId: "local-operator" });
+    return createElement("div", null, _currentController.save.state);
+  }
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client,
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Surface) }) })));
+  assert.ok(executor);
+  const execute = executor.execute.bind(executor);
+  const replay = executor.replay.bind(executor);
+  const settlements: Promise<CommandOutcome>[] = [];
+  vi.spyOn(executor, "execute").mockImplementation((input, options) => {
+    const settlement = execute(input, options); settlements.push(settlement); return settlement;
+  });
+  vi.spyOn(executor, "replay").mockImplementation((commandId, options) => {
+    const settlement = replay(commandId, options); settlements.push(settlement); return settlement;
+  });
+  const controller = () => { assert.ok(_currentController); return _currentController; };
+  await act(async () => { await reads[0]; });
+  await act(async () => controller().update("artifactRoot", "/tmp/next-artifacts"));
+  await act(async () => { controller().submit(); await Promise.all(settlements); });
+  const uncertainSave = controller().save;
+  assert.ok(uncertainSave.state === "unconfirmed");
+  assert.equal(uncertainSave.code, "STORAGE_RELOCATION_OUTCOME_UNCERTAIN");
+  assert.equal(uncertainSave.message, "The plan write could not be confirmed. It may already be recorded. Retry the exact attempt; your draft is retained.");
+  assert.equal(controller().dirtyCount, 1); assert.equal(controller().locked, true);
+  const retained = executor.retainedAttempts()[0];
+  assert.ok(retained); assert.equal(retained.state, "settled"); assert.equal(retained.outcome?.kind, "uncertain");
+  const commandId = retained.request.commandId;
+  const originalBody = retained.body;
+  assert.equal(commands[0], originalBody);
+  await act(async () => { controller().update("artifactRoot", "/tmp/changed-artifacts"); });
+  assert.equal(controller().draft.artifactRoot, "/tmp/next-artifacts");
+  await act(async () => { controller().retry(); await Promise.all(settlements.slice(1)); });
+  assert.deepEqual(commands, [originalBody, originalBody]);
+  assert.equal(executor.retainedAttempts()[0]?.request.commandId, commandId);
+  assert.equal(controller().save.state, "applied"); assert.equal(controller().dirtyCount, 0); assert.equal(controller().locked, false);
+});

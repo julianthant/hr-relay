@@ -8,13 +8,14 @@ import {
   storageRelocationDesiredDigest, storageRelocationRequestFingerprint,
   type CommandResult, type StorageRelocationCommandRequest, type StorageRelocationPlanView,
 } from "../../../../rules/commands/commands.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { commandSaveState, settingsScopeRecoveryState, type SettingsSaveListener } from "../editor/settings-attempt-model.js";
 import { useSettingsClient } from "../editor/settings-client.js";
 
 type Pair = StorageRelocationPlanView["sourcePair"];
 type Field = keyof Pair;
 type Draft = Partial<Record<Field, string>>;
-type Save = { readonly state: "idle" | "saving" | "applied" } | { readonly state: "conflict" | "refused" | "unconfirmed"; readonly message: string };
+type Save = { readonly state: "idle" | "saving" | "applied" } | { readonly state: "conflict" | "refused" | "unconfirmed"; readonly code?: string; readonly message: string };
 type Read = { readonly state: "loading" } | { readonly state: "unavailable" } | { readonly state: "available"; readonly view: StorageRelocationPlanView };
 
 function validPath(value: string): boolean {
@@ -130,7 +131,10 @@ export function useStorageRelocation(input: Readonly<{ actorId: string; onSaved?
         if (view !== undefined) { lastVerified.current = view; setRead({ state: "available", view }); setReadProblem(false); }
         if (outcome.kind === "conflict") void readCurrent().catch(() => { if (generation.current === request) markReadUnavailable(); });
         if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) attempt.current = undefined;
-        setSave(outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome));
+        const saveState = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome);
+        setSave(outcome.kind === "uncertain" && outcome.feedback.code === "COMMAND_OUTCOME_UNCERTAIN"
+          ? { state: "unconfirmed", code: "STORAGE_RELOCATION_OUTCOME_UNCERTAIN", message: formatErrorCatalogFailure(createErrorCatalogFailure("STORAGE_RELOCATION_OUTCOME_UNCERTAIN", {})).text }
+          : saveState);
         if (outcome.kind === "confirmed") {
           setDraft({});
           input.onSaved?.(command.type === "plan-storage-relocation"

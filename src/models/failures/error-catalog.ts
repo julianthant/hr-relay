@@ -41,6 +41,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The command outcome is uncertain. Check its result before taking further action.",
     EmptyParametersSchema,
   ),
+  STORAGE_RELOCATION_OUTCOME_UNCERTAIN: catalogEntry(
+    "The plan write could not be confirmed. It may already be recorded. Retry the exact attempt; your draft is retained.",
+    EmptyParametersSchema,
+  ),
   COMMAND_RESULT_IDENTITY_MISMATCH: catalogEntry(
     "The command response did not match the requested command. Review local diagnostic evidence.",
     EmptyParametersSchema,

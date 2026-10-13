@@ -161,7 +161,7 @@ describe("storage relocation Paths controls", () => {
     assert.equal(commands.length, 0); assert.match(surface.host.textContent ?? "", /canonical absolute/u);
     await edit("Artifact folder", "/tmp/new-artifacts"); await idle();
     assert.equal(commands.length, 1); assert.equal(surface.controller().uncertain, true);
-    assert.ok(surface.host.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text));
+    assert.ok(surface.host.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("STORAGE_RELOCATION_OUTCOME_UNCERTAIN", {})).text));
     fail = false;
     await act(async () => { surface.controller().retry(); await Promise.resolve(); });
     await act(async () => undefined);
