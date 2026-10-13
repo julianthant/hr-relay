@@ -144,7 +144,7 @@ describe("start plan step omissions", () => {
   it("refuses typed facts for a plan that carries more than one subject", () => {
     const harness = harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
-      submissions: [{ eid: "10873698" }, { eid: "10001573" }],
+      submissions: [{ eid: "10873698" }, { eid: "10101010" }],
       selectedStepKeys: ["folding", "auditing"],
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
     })));

@@ -22,7 +22,7 @@ function row(sourceRow: number, eid: string | null, name: string | null): Roster
 describe("matchRosterSubjects — the redesigned composition, every arm", () => {
   const roster = [
     row(2, "10456712", "Battistessa, Johnnie"),
-    row(3, "10998801", "Blirea, Glaundi"),
+    row(3, "10998801", "Morrow, Bea"),
     row(4, "10777771", "Doe, John"),
     row(5, "10777772", "Doe, John"),
     row(6, null, "Rowless, Norman"),
@@ -70,7 +70,7 @@ describe("matchRosterSubjects — the redesigned composition, every arm", () => 
   });
 
   it("matches by name alone at the exact tier", () => {
-    const [match] = matchRosterSubjects([{ subjectId: SUBJECT_ID, name: "Glaundi Blirea" }], roster);
+    const [match] = matchRosterSubjects([{ subjectId: SUBJECT_ID, name: "Bea Morrow" }], roster);
     assert.ok(match !== undefined);
     assert.equal(match.matchedEid, "10998801");
     assert.equal(match.matchConfidence, 1);
@@ -86,9 +86,9 @@ describe("matchRosterSubjects — the redesigned composition, every arm", () => 
   });
 
   it("reports a sub-threshold best score honestly as no-match with the near-miss number", () => {
-    // "nguyen thhi" vs "blirea glaundi" is Levenshtein 1 on the joined tokens —
+    // "morrow beaa" vs "morrow bea" is Levenshtein 1 on the joined tokens —
     // the 0.7 fuzzy tier — and 0.7 sits below the 0.85 accept floor.
-    const [match] = matchRosterSubjects([{ subjectId: SUBJECT_ID, name: "Nguyen, Thhi" }], roster);
+    const [match] = matchRosterSubjects([{ subjectId: SUBJECT_ID, name: "Morrow, Beaa" }], roster);
     assert.ok(match !== undefined);
     assert.equal(match.matchedEid, null);
     assert.equal(match.mismatch, "no-match");
@@ -98,7 +98,7 @@ describe("matchRosterSubjects — the redesigned composition, every arm", () => 
 
   it("never overrides a claimed EID with a name-matched different one — that is a conflict", () => {
     const [match] = matchRosterSubjects(
-      [{ subjectId: SUBJECT_ID, eid: EidSchema.parse("10999999"), name: "Glaundi Blirea" }],
+      [{ subjectId: SUBJECT_ID, eid: EidSchema.parse("10999999"), name: "Bea Morrow" }],
       roster,
     );
     assert.deepEqual(match, {

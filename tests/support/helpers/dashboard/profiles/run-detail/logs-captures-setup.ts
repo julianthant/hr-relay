@@ -51,7 +51,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
       { level: "info", minute: 54, message: "Selecting the exact name match" },
     ]],
     [FIXTURE_IDS.doneRun, 3, [
-      { level: "info", minute: 35, message: "Searching UCPath directory for EID 10001573" },
+      { level: "info", minute: 35, message: "Searching UCPath directory for EID 10101010" },
       { level: "info", minute: 36, message: "Cross-verified against the CRM onboarding record" },
       { level: "info", minute: 37, message: "Active status resolved: active" },
       { level: "info", minute: 38, message: "CRM onboarding dates recorded" },
@@ -63,12 +63,12 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
       { level: "error", minute: 36, message: "Run failed at cross-verify; nothing was written" },
     ]],
     [FIXTURE_IDS.openGateRun, 5, [
-      { level: "info", minute: 47, message: "Searching UCPath directory for Blirea, Glaundi" },
-      { level: "warning", minute: 48, message: "Two candidates share the name Blirea, Glaundi" },
+      { level: "info", minute: 47, message: "Searching UCPath directory for Morrow, Bea" },
+      { level: "warning", minute: 48, message: "Two candidates share the name Morrow, Bea" },
       { level: "info", minute: 49, message: "identity-review gate opened for candidate selection" },
     ]],
     [FIXTURE_IDS.gateTypedEidRun, 44, [
-      { level: "info", minute: 22, message: "Searching UCPath directory for Blirea, Glaundi" },
+      { level: "info", minute: 22, message: "Searching UCPath directory for Morrow, Bea" },
       { level: "warning", minute: 23, message: "The UCPath detail displays a different name for this EID" },
       { level: "info", minute: 24, message: "identity-review gate opened; the EID must be typed" },
     ]],

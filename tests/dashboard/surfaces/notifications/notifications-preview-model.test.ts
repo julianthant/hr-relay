@@ -21,7 +21,7 @@ describe("interactive notification destinations", () => {
     const failed = state.items.find(item => item.destination.kind === "run" && item.destination.runId === FIXTURE_IDS.failedRun)!;
     expect(failed).toMatchObject({ subject: "EID 10555001", title: "Run failed", destination: { kind: "run", runId: FIXTURE_IDS.failedRun, day: FIXTURE_DAY } });
     const waiting = state.items.find(item => item.destination.kind === "run" && item.destination.runId === FIXTURE_IDS.openGateRun)!;
-    expect(waiting).toMatchObject({ subject: "Blirea, Glaundi", title: "Approval waiting", detail: "Waiting on identity review", destination: { kind: "run", runId: FIXTURE_IDS.openGateRun } });
+    expect(waiting).toMatchObject({ subject: "Morrow, Bea", title: "Approval waiting", detail: "Waiting on identity review", destination: { kind: "run", runId: FIXTURE_IDS.openGateRun } });
     for (const item of state.items) expect(notificationDestinationRefusal(item.destination, input)).toBeUndefined();
   });
   it("connects every relevant top-level queue row, including groups and parked writes", () => {

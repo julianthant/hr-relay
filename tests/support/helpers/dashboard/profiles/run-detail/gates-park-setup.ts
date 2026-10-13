@@ -23,7 +23,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     resumeAt: "approval",
     expectedVersion: 5,
     observedAt: at(48),
-    documentName: "Blirea, Glaundi",
+    documentName: "Morrow, Bea",
   });
 
   const FIXTURE_IDENTITY_GATE_TYPED_EID = buildFixtureIdentityGate({

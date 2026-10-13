@@ -208,7 +208,7 @@ afterEach(_afterEachFixture0);
     const ids = sequentialIdFactory();
     const generation = database.getMeta().authorityGeneration;
     assert.throws(() => planStart(plannerDeps(database, ids),
-      baseRequest([{ emplId: "10873698" }, { emplId: "10001573", timekeeperName: "Synthetic unbound signer" }])),
+      baseRequest([{ emplId: "10873698" }, { emplId: "10101010", timekeeperName: "Synthetic unbound signer" }])),
     /protected input timekeeperName binding is absent/u);
     assert.deepEqual(ids.minted(), []);
     assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), []);
@@ -274,7 +274,7 @@ afterEach(_afterEachFixture0);
       plannerDeps(database),
       baseRequest([{ emplId: "10873698" }], { captureBrowserScreenshots: true }),
     );
-    const defaulted = planStart(plannerDeps(database), baseRequest([{ emplId: "10001573" }]));
+    const defaulted = planStart(plannerDeps(database), baseRequest([{ emplId: "10101010" }]));
     const { captureBrowserScreenshots: _captureBrowserScreenshots, ...historicalBytes } = captured;
     void _captureBrowserScreenshots;
     const historical = StartPlanRecordSchema.parse(historicalBytes);
@@ -290,7 +290,7 @@ afterEach(_afterEachFixture0);
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }], { stepOmissions }));
     assert.deepEqual(plan.stepOmissions, stepOmissions);
     assert.deepEqual(StartPlanRecordSchema.parse(plan).stepOmissions, stepOmissions);
-    const plain = planStart(plannerDeps(database), baseRequest([{ emplId: "10001573" }]));
+    const plain = planStart(plannerDeps(database), baseRequest([{ emplId: "10101010" }]));
     assert.equal(Object.hasOwn(plain, "stepOmissions"), false);
   });
 
@@ -322,7 +322,7 @@ afterEach(_afterEachFixture0);
     const ids = sequentialIdFactory();
     const submissions = new Array<unknown>(3);
     submissions[0] = { emplId: "10873698" };
-    submissions[2] = { emplId: "10001573" };
+    submissions[2] = { emplId: "10101010" };
     const authorityGeneration = database.getMeta().authorityGeneration;
 
     assert.equal(Object.hasOwn(submissions, 1), false, "the fixture must contain a real middle hole");
@@ -412,7 +412,7 @@ afterEach(_afterEachFixture0);
     const same = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     const two = planStart(plannerDeps(database), baseRequest([
       { emplId: "10873698" },
-      { emplId: "10001573" },
+      { emplId: "10101010" },
     ]));
     assert.equal(one.inputFingerprint, same.inputFingerprint);
     assert.equal(one.inputFingerprint, same.inputFingerprint);

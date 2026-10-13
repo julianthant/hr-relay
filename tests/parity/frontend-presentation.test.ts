@@ -233,7 +233,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const url = new URL(page.url()); url.searchParams.set("logPreview", scenario);
         await page.goto(url.toString());
       };
-      await expect(surface.getByRole("heading", { name: "EID 10001573", exact: true })).toBeVisible();
+      await expect(surface.getByRole("heading", { name: "EID 10101010", exact: true })).toBeVisible();
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`).click();
       await expect(surface.getByRole("heading", { name: "Battistessa, Johnnie", exact: true })).toBeVisible();
       await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveCount(0);
@@ -260,7 +260,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const defaultReview = surface.getByRole("article", { name: "Confirm the employee match", exact: true });
       await expect(defaultReview).toBeInViewport();
       await expect(defaultReview.locator("figure")).toHaveCount(1);
-      await expect(defaultReview).toContainText("Blirea, Glaundi");
+      await expect(defaultReview).toContainText("Morrow, Bea");
       for (const part of ['.log-decision-header', '.log-decision-body', '.log-comparison-frame', '.log-comparison', '.log-comparison thead', '.log-comparison .different']) {
         const alpha = await defaultReview.locator(part).first().evaluate(node => {
           const context = document.createElement('canvas').getContext('2d');

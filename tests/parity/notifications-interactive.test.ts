@@ -20,7 +20,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const inbox = page.getByRole("complementary", { name: "Workspace", exact: true }).getByRole("region", { name: "Notifications", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true, includeHidden: true });
       await expect(bell).toHaveAccessibleName("Notifications, 3 unread"); await bell.click();
-      await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "Blirea, Glaundi", exact: true }) }).getByRole("button", { name: "Mark unread: Approval waiting", exact: true }).click();
+      await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "Morrow, Bea", exact: true }) }).getByRole("button", { name: "Mark unread: Approval waiting", exact: true }).click();
       await expect(bell).toHaveAccessibleName("Notifications, 4 unread");
       await inbox.getByRole("tab", { name: "Unread", exact: true }).click();
       await inbox.getByRole("button", { name: "Read all", exact: true }).click();
@@ -57,15 +57,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true })).toHaveCount(0);
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toHaveCount(0);
       await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(drawer).toHaveCount(0);
-      await bell.click(); await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "Blirea, Glaundi", exact: true }) }).getByRole("button", { name: "Review run", exact: true }).click();
+      await bell.click(); await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "Morrow, Bea", exact: true }) }).getByRole("button", { name: "Review run", exact: true }).click();
       await expect(inbox).toHaveCount(0); expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.openGateRun);
-      await expect(logs.getByRole("heading", { level: 2 })).toHaveText("Blirea, Glaundi");
+      await expect(logs.getByRole("heading", { level: 2 })).toHaveText("Morrow, Bea");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.openGateRun}"]`)).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.openGateRun}"] [data-demo-row-title]`)).toBeInViewport();
       await expect(page.locator("#dashboard-main-region")).toBeFocused();
-      await bell.click(); await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "EID 10001573", exact: true }) }).getByRole("button", { name: "Open log", exact: true }).click();
+      await bell.click(); await inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "EID 10101010", exact: true }) }).getByRole("button", { name: "Open log", exact: true }).click();
       expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.doneRun);
-      await expect(logs.getByRole("heading", { level: 2 })).toHaveText("EID 10001573");
+      await expect(logs.getByRole("heading", { level: 2 })).toHaveText("EID 10101010");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.doneRun}"] [data-demo-row-title]`)).toBeInViewport();
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
@@ -100,9 +100,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("menuitemcheckbox", { name: /^Running /u }).click(); await page.keyboard.press("Escape");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.failedRun}"]`)).toHaveCount(0);
       const targets = [
-        ["EID 10555001", FIXTURE_IDS.failedRun], ["Blirea, Glaundi", FIXTURE_IDS.openGateRun],
+        ["EID 10555001", FIXTURE_IDS.failedRun], ["Morrow, Bea", FIXTURE_IDS.openGateRun],
         ["Rehire eligibility sweep", FIXTURE_IDS.groupOf4], ["EID 10777012", FIXTURE_IDS.parkedRun],
-        ["EID 10333015", FIXTURE_IDS.partialRun], ["EID 10001573", FIXTURE_IDS.doneRun],
+        ["EID 10333015", FIXTURE_IDS.partialRun], ["EID 10101010", FIXTURE_IDS.doneRun],
         ["Onboarding cohort — July stragglers", FIXTURE_IDS.groupOf12], ["Separation audit — August", FIXTURE_IDS.groupOf13],
       ] as const;
       for (const [subject, id] of targets) {

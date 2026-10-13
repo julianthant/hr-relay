@@ -92,10 +92,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const modalBounds = (await search.boundingBox())!;
       expect(Math.abs(modalBounds.x + modalBounds.width / 2 - width / 2)).toBeLessThanOrEqual(1);
       expect(Math.abs(modalBounds.y + modalBounds.height / 2 - (width === 1024 ? 720 : 1000) / 2)).toBeLessThanOrEqual(1);
-      await input.fill("NGUYEN review");
+      await input.fill("MORROW review");
       await expect(search.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(2);
       const result = search.locator(`[role="option"][id$="-${FIXTURE_IDS.openGateRun}"]`);
-      await expect(result).toContainText("Blirea, Glaundi");
+      await expect(result).toContainText("Morrow, Bea");
       const resultIndex = await search.getByRole("option").evaluateAll((options, runId) => options.findIndex(option => option.id.endsWith(`-${runId}`)), FIXTURE_IDS.openGateRun);
       expect(resultIndex).toBeGreaterThanOrEqual(0);
       await input.press("Home");
@@ -130,7 +130,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(search).toHaveCount(0);
       await trigger.click();
       await expect(input).toBeFocused();
-      await input.fill('Nguyen');
+      await input.fill('Morrow');
       await search.getByRole('button', { name: 'Clear search', exact: true }).click();
       await expect(input).toHaveValue('');
       await expect(input).toBeFocused();
@@ -285,7 +285,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const ping = page.locator('[data-slot="toast"]');
       await expect(ping).toBeVisible();
       await expect(ping).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
-      await expect(ping).toContainText("EID 10001573");
+      await expect(ping).toContainText("EID 10101010");
 
       await captureSemanticEvidence(page, info, `notification-ping-${size}`);
       await ping.getByRole("button", { name: "Open notifications", exact: true }).click();

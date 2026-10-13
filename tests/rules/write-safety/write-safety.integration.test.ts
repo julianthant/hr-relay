@@ -166,7 +166,7 @@ afterEach(() => {
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, databasePaths.get(database) ?? (() => { throw new Error("missing fixture path"); })());
     fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const generationBefore = database.getMeta().authorityGeneration;
-    const competingKey = "10001573|termination|2026-08-03";
+    const competingKey = "10101010|termination|2026-08-03";
     const competingIntent = {
       ...WRITE_INTENT_ATTEMPTING,
       writeIntentId: UUID_8,
@@ -426,12 +426,12 @@ afterEach(cleanup);
   it("a throwing pre-write probe preserves classified authority evidence without fencing", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);
-    h.world.probeResults.push(new Error("UCPath grid exposed 10001573 before it failed"));
+    h.world.probeResults.push(new Error("UCPath grid exposed 10101010 before it failed"));
     await assert.rejects(h.execute(contextFor(run, claim)), (error: unknown) => {
       assert.ok(error instanceof WriteSafetyAuthorityError);
       assert.equal(error.authorityReason.code, "prewrite-probe-exception");
       assert.equal(error.authorityReason.evidence.kind, "exception");
-      assert.doesNotMatch(error.message, /10001573/u);
+      assert.doesNotMatch(error.message, /10101010/u);
       return true;
     });
     assert.equal(intentByKey(h.database), undefined);

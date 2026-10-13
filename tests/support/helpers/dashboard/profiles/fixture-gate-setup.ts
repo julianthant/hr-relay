@@ -25,7 +25,7 @@ export function createFixtureGateSetup() {
       jobSummary: {
         pageStateId: "ucpath.person-org.detail-ready",
         emplId: FIXTURE_GATE_CHECKED_EID as never,
-        displayedName: "Blirea, Glaundi",
+        displayedName: "Morrow, Bea",
         jobRows: rows,
         rowCount: rows.length,
         renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
@@ -35,7 +35,7 @@ export function createFixtureGateSetup() {
         status: "resolved",
         selected: {
           emplId: FIXTURE_GATE_CHECKED_EID as never,
-          name: "Blirea, Glaundi",
+          name: "Morrow, Bea",
           department: "Facilities Management",
           jobTitle: "BLDG MAINT WORKER SR",
           employeeStatus: "active",

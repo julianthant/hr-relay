@@ -61,8 +61,8 @@ const SeparationsKronosTimecardCanonicalInput = defineCanonicalInput(
       rangeEnd: "08/12/2026",
     },
     {
-      emplId: "10001573",
-      expectedName: "Blirea, Glaundi",
+      emplId: "10101010",
+      expectedName: "Morrow, Bea",
       rangeStart: "1/1/2026",
       rangeEnd: "3/31/2026",
       searchTimeoutMs: 30_000,

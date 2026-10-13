@@ -83,7 +83,7 @@ describe_m1("derived identity", () => {
   it_m1("derives one logical item per match key, stably", () => {
     const first = deriveItemId_m1("person-lookup", "eid:10873698");
     assert_m1.equal(first, deriveItemId_m1("person-lookup", "eid:10873698"));
-    assert_m1.notEqual(first, deriveItemId_m1("person-lookup", "eid:10001573"));
+    assert_m1.notEqual(first, deriveItemId_m1("person-lookup", "eid:10101010"));
     assert_m1.notEqual(first, deriveItemId_m1("separation", "eid:10873698"));
   });
 

@@ -54,7 +54,7 @@ const ControlInput = z.strictObject({
 const ControlCanonicalInput = defineCanonicalInput(
   ControlInput,
   z.strictObject({ name: z.string().min(1), route: z.enum(["left", "right"]) }),
-  [{ name: "Battistessa, Johnnie" }, { name: "Blirea, Glaundi", route: "right" }],
+  [{ name: "Battistessa, Johnnie" }, { name: "Morrow, Bea", route: "right" }],
 );
 const GateResultSchema = z.strictObject({ approved: z.boolean() });
 

@@ -8,7 +8,7 @@ scoreNameMatch,
 
 describe("scoreNameMatch — the ported five-tier scorer", () => {
   it("scores identical token sets 1.0 regardless of order and punctuation", () => {
-    assert.deepEqual(scoreNameMatch("Blirea, Glaundi", "Glaundi Blirea"), { score: 1.0, reason: "exact" });
+    assert.deepEqual(scoreNameMatch("Morrow, Bea", "Bea Morrow"), { score: 1.0, reason: "exact" });
   });
 
   it("scores an extra middle name as a 0.9 token-set match", () => {
@@ -25,11 +25,11 @@ describe("scoreNameMatch — the ported five-tier scorer", () => {
   });
 
   it("scores unrelated names 0", () => {
-    assert.deepEqual(scoreNameMatch("Zebulon Highwater", "Glaundi Blirea"), { score: 0, reason: "none" });
+    assert.deepEqual(scoreNameMatch("Zebulon Highwater", "Bea Morrow"), { score: 0, reason: "none" });
   });
 
   it("scores an empty side 0", () => {
-    assert.deepEqual(scoreNameMatch("", "Glaundi Blirea"), { score: 0, reason: "none" });
+    assert.deepEqual(scoreNameMatch("", "Bea Morrow"), { score: 0, reason: "none" });
   });
 });
 
@@ -51,6 +51,6 @@ describe("classifyNameSimilarity — the ported same/similar/different classifie
   });
 
   it("calls an empty side different", () => {
-    assert.equal(classifyNameSimilarity("", "Glaundi Blirea"), "different");
+    assert.equal(classifyNameSimilarity("", "Bea Morrow"), "different");
   });
 });

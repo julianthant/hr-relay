@@ -39,11 +39,11 @@ const PARSER = InputParserSpecSchema.parse({
 
 describe("run-surface ingress", () => {
   it("splits typed text into one entry per intended run and classifies each", () => {
-    const entries = parseInputRunText(PARSER, " 10873698 ; Battistessa, Johnnie\n10606060 ");
+    const entries = parseInputRunText(PARSER, " 10873698 ; Battistessa, Johnnie\n10101010 ");
     assert.deepEqual(entries.map((entry) => entry.sourceText), [
       "10873698",
       "Battistessa, Johnnie",
-      "10001573",
+      "10101010",
     ]);
     assert.deepEqual(entries.map((entry) => entry.fields[0].field), ["emplId", "name", "emplId"]);
 

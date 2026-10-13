@@ -13,7 +13,7 @@ import { readActiveStatusTask } from "../../../../src/workflows/person-lookup/ta
 
 it("names inconsistent UCPath and CRM identities without recording output facts", async () => {
   const expectedEid = EidSchema.parse("10873698");
-  const otherEid = EidSchema.parse("10001573");
+  const otherEid = EidSchema.parse("10101010");
   const records: unknown[] = [];
   const refusals: TaskRefusal[] = [];
   const ctx = {
@@ -163,14 +163,14 @@ describe("Person Lookup task implementations", () => {
           },
           crm: {
             state: "absent",
-            queriedEid: EidSchema.parse("10001573"),
+            queriedEid: EidSchema.parse("10101010"),
             reason: "no record for the wrong person",
           },
           keepNonHdh: false,
         },
         ctx: commonCtx,
       }),
-      new RegExp(`UCPath EID ${directIdentifierDisplay("10873698")} but CRM EID ${directIdentifierDisplay("10001573")}`),
+      new RegExp(`UCPath EID ${directIdentifierDisplay("10873698")} but CRM EID ${directIdentifierDisplay("10101010")}`),
     );
   })
 });

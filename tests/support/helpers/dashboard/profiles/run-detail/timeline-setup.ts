@@ -90,7 +90,7 @@ export function createTimelineSetup({ at, traceOf, uuidOf, WORKFLOW_ID, absent, 
       timeline: [{ seed: 2, minute: 52, label: "searching", state: "active" }],
     }),
     [FIXTURE_IDS.doneRun]: detailOf({
-      seed: 3, panelKind: "run", title: "EID 10001573", status: "done",
+      seed: 3, panelKind: "run", title: "EID 10101010", status: "done",
       gate: NO_GATE,
       outcome: { state: "terminal", result: "verified-done", completedAt: at(39) },
       timeline: [
@@ -110,7 +110,7 @@ export function createTimelineSetup({ at, traceOf, uuidOf, WORKFLOW_ID, absent, 
       ],
     }),
     [FIXTURE_IDS.openGateRun]: detailOf({
-      seed: 5, panelKind: "run", title: "Blirea, Glaundi", status: "awaiting-approval",
+      seed: 5, panelKind: "run", title: "Morrow, Bea", status: "awaiting-approval",
       gate: { state: "open", gateId: uuidOf(105), label: "identity-review", openedAt: at(49), revision: 5 },
       outcome: STILL_RUNNING,
       timeline: [
@@ -120,7 +120,7 @@ export function createTimelineSetup({ at, traceOf, uuidOf, WORKFLOW_ID, absent, 
       sections: ["logs", "receipt", "context-data", "context-attempts", "identity-gate"],
     }),
     [FIXTURE_IDS.gateTypedEidRun]: detailOf({
-      seed: 44, panelKind: "member", title: "Blirea, Glaundi", status: "awaiting-approval",
+      seed: 44, panelKind: "member", title: "Morrow, Bea", status: "awaiting-approval",
       gate: { state: "open", gateId: uuidOf(144), label: "identity-review", openedAt: at(24), revision: 44 },
       outcome: STILL_RUNNING,
       timeline: [

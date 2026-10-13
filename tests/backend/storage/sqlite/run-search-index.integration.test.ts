@@ -18,7 +18,7 @@ it("refuses a missing genuine permanent successful start audit before nonmatchin
     assert.equal(result.state, "applied");
     const run = h.database.authority.runs.listByWorkflow(h.descriptor.id)[0];
     assert.ok(run);
-    const unrelated = h.start(h.proposal(undefined, undefined, false, "10001573"));
+    const unrelated = h.start(h.proposal(undefined, undefined, false, "10101010"));
     const audit = raw.prepare("SELECT * FROM command_audits WHERE command_id=?").get(request.commandId);
     assert.ok(audit);
     assert.equal(typeof audit.id, "string");

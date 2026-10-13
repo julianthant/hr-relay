@@ -60,7 +60,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect((await dialog.boundingBox())!.height).toBe(628);
       await expect(dialog.locator('[data-slot="search-field-group"]')).toHaveCSS("height", "32px");
       await page.keyboard.press("Escape");
-      await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: /^Blirea, Glaundi — review/u }).click();
+      await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: /^Morrow, Bea — review/u }).click();
       await expect(page.getByRole("searchbox", { name: "Search logs", exact: true })).toBeVisible();
       await expectSearchCorners(page);
       expect(errors).toEqual([]);

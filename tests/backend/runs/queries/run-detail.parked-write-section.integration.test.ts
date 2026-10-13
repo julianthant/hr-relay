@@ -17,7 +17,7 @@ const ITEM_ID = uuidOf(5001);
 const INTENT_ID = uuidOf(11);
 const ATTEMPT_ID = uuidOf(12);
 const PARK_MESSAGE =
-  "recovery probe is indeterminate for key 10001573|termination|2026-08-01: the results grid never rendered";
+  "recovery probe is indeterminate for key 10101010|termination|2026-08-01: the results grid never rendered";
 
 /** The proof, rebound to THIS run so the record is one production could produce. */
 function proofFor(base: unknown): Record<string, unknown> {
@@ -136,7 +136,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.equal(payload.parkedAt, NOW);
     assert.equal(payload.parkedCode, "unknown");
     assert.equal(payload.parkedMessage.includes(IDEMPOTENCY_KEY), false);
-    assert.equal(payload.parkedMessage.includes("10001573"), false);
+    assert.equal(payload.parkedMessage.includes("10101010"), false);
     assert.ok(payload.parkedMessage.includes(IDEMPOTENCY_KEY_DIGEST.slice(0, 12)));
   });
 
@@ -173,7 +173,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
 
     // Serve only a permanent-key digest; the natural key contains person identity.
     assert.ok(!serialized.includes(IDEMPOTENCY_KEY));
-    assert.ok(!serialized.includes("10001573"));
+    assert.ok(!serialized.includes("10101010"));
     // The bounded display suffix is the ONLY person-derived text, and the
     // durable schema's own regex is what bounds it.
     assert.ok(serialized.includes('"displaySuffix":"1234"'));

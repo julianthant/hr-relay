@@ -30,7 +30,7 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const UUID_9 = "99999999-9999-4999-8999-999999999999";
 const UUID_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const OBSERVED_KEY = "10001573|termination|2026-08-02";
+const OBSERVED_KEY = "10101010|termination|2026-08-02";
 
 function authorityPath(): string {
   const root = mkdtempSync(join(tmpdir(), "hrauto-permanent-key-"));

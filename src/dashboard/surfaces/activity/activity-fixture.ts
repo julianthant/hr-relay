@@ -32,7 +32,7 @@ const records = [5, 8, 7, 6, 9, 9].flatMap((count, day) => Array.from({ length: 
 
 function sampleRun(row: typeof records[number], incomplete: boolean): ActivityRunRecord {
   const index = records.indexOf(row);
-  const subject = ['Jordan Lee', 'Casey Rivera', 'Taylor Park', 'Alex Morgan', 'Morgan Chen', 'Nguyen, Thi'][index % 6];
+  const subject = ['Jordan Lee', 'Casey Rivera', 'Taylor Park', 'Alex Morgan', 'Morgan Chen', 'Morrow, Bea'][index % 6];
   const workflowLabel = row.workflow === 'sample-separations' ? 'Separations' : 'Person lookup';
   const status = row.status as ActivityRunRecord['status'];
   const time = new Date(row.instant).toLocaleTimeString('en-GB', { timeZone: 'America/Los_Angeles' });

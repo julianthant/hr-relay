@@ -35,7 +35,7 @@ const SHEET_ROWS: readonly (readonly string[])[] = [
   ["", "", "", ""],
   ["UCPath ID", "Employee Name", "Department", "Start Date"],
   ["10873698", "Battistessa, Johnnie", "Housing Dining Hospitality", "07/14/2026"],
-  ["10001573", "Blirea, Glaundi", "Housing Dining Hospitality", "07/14/2026"],
+  ["10101010", "Morrow, Bea", "Housing Dining Hospitality", "07/14/2026"],
   ["10-4567", "Okafor, Chidi", "Campus Recreation", "07/21/2026"],
   ["10554120", "Ramirez, Sofia", "Student Health", "07/21/2026"],
   ["10873698", "Battistessa, Johnnie", "Housing Dining Hospitality", "08/04/2026"],

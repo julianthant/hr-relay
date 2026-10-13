@@ -66,45 +66,45 @@ describe("Person Lookup task implementations", () => {
     const observedWrong = createDeterministicCrmOnboardingDriver({
       record: crmRecord,
       dates: crmDates,
-      recordObservedEid: "10001573",
-      datesObservedEid: "10001573",
+      recordObservedEid: "10101010",
+      datesObservedEid: "10101010",
     });
     await assert.rejects(
       readOnboardingRecordTask.impl.run({
         input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: observedWrong },
       }),
-      new RegExp(`expected EID ${directIdentifierDisplay("10873698")} but bound ${directIdentifierDisplay("10001573")}`),
+      new RegExp(`expected EID ${directIdentifierDisplay("10873698")} but bound ${directIdentifierDisplay("10101010")}`),
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: candidate.emplId },
         ctx: { ...commonCtx, driver: observedWrong },
       }),
-      new RegExp(`expected EID ${directIdentifierDisplay("10873698")} but bound ${directIdentifierDisplay("10001573")}`),
+      new RegExp(`expected EID ${directIdentifierDisplay("10873698")} but bound ${directIdentifierDisplay("10101010")}`),
     );
 
     const mismatchedOutputs = createDeterministicCrmOnboardingDriver({
       record: {
         state: "absent",
-        queriedEid: EidSchema.parse("10001573"),
+        queriedEid: EidSchema.parse("10101010"),
         reason: "no record for the wrong displayed person",
       },
-      dates: { ...crmDates, emplId: EidSchema.parse("10001573") },
+      dates: { ...crmDates, emplId: EidSchema.parse("10101010") },
     });
     await assert.rejects(
       readOnboardingRecordTask.impl.run({
         input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
-      new RegExp(`returned output for ${directIdentifierDisplay("10001573")}`),
+      new RegExp(`returned output for ${directIdentifierDisplay("10101010")}`),
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: candidate.emplId },
         ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
-      new RegExp(`returned output for ${directIdentifierDisplay("10001573")}`),
+      new RegExp(`returned output for ${directIdentifierDisplay("10101010")}`),
     );
   })
 });

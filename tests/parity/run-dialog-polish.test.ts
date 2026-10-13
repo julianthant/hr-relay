@@ -66,7 +66,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(keep).toBeFocused();
       await expect(confirmation).toHaveCSS("opacity", "1");
       expect((await confirmation.boundingBox())!.width).toBe(440);
-      await expect(confirmation.locator(".command-confirm-target")).toContainText("Blirea, Glaundi");
+      await expect(confirmation.locator(".command-confirm-target")).toContainText("Morrow, Bea");
       await expect(confirmation.locator(".command-confirm-target")).toContainText("Person Lookup");
       await expect(confirmation.locator(".command-confirm-reference")).toHaveText(`${traceOf(5)} · revision 5`);
       await expect(confirmation).toContainText("Cancelling is final");

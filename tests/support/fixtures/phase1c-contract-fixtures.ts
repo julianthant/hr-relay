@@ -22,7 +22,7 @@ export const HASH_C = "c".repeat(64);
 export const NOW = "2026-07-31T17:00:00.000Z";
 export const LATER = "2026-07-31T17:01:00.000Z";
 export const LATEST = "2026-07-31T17:02:00.000Z";
-export const IDEMPOTENCY_KEY = "10001573|termination|2026-08-01";
+export const IDEMPOTENCY_KEY = "10101010|termination|2026-08-01";
 export const IDEMPOTENCY_KEY_DIGEST = deriveIdempotencyKeyDigest("ucpath", IDEMPOTENCY_KEY);
 
 const BASE_COMMAND = {

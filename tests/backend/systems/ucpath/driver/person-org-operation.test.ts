@@ -23,7 +23,7 @@ import { EidSchema } from "../../../../../src/rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../../src/rules/redaction/redaction.js";
 
 const EID_A = EidSchema.parse("10873698");
-const EID_B = EidSchema.parse("10001573");
+const EID_B = EidSchema.parse("10101010");
 
 function assignment(overrides: Partial<PersonOrgAssignmentDetails> = {}): PersonOrgAssignmentDetails {
   return {

@@ -39,10 +39,10 @@ test("a status-filtered item keeps sibling attempts and opens the exact selected
     await page.getByRole("menuitemcheckbox", { name: /^Failed /u }).click();
     await page.keyboard.press("Escape");
 
-    const attempts = queue.getByRole("button", { name: "Attempts for EID 10001573", exact: true });
+    const attempts = queue.getByRole("button", { name: "Attempts for EID 10101010", exact: true });
     await expect(attempts).toBeVisible();
     await attempts.click();
-    const attemptDialog = page.getByRole("menu", { name: "Attempts for EID 10001573", exact: true });
+    const attemptDialog = page.getByRole("menu", { name: "Attempts for EID 10101010", exact: true });
     await expect(attemptDialog.getByRole("menuitemradio", { name: "#1 Failed", exact: true })).toBeVisible();
     await expect(attemptDialog.getByRole("menuitemradio", { name: "#2 Done", exact: true })).toBeVisible();
 

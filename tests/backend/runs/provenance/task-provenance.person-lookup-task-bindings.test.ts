@@ -247,13 +247,13 @@ describe("Person Lookup task implementations", () => {
           person,
           crm: {
             ...crmRecord,
-            record: { ...crmRecord.record, emplId: EidSchema.parse("10001573") },
+            record: { ...crmRecord.record, emplId: EidSchema.parse("10101010") },
           },
           keepNonHdh: false,
         },
         ctx: commonCtx,
       }),
-      new RegExp(`UCPath EID ${directIdentifierDisplay("10873698")} but CRM EID ${directIdentifierDisplay("10001573")}`),
+      new RegExp(`UCPath EID ${directIdentifierDisplay("10873698")} but CRM EID ${directIdentifierDisplay("10101010")}`),
     );
   })
 });

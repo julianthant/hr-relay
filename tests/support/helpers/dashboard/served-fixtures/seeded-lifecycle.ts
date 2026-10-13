@@ -452,13 +452,13 @@ export function seed(world: SeedWorld): Record<string, string> {
   terminalizeDone(world, done, uuidOf(903));
 
   // running — claimed, executing, one task span still open.
-  const running = startRunning(world, { seed: 2, title: "Blirea, Glaundi" }, "person-lookup-worker-1", "searching");
+  const running = startRunning(world, { seed: 2, title: "Morrow, Bea" }, "person-lookup-worker-1", "searching");
   taskSpan(world, running, "searching");
   note(world, running, "step", "opened UCPath person search");
   note(world, running, "warn", "two candidates matched; narrowing by department");
 
   // awaiting-approval — canonical parking plus the matching gate evidence.
-  const gated = startRunning(world, { seed: 5, title: "EID 10001573" }, "person-lookup-worker-3", "cross-verify");
+  const gated = startRunning(world, { seed: 5, title: "EID 10101010" }, "person-lookup-worker-3", "cross-verify");
   taskSpan(world, gated, "searching", "done");
   world.spans.emit({
     t: "gate.opened",
