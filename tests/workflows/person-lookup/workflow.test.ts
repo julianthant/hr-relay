@@ -316,7 +316,7 @@ describe("workflow definition public equivalence characterization", () => {
           },
           {
             "id": "search-identity",
-            "label": "Identity cross-check"
+            "label": "Resolve UCPath identity"
           }
         ]
       },
@@ -330,7 +330,7 @@ describe("workflow definition public equivalence characterization", () => {
           },
           {
             "id": "crm-identity",
-            "label": "Identity cross-check"
+            "label": "Resolve cross-checked identity"
           },
           {
             "id": "crm-selected-record",
@@ -595,7 +595,7 @@ describe("workflow definition public equivalence characterization", () => {
     {
       "key": "search-identity",
       "nodeId": "search-identity",
-      "label": "Identity cross-check",
+      "label": "Resolve UCPath identity",
       "kind": "task",
       "taskId": "workflow:person-lookup/read-resolved-identity",
       "conditional": false
@@ -611,7 +611,7 @@ describe("workflow definition public equivalence characterization", () => {
     {
       "key": "crm-identity",
       "nodeId": "crm-identity",
-      "label": "Identity cross-check",
+      "label": "Resolve cross-checked identity",
       "kind": "task",
       "taskId": "workflow:person-lookup/read-resolved-identity",
       "conditional": true
