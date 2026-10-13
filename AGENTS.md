@@ -74,8 +74,8 @@ The repository holds only the current version. No compatibility readers, old mig
 - The only AI is OCR through the operator's ChatGPT subscription, connected in Settings with OpenAI's
   open-source "Sign in with ChatGPT" flow (OAuth with PKCE, loopback redirect, Responses API). Store
   its tokens only in the local credential store. Add no other AI provider.
-- Every failure has a defined error code, and the dashboard shows the text mapped to that code. Add
-  the code and its text together.
+- Every failure has a defined error code, and the dashboard shows the text mapped to that code. The
+  browser-safe home for codes and text is `src/models/failures/error-catalog.ts`; add them together.
 - Use TypeScript, Hono, SQLite, HTTP and SSE. Keep HTTP parsing and app composition thin.
   Repositories own durable storage.
 - Read `src/backend/AGENTS.md`, and the system's `src/backend/systems/<system>/AGENTS.md` before
