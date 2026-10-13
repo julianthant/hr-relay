@@ -12,6 +12,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
 import { withBrowserActionSession } from "../../systems/browser-shared/action-notes.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
+import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
 import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "../gates/duo-ceremony-gate.js";
 import {
   BrowserSessionIdSchema,
@@ -113,6 +114,7 @@ export interface WorkerSessionManagerOptions {
 interface AcquisitionEnvelope {
   readonly deadlineMonotonicMs: number;
   readonly cancel: (reason: Error) => void;
+  readonly claimStaleRequestRecovery: () => boolean;
 }
 
 function browserStoreFor(
@@ -141,15 +143,25 @@ function abortError(system: BrowserSystemId): Error {
 }
 
 
-function acquisitionDeadlineError(system: BrowserSystemId, boundMs: number): Error {
-  return new Error(
-    `${system} browser-session acquisition (open + login) exceeded its ${String(boundMs)}ms `
-    + "timeouts.sessionAcquireMs bound; the session is treated as dead and this lease fails. "
-    + "This bound is deliberately much shorter than timeouts.taskMs, which covers the READ once a "
-    + "driver is in hand. If this deployment approves Duo by hand rather than through Duo Autopilot, "
-    + "raise timeouts.sessionAcquireMs above timeouts.duoApprovalSeconds — never lengthen taskMs to "
-    + "hide a dead session.",
-  );
+export function sessionAcquisitionTimeoutText(boundMs: number): string {
+  if (!Number.isFinite(boundMs) || boundMs <= 0) throw new Error("session acquisition bound must be positive and finite");
+  return `Browser-session acquisition (open + login) exceeded its ${boundMs}ms timeouts.sessionAcquireMs bound. `
+    + "Check timeouts.duoApprovalSeconds against the acquisition bound; never lengthen taskMs to hide a dead session.";
+}
+export class WorkerSessionClosureUnprovedError extends AggregateError {
+  constructor(workerId: string, failures: readonly unknown[] = []) {
+    super(failures, `worker ${workerId} failed to close every browser session; closure is unproved`);
+    this.name = "WorkerSessionClosureUnprovedError";
+  }
+}
+
+export class SessionAcquisitionTimeoutError extends Error {
+  readonly code = "browser-session-acquisition-timeout";
+  readonly phase = "acquisition";
+  constructor(readonly system: BrowserSystemId, readonly boundMs: number) {
+    super(sessionAcquisitionTimeoutText(boundMs));
+    this.name = "SessionAcquisitionTimeoutError";
+  }
 }
 
 // An acquisition race loser retains its own settlement and teardown evidence.
@@ -347,6 +359,7 @@ export class WorkerSessionManager {
   readonly #retained = new Map<string, Readonly<{ openedAt: string; factory: WorkerBrowserSessionFactory; acquireMs: number; duo: DuoCeremonyGateFactory; defaultMode: BrowserPresentationMode }>>();
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
   readonly #poisoned = new Set<BrowserSystemId>();
+  readonly #acquisitionCleanupFailures = new Map<BrowserSystemId, Error>();
   readonly #starting = new Map<BrowserSystemId, Promise<WorkerBrowserResource>>();
   readonly #tails = new Map<BrowserSystemId, Promise<void>>();
   #closingReason: "parked" | "worker-stop" | undefined;
@@ -631,14 +644,37 @@ export class WorkerSessionManager {
       const systems = new Set<BrowserSystemId>([
         ...this.#resources.keys(),
         ...this.#starting.keys(),
+        ...this.#acquisitionCleanupFailures.keys(),
         ...this.#tails.keys(),
       ]);
       for (const system of systems) {
+        const starting = this.#starting.get(system);
         try {
           await this.#withSystemTurn(
             system,
             new AbortController().signal,
-            () => this.#closeSystem(system, reason),
+            async () => {
+              if (starting !== undefined) {
+                const closing = new AbortController();
+                const timeout = new Error(`${system} pending acquisition closure exceeded its ${this.#acquireDeadlineMs}ms bound; closure is unproved`);
+                const handle = this.#scheduler.schedule(this.#clock.monotonicMs() + this.#acquireDeadlineMs, () => {
+                  this.#poisoned.add(system);
+                  this.#acquisitionCleanupFailures.set(system, timeout);
+                  closing.abort(timeout);
+                });
+                try { await waitForAcquisition(starting, closing.signal, system); }
+                catch (error) {
+                  if (error === timeout) throw error;
+                  if ((error instanceof AggregateError || error instanceof DuoCeremonyReleaseFailedError)
+                    && !this.#acquisitionCleanupFailures.has(system)) failures.push(error);
+                } finally {
+                  handle.cancel();
+                }
+              }
+              await this.#closeSystem(system, reason);
+              const cleanupFailure = this.#acquisitionCleanupFailures.get(system);
+              if (cleanupFailure !== undefined) failures.push(cleanupFailure);
+            },
           );
         } catch (error) {
           failures.push(error);
@@ -648,7 +684,7 @@ export class WorkerSessionManager {
       this.#closingReason = undefined;
     }
     if (failures.length > 0) {
-      throw new AggregateError(failures, `worker ${this.#workerId} failed to close every browser session`);
+      throw new WorkerSessionClosureUnprovedError(this.#workerId, failures);
     }
   }
 
@@ -692,15 +728,21 @@ export class WorkerSessionManager {
     const handle = this.#scheduler.schedule(
       deadlineMonotonicMs,
       () => {
-        expiry = acquisitionDeadlineError(need.system, this.#acquireDeadlineMs);
+        expiry = new SessionAcquisitionTimeoutError(need.system, this.#acquireDeadlineMs);
         acquisition.abort(expiry);
       },
     );
     // The acquisition runs under the ACQUISITION signal, so a cooperative
     // login recipe aborts itself at the bound instead of only being raced.
+    let staleRequestRecovered = false;
     const started = this.#getOrStart(need, instance, configFingerprint, browserMode, acquisition.signal, {
       deadlineMonotonicMs,
       cancel: (reason) => acquisition.abort(reason),
+      claimStaleRequestRecovery: () => {
+        if (staleRequestRecovered) return false;
+        staleRequestRecovered = true;
+        return true;
+      },
     });
     try {
       return await waitForAcquisition(started, acquisition.signal, need.system);
@@ -754,6 +796,8 @@ export class WorkerSessionManager {
     signal: AbortSignal,
     envelope: AcquisitionEnvelope,
   ): Promise<WorkerBrowserResource> {
+    const cleanupFailure = this.#acquisitionCleanupFailures.get(need.system);
+    if (cleanupFailure !== undefined) throw cleanupFailure;
     if (this.#poisoned.has(need.system)) {
       throw new Error(`${need.system} browser session has an unresolved failed-close proof`);
     }
@@ -780,6 +824,12 @@ export class WorkerSessionManager {
     this.#starting.set(need.system, started);
     try {
       return await started;
+    } catch (error) {
+      if (error instanceof DuoCeremonyReleaseFailedError
+        || error instanceof AggregateError && !this.#resources.has(need.system)) {
+        this.#acquisitionCleanupFailures.set(need.system, error);
+      }
+      throw error;
     } finally {
       if (this.#starting.get(need.system) === started) this.#starting.delete(need.system);
     }
@@ -807,7 +857,7 @@ export class WorkerSessionManager {
     try {
       let value: WorkerBrowserResource;
       try {
-        value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate);
+        value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate, envelope);
       } catch (error) {
         if (this.#controlInFlight || !(error instanceof DuoTerminalRefusalError) || !gate.retainedForRecovery()) throw error;
         const discardProfile = this.#factory.discardProfile;
@@ -827,7 +877,7 @@ export class WorkerSessionManager {
           browserMode,
         });
         try {
-          value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate);
+          value = await this.#openAndLoginOnce(need, instance, configFingerprint, browserMode, signal, gate, envelope);
         } catch (retryError) {
           if (retryError instanceof DuoTerminalRefusalError) {
             throw new Error(
@@ -859,6 +909,7 @@ export class WorkerSessionManager {
     browserMode: BrowserPresentationMode,
     signal: AbortSignal,
     gate: DuoCeremonyGateHandle,
+    envelope: AcquisitionEnvelope,
   ): Promise<WorkerBrowserResource> {
     const store = browserStoreFor(this.#stores, need.system);
     const exclusive = store.session.exclusive === true;
@@ -876,6 +927,8 @@ export class WorkerSessionManager {
       exclusive,
       signal,
       duoCeremony: gate,
+      claimStaleRequestRecovery: envelope.claimStaleRequestRecovery,
+      acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs - this.#clock.monotonicMs()),
     });
     this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
     let login: LoginResult;

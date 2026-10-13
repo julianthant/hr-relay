@@ -9,7 +9,7 @@ const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
 afterEach(cleanup);
 
-describe("durable worker directives (ref dashboard-surfaces §2.4), observed between items", () => {
+describe("durable worker directives (ref dashboard-surfaces), observed between items", () => {
   it("stops without claiming when the directive says stop", async () => {
     const harness = loopHarness();
     harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());

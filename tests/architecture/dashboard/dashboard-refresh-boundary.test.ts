@@ -86,7 +86,7 @@ function surfaceFiles(): string[] {
   return SURFACE_ROOTS.flatMap(root => walkFiles(join(REPO_ROOT, root), { extensions: [".tsx"] }).map(file => relative(REPO_ROOT, file)));
 }
 
-describe("dashboard refresh boundary (ref frontend-backend-integration §8.14)", () => {
+describe("dashboard refresh boundary (ref frontend-backend-integration)", () => {
   it("every surface and app module exports components only", () => {
     const files = surfaceFiles();
     expect(files.length).toBeGreaterThan(20);

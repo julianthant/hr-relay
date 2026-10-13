@@ -15,7 +15,7 @@ export type FakeElementName =
   | "duo-refusal";
 
 
-const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal"]);
+const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal", "stale-request"]);
 
 
 export const NEVER_SETTLES = "fake:never-settles";
@@ -160,6 +160,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
 
   const page = {
     url: () => current,
+    title: async () => "Fixture login page",
     context: () => browserContext,
     goto: async (target: string) => {
       actions.push(`goto:${target}`);

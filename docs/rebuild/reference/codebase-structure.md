@@ -19,7 +19,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
-| `scripts/test/` | Test runner, scoping, suite policy, and artifact policy. |
+| `scripts/test/` | Test runner, suite measurement, direct-execution detection, suite policy, and artifact policy. |
 | `scripts/verify/` | Browser-login and test-target verification. |
 | `scripts/verify-parity-json.ts` | Desktop parity runner. |
 | `src/` | Application source. |
@@ -134,6 +134,14 @@ tests/
 Architecture, parity, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
+Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
+and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
+
+| Behavior | Test owner |
+| --- | --- |
+| Committed write-recovery refusal | `tests/backend/runtime/writes/write-recovery.committed-refusal.integration.test.ts` |
+| Dashboard rerun launch | `tests/dashboard/surfaces/run-start/run-launch.rerun.integration.test.ts` |
+| Executor snapshot refusal | `tests/backend/runtime/execution/run-executor.snapshot-refusal.integration.test.ts` |
 
 `tests/support/fixtures/ui/<system>/` contains the 16 sanitized selector manifests for CRM, Kuali,
 New Kronos, and UCPath. The semantic registries name these fixtures; architecture tests and the UCPath

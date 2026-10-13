@@ -40,7 +40,7 @@ function seedRun(w: DashboardWorld, seed: number, input: { displayName?: string 
   }));
 }
 
-describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", () => {
+describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
   it("replaces the start-input title once the declared subject leaf has a checkpoint", () => {
     const w = world();
     seedRun(w, 1);

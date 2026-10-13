@@ -201,10 +201,7 @@ function taskEntries(
       const tasksRoot = join(storeRoot, "tasks");
       if (!existsSync(tasksRoot)) continue;
       const registryPath = join(storeRoot, "task-registry.ts");
-      const legacyRegistrationPath = join(storeRoot, "store.ts");
-      const registrationSource = existsSync(registryPath)
-        ? readFileSync(registryPath, "utf8")
-        : existsSync(legacyRegistrationPath) ? readFileSync(legacyRegistrationPath, "utf8") : "";
+      const registrationSource = readFileSync(registryPath, "utf8");
       const workflowMatch = /defineWorkflowStore\(\s*["']([a-z0-9]+(?:-[a-z0-9]+)*)["']/u.exec(registrationSource);
       const namespace = workflowMatch === null ? storeDirectory : `workflow:${workflowMatch[1]}`;
       const driverEntry = join(storeRoot, "driver/interpreter.ts");

@@ -77,6 +77,8 @@ export interface WorkerBrowserSessionFactory {
     signal: AbortSignal;
     /** The Duo ceremony lease gate for this acquisition: the manager opens one per acquisition and holds it across the fresh-profile-once retry, so it is an input. */
     duoCeremony: DuoCeremonyGate;
+    acquisitionRemainingMs?: () => number;
+    claimStaleRequestRecovery?: () => boolean;
   }>) => Promise<WorkerBrowserResource>;
 // Duo refusal burns the profile; recreate it before the single retry.
   readonly discardProfile?: (input: Readonly<{

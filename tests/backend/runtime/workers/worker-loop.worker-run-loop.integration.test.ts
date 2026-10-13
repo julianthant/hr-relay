@@ -1,15 +1,16 @@
+import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWorkerDirectiveTestWorld } from "../../../support/helpers/backend/worker-directive-world.js";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
-import { afterEach, describe, it } from "vitest";
-import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
+import { afterEach, describe, it, vi } from "vitest";
+import { runWorkerLoop, WorkerLoopReportSchema } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
-afterEach(cleanup);
+afterEach(() => { vi.restoreAllMocks(); cleanup(); });
 
 describe("worker run loop", () => {
   it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {
@@ -20,6 +21,7 @@ describe("worker run loop", () => {
 
     const report = await runWorkerLoop(harness.deps);
     assert.equal(report.stopped, "idle");
+    assert.equal(report.closure, "proved");
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done", "done"]);
 
     // Warm reuse across sequential items: one session per system for BOTH
@@ -40,6 +42,39 @@ describe("worker run loop", () => {
     const browserStarts = events.filter((event) => "kind" in event && event.kind === "browser"
       && event.t === "span.started");
     assert.equal(browserStarts.length, 2);
+  });
+
+  it("returns accumulated outcomes and a failed worker span when session closure is unproved", async () => {
+    const harness = loopHarness();
+    harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    vi.spyOn(WorkerSessionManager.prototype, "closeAll").mockRejectedValue(
+      new WorkerSessionClosureUnprovedError(EXECUTOR_WORKER_ID, [new Error("closure fixture")]),
+    );
+    const report = await runWorkerLoop(harness.deps);
+    assert.equal(report.closure, "unproved");
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
+    assert.ok(harness.emitter.events().some(event => event.t === "span.ended"
+      && event.kind === "worker" && event.outcome === "failed"));
+  });
+
+  it("rejects unexpected closure errors and preserves loop failures", async () => {
+    const harness = loopHarness();
+    const unexpected = new Error("unexpected close failure");
+    const close = vi.spyOn(WorkerSessionManager.prototype, "closeAll").mockRejectedValue(unexpected);
+    await assert.rejects(runWorkerLoop(harness.deps), error => error === unexpected);
+    close.mockRejectedValue(new WorkerSessionClosureUnprovedError(EXECUTOR_WORKER_ID));
+    const loopFailure = new Error("claim failed");
+    await assert.rejects(runWorkerLoop({ ...harness.deps, claimNext: () => { throw loopFailure; } }),
+      error => error === loopFailure);
+  });
+
+  it("requires an explicit closure proof classification in the report schema", () => {
+    const report = { workerId: "worker-1", workflowId: "person-lookup", outcomes: [], stopped: "idle" };
+    assert.equal(WorkerLoopReportSchema.safeParse(report).success, false);
+    for (const closure of ["proved", "unproved"]) {
+      assert.equal(WorkerLoopReportSchema.safeParse({ ...report, closure }).success, true);
+    }
+    assert.equal(WorkerLoopReportSchema.safeParse({ ...report, closure: "unknown" }).success, false);
   });
 
   it("renews exactly its one active claim while a long task runs", async () => {

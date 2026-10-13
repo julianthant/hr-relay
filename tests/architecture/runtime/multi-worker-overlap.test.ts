@@ -1,28 +1,20 @@
-import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { createWorkerLoopHarness as workerHarness } from "../../support/helpers/backend/worker-loop-world.js";
 // Use distinct worker ids over shared authority; composed single-workflow workers share a lease identity.
-import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
-import { runWorkerLoop, type WorkerLoopDependencies } from "../../../src/backend/runtime/workers/worker-loop.js";
-import type { ExecutorSpanEvent, SpanEmitter } from "../../../src/backend/logs/span-emitter.js";
-import { WorkerIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
-import type { RunRecord } from "../../../src/models/run/record.js";
+import { afterEach,describe,it } from "vitest";
+import { runWorkerLoop } from "../../../src/backend/runtime/workers/worker-loop.js";
 import type { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
-import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
-import { sequentialIdFactory, WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import type { RunRecord } from "../../../src/models/run/record.js";
+import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import {
-  happySessionHarness,
-  healthyCrmDriver,
-  healthyUcpathDriver,
-  ManualScheduler,
-  openAuthorityHarness,
-  personLookupQueuedRun,
-  recordingLogger,
-  sessionFactoryHarness,
-  type AuthorityHarness,
-  type SessionFactoryHarness,
+healthyCrmDriver,
+healthyUcpathDriver,
+openAuthorityHarness,
+personLookupQueuedRun,
+sessionFactoryHarness,
+type AuthorityHarness,
+type SessionFactoryHarness
 } from "../../support/helpers/phase1f-executor-harness.js";
-import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
 const HEARTBEAT_INTERVAL_MS = 500;
@@ -98,64 +90,6 @@ function overlapObserver(database: AuthorityDatabase): OverlapObserver {
   };
 }
 
-interface LoopHarness {
-  readonly deps: WorkerLoopDependencies;
-  readonly sessions: SessionFactoryHarness;
-  readonly events: () => readonly ExecutorSpanEvent[];
-  readonly scheduler: ManualScheduler;
-  readonly stop: AbortController;
-}
-
-
-function workerHarness(
-  authority: AuthorityHarness,
-  workerSuffix: string,
-  idPrefix: string,
-  options: Readonly<{
-    observer?: OverlapObserver;
-    sessions?: SessionFactoryHarness;
-    exitWhenIdle?: boolean;
-  }> = {},
-): LoopHarness {
-  const sessions = options.sessions ?? happySessionHarness();
-  const scheduler = new ManualScheduler(authority.clock, 0);
-  const stop = new AbortController();
-  const events: ExecutorSpanEvent[] = [];
-  const emitter: SpanEmitter = {
-    emit: (event): void => {
-      events.push(event);
-      options.observer?.sample();
-    },
-  };
-  return {
-    sessions,
-    scheduler,
-    stop,
-    events: () => Object.freeze([...events]),
-    deps: {
-      ...testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex: Number(workerSuffix) }),
-      workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
-      workerId: WorkerIdSchema.parse(`person-lookup-worker-${workerSuffix}`),
-      descriptor: personLookupDescriptor,
-      stores: taskStoreRegistry,
-      authority: authority.database,
-      sessionFactory: sessions.factory,
-      emitter,
-      clock: authority.clock,
-      ids: sequentialIdFactory(idPrefix),
-      scheduler,
-      taskDeadlineMs: 60_000,
-      sessionAcquireMs: 20_000,
-      duoCeremony: fixtureDuoCeremonyGates(authority.clock),
-      heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
-      idleRepollMs: 1_000,
-      log: recordingLogger().log,
-      stopSignal: stop.signal,
-      exitWhenIdle: options.exitWhenIdle ?? true,
-    },
-  };
-}
-
 /** A ucpath driver that reports every call and can hold the run open. */
 function gatedUcpathSessions(hooks: Readonly<{
   onCall?: () => void;
@@ -190,11 +124,11 @@ describe("two live worker loops drain one queue", () => {
     }
 
     const first = workerHarness(authority, "1", "a", {
-      observer,
+      onSpan: observer.sample,
       sessions: gatedUcpathSessions({ onCall: observer.sample }),
     });
     const second = workerHarness(authority, "2", "b", {
-      observer,
+      onSpan: observer.sample,
       sessions: gatedUcpathSessions({ onCall: observer.sample }),
     });
 

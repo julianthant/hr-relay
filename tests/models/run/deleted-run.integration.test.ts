@@ -20,7 +20,7 @@ afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
 });
 
-describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", () => {
+describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
 
   it("hands the client a fresh snapshot when a canonically deleted row leaves the payload", () => {
     const w = world();

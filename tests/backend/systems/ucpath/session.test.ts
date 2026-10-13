@@ -1,7 +1,7 @@
 import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
-import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { describe, it, vi } from "vitest";
+import { BrowserLoginError, BrowserLandingStallError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { isAuthenticatedUcpathAppUrl, isUcpathPostSsoLanding, ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../../../src/backend/systems/ucpath/session.js";
 import { NEVER_SETTLES, type FakeCookie, type FakePageScript } from "../../../support/helpers/browser/fake-login-page.js";
 
@@ -422,8 +422,119 @@ describe("ucpath login recipe", () => {
     });
   });
 
-  it("diagnoses the Shibboleth stale-request page specifically", async () => {
+  it("diagnoses a landing before acquisition expires and excludes URL secrets", async () => {
     const { context } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
+        "sso-submit": { navigatesTo: `${DUO_PROMPT}?token=private#private` },
+        "sso-username": {}, "sso-password": {}, "stale-request": { count: 0 },
+        "duo-refusal": { count: 0 },
+      },
+    });
+    let observedTimeout = 0;
+    context.page.waitForURL = async (_predicate, options) => {
+      observedTimeout = options?.timeout ?? 0;
+      throw new Error("fixture landing timeout with private detail");
+    };
+    context.page.title = async () => "Duo https://auth.example/?private#private";
+    await assert.rejects(ucpathLoginRecipe({ ...context, acquisitionRemainingMs: () => 600 }), error => {
+      assert.ok(error instanceof BrowserLandingStallError);
+      assert.equal(error.code, "duo-prompt-stalled");
+      assert.equal(error.host, "api-ce13a1a7.duosecurity.com");
+      assert.equal(error.path, "/prompt/DA6QL3UFNF54WTIT1EQC");
+      assert.equal(error.title, "Duo [URL]");
+      assert.doesNotMatch(error.message, /private|token=/);
+      assert.equal(observedTimeout, 300);
+      return true;
+    });
+  });
+
+  it("bounds a stuck diagnosis before the acquisition deadline", async () => {
+    const { context } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
+        "sso-submit": {}, "sso-username": {}, "sso-password": {},
+      },
+    });
+    context.page.title = async () => await new Promise<string>(() => undefined);
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    try {
+      await assert.rejects(ucpathLoginRecipe({ ...context, acquisitionRemainingMs: () => 150 }), error => {
+        assert.ok(error instanceof BrowserLandingStallError);
+        assert.equal(error.code, "landing-probe-unavailable");
+        assert.equal(error.title, "");
+        return true;
+      });
+      assert.ok(timers.mock.calls.some(([, delay]) => delay === 50));
+    } finally { timers.mockRestore(); }
+  });
+
+  it("recovers a visible Shibboleth stale request once inside the same ceremony deadline", async () => {
+    const stale = `${SSO}?execution=private`;
+    const { context, harness } = contextFor({
+      url: "about:blank",
+      elements: {
+        "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
+        "sso-submit": { navigatesTo: stale }, "sso-username": {}, "sso-password": {},
+        "stale-request": { count: 0 },
+      },
+      elementsByUrl: { [stale]: { "stale-request": { count: 1 } }, [UCPATH_APP]: NO_SIGN_IN_FORMS },
+      settlesTo: [UCPATH_APP], cookiesByUrl: { [UCPATH_APP]: [PS_TOKEN] },
+    });
+    const originalWait = context.page.waitForURL.bind(context.page);
+    let waits = 0;
+    let remaining = 60_000;
+    const waitBudgets: number[] = [];
+    context.page.waitForURL = async (predicate, options) => {
+      waitBudgets.push(options?.timeout ?? 0);
+      if (waits++ === 0) {
+        remaining = 45_000;
+        return await new Promise<void>(() => undefined);
+      }
+      return originalWait(predicate, options);
+    };
+    let gates = 0;
+    const originalGate = context.duoCeremony;
+    const bounded = { ...context, acquisitionRemainingMs: () => remaining,
+      duoCeremony: originalGate };
+    bounded.duoCeremony = { withCeremony: async run => {
+      gates += 1;
+      return originalGate.withCeremony(run);
+    } };
+    assert.equal(await ucpathLoginRecipe(bounded), "logged-in");
+    assert.equal(gates, 1);
+    assert.deepEqual(waitBudgets, [59_000, 44_000]);
+    assert.equal(harness.actions().filter(action => action === `goto:${UCPATH_PORTAL}`).length, 2);
+    assert.equal(harness.actions().filter(action => action === "click:sso-submit").length, 2);
+  });
+
+  it("refuses stale text outside UCSD Shibboleth and an exhausted recovery budget", async () => {
+    for (const [stalled, remaining, code, canRecover] of [
+      ["https://other.example/stale", 60_000, "sso-first-factor-rejected", true],
+      [SSO, 1_000, "shibboleth-stale-request", true],
+      [SSO, 60_000, "shibboleth-stale-request", false],
+    ] as const) {
+      const { context, harness } = contextFor({
+        url: "about:blank",
+        elements: {
+          "portal-login": { navigatesTo: SSO }, "campus-link": { count: 0 },
+          "sso-submit": { navigatesTo: stalled }, "sso-username": {}, "sso-password": {},
+          "stale-request": { count: 1 },
+        },
+      });
+      await assert.rejects(ucpathLoginRecipe({ ...context, acquisitionRemainingMs: () => remaining, claimStaleRequestRecovery: () => canRecover }), error => {
+        assert.ok(error instanceof BrowserLandingStallError);
+        assert.equal(error.code, code);
+        return true;
+      });
+      assert.equal(harness.actions().filter(action => action === `goto:${UCPATH_PORTAL}`).length, 1);
+    }
+  });
+
+  it("diagnoses the Shibboleth stale-request page specifically", async () => {
+    const { context, harness } = contextFor({
       url: "about:blank",
       elements: {
         "portal-login": { navigatesTo: SSO },
@@ -436,6 +547,7 @@ describe("ucpath login recipe", () => {
       settlesTo: [],
     });
     await assert.rejects(ucpathLoginRecipe(context), /stale-request page; the SAML execution expired/);
+    assert.equal(harness.actions().filter(action => action === `goto:${UCPATH_PORTAL}`).length, 2);
   });
 
   it("refuses a landing that still shows the SSO form", async () => {

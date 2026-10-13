@@ -262,7 +262,7 @@ describe("isolated runtime composition", () => {
   it("awaits the worker report, publishes only outcome states, and propagates failure without output", async () => {
     const output: string[] = [];
     const report = {
-      workerId: "worker-1", workflowId: "separations", stopped: "stop-directive",
+      workerId: "worker-1", workflowId: "separations", stopped: "stop-directive", closure: "proved",
       outcomes: [{ state: "done", runId: "run-1" }, { state: "failed", runId: "run-2", failureId: "failure-2" }],
     } satisfies WorkerLoopReport;
     let finish: ((report: WorkerLoopReport) => void) | undefined;
@@ -282,7 +282,7 @@ describe("isolated runtime composition", () => {
     await running;
     assert.equal(output.length, 1);
     assert.deepEqual(JSON.parse(output[0] ?? ""), {
-      workerId: "worker-1", workflowId: "separations", stopped: "stop-directive", outcomes: ["done", "failed"],
+      workerId: "worker-1", workflowId: "separations", stopped: "stop-directive", closure: "proved", outcomes: ["done", "failed"],
     });
     const failure = new Error("worker admission refused");
     await assert.rejects(startRebuildRuntime_m0({
@@ -315,7 +315,7 @@ describe("isolated runtime composition", () => {
       runtime.registerStorageComposer((isolation, args) => { record("storage", isolation, args); return Promise.resolve({ output: "storage", exitCode: 0 }); });
       runtime.registerTestDataComposer((isolation, args) => { record("test-data", isolation, args); return Promise.resolve({ output: "test-data", exitCode: 0 }); });
       runtime.registerDryRunScenarioComposer((isolation, args) => { record("dry-run-scenario", isolation, args); return Promise.resolve({ output: "dry-run-scenario", exitCode: 0 }); });
-      runtime.registerWorkerComposer((isolation, args) => { record("worker", isolation, args); return Promise.resolve({ workerId: "registered-worker", workflowId: "separations", stopped: "idle", outcomes: [] }); });
+      runtime.registerWorkerComposer((isolation, args) => { record("worker", isolation, args); return Promise.resolve({ workerId: "registered-worker", workflowId: "separations", stopped: "idle", closure: "proved", outcomes: [] }); });
       runtime.registerDashboardComposer((isolation, options) => {
         assert.equal(isolation, rebuildRuntimeIsolation);
         assert.deepEqual(options, { frontend: "built-bundle" });
@@ -340,7 +340,7 @@ describe("isolated runtime composition", () => {
       await dashboard;
       assert.deepEqual(seen, ["explain", "ocr", "storage", "test-data", "dry-run-scenario", "worker", "dashboard", "stop"]);
       assert.deepEqual(output.slice(0, 5), ["explain", "ocr", "storage", "test-data", "dry-run-scenario"]);
-      assert.deepEqual(JSON.parse(output[5] ?? ""), { workerId: "registered-worker", workflowId: "separations", stopped: "idle", outcomes: [] });
+      assert.deepEqual(JSON.parse(output[5] ?? ""), { workerId: "registered-worker", workflowId: "separations", stopped: "idle", closure: "proved", outcomes: [] });
       assert.equal(output[6], "dashboard BFF listening on 127.0.0.1:3938 serving dist/dashboard");
       assert.deepEqual(signals.counts, { subscriptions: 1, disposals: 1 });
       await runtime.startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["explain"], write: value => output.push(value), explain: () => "override" });

@@ -1,44 +1,38 @@
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { createWorkerLoopHarness as workerHarness } from "../../support/helpers/backend/worker-loop-world.js";
 
-import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
-import { runWorkerLoop, WorkerLoopReportSchema, type WorkerLoopDependencies } from "../../../src/backend/runtime/workers/worker-loop.js";
-import {
-  WorkerSessionManager,
-  type BrowserSessionCloseProof,
-  type WorkerBrowserSessionFactory,
-} from "../../../src/backend/runtime/workers/worker-sessions.js";
-import type { ExecutorSpanEvent, SpanEmitter } from "../../../src/backend/logs/span-emitter.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import {
-  BrowserSessionIdSchema,
-  FingerprintSchema,
-  WorkerIdSchema,
-  WorkflowIdSchema,
-} from "../../../src/rules/identity/ids.js";
-import type { RunRecord } from "../../../src/models/run/record.js";
-import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { afterEach,describe,it } from "vitest";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
-import { sequentialIdFactory, WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { runWorkerLoop,WorkerLoopReportSchema } from "../../../src/backend/runtime/workers/worker-loop.js";
 import {
-  FIXTURE_SESSION_ACQUIRE_MS,
-  happySessionHarness,
-  healthyCrmDriver,
-  ManualScheduler,
-  openAuthorityHarness,
-  personLookupQueuedRun,
-  recordingLogger,
-  sessionFactoryHarness,
-  type AuthorityHarness,
-  type SessionFactoryHarness,
+WorkerSessionManager,
+type BrowserSessionCloseProof,
+type WorkerBrowserSessionFactory,
+} from "../../../src/backend/runtime/workers/worker-sessions.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import type { RunRecord } from "../../../src/models/run/record.js";
+import {
+BrowserSessionIdSchema,
+FingerprintSchema,
+WorkerIdSchema,
+WorkflowIdSchema,
+} from "../../../src/rules/identity/ids.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
+import {
+FIXTURE_SESSION_ACQUIRE_MS,
+healthyCrmDriver,
+ManualScheduler,
+openAuthorityHarness,
+personLookupQueuedRun,
+sessionFactoryHarness,
+type AuthorityHarness
 } from "../../support/helpers/phase1f-executor-harness.js";
-import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
+import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
-const HEARTBEAT_INTERVAL_MS = 500;
 const CLAIM_STALE_AFTER_MS = 60_000;
 
 /** The measured soak shape, restated in ref execution-and-sessions's as-built paragraph. */
@@ -85,65 +79,6 @@ function activeClaimsByWorker(database: AuthorityDatabase): ReadonlyMap<string, 
   }
   return held;
 }
-
-interface LoopHarness {
-  readonly deps: WorkerLoopDependencies;
-  readonly sessions: SessionFactoryHarness;
-  readonly events: () => readonly ExecutorSpanEvent[];
-  readonly scheduler: ManualScheduler;
-  readonly stop: AbortController;
-}
-
-function workerHarness(
-  authority: AuthorityHarness,
-  workerSuffix: string,
-  idPrefix: string,
-  options: Readonly<{
-    sessions?: SessionFactoryHarness;
-    onSpan?: () => void;
-    exitWhenIdle?: boolean;
-  }> = {},
-): LoopHarness {
-  const sessions = options.sessions ?? happySessionHarness();
-  const scheduler = new ManualScheduler(authority.clock, 0);
-  const stop = new AbortController();
-  const events: ExecutorSpanEvent[] = [];
-  const emitter: SpanEmitter = {
-    emit: (event): void => {
-      events.push(event);
-      options.onSpan?.();
-    },
-  };
-  return {
-    sessions,
-    scheduler,
-    stop,
-    events: () => Object.freeze([...events]),
-    deps: {
-      ...testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex: Number(workerSuffix) }),
-      workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
-      workerId: WorkerIdSchema.parse(`person-lookup-worker-${workerSuffix}`),
-      descriptor: personLookupDescriptor,
-      stores: taskStoreRegistry,
-      authority: authority.database,
-      sessionFactory: sessions.factory,
-      emitter,
-      clock: authority.clock,
-      ids: sequentialIdFactory(idPrefix),
-      scheduler,
-      taskDeadlineMs: 60_000,
-      sessionAcquireMs: 20_000,
-      duoCeremony: fixtureDuoCeremonyGates(authority.clock),
-      heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
-      idleRepollMs: 1_000,
-      log: recordingLogger().log,
-      stopSignal: stop.signal,
-      exitWhenIdle: options.exitWhenIdle ?? true,
-    },
-  };
-}
-
-
 
 describe("graceful teardown with a run in flight", () => {
   it("abandons rather than terminalizing, and the claim sweep — not the loop — releases the row", async () => {

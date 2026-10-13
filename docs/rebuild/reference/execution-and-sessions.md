@@ -224,9 +224,15 @@ remains, and the context emitted its close event. `#releaseProfile` then observe
 Chromium process as gone within another close-proof bound before releasing the profile reservation.
 A resolved Playwright `close()` promise alone proves neither step.
 
-`src/backend/app/composition/worker-compose.ts` awaits browser teardown, stops maintenance and
-resource owners, and settles the lease. Database closure precedes process-record release.
-Closure failure retains that record; aggregated cleanup preserves the runtime error.
+`WorkerSessionManager.closeAll` throws `WorkerSessionClosureUnprovedError`, an `AggregateError`
+retaining cleanup failures, when closure cannot be proved. `runWorkerLoop` returns accumulated
+outcomes with required `closure: "proved" | "unproved"`; other closure errors still reject.
+Unproved closure ends the worker span as failed and settles its lease as crashed. The worker CLI
+prints the closure classification and exits nonzero; the dry-run runtime refuses with the named error.
+
+`src/backend/app/composition/worker-compose.ts` stops maintenance and resource owners, then closes
+the database before releasing its process record. Database closure failure retains that record;
+aggregated cleanup preserves the runtime error.
 
 `src/backend/app/composition/dashboard/compose.ts` closes HTTP and stream consumers, stops
 observers, and awaits `drainOwnedChildren`. The supervisor uses the ordinary graceful stop and

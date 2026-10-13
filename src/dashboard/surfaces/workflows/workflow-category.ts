@@ -1,5 +1,3 @@
-/** Ported from legacy hr-automation@1bffbd65
- * src/dashboard/components/dev/rebuild-demo/demo-wire.ts:227-245,1806-1846 */
 import type { WorkflowCategory } from "../../../models/workflow/presentation.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 

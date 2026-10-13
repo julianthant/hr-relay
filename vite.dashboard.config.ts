@@ -1,14 +1,4 @@
-/**
- * Vite wiring for the rebuild dashboard (1i-spine, ref frontend-backend-integration §2).
- *
- * Mirrors the legacy repo's `vite.dashboard.config.ts` shape (legacy commit
- * 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc) with the rebuild's own isolation
- * values from `config/runtime-isolation.json`: frontend port 5174, backend
- * 3938. `vite-plugin-singlefile` is deliberately not mirrored — the rebuild
- * serves a normal multi-asset build. The dev server proxies `/api`, `/events`
- * and `/artifacts` to the rebuild BFF so the ONE typed client and its verified
- * byte routes can stay on a same-origin base URL.
- */
+/** Development proxies keep the typed client on the BFF's same origin. */
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -67,15 +57,7 @@ return defineConfig({
   build: {
     outDir: distDir,
     emptyOutDir: true,
-    /**
-     * The dashboard and DS specimen share one build.
-     *
-     * `index.html` is the operator dashboard. `kit.html` is the design-system specimen page (ledger 3 UK146–UK157). It
-     * is an entry for the same closure reason read the other way round: what it
-     * renders is `ds/**` and nothing else, and an entry is what lets
-     * `dashboard-wire-boundary` say so. It is built so production static
-     * serving includes the specimen page described by `DESIGN.md`.
-     */
+    // Build the dashboard and design-system specimen together.
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, "src/dashboard/index.html"),

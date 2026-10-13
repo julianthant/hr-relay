@@ -1,14 +1,24 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
-import { closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker } from "../../../scripts/verify/browser-login.js";
+import { recordSmokeSlot, retireOwnedSmokeSlots, SmokeSlotOwnershipUnavailableError, createSmokeProfileAdmission, closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker } from "../../../scripts/verify/browser-login.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
-import { BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
-import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
+import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
+import { WorkerSessionManager, SessionAcquisitionTimeoutError } from "../../../src/backend/runtime/workers/worker-sessions.js";
+import { acquireRuntimeProcessLock, RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, writeLiveSmokeRuntimeFileExclusive } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { deleteOwnedBrowserProfile, PlaywrightWorkerSessionFactory, workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
+import { WorkerSlotRecordSchema } from "../../../src/models/run/worker-slot.js";
+import { FingerprintSchema, WorkerIdSchema } from "../../../src/rules/identity/ids.js";
+
+import { createBrowserSessionFactoryFixtures } from "../../support/helpers/browser/session-factory-fixtures.js";
+import { ManualScheduler } from "../../support/helpers/phase1f-executor-harness.js";
+import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 
 const clock = manualClock(new Date("2026-10-11T10:00:00.000Z"));
 const credentialKey = FingerprintSchema.parse("ab".repeat(32));
@@ -31,7 +41,7 @@ function fixture() {
   const gates = createDuoCeremonyGateFactory({ leases: database.authority.duoCeremonyLeases, credentialKey,
     clock, scheduler: { schedule: () => ({ cancel: () => undefined }) }, sessionAcquireMs: 60000,
     graceMs: 20000, pollIntervalMs: 250 });
-  return { database, plan, allocate, gates };
+  return { root, database, plan, allocate, gates };
 }
 
 describe("registered browser-login smoke lifecycle", () => {
@@ -162,6 +172,332 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(database.authority.workerPools.get("person-lookup")?.desiredWorkers).toBe(1);
   });
 
+  it("retires only a recorded smoke slot after immutable closure proof and parent release", () => {
+    const { root, database, plan, allocate } = fixture();
+    plan(1);
+    const peer = allocate(1);
+    const slot = allocate(2);
+    const processLockRoot = join(root, "locks");
+    const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    const profileRunId = "00000000-0000-4000-8000-000000000002";
+    const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
+    const profile = workerProfileDirectory({ profileRoot, slotOrdinal: slot.ordinal, system: "ucpath" });
+    mkdirSync(profile, { recursive: true, mode: 0o700 });
+    const record = recordSmokeSlot({ processLockRoot, slot, profileRunId, system: "ucpath", credentialKey });
+    const cleanup = () => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot: root, clock,
+      observeProcess: () => ({ state: "gone" }) });
+    expect(cleanup).toThrow();
+    record.proveClosure(clock);
+    expect(cleanup).toThrow();
+    lock.release();
+    cleanup();
+    expect(existsSync(profile)).toBe(false);
+    expect(database.authority.workerSlots.get(peer.workerId)).toEqual(peer);
+    const retired = database.authority.workerSlots.get(slot.workerId);
+    expect(retired).toBeDefined();
+    expect(retired?.retiredAt).toBe(clock.now().toISOString());
+    expect(database.authority.commands.get(String(retired?.retirementCommandId))).toMatchObject({ source: "live-smoke",
+      type: "stop-worker", target: { workerId: slot.workerId } });
+    expect(database.authority.workerPools.get("person-lookup")?.desiredWorkers).toBe(1);
+    expect(cleanup).toThrow(SmokeSlotOwnershipUnavailableError);
+  });
+
+  it("refuses historical process-only claims, unknown closure, active owners and held leases", () => {
+    const { root, database, plan, allocate } = fixture();
+    plan(0);
+    const processLockRoot = join(root, "locks");
+    const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    lock.release();
+    expect(() => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot: root, clock })).toThrow(SmokeSlotOwnershipUnavailableError);
+    const next = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    const slot = allocate(1);
+    const record = recordSmokeSlot({ processLockRoot, slot, profileRunId: "00000000-0000-4000-8000-000000000003",
+      system: "ucpath", credentialKey });
+    next.release();
+    const cleanup = () => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot: root, clock,
+      observeProcess: () => ({ state: "gone" }) });
+    expect(cleanup).toThrow(SmokeSlotOwnershipUnavailableError);
+    record.proveClosure(clock);
+    expect(() => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot: root, clock })).toThrow(SmokeSlotOwnershipUnavailableError);
+    database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId: slot.workerId, system: "ucpath",
+      now: clock.now().toISOString(), ttlMs: 10000 });
+    expect(cleanup).toThrow(SmokeSlotOwnershipUnavailableError);
+    expect(database.authority.workerSlots.get(slot.workerId)).toEqual(slot);
+  });
+
+  it("keeps corrupted, linked or changed ownership records fail-loud", () => {
+    const { root, database, plan, allocate } = fixture();
+    plan(0);
+    const processLockRoot = join(root, "locks");
+    const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    const slot = allocate(1);
+    const record = recordSmokeSlot({ processLockRoot, slot, profileRunId: "00000000-0000-4000-8000-000000000004",
+      system: "ucpath", credentialKey });
+    record.proveClosure(clock);
+    lock.release();
+    const cleanup = () => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot: root, clock,
+      observeProcess: () => ({ state: "gone" }) });
+    const path = join(processLockRoot, "live-smoke-slots", "live-smoke-claims", `${lock.acquisitionId}.slot.json`);
+    const claim = z.strictObject({ source: z.literal("live-smoke"), slot: WorkerSlotRecordSchema,
+      process: RuntimeProcessLockFileSchema, profileRunId: z.uuid(), system: z.literal("ucpath"), credentialKey: FingerprintSchema }).parse(
+      JSON.parse(readLiveSmokeRuntimeFile(join(processLockRoot, "live-smoke-slots"), `${lock.acquisitionId}.slot.json`).text));
+    writeFileSync(path, JSON.stringify({ ...claim, slot: { ...claim.slot, phase: "idle" } }));
+    expect(cleanup).toThrow(SmokeSlotOwnershipUnavailableError);
+    rmSync(path);
+    symlinkSync(join(root, "authority.sqlite"), path);
+    expect(cleanup).toThrow();
+    rmSync(path);
+    writeFileSync(path, "{}", { mode: 0o600 });
+    expect(cleanup).toThrow();
+    expect(database.authority.workerSlots.get(slot.workerId)).toEqual(slot);
+    expect(() => writeLiveSmokeRuntimeFileExclusive(join(processLockRoot, "live-smoke-slots"), "../unrelated", "{}")).toThrow();
+  });
+
+  it("never records closure after a generic launcher rejection leaves profile custody unknown", async () => {
+    const { root: stateRoot, database, gates } = fixture();
+    const scheduler = new ManualScheduler(clock);
+    const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
+    await helpers.withTempRuntime(async ({ config }) => {
+      const processLockRoot = join(stateRoot, "locks");
+      const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+      const profileRunId = "00000000-0000-4000-8000-000000000005";
+      const profileRoot = join(stateRoot, "scratch", "live-smoke", profileRunId, "browsers");
+      const failure = new Error("fixture uncertain launcher rejection");
+      try {
+        await expect(withSmokeWorker(database, async (slot, ownedGates) => {
+          const record = recordSmokeSlot({ processLockRoot, slot, profileRunId, system: "ucpath", credentialKey });
+          const factory = new PlaywrightWorkerSessionFactory({ config: { ...config,
+            paths: { ...config.paths, browserProfileRoot: profileRoot } },
+            protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }),
+            isolation: rebuildRuntimeIsolation, clock, scheduler, slotOrdinal: () => slot.ordinal,
+            newSessionId: () => "00000000-0000-4000-8000-000000000001",
+            bindings: helpers.recordingBindings(),
+            launcher: { launch: input => { mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 }); return Promise.reject(failure); } },
+            admitProfile: createSmokeProfileAdmission({ processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+              workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot }),
+          });
+          const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow,
+            stores: taskStoreRegistry, factory, clock, scheduler, acquireDeadlineMs: 60000,
+            duoCeremony: { openGate: input => { const gate = gates.openGate(input); ownedGates.add(gate); return gate; } } });
+          manager.bindRunConfigFingerprint(credentialKey);
+          const errors: unknown[] = [];
+          try { await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
+            new AbortController().signal, async () => { throw new Error("uncertain launcher callback reached"); }); }
+          catch (error) { errors.push(error); }
+          await closeSmokeSessions(manager, () => { deleteOwnedBrowserProfile(profileRoot, join(profileRoot, `w${slot.ordinal}`)); },
+            errors, () => { record.proveClosure(clock); });
+        }, clock)).rejects.toMatchObject({ name: "SmokeSessionClosureError", errors: [failure, { name: "ProfileCustodyUnavailableError" }] });
+        lock.release();
+        expect(existsSync(join(processLockRoot, "live-smoke-slots", "live-smoke-claims", `${lock.acquisitionId}.closed.json`))).toBe(false);
+        expect(() => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot, clock,
+          observeProcess: () => ({ state: "gone" }) })).toThrow(SmokeSlotOwnershipUnavailableError);
+        const slots = database.authority.workerSlots.list();
+        expect(slots).toHaveLength(1);
+        expect(slots[0].retiredAt).toBeNull();
+        expect(existsSync(workerProfileDirectory({ profileRoot, slotOrdinal: slots[0].ordinal, system: "ucpath" }))).toBe(true);
+        expect(database.authority.duoCeremonyLeases.get(credentialKey)).toBeUndefined();
+      } finally { lock.release(); }
+    });
+  });
+
+  it("performs one manager/factory fresh-profile recovery under its own retained Duo lease", async () => {
+    const { database, gates } = fixture();
+    const scheduler = new ManualScheduler(clock);
+    const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
+    await helpers.withTempRuntime(async ({ config, root }) => {
+      const processLockRoot = join(root, "locks");
+      const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+      try {
+        let current = helpers.fakeLauncher();
+        const first = current;
+        let launches = 0;
+        let logins = 0;
+        const binding = helpers.recordingBindings().ucpath;
+        if (binding === undefined) throw new Error("fixture ucpath binding unavailable");
+        await withSmokeWorker(database, async (slot, ownedGates) => {
+          const factory = new PlaywrightWorkerSessionFactory({ config, protectedSecrets: protectedSecretSource({
+            ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }), isolation: rebuildRuntimeIsolation,
+            clock, scheduler, slotOrdinal: () => slot.ordinal,
+            newSessionId: () => `00000000-0000-4000-8000-00000000000${launches}`,
+            launcher: { launch: input => {
+              if (launches > 0) current = helpers.fakeLauncher();
+              launches += 1;
+              return current.launcher.launch(input);
+            }, observeProcess: (directory, pid) => {
+              if (current.launcher.observeProcess === undefined) throw new Error("fixture process observer unavailable");
+              return current.launcher.observeProcess(directory, pid);
+            } },
+            admitProfile: createSmokeProfileAdmission({ processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+              workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot: config.paths.browserProfileRoot }),
+            bindings: { ucpath: { ...binding, login: context => context.duoCeremony.withCeremony(async token => {
+              logins += 1;
+              expect(token.holder.workerId).toBe(slot.workerId);
+              expect(database.authority.duoCeremonyLeases.get(credentialKey)?.generation).toBe(1);
+              if (logins === 1) throw new DuoTerminalRefusalError("ucpath", "fixture refusal", "https://api.example.test/");
+              return "logged-in" as const;
+            }) } },
+          });
+          const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow,
+            stores: taskStoreRegistry, factory, clock, scheduler, acquireDeadlineMs: 60000,
+            duoCeremony: { openGate: input => { const gate = gates.openGate(input); ownedGates.add(gate); return gate; } } });
+          manager.bindRunConfigFingerprint(credentialKey);
+          const errors: unknown[] = [];
+          try {
+            await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
+              new AbortController().signal, async driver => { expect(driver.system).toBe("ucpath"); });
+          } catch (error) { errors.push(error); }
+          await closeSmokeSessions(manager, () => { deleteOwnedBrowserProfile(config.paths.browserProfileRoot,
+            join(config.paths.browserProfileRoot, `w${slot.ordinal}`)); }, errors);
+        }, clock);
+        expect(launches).toBe(2);
+        expect(logins).toBe(2);
+        expect(first.contextClosed()).toBe(true);
+        expect(current.contextClosed()).toBe(true);
+        expect(existsSync(join(config.paths.browserProfileRoot, "w1"))).toBe(false);
+        expect(database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)).toEqual([]);
+        expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("released");
+      } finally { lock.release(); }
+    });
+  });
+
+  it("times out a real manager/factory acquisition and removes its slot, profile and lease", async () => {
+    const { database, gates } = fixture();
+    const scheduler = new ManualScheduler(clock);
+    const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
+    await helpers.withTempRuntime(async ({ config, root }) => {
+      const processLockRoot = join(root, "locks");
+      const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+      try {
+        let loginStarted: () => void = () => undefined;
+        const started = new Promise<void>(resolve => { loginStarted = resolve; });
+        const harness = helpers.fakeLauncher();
+        let releaseClose: () => void = () => undefined;
+        let closeStarted: () => void = () => undefined;
+        const heldClose = new Promise<void>(resolve => { releaseClose = resolve; });
+        const closing = new Promise<void>(resolve => { closeStarted = resolve; });
+        let attemptedDeletion = false;
+        const binding = helpers.recordingBindings().ucpath;
+        if (binding === undefined) throw new Error("fixture ucpath binding unavailable");
+        const operation = withSmokeWorker(database, async (slot, ownedGates) => {
+          const factory = new PlaywrightWorkerSessionFactory({ config, protectedSecrets: protectedSecretSource({
+            ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }), isolation: rebuildRuntimeIsolation,
+            clock, scheduler, slotOrdinal: () => slot.ordinal, newSessionId: () => "00000000-0000-4000-8000-000000000001",
+            launcher: { ...harness.launcher, launch: async input => {
+              const context = await harness.launcher.launch(input);
+              const close = context.close.bind(context);
+              context.close = async options => { closeStarted(); await heldClose; await close(options); };
+              return context;
+            } }, admitProfile: createSmokeProfileAdmission({ processLockRoot,
+              acquisitionId: z.uuid().parse(lock.acquisitionId), workerId: slot.workerId, ordinal: slot.ordinal,
+              system: "ucpath", profileRoot: config.paths.browserProfileRoot }),
+            bindings: { ucpath: { ...binding, login: context => context.duoCeremony.withCeremony(async () => {
+              expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("held");
+              loginStarted();
+              return new Promise<never>((_resolve, reject) => {
+                context.signal.addEventListener("abort", () => { reject(context.signal.reason instanceof Error ? context.signal.reason : new Error("fixture acquisition cancelled")); }, { once: true });
+              });
+            }) } },
+          });
+          const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow,
+            stores: taskStoreRegistry, factory, clock, scheduler, acquireDeadlineMs: 1000,
+            duoCeremony: { openGate: input => { const gate = gates.openGate(input); ownedGates.add(gate); return gate; } } });
+          manager.bindRunConfigFingerprint(credentialKey);
+          const errors: unknown[] = [];
+          try { await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
+            new AbortController().signal, async () => { throw new Error("timed-out driver callback reached"); }); }
+          catch (error) { errors.push(error); }
+          await closeSmokeSessions(manager, () => { attemptedDeletion = true; deleteOwnedBrowserProfile(config.paths.browserProfileRoot,
+            join(config.paths.browserProfileRoot, `w${slot.ordinal}`)); }, errors);
+        }, clock);
+        const completed = operation.then(() => undefined, (error: unknown) => error);
+        await started;
+        clock.advanceMonotonic(1000);
+        const deadline = scheduler.pending().find(entry => entry.deadlineMonotonicMs === clock.monotonicMs());
+        if (deadline === undefined) throw new Error("acquisition deadline unavailable");
+        deadline.fire();
+        await closing;
+        try {
+          await new Promise<void>(resolve => { setImmediate(resolve); });
+          expect(attemptedDeletion).toBe(false);
+        } finally { releaseClose(); }
+        expect(await completed).toBeInstanceOf(SessionAcquisitionTimeoutError);
+        expect(harness.contextClosed()).toBe(true);
+        expect(database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)).toEqual([]);
+        expect(existsSync(join(config.paths.browserProfileRoot, "w1"))).toBe(false);
+        expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("released");
+      } finally { lock.release(); }
+    });
+  });
+
+  it("re-admits only its exact already-admitted profile once for fresh-profile recovery", async () => {
+    const { root } = fixture();
+    const processLockRoot = join(root, "locks");
+    const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    try {
+      const profileRoot = join(root, "profiles");
+      const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: 1, system: "ucpath" });
+      const admit = createSmokeProfileAdmission({ processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+        workerId: WorkerIdSchema.parse("person-lookup-worker-1"), ordinal: 1, system: "ucpath", profileRoot });
+      const profile = { workerId: WorkerIdSchema.parse("person-lookup-worker-1"), system: "ucpath" as const,
+        instance: "prod" as const, configFingerprint: credentialKey, signInFingerprint: credentialKey,
+        browserMode: "headless" as const, profileDirectory };
+      await expect(admit(profile)).resolves.toMatchObject({ profileRevision: 1, resetRequired: false });
+      mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
+      await expect(admit(profile)).resolves.toMatchObject({ profileDirectory });
+      expect(() => admit(profile)).toThrow(/custody-unavailable/u);
+      rmSync(profileDirectory, { recursive: true });
+      await expect(admit(profile)).resolves.toMatchObject({ profileDirectory });
+      expect(() => admit({ ...profile, signInFingerprint: FingerprintSchema.parse("cd".repeat(32)) })).toThrow(/custody-unavailable/u);
+      expect(() => admit({ ...profile, workerId: WorkerIdSchema.parse("person-lookup-worker-2") })).toThrow(/custody-unavailable/u);
+      lock.release();
+      expect(() => admit(profile)).toThrow(/custody-unavailable/u);
+    } finally { lock.release(); }
+  });
+
+  it("refuses unowned existing, linked and nonprivate smoke profiles", async () => {
+    const { root } = fixture();
+    const processLockRoot = join(root, "locks");
+    const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    try {
+      const profileRoot = join(root, "profiles");
+      const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: 1, system: "ucpath" });
+      const options = { processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+        workerId: WorkerIdSchema.parse("person-lookup-worker-1"), ordinal: 1, system: "ucpath" as const, profileRoot };
+      const profile = { workerId: options.workerId, system: options.system, instance: "prod" as const,
+        configFingerprint: credentialKey, signInFingerprint: credentialKey, browserMode: "headless" as const, profileDirectory };
+      mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
+      expect(() => createSmokeProfileAdmission(options)(profile)).toThrow(/custody-unavailable/u);
+      rmSync(profileDirectory, { recursive: true });
+      const admit = createSmokeProfileAdmission(options);
+      await admit(profile);
+      symlinkSync(root, profileDirectory);
+      expect(() => admit(profile)).toThrow(/custody-unavailable/u);
+      rmSync(profileDirectory);
+      mkdirSync(profileDirectory, { mode: 0o700 });
+      chmodSync(profileDirectory, 0o755);
+      expect(() => admit(profile)).toThrow(/custody-unavailable/u);
+      chmodSync(profileDirectory, 0o700);
+      expect(() => admit({ ...profile, profileDirectory: join(root, "other") })).toThrow(/custody-unavailable/u);
+    } finally { lock.release(); }
+  });
+
+  it("prints fixed acquisition and stall text without free-form error messages", () => {
+    const stall = new BrowserLandingStallError("ucpath", "shibboleth-stale-request",
+      { host: "a5.ucsd.edu", path: "/Shibboleth.sso/SAML2/POST", title: "Web Login Service - Stale Request" });
+    const timeout = new SessionAcquisitionTimeoutError("ucpath", 12_345);
+    stall.message = "synthetic-message-secret";
+    timeout.message = "synthetic-timeout-secret";
+    const diagnostic = smokeErrorDiagnostic(new AggregateError([timeout, stall]));
+    expect(JSON.parse(diagnostic)).toEqual([{ error: "AggregateError" }, {
+      error: "SessionAcquisitionTimeoutError", system: "ucpath", phase: "acquisition",
+      code: "browser-session-acquisition-timeout", text: "Browser-session acquisition (open + login) exceeded its 12345ms timeouts.sessionAcquireMs bound. "
+        + "Check timeouts.duoApprovalSeconds against the acquisition bound; never lengthen taskMs to hide a dead session.",
+    }, { error: "BrowserLandingStallError", system: "ucpath", phase: "duo-clearance",
+      code: "shibboleth-stale-request", text: BROWSER_LANDING_STALL_TEXT["shibboleth-stale-request"],
+      host: "a5.ucsd.edu", path: "/Shibboleth.sso/SAML2/POST", title: "Web Login Service - Stale Request" }]);
+    expect(diagnostic).not.toContain("secret");
+  });
+
   it("prints safe nested error identities without dumping error objects", () => {
     const setup = new Error("offline setup failed");
     const close = new Error("offline closure failed");
@@ -192,7 +528,7 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(diagnostic).not.toContain("authentication");
     const entries = z.array(z.record(z.string(), z.string())).parse(JSON.parse(diagnostic));
     expect(entries).toContainEqual({ error: "BrowserLoginError", system: "ucpath", phase: "sso-submit", host: "login.example.invalid" });
-    expect(entries).toContainEqual({ error: "DuoTerminalRefusalError", system: "crm", phase: "duo-clearance", host: "login.example.invalid" });
+    expect(entries).toContainEqual({ error: "DuoTerminalRefusalError", code: "duo-terminal-refusal", text: DUO_TERMINAL_REFUSAL_TEXT, system: "crm", phase: "duo-clearance", host: "login.example.invalid", path: "/sso", title: "" });
     expect(entries).toContainEqual({ error: "TypeError" });
     expect(entries.filter(entry => entry.error === "DuoTerminalRefusalError")).toHaveLength(1);
   });

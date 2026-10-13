@@ -6,9 +6,7 @@
 
 (() => {
   // ── 1. Bridge ──
-  // Relay a MAIN-world request type to the service worker and post the reply back
-  // on the matching response type. Used for both assertions (sign) and the
-  // enrollment ceremony (create) — only opaque base64 crosses here.
+  // Relay assertion requests to the service worker and post the reply back.
   function bridge(reqType, resType, runtimeType) {
     window.addEventListener("message", (event) => {
       if (event.source !== window) return;
@@ -29,7 +27,6 @@
     });
   }
   bridge("DUO_AUTOPILOT_REQ", "DUO_AUTOPILOT_RES", "DUO_AUTOPILOT_SIGN");
-  bridge("DUO_AUTOPILOT_ENROLL_REQ", "DUO_AUTOPILOT_ENROLL_RES", "DUO_AUTOPILOT_ENROLL");
 
   // ── 2. Trust-screen auto-click ──
   // Match only the affirmative control ("Yes, this is my device" / "Yes, trust

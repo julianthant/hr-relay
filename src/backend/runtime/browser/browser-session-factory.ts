@@ -199,6 +199,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     exclusive: boolean;
     signal: AbortSignal;
     duoCeremony: DuoCeremonyGate;
+    acquisitionRemainingMs?: () => number;
+    claimStaleRequestRecovery?: () => boolean;
   }>): Promise<WorkerBrowserResource> {
     const { config } = this.#options;
     const workerId = WorkerIdSchema.parse(input.workerId);
@@ -309,6 +311,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               credentials: readSsoCredentials(this.#options.protectedSecrets),
               recordEvidence: this.#recordEvidence,
               duoCeremony: input.duoCeremony,
+              ...(input.claimStaleRequestRecovery === undefined ? {} : { claimStaleRequestRecovery: input.claimStaleRequestRecovery }),
+              ...(input.acquisitionRemainingMs === undefined ? {} : { acquisitionRemainingMs: input.acquisitionRemainingMs }),
             };
             authenticatedVersion = undefined;
             emit("started");

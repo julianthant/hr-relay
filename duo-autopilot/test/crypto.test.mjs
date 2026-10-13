@@ -1,4 +1,4 @@
-// Offline self-test for the byte-exact WebAuthn crypto path (BUILD_PLAN §11.5).
+// Offline self-test for the WebAuthn assertion path and native registration boundary.
 // Uses a freshly generated throwaway P-256 key — NEVER the real Duo secret — and
 // proves that:
 //   1. base64 / base64url round-trip correctly,
@@ -7,25 +7,21 @@
 //   4. clientDataJSON is exact (order, base64url challenge, origin, crossOrigin),
 //   5. the DER signature created by createAssertion verifies against the public
 //      key over `authenticatorData || SHA-256(clientDataJSON)` — i.e. exactly what
-//      Duo's server checks.
+//      Duo's server checks,
+//   6. the inpage shim leaves `navigator.credentials.create()` to the browser.
 //
 // Run: node test/crypto.test.mjs   (or: npm test)
 
+import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 import {
   base64ToBytes,
   bytesToBase64,
   bytesToBase64url,
   buildAuthenticatorData,
   buildClientDataJSON,
-  buildNoneAttestationObject,
-  cborBytes,
-  cborNegInt,
-  cborText,
-  cborUint,
   concatBytes,
-  coseEcdsaPublicKey,
   createAssertion,
-  createRegistration,
   rawEcdsaSigToDer,
   sha256,
 } from "../src/crypto.js";
@@ -70,7 +66,7 @@ function derToRawEcdsaSig(der) {
 }
 
 async function run() {
-  console.log("crypto self-test");
+  console.log("Duo Autopilot offline self-test");
 
   // ── 1. base64 round-trips ──
   {
@@ -184,65 +180,21 @@ async function run() {
     ok("tampered data fails verification", verifiedTampered === false);
   }
 
-  // ── 6. CBOR primitives (known vectors) ──
+  // Native registration remains available to the browser.
   {
-    ok("cborUint small", eqBytes(cborUint(0), new Uint8Array([0x00])) && eqBytes(cborUint(23), new Uint8Array([0x17])));
-    ok("cborUint 1-byte", eqBytes(cborUint(24), new Uint8Array([0x18, 0x18])));
-    ok("cborUint 2-byte", eqBytes(cborUint(256), new Uint8Array([0x19, 0x01, 0x00])));
-    ok("cborNegInt -7 (ES256)", eqBytes(cborNegInt(-7), new Uint8Array([0x26])));
-    ok("cborNegInt -1", eqBytes(cborNegInt(-1), new Uint8Array([0x20])));
-    ok("cborBytes(32) head is 0x58 0x20", (() => { const b = cborBytes(new Uint8Array(32)); return b.length === 34 && b[0] === 0x58 && b[1] === 0x20; })());
-    ok("cborText 'none'", eqBytes(cborText("none"), new Uint8Array([0x64, 0x6e, 0x6f, 0x6e, 0x65])));
-  }
-
-  // ── 7. full registration with a fresh key: structure + register→assert→verify ──
-  {
-    const rpId = "duosecurity.com";
-    const origin = "https://api-duo1.duosecurity.com";
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-
-    const reg = await createRegistration({ rpId, challenge, origin });
-
-    // clientDataJSON is the create() variant
-    const cd = JSON.parse(new TextDecoder().decode(reg.clientDataJSON));
-    ok("registration clientData type is webauthn.create", cd.type === "webauthn.create");
-    ok("registration clientData challenge matches", cd.challenge === bytesToBase64url(challenge));
-    ok("registration clientData origin matches", cd.origin === origin);
-
-    // authData layout: rpIdHash(32) | flags(1) | signCount(4) | aaguid(16) | idLen(2) | credId | COSE
-    const ad = reg.authData;
-    const rpIdHash = await sha256(new TextEncoder().encode(rpId));
-    ok("reg authData rpIdHash", eqBytes(ad.slice(0, 32), rpIdHash));
-    ok("reg authData flags = 0x45 (UP|UV|AT)", ad[32] === 0x45);
-    ok("reg authData signCount = 0", ad[33] === 0 && ad[34] === 0 && ad[35] === 0 && ad[36] === 0);
-    ok("reg authData AAGUID all-zero", ad.slice(37, 53).every((b) => b === 0));
-    const idLen = (ad[53] << 8) | ad[54];
-    ok("reg authData credIdLen = 32", idLen === 32);
-    ok("reg authData credId matches returned credentialId", eqBytes(ad.slice(55, 55 + idLen), reg.credentialId));
-
-    // attestationObject = none-attestation wrapper over exactly this authData
-    ok("attestationObject is a 3-entry CBOR map", reg.attestationObject[0] === 0xa3);
-    ok("attestationObject wraps authData", eqBytes(reg.attestationObject, buildNoneAttestationObject(ad)));
-
-    // The COSE key embedded in authData must match the real public key (SPKI).
-    const pub = await crypto.subtle.importKey("spki", reg.publicKeySpki, { name: "ECDSA", namedCurve: "P-256" }, true, ["verify"]);
-    const jwk = await crypto.subtle.exportKey("jwk", pub);
-    const cose = coseEcdsaPublicKey(base64ToBytes(jwk.x), base64ToBytes(jwk.y));
-    ok("authData COSE key matches the generated public key", eqBytes(ad.slice(55 + idLen), cose));
-
-    // register → assert → verify: the stored private key signs an assertion the
-    // newly-registered public key accepts (exactly Duo's later check).
-    const assertion = await createAssertion({
-      privateKeyPkcs8: reg.privateKeyPkcs8,
-      rpId,
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      origin,
-      signCount: 1,
+    const nativeCreate = async (options) => options;
+    const credentials = { get: async () => undefined, create: nativeCreate };
+    runInNewContext(await readFile(new URL("../src/inpage.js", import.meta.url), "utf8"), {
+      navigator: { credentials },
+      window: { addEventListener() {} },
+      location: { origin: "https://api-duo1.duosecurity.com", hostname: "api-duo1.duosecurity.com" },
+      console: { debug() {} },
     });
-    const signedData = concatBytes(assertion.authenticatorData, await sha256(assertion.clientDataJSON));
-    const rawSig = derToRawEcdsaSig(assertion.signature);
-    const verified = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pub, rawSig, signedData);
-    ok("enrolled key's assertion verifies against its registered public key", verified === true);
+    const options = { publicKey: { rp: { id: "duosecurity.com" }, challenge: new Uint8Array([1]) } };
+    ok(
+      "Duo registration keeps the browser's native create method",
+      credentials.create === nativeCreate && await credentials.create(options) === options,
+    );
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

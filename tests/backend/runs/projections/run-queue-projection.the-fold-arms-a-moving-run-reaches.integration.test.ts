@@ -10,7 +10,7 @@ const {world, runRecordOf, queuedEventOf, CLAIM, cleanup } = createRunQueueProje
 afterEach(cleanup);
 
 
-describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", () => {
+describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
 
   function seedWorkerSpans(w: DashboardWorld, workerId = "person-lookup-worker-1"): void {
     w.authority.putWorkerLease(workerLeaseOf({ workerId }));

@@ -162,7 +162,7 @@ function visit(node: ts.Node, callback: (node: ts.Node) => void): void {
   ts.forEachChild(node, (child) => visit(child, callback));
 }
 
-describe("dashboard wire boundary (ref frontend-backend-integration §8)", () => {
+describe("dashboard wire boundary (ref frontend-backend-integration)", () => {
   const files = walkFiles(DASHBOARD_ROOT);
 
   it("scans a non-vacuous dashboard tree", () => {

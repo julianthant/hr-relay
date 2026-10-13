@@ -303,7 +303,7 @@ describe("composed worker runtime", () => {
     assert.equal(lease.lifecycle.reason, "shutdown");
   });
 
-  it("fails loud when worker-stop cannot prove closure, and records the lease as crashed", async () => {
+  it("returns unproved closure when worker-stop cannot prove closure, and records the lease as crashed", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
@@ -324,14 +324,11 @@ describe("composed worker runtime", () => {
       },
     };
 
-    await assert.rejects(
-      composeWorkerRuntime(composeInput({
-        repoRoot, clock, sessions: unprovable, poolIndex: POOL_INDEX_1,
-      })),
-      (error: unknown) => error instanceof AggregateError
-        && error.errors.some((failure: unknown) => failure instanceof Error
-          && /did not close within its bounded deadline/.test(failure.message)),
-    );
+    const report = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions: unprovable, poolIndex: POOL_INDEX_1,
+    }));
+    assert.equal(report.closure, "unproved");
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
 
     const database = reopen(stateRoot, clock);
     const lease = database.authority.workerLeases.get(admittedWorkerId(stateRoot, clock));

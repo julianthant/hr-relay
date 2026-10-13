@@ -19,9 +19,7 @@ let cachedRaw: string | null = null;
 let cached: ShortcutPreferences = DEFAULT_SHORTCUT_PREFERENCES;
 
 export function validateShortcutPreferences(value: unknown): ShortcutPreferences {
-  const legacy = schema.extend({ bindings: schema.shape.bindings.extend({ menu: binding.optional() }) }).parse(value);
-  const { menu: _retiredMenu, ...bindings } = legacy.bindings;
-  const parsed = schema.parse({ ...legacy, bindings });
+  const parsed = schema.parse(value);
   const seen = new Set<string>();
   for (const keys of Object.values(parsed.bindings)) for (const chord of keys) {
     if (chord === 'Escape' || /^(Meta|Ctrl)\+[1-9]$/.test(chord)) throw new Error('This shortcut is reserved.');

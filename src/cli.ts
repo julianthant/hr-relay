@@ -57,7 +57,11 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
     loadManifests: async () => Promise.all(listDryRunScenarioWorkflows().map(async (workflow) =>
       parseDryRunScenarioManifest(await loadDryRunScenarioManifest(workflow)))),
   }));
-  registerWorkerComposer((runtimeIsolation, args) => composeWorkerRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, args, ...(takeInitialCustody === undefined ? {} : { takeInitialCustody }) }));
+  registerWorkerComposer(async (runtimeIsolation, args) => {
+    const report = await composeWorkerRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, args, ...(takeInitialCustody === undefined ? {} : { takeInitialCustody }) });
+    if (report.closure === "unproved") process.exitCode = 1;
+    return report;
+  });
   registerExplainComposer((runtimeIsolation, args) => composeExplainRuntime({ admission, isolation: runtimeIsolation, args }));
   registerOcrComposer((args) => composeOcrCommand({ args }));
   registerStorageComposer((runtimeIsolation, args) => composeStorageCommand(runtimeIsolation, args, undefined, REPOSITORY_ROOT, admission));
