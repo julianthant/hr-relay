@@ -13,13 +13,13 @@ export interface DashboardDayState {
   readonly refresh: () => void;
 }
 
-export function useDashboardDay(day: string | undefined, nowIso?: string): DashboardDayState {
+export function useDashboardDay(day: string | undefined, nowIso?: string, authorityEpoch?: object): DashboardDayState {
   const client = useDashboardClient();
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   const firedExpiries = useRef(new Set<string>());
   // A new object per request, including A → B → A; the render guard runs before effects.
-  const request = useMemo(() => ({ client, day, revision }), [client, day, revision]);
+  const request = useMemo(() => ({ client, day, revision, authorityEpoch }), [client, day, revision, authorityEpoch]);
   const [result, setResult] = useState<{ request: typeof request; value: DashboardDayState }>();
   useEffect(() => {
     let active = true;

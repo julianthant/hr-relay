@@ -23,6 +23,7 @@ import { DashboardApp as DashboardApp_m1 } from "../../../src/dashboard/app/dash
 import { parseRoute as parseRoute_m1 } from "../../../src/dashboard/app/navigation/url-state.js";
 import { createDashboardClient as createDashboardClient_m1,type DashboardClient as DashboardClient_m1 } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m1 } from "../../../src/dashboard/state/client-context.js";
+import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { LocalDateSchema as LocalDateSchema_m1 } from "../../../src/rules/identity/ids.js";
 import { FIXTURE_BOOTSTRAP as FIXTURE_BOOTSTRAP_m1 } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1,FIXTURE_IDS as FIXTURE_IDS_m1 } from "../../support/fixtures/dashboard/fixture-queue.js";
@@ -221,6 +222,59 @@ afterEach_m1(_afterEachFixture0);
 
     await act_m1(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {}, "sidebar");
+    assert_m1.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
+  });
+  it_m1("refuses a linked mock workflow outside the served selection without throwing or navigating", async () => {
+    const linkedDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
+      queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(surface => surface.runId === FIXTURE_IDS_m1.queuedRun ? { ...surface,
+        linkedRuns: [{ runId: "11111111-1111-4111-8111-111111111111", partitionDay: FIXTURE_DAY_WIRE_m1.day,
+          workflowId: "separations", label: "Unavailable mock link", panelKind: "run", status: "queued" }] } : surface) });
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {
+      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { close() {} }; },
+    }, "sidebar");
+    const link = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${FIXTURE_IDS_m1.queuedRun}"] button[data-demo-row-link]`);
+    assert_m1.ok(link);
+    const before = window.location.search;
+    const preference = localStorage.getItem("hr-dashboard.selected-workflow");
+    await click(link);
+    assert_m1.match(document.body.textContent ?? "", /Workflow unavailable/);
+    assert_m1.equal(window.location.search, before);
+    assert_m1.equal(localStorage.getItem("hr-dashboard.selected-workflow"), preference);
+    assert_m1.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
+  });
+  it_m1.each(["search", "notification"])("refused %s destination preserves a dirty Settings draft without asking to discard", async surface => {
+    const title = "Unavailable served destination";
+    const row = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(item => item.status === "done"); assert_m1.ok(row);
+    const linkedDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
+      queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(item => item === row ? { ...item, workflowId: "separations", title } : item) });
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&settings=performance`, {
+      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { close() {} }; },
+    }, "sidebar", workflows => {
+      const composition = PARITY_WORKFLOW_COMPOSITION_m1(workflows);
+      return { ...composition, dataSources: { ...composition.dataSources, separations: "served" } };
+    });
+    await editNavigationTimeout();
+    if (surface === "search") await click(button("Search runs"));
+    else {
+      const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);
+      await click(notifications);
+    }
+    const before = location.search;
+    const preference = localStorage.getItem("hr-dashboard.selected-workflow");
+    const target = surface === "search"
+      ? [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes(title))
+      : [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Notification updates"] button')].find(item => item.textContent === title);
+    assert_m1.ok(target);
+    await click(target);
+    assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
+    assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
+    assert_m1.equal(location.search, before);
+    assert_m1.equal(localStorage.getItem("hr-dashboard.selected-workflow"), preference);
+    assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value, "111");
+    if (surface === "notification") {
+      const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);
+      await click(notifications);
+    }
     assert_m1.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
   });
   it_m1("reports detail failure and never calls it an empty selection", async () => {

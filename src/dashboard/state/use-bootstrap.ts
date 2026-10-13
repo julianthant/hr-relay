@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
 import { observeAsyncResource, LOADING, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";
 
 export function useBootstrap(): AsyncResource<FrontendBootstrapWire> {
   const client = useDashboardClient();
-  const [resource, setResource] = useState<AsyncResource<FrontendBootstrapWire>>(LOADING);
+  const request = useMemo(() => ({ client }), [client]);
+  const [result, setResult] = useState<{ request: typeof request; resource: AsyncResource<FrontendBootstrapWire> }>();
 
   useEffect(() => {
-    setResource(LOADING);
-    return observeAsyncResource(() => client.bootstrap(), setResource);
-  }, [client]);
+    return observeAsyncResource(() => client.bootstrap(), resource => setResult({ request, resource }));
+  }, [client, request]);
 
-  return resource;
+  return result?.request === request ? result.resource : LOADING;
 }
