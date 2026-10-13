@@ -15,6 +15,7 @@ import { RunResultRecordSchema, deriveRunResultDigest, deriveTerminalDependencyD
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { historyWorld, historyClock, HISTORY_NOW } from "../../../support/helpers/storage/transaction-history-fixture.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { RunCompletionSchema } from "../../../../src/models/run/completion.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 
@@ -54,12 +55,14 @@ function fixture() {
       record = RunRecordSchema.parse({ ...record, completion: { ...record.completion, resultDigest: result.resultDigest } });
     }
     if (record.lifecycle.state === "terminal" && record.lifecycle.outcome === "failed") {
+      const terminalLifecycle = record.lifecycle;
+      const completion = RunCompletionSchema.parse(record.completion);
       failure = failureRecordOf({ seed, code: "FIXTURE_FAILURE" });
       record = RunRecordSchema.parse({ ...record, lifecycle: { ...record.lifecycle, errorSummary: failure.summary, diagnosticSafetyVersion: failure.diagnosticSafetyVersion } });
       result = createRunTerminalEvidenceResult(record, { kind: "failed-evidence", failureDigest: deriveTerminalFailureDigest(failure),
         authorization: { kind: "failed", runId: record.envelope.runId, workflowId: record.envelope.workflow,
-          attempt: 1, descriptorVersion: record.envelope.descriptorVersion, contractFingerprint: record.envelope.contractFingerprint,
-          expectedVersion: 1, claim: { workerId: "dashboard-fixture-worker", claimGeneration: 1 }, authorizedAt: record.lifecycle.endedAt, failureId: failure.failureId } });
+          attempt: record.envelope.attempt, descriptorVersion: record.envelope.descriptorVersion, contractFingerprint: record.envelope.contractFingerprint,
+          expectedVersion: completion.expectedVersion, claim: completion.claim, authorizedAt: terminalLifecycle.endedAt, failureId: failure.failureId } });
 
     }
     const row = runRecordColumns(record);
