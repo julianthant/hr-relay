@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import Excel from "exceljs";
 import { afterEach, expect, it } from "vitest";
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService, WorkbookLibraryError, type EditableWorkbook } from "../../../src/backend/workbooks/workbook-library-service.js";
@@ -75,6 +76,8 @@ it("orders a populated library by saved time with stable identity tie breaking",
 const malformed: readonly [string, (value: EditableWorkbook) => unknown][] = [
   ["no sheets", value => ({ ...value, sheets: [] })],
   ["unknown property", value => ({ ...value, discarded: true })],
+  ["unknown theme key", value => ({ ...value, themes: { "../theme1": "xml" } })],
+  ["nested theme metadata", value => ({ ...value, themes: { theme1: { xml: "xml" } } })],
   ["nonfinite value", value => { value.sheets[0].rows[0].cells[0].value = Infinity; return value; }],
   ["invalid date", value => { value.sheets[0].rows[0].cells[0].value = new Date("invalid"); return value; }],
   ["duplicate sheet id", value => { value.sheets[1].id = value.sheets[0].id; return value; }],
@@ -160,4 +163,15 @@ it("refuses a regressing clock without changing accepted versions", () => {
   f.clock.advanceWall(-500);
   failure(() => f.service.save(first.libraryId, 2, first.workbook), "WORKBOOK_INVALID");
   expect(f.service.history(first.libraryId)).toEqual([first, last]);
+});
+
+it("preserves the actual theme object emitted by ExcelJS XLSX imports", async () => {
+  const f = fixture(), source = new Excel.Workbook();
+  source.addWorksheet("People").getCell("A1").value = "Employee ID";
+  const imported = new Excel.Workbook();
+  await imported.xlsx.load(await source.xlsx.writeBuffer());
+  expect(Array.isArray(imported.model.themes)).toBe(false);
+  const value = { ...workbook(), themes: imported.model.themes };
+  const saved = f.service.create(value);
+  expect(f.service.read(saved.libraryId).workbook.themes).toEqual(imported.model.themes);
 });

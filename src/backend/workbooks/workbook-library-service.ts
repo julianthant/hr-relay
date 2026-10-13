@@ -33,8 +33,9 @@ const FieldSchema = z.string().refine(value => CANONICAL_FIELD_IDS.some(id => id
 const BindingSchema = z.strictObject({ id: IdSchema, sourceColumn: IndexSchema.nullable(), sourceHeader: z.string(), fieldId: FieldSchema.nullable(), basis: z.enum(["header", "values", "manual", "unmapped"]) });
 const CellSchema = z.strictObject({ value: z.union([z.string(), z.number().finite(), z.boolean(), z.date(), z.null()]), fill: FillSchema.optional(), background: z.string().optional() });
 const SheetSchema = z.strictObject({ id: IdSchema, name: NameSchema, rows: z.array(z.strictObject({ id: IdSchema, cells: z.array(CellSchema) })).min(1), width: z.number().int().positive(), hidden: z.array(IndexSchema), headerRow: z.number().int().positive().optional(), sourceHeaderRow: z.number().int().positive().optional(), columnBindings: z.array(BindingSchema).optional() });
+const ThemesSchema = z.union([z.array(z.string()), z.record(z.string().regex(/^[a-zA-Z0-9]+$/u), z.string())]);
 function unique(values: readonly (string | number)[]): boolean { return new Set(values).size === values.length; }
-export const EditableWorkbookSchema = z.strictObject({ name: NameSchema, libraryId: IdSchema.optional(), sheets: z.array(SheetSchema).min(1), themes: z.array(z.string()), hasFormulas: z.boolean() }).superRefine((workbook, ctx) => {
+export const EditableWorkbookSchema = z.strictObject({ name: NameSchema, libraryId: IdSchema.optional(), sheets: z.array(SheetSchema).min(1), themes: ThemesSchema, hasFormulas: z.boolean() }).superRefine((workbook, ctx) => {
   let cells = 0;
   if (!unique(workbook.sheets.map(sheet => sheet.id)) || !unique(workbook.sheets.map(sheet => sheet.name.toLowerCase()))) ctx.addIssue({ code: "custom", message: "duplicate sheets" });
   for (const sheet of workbook.sheets) {
