@@ -370,6 +370,52 @@ describe("CRM onboarding selector-backed driver", () => {
     assert.equal(result.output.state, "no-confident-record");
     assert.equal(result.output.employmentDate, null);
     assert.equal(result.output.oathDate, null);
+    assert.equal(new URL(page.url()).pathname, "/hr/ONB_SearchOnboardings");
+    assert.equal(new URL(page.url()).searchParams.get("q"), "Person");
+  });
+
+  it("finishes dates on the freshly verified selected form after a fuzzy nonmatch", async () => {
+    const selected = { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/15/2026" };
+    const page = fixturePage({ searches: { Fixture: [
+      { fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" },
+      { fullName: "Fixture, Person", rawStage: "Started", recordId: "wrong" },
+    ] }, records: { exact: selected,
+      wrong: { eid: OTHER_EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/1/2026" } },
+    });
+    const goto = page.goto.bind(page);
+    let selectedOpens = 0;
+    page.goto = async (...args) => {
+      if (new URL(args[0]).searchParams.get("id") === "exact" && ++selectedOpens === 2) selected.firstDayOfService = "7/16/2026";
+      return goto(...args);
+    };
+    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    assert.equal(result.binding.state, "displayed-record");
+    assert.equal(result.output.state, "read");
+    assert.equal(result.output.employmentDate, "2026-07-16", "dates come from the final fresh read");
+    assert.equal(selectedOpens, 2);
+    assert.equal(new URL(page.url()).pathname, "/hr/ONB_ViewOnboarding");
+    assert.equal(new URL(page.url()).searchParams.get("id"), "exact");
+  });
+
+  it("finishes ambiguous date forms on freshly verified complete query results", async () => {
+    const rows = ["first", "last"].map(recordId => ({ fullName: "Fixture, Person", rawStage: "Completed", recordId }));
+    const records = Object.fromEntries(rows.map(row => [row.recordId,
+      { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/15/2026" }]));
+    const page = fixturePage({ searches: { Fixture: rows }, records });
+    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    assert.equal(result.output.state, "no-confident-record");
+    assert.equal(result.output.employmentDate, null);
+    assert.equal(new URL(page.url()).pathname, "/hr/ONB_SearchOnboardings");
+    assert.equal(new URL(page.url()).searchParams.get("q"), "Fixture");
+    const changing = fixturePage({ searches: { Fixture: rows }, records });
+    const goto = changing.goto.bind(changing);
+    let searches = 0;
+    changing.goto = async (...args) => {
+      if (new URL(args[0]).pathname === "/hr/ONB_SearchOnboardings" && ++searches === 2) rows.pop();
+      return goto(...args);
+    };
+    const refused = await createCrmOnboardingDriver(changing).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    assert.equal(refused.output.state, "check-failed", "restoration drift remains a best-effort failure");
   });
 
   it("reports failed date acquisition instead of converting selector drift into absence", async () => {

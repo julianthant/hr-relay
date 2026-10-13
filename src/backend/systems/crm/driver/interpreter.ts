@@ -433,18 +433,26 @@ async function readOnboardingDates(
     for (const query of nameSearchQueries(input.name)) {
       recordBrowserAction("typed", "crm.onboarding.date-search", query);
       recordBrowserAction("clicked", "crm.onboarding.date-search");
-      const rows = plausibleNameRows(await searchCrmOnboardingRows(page, query), input.name);
+      const queryRows = await searchCrmOnboardingRows(page, query);
+      const rows = plausibleNameRows(queryRows, input.name);
       for (const row of rows) {
         const record = await openAndReadCrmRecord(page, row);
         if (record.observedEid === input.eid) records.set(record.recordId, record);
       }
+      const restoredRows = await searchCrmOnboardingRows(page, query);
+      if (JSON.stringify(restoredRows) !== JSON.stringify(queryRows)) throw new Error("CRM date results changed before capture");
+      recordBrowserAction("read", "crm.onboarding.restored-results", JSON.stringify(restoredRows));
       if (records.size > 0) break;
     }
     if (records.size !== 1) return CrmOnboardingDatesReadSchema.parse({
       binding: bindingForAbsent(input.eid), output: { emplId: input.eid, state: "no-confident-record", employmentDate: null, oathDate: null, reason: "No confident CRM record" },
     });
-    const record = [...records.values()][0];
-    if (record === undefined) throw new Error("CRM date record disappeared");
+    const selected = [...records.values()][0];
+    if (selected === undefined) throw new Error("CRM date record disappeared");
+    const record = await openAndReadCrmRecord(page, selected);
+    if (record.observedEid !== input.eid || record.firstName !== selected.firstName || record.lastName !== selected.lastName) {
+      throw new CrmRecordIdentityDriftError();
+    }
     recordBrowserAction("read", "crm.onboarding.dates", JSON.stringify({ employmentDate: record.firstDayOfService, oathDate: record.dateSigned }));
     return CrmOnboardingDatesReadSchema.parse({ binding: bindingForFound(input.eid, record), output: {
       emplId: input.eid, state: "read",
