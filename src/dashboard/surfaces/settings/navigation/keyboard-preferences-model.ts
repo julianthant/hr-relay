@@ -13,7 +13,9 @@ export type ShortcutPreferences = Readonly<{ numberMode: 'runs' | 'workflows'; b
 export const DEFAULT_SHORTCUT_PREFERENCES: ShortcutPreferences = Object.freeze({ numberMode: 'runs', bindings: Object.freeze(Object.fromEntries(SHORTCUT_ACTIONS.map(action => [action.id, Object.freeze([...action.defaults])])) as Record<ShortcutAction, readonly string[]>) });
 const binding = z.array(z.string().min(1)).max(8);
 const schema = z.strictObject({ numberMode: z.enum(['runs', 'workflows']), bindings: z.strictObject({ search: binding, start: binding, next: binding, previous: binding, attention: binding }) });
-const storageKey = 'hr-gpt-shortcuts-v1';
+const storageKey = 'hr-gpt-shortcuts-v2';
+const retiredStorageKey = 'hr-gpt-shortcuts-v1';
+let storageConverted = false;
 const listeners = new Set<() => void>();
 let cachedRaw: string | null = null;
 let cached: ShortcutPreferences = DEFAULT_SHORTCUT_PREFERENCES;
@@ -28,8 +30,24 @@ export function validateShortcutPreferences(value: unknown): ShortcutPreferences
   }
   return parsed;
 }
+function convertStoredPreferences(): void {
+  if (storageConverted) return;
+  if (window.localStorage.getItem(storageKey) === null) {
+    const raw = window.localStorage.getItem(retiredStorageKey);
+    if (raw !== null) {
+      const value: unknown = JSON.parse(raw);
+      const stored = z.object({ bindings: z.record(z.string(), z.unknown()) }).passthrough().parse(value);
+      const { menu: _menu, ...bindings } = stored.bindings;
+      const validated = validateShortcutPreferences({ ...stored, bindings });
+      window.localStorage.setItem(storageKey, JSON.stringify(validated));
+      window.localStorage.removeItem(retiredStorageKey);
+    }
+  }
+  storageConverted = true;
+}
 function snapshot(): ShortcutPreferences {
   if (typeof window === 'undefined') return DEFAULT_SHORTCUT_PREFERENCES;
+  convertStoredPreferences();
   const raw = window.localStorage.getItem(storageKey);
   if (raw !== cachedRaw) { cached = raw === null ? DEFAULT_SHORTCUT_PREFERENCES : validateShortcutPreferences(JSON.parse(raw)); cachedRaw = raw; }
   return cached;

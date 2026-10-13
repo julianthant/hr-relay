@@ -27,6 +27,7 @@ describe('Relay presentation models', () => {
   });
 });
 
+Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 const storageKey = 'hr-gpt-shortcuts-v1';
 const currentKey = 'hr-gpt-shortcuts-v2';
 afterEach(() => { window.localStorage.clear(); vi.restoreAllMocks(); });
