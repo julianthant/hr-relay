@@ -158,3 +158,7 @@ in `config/runtime-isolation.json`; test fixtures are separate from that operato
 ## Not built yet
 
 - Complete workflow-agnostic dashboard wiring and per-workflow served-data integration follow the approved wiring and workflow briefs.
+
+Person Lookup folds UCPath/CRM identity and employment facts in `rules/matching/person-lookup.ts`.
+`rules/matching/ucpath-person.ts` owns shared appointment preference. CRM discovery and exact
+selected-record verification live in the CRM driver and their corresponding system tasks.

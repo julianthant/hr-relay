@@ -42,9 +42,9 @@ export const CrmReadOnboardingRecord = defineTaskContract({
   freshness: { defaultMaxAgeMs: 60 * 60 * 1000, defaultOverride: "forbidden" },
   provenance: { default: "live" },
   scenarios: [
-    "person-lookup/happy-by-eid",
-    "person-lookup/crm-failure-retry",
-    "person-lookup/crm-subject-mismatch",
+    "person-lookup/s1",
+    "person-lookup/f2",
+    "person-lookup/m5",
   ],
   example: {
     state: "found",

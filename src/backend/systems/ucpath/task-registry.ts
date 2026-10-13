@@ -1,3 +1,4 @@
+import { searchPersonMatchTask } from "./tasks/search-person-match.js";
 import { defineBrowserStore } from "../../../workflow-kit/task-registry.js";
 import { ucpathDriver } from "./driver-declaration.js";
 import { ucpathSession } from "./session-provider.js";
@@ -20,6 +21,7 @@ export const ucpathStore = defineBrowserStore(
   ucpathDriver,
   ucpathSession,
   {
+    searchPersonMatch: searchPersonMatchTask,
     searchPersonOrg: searchPersonOrgTask,
     readJobSummary: readJobSummaryTask,
     probeTermination: matchExistingTerminationTask,

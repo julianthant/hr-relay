@@ -1,9 +1,9 @@
+import { CrmDiscoveredRecordSchema, CrmRecordIdentityDriftError, type CrmDiscoveredRecord } from "../../../../models/systems/crm/search-onboarding-records.js";
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { z } from "zod";
 import {
-  CrmReadOnboardingDates,
-  ReadOnboardingDatesOutputSchema,
+  CrmReadOnboardingDates, PersonLookupCrmDatesCheckError,
 } from "../../../../models/systems/crm/read-onboarding-dates.js";
 import {
   CrmReadOnboardingRecord,
@@ -28,14 +28,9 @@ import { CRM_UI_REGISTRY } from "./ui-registry.js";
 const CRM_HOST = "act-crm.my.site.com";
 const CRM_SEARCH_PATH = "/hr/ONB_SearchOnboardings";
 const CRM_RECORD_PATH = "/hr/ONB_ViewOnboarding";
-const CRM_HISTORY_PATH = "/hr/ONB_ShowOnboardingHistory";
 const NAVIGATION_TIMEOUT_MS = 30_000;
 const STATE_TIMEOUT_MS = 30_000;
 const EXPECTED_SEARCH_DATA_CELLS = 5;
-const EXPECTED_HISTORY_DATA_CELLS = 5;
-const HISTORY_FIELD = "ProcessStageText";
-const OFFER_LETTER_SENT = "Offer Letter Sent";
-const COMPLETED = "Completed";
 
 const SearchRowSchema = z.strictObject({
   fullName: z.string().min(1),
@@ -50,6 +45,7 @@ const ExactRecordSchema = SearchRowSchema.extend({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   firstDayOfService: z.string(),
+  department: z.string(), dateSigned: z.string(),
 });
 export type ExactCrmOnboardingRecord = z.infer<typeof ExactRecordSchema>;
 
@@ -59,12 +55,6 @@ const ExactRecordResolutionSchema = z.discriminatedUnion("state", [
 ]);
 export type ExactCrmRecordResolution = z.infer<typeof ExactRecordResolutionSchema>;
 
-const HistoryTransitionSchema = z.strictObject({
-  changedOn: DateOnlySchema,
-  field: z.string(),
-  newValue: z.string(),
-});
-type HistoryTransition = z.infer<typeof HistoryTransitionSchema>;
 
 function elementRecipe(id: string) {
   const element = CRM_UI_REGISTRY.elements.find((candidate) => candidate.id === id);
@@ -105,11 +95,7 @@ function recordUrlFromHref(href: string): Readonly<{ recordId: string; recordUrl
   return { recordId, recordUrl: url.href };
 }
 
-function historyUrl(recordId: string): string {
-  const url = new URL(`https://${CRM_HOST}${CRM_HISTORY_PATH}`);
-  url.searchParams.set("id", recordId);
-  return url.href;
-}
+
 
 async function waitForExactHeading(page: Page, name: string): Promise<Locator> {
   const heading = page.getByRole("heading", { name, exact: true });
@@ -222,7 +208,9 @@ type RecordFieldLabel =
   | "Employee First Name"
   | "Employee Last Name"
   | "UCPath Employee ID"
-  | "First Day of Service (Effective Date)";
+  | "First Day of Service (Effective Date)"
+  | "Department"
+  | "Date Signed";
 
 function recordFieldLocator(page: Page, label: RecordFieldLabel): Locator {
   const recipe = elementRecipe("crm.onboarding.record-field-value");
@@ -269,6 +257,8 @@ async function openAndReadCrmRecord(
     firstName: await readRecordField(page, "Employee First Name", "reject"),
     lastName: await readRecordField(page, "Employee Last Name", "reject"),
     firstDayOfService: await readRecordField(page, "First Day of Service (Effective Date)", "allow"),
+    department: await readRecordField(page, "Department", "allow"),
+    dateSigned: await readRecordField(page, "Date Signed", "allow"),
   });
 }
 
@@ -381,90 +371,6 @@ export function parseCrmDateOnly(raw: string, field: string): z.infer<typeof Dat
   );
 }
 
-function historyRowsLocator(page: Page): Locator {
-  const recipe = elementRecipe("crm.onboarding.history-rows");
-  if (recipe.kind !== "css") throw new Error("CRM history-row recipe changed kind unexpectedly");
-  return page.locator(recipe.selector);
-}
-
-async function readHistoryTransitions(
-  page: Page,
-  record: ExactCrmOnboardingRecord,
-): Promise<readonly HistoryTransition[]> {
-  await page.goto(historyUrl(record.recordId), {
-    waitUntil: "domcontentloaded",
-    timeout: NAVIGATION_TIMEOUT_MS,
-  });
-  recordBrowserAction("opened", "crm.onboarding.history");
-  assertExactCrmLocation(page.url(), CRM_HISTORY_PATH, record.recordId);
-  const rows = historyRowsLocator(page);
-  await rows.first().waitFor({ state: "visible", timeout: STATE_TIMEOUT_MS });
-  const rowCount = await rows.count();
-  let headerRows = 0;
-  let auxiliaryRows = 0;
-  const transitions: HistoryTransition[] = [];
-  for (let index = 0; index < rowCount; index += 1) {
-    const row = rows.nth(index);
-    const headers = row.locator(":scope > th");
-    const headerCount = await headers.count();
-    if (headerCount === EXPECTED_HISTORY_DATA_CELLS) {
-      headerRows += 1;
-      const expected = ["Date", "Created By", "Field", "Old Value", "New Value"];
-      for (let cellIndex = 0; cellIndex < expected.length; cellIndex += 1) {
-        const text = await readRequiredText(headers.nth(cellIndex), `history header ${String(cellIndex)}`);
-        if (text !== expected[cellIndex]) throw new Error(`CRM history header ${String(cellIndex)} was "${text}"`);
-      }
-      continue;
-    }
-    if (headerCount !== 0) {
-      throw new Error(`CRM history row ${String(index)} had ${String(headerCount)} header cells; expected zero or five`);
-    }
-    const cells = row.locator(":scope > td");
-    const cellCount = await cells.count();
-    if (cellCount === 1) {
-      auxiliaryRows += 1;
-      if (auxiliaryRows > 1) throw new Error("CRM history rendered more than one auxiliary one-cell row");
-      continue;
-    }
-    if (cellCount !== EXPECTED_HISTORY_DATA_CELLS) {
-      throw new Error(
-        `CRM history row ${String(index)} had ${String(cellCount)} direct cells; expected exactly ${String(EXPECTED_HISTORY_DATA_CELLS)}`,
-      );
-    }
-    const fieldText = await cells.nth(2).textContent();
-    const newValueText = await cells.nth(4).textContent();
-    if (fieldText === null || newValueText === null) {
-      throw new Error(`CRM history row ${String(index)} rendered without field/new-value text`);
-    }
-    transitions.push(HistoryTransitionSchema.parse({
-      changedOn: parseCrmDateOnly(
-        await readRequiredText(cells.nth(0), `history row ${String(index)} date`),
-        "history transition",
-      ),
-      field: fieldText.trim(),
-      newValue: newValueText.trim(),
-    }));
-  }
-  if (headerRows !== 1) throw new Error(`CRM history expected exactly one five-cell header row but found ${String(headerRows)}`);
-  return Object.freeze(transitions);
-}
-
-function transitionDate(
-  transitions: readonly HistoryTransition[],
-  newValue: typeof OFFER_LETTER_SENT | typeof COMPLETED,
-) {
-  const matches = transitions.filter((transition) =>
-    transition.field === HISTORY_FIELD && transition.newValue === newValue);
-  if (matches.length > 1) {
-    throw new Error(`CRM history contained ${String(matches.length)} ${newValue} ProcessStageText transitions`);
-  }
-  return matches[0]?.changedOn;
-}
-
-function absentDate(reason: string) {
-  return { state: "absent" as const, reason };
-}
-
 function bindingForFound(expectedEid: string, record: ExactCrmOnboardingRecord) {
   return CrmSubjectBindingSchema.parse({
     state: "displayed-record",
@@ -498,6 +404,7 @@ async function readOnboardingRecord(
     });
   }
   const record = resolution.record;
+  recordBrowserAction("read", "crm.onboarding.record", JSON.stringify(record));
   return CrmOnboardingRecordReadSchema.parse({
     binding: bindingForFound(input.eid, record),
     output: ReadOnboardingRecordOutputSchema.parse({
@@ -516,44 +423,71 @@ async function readOnboardingDates(
   page: Page,
   input: z.output<typeof CrmReadOnboardingDates.input>,
 ): Promise<CrmOnboardingDatesRead> {
-  const resolution = await resolveExactCrmOnboardingRecord(page, input);
-  if (resolution.state === "absent") {
-    const reason = `CRM has no onboarding record with exact displayed EID ${directIdentifierDisplay(input.eid)}`;
-    return CrmOnboardingDatesReadSchema.parse({
-      binding: bindingForAbsent(input.eid),
-      output: ReadOnboardingDatesOutputSchema.parse({
-        emplId: input.eid,
-        invitedOn: absentDate(reason),
-        startsOn: absentDate(reason),
-        completedOn: absentDate(reason),
-      }),
+  try {
+    const records = new Map<string, ExactCrmOnboardingRecord>();
+    for (const query of nameSearchQueries(input.name)) {
+      recordBrowserAction("typed", "crm.onboarding.date-search", query);
+      recordBrowserAction("clicked", "crm.onboarding.date-search");
+      const rows = plausibleNameRows(await searchCrmOnboardingRows(page, query), input.name);
+      for (const row of rows) {
+        const record = await openAndReadCrmRecord(page, row);
+        if (record.observedEid === input.eid) records.set(record.recordId, record);
+      }
+      if (records.size > 0) break;
+    }
+    if (records.size !== 1) return CrmOnboardingDatesReadSchema.parse({
+      binding: bindingForAbsent(input.eid), output: { emplId: input.eid, state: "no-confident-record", employmentDate: null, oathDate: null, reason: "No confident CRM record" },
     });
+    const record = [...records.values()][0];
+    if (record === undefined) throw new Error("CRM date record disappeared");
+    recordBrowserAction("read", "crm.onboarding.dates", JSON.stringify({ employmentDate: record.firstDayOfService, oathDate: record.dateSigned }));
+    return CrmOnboardingDatesReadSchema.parse({ binding: bindingForFound(input.eid, record), output: {
+      emplId: input.eid, state: "read",
+      employmentDate: record.firstDayOfService === "" ? null : parseCrmDateOnly(record.firstDayOfService, "First Day of Service"),
+      oathDate: record.dateSigned === "" ? null : parseCrmDateOnly(record.dateSigned, "Date Signed"), reason: "",
+    } });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    const failure = new PersonLookupCrmDatesCheckError(error);
+    return CrmOnboardingDatesReadSchema.parse({ binding: bindingForAbsent(input.eid), output: {
+      emplId: input.eid, state: "check-failed", code: failure.code, employmentDate: null, oathDate: null, reason: failure.message,
+    } });
   }
-  const record = resolution.record;
-  const transitions = await readHistoryTransitions(page, record);
-  const invitedOn = transitionDate(transitions, OFFER_LETTER_SENT);
-  const completedOn = transitionDate(transitions, COMPLETED);
-  return CrmOnboardingDatesReadSchema.parse({
-    binding: bindingForFound(input.eid, record),
-    output: ReadOnboardingDatesOutputSchema.parse({
-      emplId: record.observedEid,
-      invitedOn: invitedOn === undefined
-        ? absentDate("CRM history has no Offer Letter Sent transition")
-        : { state: "present", value: invitedOn },
-      startsOn: record.firstDayOfService.length === 0
-        ? absentDate("CRM onboarding record First Day of Service is blank")
-        : { state: "present", value: parseCrmDateOnly(record.firstDayOfService, "First Day of Service") },
-      completedOn: completedOn === undefined
-        ? absentDate("CRM history has no Completed transition")
-        : { state: "present", value: completedOn },
-    }),
-  });
 }
 
 
 export function createCrmOnboardingDriver(page: Page): CrmOnboardingDriver {
   return Object.freeze(CrmOnboardingDriverSchema.parse({
     system: "crm",
+    async searchOnboardingRecords(input: Readonly<{ name?: string; eid?: string }>) {
+      const discovered = new Map<string, ExactCrmOnboardingRecord>();
+      const names = input.name === undefined ? [] : nameSearchQueries(input.name);
+      const queries = input.eid === undefined ? names : [input.eid, ...names];
+      for (const query of queries) {
+        recordBrowserAction("typed", "crm.onboarding.search-criteria", query);
+        recordBrowserAction("clicked", "crm.onboarding.search");
+        const rows = await searchCrmOnboardingRows(page, query);
+        recordBrowserAction("read", "crm.onboarding.record-count", String(rows.length));
+        const plausible = query === input.eid ? rows : plausibleNameRows(rows, input.name === undefined ? "" : input.name);
+        for (const row of plausible) {
+          const record = await openAndReadCrmRecord(page, row);
+          if (input.eid === undefined || record.observedEid === input.eid) discovered.set(record.recordId, record);
+        }
+        if (discovered.size > 0) break;
+      }
+      return [...discovered.values()].map((record) => CrmDiscoveredRecordSchema.parse({
+        recordId: record.recordId, recordUrl: record.recordUrl, emplId: record.observedEid,
+        name: `${record.lastName}, ${record.firstName}`, department: record.department,
+        firstDayOfService: record.firstDayOfService, dateSigned: record.dateSigned,
+      }));
+    },
+    async verifyOnboardingRecord(input: CrmDiscoveredRecord) {
+      const record = await openAndReadCrmRecord(page, { fullName: input.name, rawStage: "Verification", recordId: input.recordId, recordUrl: input.recordUrl });
+      if (record.observedEid !== input.emplId || `${record.lastName}, ${record.firstName}` !== input.name) throw new CrmRecordIdentityDriftError();
+      const current = CrmDiscoveredRecordSchema.parse({ ...input, department: record.department, firstDayOfService: record.firstDayOfService, dateSigned: record.dateSigned });
+      recordBrowserAction("read", "crm.onboarding.record", JSON.stringify(current));
+      return current;
+    },
     async readOnboardingRecord(input: z.output<typeof CrmReadOnboardingRecord.input>) {
       return readOnboardingRecord(page, input);
     },

@@ -33,14 +33,8 @@ export const readOnboardingDatesTask = defineTask(crmDriver, CrmReadOnboardingDa
       );
     }
     const output = ReadOnboardingDatesOutputSchema.parse(read.output);
-    if (binding.state === "absent-query"
-      && [output.invitedOn, output.startsOn, output.completedOn]
-        .some(({ state }) => state === "present")) {
-      return ctx.fail(
-        "subject-mismatch",
-        `CRM onboarding dates reported values for EID ${directIdentifierDisplay(input.eid)} after proving the query absent`,
-        { subject: input.eid },
-      );
+    if (binding.state === "absent-query" && (output.employmentDate !== null || output.oathDate !== null)) {
+      return ctx.fail("subject-mismatch", "Absent CRM query cannot return dates", { subject: input.eid });
     }
     if (output.emplId !== input.eid) {
       return ctx.fail(
@@ -49,12 +43,7 @@ export const readOnboardingDatesTask = defineTask(crmDriver, CrmReadOnboardingDa
         { subject: input.eid },
       );
     }
-    ctx.recordData([
-      { direction: "read", field: "emplId", value: output.emplId },
-      { direction: "read", field: "invitedOn", value: output.invitedOn },
-      { direction: "read", field: "startsOn", value: output.startsOn },
-      { direction: "read", field: "completedOn", value: output.completedOn },
-    ]);
+    ctx.recordData(Object.entries<unknown>(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
     return output;
   },
 });

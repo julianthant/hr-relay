@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SearchPersonMatch, SearchPersonMatchOutputSchema } from "../systems/ucpath/search-person-match.js";
 import type {
   SearchPersonOrgInputSchema,
   SearchPersonOrgOutput,
@@ -75,6 +76,7 @@ export type UcpathPersonOrgDriver = SystemDriver<
   UcpathPersonOrgObservations
 > & Readonly<{
     /* The semantic Person Org operation used by the task store; its implementation owns every navigation, result-grid, drill-in and selection detail. */
+  searchPersonMatch(input: z.output<typeof SearchPersonMatch.input>): Promise<z.output<typeof SearchPersonMatchOutputSchema>>;
   searchPersonOrg(
     input: z.output<typeof SearchPersonOrgInputSchema>,
   ): Promise<SearchPersonOrgOutput>;

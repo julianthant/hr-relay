@@ -1,3 +1,4 @@
+import { searchPersonMatchOnPage } from "./person-match-operation.js";
 import type { Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
@@ -69,6 +70,7 @@ export function createUcpathPersonOrgDriver(
   let sweepSubjectEmplId: Eid | undefined;
   return {
     system: "ucpath",
+    searchPersonMatch: (input) => searchPersonMatchOnPage(page, input),
     async scanTerminationTransactions(input) {
       return smartHr.scanTerminationTransactions(page, input, nowIso(clock));
     },

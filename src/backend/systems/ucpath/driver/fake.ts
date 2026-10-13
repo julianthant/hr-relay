@@ -27,6 +27,7 @@ export function createDeterministicUcpathPersonOrgDriver(
   return {
     ...refuseUnimplementedSmartHrHalf("the Person Org fixture"),
     system: "ucpath",
+    async searchPersonMatch() { throw new Error("Person Org fixture requires explicit Match results"); },
     async readJobSummary(input) {
       if (jobSummary === undefined) {
         throw new Error(
@@ -54,6 +55,7 @@ export function createDeterministicUcpathPersonOrgDriver(
         jobTitle: "Fixture employee",
         employeeStatus: "active" as const,
         hdh: true,
+        hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
       };
       return SearchPersonOrgOutputSchema.parse({
         results: [candidate],
