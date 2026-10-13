@@ -231,10 +231,12 @@ function hasOrderedBulkSettlement(dispatch: ts.Node): boolean {
     const command = binding.elements[1];
     if (index === undefined || command === undefined || !ts.isBindingElement(index) || !ts.isBindingElement(command)
       || !ts.isIdentifier(index.name) || !ts.isIdentifier(command.name)) return false;
+    const indexName = index.name.text;
+    const commandName = command.name.text;
     const child = findNodes(loop.statement, (node): node is ts.VariableDeclaration => ts.isVariableDeclaration(node)
       && ts.isIdentifier(node.name) && node.name.text === "child" && node.initializer !== undefined
       && ts.isElementAccessExpression(node.initializer) && expressionPath(node.initializer.expression) === "reply.results"
-      && node.initializer.argumentExpression?.getText() === index.name.text)[0];
+      && node.initializer.argumentExpression?.getText() === indexName)[0];
     if (child === undefined) return false;
     return callSites(loop.statement, "outcomes.push").some((push) => {
       const result = push.arguments[0];
@@ -243,10 +245,10 @@ function hasOrderedBulkSettlement(dispatch: ts.Node): boolean {
       const refusal = result.whenTrue;
       const settled = result.whenFalse;
       if (!ts.isCallExpression(refusal) || expressionPath(refusal.expression) !== "this.refuse"
-        || !callHasArguments(refusal, [`${command.name.text}.commandId`, '"not-attempted"'])
+        || !callHasArguments(refusal, [`${commandName}.commandId`, '"not-attempted"'])
         || !ts.isAwaitExpression(settled) || !ts.isCallExpression(settled.expression)
         || expressionPath(settled.expression.expression) !== "this.settle") return false;
-      return callHasArguments(settled.expression, [command.name.text, child.name.getText(), "options"]);
+      return callHasArguments(settled.expression, [commandName, child.name.getText(), "options"]);
     });
   });
 }
