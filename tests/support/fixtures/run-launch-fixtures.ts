@@ -16,6 +16,8 @@ import { z } from "zod";
 import { Hono } from "hono";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
+import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
+import type { ProtectedSecretSource } from "../../../src/models/config/secrets.js";
 import { defineTaskStoreRegistry } from "../../../src/workflow-kit/task-registry.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
@@ -61,13 +63,13 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active") {
       }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
   });
 }
-export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2]) {
-  const h = sourceBoundHarness(launchDescriptor(enqueue), (world) => {
+export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>) {
+  const h = sourceBoundHarness(selection?.descriptor ?? launchDescriptor(enqueue), (world) => {
     const reads = sourceBoundReadStores(world); const writes = buildWriteFixtureRegistry(world);
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
     });
-  }, initializeRuntime);
+  }, initializeRuntime, selection?.protectedSecrets);
   const descriptor = h.descriptor;
   if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
   const workflow: RunStartWorkflow = { workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category,

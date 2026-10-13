@@ -17,17 +17,32 @@ import { createRunQueueProjection } from "../../../src/backend/runs/projections/
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
-import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { assertServedBundle, PARITY_DIST_DIR } from "./bundle.js";
+import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
+import { populatedProtectedRecord } from "../../support/fixtures/preflight/runtime-fixture.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "./fixture-start.js";
 
 export async function startRunRerunServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
   const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig); const source = await h.completeSource();
+  return serveLaunchAuthority(h, source);
+}
+
+export async function startSeparationsStartServer() {
+  assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
+  const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig, {
+    descriptor: separationsDescriptor, protectedSecrets: { read: populatedProtectedRecord },
+  });
+  return serveLaunchAuthority(h, undefined, FIXTURE_START_PICKER_BOOTSTRAP);
+}
+
+async function serveLaunchAuthority<Source>(h: ReturnType<typeof launchHarness>, source: Source, catalog?: FrontendBootstrapWire) {
   const stateRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-launch-projection-")));
-  const database = h.database; const descriptorHash = descriptorSetHash([h.descriptor.contractFingerprint]);
+  const database = h.database; const descriptorHash = catalog?.descriptorHash ?? descriptorSetHash([h.descriptor.contractFingerprint]);
   const day = h.clock.now().toISOString().slice(0, 10);
   const projection = createRunQueueProjection({ timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, h.clock), stateRoot, clock: h.clock, appVersion: "0.1.0", descriptorSetHash: descriptorHash,
@@ -44,9 +59,9 @@ export async function startRunRerunServer() {
   });
   projection.rebuildFromTimeline();
   const snapshot = () => { projection.ingestFromTimeline(); return projection.buildDashboardDayWire(day); };
-  const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, descriptorHash,
+  const bootstrap = FrontendBootstrapWireSchema.parse({ ...(catalog ?? FIXTURE_BOOTSTRAP), descriptorHash,
     projectionGeneration: projection.generation(), serverClock: { now: h.clock.now().toISOString(), zone: "America/Los_Angeles" },
-    workflows: [{ id: h.descriptor.id, code: h.descriptor.code, label: h.descriptor.label, categoryId: h.descriptor.category,
+    workflows: catalog?.workflows ?? [{ id: h.descriptor.id, code: h.descriptor.code, label: h.descriptor.label, categoryId: h.descriptor.category,
       descriptorFingerprint: h.descriptor.contractFingerprint, availability: { state: "available" }, role: h.workflow.role,
       start: { enqueue: h.workflow.enqueue, version: h.workflow.version, steps: h.workflow.steps,
         inputRun: h.descriptor.surfaces.inputRun, spreadsheetIntake: false } }],
@@ -83,7 +98,7 @@ export async function startRunRerunServer() {
         const body = req.method === "GET" || req.method === "HEAD" ? undefined : new Uint8Array(Buffer.concat(chunks));
         const request = new Request(url, { method: req.method, headers: Object.fromEntries(Object.entries(req.headers)
           .filter((entry): entry is [string, string] => typeof entry[1] === "string")), ...(body === undefined ? {} : { body }) });
-        const launch = /^\/api\/v1\/(?:commands|start-plans|rerun-warnings|runs\/[^/]+\/rerun-values)$/u.test(url.pathname);
+        const launch = /^\/api\/v1\/(?:commands|start-plans|rerun-warnings|runs\/[^/]+\/(?:rerun-values|attempt-history))$/u.test(url.pathname);
         if (url.pathname === "/api/v1/commands") commands.push(await request.clone().json());
         const response = await (launch ? h.app : fixtures.app).fetch(request);
         if (url.pathname === "/api/v1/commands") {
