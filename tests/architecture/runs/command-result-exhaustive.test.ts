@@ -177,8 +177,8 @@ function methodNamed(root: ts.Node, name: string): ts.MethodDeclaration | undefi
     && ts.isIdentifier(node.name) && node.name.text === name)[0];
 }
 
-function propertyValue(expression: ts.Expression, name: string): ts.Expression | undefined {
-  if (!ts.isObjectLiteralExpression(expression)) return undefined;
+function propertyValue(expression: ts.Expression | undefined, name: string): ts.Expression | undefined {
+  if (expression === undefined || !ts.isObjectLiteralExpression(expression)) return undefined;
   const property = expression.properties.find((entry) => ts.isPropertyAssignment(entry)
     && ((ts.isIdentifier(entry.name) || ts.isStringLiteralLike(entry.name)) && entry.name.text === name));
   return property !== undefined && ts.isPropertyAssignment(property) ? property.initializer : undefined;
