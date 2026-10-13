@@ -142,12 +142,19 @@ describe("worker browser session factory", () => {
 
   it("captures only PNG bytes and the configured viewport dimensions", async () => {
     await withTempRuntime(async ({ config }) => {
-      const factory = factoryFor(config, fakeLauncher(), recordingBindings());
+      const launcher = fakeLauncher();
+      const frames = [0, 1, 2].map(frameId => ({ locator: (selector: string) => ({ selector, frameId }) }));
+      launcher.page.frames = () => frames;
+      let screenshotOptions: unknown;
+      const originalScreenshot = launcher.page.screenshot;
+      launcher.page.screenshot = async options => { screenshotOptions = options; return originalScreenshot(options); };
+      const factory = factoryFor(config, launcher, recordingBindings());
       const resource = await factory.open(OPEN_INPUT);
       await resource.authentication.authenticate("ucpath", {});
       const screenshot = await resource.screenshot?.();
       assert.ok(screenshot?.state === "available");
       assert.deepEqual([...screenshot.bytes], [137, 80, 78, 71]);
+      assert.deepEqual(screenshotOptions, { type: "png", mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId })) });
       assert.deepEqual(
         { width: screenshot.width, height: screenshot.height },
         { width: config.display.screenWidth, height: config.display.screenHeight },

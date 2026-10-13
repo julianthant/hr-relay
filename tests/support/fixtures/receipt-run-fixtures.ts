@@ -1,7 +1,11 @@
+import { resolvePersonLookupIdentity, derivePersonLookupOutcome } from "../../../src/rules/matching/person-lookup.js";
+import { PersonLookupInput } from "../../../src/models/workflows/person-lookup/input.js";
+import { ReadResolvedIdentity } from "../../../src/models/workflows/person-lookup/read-resolved-identity.js";
+import { CrmSearchOnboardingRecords } from "../../../src/models/systems/crm/search-onboarding-records.js";
+import { CrmVerifyOnboardingRecord } from "../../../src/models/systems/crm/verify-onboarding-record.js";
 
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { CrmReadOnboardingRecord } from "../../../src/models/systems/crm/read-onboarding-record.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
 import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
 import {
@@ -77,7 +81,8 @@ const SELECTED_CANDIDATE = Object.freeze({
   department: "Housing Dining Hospitality",
   jobTitle: "Dining Assistant",
   employeeStatus: "active",
-  hdh: true,
+  hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true,
 });
 
 const SEARCH_OUTPUT = Object.freeze({
@@ -87,22 +92,6 @@ const SEARCH_OUTPUT = Object.freeze({
     selected: SELECTED_CANDIDATE,
     candidateEids: [EXIT_EID],
   },
-});
-
-const CRM_OUTPUT = Object.freeze({
-  state: "found",
-  record: {
-    recordId: EXIT_CRM_RECORD_ID,
-    emplId: EXIT_EID,
-    fullName: "Battistessa, Johnnie",
-    rawStage: "Completed",
-  },
-});
-
-const ACTIVE_STATUS_OUTPUT = Object.freeze({
-  state: "active",
-  reason: `UCPath reports active and CRM record ${EXIT_CRM_RECORD_ID} matches the selected EID`,
-  hdh: true,
 });
 
 function provenance(
@@ -184,7 +173,7 @@ export function seedPersonLookupExitRun(
       parsed: {
         protectedBindings: [],
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-        value: { emplId: EXIT_EID, keepNonHdh: false, includeCrmDates: false },
+        value: { mode: "search", crmCheck: true, emplId: EXIT_EID, keepNonHdh: false, includeCrmDates: false },
       },
       ingressSchemaHash: INGRESS_SCHEMA_HASH,
     },
@@ -296,12 +285,25 @@ export function seedPersonLookupExitRun(
   if (running.state !== "applied")
     throw new Error("exit run did not enter running");
 
+  const canonical = PersonLookupInput.parse({ emplId: EXIT_EID });
+  const searched = SearchPersonOrg.output.parse(SEARCH_OUTPUT);
+  const discovery = CrmSearchOnboardingRecords.output.parse({ state: "checked", records: [{ recordId: EXIT_CRM_RECORD_ID, recordUrl: "https://example.invalid/record", emplId: EXIT_EID, name: "Battistessa, Johnnie", department: "Housing Dining Hospitality", firstDayOfService: "07/15/2026", dateSigned: "" }] });
+  const initialIdentity = resolvePersonLookupIdentity({ input: canonical, person: searched });
+  const resolvedIdentity = resolvePersonLookupIdentity({ input: canonical, person: searched, crm: discovery });
+  const identityCheckpointInputs = [
+    ["search-identity", ReadResolvedIdentity.output, initialIdentity],
+    ["crm-identity", ReadResolvedIdentity.output, resolvedIdentity],
+    ["crm-selected-record", CrmVerifyOnboardingRecord.output, discovery],
+  ] as const;
+  const identityCheckpoints = identityCheckpointInputs.map(([nodeId, schema, value]) => checkpoint({ nodeId, attempt: 1, claimGeneration: claimed.run.claimGeneration,
+    schema: schema as Parameters<typeof deriveSchemaHash>[0], value, provenance: provenance(["state"], "derived", CROSS_VERIFY_OBSERVED_AT), writtenAt: CROSS_VERIFY_OBSERVED_AT }));
+  for (const record of identityCheckpoints) database.authority.runCheckpoints.insert(record);
   const crossVerify = checkpoint({
     nodeId: "cross-verify",
     attempt: 1,
     claimGeneration: claimed.run.claimGeneration,
-    schema: CrmReadOnboardingRecord.output,
-    value: CRM_OUTPUT,
+    schema: CrmSearchOnboardingRecords.output,
+    value: discovery,
     provenance: provenance(
       [
         "state",
@@ -320,7 +322,7 @@ export function seedPersonLookupExitRun(
     attempt: 1,
     claimGeneration: claimed.run.claimGeneration,
     schema: ReadActiveStatus.output,
-    value: ACTIVE_STATUS_OUTPUT,
+    value: derivePersonLookupOutcome({ input: canonical, identity: resolvedIdentity }),
     provenance: provenance(
       ["state", "reason", "hdh"],
       "derived",
@@ -336,6 +338,8 @@ export function seedPersonLookupExitRun(
     personLookupDescriptor,
     running.run,
     [
+      ...identityCheckpoints.map(value => ({ state: "resolved" as const, nodeId: RunCheckpointRecordSchema.parse(value).nodeId, checkpoint: value })),
+      { state: "not-run", nodeId: "matching", reason: "condition-false" },
       { state: "resolved", nodeId: "active-status", checkpoint: activeStatus },
       { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
     ],

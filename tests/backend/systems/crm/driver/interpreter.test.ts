@@ -112,6 +112,8 @@ function recordFieldNodes(record: RecordFixture): readonly FixtureNode[] {
     ["Employee First Name", record.firstName],
     ["Employee Last Name", record.lastName],
     ["First Day of Service (Effective Date)", record.firstDayOfService],
+    ["Department", "Housing"],
+    ["Date Signed", "6/25/2026"],
   ]);
   return [...fields].map(([label, value]) => ({
     text: label,
@@ -215,6 +217,7 @@ function exactRecord(overrides: Partial<ExactCrmOnboardingRecord> = {}): ExactCr
     firstName: "Person",
     lastName: "Fixture",
     firstDayOfService: "7/15/2026",
+    department: "Housing", dateSigned: "6/25/2026",
     ...overrides,
   };
 }
@@ -283,9 +286,18 @@ describe("CRM onboarding selector-backed driver", () => {
     );
   });
 
-  it("maps invitation and completion only from history transitions and start from First Day", async () => {
+  it("reopens the selected record, refreshes its dates and refuses changed identity", async () => {
+    const selected = { recordId: "exact", recordUrl: "https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=exact", emplId: EID, name: "Fixture, Person", department: "Housing", firstDayOfService: "7/1/2026", dateSigned: "" };
+    const driver = createCrmOnboardingDriver(fixturePage({ searches: {}, records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } }));
+    assert.equal((await driver.verifyOnboardingRecord(selected)).firstDayOfService, "7/2/2026");
+    for (const eid of [OTHER_EID]) {
+      await assert.rejects(createCrmOnboardingDriver(fixturePage({ searches: {}, records: { exact: { eid, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } })).verifyOnboardingRecord(selected), /identity changed/);
+    }
+  });
+
+  it("maps employment and oath only from First Day and Date Signed", async () => {
     const page = fixturePage({
-      searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
+      searches: { Fixture: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
       records: {
         exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/15/2026" },
       },
@@ -297,44 +309,43 @@ describe("CRM onboarding selector-backed driver", () => {
         ],
       },
     });
-    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID });
+    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(result.binding.state, "displayed-record");
     assert.deepEqual(result.output, {
       emplId: EID,
-      invitedOn: { state: "present", value: "2026-06-01" },
-      startsOn: { state: "present", value: "2026-07-15" },
-      completedOn: { state: "present", value: "2026-07-20" },
+      state: "read", employmentDate: "2026-07-15", oathDate: "2026-06-25", reason: "",
     });
   });
 
   it("returns absence only after valid fuzzy candidates fail the exact displayed-EID gate", async () => {
     const page = fixturePage({
-      searches: { [EID]: [{ fullName: "Wrong, Person", rawStage: "Completed", recordId: "wrong" }] },
+      searches: { Fixture: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "wrong" }], Person: [] },
       records: {
         wrong: { eid: OTHER_EID, firstName: "Person", lastName: "Wrong", firstDayOfService: "7/15/2026" },
       },
     });
-    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID });
+    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(result.binding.state, "absent-query");
-    assert.equal(result.output.invitedOn.state, "absent");
-    assert.equal(result.output.startsOn.state, "absent");
-    assert.equal(result.output.completedOn.state, "absent");
+    assert.equal(result.output.state, "no-confident-record");
+    assert.equal(result.output.employmentDate, null);
+    assert.equal(result.output.oathDate, null);
   });
 
-  it("throws on malformed search rows instead of converting selector drift into absence", async () => {
+  it("reports failed date acquisition instead of converting selector drift into absence", async () => {
     const page = fixturePage({
-      searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "bad", cellCount: 4 }] },
+      searches: { Fixture: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "bad", cellCount: 4 }] },
       records: {},
     });
-    await assert.rejects(
-      createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID }),
-      /had 4 direct cells; expected exactly 5/,
-    );
+    const output = (await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" })).output;
+    assert.equal(output.state, "check-failed");
+    assert.ok(output.state === "check-failed");
+    assert.equal(output.code, "person-lookup-crm-dates-check-failed");
+    assert.equal(output.reason, "CRM dates check failed.");
   });
 
-  it("allows a blank First Day only after exact identity, while malformed nonblank dates throw", async () => {
+  it("allows a blank First Day only after exact identity, while malformed dates fail the check", async () => {
     const base = {
-      searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
+      searches: { Fixture: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
       histories: {
         exact: [["6/1/2026 9:00 AM", "Fixture", "ProcessStageText", "Draft", "Offer Letter Sent"]] as const,
       },
@@ -343,31 +354,28 @@ describe("CRM onboarding selector-backed driver", () => {
       ...base,
       records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "" } },
     });
-    const blankResult = await createCrmOnboardingDriver(blank).readOnboardingDates({ eid: EID });
-    assert.equal(blankResult.output.startsOn.state, "absent");
+    const blankResult = await createCrmOnboardingDriver(blank).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    assert.equal(blankResult.output.employmentDate, null);
 
     const malformed = fixturePage({
       ...base,
       records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "tomorrow" } },
     });
-    await assert.rejects(
-      createCrmOnboardingDriver(malformed).readOnboardingDates({ eid: EID }),
-      /First Day of Service date "tomorrow"/,
-    );
+    assert.equal((await createCrmOnboardingDriver(malformed).readOnboardingDates({ eid: EID, name: "Fixture, Person" })).output.state, "check-failed");
   });
 
-  it("maps a structurally verified empty history to absent transition dates", async () => {
+  it("keeps actual record dates independent of empty history", async () => {
     const page = fixturePage({
-      searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Started", recordId: "exact" }] },
+      searches: { Fixture: [{ fullName: "Fixture, Person", rawStage: "Started", recordId: "exact" }] },
       records: {
         exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/15/2026" },
       },
       histories: { exact: [] },
     });
-    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID });
+    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(result.binding.state, "displayed-record");
-    assert.equal(result.output.invitedOn.state, "absent");
-    assert.equal(result.output.startsOn.state, "present");
-    assert.equal(result.output.completedOn.state, "absent");
+    assert.equal(result.output.state, "read");
+    assert.equal(result.output.employmentDate, "2026-07-15");
+    assert.equal(result.output.oathDate, "2026-06-25");
   });
 });

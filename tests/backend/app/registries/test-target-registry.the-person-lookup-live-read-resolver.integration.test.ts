@@ -68,7 +68,7 @@ describe("the person-lookup live-read resolver", () => {
       label: PERSON_LOOKUP_LABEL,
       protectedBindings: [{ kind: "test-data-local", inputPath: "emplId",
         name: "personLookupCanaryEid", sourceId: "00000000-0000-4000-8000-000000000010" }],
-      canonicalInput: { emplId: "10800000", keepNonHdh: false, includeCrmDates: false },
+      canonicalInput: { mode: "search", crmCheck: true, emplId: "10800000", keepNonHdh: false, includeCrmDates: false },
     });
   });
 

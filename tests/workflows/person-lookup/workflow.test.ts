@@ -46,89 +46,360 @@ describe("workflow definition public equivalence characterization", () => {
       },
       registryIndex: WORKFLOW_MODULES.indexOf(personLookupModule),
     }).toEqual({
-      descriptor: {
-        id: "person-lookup",
-        version: 1,
-        code: "pl",
-        label: "Person Lookup",
-        summary: "Resolves ONE person across UCPath and the CRM: searches Person Org by EID or name, "
-          + "cross-verifies the match against the CRM onboarding record, folds the two into an active / "
-          + "inactive verdict, and reads the CRM onboarding dates when the run asks for them.",
-        icon: "Search",
-        category: "search",
-        surface: { shape: "single" },
-        enqueue: "reject-active",
-
-        actions: { enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"] },
-        capabilities: {
-          review: false,
-          editData: {
-            fields: [
-              { nodeId: "crm-dates", fieldPath: "invitedOn.value", label: "Invited on" },
-              { nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" },
-              { nodeId: "crm-dates", fieldPath: "completedOn.value", label: "Completed on" },
-            ],
+  "descriptor": {
+    "id": "person-lookup",
+    "version": 2,
+    "code": "pl",
+    "label": "Person Lookup",
+    "summary": "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
+    "icon": "Search",
+    "category": "search",
+    "subjectProjection": { "nodeId": "searching", "fieldPath": "selection.selected.name" },
+    "surface": {
+      "shape": "single"
+    },
+    "enqueue": "reject-active",
+    "actions": {
+      "enabled": [
+        "retry",
+        "restart",
+        "cancel",
+        "bump",
+        "rename",
+        "delete"
+      ]
+    },
+    "capabilities": {
+      "review": false,
+      "editData": {
+        "fields": [
+          {
+            "nodeId": "crm-dates",
+            "fieldPath": "employmentDate",
+            "label": "Employment date"
           },
-        },
-        verdicts: [
-          { key: "not-found", label: "Not found", tone: "warning" },
-          { key: "inactive", label: "Inactive", tone: "warning", tag: true },
-        ],
-        surfaces: {
-          inputRun: {
-            placeholder: "Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)",
-            parser: {
-              split: { kind: "delimited", delimiters: [";", "\n"] },
-              rules: [
-                { when: { kind: "pattern", pattern: "eid" }, emit: "emplId" },
-                { when: { kind: "otherwise" }, emit: "name" },
-              ],
-              constants: [
-                { field: "keepNonHdh", value: { kind: "boolean", value: false } },
-                { field: "includeCrmDates", value: { kind: "boolean", value: false } },
-              ],
-            },
-            examples: [
-              { key: "one-eid", label: "One EID", text: "10873698", note: "the ordinary case — one run for one employee id" },
-              {
-                key: "eid-and-name",
-                label: "An EID and a name",
-                text: "10873698; Battistessa, Johnnie",
-                note: "two runs from one box: the parser reads the first as an employee id and the second as a name, "
-                  + "and the comma inside the name is not a separator",
+          {
+            "nodeId": "crm-dates",
+            "fieldPath": "oathDate",
+            "label": "Oath date"
+          }
+        ]
+      }
+    },
+    "verdicts": [
+      {
+        "key": "not-found",
+        "label": "Not found",
+        "tone": "warning"
+      },
+      {
+        "key": "inactive",
+        "label": "Inactive",
+        "tone": "warning",
+        "tag": true
+      },
+      {
+        "key": "multiple-matches",
+        "label": "Multiple matches",
+        "tone": "warning"
+      }
+    ],
+    "surfaces": {
+      "inputRun": {
+        "placeholder": "Enter employee IDs or names separated by semicolons or new lines",
+        "parser": {
+          "split": {
+            "kind": "delimited",
+            "delimiters": [
+              ";",
+              "\n"
+            ]
+          },
+          "rules": [
+            {
+              "when": {
+                "kind": "pattern",
+                "pattern": "eid"
               },
-            ],
-            supportsDryRun: false,
-          },
+              "emit": "emplId"
+            },
+            {
+              "when": {
+                "kind": "otherwise"
+              },
+              "emit": "name"
+            }
+          ],
+          "constants": [
+            {
+              "field": "mode",
+              "value": {
+                "kind": "text",
+                "text": "search"
+              }
+            },
+            {
+              "field": "crmCheck",
+              "value": {
+                "kind": "boolean",
+                "value": true
+              }
+            },
+            {
+              "field": "keepNonHdh",
+              "value": {
+                "kind": "boolean",
+                "value": false
+              }
+            },
+            {
+              "field": "includeCrmDates",
+              "value": {
+                "kind": "boolean",
+                "value": false
+              }
+            }
+          ]
         },
-        details: [
-          { key: "selection-status", label: "Selection", source: { nodeId: "searching", fieldPath: "selection.status" }, display: "badge" },
-          { key: "active-state", label: "Active status", source: { nodeId: "active-status", fieldPath: "state" }, display: "badge" },
+        "examples": [
+          {
+            "key": "one-eid",
+            "label": "One employee ID",
+            "text": "10000001",
+            "note": "Search one employee ID"
+          }
         ],
-        subjectProjection: { nodeId: "searching", fieldPath: "selection.selected.name" },
-        timelineDeclared: false,
-        timeline: [
-          { key: "searching", label: "Searching", nodes: [{ id: "searching", label: "Searching" }] },
-          { key: "cross-verify", label: "Cross Verification", nodes: [{ id: "cross-verify", label: "Cross Verification" }] },
-          { key: "active-status", label: "Active Status", nodes: [{ id: "active-status", label: "Active Status" }] },
-          { key: "crm-dates", label: "CRM Dates", nodes: [{ id: "crm-dates", label: "CRM Dates" }] },
-        ],
-        stepOmissions: [],
+        "supportsDryRun": false
+      }
+    },
+    "details": [
+      {
+        "key": "active-state",
+        "label": "Outcome",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "state"
+        },
+        "display": "badge"
       },
-      module: {
-        role: { kind: "standalone" },
-        stores: [
-          { kind: "browser", namespace: "ucpath" },
-          { kind: "browser", namespace: "crm" },
-          { kind: "headless", namespace: "workflow:person-lookup" },
-        ],
-        intakeTargets: [
-          { targetFieldId: "emplId", canonicalFieldId: "eid", label: "Employee ID (EID)", required: false },
-          { targetFieldId: "name", canonicalFieldId: "fullName", label: "Full Name", required: false },
-        ],
+      {
+        "key": "detail-search",
+        "label": "Search",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.search"
+        },
+        "display": "text"
       },
-      registryIndex: 0,
-    });
+      {
+        "key": "detail-name",
+        "label": "Name",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.name"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-eid",
+        "label": "EID",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.eid"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-department",
+        "label": "Dept",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.department"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-hr-status",
+        "label": "HR Status",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.hrStatus"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-ucpath",
+        "label": "UCPath",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.ucpath"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-crm",
+        "label": "CRM",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.crm"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-start-date",
+        "label": "Start Date",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.startDate"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-end-date",
+        "label": "End Date",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.endDate"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-termination-reason",
+        "label": "Term Reason",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.terminationReason"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-found-in-ucpath",
+        "label": "Found in UCPath",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.foundInUcpath"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-matched-eid",
+        "label": "Matched EID",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.matchedEid"
+        },
+        "display": "text"
+      },
+      {
+        "key": "detail-matched-name",
+        "label": "Matched Name",
+        "source": {
+          "nodeId": "active-status",
+          "fieldPath": "details.matchedName"
+        },
+        "display": "text"
+      }
+    ],
+    "timelineDeclared": true,
+    "timeline": [
+      {
+        "key": "searching",
+        "label": "Search for person",
+        "nodes": [
+          {
+            "id": "searching",
+            "label": "Search for person"
+          },
+          {
+            "id": "matching",
+            "label": "Match person"
+          },
+          {
+            "id": "search-identity",
+            "label": "Identity cross-check"
+          }
+        ]
+      },
+      {
+        "key": "cross-verify",
+        "label": "Cross-check identity",
+        "nodes": [
+          {
+            "id": "cross-verify",
+            "label": "Cross-check identity"
+          },
+          {
+            "id": "crm-identity",
+            "label": "Identity cross-check"
+          },
+          {
+            "id": "crm-selected-record",
+            "label": "Verify selected CRM record"
+          }
+        ]
+      },
+      {
+        "key": "active-status",
+        "label": "Read employment status",
+        "nodes": [
+          {
+            "id": "crm-only-recovery",
+            "label": "Searching"
+          },
+          {
+            "id": "active-status",
+            "label": "Read employment status"
+          }
+        ]
+      },
+      {
+        "key": "crm-dates",
+        "label": "Read CRM dates",
+        "nodes": [
+          {
+            "id": "crm-dates",
+            "label": "CRM Dates"
+          }
+        ]
+      }
+    ],
+    "stepOmissions": []
+  },
+  "module": {
+    "role": {
+      "kind": "standalone"
+    },
+    "stores": [
+      {
+        "kind": "browser",
+        "namespace": "ucpath"
+      },
+      {
+        "kind": "browser",
+        "namespace": "crm"
+      },
+      {
+        "kind": "headless",
+        "namespace": "workflow:person-lookup"
+      }
+    ],
+    "intakeTargets": [
+      {
+        "targetFieldId": "emplId",
+        "canonicalFieldId": "eid",
+        "label": "Employee ID (EID)",
+        "required": false
+      },
+      {
+        "targetFieldId": "name",
+        "canonicalFieldId": "fullName",
+        "label": "Full Name",
+        "required": false
+      }
+    ]
+  },
+  "registryIndex": 0
+});
   });
 
   it("keeps person lookup's input-subject, node graph, and derived projections", () => {
@@ -136,8 +407,8 @@ describe("workflow definition public equivalence characterization", () => {
 
     expect({
       inputSubjects: [
-        workflowPlanning(personLookupDescriptor).inputSubject({ name: "Battistessa, Johnnie", keepNonHdh: false, includeCrmDates: false }),
-        workflowPlanning(personLookupDescriptor).inputSubject({ emplId: "10873698", keepNonHdh: false, includeCrmDates: false }),
+        workflowPlanning(personLookupDescriptor).inputSubject({ mode: "search", crmCheck: true, name: "Battistessa, Johnnie", keepNonHdh: false, includeCrmDates: false }),
+        workflowPlanning(personLookupDescriptor).inputSubject({ mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false }),
       ],
       graph: personLookupDescriptor.nodes.map((node) => {
         const when = "when" in node ? node.when : undefined;
@@ -163,35 +434,243 @@ describe("workflow definition public equivalence characterization", () => {
       contracts: projections.contracts.map((contract) => String(contract.id)),
       dryRun: projections.dryRun,
     }).toEqual({
-      inputSubjects: ["name", "eid"],
-      graph: [
-        { id: "searching", kind: "task", dependsOn: [] },
-        { id: "cross-verify", kind: "task", dependsOn: ["searching"] },
-        { id: "active-status", kind: "task", dependsOn: ["searching", "cross-verify"] },
-        {
-          id: "crm-dates",
-          kind: "task",
-          dependsOn: ["searching"],
-          when: { kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
+  "inputSubjects": [
+    "name",
+    "eid"
+  ],
+  "graph": [
+    {
+      "id": "searching",
+      "kind": "task",
+      "dependsOn": [],
+      "when": {
+        "kind": "equals",
+        "of": {
+          "from": "input",
+          "path": "mode"
         },
+        "value": "search"
+      }
+    },
+    {
+      "id": "matching",
+      "kind": "task",
+      "dependsOn": [
+        "searching"
       ],
-      steps: [
-        { key: "searching", nodeId: "searching", label: "Searching", kind: "task", taskId: "ucpath/search-person-org", conditional: false },
-        { key: "cross-verify", nodeId: "cross-verify", label: "Cross Verification", kind: "task", taskId: "crm/read-onboarding-record", conditional: false },
-        { key: "active-status", nodeId: "active-status", label: "Active Status", kind: "task", taskId: "workflow:person-lookup/read-active-status", conditional: false },
-        { key: "crm-dates", nodeId: "crm-dates", label: "CRM Dates", kind: "task", taskId: "crm/read-onboarding-dates", conditional: true },
+      "when": {
+        "kind": "equals",
+        "of": {
+          "from": "input",
+          "path": "mode"
+        },
+        "value": "match"
+      }
+    },
+    {
+      "id": "search-identity",
+      "kind": "task",
+      "dependsOn": [
+        "searching",
+        "matching"
+      ]
+    },
+    {
+      "id": "cross-verify",
+      "kind": "task",
+      "dependsOn": [
+        "search-identity",
+        "searching",
+        "matching"
       ],
-      gates: [],
-      systems: ["crm", "ucpath"],
-      requires: [],
-      contracts: [
-        "ucpath/search-person-org",
-        "crm/read-onboarding-record",
-        "workflow:person-lookup/read-active-status",
-        "crm/read-onboarding-dates",
+      "when": {
+        "kind": "is-true",
+        "of": {
+          "from": "node",
+          "nodeId": "search-identity",
+          "path": "shouldCheckCrm"
+        }
+      }
+    },
+    {
+      "id": "crm-identity",
+      "kind": "task",
+      "dependsOn": [
+        "search-identity",
+        "cross-verify",
+        "searching",
+        "matching"
       ],
-      dryRun: { state: "unsupported", reason: "no-transaction-node" },
-    });
+      "when": {
+        "kind": "is-true",
+        "of": {
+          "from": "node",
+          "nodeId": "search-identity",
+          "path": "shouldCheckCrm"
+        }
+      }
+    },
+    {
+      "id": "crm-selected-record",
+      "kind": "task",
+      "dependsOn": [
+        "crm-identity"
+      ],
+      "when": {
+        "kind": "is-present",
+        "of": {
+          "from": "node",
+          "nodeId": "crm-identity",
+          "path": "crmRecord"
+        }
+      }
+    },
+    {
+      "id": "crm-only-recovery",
+      "kind": "task",
+      "dependsOn": [
+        "crm-identity",
+        "crm-selected-record"
+      ],
+      "when": {
+        "kind": "is-present",
+        "of": {
+          "from": "node",
+          "nodeId": "crm-identity",
+          "path": "recoveryEid"
+        }
+      }
+    },
+    {
+      "id": "active-status",
+      "kind": "task",
+      "dependsOn": [
+        "search-identity",
+        "crm-identity",
+        "crm-only-recovery",
+        "crm-selected-record"
+      ],
+      "when": {
+        "kind": "equals",
+        "of": {
+          "from": "input",
+          "path": "mode"
+        },
+        "value": "search"
+      }
+    },
+    {
+      "id": "crm-dates",
+      "kind": "task",
+      "dependsOn": [
+        "active-status"
+      ],
+      "when": {
+        "kind": "is-present",
+        "of": {
+          "from": "node",
+          "nodeId": "active-status",
+          "path": "datesEid"
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "key": "searching",
+      "nodeId": "searching",
+      "label": "Search for person",
+      "kind": "task",
+      "taskId": "ucpath/search-person-org",
+      "conditional": true
+    },
+    {
+      "key": "matching",
+      "nodeId": "matching",
+      "label": "Match person",
+      "kind": "task",
+      "taskId": "ucpath/search-person-match",
+      "conditional": true
+    },
+    {
+      "key": "search-identity",
+      "nodeId": "search-identity",
+      "label": "Identity cross-check",
+      "kind": "task",
+      "taskId": "workflow:person-lookup/read-resolved-identity",
+      "conditional": false
+    },
+    {
+      "key": "cross-verify",
+      "nodeId": "cross-verify",
+      "label": "Cross-check identity",
+      "kind": "task",
+      "taskId": "crm/search-onboarding-records",
+      "conditional": true
+    },
+    {
+      "key": "crm-identity",
+      "nodeId": "crm-identity",
+      "label": "Identity cross-check",
+      "kind": "task",
+      "taskId": "workflow:person-lookup/read-resolved-identity",
+      "conditional": true
+    },
+    {
+      "key": "crm-selected-record",
+      "nodeId": "crm-selected-record",
+      "label": "Verify selected CRM record",
+      "kind": "task",
+      "taskId": "crm/verify-onboarding-record",
+      "conditional": true
+    },
+    {
+      "key": "crm-only-recovery",
+      "nodeId": "crm-only-recovery",
+      "label": "Searching",
+      "kind": "task",
+      "taskId": "ucpath/search-person-org",
+      "conditional": true
+    },
+    {
+      "key": "active-status",
+      "nodeId": "active-status",
+      "label": "Read employment status",
+      "kind": "task",
+      "taskId": "workflow:person-lookup/read-active-status",
+      "conditional": true
+    },
+    {
+      "key": "crm-dates",
+      "nodeId": "crm-dates",
+      "label": "CRM Dates",
+      "kind": "task",
+      "taskId": "crm/read-onboarding-dates",
+      "conditional": true
+    }
+  ],
+  "gates": [],
+  "systems": [
+    "crm",
+    "ucpath"
+  ],
+  "requires": [],
+  "contracts": [
+    "ucpath/search-person-org",
+    "ucpath/search-person-match",
+    "workflow:person-lookup/read-resolved-identity",
+    "crm/search-onboarding-records",
+    "workflow:person-lookup/read-resolved-identity",
+    "crm/verify-onboarding-record",
+    "ucpath/search-person-org",
+    "workflow:person-lookup/read-active-status",
+    "crm/read-onboarding-dates"
+  ],
+  "dryRun": {
+    "state": "unsupported",
+    "reason": "no-transaction-node"
+  }
+});
   });
 });
 
@@ -236,7 +715,7 @@ describe("workflow durable match-key identity", () => {
       separationsUcpathTerminationDescriptor.identity.matchKey(termination),
     ], [
       `eid:${EID}`,
-      "name:Hernandez, Jose Santos",
+      "name:hernandez, jose santos",
       `separations-identity:4510:${EID}`,
       `kronos-timecard:${EID}:06/01/2026:08/12/2026`,
       `separations-ucpath-termination:${EID}:06/11/2026`,

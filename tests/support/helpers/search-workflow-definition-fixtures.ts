@@ -13,8 +13,10 @@ type Author = WorkflowAuthor<typeof PersonLookupInput>;
 type Authored = ReturnType<WorkflowDefinitionSpec<typeof PersonLookupInput, z.ZodType>["steps"]>;
 
 export function createSearchWorkflowDefinitionFixtures() {
-  const lookupInput = ({ input }: { input: { emplId?: string; name?: string; keepNonHdh: boolean } }) =>
-    input.emplId === undefined
+  const lookupInput = ({ input }: { input: z.output<typeof PersonLookupInput> }) =>
+    input.mode === "match"
+      ? { kind: "by-name" as const, name: `${input.lastName}, ${input.firstName}`, keepNonHdh: false }
+      : !("emplId" in input)
       ? { kind: "by-name" as const, name: input.name ?? "Fixture Person", keepNonHdh: input.keepNonHdh }
       : { kind: "by-eid" as const, emplId: input.emplId };
 

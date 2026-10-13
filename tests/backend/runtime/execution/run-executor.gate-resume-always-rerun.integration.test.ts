@@ -13,6 +13,8 @@ import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-pe
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
+import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import { resolvePersonLookupIdentity } from "../../../../src/rules/matching/person-lookup.js";
 import { ReadActiveStatus } from "../../../../src/models/workflows/person-lookup/read-active-status.js";
 import { EidSchema,NodeIdSchema,TraceIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { TestClock } from "../../../../src/rules/time/clock.js";
@@ -68,9 +70,8 @@ const gateResumeFlow = flow(GateInput)
     dependsOn: ["searching", "cross-verify"],
     replay: "always-rerun",
     bind: ({ outputs }) => ({
-      person: outputs.searching,
-      crm: outputs["cross-verify"],
-      keepNonHdh: false,
+      input: PersonLookupInput.parse({ emplId: EXECUTOR_EID }),
+      identity: resolvePersonLookupIdentity({ input: PersonLookupInput.parse({ emplId: EXECUTOR_EID }), person: outputs.searching }),
     }),
   })
   .gate("approval", {

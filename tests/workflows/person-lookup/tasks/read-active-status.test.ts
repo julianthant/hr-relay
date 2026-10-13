@@ -1,10 +1,12 @@
 import { TaskRefusal } from "../../../support/helpers/separation-task-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import { resolvePersonLookupIdentity } from "../../../../src/rules/matching/person-lookup.js";
+import { ResolvedIdentitySchema } from "../../../../src/models/workflows/person-lookup/read-resolved-identity.js";
 import { ReadOnboardingRecordOutputSchema } from "../../../../src/models/systems/crm/read-onboarding-record.js";
 import { UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
-import { directIdentifierDisplay } from "../../../../src/rules/redaction/redaction.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { DataPointSchema } from "../../../../src/rules/workflow/task-provenance.js";
 import { readActiveStatusTask } from "../../../../src/workflows/person-lookup/tasks/read-active-status.js";
@@ -29,41 +31,16 @@ it("names inconsistent UCPath and CRM identities without recording output facts"
 
   await assert.rejects(readActiveStatusTask.impl.run({
     input: {
-      person: {
-        results: [{
-          emplId: expectedEid,
-          name: "Person, Deterministic",
-          department: "Housing Dining Hospitality",
-          jobTitle: "Dining Assistant",
-          employeeStatus: "active",
-          hdh: false,
-        }],
-        selection: {
-          status: "resolved",
-          selected: {
-            emplId: expectedEid,
-            name: "Person, Deterministic",
-            department: "Housing Dining Hospitality",
-            jobTitle: "Dining Assistant",
-            employeeStatus: "active",
-            hdh: false,
-          },
-          candidateEids: [expectedEid],
-        },
-      },
-      crm: {
-        state: "absent",
-        queriedEid: otherEid,
-        reason: "no matching CRM record",
-      },
-      keepNonHdh: false,
+      input: PersonLookupInput.parse({ emplId: expectedEid }),
+      identity: ResolvedIdentitySchema.parse({ state: "resolved", selected: { ...candidate, emplId: expectedEid }, crmRecord: { recordId: "ONB-2", recordUrl: "https://example.invalid/record", emplId: otherEid, name: "Other, Person", department: "Housing", firstDayOfService: "", dateSigned: "" },
+        shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null, candidateEids: [expectedEid], recoveryEid: null, crmState: "Found", method: "eid-match" }),
     },
     ctx,
   }), (error: unknown) => error instanceof TaskRefusal && error.code === "inconsistent-inputs");
 
   assert.deepEqual(refusals, [new TaskRefusal(
     "inconsistent-inputs",
-    `person-lookup active-status received UCPath EID ${expectedEid} but CRM EID ${otherEid}`,
+    "Person Lookup received inconsistent UCPath and CRM identities.",
   )]);
   assert.deepEqual(records, []);
 });
@@ -94,7 +71,8 @@ const candidate = UcpathCandidateSchema.parse({
   department: "Housing Dining Hospitality",
   jobTitle: "Dining Assistant",
   employeeStatus: "active" as const,
-  hdh: true,
+  hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true,
 });
 
 const crmRecord = ReadOnboardingRecordOutputSchema.parse({
@@ -112,37 +90,14 @@ if (crmRecord.state !== "found") throw new Error("CRM found-record fixture did n
 describe("Person Lookup task implementations", () => {
   it("keeps genuine unresolved and inactive outcomes distinct", async () => {
     const unresolved = await readActiveStatusTask.impl.run({
-      input: {
-        person: {
-          results: [],
-          selection: {
-            status: "not-found",
-            selected: null,
-            candidateEids: [],
-            searchName: "Nobody, Missing",
-          },
-        },
-        crm: { state: "absent", queriedEid: candidate.emplId, reason: "no matching record" },
-        keepNonHdh: false,
-      },
+      input: { input: PersonLookupInput.parse({ name: "Nobody, Missing" }), identity: resolvePersonLookupIdentity({ input: PersonLookupInput.parse({ name: "Nobody, Missing" }), person: { results: [], selection: { status: "not-found", selected: null, candidateEids: [], searchName: "Nobody, Missing" } }, crm: { state: "checked", records: [] } }) },
       ctx: commonCtx,
     });
-    assert.equal(unresolved.state, "undetermined");
+    assert.equal(unresolved.state, "not-found");
 
     const terminated = UcpathCandidateSchema.parse({ ...candidate, employeeStatus: "terminated" });
     const inactive = await readActiveStatusTask.impl.run({
-      input: {
-        person: {
-          results: [terminated],
-          selection: {
-            status: "resolved",
-            selected: terminated,
-            candidateEids: [candidate.emplId],
-          },
-        },
-        crm: crmRecord,
-        keepNonHdh: false,
-      },
+      input: { input: PersonLookupInput.parse({ emplId: candidate.emplId }), identity: resolvePersonLookupIdentity({ input: PersonLookupInput.parse({ emplId: candidate.emplId }), person: { results: [terminated], selection: { status: "resolved", selected: terminated, candidateEids: [candidate.emplId] } } }) },
       ctx: commonCtx,
     });
     assert.equal(inactive.state, "inactive");
@@ -152,25 +107,11 @@ describe("Person Lookup task implementations", () => {
     const nonHdh = UcpathCandidateSchema.parse({ ...candidate, hdh: false });
     await assert.rejects(
       readActiveStatusTask.impl.run({
-        input: {
-          person: {
-            results: [nonHdh],
-            selection: {
-              status: "resolved",
-              selected: nonHdh,
-              candidateEids: [nonHdh.emplId],
-            },
-          },
-          crm: {
-            state: "absent",
-            queriedEid: EidSchema.parse("10001573"),
-            reason: "no record for the wrong person",
-          },
-          keepNonHdh: false,
-        },
+        input: { input: PersonLookupInput.parse({ emplId: nonHdh.emplId }), identity: ResolvedIdentitySchema.parse({ state: "resolved", selected: nonHdh, crmRecord: { recordId: "ONB-2", recordUrl: "https://example.invalid/record", emplId: "10001573", name: "Other, Person", department: "Housing", firstDayOfService: "", dateSigned: "" },
+          shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null, candidateEids: [nonHdh.emplId], recoveryEid: null, crmState: "Found", method: "eid-match" }) },
         ctx: commonCtx,
       }),
-      new RegExp(`UCPath EID ${directIdentifierDisplay("10873698")} but CRM EID ${directIdentifierDisplay("10001573")}`),
+      /inconsistent UCPath and CRM identities/,
     );
   })
 });

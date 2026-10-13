@@ -22,7 +22,8 @@ export interface FictionalFormDriver extends BrowserDriver {
 }
 const driver = declareDriverFor<FictionalFormDriver>()("ucpath", "semantic-ready");
 const scenario = ScenarioIdSchema.parse("person-lookup/happy-by-eid");
-const fictionalCandidate = { emplId: "10800000", name: "Fictional Employee", department: "Demonstration", jobTitle: "Fixture", employeeStatus: "active" as const, hdh: true };
+const fictionalCandidate = { emplId: "10800000", name: "Fictional Employee", department: "Demonstration", jobTitle: "Fixture", employeeStatus: "active" as const, hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true };
 const formOutput = () => SearchPersonOrgOutputSchema.parse({ results: [fictionalCandidate], selection: { status: "resolved", selected: fictionalCandidate, candidateEids: [fictionalCandidate.emplId] } });
 const contract = defineTaskContract({ id: taskId("ucpath/search-person-org"), title: "Find fictional employee", effect: "read", input: SearchPersonOrgInputSchema, output: SearchPersonOrgOutputSchema,
   subject: { kind: "none", reason: "Fictional form fixture; no HR authority" }, errorCodes: ["unexpected-page-state"], scenarios: [scenario],

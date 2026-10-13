@@ -3,7 +3,7 @@ import { describe,it } from "vitest";
 import { createDeterministicCrmOnboardingDriver } from "../../../../../src/backend/systems/crm/driver/fake.js";
 import { readOnboardingDatesTask } from "../../../../../src/backend/systems/crm/tasks/read-onboarding-dates.js";
 import { readOnboardingRecordTask } from "../../../../../src/backend/systems/crm/tasks/read-onboarding-record.js";
-import { ReadOnboardingDatesOutputSchema } from "../../../../../src/models/systems/crm/read-onboarding-dates.js";
+import { ReadOnboardingDatesOutputSchema, PersonLookupCrmDatesCheckError } from "../../../../../src/models/systems/crm/read-onboarding-dates.js";
 import { ReadOnboardingRecordOutputSchema } from "../../../../../src/models/systems/crm/read-onboarding-record.js";
 import { UcpathCandidateSchema } from "../../../../../src/models/systems/ucpath/search-person-org.js";
 import { EidSchema } from "../../../../../src/rules/identity/ids.js";
@@ -39,7 +39,8 @@ const candidate = UcpathCandidateSchema.parse({
   department: "Housing Dining Hospitality",
   jobTitle: "Dining Assistant",
   employeeStatus: "active" as const,
-  hdh: true,
+  hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true,
 });
 
 const crmRecord = ReadOnboardingRecordOutputSchema.parse({
@@ -56,12 +57,19 @@ if (crmRecord.state !== "found") throw new Error("CRM found-record fixture did n
 
 const crmDates = ReadOnboardingDatesOutputSchema.parse({
   emplId: candidate.emplId,
-  invitedOn: { state: "present", value: "2026-06-01" },
-  startsOn: { state: "present", value: "2026-07-15" },
-  completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
+  state: "read", employmentDate: "2026-07-15", oathDate: null, reason: "",
 });
 
 describe("Person Lookup task implementations", () => {
+  it("returns the named date check failure without failing the task", async () => {
+    const failure = new PersonLookupCrmDatesCheckError(new Error("selector missing"));
+    const dates = ReadOnboardingDatesOutputSchema.parse({ emplId: candidate.emplId, state: "check-failed", code: failure.code,
+      employmentDate: null, oathDate: null, reason: failure.message });
+    const driver = createDeterministicCrmOnboardingDriver({ record: crmRecord, dates, datesBindingState: "absent-query" });
+    const output = await readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId, name: candidate.name }, ctx: { ...commonCtx, driver } });
+    assert.deepEqual(output, dates);
+    assert.ok(failedTaskDataPoints.some(point => point.field === "code" && point.value === failure.code));
+  });
   it("fails CRM reads when the displayed subject or extracted output EID differs", async () => {
     const observedWrong = createDeterministicCrmOnboardingDriver({
       record: crmRecord,
@@ -78,7 +86,7 @@ describe("Person Lookup task implementations", () => {
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
-        input: { eid: candidate.emplId },
+        input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: observedWrong },
       }),
       new RegExp(`expected EID ${directIdentifierDisplay("10873698")} but bound ${directIdentifierDisplay("10001573")}`),
@@ -101,7 +109,7 @@ describe("Person Lookup task implementations", () => {
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
-        input: { eid: candidate.emplId },
+        input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
       new RegExp(`returned output for ${directIdentifierDisplay("10001573")}`),

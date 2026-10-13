@@ -1,3 +1,4 @@
+import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../../support/helpers/run-integration-world.js";
 
 import { default as assert } from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -216,23 +217,15 @@ describe("resolveTerminalDependencies under step omission", () => {
 {
 
 const CLOCK = manualClock(new Date(LATER));
-const ACTIVE = {
-  state: "active" as const,
-  reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-  hdh: true,
-};
-const CRM_DATES = ReadOnboardingDatesOutputSchema.parse({
-  emplId: "10873698",
-  invitedOn: { state: "present", value: "2026-06-01" },
-  startsOn: { state: "present", value: "2026-07-15" },
-  completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
-});
+const ACTIVE = PERSON_LOOKUP_ACTIVE;
+const CRM_DATES = ReadOnboardingDatesOutputSchema.parse({ emplId: "10873698", state: "read", employmentDate: "2026-07-15", oathDate: null, reason: "" });
 
 function runningRun(includeCrmDates = false) {
   return RunRecordSchema.parse({
     ...QUEUED_RUN,
     envelope: {
       ...QUEUED_RUN.envelope,
+      descriptorVersion: personLookupDescriptor.version,
       contractFingerprint: personLookupDescriptor.contractFingerprint,
     },
     input: {
@@ -240,7 +233,7 @@ function runningRun(includeCrmDates = false) {
       parsed: {
         ...QUEUED_RUN.input.parsed,
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates },
+        value: { mode: "search", emplId: "10873698", crmCheck: true, keepNonHdh: false, includeCrmDates },
       },
     },
     lifecycle: {
@@ -266,7 +259,7 @@ function checkpoint(nodeId: "active-status" | "crm-dates", value: unknown) {
     claimGeneration: 1,
     runId: QUEUED_RUN.envelope.runId,
     output: { schemaHash: deriveSchemaHash(schema, "output"), value: schema.parse(value) },
-    descriptorVersion: 1,
+    descriptorVersion: personLookupDescriptor.version,
     contractFingerprint: personLookupDescriptor.contractFingerprint,
     implFingerprint: HASH_B,
     provenance: [{ path: "state", source: "derived", observedAt: NOW, originalObservedAt: NOW }],
@@ -293,7 +286,11 @@ describe("factory-authenticated terminal run results", () => {
 
   it("binds conditional not-run reasons to their exact authored cause", () => {
     assert.deepEqual(workflowTerminalResultExecution(personLookupDescriptor).dependencies, [
-      { nodeId: "active-status" },
+      { nodeId: "search-identity" },
+      { nodeId: "crm-identity", notRunReason: "condition-false" },
+      { nodeId: "matching", notRunReason: "condition-false" },
+      { nodeId: "crm-selected-record", notRunReason: "condition-false" },
+      { nodeId: "active-status", notRunReason: "condition-false" },
       { nodeId: "crm-dates", notRunReason: "condition-false" },
     ]);
     assert.deepEqual(workflowTerminalResultExecution(fixtureDescriptor).dependencies, [
@@ -306,54 +303,58 @@ describe("factory-authenticated terminal run results", () => {
       personLookupDescriptor,
       runningRun(),
       [
+        ...personLookupTerminalIdentityEvidence(runningRun()),
         { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
         { state: "resolved", nodeId: "active-status", checkpoint: checkpoint("active-status", ACTIVE) },
       ],
       CLOCK,
     );
-    assert.deepEqual(result.dependencies.map(({ nodeId }) => nodeId), ["active-status", "crm-dates"]);
-    assert.equal(result.dependencies[1]?.state, "not-run");
+    assert.deepEqual(result.dependencies.map(({ nodeId }) => nodeId), ["search-identity", "crm-identity", "matching", "crm-selected-record", "active-status", "crm-dates"]);
+    assert.equal(result.dependencies[5]?.state, "not-run");
     assert.deepEqual(RunResultRecordSchema.parse(result).result.value, {
       activeStatus: ACTIVE,
       crmDates: { state: "not-requested" },
     });
   });
 
-  it("retains both resolved dependency identities when the conditional node runs", () => {
+  it("retains every resolved dependency identity when the conditional node runs", () => {
     const { record: result } = buildRunResult(
       personLookupDescriptor,
       runningRun(true),
       [
-        { state: "resolved", nodeId: "active-status", checkpoint: checkpoint("active-status", ACTIVE) },
+        ...personLookupTerminalIdentityEvidence(runningRun()),
+        { state: "resolved", nodeId: "active-status", checkpoint: checkpoint("active-status", { ...ACTIVE, datesEid: "10873698" }) },
         { state: "resolved", nodeId: "crm-dates", checkpoint: checkpoint("crm-dates", CRM_DATES) },
       ],
       CLOCK,
     );
-    assert.deepEqual(result.dependencies.map(({ state }) => state), ["resolved", "resolved"]);
+    assert.deepEqual(result.dependencies.map(({ state }) => state), ["resolved", "resolved", "not-run", "not-run", "resolved", "resolved"]);
   });
 
   it("rejects copied descriptors and missing, extra, duplicate, or illegal not-run evidence", () => {
     const active = { state: "resolved", nodeId: "active-status", checkpoint: checkpoint("active-status", ACTIVE) };
     const skipped = { state: "not-run", nodeId: "crm-dates", reason: "condition-false" };
     assert.throws(
-      () => buildRunResult({ ...personLookupDescriptor }, runningRun(), [active, skipped], CLOCK),
+      () => buildRunResult({ ...personLookupDescriptor }, runningRun(), [...personLookupTerminalIdentityEvidence(runningRun()), active, skipped], CLOCK),
       /exact object returned by defineWorkflowDescriptor/,
     );
-    assert.throws(() => buildRunResult(personLookupDescriptor, runningRun(), [active], CLOCK), /missing=crm-dates/);
+    assert.throws(() => buildRunResult(personLookupDescriptor, runningRun(), [...personLookupTerminalIdentityEvidence(runningRun()), active], CLOCK), /missing=crm-dates/);
     assert.throws(
-      () => buildRunResult(personLookupDescriptor, runningRun(), [active, skipped, { ...skipped, nodeId: "searching" }], CLOCK),
+      () => buildRunResult(personLookupDescriptor, runningRun(), [...personLookupTerminalIdentityEvidence(runningRun()), active, skipped, { ...skipped, nodeId: "searching" }], CLOCK),
       /extra=searching/,
     );
-    assert.throws(() => buildRunResult(personLookupDescriptor, runningRun(), [active, skipped, skipped], CLOCK), /duplicate/);
+    assert.throws(() => buildRunResult(personLookupDescriptor, runningRun(), [...personLookupTerminalIdentityEvidence(runningRun()), active, skipped, skipped], CLOCK), /duplicate/);
     assert.throws(
       () => buildRunResult(personLookupDescriptor, runningRun(), [
-        { state: "not-run", nodeId: "active-status", reason: "condition-false" },
-        skipped,
+        ...personLookupTerminalIdentityEvidence(runningRun()).filter(entry => entry.nodeId !== "search-identity"),
+        { state: "not-run", nodeId: "search-identity", reason: "condition-false" },
+        active, skipped,
       ], CLOCK),
       /unconditional.*cannot be marked not-run/,
     );
     assert.throws(
       () => buildRunResult(personLookupDescriptor, runningRun(), [
+        ...personLookupTerminalIdentityEvidence(runningRun()),
         active,
         { ...skipped, reason: "branch-not-selected" },
       ], CLOCK),
@@ -361,6 +362,7 @@ describe("factory-authenticated terminal run results", () => {
     );
     assert.throws(
       () => buildRunResult(personLookupDescriptor, runningRun(), [
+        ...personLookupTerminalIdentityEvidence(runningRun()),
         { ...active, checkpoint: { ...active.checkpoint, contractFingerprint: HASH_A } },
         skipped,
       ], CLOCK),
@@ -373,6 +375,7 @@ describe("factory-authenticated terminal run results", () => {
       personLookupDescriptor,
       runningRun(),
       [
+        ...personLookupTerminalIdentityEvidence(runningRun()),
         { state: "resolved", nodeId: "active-status", checkpoint: checkpoint("active-status", ACTIVE) },
         { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
       ],
@@ -420,10 +423,11 @@ describe("canonical awaited child terminal evidence", () => {
   });
   const parentDescriptor = compileWorkflow(parentDefinition(), { manifest: fixtureBuildManifest(["fixture-child-result-parent"]) }).descriptor;
   const parentRun = () => ({ ...runningRun(), envelope: { ...runningRun().envelope, runId: "00000000-0000-4000-8000-000000000bad",
-    workflow: parentDescriptor.id, contractFingerprint: parentDescriptor.contractFingerprint } });
+    workflow: parentDescriptor.id, descriptorVersion: parentDescriptor.version, contractFingerprint: parentDescriptor.contractFingerprint } });
   const evidence = () => {
     const child = runningRun();
     const { record } = buildRunResult(personLookupDescriptor, child, [
+      ...personLookupTerminalIdentityEvidence(child),
       { state: "resolved", nodeId: "active-status", checkpoint: checkpoint("active-status", ACTIVE) },
       { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
     ], CLOCK);

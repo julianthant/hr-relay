@@ -55,7 +55,8 @@ const candidate = UcpathCandidateSchema.parse({
   department: "Housing Dining Hospitality",
   jobTitle: "Dining Assistant",
   employeeStatus: "active",
-  hdh: true,
+  hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true,
 });
 const person = SearchPersonOrgOutputSchema.parse({
   results: [candidate],

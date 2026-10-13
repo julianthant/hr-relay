@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
+import { ReadResolvedIdentity } from "../../../src/models/workflows/person-lookup/read-resolved-identity.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
@@ -17,6 +18,30 @@ import { type AuthorityTerminalizationHooks, AuthorityDatabase } from "./synthet
 
 
 
+export const PERSON_LOOKUP_ACTIVE = ReadActiveStatus.output.parse({
+  state: "active", reason: "", code: null, datesEid: null, hdh: true, candidateEids: ["10873698"],
+  details: { search: "10873698", name: "Fixture, Person", eid: "10873698", department: "Housing", hrStatus: "Active",
+    ucpath: "Found", crm: "Not found", startDate: null, endDate: null, terminationReason: null,
+    foundInUcpath: null, matchedEid: null, matchedName: null },
+});
+
+export function personLookupTerminalIdentityEvidence(run: import("../../../src/models/run/record.js").RunRecord) {
+  const identity = ReadResolvedIdentity.output.parse({ shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null,
+    state: "resolved", selected: { emplId: "10873698", name: "Fixture, Person", department: "Housing", jobTitle: "Assistant",
+      employeeStatus: "active", hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "", hdh: true },
+    crmRecord: null, candidateEids: ["10873698"], recoveryEid: null, crmState: "Not found", method: "ucpath" });
+  return [
+    ...["search-identity", "crm-identity"].map(nodeId => ({ state: "resolved", nodeId,
+      checkpoint: RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId, runId: run.envelope.runId,
+        nodeId, attempt: run.envelope.attempt, claimGeneration: run.claimGeneration,
+        output: { schemaHash: deriveSchemaHash(ReadResolvedIdentity.output, "output"), value: identity },
+        descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, implFingerprint: HASH_B,
+        provenance: [{ path: "state", source: "derived", observedAt: NOW, originalObservedAt: NOW }], writtenAt: NOW }) })),
+    { state: "not-run", nodeId: "matching", reason: "condition-false" },
+    { state: "not-run", nodeId: "crm-selected-record", reason: "condition-false" },
+  ];
+}
+
 export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER))) {
 
   const roots: string[] = [];
@@ -27,11 +52,7 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
 
   const CLAIM = { workerId: WORKER_ID, claimGeneration: 1 };
 
-  const ACTIVE = {
-    state: "active" as const,
-    reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-    hdh: true,
-  };
+  const ACTIVE = PERSON_LOOKUP_ACTIVE;
 
   function openDatabase(hooks?: AuthorityTerminalizationHooks): AuthorityDatabase {
     const root = mkdtempSync(join(tmpdir(), "hrauto-run-terminal-"));
@@ -52,6 +73,7 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
       ...QUEUED_RUN,
       envelope: {
         ...QUEUED_RUN.envelope,
+        descriptorVersion: personLookupDescriptor.version,
         contractFingerprint: personLookupDescriptor.contractFingerprint,
       },
       input: {
@@ -59,7 +81,7 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
         parsed: {
           ...QUEUED_RUN.input.parsed,
           schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-          value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+          value: { mode: "search", emplId: "10873698", crmCheck: true, keepNonHdh: false, includeCrmDates: false },
         },
       },
     });
@@ -106,10 +128,13 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
       writtenAt: NOW,
     });
     database.authority.runCheckpoints.insert(activeCheckpoint);
+    const identityEvidence = personLookupTerminalIdentityEvidence(run);
+    for (const evidence of identityEvidence) if ("checkpoint" in evidence) database.authority.runCheckpoints.insert(evidence.checkpoint);
     const built = buildRunResult(
       personLookupDescriptor,
       run,
       [
+        ...identityEvidence,
         { state: "resolved", nodeId: "active-status", checkpoint: activeCheckpoint },
         { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
       ],

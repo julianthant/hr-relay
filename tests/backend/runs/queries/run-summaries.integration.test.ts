@@ -115,7 +115,8 @@ try {
   assert.equal(before.canonicalTitle, 'Synthetic ingress title');
   assert.equal(before.servedTitle, before.canonicalTitle);
   assert.equal(before.detailTitle, before.canonicalTitle);
-  const selected = { emplId: '10000000', name: 'Synthetic Resolved Subject', department: 'Synthetic Department', jobTitle: 'Synthetic Role', employeeStatus: 'active', hdh: true };
+  const selected = { emplId: '10000000', name: 'Synthetic Resolved Subject', department: 'Synthetic Department', jobTitle: 'Synthetic Role', employeeStatus: 'active', hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true };
   const value = SearchPersonOrgOutputSchema.parse({ results: [selected], selection: { status: 'resolved', selected, candidateEids: [selected.emplId] } });
   const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: e.workflow, itemId: e.itemId, runId,
     nodeId: 'searching', attempt: e.attempt, claimGeneration: running.run.claimGeneration,

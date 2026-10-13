@@ -24,6 +24,14 @@ const SCOPE = {
 } as const;
 
 describe("a declared node condition", () => {
+  it("allows missing conditional output only for presence checks", () => {
+    const of = { from: "node", nodeId: "skipped", path: "record" } as const;
+    assert.equal(evaluateNodeCondition(parseNodeCondition({ kind: "is-present", of }), { input: {}, outputs: {} }), false);
+    assert.equal(evaluateNodeCondition(parseNodeCondition({ kind: "is-absent", of }), { input: {}, outputs: {} }), true);
+    assert.throws(() => evaluateNodeCondition(parseNodeCondition({ kind: "equals", of, value: true }), { input: {}, outputs: {} }), /produced no output/);
+    assert.throws(() => evaluateNodeCondition(parseNodeCondition({ kind: "is-present", of: { ...of, path: "record.value" } }), { input: {}, outputs: { skipped: { record: true } } }), /non-object/);
+  });
+
   it("renders every arm in words, from the same value the executor reads", () => {
     const cases = [
       [{ kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
