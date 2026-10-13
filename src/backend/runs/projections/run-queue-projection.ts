@@ -1,3 +1,4 @@
+import { displayScalar } from "../queries/data.js";
 import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
@@ -1044,7 +1045,7 @@ export class RunQueueProjection {
       if (fact.state !== "satisfied") continue;
       const value = fact.value.rawValue !== undefined ? fact.value.rawValue : (fact.value.state === "redacted" ? undefined : fact.value.value);
       if (value !== undefined) chips.push({ label: fact.field,
-        value: typeof value === "string" ? value : JSON.stringify(value) });
+        value: typeof value === "string" ? displayScalar(value) : JSON.stringify(value) });
     }
     if (chips.length === 0) {
       return {
