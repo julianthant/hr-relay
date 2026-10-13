@@ -1,3 +1,11 @@
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { createRunQueueProjection } from "../../../../src/backend/runs/projections/run-queue-projection.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
+import { registerQueueRoutes } from "../../../../src/backend/transports/http/routes/queue.js";
+import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 /** Disposable production Intake pipeline. Surrounding dashboard reads use the named fixture server. */
 import { Hono } from "hono";
@@ -51,18 +59,39 @@ export function createIntakeAuthority() {
   const forbidden = (): never => { throw new Error("disposable Intake proof has no external worker or HR execution"); };
   const compose = () => {
     const parser = createIntakeParser({ artifacts });
+    const spans = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
     const intake = createIntakeService({ authority: database, authorityRead: {
       getIntakeSession: id => database.authority.intakeSessions.get(id),
       getIntakeManifest: id => database.authority.intakeManifests.get(id),
       findIntakeManifestsBySource: sha => database.authority.intakeManifests.findBySource(sha),
     }, artifacts, parser, projections, descriptors, clock, ids, actorId: LOCAL_OPERATOR_ACTOR_ID });
-    const kernel = createCommandKernel({ lifecycle: new RunRecordService({ database, clock, ids: lifecycleIds, publishQueued: () => {} }),
+    const kernel = createCommandKernel({ lifecycle: new RunRecordService({ database, clock, ids: lifecycleIds, publishQueued: (run, publication) => {
+      if (publication === undefined) throw new Error("command-created run lacks queue presentation");
+      spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
+    } }),
       appVersion: "0.1.0", authority: database, clock, ids: kernelIds,
       configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 }, descriptors,
       writeResolution: { resolvePresent: forbidden, resolveAbsent: forbidden },
       workerRuntime: { pool: { planPoolWorkerCount: forbidden, spawnPoolWorker: forbidden, refreshPoolBrowser: forbidden, reopenPoolBrowser: forbidden, stopPoolWorker: forbidden, pausePoolWorker: forbidden, resumePoolWorker: forbidden } },
       intakeParser: parser, intakeProjections: projections });
-    return { intake, kernel };
+    const projection = createRunQueueProjection({
+      timeline: database.authority.timelineEvents, reader: sqliteRunReader(database, clock), stateRoot: join(root, ".tracker"),
+      clock, appVersion: "0.1.0", descriptorSetHash: descriptorSetHash([descriptor.contractFingerprint]),
+      ledger: createTransactionHistory(database.authority),
+      authority: {
+        listNotifications: () => [], listNotificationCheckpoints: () => [],
+        listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
+        getWorkerLease: workerId => database.authority.workerLeases.get(workerId),
+        listWorkerPools: () => database.authority.workerPools.list(),
+        listRunBatches: () => database.authority.runSessions.list(), getRunBatch: id => database.authority.runSessions.get(id),
+        getFailure: failureId => database.authority.failures.get(failureId),
+        getReceipt: runId => database.authority.evidenceReceipts.findByRun(runId),
+        canonicalPerson: runId => database.canonicalPerson(runId),
+        latestCheckpoint: (workflowId, itemId, nodeId) => database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+      }, descriptors,
+    });
+    projection.rebuildFromTimeline();
+    return { intake, kernel, projection };
   };
   let runtime = compose();
   const identity = createSoloRequestIdentityCheckpoint({ id: LOCAL_OPERATOR_ACTOR_ID, label: "Synthetic operator" });
@@ -73,7 +102,10 @@ export function createIntakeAuthority() {
   registerIntakeRoutes(app, { intake: {
     upload: request => runtime.intake.upload(request), read: id => runtime.intake.read(id), prepare: request => runtime.intake.prepare(request),
   } });
-  // Projection-independent production kernel; this harness starts no executing worker.
+  registerQueueRoutes(app, { queue: { day: day => { runtime.projection.ingestFromTimeline(); return runtime.projection.buildDashboardDayWire(day); } },
+    startPlans: { plan: forbidden, previewWarnings: forbidden },
+  });
+  // This harness starts no executing worker.
   const commands: DashboardCommandService = {
     execute: request => runtime.kernel.execute(request),
     submit: async request => runtime.kernel.execute(request),
@@ -115,7 +147,7 @@ export async function startIntakeAuthorityServer(input: { distDir: string; bundl
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "127.0.0.1"}`);
-      const own = url.pathname.startsWith("/api/v1/intake/") || url.pathname === "/api/v1/commands";
+      const own = url.pathname.startsWith("/api/v1/intake/") || url.pathname === "/api/v1/commands" || (url.pathname === "/api/v1/dashboard" && url.searchParams.get("day") !== profile.day.day);
       const chunks: Buffer[] = [];
       if (req.method !== "GET" && req.method !== "HEAD") for await (const chunk of req) {
         const bytes: unknown = chunk;
