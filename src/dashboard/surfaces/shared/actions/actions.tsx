@@ -162,8 +162,7 @@ const INTENT_TONE: Record<ActionIntent, "destructive" | "warning" | "primary" | 
 
 // Footer — the queue row's own controls
 
-/** The no-undo sentence, on the group cancel's own ✕.
- * Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc */
+/** The no-undo sentence, on the group cancel's own ✕. */
 const CANCEL_TREE_KEY = "cancel-tree";
 const CANCEL_TREE_TITLE =
   "Cancels this group, its delegated review and every member. Final — there is no undo.";

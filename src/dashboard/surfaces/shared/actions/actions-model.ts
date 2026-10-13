@@ -50,8 +50,6 @@ export const intentPill = (intent: ActionIntent, size: "sm" | "md"): string =>
     INTENT_PILL[intent],
   );
 
-/** Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * `DemoActions.tsx:193-201`. */
 const PARK_COMMANDS: ReadonlySet<string> = new Set(["resolve-write-present", "resolve-write-absent"]);
 
 function isParkCommand(action: ActionDescriptorWire): boolean {
