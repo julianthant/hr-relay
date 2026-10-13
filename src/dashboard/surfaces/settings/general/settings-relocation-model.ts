@@ -128,7 +128,7 @@ export function useStorageRelocation(input: Readonly<{ actorId: string; onSaved?
         if (generation.current !== request) return;
         binding.feedback(outcome);
         if (view !== undefined) { lastVerified.current = view; setRead({ state: "available", view }); setReadProblem(false); }
-        if (outcome.kind === "conflict") void readCurrent().catch(() => markReadUnavailable());
+        if (outcome.kind === "conflict") void readCurrent().catch(() => { if (generation.current === request) markReadUnavailable(); });
         if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) attempt.current = undefined;
         setSave(outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome));
         if (outcome.kind === "confirmed") {
@@ -170,7 +170,7 @@ export function useStorageRelocation(input: Readonly<{ actorId: string; onSaved?
     return () => window.clearTimeout(timer);
   }, [draft, read, readProblem, errors, save.state]);
   const retry = (): void => { if (attempt.current !== undefined) void perform(attempt.current); };
-  const reload = (): void => { void readCurrent().catch(() => markReadUnavailable()); };
+  const reload = (): void => { void readCurrent().catch(() => { if (generation.current === request) markReadUnavailable(); }); };
   const visibleSave = attempt.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save;
   return Object.freeze({ read, readProblem, draft, errors, save: visibleSave, locked, update, reset, discard, submit, cancel, retry, reload,
     dirtyCount: Object.keys(draft).length, uncertain: visibleSave.state === "unconfirmed", saving: visibleSave.state === "saving" });
