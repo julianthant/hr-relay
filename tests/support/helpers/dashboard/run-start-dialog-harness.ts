@@ -1,3 +1,4 @@
+import { ItemAttemptHistoryResponseSchema } from "../../../../src/models/dashboard/item-attempt-history.js";
 import { FixtureCommandBinding } from "./command-binding.js";
 import { FIXTURE_DAY_WIRE } from "../../fixtures/dashboard/fixture-queue.js";
 import { uuidOf } from "../../fixtures/dashboard/fixture-identity.js";
@@ -150,6 +151,17 @@ export function createRunStartDialogHarness() {
           { family: "start", ...command.target }, ...rows.map(row => ({ family: "run", runId: row.runId })),
         ] });
       } }),
+      itemAttemptHistory: served.itemAttemptHistory ?? (async runId => {
+        assert.ok(readback, "fixture history requires an admitted command");
+        const row = readback.queueSurfaces.find(row => row.runId === runId);
+        assert.ok(row, "fixture history selects the admitted run");
+        const identity = { runId, workflowId: row.workflowId, itemId: row.itemId, attempt: row.attempt, rowRevision: row.rowRevision };
+        return ItemAttemptHistoryResponseSchema.parse({ schemaVersion: 1, state: "available",
+          selected: { ...identity, state: "present", disposition: "live" }, item: { workflowId: row.workflowId, itemId: row.itemId },
+          page: { limit: 50, offset: 0, totalEntries: 1, nextCursor: null,
+            entries: [{ ...identity, disposition: "live", partitionDay: readback.day }] },
+        });
+      }),
       dashboardDay: served.dashboardDay ?? (async () => {
         assert.ok(readback, "fixture readback requires an admitted command");
         return readback;

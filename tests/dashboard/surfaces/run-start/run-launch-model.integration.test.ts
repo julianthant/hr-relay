@@ -1,3 +1,5 @@
+import { ItemAttemptHistoryResponseSchema } from "../../../../src/models/dashboard/item-attempt-history.js";
+import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from "../../../../src/dashboard/app/commands/command-executor.js";
@@ -116,4 +118,80 @@ describe("Start enqueue verification through the actual command and day transpor
     const w = setup(); assert.throws(() => createRunLaunchService(w.client, "local-operator").prepareFinal(w.h.proposal()), /AUTHORITY_UNAVAILABLE/u);
     assert.equal(w.h.finalCommands.length, 0);
   });
+  for (const lostReply of [false, true]) {
+    it(`confirms the actual enqueue partition across midnight${lostReply ? " after lost-ack exact replay" : ""}`, async () => {
+      const w = setup(); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
+      const plan = w.h.proposal(); const command = w.launch.prepareFinal(plan);
+      assert.equal(command.requestedAt, "2026-08-01T06:59:59.000Z");
+      w.h.clock.advanceWall(2_000); assert.ok(Date.parse(plan.expiresAt) > w.h.clock.nowMs());
+      const queriedDays: string[] = [];
+      w.client.dashboardDay = async day => { queriedDays.push(day); return w.h.client.dashboardDay(day); };
+      if (lostReply) w.h.loseResponse();
+      const initial = await w.launch.submit(command, w.binding, plan);
+      assert.equal(initial.kind, lostReply ? "uncertain" : "confirmed");
+      if (lostReply) {
+        assert.equal((await w.launch.submit(command, w.binding)).kind, "confirmed");
+        assert.deepEqual(w.h.finalCommands[1], w.h.finalCommands[0]);
+      }
+      assert.deepEqual(queriedDays, ["2026-08-01"]); assert.equal(w.h.queueRoots.length, 1);
+      assert.equal(w.h.finalCommands.length, lostReply ? 2 : 1);
+    });
+  }
+  it("resolves reviewed supersede targets on their own prior partition", async () => {
+    const w = setup("supersede-active"); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
+    w.h.start(w.h.proposal()); const plan = w.h.proposal(); const command = w.launch.prepareFinal(plan);
+    w.h.clock.advanceWall(2_000); const queriedDays: string[] = [];
+    w.client.dashboardDay = async day => { queriedDays.push(day); return w.h.client.dashboardDay(day); };
+    assert.equal((await w.launch.submit(command, w.binding, plan)).kind, "confirmed");
+    assert.deepEqual(queriedDays.sort(), ["2026-07-31", "2026-08-01"]);
+    assert.equal(w.h.queueRoots.length, 2);
+  });
+
+  it("finds the acknowledged selected run beyond the first history page", async () => {
+    const w = setup();
+    for (let index = 0; index < 50; index += 1) {
+      const run = w.h.start(w.h.proposal());
+      requireLifecycleApplied(w.h.lifecycle.transition({ commandId: w.h.ids.uuid(), runId: run.envelope.runId,
+        expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: w.h.clock.now().toISOString() } }));
+    }
+    const cursors: (string | undefined)[] = [];
+    w.client.itemAttemptHistory = async (runId, options) => { cursors.push(options?.cursor); return w.h.client.itemAttemptHistory(runId, options); };
+    const plan = w.h.proposal(); assert.equal((await w.launch.submit(w.launch.prepareFinal(plan), w.binding, plan)).kind, "confirmed");
+    assert.equal(cursors.length, 2); assert.equal(cursors[0], undefined); assert.equal(typeof cursors[1], "string");
+    assert.equal(w.h.queueRoots.length, 51);
+  });
+  for (const failure of ["unavailable", "stale", "wrong selected revision", "wrong partition"] as const) {
+    it(`retains uncertainty for ${failure} history without guessing another partition`, async () => {
+      const w = setup(); const queriedDays: string[] = [];
+      w.client.dashboardDay = async day => { queriedDays.push(day); return w.h.client.dashboardDay(day); };
+      w.client.itemAttemptHistory = async (runId, options) => {
+        const history = await w.h.client.itemAttemptHistory(runId, options);
+        assert.ok(history.state === "available" && history.selected.state === "present");
+        if (failure === "unavailable") return ItemAttemptHistoryResponseSchema.parse({ schemaVersion: 1, state: "unavailable", selected: history.selected, reason: "item-identity-unknown" });
+        if (failure === "stale") return ItemAttemptHistoryResponseSchema.parse({ schemaVersion: 1, state: "stale", selectedRunId: runId, reason: "authority-changed" });
+        return ItemAttemptHistoryResponseSchema.parse({ ...history, page: { ...history.page, entries: history.page.entries.map(entry => entry.disposition !== "live" ? entry
+          : { ...entry, ...(failure === "wrong selected revision" ? { rowRevision: entry.rowRevision + 1 } : { partitionDay: "2026-07-30" }) }) } });
+      };
+      const plan = w.h.proposal(); assert.equal((await w.launch.submit(w.launch.prepareFinal(plan), w.binding, plan)).kind, "uncertain");
+      assert.deepEqual(queriedDays, failure === "wrong partition" ? ["2026-07-30"] : []);
+      assert.equal(w.h.queueRoots.length, 1);
+    });
+  }
+
+  it("does not accept matching runs moved into each other's partition snapshots", async () => {
+    const w = setup("supersede-active"); w.h.clock.setWall(new Date("2026-08-01T06:59:59.000Z"));
+    w.h.start(w.h.proposal()); const plan = w.h.proposal(); const command = w.launch.prepareFinal(plan);
+    w.h.clock.advanceWall(2_000); const queriedDays: string[] = [];
+    w.client.dashboardDay = async day => {
+      queriedDays.push(day);
+      const snapshot = await w.h.client.dashboardDay(day);
+      const other = await w.h.client.dashboardDay(day === "2026-07-31" ? "2026-08-01" : "2026-07-31");
+      return DashboardDayWireSchema.parse({ ...snapshot, queueSurfaces: other.queueSurfaces });
+    };
+    assert.equal((await w.launch.submit(command, w.binding, plan)).kind, "uncertain");
+    assert.deepEqual(queriedDays.sort(), ["2026-07-31", "2026-08-01"]);
+    assert.equal(w.h.queueRoots.length, 2);
+    assert.equal(w.binding.executor.retainedAttempts()[0].outcome?.kind, "uncertain");
+  });
+
 });
