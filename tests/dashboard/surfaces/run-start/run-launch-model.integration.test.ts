@@ -6,7 +6,7 @@ import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from
 import type { DashboardCommandBinding } from "../../../../src/dashboard/app/dashboard-app-model.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { createRunLaunchService } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
-import { DashboardDayWireSchema, type QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { launchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
 
@@ -39,7 +39,7 @@ describe("Start enqueue verification through the actual command and day transpor
       const w = setup();
       w.client.dashboardDay = async day => {
         const snapshot = await w.h.client.dashboardDay(day);
-        return DashboardDayWireSchema.parse({ ...snapshot, queueSurfaces: snapshot.queueSurfaces.map(change) });
+        return DashboardDayWireSchema.parse({ ...snapshot, queueSurfaces: snapshot.queueSurfaces.map(row => QueueSurfaceWireSchema.parse(change(row))) });
       };
       const plan = w.h.proposal(undefined, undefined, true);
       const published: CommandOutcome[] = [];

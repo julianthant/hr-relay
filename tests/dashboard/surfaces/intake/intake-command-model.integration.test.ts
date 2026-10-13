@@ -8,9 +8,11 @@ import { DashboardClientProvider, DashboardCommandBindingProvider, useDashboardC
 import { IntakeWorkspace } from "../../../../src/dashboard/surfaces/intake/intake.js";
 import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { useIntakeCommands, verifyIntakeCommand, type IntakeRequest, type IntakeCommand } from "../../../../src/dashboard/surfaces/intake/intake-command-model.js";
-import { IntakeCommandRequestSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
+import { IntakeCommandRequestSchema, CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
+import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { deriveMappingSnapshotHash } from "../../../../src/models/intake/mapping.js";
-import type { IntakeSessionWire } from "../../../../src/models/intake/wire.js";
+import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_VALIDATED, FIXTURE_INTAKE_MANIFEST } from "../../../support/fixtures/dashboard/fixture-intake.js";
 import { FIXTURE_DAY_WIRE } from "../../../support/fixtures/dashboard/fixture-queue.js";
 import { serverLocalDay } from "../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
@@ -20,7 +22,7 @@ import { FixtureCommandBinding } from "../../../support/helpers/dashboard/comman
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class MeasurementFreeResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
-const ACTOR = "fixture-operator";
+const ACTOR = LOCAL_OPERATOR_ACTOR_ID;
 const COMMAND_ID = "738b193e-2d63-463c-9e7f-9f0691b65820";
 const NOW = "2026-08-03T17:10:00.000Z";
 function request(before: IntakeSessionWire, command: object): IntakeRequest {
@@ -28,19 +30,22 @@ function request(before: IntakeSessionWire, command: object): IntakeRequest {
     source: "intake-workspace", family: "intake", target: { intakeSessionId: before.intakeSessionId, expectedVersion: before.expectedVersion }, ...command });
 }
 function applied(sent: IntakeRequest, runIds: readonly string[] = []): CommandResult {
-  return { state: "applied", commandId: sent.commandId, affectedTargets: [{ family: "intake", intakeSessionId: sent.target.intakeSessionId }, ...runIds.map(runId => ({ family: "run" as const, runId }))] };
+  return CommandResultSchema.parse({ state: "applied", commandId: sent.commandId, affectedTargets: [{ family: "intake", intakeSessionId: sent.target.intakeSessionId }, ...runIds.map(runId => ({ family: "run", runId }))] });
 }
 function clientFor(read: () => unknown, post?: (sent: IntakeRequest) => unknown, queue = FIXTURE_DAY_WIRE) {
   return createDashboardClient({ baseUrl: "http://intake.test", fetchImpl: async (url, init) => {
-    const body = init?.method === "POST" ? await post?.(IntakeCommandRequestSchema.parse(JSON.parse(String(init.body))))
-      : url.includes("/dashboard?") ? queue : await read();
+    let body: unknown;
+    if (init?.method === "POST") {
+      assert.ok(typeof init.body === "string");
+      body = await post?.(IntakeCommandRequestSchema.parse(JSON.parse(init.body)));
+    } else body = url.includes("/dashboard?") ? queue : await read();
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   } });
 }
 function validated(before = FIXTURE_INTAKE_MAPPING): IntakeSessionWire {
-  return { ...before, state: "validated", expectedVersion: before.expectedVersion + 1, updatedAt: NOW,
+  return IntakeSessionWireSchema.parse({ ...before, state: "validated", expectedVersion: before.expectedVersion + 1, updatedAt: NOW,
     validation: { ...FIXTURE_INTAKE_VALIDATED.validation, state: "validated", validatedAt: NOW, readAt: NOW,
-      validRows: 3, unresolvedRows: [], rejected: [], excluded: [] } };
+      validRows: 3, unresolvedRows: [], rejected: [], excluded: [] } });
 }
 
 let root: Root | undefined;
@@ -92,7 +97,7 @@ describe("Intake effect readback through the typed transport", () => {
     assert.ok(rerun);
     const before = { ...FIXTURE_INTAKE_MAPPING, rerun };
     const sent = request(before, { type: "inspect-intake", payload: { comparisonManifestId: rerun.intakeManifestId } });
-    const selected = { ...before, expectedVersion: before.expectedVersion + 1, comparisonManifestId: rerun.intakeManifestId };
+    const selected = IntakeSessionWireSchema.parse({ ...before, expectedVersion: before.expectedVersion + 1, comparisonManifestId: rerun.intakeManifestId });
     assert.equal((await verifyIntakeCommand(clientFor(() => selected), before, sent, applied(sent), FIXTURE_BOOTSTRAP.serverClock.zone)).state, "matched");
     assert.equal((await verifyIntakeCommand(clientFor(() => ({ ...before, expectedVersion: selected.expectedVersion })), before, sent, applied(sent), FIXTURE_BOOTSTRAP.serverClock.zone)).state, "mismatch");
     const repeated = request(selected, { type: "inspect-intake", payload: { comparisonManifestId: rerun.intakeManifestId } });
@@ -105,8 +110,8 @@ describe("Intake effect readback through the typed transport", () => {
     assert.ok(fixture.headerRowIndex !== null && fixture.headerFingerprint !== null);
     const terminal = { ...fixture, manifest: { ...fixture.manifest, mappingSnapshotHash: deriveMappingSnapshotHash({ workflow: fixture.workflow,
       sheet: fixture.sheet, headerRowIndex: fixture.headerRowIndex, headerFingerprint: fixture.headerFingerprint, bindings: fixture.bindings, constants: fixture.constants }) } };
-    const before: IntakeSessionWire = { ...FIXTURE_INTAKE_VALIDATED, intakeSessionId: terminal.intakeSessionId,
-      reservedManifestId: terminal.intakeManifestId, reviewBinding: "a".repeat(64), validation: terminal.validation };
+    const before = IntakeSessionWireSchema.parse({ ...FIXTURE_INTAKE_VALIDATED, intakeSessionId: terminal.intakeSessionId,
+      reservedManifestId: terminal.intakeManifestId, reviewBinding: "a".repeat(64), validation: terminal.validation });
     const sent = request(before, { type: "enqueue-intake-manifest", payload: { dryRun: true, reviewBinding: before.reviewBinding } });
     const template = FIXTURE_DAY_WIRE.queueSurfaces[0];
     assert.ok(template);
@@ -125,10 +130,10 @@ describe("Intake effect readback through the typed transport", () => {
       [rows.map(row => ({ ...row, descriptorHash: "b".repeat(64) })), "mismatch"],
       [rows.map(row => ({ ...row, actorId: "other-operator" })), "mismatch"],
     ] as const) {
-      const queue = { ...FIXTURE_DAY_WIRE, queueSurfaces: surfaces } as typeof FIXTURE_DAY_WIRE;
+      const queue = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: surfaces });
       assert.equal((await verifyIntakeCommand(clientFor(() => terminal, undefined, queue), before, sent, reply, FIXTURE_BOOTSTRAP.serverClock.zone)).state, expected);
     }
-    assert.equal((await verifyIntakeCommand(clientFor(() => terminal), { ...before, reservedManifestId: COMMAND_ID }, sent, reply, FIXTURE_BOOTSTRAP.serverClock.zone)).state, "mismatch");
+    assert.equal((await verifyIntakeCommand(clientFor(() => terminal), IntakeSessionWireSchema.parse({ ...before, reservedManifestId: COMMAND_ID }), sent, reply, FIXTURE_BOOTSTRAP.serverClock.zone)).state, "mismatch");
   });
 });
 
@@ -144,7 +149,7 @@ function UnsubscribedDay({ children, today }: { children: ReactNode; today?: str
   return createElement(DashboardCommandBindingProvider, { binding: { ...binding,
     authority: { ...binding.authority, ...(today === undefined ? {} : { today, nowIso: `${today}T17:10:00.000Z` }), dayState: { ...binding.authority.dayState, day: { state: "loading" } } } }, children });
 }
-async function mount(client: ReturnType<typeof createDashboardClient>, capture: (value: ReturnType<typeof useIntakeCommands>) => void, adopt: (session: IntakeSessionWire) => void, actorId = ACTOR, requestKey = 0, visible = true, unsubscribed = false, today?: string) {
+async function mount(client: ReturnType<typeof createDashboardClient>, capture: (value: ReturnType<typeof useIntakeCommands>) => void, adopt: (session: IntakeSessionWire) => void, actorId: string = ACTOR, requestKey = 0, visible = true, unsubscribed = false, today?: string) {
   if (root === undefined) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); }
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId, requestKey,
     children: visible ? (unsubscribed || today !== undefined ? createElement(UnsubscribedDay, { today, children: createElement(Harness, { client, adopt, capture }) }) : createElement(Harness, { client, adopt, capture })) : null }) })); });
@@ -180,10 +185,10 @@ describe("mounted Intake shares retained executor attempts", () => {
       sent.push(command);
       switch (command.type) {
         case "inspect-intake": case "confirm-intake-mapping": break;
-        case "correct-intake-row": session = { ...session, expectedVersion: session.expectedVersion + 1,
-          corrections: [{ ...command.payload, correctedAt: NOW }] }; break;
-        case "exclude-intake-row": session = { ...session, expectedVersion: session.expectedVersion + 1,
-          exclusions: [{ ...command.payload, excludedAt: NOW }] }; break;
+        case "correct-intake-row": session = IntakeSessionWireSchema.parse({ ...session, expectedVersion: session.expectedVersion + 1,
+          corrections: [{ ...command.payload, correctedAt: NOW }] }); break;
+        case "exclude-intake-row": session = IntakeSessionWireSchema.parse({ ...session, expectedVersion: session.expectedVersion + 1,
+          exclusions: [{ ...command.payload, excludedAt: NOW }] }); break;
         case "validate-intake": session = validated(session); break;
         case "enqueue-intake-manifest": throw new Error("enqueue is outside this ordinary command test");
       }
@@ -261,8 +266,8 @@ describe("mounted Intake shares retained executor attempts", () => {
   it.each(["ack-lost", "not-applied"] as const)("exact enqueue recovery reads the actual manifest partition after midnight: %s", async (firstDelivery) => {
     const fixture = FIXTURE_INTAKE_MANIFEST;
     assert.ok(fixture.manifest && fixture.headerRowIndex !== null && fixture.headerFingerprint !== null);
-    const before: IntakeSessionWire = { ...FIXTURE_INTAKE_VALIDATED, intakeSessionId: FIXTURE_INTAKE_MAPPING.intakeSessionId,
-      reservedManifestId: fixture.intakeManifestId, reviewBinding: "a".repeat(64), validation: fixture.validation };
+    const before = IntakeSessionWireSchema.parse({ ...FIXTURE_INTAKE_VALIDATED, intakeSessionId: FIXTURE_INTAKE_MAPPING.intakeSessionId,
+      reservedManifestId: fixture.intakeManifestId, reviewBinding: "a".repeat(64), validation: fixture.validation });
     let terminal = { ...fixture, intakeSessionId: before.intakeSessionId, manifest: { ...fixture.manifest,
       mappingSnapshotHash: deriveMappingSnapshotHash({ workflow: before.workflow, sheet: before.sheet,
         headerRowIndex: fixture.headerRowIndex, headerFingerprint: fixture.headerFingerprint, bindings: before.bindings, constants: before.constants }) } };
@@ -281,11 +286,12 @@ describe("mounted Intake shares retained executor attempts", () => {
     const client = createDashboardClient({ baseUrl: "http://intake.test", fetchImpl: async (url, init) => {
       let body: unknown;
       if (init?.method === "POST") {
-        const command = IntakeCommandRequestSchema.parse(JSON.parse(String(init.body)));
+        assert.ok(typeof init.body === "string");
+        const command = IntakeCommandRequestSchema.parse(JSON.parse(init.body));
         sent.push(command);
         if (sent.length === 1) throw new Error(firstDelivery === "ack-lost" ? "lost enqueue reply" : "delivery did not apply");
         if (firstDelivery === "not-applied") {
-          const acceptedAt = `${tomorrow.toISOString().slice(0, 10)}T17:10:00.000Z`;
+          const acceptedAt = IsoInstantSchema.parse(`${tomorrow.toISOString().slice(0, 10)}T17:10:00.000Z`);
           terminal = { ...terminal, updatedAt: acceptedAt, manifest: { ...terminal.manifest, createdAt: acceptedAt } };
         }
         body = applied(command, rows.map(row => row.runId));

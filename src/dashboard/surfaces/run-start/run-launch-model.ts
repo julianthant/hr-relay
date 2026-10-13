@@ -189,9 +189,9 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
   const superseded = plan?.planned.flatMap(entry => entry.supersedeTargets ?? []) ?? [];
   for (const runId of runs) {
     const entry = liveRuns.get(runId);
-    const row = snapshots.find(snapshot => snapshot.day === entry?.partitionDay)?.queueSurfaces.find(row => row.runId === runId);
+    const row = snapshots.find(snapshot => snapshot.day.valueOf() === entry?.partitionDay.valueOf())?.queueSurfaces.find(row => row.runId === runId);
     if (row === undefined || entry === undefined || row.workflowId !== command.target.workflowId || row.itemId !== entry.itemId
-      || row.attempt !== entry.attempt || row.rowRevision !== entry.rowRevision) return { state: "mismatch", evidence };
+      || row.attempt !== entry.attempt || row.rowRevision.valueOf() !== entry.rowRevision.valueOf()) return { state: "mismatch", evidence };
     if (!originMatches(row)) {
       const prior = superseded.find(target => target.runId === runId);
       if (prior === undefined || row.traceId !== prior.traceId || row.attempt !== prior.attempt || row.rowRevision !== prior.version + 1

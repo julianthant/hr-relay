@@ -47,10 +47,8 @@ import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
 import type { QueueBatch } from "../surfaces/queue/queue-model.js";
 import {
   attentionRunIds,
-  queueRowTitle,
 visibleRunIds,
 type QueueSortKey,
-type QueueSurfaceWire,
 } from "../surfaces/queue/queue-model.js";
 import {
 ConfirmBulkCommandDialog,
@@ -69,7 +67,7 @@ DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { mockRunStatus, mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
 import { completeMockReviewAction, type MockReviewAction } from "../surfaces/workflows/mocks/workflow-review-action-model.js";
 import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
@@ -350,7 +348,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     if (outcome.kind !== "confirmed") toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
   }, [toast]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
-  const recoveryEntries: readonly UncertainCommandEntry[] = executor.retainedAttempts().flatMap(attempt => {
+  const recoveryEntries: readonly UncertainCommandEntry[] = executor.retainedAttempts().flatMap<UncertainCommandEntry>(attempt => {
     const request = attempt.request;
     if (attempt.state === "pending" && attempt.scope.client === commandScope.client && attempt.scope.authority === commandScope.authority && attempt.scope.dayRequest === commandScope.dayRequest) return [];
     if (attempt.scope.actorId !== commandScope.actorId || (attempt.state !== "pending" && attempt.outcome?.kind !== "uncertain")) return [];
@@ -454,7 +452,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         }
         toast({ tone: "success", title: label, description: "Command confirmed." });
         if (!("targets" in request) && request.family === "run" && request.type === "delete" && outcome.reply !== undefined && "affectedTargets" in outcome.reply) {
-          const removed = new Set(outcome.reply.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []));
+          const removed = new Set<string>(outcome.reply.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []));
           if (routeRef.current.run !== undefined && removed.has(routeRef.current.run)) setRoute({ ...routeRef.current, run: undefined, section: undefined });
           const next = new Set([...bulkIdsRef.current].filter(id => !removed.has(id)));
           if (next.size !== bulkIdsRef.current.size) onBulkIds(next);
@@ -463,7 +461,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     };
     if (replay) await executor.replay(request.commandId, options);
     else await executor.execute(request, options);
-  }, [commandScope, commandFeedback, executor, client, day, dayWire, workflowLabelOf, activeWorkflowId, nowIso, toast, setRoute, onBulkIds]);
+  }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, nowIso, toast, setRoute, onBulkIds]);
 
   const dispatchCommand = useCallback((action: CommandAction, target: ActionTarget, answers: {
     renameAnswer?: string; source?: "queue" | "run-detail"; commandId?: string; requestedAt?: string;

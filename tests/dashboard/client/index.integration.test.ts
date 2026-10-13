@@ -381,7 +381,7 @@ describe_m3("independent Run/Rerun consumer of the released launch service", () 
 afterEach_m3(_afterEachFixture0);
 
   it_m3("reads exact source values, prefills, previews, submits once and replays a lost response through real services", async () => {
-    const { h, launch, dropResponse } = consumer(); const source = await completeSource(h);
+    const { h, client, launch, dropResponse } = consumer(); const source = await completeSource(h);
     const before = h.queueRoots.length;
     const response = await launch.openRerun({ runId: source.envelope.runId, expectedVersion: source.version });
     assert_m3.ok(response.state === "available");
@@ -391,18 +391,18 @@ afterEach_m3(_afterEachFixture0);
     const plan = await launch.preview(draft);
     assert_m3.equal(h.queueRoots.length, before, "read/prefill/preview never enqueue");
     const command = launch.prepareFinal(plan); dropResponse();
-    await assert_m3.rejects(launch.submit(command), /lost response/);
+    await assert_m3.rejects(client.executeCommand(command), /lost response/);
     assert_m3.equal(h.queueRoots.length, before + 1);
-    const replay = await launch.replay(command); assert_m3.equal(replay.state, "already-applied");
+    const replay = await client.executeCommand(command); assert_m3.equal(replay.state, "already-applied");
     assert_m3.equal(h.queueRoots.length, before + 1);
-    await assert_m3.rejects(launch.replay({ ...command, requestedBy: "someone-else" }), /divergent|reused/);
+    await assert_m3.rejects(client.executeCommand({ ...command, requestedBy: "someone-else" }), /divergent|reused/);
     assert_m3.deepEqual(await launch.openRerun({ runId: source.envelope.runId, expectedVersion: source.version - 1 }), { state: "refused", code: "source-stale" });
     assert_m3.throws(() => launch.prefill(response.snapshot, { selectedValueIndexes: [99], selectedStepKeys: ["reading"], dryRun: true, browserMode: "headless", captureBrowserScreenshots: false }), /VALUE_UNAVAILABLE/);
     assert_m3.equal(h.lifecycle.delete({ commandId: h.ids.uuid(), runId: source.envelope.runId, expectedVersion: source.version }).state, "deleted");
     assert_m3.deepEqual(await launch.openRerun({ runId: source.envelope.runId, expectedVersion: source.version }), { state: "refused", code: "target-deleted" });
   });
   it_m3("warning acknowledgement calls the real planner, with no queue effect before final confirmation", async () => {
-    const { h, launch } = consumer(true); const source = await completeSource(h, true);
+    const { h, client, launch } = consumer(true); const source = await completeSource(h, true);
     const selectedStepKeys = h.descriptor.timeline.map((step) => step.key);
     const draft = { workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: true, browserMode: "headless", captureBrowserScreenshots: false,
       selectedStepKeys, rerunSource: { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys } };
@@ -412,7 +412,7 @@ afterEach_m3(_afterEachFixture0);
     assert_m3.equal(acknowledged.rerun?.acknowledgment, warning.rerun.warningDigest);
     assert_m3.equal(h.queueRoots.length, before);
     assert_m3.throws(() => launch.acknowledge({ ...draft, rerunSource: { ...draft.rerunSource, expectedVersion: source.version + 1 } }, warning), /ACK_SOURCE_MISMATCH/);
-    assert_m3.equal((await launch.submit(launch.prepareFinal(acknowledged))).state, "applied");
+    assert_m3.equal((await client.executeCommand(launch.prepareFinal(acknowledged))).state, "applied");
     assert_m3.equal(h.queueRoots.length, before + 1);
   });
   it_m3("refuses an unresolved write source through both source read and planning, without another run", async () => {

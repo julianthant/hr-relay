@@ -1,3 +1,6 @@
+import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
+import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { composeQueueSummaries } from "../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { serverLocalDay } from "../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/queries/item-attempt-history.js";
@@ -79,7 +82,7 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
   const reader = { read: h.lifecycle.read.bind(h.lifecycle), list: h.lifecycle.list.bind(h.lifecycle),
     summaries: { ...composeQueueSummaries(h.database), activity: () => { throw new Error("unrequested fixture activity"); } } };
   const projection = createOperatorProjection({ database: h.database, reader, stateRoot: dirname(h.authorityPath), clock: h.clock,
-    appVersion: "0.1.0", descriptorSetHash: "a".repeat(64), ledger: createTransactionHistory(h.database.authority),
+    appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(h.database.authority),
     descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined } });
   registerQueueRoutes(app, { queue: { day: day => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(day); } }, startPlans: h.planner });
   app.get("/api/v1/runs/:id/rerun-values", (c) => {
@@ -107,16 +110,16 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
     return result;
   } });
   const launch = createRunLaunchService(client, "local-operator", { uuid: () => h.ids.uuid(), now: () => h.clock.now().toISOString() });
-  const bootstrap = { ...FIXTURE_BOOTSTRAP, serverClock: { ...FIXTURE_BOOTSTRAP.serverClock, now: h.clock.now().toISOString(), zone: "America/Los_Angeles" } };
+  const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, serverClock: { ...FIXTURE_BOOTSTRAP.serverClock, now: h.clock.now().toISOString(), zone: "America/Los_Angeles" } });
   const epoch = Object.freeze({ client, bootstrap });
   const day = serverLocalDay(bootstrap.serverClock);
-  const dayWire = { ...FIXTURE_DAY_WIRE, day };
+  const dayWire = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, day });
   const request = Object.freeze({ client, day, epoch, revision: 0 });
   const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
   const executor = new CommandExecutor(() => scope);
   const authority: DashboardAuthority = { epoch, catalog: [], nowIso: bootstrap.serverClock.now, today: day, day,
     dayState: { request, day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
-    selection: { route: {}, workflowId: descriptor.id } };
+    selection: { route: { start: false }, workflowId: descriptor.id } };
   const binding: DashboardCommandBinding = { authority, executor, scope, feedback: () => undefined };
   return { ...h, get queueRoots() { return h.queueRoots; }, workflow, app, client, launch, binding, submissions, finalCommands, loseResponse: () => { loseResponse = true; },
     async completeSource() { const run = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));

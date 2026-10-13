@@ -7,7 +7,7 @@ import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/dr
 import { composeCommandRequest, verifyShellCommandEffect, type CommandAction } from "../../../../src/dashboard/app/commands/command-dispatch.js";
 import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { type IdentityEvidencePacket, buildIdentityEvidencePacket, deriveIdentityEvidenceDigest } from "../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
@@ -499,8 +499,8 @@ it("confirms cascade deletion only through the exact lifecycle tombstone provena
         workflowId: "person-lookup", itemId: "44444444-4444-4444-8444-444444444444", attempt: 1, deletedAt: "2026-08-03T12:00:00.000Z" };
     return Response.json({ schemaVersion: 1, state: "unavailable", selected, reason: "item-identity-unknown" });
   } });
-  const reply = { state: "applied" as const, commandId: command.commandId,
-    affectedTargets: [{ family: "run" as const, runId }, { family: "run" as const, runId: childId }] };
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+    affectedTargets: [{ family: "run", runId }, { family: "run", runId: childId }] });
   assert.equal((await verifyShellCommandEffect(client, "2026-08-03", command, reply)).state, "matched");
   assert.deepEqual(reads, [runId, childId]);
   childCommandId = lifecycleCommandId("operator-delete", "55555555-5555-4555-8555-555555555555");

@@ -77,6 +77,7 @@ it("requires matching authoritative readback and retains the immutable parsed en
   const retained = h.executor.retainedAttempts()[0];
   assert.equal(retained.body, h.sent[0]);
   assert.equal(Object.isFrozen(retained.request), true);
+  assert.ok("target" in retained.request);
   assert.equal(Object.isFrozen(retained.request.target), true);
   input.reason = "changed";
   assert.notEqual(retained.request.reason, input.reason);
@@ -365,7 +366,7 @@ for (const code of ["OPERATOR_MUTATION_ORIGIN_REFUSED", "OPERATOR_MUTATION_MEDIA
       assert.equal(h.executor.retainedAttempts()[0].outcome?.cause, outcome.cause);
       assert.ok(outcome.cause instanceof Error && "code" in outcome.cause && outcome.cause.code === code);
       assert.equal(outcome.cause.message, "private admission detail"); assert.equal(reads, 0);
-      assert.ok(outcome.kind !== "confirmed");
+      assert.equal(outcome.kind === "refused" || outcome.kind === "uncertain", true);
       assert.doesNotMatch(outcome.feedback.text, /private admission detail/u);
       h.setReply(undefined);
       assert.equal((await h.executor.execute(command(70), h.options())).kind, code === "UNKNOWN_DENIAL" ? "refused" : "confirmed");

@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IntakeSessionWire } from "../../../models/intake/wire.js";
 import { deriveMappingSnapshotHash } from "../../../models/intake/mapping.js";
@@ -11,7 +12,8 @@ import { serverLocalDay } from "../shell/date-navigation-model.js";
 import { useDashboardCommandBinding } from "../../state/client-context.js";
 
 export type IntakeRequest = Extract<CommandRequest, { family: "intake" }>;
-export type IntakeCommand = IntakeRequest extends infer Request ? Request extends IntakeRequest ? Pick<Request, "type"> & (Request extends { payload: infer Payload } ? { readonly payload: Payload } : object) : never : never;
+type IntakeCommandInput = z.input<typeof IntakeCommandRequestSchema>;
+export type IntakeCommand = IntakeCommandInput extends infer Request ? Request extends IntakeCommandInput ? Pick<Request, "type"> & (Request extends { payload: infer Payload } ? { readonly payload: Payload } : object) : never : never;
 export type CommandProblem =
   | { readonly kind: "rejected"; readonly code: string; readonly message: string }
   | { readonly kind: "confirmation-required"; readonly message: string }

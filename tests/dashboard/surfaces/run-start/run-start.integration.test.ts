@@ -65,7 +65,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       if (replacement === "day ABA") await replaceBinding(client, { requestKey: 1, nowIso: "2026-08-01T17:00:00.000Z" });
       await replaceBinding(replacement === "client" ? { ...client } : client,
         { actorId: replacement === "actor" ? "other-operator" : "local-operator", requestKey: replacement === "day ABA" ? 2 : 0 });
-      assert.ok(release); await act(async () => release());
+      const finish = release; assert.ok(finish); await act(async () => finish());
       assert.equal(document.querySelector('[role="dialog"]') !== null, true);
       assert.equal(text().includes("Rerun started"), false); assert.equal(window.sessionStorage.length, 1);
       assert.equal(h.finalCommands.length, 1);
@@ -80,7 +80,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await act(async () => checkbox("Dry run").click()); await press("Continue");
     await act(async () => button("Start dry run").click());
     await press("Back"); await press("Back"); await fill(field("Employee ID"), "10812346");
-    assert.ok(release); await act(async () => release());
+    const finish = release; assert.ok(finish); await act(async () => finish());
     assert.equal(document.querySelector('[role="dialog"]') !== null, true); assert.equal(text().includes("Rerun started"), false);
     assert.equal(window.sessionStorage.length, 1); assert.equal(h.finalCommands.length, 1);
   });
