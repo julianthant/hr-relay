@@ -1,0 +1,210 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { it } from "vitest";
+import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.js";
+import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
+
+const image = { model: "gpt-6.1-sol", instruction: "Read this synthetic form", input: { kind: "image" as const, mediaType: "image/png" as const, base64: "YQ==" } };
+it("absent account read is signed out without creating storage", async () => {
+  const f = chatGptFixture(); try { assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); assert.equal(existsSync(join(f.root, "chatgpt-credentials")), false); assert.equal(f.calls.length, 0); } finally { await f.cleanup(); }
+});
+it("binds PKCE, nonce and exact loopback URI and keeps tokens private", async () => {
+  const f = chatGptFixture(); try {
+    const attempt = await f.service.signIn({ usePlan: true }), url = new URL(attempt.authorizationUrl);
+    assert.equal(url.searchParams.get("agent_name_hint"), "Relay"); assert.equal(url.searchParams.get("client_id"), "dynamic_agent_client");
+    assert.equal(new URL(url.searchParams.get("redirect_uri") ?? "").hostname, "127.0.0.1");
+    assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+    assert.equal((await f.callback(attempt, { state: "wrong" })).status, 400); assert.equal(f.calls.length, 0);
+    assert.equal((await f.callback(attempt)).status, 200);
+    const state = await attempt.completion; assert.equal(state.state, "connected");
+    const call = f.calls.find(call => call.url.endsWith("/oauth/token")); assert.ok(call);
+    const body = call.init.body; assert.ok(body instanceof URLSearchParams);
+    const form = new URLSearchParams(body); assert.equal(form.get("redirect_uri"), url.searchParams.get("redirect_uri"));
+    assert.equal(createHash("sha256").update(form.get("code_verifier") ?? "").digest("base64url"), url.searchParams.get("code_challenge"));
+    assert.equal(JSON.stringify(state).includes("synthetic-access"), false); assert.equal(attempt.authorizationUrl.includes("id_token"), false);
+    assert.ok(f.calls.every(call => new URL(call.url).hostname === "auth.openai.com" && call.init.redirect === "error"));
+  } finally { await f.cleanup(); }
+});
+it("granted permission rather than requested permission determines enabled plan usage", async () => {
+  const f = chatGptFixture(); try { f.setScopes("openid profile email offline_access"); const state = await f.connected(); assert.equal(state.state, "connected"); if (state.state === "connected") assert.equal(state.planUsage, "disabled"); await assert.rejects(f.service.extractText(image), { code: "CHATGPT_PLAN_DISABLED" }); } finally { await f.cleanup(); }
+});
+for (const claims of [{ nonce: "wrong" }, { aud: "wrong" }, { iss: "https://foreign.example" }, { exp: 1 }, { iat: 9_999_999_999 }])
+  it(`rejects invalid cryptographically signed claims ${JSON.stringify(claims)}`, async () => {
+    const f = chatGptFixture(); try { f.setClaims(claims); const attempt = await f.service.signIn({ usePlan: true }); await f.callback(attempt); await assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_INVALID" }); assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); } finally { await f.cleanup(); }
+  });
+it("refuses first registration without issued client and OAuth denial without token exchange", async () => {
+  const f = chatGptFixture(); try {
+    const first = await f.service.signIn({ usePlan: true }); await f.callback(first, { client_id: null }); await assert.rejects(first.completion, { code: "CHATGPT_AUTH_INVALID" });
+    const denied = await f.service.signIn({ usePlan: true }); await f.callback(denied, { error: "access_denied" }); await assert.rejects(denied.completion, { code: "CHATGPT_AUTH_CANCELLED" }); assert.equal(f.calls.length, 0);
+  } finally { await f.cleanup(); }
+});
+it("signout revokes then clears tokens and retains issued client and host for return sign-in", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); const original = JSON.parse(readFileSync(join(f.root, "chatgpt-credentials/account.json"), "utf8")) as { hostId: string };
+    assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "confirmed" });
+    const bytes = readFileSync(join(f.root, "chatgpt-credentials/account.json"), "utf8"); assert.equal(bytes.includes("synthetic-access"), false); assert.equal(bytes.includes("synthetic-refresh"), false); assert.equal(bytes.includes('"idToken"'), false);
+    const revocation = f.calls.find(call => call.url.endsWith("/revoke")); assert.ok(revocation);
+    const body = revocation.init.body; assert.ok(body instanceof URLSearchParams); assert.equal(body.get("token_type_hint"), "refresh_token");
+    const attempt = await f.service.signIn({ usePlan: false }), url = new URL(attempt.authorizationUrl);
+    assert.equal(url.searchParams.get("client_id"), "oaiapp_fixture"); assert.equal(url.searchParams.get("ext_agent_host_id"), original.hostId); assert.equal(url.searchParams.has("agent_name_hint"), false);
+    await f.callback(attempt); await attempt.completion;
+  } finally { await f.cleanup(); }
+});
+it("local signout is confirmed separately from unconfirmed revocation", async () => {
+  const f = chatGptFixture(); try { await f.connected(); f.setRevocation(503); assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "unconfirmed" }); assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); } finally { await f.cleanup(); }
+});
+it("returning sign-in rejects changed callback client and signed subject", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); const wrong = await f.service.signIn({ usePlan: true }); await f.callback(wrong, { client_id: "oaiapp_other" }); await assert.rejects(wrong.completion, { code: "CHATGPT_AUTH_INVALID" });
+    f.setClaims({ sub: "other-subject" }); const subject = await f.service.signIn({ usePlan: true }); await f.callback(subject); await assert.rejects(subject.completion, { code: "CHATGPT_AUTH_INVALID" }); assert.equal(f.service.readAccount().state, "connected");
+  } finally { await f.cleanup(); }
+});
+it("refresh replaces rotating tokens before Responses and survives restart", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); f.clock.advanceWall(3_600_000); assert.deepEqual(f.service.readAccount(), { state: "expired" });
+    assert.deepEqual(await f.service.extractText(image), { text: "Synthetic form" });
+    const bytes = readFileSync(join(f.root, "chatgpt-credentials/account.json"), "utf8"); assert.equal(bytes.includes("synthetic-access-1"), false); assert.ok(bytes.includes("synthetic-refresh-2"));
+    const request = f.calls.find(call => call.url.endsWith("/responses")); assert.ok(request); assert.equal(new Headers(request.init.headers).get("Authorization"), "Bearer synthetic-access-2");
+    const restarted = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport }); assert.equal(restarted.readAccount().state, "connected"); await restarted.close();
+  } finally { await f.cleanup(); }
+});
+it("Responses sends image or PDF inline with required no-store stream settings", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); await f.service.extractText(image); await f.service.extractText({ ...image, input: { kind: "pdf", filename: "synthetic.pdf", base64: "YQ==" } });
+    const calls = f.calls.filter(call => call.url.endsWith("/responses")); assert.equal(calls.length, 2);
+    for (const [index, call] of calls.entries()) {
+      const body = call.init.body; assert.ok(typeof body === "string");
+      const request = JSON.parse(body) as { store: boolean; stream: boolean; input: { content: { type: string }[] }[] };
+      assert.equal(request.store, false); assert.equal(request.stream, true); assert.equal(request.input[0]?.content[0]?.type, "input_text");
+      assert.ok(body.includes(index === 0 ? "data:image/png;base64,YQ==" : "data:application/pdf;base64,YQ=="));
+    }
+  } finally { await f.cleanup(); }
+});
+for (const code of ["subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable"])
+  it(`rejects streamed partial text and persists ${code}`, async () => {
+    const f = chatGptFixture(); try { await f.connected(); f.setSse(`data: {"type":"response.output_text.delta","delta":"Partial"}\n\ndata: {"type":"response.failed","response":{"error":{"code":"${code}"}}}\n\n`);
+      await assert.rejects(f.service.extractText(image), { code: code.endsWith("exceeded") ? "CHATGPT_USAGE_LIMIT" : "CHATGPT_USAGE_UNAVAILABLE" });
+      const state = f.service.readAccount(); assert.equal(state.state, code.endsWith("exceeded") ? "connected" : "unavailable"); if (state.state === "connected") assert.equal(state.planUsage, "limit-reached");
+    } finally { await f.cleanup(); }
+  });
+it("refuses incomplete SSE and cancellation without returning partial text", async () => {
+  const f = chatGptFixture(); try { await f.connected(); f.setSse('data: {"type":"response.output_text.delta","delta":"Partial"}\n\n'); await assert.rejects(f.service.extractText(image), { code: "CHATGPT_OCR_INCOMPLETE" }); await assert.rejects(f.service.extractText(image, AbortSignal.abort()), { code: "CHATGPT_OCR_CANCELLED" }); } finally { await f.cleanup(); }
+});
+it("foreign discovery endpoints are refused before transmitting tokens", async () => {
+  const f = chatGptFixture(); try { f.setDiscovery({ jwks_uri: "https://foreign.example/jwks" }); const attempt = await f.service.signIn({ usePlan: true }); await f.callback(attempt); await assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_INVALID" }); assert.ok(f.calls.every(call => new URL(call.url).hostname === "auth.openai.com")); } finally { await f.cleanup(); }
+});
+it("identity-only consent connects without a renewable plan session", async () => {
+  const f = chatGptFixture(); try {
+    f.setToken({ refresh_token: undefined }); f.setScopes("openid profile email");
+    const state = await f.connected(false); assert.equal(state.state, "connected"); if (state.state === "connected") assert.equal(state.planUsage, "disabled");
+    assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "not-needed" }); assert.equal(f.calls.some(call => call.url.endsWith("/revoke")), false);
+  } finally { await f.cleanup(); }
+});
+it("cancel closes the owned callback and expired attempts never exchange codes", async () => {
+  const f = chatGptFixture(); try {
+    const attempt = await f.service.signIn({ usePlan: true }); await assert.rejects(f.service.signIn({ usePlan: true }), { code: "CHATGPT_AUTH_BUSY" });
+    await attempt.cancel(); await assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_CANCELLED" });
+    await assert.rejects(f.callback(attempt));
+    const expired = await f.service.signIn({ usePlan: true }); f.clock.advanceWall(300_000); await f.callback(expired); await assert.rejects(expired.completion, { code: "CHATGPT_AUTH_EXPIRED" }); assert.equal(f.calls.length, 0);
+  } finally { await f.cleanup(); }
+});
+it("close drains sign-in startup before returning", async () => {
+  const f = chatGptFixture(); let settled = false;
+  const starting = f.service.signIn({ usePlan: true }).finally(() => { settled = true; });
+  try {
+    await f.service.close(); const settledWhenClosed = settled;
+    const attempt = await starting.catch(() => undefined); await attempt?.cancel();
+    assert.equal(settledWhenClosed, true); assert.equal(attempt, undefined);
+  } finally { const attempt = await starting.catch(() => undefined); await attempt?.cancel(); await f.cleanup(); }
+});
+it("signout fences a sign-in started before credential initialization", async () => {
+  const f = chatGptFixture(); let attempt: Awaited<ReturnType<typeof f.service.signIn>> | undefined;
+  try {
+    const starting = f.service.signIn({ usePlan: true }), signingOut = f.service.signOut();
+    const [started, signedOut] = await Promise.allSettled([starting, signingOut]);
+    if (started.status === "fulfilled") {
+      attempt = started.value;
+      const callback = await f.callback(attempt).catch(() => undefined);
+      if (callback?.status === 200) await attempt.completion.catch(() => undefined); else await attempt.cancel();
+    } else assert.equal((started.reason as { code?: string }).code, "CHATGPT_AUTH_CANCELLED");
+    assert.equal(signedOut.status, "fulfilled"); assert.equal(f.calls.length, 0);
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+  } finally { await attempt?.cancel(); await f.cleanup(); }
+});
+it("parallel sign-in startup refuses the second attempt as busy", async () => {
+  const f = chatGptFixture();
+  const first = f.service.signIn({ usePlan: true }), second = f.service.signIn({ usePlan: true });
+  try {
+    const results = await Promise.allSettled([first, second]);
+    for (const result of results) if (result.status === "fulfilled") await result.value.cancel();
+    const concurrent = results[1]; assert.ok(concurrent);
+    assert.equal(concurrent.status, "rejected");
+    if (concurrent.status === "rejected") assert.equal((concurrent.reason as { code?: string }).code, "CHATGPT_AUTH_BUSY");
+  } finally {
+    for (const result of await Promise.allSettled([first, second])) if (result.status === "fulfilled") await result.value.cancel();
+    await f.cleanup();
+  }
+});
+it("corrupt private storage becomes unavailable without leaking input", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); writeFileSync(join(f.root, "chatgpt-credentials/account.json"), '{"private":"synthetic-sensitive"');
+    const state = f.service.readAccount(); assert.equal(state.state, "unavailable"); assert.equal(JSON.stringify(state).includes("synthetic-sensitive"), false);
+  } finally { await f.cleanup(); }
+});
+it("failed first code exchange retains issued registration for fresh authorization", async () => {
+  const f = chatGptFixture(); try {
+    f.setTokenStatus(400); const attempt = await f.service.signIn({ usePlan: true }); await f.callback(attempt); await assert.rejects(attempt.completion, { code: "CHATGPT_ACCOUNT_EXPIRED" });
+    assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); f.setTokenStatus(200);
+    const retry = await f.service.signIn({ usePlan: true }), url = new URL(retry.authorizationUrl);
+    assert.equal(url.searchParams.get("client_id"), "oaiapp_fixture"); assert.equal(url.searchParams.has("agent_name_hint"), false);
+    await f.callback(retry); assert.equal((await retry.completion).state, "connected");
+  } finally { await f.cleanup(); }
+});
+it("rejects an ID token with a forged signature", async () => {
+  const f = chatGptFixture(); try { f.tamperSignature(); const attempt = await f.service.signIn({ usePlan: true }); await f.callback(attempt); await assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_INVALID" }); assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); } finally { await f.cleanup(); }
+});
+it("parses split UTF-8 and split CRLF event boundaries", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); const bytes = new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"Synthetic café"}\r\n\r\ndata: {"type":"response.completed"}\r\n\r\n');
+    f.setResponse(() => new Response(new ReadableStream<Uint8Array>({ start(controller) { for (const byte of bytes) controller.enqueue(Uint8Array.of(byte)); controller.close(); } }), { headers: { "Content-Type": "text/event-stream" } }));
+    assert.deepEqual(await f.service.extractText(image), { text: "Synthetic café" });
+  } finally { await f.cleanup(); }
+});
+it("signout stops a live response stream before clearing credentials", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); let began: () => void = () => { throw new Error("not started"); }; const started = new Promise<void>(resolve => { began = resolve; });
+    f.setResponse(init => new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"Partial"}\n\n')); began();
+      init.signal?.addEventListener("abort", () => controller.error(new Error("synthetic-sensitive")), { once: true });
+    } }), { headers: { "Content-Type": "text/event-stream" } }));
+    const running = f.service.extractText(image); const rejected = assert.rejects(running, { code: "CHATGPT_OCR_CANCELLED" }); await started;
+    await f.service.signOut(); await rejected; assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+  } finally { await f.cleanup(); }
+});
+it("cancelled code exchange cannot resurrect an account after signout", async () => {
+  const f = chatGptFixture(); try {
+    let release: () => void = () => { throw new Error("not initialized"); }, entered: () => void = () => { throw new Error("not initialized"); };
+    const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+    f.setTokenHook(async () => { entered(); await held; }); const attempt = await f.service.signIn({ usePlan: true }); await f.callback(attempt); await started;
+    const cancelled = assert.rejects(attempt.completion, { code: "CHATGPT_AUTH_CANCELLED" }); await f.service.signOut(); release(); await cancelled;
+    await new Promise<void>(resolve => setImmediate(resolve)); assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+  } finally { await f.cleanup(); }
+});
+it("signout drains an aborted refresh before clearing the renewable session", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); f.clock.advanceWall(3_600_000);
+    let entered: () => void = () => { throw new Error("not started"); }; const started = new Promise<void>(resolve => { entered = resolve; });
+    f.setTokenHook(async () => { entered(); await new Promise<void>(() => undefined); });
+    const running = f.service.extractText(image), rejected = assert.rejects(running, { code: "CHATGPT_OCR_CANCELLED" }); await started;
+    assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "confirmed" }); await rejected; assert.deepEqual(f.service.readAccount(), { state: "signed-out" });
+  } finally { await f.cleanup(); }
+});
+it("signout reports local persistence uncertainty while readback proves tokens cleared", async () => {
+  const f = chatGptFixture(); try {
+    await f.connected(); const uncertain = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport,
+      credentialHooks: { afterRename() { throw new Error("synthetic-sensitive"); } } });
+    await assert.rejects(uncertain.signOut(), { code: "CHATGPT_CREDENTIAL_UNCERTAIN" }); assert.deepEqual(uncertain.readAccount(), { state: "signed-out" }); await uncertain.close();
+  } finally { await f.cleanup(); }
+});

@@ -12,11 +12,12 @@ import type { RuntimePair } from "../admission/installation.js";
 import { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { createCredentialStore } from "../configuration/credential-store.js";
+import { CHATGPT_CREDENTIAL_DIRECTORY, verifyChatGptCredentialBytes, verifyChatGptCredentialStore } from "../../accounts/chatgpt-credential-repository.js";
 
 const ARTIFACT = /^([0-9a-f]{64})\.artifact$/u;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const ROOT_FILES = new Set(["state.db", "state.db-wal", "state.db-shm"]);
-const ROOT_DIRECTORIES = new Set(["backups", "credentials", "browsers", "scratch", "logs"]);
+const ROOT_DIRECTORIES = new Set(["backups", "credentials", CHATGPT_CREDENTIAL_DIRECTORY, "browsers", "scratch", "logs"]);
 const CREDENTIAL_FILES = new Set(["protected.json", ".protected.lock", ".protected.reaper", ".protected.reaper-claim"]);
 const StoredArtifactSchema = z.strictObject({ ref: ArtifactRefSchema, payloadBase64: z.string() });
 const issuedInventories = new WeakSet<object>();
@@ -126,6 +127,7 @@ export function verifyRelocationLiveReferences(input: Readonly<{ admission: Runt
   if (lstatSync(credentialPath, { throwIfNoEntry: false }) !== undefined) {
     createCredentialStore({ admission: input.admission, stateRoot: input.source.stateRoot }).read();
   }
+  verifyChatGptCredentialStore({ admission: input.admission, stateRoot: input.source.stateRoot });
 
 }
 
@@ -139,6 +141,7 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
   }
   if (top === undefined) throw new Error("relocation-inventory: empty state entry");
   if (parts.length === 1) {
+    if (top === CHATGPT_CREDENTIAL_DIRECTORY && (lstatSync(path).mode & 0o7777) !== 0o700) throw new Error("relocation-inventory: ChatGPT credential directory is not private");
     if (kind === "file" ? ROOT_FILES.has(top) : ROOT_DIRECTORIES.has(top)) return;
     throw new Error(`relocation-inventory: unknown state entry ${top}`);
   }
@@ -157,6 +160,12 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
   if (top === "credentials") {
     if(parts.length!==2||kind!=="file"||!CREDENTIAL_FILES.has(name))throw new Error("relocation-inventory: unknown credentials entry");
     if(name!=="protected.json")throw new Error("relocation-inventory: credential write lock is present");
+    return;
+  }
+  if (top === CHATGPT_CREDENTIAL_DIRECTORY) {
+    if (parts.length !== 2 || kind !== "file" || name !== "account.json" || (lstatSync(path).mode & 0o7777) !== 0o600) throw new Error("relocation-inventory: unknown or unsafe ChatGPT credentials entry");
+    if (lstatSync(path).size > 64_000) throw new Error("relocation-inventory: malformed ChatGPT credentials");
+    verifyChatGptCredentialBytes(safeBytes(path));
     return;
   }
   if (top === "logs") {

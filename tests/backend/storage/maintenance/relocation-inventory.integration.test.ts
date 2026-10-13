@@ -17,6 +17,7 @@ import { insertImportedArtifact } from "../../../../src/backend/storage/sqlite/i
 import { GeneratedArtifactSchema } from "../../../../src/models/artifacts/generated-artifact.js";
 import { importedArtifact } from "../../../../src/models/intake/imported-artifact.js";
 import { IntakeSessionSchema } from "../../../../src/models/intake/session.js";
+import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/accounts/chatgpt-credential-repository.js";
 
 function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }> {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -25,6 +26,34 @@ function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }
     payloadBase64: bytes.toString("base64"),
   }) };
 }
+
+it("relocates only a validated private ChatGPT record and refuses unsafe token authority", async () => {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-chatgpt-")));
+  const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
+  const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
+  for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot]) mkdirSync(path, { recursive: true, mode: 0o700 });
+  const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot), destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
+  try {
+    const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_fixture",
+      registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
+      session: { accessToken: "synthetic-relocation-access", refreshToken: "synthetic-relocation-refresh", idToken: "synthetic-relocation-id",
+        expiresAt: "2026-10-12T12:00:00.000Z", earliestRefreshAt: null, scopes: [], usePlan: false, usage: "available" } };
+    await createChatGptCredentialRepository({ admission: sourceAdmission, stateRoot: source.stateRoot }).withLock(async tx => { tx.replace(record, null); });
+    const input = { admission: sourceAdmission, source, destination, fixedLockRoot: join(source.stateRoot, "locks") };
+    const inventory = inspectRelocationFiles(input), file = inventory.files.find(file => file.relativePath === "chatgpt-credentials/account.json"); assert.ok(file);
+    assert.equal(JSON.stringify(inventory).includes("synthetic-relocation"), false);
+    prepareRelocationDirectories({ destinationAdmission, inventory });
+    copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file, operationId: randomUUID() });
+    verifyRelocationFileCopies({ sourceAdmission, destinationAdmission, inventory });
+    assert.deepEqual(createChatGptCredentialRepository({ admission: destinationAdmission, stateRoot: destination.stateRoot }).read(), record);
+    assert.equal(lstatSync(join(destination.stateRoot, "chatgpt-credentials")).mode & 0o777, 0o700); assert.equal(lstatSync(join(destination.stateRoot, file.relativePath)).mode & 0o777, 0o600);
+    const path = join(source.stateRoot, file.relativePath);
+    writeFileSync(path, '{"refreshToken":"synthetic-sensitive"');
+    assert.throws(() => inspectRelocationFiles(input), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE", message: "ChatGPT credentials could not be read or saved safely." });
+    writeFileSync(path, JSON.stringify(record)); writeFileSync(join(source.stateRoot, "chatgpt-credentials", ".writer"), "synthetic");
+    assert.throws(() => inspectRelocationFiles(input), /unsafe state descendant|unknown or unsafe ChatGPT/u);
+  } finally { sourceAdmission.release(); destinationAdmission.release(); rmSync(workspace, { recursive: true, force: true }); }
+});
 
 it("enumerates nested artifacts once and copies private bytes with exact retry", () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-inventory-")));
