@@ -123,7 +123,6 @@ export type TableSpec = z.infer<typeof TableSpecSchema>;
 
 export const AuthorityUpgradePhaseSchema = z.enum([
   "baseline",
-  "schema-migrated",
   "planned",
   "committed",
   "settled",
@@ -158,7 +157,7 @@ const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.ext
 
 const AuthoritySchemaUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
   upgradeId: FingerprintSchema,
-  phase: z.literal("schema-migrated"),
+  phase: z.literal("settled"),
   fromSchemaVersion: z.literal(1),
   toSchemaVersion: z.literal(2),
 });
