@@ -5,6 +5,7 @@ import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../.
 /** The two worker vocabularies are IMPORTED, not mirrored; the queue's priority enum is a copy only because the envelope module reaches a checkpoint module. */
 import { WorkerControlBasisSchema, WorkerDirectiveSchema, WorkerStopReasonSchema } from "../run/worker.js";
 import { ActionDescriptorWireSchema } from "./actions.js";
+import { RunSessionOriginSchema } from "../run/session.js";
 import {
   ActorIdSchema,
   CommandIdSchema,
@@ -83,6 +84,7 @@ const QueueSessionWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), sessionId: RunSessionIdSchema,
     // Absent only in frozen pre-batch queue snapshots.
     presentation: z.strictObject({ groupInQueue: z.boolean(), version: PositiveIntSchema, startedAt: IsoInstantSchema }).optional(),
+    origin: RunSessionOriginSchema.optional(),
   }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);

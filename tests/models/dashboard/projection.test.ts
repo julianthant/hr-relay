@@ -11,6 +11,22 @@ const { RUN_1, RUN_2, QUEUE, DAY } = createDashboardModelFixtures();
 
 describe("dashboard wire primitives", () => {
 
+  it("accepts session origins while retaining frozen originless sessions", () => {
+    const sessionId = RUN_2;
+    const origins = [
+      { kind: "start-plan", startPlanId: RUN_1, actorId: "local-operator" },
+      { kind: "intake-manifest", intakeManifestId: RUN_1, actorId: "local-operator" },
+    ] as const;
+    for (const origin of origins) {
+      const session = { state: "present", sessionId, origin } as const;
+      assert.deepEqual(QueueSurfaceWireSchema.parse({ ...QUEUE, session }).session, session);
+    }
+    assert.deepEqual(
+      QueueSurfaceWireSchema.parse({ ...QUEUE, session: { state: "present", sessionId } }).session,
+      { state: "present", sessionId },
+    );
+  });
+
   it("binds every served action to the row's own revision, once per key", () => {
     const [cancel, hide] = QUEUE.actions;
     assert.ok(cancel !== undefined && hide !== undefined);
