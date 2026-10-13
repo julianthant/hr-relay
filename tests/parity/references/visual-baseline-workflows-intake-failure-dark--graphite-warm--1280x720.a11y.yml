@@ -64,7 +64,7 @@
     - heading "Spreadsheet intake" [level=2]
     - text: A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row. mapping onto Person Lookup
     - button "Close"
-    - alert: This intake session could not be read request failed with status 503 and a body outside the wire-error contract
+    - alert: This intake session could not be read The task stopped with an unclassified failure. Review local diagnostic evidence.
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
