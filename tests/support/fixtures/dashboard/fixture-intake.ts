@@ -218,8 +218,8 @@ export const FIXTURE_INTAKE_RERUN = IntakeSessionWireSchema.parse({
     diff: {
       kind: "changed",
       changes: [{ what: "mapping", was: "a".repeat(64), now: "b".repeat(64) }],
-      added: [FIRST_VALID],
-      removed: [SECOND_VALID],
+      added: [{ ...FIRST_VALID, inputHash: "638250505a35ab6673f79f1d17bb61766c820f10356d0d26f5b6dd75dfa38f15" }],
+      removed: [{ ...SECOND_VALID, inputHash: "19a6750440132371e5250611020b20f39659744004927b35b8b699a1d98c6904" }],
       changedInputs: [{
         itemId: THIRD_VALID.itemId,
         beforeInputHash: "c".repeat(64),
