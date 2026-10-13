@@ -15,6 +15,9 @@ import { createDebugEventWriter } from "../../../../src/backend/logs/debug-event
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError, migrateStoppedAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityUpgradeInspectionSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
+import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
+import { StorageDoctorWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -66,7 +69,7 @@ describe("stopped native upgrade admission",()=>{
   try {assert.equal(current.getMeta().schemaVersion,2);assert.ok(current.authority.runtimeConfig.get());
    const inspection=AuthorityUpgradeInspectionSchema.parse(current.readUpgradePhases());
    assert.equal(inspection.state,"available");
-   if(inspection.state==="available")assert.deepEqual(inspection.phases.map(({phase})=>phase),["baseline","schema-migrated"]);
+   if(inspection.state==="available")assert.deepEqual(inspection.phases.map(({phase})=>phase),["baseline","settled"]);
   }finally{current.close();}
   const stored=new DatabaseSync(f.path,{readOnly:true});
   try {
@@ -74,6 +77,24 @@ describe("stopped native upgrade admission",()=>{
    assert.ok(stored.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get());
   }finally{stored.close();}
   assert.equal((await f.run()).state,"already-upgraded");
+ });
+ it.each(["dashboard","preflight"] as const)("observes a migrated authority as settled through %s",async surface=>{
+  const f=baselineFixture();
+  assert.equal((await f.run()).state,"upgraded");
+  const doctorOptions={stateRootTrustAnchor:f.root,stateRoot:f.root,authorityPath:f.path,
+   backupDirectory:join(f.root,"backups","authority"),busyTimeoutMs:250};
+  if(surface==="dashboard"){
+   const wire=StorageDoctorWireSchema.parse(await buildStorageDoctor({admission:f.admission,doctorOptions,clock,
+    serviceState:()=>({state:"never-run",reason:"Explicit backups only"})}));
+   assert.equal(wire.authority.state,"healthy");
+   assert.equal(wire.authorityUpgrades.state,"available");
+   if(wire.authorityUpgrades.state==="available")assert.equal(wire.authorityUpgrades.phases.at(-1)?.phase,"settled");
+  }else{
+   const observation=await new AuthorityHealthPreflightRunner(f.admission,doctorOptions,clock).run({
+    signal:new AbortController().signal,timeoutMs:10_000,deadlineMonotonicMs:10_000,redaction:"presence-only"});
+   assert.equal(observation.state,"healthy");
+   assert.match(observation.summary,/authority upgrade phase settled/u);
+  }
  });
  it("reacquires stopped installation admission for a retained baseline",async()=>{
   const f=baselineFixture();
