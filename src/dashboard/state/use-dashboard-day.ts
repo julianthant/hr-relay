@@ -8,6 +8,7 @@ import { failed, loaded, LOADING, type AsyncResource } from "./async-resource.js
 import { useDashboardClient } from "./client-context.js";
 
 export interface DashboardDayState {
+  readonly request: object;
   readonly day: AsyncResource<DashboardDayWire>;
   readonly connection: SubscriptionState;
   readonly refresh: () => void;
@@ -23,7 +24,7 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
   const [result, setResult] = useState<{ request: typeof request; value: DashboardDayState }>();
   useEffect(() => {
     let active = true;
-    let value: DashboardDayState = { day: LOADING, connection: { state: "connecting" }, refresh };
+    let value: DashboardDayState = { request, day: LOADING, connection: { state: "connecting" }, refresh };
     const publish = (): void => { if (active) setResult({ request, value }); };
     publish();
     if (day === undefined) return () => { active = false; };
@@ -33,20 +34,20 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
         if (!active) return;
         if (next.day !== day) {
           const error = protocolError("day-request-identity-mismatch");
-          value = { day: failed(error), connection: { state: "stopped", error }, refresh };
+          value = { request, day: failed(error), connection: { state: "stopped", error }, refresh };
         } else value = { ...value, day: loaded(next) };
         publish();
       },
       onState: (connection) => {
         if (!active) return;
-        value = { day: connection.state === "stopped" && connection.error !== undefined
+        value = { request, day: connection.state === "stopped" && connection.error !== undefined
           ? failed(connection.error) : connection.state === "connecting" ? LOADING : value.day, connection, refresh };
         publish();
       },
     });
     return () => { active = false; subscription.close(); };
   }, [client, day, request, refresh]);
-  const current = result?.request === request ? result.value : { day: LOADING, connection: { state: "connecting" as const }, refresh };
+  const current = result?.request === request ? result.value : { request, day: LOADING, connection: { state: "connecting" as const }, refresh };
   useEffect(() => {
     if (current.day.state !== "loaded" || nowIso === undefined) return;
     const pending = current.day.value.notifications

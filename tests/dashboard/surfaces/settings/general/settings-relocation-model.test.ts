@@ -18,13 +18,13 @@ afterEach(() => { if (root !== undefined) act(() => root?.unmount()); host?.remo
 describe("storage relocation Paths controls", () => {
 
   it("binds cancel to the pending plan and preserves the desired partner on later edits", () => {
-    const planned = planRelocationCommand(INITIAL, { stateRoot: "/tmp/next-state", artifactRoot: SOURCE.artifactRoot }, "local-operator");
+    const planned = planRelocationCommand(INITIAL, { stateRoot: "/tmp/next-state", artifactRoot: SOURCE.artifactRoot }, "local-operator", "2026-08-03T12:00:00.000Z");
     if (planned.type !== "plan-storage-relocation") throw new Error("expected plan");
     const view = StorageRelocationPlanViewSchema.parse({ ...INITIAL, revision: 1, pending: { commandId: planned.commandId,
       writeId: planned.payload.writeId, desiredPair: planned.payload.desiredPair,
       desiredDigest: planned.payload.desiredDigest, requestFingerprint: planned.payload.requestFingerprint } });
     assert.deepEqual(desiredRelocationPair(view, { artifactRoot: "/tmp/next-artifacts" }), { stateRoot: "/tmp/next-state", artifactRoot: "/tmp/next-artifacts" });
-    const cancel = cancelRelocationCommand(view, "local-operator");
+    const cancel = cancelRelocationCommand(view, "local-operator", "2026-08-03T12:00:00.000Z");
     if (cancel.type !== "cancel-storage-relocation") throw new Error("expected cancellation");
     assert.equal(cancel.payload.cancelledPlanCommandId, planned.commandId);
     assert.equal(cancel.payload.cancelledPlanDigest, planned.payload.desiredDigest);

@@ -65,3 +65,48 @@ describe("typed Settings catalog controls", () => {
     });
   }
 });
+
+it("recovers the original unknown Settings envelope after the editor unmounts", async () => {
+  const h = await setup();
+  h.ports.execute = request => { h.authority.execute(request); throw new Error("lost response"); };
+  await settingsAction(() => h.controller().update("actor.label", "Retained attempt"));
+  await settingsAction(() => h.controller().submit());
+  const original = structuredClone(h.commands[0]);
+  assert.equal(h.controller().save.state, "unconfirmed");
+  await h.render("general", false); await h.render("general");
+  assert.equal(h.controller().save.state, "unconfirmed"); assert.equal(h.controller().locked, true);
+  await settingsAction(() => { h.controller().update("actor.label", "Fresh command"); h.controller().submit(); });
+  assert.equal(h.commands.length, 1);
+  h.ports.execute = h.authority.execute;
+  await settingsAction(() => h.controller().retry());
+  assert.deepEqual(h.commands, [original, original]); assert.equal(h.controller().save.state, "applied");
+});
+
+for (const family of ["ordinary", "protected", "relocation"] as const) {
+  it(`recovers ${family} after same-day scope refresh while its reply is pending`, async () => {
+    const h = await setup();
+    let settle: ((value: unknown) => void) | undefined;
+    h.ports.execute = () => new Promise<unknown>(resolve => { settle = resolve; });
+    const control = () => family === "ordinary" ? h.controller() : family === "protected" ? h.controller().protectedEditor : h.controller().relocationEditor;
+    await settingsAction(() => {
+      if (family === "ordinary") h.controller().update("actor.label", "retained");
+      else if (family === "protected") h.controller().protectedEditor.update("ucpathUserId", "retained");
+      else h.controller().relocationEditor.update("artifactRoot", "/tmp/retained-artifacts");
+    });
+    await settingsAction(() => control().submit());
+    assert.equal(control().save.state, "saving"); const original = structuredClone(h.commands[0]);
+    await h.render("general", true, 1);
+    assert.equal(control().save.state, "unconfirmed");
+    await settingsAction(() => control().retry());
+    assert.equal(h.commands.length, 1, "retry cannot dispatch over the pending original attempt");
+    const draft = structuredClone(control().draft);
+    assert.ok(settle);
+    await settingsAction(() => settle?.({ state: "rejected", commandId: (original as { commandId: string }).commandId, code: "authority-uncertain", message: "private" }));
+    assert.equal(control().save.state, "unconfirmed"); assert.equal(control().locked, true);
+    assert.deepEqual(control().draft, draft);
+    assert.equal(h.notices.length, 0); assert.equal(h.problems.length, 0);
+    h.ports.execute = request => ({ state: "rejected", commandId: (request as { commandId: string }).commandId, code: "authority-uncertain", message: "private" });
+    await settingsAction(() => control().retry());
+    assert.deepEqual(h.commands, [original, original]);
+  });
+}

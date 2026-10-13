@@ -1,12 +1,11 @@
-import { settleCommandResult } from "../../../app/commands/command-result.js";
+import type { CommandExecutionOptions, CommandExecutionScope } from "../../../app/commands/command-executor.js";
+import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { systemClock } from "../../../../rules/time/clock.js";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../../../models/config/protected-settings.js";
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
-import { useSettingsClient } from "../editor/settings-client.js";
-import { beforeEffectRefusal, checkedSettingsResult, protectedReadbackConfirms, settingsSaveNotice, settingsSaveProblem, type SettingsSaveListener, type SettingsSaveNotice, type SettingsSaveProblemListener, settingsRefusal, uncertainSettingsCode, type ProtectedSettingsAttempt, type SettingsSaveState } from "../editor/settings-attempt-model.js";
+import { checkedSettingsResult, commandSaveState, settingsScopeRecoveryState, protectedReadbackConfirms, settingsSaveNotice, settingsSaveProblem, type SettingsSaveListener, type SettingsSaveProblemListener, type ProtectedSettingsAttempt, type SettingsSaveState } from "../editor/settings-attempt-model.js";
 
 type ProtectedDraftOperation = { readonly kind: "set"; readonly raw: string } | { readonly kind: "clear" };
 type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperation>>;
@@ -14,14 +13,21 @@ function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
   return ProtectedValueSchemas[name].parse(name === "activityPersonPseudonym" ? JSON.parse(raw) as unknown : raw);
 }
 export function useProtectedSettings(input: {
-  actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener;
+  actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>; readCurrent: () => Promise<EditableSettingsWire>; acceptReadback: (document: EditableSettingsWire) => void; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener;
 }) {
-  const client = useSettingsClient();
+  const binding = useDashboardCommandBinding();
+  const live = useRef(true);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [draft, setDraft] = useState<ProtectedDraft>({});
   const [errors, setErrors] = useState<Partial<Record<ProtectedSettingsName, string>>>({});
   const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
   const pending = useRef<ProtectedSettingsAttempt | undefined>(undefined);
   const busy = useRef(false);
+  const attemptScope = useRef<CommandExecutionScope | undefined>(undefined);
+  const retained = binding?.executor.retainedAttempts().find(attempt => (attempt.state === "pending" || attempt.outcome?.kind === "uncertain") && attempt.scope.actorId === binding.scope.actorId
+    && attempt.request.family === "settings" && attempt.request.type === "apply-protected-settings");
+  if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-protected-settings") pending.current = retained.request;
+  if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
   const available = input.document?.protectedSettings;
   const update = (name: ProtectedSettingsName, raw: string): void => {
     if (busy.current || pending.current !== undefined || available?.state !== "available" || !available.rows.some(row => row.name === name)) return;
@@ -48,46 +54,45 @@ export function useProtectedSettings(input: {
   const perform = async (command: ProtectedSettingsAttempt): Promise<void> => {
     if (busy.current) return;
     busy.current = true; pending.current = command; setSave({ state: "saving" });
-    let notice: SettingsSaveNotice | undefined;
-    let outcome: SettingsSaveState = { state: "saving" };
-    const complete = (next: SettingsSaveState): void => { outcome = next; setSave(next); };
+    if (binding === undefined) { busy.current = false; pending.current = undefined; setSave(commandSaveState(undefined)); return; }
+    attemptScope.current = binding.scope;
+    let document: EditableSettingsWire | undefined;
+    const options: CommandExecutionOptions = {
+      scope: binding.scope,
+      readback: async (_request, reply) => {
+        const result = checkedSettingsResult(command, reply);
+        document = await input.readCurrent();
+        return { state: protectedReadbackConfirms(command, result, document) ? "matched" : "mismatch", evidence: document };
+      },
+      publish: outcome => {
+        if (!live.current) return;
+        binding.feedback(outcome);
+        if (document !== undefined) input.acceptReadback(document);
+        if (outcome.kind === "conflict") void input.refresh().catch(() => undefined);
+        if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) pending.current = undefined;
+        const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome); setSave(next);
+        if (outcome.kind === "confirmed" && document?.protectedSettings.state === "available") {
+          setDraft({}); setErrors({});
+          input.onSaved?.(settingsSaveNotice(document.protectedSettings.rows.filter(row => row.name in command.payload.entries).map(row => row.name === "ucpathUserId" ? "UCPath username" : row.label), next.state === "applied" && next.replayed));
+        }
+        const problem = settingsSaveProblem(next, true);
+        if (problem) input.onSaveProblem?.(problem);
+      },
+    };
     try {
-      const result = checkedSettingsResult(command, await client.executeCommand(command));
-      const settled = settleCommandResult(result);
-      if (settled.kind === "refused" && settled.reason === "conflict") {
-        pending.current = undefined;
-        try { await input.refresh(); complete({ state: "conflict", message: "Credentials changed. Current presence is refreshed beside your retained edit. Review it before retrying." }); }
-        catch { complete({ state: "conflict", message: "Credentials changed, but current presence could not be read. Refresh before retrying the retained edit." }); }
-        return;
-      }
-      if (settled.kind === "refused") {
-        if (settled.reason !== "rejected") throw new Error("settings-result-unconfirmed");
-        if (!uncertainSettingsCode(settled.code)) pending.current = undefined;
-        complete({ state: uncertainSettingsCode(settled.code) ? "unconfirmed" : "refused", code: settled.code, message: settingsRefusal(settled.code) }); return;
-      }
-      const document = await input.refresh();
-      if (document.protectedSettings.state !== "available" || !protectedReadbackConfirms(command, result, document)) throw new Error("credential-readback-unconfirmed");
-      pending.current = undefined; setDraft({}); setErrors({});
-      complete({ state: "applied", replayed: settled.replayed });
-      notice = settingsSaveNotice(document.protectedSettings.rows.filter(row => row.name in command.payload.entries).map(row => row.name === "ucpathUserId" ? "UCPath username" : row.label), settled.replayed);
-    } catch (error) {
-      const refused = beforeEffectRefusal(error);
-      if (refused) pending.current = undefined;
-      complete({ state: refused ? "refused" : "unconfirmed", code: refused ? "settings-admission-refused" : undefined, message: refused ? "The request was refused before execution. Your credential draft is retained." : "The credential write could not be confirmed. It may already be stored. Retry the exact attempt; your draft is retained." });
-    } finally {
-      busy.current = false;
-      const problem = settingsSaveProblem(outcome, true);
-      if (problem) input.onSaveProblem?.(problem);
-    }
-    if (notice) input.onSaved?.(notice);
+      if (binding.executor.retainedAttempts().some(attempt => attempt.request.commandId === command.commandId)) await binding.executor.replay(command.commandId, options);
+      else await binding.executor.execute(command, options);
+    } finally { busy.current = false; }
   };
+
   const submit = (): void => {
     if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available" || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;
+    if (binding === undefined) { setSave(commandSaveState(undefined)); return; }
     try {
       const entries = ProtectedSettingsPatchSchema.parse(Object.fromEntries(Object.entries(draft).map(([name, operation]) => [name,
         operation.kind === "clear" ? { clear: true } : { set: protectedValue(name as ProtectedSettingsName, operation.raw) },
       ])));
-      const command = deepFreeze(ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: input.actorId, source: "settings-surface",
+      const command = deepFreeze(ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "settings-surface",
         target: { expectedRevision: available.readback.revision }, payload: { protectedSchemaHash: available.protectedSchemaHash, writeId: crypto.randomUUID(), entries } }));
       void perform(command);
     } catch { setSave({ state: "refused", message: "Check the credential draft. No request was sent." }); }
@@ -100,6 +105,6 @@ export function useProtectedSettings(input: {
     return () => window.clearTimeout(timer);
   }, [available, draft, errors, input.readReady, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
-  return { draft, errors, save, dirtyCount: Object.keys(draft).length, locked: save.state === "saving" || pending.current !== undefined,
+  return { draft, errors, save: pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save, dirtyCount: Object.keys(draft).length, locked: save.state === "saving" || pending.current !== undefined,
     update, clear, reset, discard, submit, retry };
 }

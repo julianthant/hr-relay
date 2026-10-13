@@ -23,7 +23,8 @@ SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
 import { Button,Dialog,DialogContent,DialogFooter,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
-import { useDashboardClient } from "../state/client-context.js";
+import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
+import type { CommandOutcome } from "./commands/command-executor.js";
 import { useServedNow } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
@@ -353,6 +354,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const bulkIdsRef = useRef(bulkIds);
   bulkIdsRef.current = bulkIds;
   const { toast } = useToasts();
+  const executor = useDashboardCommandExecutor();
+  const commandScope = useMemo(() => Object.freeze({ actorId: boot.actor.id, client, authority: authorityEpoch, dayRequest: dayState.request }), [boot.actor.id, client, authorityEpoch, dayState.request]);
+  const commandFeedback = useCallback((outcome: CommandOutcome): void => {
+    if (outcome.kind !== "confirmed") toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+  }, [toast]);
+  const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
   const setActiveWorkflowId = useCallback((id: string): boolean => {
     if (requestActiveWorkflowId(id)) return true;
     toast({ tone: "danger", title: "Workflow unavailable", description: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text });
@@ -969,7 +976,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   if (destinationError) return <EmptyState title="Destination unavailable" description={destinationError} action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />;
 
   return (
-    // Keep the theme above providers so portalled toast surfaces inherit its tokens.
+    <DashboardCommandBindingProvider binding={commandBinding}>
     <PreflightActionsProvider actions={{ actorId: authority.epoch.bootstrap.actor.id, descriptorFingerprint: authority.epoch.bootstrap.descriptorHash,
       showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
       showSessions: () => setSessionsOpen(true),
@@ -1012,7 +1019,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             workflowCatalog={workflowCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
-            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} onSettingsSaveProblem={toast} theme={theme} onToggleTheme={onToggleTheme}>
+            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
           <>
           {}
           <CommandRecovery
@@ -1186,5 +1193,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       />
     </div>
     </PreflightActionsProvider>
+    </DashboardCommandBindingProvider>
   );
 }

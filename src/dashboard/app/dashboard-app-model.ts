@@ -3,6 +3,14 @@ import type { DashboardClient } from "../client/index.js";
 import type { DashboardDayState } from "../state/use-dashboard-day.js";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { AppRouteState } from "./navigation/url-state.js";
+import type { CommandExecutionScope, CommandExecutor, CommandOutcome } from "./commands/command-executor.js";
+
+export interface DashboardCommandBinding {
+  readonly authority: DashboardAuthority;
+  readonly executor: CommandExecutor;
+  readonly scope: CommandExecutionScope;
+  readonly feedback: (outcome: CommandOutcome) => void;
+}
 
 export interface DashboardAuthority {
   readonly epoch: Readonly<{ client: DashboardClient; bootstrap: FrontendBootstrapWire }>;

@@ -1,3 +1,4 @@
+import { FixtureCommandBinding } from "./command-binding.js";
 import type { SettingsSaveNotice, SettingsSaveProblem } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -63,7 +64,7 @@ export async function mountSettingsHarness(authority: ReturnType<typeof syntheti
     if (url.endsWith("/commands") && typeof init?.body === "string") {
       const request: unknown = JSON.parse(init.body); commands.push(request);
       const refusal = ports.response(); if (refusal !== undefined) return refusal;
-      return new Response(JSON.stringify(ports.execute(request)), { status: 200 });
+      return new Response(JSON.stringify(await ports.execute(request)), { status: 200 });
     }
     throw new Error("unexpected-settings-test-request");
   } });
@@ -75,7 +76,7 @@ export async function mountSettingsHarness(authority: ReturnType<typeof syntheti
     return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
       ? createElement(SettingsAuthoritySection, { editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
   }
-  const render = async (sectionId: string): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(Harness, { sectionId }) })); }); };
+  const render = async (sectionId: string, show = true, requestKey = 0): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };
   await render(section);
   return { host, commands, notices, problems, ports, client, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
     close: () => { act(() => root.unmount()); host.remove(); } };

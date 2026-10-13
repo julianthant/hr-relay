@@ -1,3 +1,5 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
+import { FixtureCommandBinding } from "../../../../support/helpers/dashboard/command-binding.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
@@ -24,7 +26,7 @@ async function mount(client: DashboardClient) {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   let controller: ReturnType<typeof useStorageRelocation> | undefined;
   function Surface() { controller = useStorageRelocation({ actorId: "local-operator", onSaved: notice => notices.push(notice) }); currentController = controller; return createElement(StorageRelocationRows, { editor: controller }); }
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(Surface) })); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Surface) }) })); });
   await act(async () => undefined);
   if (controller === undefined) throw new Error("relocation-controller-missing");
   return { notices, controller: () => { if (controller === undefined) throw new Error("relocation-controller-missing"); return controller; }, host };
@@ -45,7 +47,7 @@ describe("storage relocation Paths controls", () => {
       pickSettingsPath: () => Promise.resolve(selection === "selected"
         ? { state: "selected", field: "paths.stateRoot", path: "/tmp/picked-state" }
         : { state: "cancelled", field: "paths.stateRoot" }),
-      applyStorageRelocation: (input: unknown) => {
+      executeCommand: (input: unknown) => {
         const command = StorageRelocationCommandRequestSchema.parse(input); commands.push(command);
         if (command.type !== "plan-storage-relocation") throw new Error("unexpected cancel");
         view = StorageRelocationPlanViewSchema.parse({ ...view, revision: 1, pending: {
@@ -77,7 +79,7 @@ describe("storage relocation Paths controls", () => {
   });
 
   it("shows the exact pending CLI command with selectable fallback and transient copy feedback", async () => {
-    const planned = planRelocationCommand(INITIAL, { stateRoot: "/tmp/next-state", artifactRoot: SOURCE.artifactRoot }, "local-operator");
+    const planned = planRelocationCommand(INITIAL, { stateRoot: "/tmp/next-state", artifactRoot: SOURCE.artifactRoot }, "local-operator", "2026-08-03T12:00:00.000Z");
     if (planned.type !== "plan-storage-relocation") throw new Error("expected plan");
     const view = StorageRelocationPlanViewSchema.parse({ ...INITIAL, revision: 1, pending: {
       commandId: planned.commandId, writeId: planned.payload.writeId,
@@ -121,7 +123,7 @@ describe("storage relocation Paths controls", () => {
   it("couples one changed field with the other desired field, records a plan after idle, and keeps active paths distinct", async () => {
     let view: StorageRelocationPlanView = INITIAL;
     const commands: unknown[] = [];
-    const client = { storageRelocationPlans: () => Promise.resolve(view), applyStorageRelocation: (input: unknown) => {
+    const client = { storageRelocationPlans: () => Promise.resolve(view), executeCommand: (input: unknown) => {
       const command = StorageRelocationCommandRequestSchema.parse(input); commands.push(command);
       if (command.type !== "plan-storage-relocation") throw new Error("unexpected cancel");
       view = StorageRelocationPlanViewSchema.parse({ ...view, revision: 1, pending: { commandId: command.commandId,
@@ -145,7 +147,7 @@ describe("storage relocation Paths controls", () => {
   it("retains invalid drafts without POST, then retries the exact uncertain command", async () => {
     let view: StorageRelocationPlanView = INITIAL;
     const commands: unknown[] = []; let fail = true;
-    const client = { storageRelocationPlans: () => Promise.resolve(view), applyStorageRelocation: (input: unknown) => {
+    const client = { storageRelocationPlans: () => Promise.resolve(view), executeCommand: (input: unknown) => {
       const command = StorageRelocationCommandRequestSchema.parse(input); commands.push(command);
       if (fail) return Promise.reject(new Error("synthetic network uncertainty"));
       if (command.type !== "plan-storage-relocation") throw new Error("expected plan");
@@ -159,7 +161,7 @@ describe("storage relocation Paths controls", () => {
     assert.equal(commands.length, 0); assert.match(surface.host.textContent ?? "", /canonical absolute/u);
     await edit("Artifact folder", "/tmp/new-artifacts"); await idle();
     assert.equal(commands.length, 1); assert.equal(surface.controller().uncertain, true);
-    assert.match(surface.host.textContent ?? "", /may already be recorded/u);
+    assert.ok(surface.host.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text));
     fail = false;
     await act(async () => { surface.controller().retry(); await Promise.resolve(); });
     await act(async () => undefined);
@@ -171,7 +173,7 @@ describe("storage relocation Paths controls", () => {
     let view: StorageRelocationPlanView = INITIAL;
     let mode: "conflict" | "divergent" = "conflict";
     const commands: unknown[] = [];
-    const client = { storageRelocationPlans: () => Promise.resolve(view), applyStorageRelocation: (input: unknown) => {
+    const client = { storageRelocationPlans: () => Promise.resolve(view), executeCommand: (input: unknown) => {
       const command = StorageRelocationCommandRequestSchema.parse(input); commands.push(command);
       if (mode === "conflict") { view = StorageRelocationPlanViewSchema.parse({ ...view, revision: 1 }); return Promise.resolve({ state: "conflict", commandId: command.commandId, currentVersion: 1, message: "changed" }); }
       view = StorageRelocationPlanViewSchema.parse({ ...view, revision: 2, pending: null });
@@ -190,19 +192,19 @@ describe("storage relocation Paths controls", () => {
   });
 
   it("does not substitute ordinary settings values when the plan reader is unavailable", async () => {
-    const client = { storageRelocationPlans: () => Promise.reject(new Error("no reader")), applyStorageRelocation: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
+    const client = { storageRelocationPlans: () => Promise.reject(new Error("no reader")), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
     const surface = await mount(client);
     assert.equal(surface.host.querySelectorAll("input").length, 0);
     assert.match(surface.host.textContent ?? "", /active paths and relocation plan could not be verified/u);
   });
   it("cancels a settled plan through an audited command while active paths stay unchanged", async () => {
-    const planned = planRelocationCommand(INITIAL, { stateRoot: "/tmp/next-state", artifactRoot: SOURCE.artifactRoot }, "local-operator");
+    const planned = planRelocationCommand(INITIAL, { stateRoot: "/tmp/next-state", artifactRoot: SOURCE.artifactRoot }, "local-operator", "2026-08-03T12:00:00.000Z");
     if (planned.type !== "plan-storage-relocation") throw new Error("expected plan");
     let view = StorageRelocationPlanViewSchema.parse({ ...INITIAL, revision: 1, pending: { commandId: planned.commandId,
       writeId: planned.payload.writeId, desiredPair: planned.payload.desiredPair,
       desiredDigest: planned.payload.desiredDigest, requestFingerprint: planned.payload.requestFingerprint } });
     const commands: unknown[] = [];
-    const client = { storageRelocationPlans: () => Promise.resolve(view), applyStorageRelocation: (input: unknown) => {
+    const client = { storageRelocationPlans: () => Promise.resolve(view), executeCommand: (input: unknown) => {
       const command = StorageRelocationCommandRequestSchema.parse(input); commands.push(command);
       view = StorageRelocationPlanViewSchema.parse({ ...view, revision: 2, pending: null });
       return Promise.resolve({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "storage-relocation", revision: 2 }] });
@@ -248,7 +250,7 @@ describe("storage relocation Paths controls", () => {
   });
   it("lets an invalid local field be undone without issuing a command", async () => {
     const commands: unknown[] = [];
-    const client = { storageRelocationPlans: () => Promise.resolve(INITIAL), applyStorageRelocation: (input: unknown) => { commands.push(input); throw new Error("unexpected write"); } } as unknown as DashboardClient;
+    const client = { storageRelocationPlans: () => Promise.resolve(INITIAL), executeCommand: (input: unknown) => { commands.push(input); throw new Error("unexpected write"); } } as unknown as DashboardClient;
     const surface = await mount(client);
     await edit("Artifact folder", "relative");
     assert.equal(surface.host.querySelector('button[aria-label="Actions for Artifact folder"]'), null);
@@ -264,7 +266,7 @@ describe("storage relocation Paths controls", () => {
   });
   it("keeps a typed uncertain rejection bound to the original command", async () => {
     const commands: unknown[] = [];
-    const client = { storageRelocationPlans: () => Promise.resolve(INITIAL), applyStorageRelocation: (input: unknown) => {
+    const client = { storageRelocationPlans: () => Promise.resolve(INITIAL), executeCommand: (input: unknown) => {
       const command = StorageRelocationCommandRequestSchema.parse(input); commands.push(command);
       return Promise.resolve({ state: "rejected", commandId: command.commandId, code: "authority-uncertain", message: "synthetic unknown" });
     } } as unknown as DashboardClient;

@@ -1,3 +1,4 @@
+import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
@@ -28,14 +29,14 @@ describe("storage relocation Paths controls", () => {
     const client = { editableSettings: () => Promise.resolve(FIXTURE_EDITABLE_SETTINGS),
       storageRelocationPlans: () => Promise.resolve(INITIAL),
       pickSettingsPath: () => Promise.resolve({ state: "selected", field: "paths.artifactRoot", path: "/tmp/new-artifacts" }),
-      applyStorageRelocation: () => Promise.reject(new Error("synthetic lost response")),
+      executeCommand: () => Promise.reject(new Error("synthetic lost response")),
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
+    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(SettingsPage, { onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: next => { guard = next; },
-    }) })); });
+    }) }) })); });
     await act(async () => undefined);
     const change = host.querySelector('[data-settings-path="paths.artifactRoot"] button[aria-label="Change Artifact folder"]');
     if (!(change instanceof HTMLButtonElement)) throw new Error("artifact picker action missing");
@@ -59,14 +60,14 @@ describe("storage relocation Paths controls", () => {
       pickSettingsPath: () => Promise.resolve(selection === "selected"
         ? { state: "selected", field: "paths.downloadsDir", path: "/tmp/chosen-downloads" }
         : { state: "cancelled", field: "paths.downloadsDir" }),
-      applySettings: (request: unknown) => { commands.push(request); return Promise.reject(new Error("synthetic response uncertainty")); },
+      executeCommand: (request: unknown) => { commands.push(request); return Promise.reject(new Error("synthetic response uncertainty")); },
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(SettingsPage, { onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: () => undefined,
-    }) })));
+    }) }) })));
     await act(async () => undefined);
     const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads directory"]');
     if (!(change instanceof HTMLButtonElement)) throw new Error("downloads picker action missing");

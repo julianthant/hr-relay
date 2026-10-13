@@ -139,13 +139,17 @@ it("isolates A -> B -> A days and actor epochs while retaining disconnected rows
   const render = async (day: string, epoch: object) => { await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe, { day, epoch }) }))); };
   const actorA = {}, actorB = {};
   await render(DAY, actorA);
+  const firstRequest = seen.at(-1)?.request;
   await act(async () => subscriptions[0].onDay(EMPTY_DAY));
+  assert.equal(seen.at(-1)?.request, firstRequest);
   await act(async () => subscriptions[0].onState({ state: "reconnecting" }));
   assert.equal(seen.at(-1)?.day.state, "loaded");
+  assert.equal(seen.at(-1)?.request, firstRequest);
   const start = seen.length;
   await render("2026-08-04", actorA);
   assert.ok(seen.slice(start).every(value => value.day.state === "loading"));
   await render(DAY, actorA);
+  assert.notEqual(seen.at(-1)?.request, firstRequest);
   await act(async () => subscriptions[0].onDay(EMPTY_DAY));
   assert.equal(seen.at(-1)?.day.state, "loading");
   await act(async () => subscriptions[2].onDay(EMPTY_DAY));
@@ -161,4 +165,14 @@ it("isolates A -> B -> A days and actor epochs while retaining disconnected rows
   assert.equal(seen.at(-1)?.day.state, "loading");
   await act(async () => subscriptions[4].onDay(EMPTY_DAY));
   assert.equal(seen.at(-1)?.day.state, "loaded");
+});
+
+it("uses a stable token for settlements and ticks, replacing it on explicit same-day refresh", async () => {
+  const h = await mountHook();
+  const first = h.latest().request;
+  await h.onDay(EMPTY_DAY); assert.equal(h.latest().request, first);
+  await h.onState({ state: "reconnecting" }); assert.equal(h.latest().request, first);
+  await act(async () => h.latest().refresh());
+  assert.notEqual(h.latest().request, first);
+  assert.equal(h.latest().day.state, "loading");
 });

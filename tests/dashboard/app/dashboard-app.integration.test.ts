@@ -66,6 +66,11 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
   await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(Fragment_m0, null, createElement_m0(DashboardApp_m0, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m0 }), createElement_m0(RegistryProbe))})));
   await settle();
 }
+it_m0("command binding never renders implementation comment text", async () => {
+  await mount();
+  assert_m0.doesNotMatch(document.body.textContent ?? "", /Keep the theme above providers|portalled toast surfaces inherit/u);
+});
+
 async function chooseSpreadsheet() {
   vi.stubGlobal("Worker", class {
     onmessage?: (event: MessageEvent) => void;
