@@ -113,12 +113,21 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await password.fill(secret);
     await client.executeCommand({ ...original, commandId: randomUUID(), target: { expectedRevision: 3 }, payload: { ...original.payload, writeId: randomUUID(), entries: { timekeeperName: { set: "synthetic-competing-timekeeper" } } } });
     await password.blur();
-    await expect(page.getByText(/Current presence is refreshed beside your retained edit/u)).toBeVisible();
+    await expect(page.getByText("The command conflicted with a newer state. Refresh and review the current result.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry edit", exact: true })).toBeVisible();
+    await expect(password).toBeEnabled();
     expect(await password.inputValue() === secret).toBe(true);
+    const afterConflict = await client.editableSettings();
+    if (afterConflict.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
+    expect(afterConflict.protectedSettings.readback.revision).toBe(4);
+    expect(afterConflict.protectedSettings.entries.timekeeperName?.value).toBe("synthetic-competing-timekeeper");
     // Lose the confirming GET after the next real effect; retry must keep its identity.
     await page.route("**/api/v1/settings/editable", route => route.abort("failed"), { times: 1 });
     await page.getByRole("button", { name: "Retry edit", exact: true }).click();
     await expect(page.getByText("Credentials write unconfirmed", { exact: true })).toBeVisible();
+    const retryEdit = ProtectedSettingsCommandRequestSchema.parse(attempts.at(-1));
+    expect(retryEdit.target.expectedRevision).toBe(4);
+    expect(retryEdit.payload.entries).toEqual({ ucpathPassword: { set: secret } });
     const beforeRetry = JSON.stringify(attempts.at(-1));
     await page.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
     await expect(page.getByText("Already saved", { exact: true })).toBeVisible();

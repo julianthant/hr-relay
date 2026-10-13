@@ -109,7 +109,12 @@ describe("independent protected Settings surface", () => {
     const before = structuredClone(h.controller().protectedEditor.draft);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "conflict"); assert.deepEqual(h.controller().protectedEditor.draft, before); assert.equal(h.commands.length, 1);
-    assert.match(h.host.textContent ?? "", /Current presence is refreshed/u);
+    assert.match(h.host.textContent ?? "", /The command conflicted with a newer state\. Refresh and review the current result\./u);
+    const current = h.controller().editor;
+    assert.equal(current.state, "loaded");
+    if (current.state !== "loaded" || current.document.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
+    assert.equal(current.document.protectedSettings.readback.revision, 2);
+    assert.equal(current.document.protectedSettings.entries.timekeeperName?.value, "competing-name-sentinel");
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(ProtectedSettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, 2);
     assert.equal(h.controller().protectedEditor.save.state, "applied");

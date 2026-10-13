@@ -209,6 +209,13 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await page.route("**/api/v1/commands", route => route.abort("failed"));
       await picker.click();
       await expect(page.getByText("Plan write unconfirmed", { exact: true })).toBeVisible();
+      const warning = page.locator('[data-slot="toast"]').filter({ hasText: "Command result" });
+      await expect(warning).toHaveCount(1);
+      await expect(warning).toContainText("The command outcome is uncertain. Check its result before taking further action.");
+      await warning.locator('[data-slot="toast-close"]').hover();
+      await warning.getByRole("button", { name: "Dismiss", exact: true }).click();
+      await expect(warning).toHaveCount(0);
+      await expect(page.getByText("Plan write unconfirmed", { exact: true })).toBeVisible();
 
       await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Leave with an unconfirmed plan?", exact: true })).toBeVisible();

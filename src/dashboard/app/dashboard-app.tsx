@@ -1,3 +1,4 @@
+import { commandSaveState, settingsSaveProblem } from "../surfaces/settings/editor/settings-attempt-model.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
 import { useWorkspaceSearchData } from "../surfaces/shell/search/search-wiring-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
@@ -329,6 +330,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
+  const commandLabels = useRef(new Map<string, string>());
   const routeRef = useRef(route);
   routeRef.current = route;
   const bulkIdsRef = useRef(bulkIds);
@@ -345,8 +347,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     return () => { if (currentCommandScope.current === commandScope) currentCommandScope.current = undefined; };
   }, [commandScope]);
   const commandFeedback = useCallback((outcome: CommandOutcome): void => {
-    if (outcome.kind !== "confirmed") toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
-  }, [toast]);
+    if (outcome.kind === "confirmed") return;
+    const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
+    const notice = original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")
+      ? settingsSaveProblem(commandSaveState(outcome), original.type === "apply-protected-settings") : undefined;
+    toast(notice ?? { tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+  }, [executor, toast]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
   const recoveryEntries: readonly UncertainCommandEntry[] = executor.retainedAttempts().flatMap<UncertainCommandEntry>(attempt => {
     const request = attempt.request;
@@ -356,7 +362,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     if (!("targets" in request) && request.family !== "run" && request.family !== "gate" && request.family !== "workflow-batch") return [];
     if (!("targets" in request) && request.family === "workflow-batch") return [{ request, inFlightKey: request.commandId, label: "Queue grouping", targets: [], detail: `Batch ${request.target.batchId} · revision ${request.target.expectedVersion} · grouping ${request.payload.groupInQueue ? "on" : "off"}` }];
     const targets = "targets" in request ? request.targets : [request.target];
-    return [{ request, inFlightKey: request.commandId, label: request.type,
+    return [{ request, inFlightKey: request.commandId, label: commandLabels.current.get(request.commandId) ?? request.type,
       targets: targets.map(target => ({ runId: target.runId, expectedVersion: target.expectedVersion,
         title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? `run ${target.runId}` })) }];
   });
@@ -413,6 +419,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   );
 
   const executeShell = useCallback(async (request: RetainedCommandRequest, label: string, plan?: BulkVerbPlan, replay = false): Promise<void> => {
+    if (!commandLabels.current.has(request.commandId)) commandLabels.current.set(request.commandId, label);
     const options: CommandExecutionOptions = {
       scope: commandScope,
       readback: (child, reply) => {

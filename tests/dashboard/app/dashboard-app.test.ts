@@ -499,7 +499,7 @@ const _afterEachFixture0 = async () => {
 };
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
 
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; product?: boolean; search?: string } = {}) {
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; product?: boolean; search?: string; command?: (body: unknown) => Promise<Response> } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
@@ -527,6 +527,10 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
       return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
     }
     assert_m2(open, 'no request after fixture disposal');
+    if (url.endsWith('/commands') && options.command !== undefined) {
+      if (typeof init?.body !== "string") throw new Error("fixture command body missing");
+      return options.command(JSON.parse(init.body) as unknown);
+    }
     return app.request(url, init);
   } });
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
@@ -617,6 +621,64 @@ function withTitle(title: string, cursor: string, revision: number): DashboardDa
 describe_m2('real mounted dashboard through the typed mock transport', () => {
 afterEach_m2(_afterEachFixture0);
 
+  for (const save of [
+    { section: "performance", field: "Task", value: "240", title: "Settings save unconfirmed", inline: "Settings write unconfirmed" },
+    { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed", inline: "Credentials write unconfirmed" },
+  ]) it_m2(`publishes one existing ${save.title} toast from the original command`, async () => {
+    const commands: unknown[] = [];
+    const h = await mount({ search: `settings=${save.section}`, command: body => {
+      commands.push(body); return Promise.reject(new Error("private-transport-sentinel"));
+    } });
+    const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === save.field);
+    assert_m2.ok(label, `missing ${save.field} label`);
+    const input = document.getElementById(label.htmlFor);
+    assert_m2.ok(input instanceof HTMLInputElement);
+    await act_m2(async () => {
+      input.focus();
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
+      descriptor.set.call(input, save.value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act_m2(async () => input.blur()); await settle();
+    assert_m2.equal(commands.length, 1);
+    const toasts = document.querySelectorAll('[data-slot="toast"]');
+    assert_m2.equal(toasts.length, 1);
+    assert_m2.equal(toasts[0]?.getAttribute("role"), "status");
+    assert_m2.match(toasts[0]?.textContent ?? "", new RegExp(save.title, "u"));
+    assert_m2.match(toasts[0]?.textContent ?? "", /Your draft is retained\. Retry the exact attempt to confirm the result\./u);
+    assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /Command result|private-credential-sentinel|private-transport-sentinel/u);
+    assert_m2.match(h.host.textContent ?? "", new RegExp(save.inline, "u"));
+    assert_m2.equal(input.value, save.value);
+    await settle(); assert_m2.equal(commands.length, 1, "uncertainty must not retry automatically");
+  });
+  it_m2("retains the served Delete run label when its original row disappears", async () => {
+    const candidate = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.surfaceKind === "single" && row.actions.some(action => action.kind === "command" && action.command === "delete"));
+    assert_m2.ok(candidate);
+    const action = candidate.actions.find(entry => entry.kind === "command" && entry.command === "delete");
+    assert_m2.ok(action);
+    assert_m2.equal(action.label, "Delete run");
+    const commands: unknown[] = [];
+    const h = await mount({ command: body => { commands.push(body); return Promise.reject(new Error("lost-response")); } });
+    const row = h.host.querySelector(`[data-demo-row-id="${candidate.runId}"]`);
+    assert_m2.ok(row);
+    const button = [...row.querySelectorAll("button")].find(entry => entry.getAttribute("aria-label")?.startsWith(action.label));
+    assert_m2.ok(button);
+    await act_m2(async () => button.click());
+    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(entry => entry.textContent?.trim() === "Delete");
+    assert_m2.ok(confirm instanceof HTMLButtonElement);
+    await act_m2(async () => confirm.click()); await settle();
+    assert_m2.equal(commands.length, 1);
+    await h.deliver(DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: "pc:200", queueSurfaces: FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(entry => entry.runId !== candidate.runId) }));
+    assert_m2.equal(h.host.querySelector(`[data-demo-row-id="${candidate.runId}"]`), null);
+    const recovery = h.host.querySelector('[aria-label="Commands awaiting recovery"]');
+    assert_m2.ok(recovery);
+    const review = [...recovery.querySelectorAll("button")].find(entry => entry.textContent?.trim() === "Review Delete run (1 run)");
+    assert_m2.ok(review);
+    await act_m2(async () => review.click());
+    assert_m2.ok([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.textContent?.includes("Recover previous Delete run")));
+    assert_m2.equal(commands.length, 1, "reviewing recovery must not dispatch a second command");
+  });
   it_m2('uses only mock workflow data in the product even when bootstrap registers served workflows', async () => {
     const h = await mount({ product: true });
     assert_m2.equal(h.streams.length, 0);
