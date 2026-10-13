@@ -13,7 +13,7 @@ import { createSettingsActivationRepositories } from "../../../../src/backend/st
 import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { AuthorityDatabase, AuthoritySchemaVersionError, migrateStoppedAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityUpgradeInspectionSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
@@ -130,10 +130,11 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("atomically rolls back the real migration when current validation rejects",()=>{
-  const f=baselineFixture(),raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
+  const f=baselineFixture(),corrupt=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
+  try {corrupt.exec("DELETE FROM settings");}finally{corrupt.close();}
+  assert.throws(()=>AuthorityDatabase.upgradeStopped(f.admission,f.path,f.input.processLockRoot,clock),/settings/u);
+  const raw=new DatabaseSync(f.path,{readOnly:true});
   try {
-   raw.exec("DELETE FROM settings");
-   assert.throws(()=>migrateStoppedAuthority(raw,clock,f.admission),/settings/u);
    assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version,1);
    assert.equal(raw.prepare("SELECT schema_version FROM database_states").get()?.schema_version,1);
    assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get(),undefined);
@@ -174,7 +175,11 @@ describe("stopped native upgrade admission",()=>{
  });
  it("refuses an active runtime lock before backup or upgrade effects",async()=>{
   const f=fixture();initialize(f);const server=acquireRuntimeProcessLock({processLockRoot:f.input.processLockRoot,name:"server",pid:process.pid},clock);
-  try{const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/runtime-active/u);await assert.rejects(backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot),/runtime-active/u);assert.deepEqual(storageTree(f.root),before);}finally{server.release();}
+  try{const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/runtime-active/u);
+   assert.throws(()=>AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock),/runtime-active/u);
+   assert.throws(()=>AuthorityDatabase.upgradeStopped(f.admission,f.path,f.input.processLockRoot,clock),/runtime-active/u);
+   await assert.rejects(backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot),/runtime-active/u);assert.deepEqual(storageTree(f.root),before);
+  }finally{server.release();}
  });
  it("verifies an explicit native backup without changing authority or credentials",async()=>{
   const f=fixture();initialize(f);const bytes=readFileSync(f.path);

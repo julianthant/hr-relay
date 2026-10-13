@@ -1,4 +1,6 @@
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { observeRuntimeLockSnapshot } from "./runtime-process-locks.js";
+import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { prepareNativeRunDeletion, executeNativeRunDeletion, containsDeletionArtifactReference } from "./native-run-deletion.js";
@@ -1237,8 +1239,7 @@ export function inspectNormalAuthority(database: DatabaseSync): AuthorityCopyIns
   return inspectOpenDatabase(database, false);
 }
 
-/** Only stopped maintenance supplies a writable database or disposable preflight copy. */
-export function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, expectedFingerprint?: string) {
+function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, expectedFingerprint?: string) {
   requireRuntimeAdmission(admission).assertExclusive();
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
@@ -1263,6 +1264,15 @@ export function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, ad
     database.exec("COMMIT");
     return { ...inspection, schemaVersion: version, authorityContentFingerprint: fingerprint };
   } catch (error) { database.exec("ROLLBACK"); throw error; }
+}
+
+function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock): void {
+  requireRuntimeAdmission(admission).assertExclusive();
+  admission.assertAuthorityDatabase(path);
+  requireDatabaseSourcePath(path);
+  const locks = observeRuntimeLockSnapshot({ processLockRoot,
+    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) }, clock);
+  if (Object.values(locks.processLocks).some(lock => lock.state === "active")) throw new Error("runtime-active: stop server, workers and geocode before storage upgrade");
 }
 
 function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): AuthorityCopyInspection {
@@ -1614,6 +1624,23 @@ export class AuthorityDatabase implements Disposable {
   static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+  }
+
+  static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    const snapshot = createReadonlyAuthoritySnapshot(path);
+    let database: DatabaseSync;
+    try { database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true }); }
+    catch (error) { snapshot.dispose(); throw error; }
+    try { return migrateStoppedAuthority(database, clock, admission); }
+    finally { try { database.close(); } finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } } }
+  }
+
+  static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string) {
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true, timeout: 250 });
+    try { return migrateStoppedAuthority(database, clock, admission, expectedFingerprint); }
+    finally { database.close(); }
   }
 
 
