@@ -102,6 +102,9 @@ describe("same-item attempt history", () => {
     if (selectedDeleted.state !== "available") throw new Error("deleted run history unavailable");
     assert.equal(selectedDeleted.selected.state, "deleted");
     assert.equal(selectedDeleted.selected.disposition, "deleted");
+    if (selectedDeleted.selected.state !== "deleted") throw new Error("deleted selected provenance missing");
+    assert.equal(selectedDeleted.selected.commandId, tombstone.commandId);
+    assert.equal(selectedDeleted.selected.commandId, uuidOf(912));
     assert.deepEqual(selectedDeleted.page.entries.map(({ attempt, disposition }) => ({ attempt, disposition })), [
       { attempt: 1, disposition: "deleted" },
       { attempt: 2, disposition: "live" },

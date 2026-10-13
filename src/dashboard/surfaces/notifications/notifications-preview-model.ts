@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import { mockNeedsReview, mockWaitsForOcr, mockRunStatus, type MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { mockWorkflow } from "../workflows/mocks/workflow-mock-catalog.js";
@@ -11,6 +12,15 @@ type PreviewInput = Readonly<{
   workflowLabel: (id: string) => string; unavailable?: string;
   eventTimes?: Readonly<Record<string, string>>;
 }>;
+
+export function useWorkspaceNotifications(scenario: string, input: PreviewInput): NotificationsState {
+  const { day, nowIso, rows, runs, workflowLabel, eventTimes, unavailable } = input;
+  const minute = Math.floor(Date.parse(nowIso) / 60000);
+  return useMemo(() => notificationPreviewState(scenario, {
+    day, nowIso: new Date(Math.max(minute * 60000, ...Object.values(eventTimes ?? {}).map(Date.parse))).toISOString(),
+    rows, runs, workflowLabel, eventTimes, unavailable,
+  }), [scenario, day, minute, rows, runs, workflowLabel, eventTimes, unavailable]);
+}
 
 function age(instant: string, nowIso: string): string {
   const elapsed = Date.parse(nowIso) - Date.parse(instant);

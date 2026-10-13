@@ -86,6 +86,7 @@ function selectedPresentOf(run: RunRecord, disposition: "live") {
 function selectedDeletedOf(tombstone: DeletedRunRecord) {
   return {
     state: "deleted" as const,
+    commandId: tombstone.commandId,
     disposition: "deleted" as const,
     runId: tombstone.runId,
     workflowId: tombstone.workflow,

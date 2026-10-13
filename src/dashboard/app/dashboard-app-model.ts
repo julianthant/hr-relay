@@ -12,6 +12,14 @@ export interface DashboardCommandBinding {
   readonly feedback: (outcome: CommandOutcome) => void;
 }
 
+export function currentCommandConfirmation(
+  currentScope: CommandExecutionScope | undefined,
+  pending: Readonly<{ scope: CommandExecutionScope }> | null,
+  clicked: unknown,
+): boolean {
+  return pending !== null && pending === clicked && pending.scope === currentScope;
+}
+
 export interface DashboardAuthority {
   readonly epoch: Readonly<{ client: DashboardClient; bootstrap: FrontendBootstrapWire }>;
   readonly catalog: readonly WorkflowCatalogEntry[];

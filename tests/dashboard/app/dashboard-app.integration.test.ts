@@ -1,3 +1,4 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m0 } from "../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
@@ -67,8 +68,12 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
-  await mount();
-  assert_m0.doesNotMatch(document.body.textContent ?? "", /Keep the theme above providers|portalled toast surfaces inherit/u);
+  try {
+    await mount();
+    assert_m0.doesNotMatch(document.body.textContent ?? "", /Keep the theme above providers|portalled toast surfaces inherit/u);
+  } finally {
+    await _afterEachFixture0();
+  }
 });
 
 async function chooseSpreadsheet() {
@@ -395,9 +400,9 @@ try {
   });
   assert_m1.ok(document.querySelector('[role="status"][aria-label="Loading queue"][aria-busy="true"]'));
   await act_m1(async()=>old?.onDay(FIXTURE_DAY_WIRE_m1));
-  assert_m1.equal(document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`),null);
+  assert_m1.equal(document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`) === null, true, "the prior day row must not remain mounted");
   await act_m1(async()=>current?.onDay({...FIXTURE_DAY_WIRE_m1,day:LocalDateSchema_m1.parse("2026-08-02"),queueSurfaces:[],statusCounts:[],workflowCounts:[],monthCounts:[]}));
-  assert_m1.equal(document.querySelector('[role="status"][aria-label="Loading queue"]'), null);
+  assert_m1.equal(document.querySelector('[role="status"][aria-label="Loading queue"]') === null, true, "the current loaded day must clear its loading skeleton");
 
 } finally {
 await _afterEachFixture0();
@@ -421,8 +426,9 @@ try {
   const {DashboardClientError}=await import("../../../src/dashboard/client/index.js");
   await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`,{subscribeDay(input){input.onState({state:"stopped",error:new DashboardClientError({kind:"network",message:"Queue transport failed"})});return{close(){}};}});
   assert_m1.match(document.body.textContent??"",/Could not load queue/);
-  assert_m1.match(document.body.textContent??"",/Queue transport failed/);
-  assert_m1.equal(document.querySelector('[aria-label="Filter the queue by status"]'),null);
+  assert_m1.ok(document.body.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("TASK_UNHANDLED_FAILURE", {})).text));
+  assert_m1.doesNotMatch(document.body.textContent ?? "", /Queue transport failed/);
+  assert_m1.equal(document.querySelector('[aria-label="Filter the queue by status"]') === null, true, "failed authority must not expose zero-count status controls");
 
 } finally {
 await _afterEachFixture0();
