@@ -270,12 +270,13 @@ describe("resolveStartStepOmissions", () => {
 });
 
 function authoredSelection(options: Readonly<{
-  inputField?: string; nonBoolean?: boolean; missingDefault?: boolean;
+  inputField?: string; nonBoolean?: boolean; missingDefault?: boolean; booleanSample?: boolean;
   contradictory?: boolean; omission?: boolean;
 }> = {}) {
-  const input = z.strictObject({ eid: EidSchema, enabled: z.union([z.boolean(), z.string()]).default(true) });
-  const canonical = defineCanonicalInput(input, z.strictObject({ eid: EidSchema, enabled: z.union([z.boolean(), z.string()]) }),
-    [{ eid: "10873698", enabled: options.nonBoolean ? "yes" : true }]);
+  const enabled = options.nonBoolean ? z.union([z.boolean(), z.string()]) : z.boolean();
+  const input = z.strictObject({ eid: EidSchema, enabled: enabled.default(true) });
+  const canonical = defineCanonicalInput(input, z.strictObject({ eid: EidSchema, enabled }),
+    [{ eid: "10873698", enabled: options.nonBoolean && !options.booleanSample ? "yes" : true }]);
   return defineWorkflowDescriptor({
     id: "authored-start-selection", version: 1, contractFingerprint: HASH_A,
     code: "ass", label: "Authored selection", icon: "Search", category: "operations",
@@ -309,6 +310,7 @@ describe("authored start selection admission", () => {
     for (const [options, reason] of [
       [{ inputField: "unknown" }, /selection/],
       [{ nonBoolean: true }, /field must be boolean/],
+      [{ nonBoolean: true, booleanSample: true }, /field must be boolean/],
       [{ missingDefault: true }, /requires a boolean default/],
       [{ contradictory: true }, /contradicts its condition/],
       [{ omission: true }, /both selection and omission/],

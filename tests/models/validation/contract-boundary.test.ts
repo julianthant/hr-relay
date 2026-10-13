@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
-import { assertSchemaOwnsPath, assertSchemaOffersPath, contractSchemaLeaves } from "../../../src/models/validation/contract-boundary.js";
+import { assertBooleanSelectionField, assertSchemaOwnsPath, assertSchemaOffersPath, contractSchemaLeaves } from "../../../src/models/validation/contract-boundary.js";
 
 const paths = (schema: z.core.$ZodType): readonly string[] =>
   contractSchemaLeaves(schema).map((leaf) => leaf.path);
@@ -123,5 +123,27 @@ describe("schema field ownership", () => {
     ]);
     assert.throws(() => assertSchemaOwnsPath(schema, "record.id", "freshness"), /unknown schema field/u);
     assert.doesNotThrow(() => assertSchemaOffersPath(schema, "record.id", "subject"));
+  });
+});
+
+describe("boolean start selection contract", () => {
+  it("checks every offered union arm and wrapper without relying on samples", () => {
+    for (const enabled of [z.boolean(), z.literal(false), z.union([z.literal(true), z.literal(false)]),
+      z.boolean().default(true).readonly(), z.boolean().optional()]) {
+      assert.doesNotThrow(() => assertBooleanSelectionField(z.strictObject({ enabled }), "enabled", "fixture"));
+    }
+    assert.doesNotThrow(() => assertBooleanSelectionField(z.union([
+      z.strictObject({ mode: z.literal("search"), enabled: z.boolean() }),
+      z.strictObject({ mode: z.literal("match"), enabled: z.literal(false) }),
+    ]), "enabled", "fixture"));
+    for (const enabled of [z.union([z.boolean(), z.string()]), z.boolean().nullable(),
+      z.union([z.literal(false), z.literal("yes")]).optional(), z.boolean().pipe(z.boolean()),
+      z.intersection(z.boolean(), z.boolean())]) {
+      assert.throws(() => assertBooleanSelectionField(z.strictObject({ enabled }), "enabled", "fixture"), /must be boolean/u);
+    }
+    assert.throws(() => assertBooleanSelectionField(z.union([
+      z.strictObject({ mode: z.literal("search"), enabled: z.boolean() }),
+      z.strictObject({ mode: z.literal("match"), enabled: z.string() }),
+    ]), "enabled", "fixture"), /must be boolean/u);
   });
 });

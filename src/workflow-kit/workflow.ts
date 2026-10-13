@@ -95,6 +95,7 @@ import { deriveGraphCoveragePoints } from "./validation/scenario-coverage.js";
 import type { GraphCoveragePoint } from "./validation/scenario-coverage.js";
 import {
   assertContractBoundarySchema,
+  assertBooleanSelectionField,
   assertSchemaOffersPath,
   assertSchemaOwnsPath,
 } from "../models/validation/contract-boundary.js";
@@ -1028,10 +1029,8 @@ export function defineWorkflowDescriptor<
     assertSchemaOffersPath(spec.flow.input, inputField, `${id}: start step ${step.key} selection`);
     const constant = spec.surfaces?.inputRun?.parser.constants?.find(constant => constant.field === inputField);
     if (constant?.value.kind !== "boolean") throw new Error(`${id}: start step ${step.key} selection requires a boolean default`);
-    for (const sample of canonicalInputSamples(spec.canonicalInput)) {
-      const parsed = JsonValueSchema.parse(spec.canonicalInput.parse(sample));
-      if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object" || typeof Object.entries(parsed).find(([key]) => key === inputField)?.[1] !== "boolean") throw new Error(`${id}: start step ${step.key} selection field must be boolean`);
-    }
+    assertBooleanSelectionField(spec.flow.input, inputField, `${id}: start step ${step.key} ingress`);
+    assertBooleanSelectionField(spec.canonicalInput, inputField, `${id}: start step ${step.key} canonical`);
     if (step.omission !== undefined) throw new Error(`${id}: start step ${step.key} has both selection and omission`);
     for (const member of step.nodes) {
       const node = nodes.find(node => node.id === member);
