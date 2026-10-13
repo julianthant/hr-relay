@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { afterEach,describe,it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase, inspectAuthorityBackupReadOnly, verifyBackupManifestAtPath } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -44,7 +45,7 @@ describe("DB-only authority backups", () => {
     );
   });
 
-  it.each([0, 2])("refuses noncurrent schema %s without changing source bytes", version => {
+  it.each([0, 1])("refuses noncurrent schema %s without changing source bytes", version => {
     const world = openCurrentWorld();
     world.database.close();
     const raw = new DatabaseSync(world.authorityPath);
@@ -67,7 +68,7 @@ describe("DB-only authority backups", () => {
     const raw = new DatabaseSync(world.authorityPath);
     try { raw.exec(statement); } finally { raw.close(); }
     const bytes = readFileSync(world.authorityPath);
-    assert.throws(()=>inspectAuthorityBackupReadOnly(world.authorityPath,1),/authority-native-schema-shape-mismatch/u);
+    assert.throws(()=>inspectAuthorityBackupReadOnly(world.authorityPath,CURRENT_AUTHORITY_SCHEMA_VERSION),/authority-native-schema-shape-mismatch/u);
     assert.deepEqual(readFileSync(world.authorityPath),bytes);
     assert.equal(existsSync(`${world.authorityPath}-wal`),false);
     assert.equal(existsSync(`${world.authorityPath}-shm`),false);
