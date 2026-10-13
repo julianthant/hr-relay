@@ -1,3 +1,8 @@
+import { FixtureCommandBinding } from "./command-binding.js";
+import { FIXTURE_DAY_WIRE } from "../../fixtures/dashboard/fixture-queue.js";
+import { uuidOf } from "../../fixtures/dashboard/fixture-identity.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 
@@ -117,6 +122,39 @@ export function createRunStartDialogHarness() {
   });
 
   function stubClient(served: Partial<DashboardClient>): DashboardClient {
+    const submitStartPlan = served.submitStartPlan;
+    const executeCommand = served.executeCommand;
+    let reviewedPlan: StartPlanResponse | undefined;
+    let readback: ReturnType<typeof DashboardDayWireSchema.parse> | undefined;
+    const methods: Partial<DashboardClient> = { ...served,
+      ...(submitStartPlan === undefined ? {} : { submitStartPlan: async (input: unknown) => {
+        reviewedPlan = await submitStartPlan(input);
+        return reviewedPlan;
+      } }),
+      ...(executeCommand === undefined ? {} : { executeCommand: async (input: unknown) => {
+        const command = StartCommandRequestSchema.parse(input);
+        const reply = await executeCommand(input);
+        if (reply.state !== "applied" && reply.state !== "already-applied") return { ...reply, commandId: command.commandId };
+        assert.ok(reviewedPlan, "applied fixture requires its reviewed plan");
+        const plan = reviewedPlan;
+        const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.lineage.state === "root");
+        assert.ok(base, "fixture has a canonical root row");
+        const rows = plan.planned.map((_, index) => QueueSurfaceWireSchema.parse({ ...base,
+          runId: uuidOf(600 + index), workflowId: command.target.workflowId, actorId: command.requestedBy,
+          descriptorHash: plan.fingerprints.descriptorFingerprint, configFingerprint: plan.fingerprints.configFingerprint,
+          dryRun: plan.dryRun, session: { state: "present", sessionId: uuidOf(900),
+            origin: { kind: "start-plan", startPlanId: plan.startPlanId, actorId: command.requestedBy } }, actions: [],
+        }));
+        readback = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: rows });
+        return CommandResultSchema.parse({ ...reply, commandId: command.commandId, affectedTargets: [
+          { family: "start", ...command.target }, ...rows.map(row => ({ family: "run", runId: row.runId })),
+        ] });
+      } }),
+      dashboardDay: served.dashboardDay ?? (async () => {
+        assert.ok(readback, "fixture readback requires an admitted command");
+        return readback;
+      }),
+    };
     const handler: ProxyHandler<Partial<DashboardClient>> = {
       get(target, property): unknown {
         const impl: unknown = Reflect.get(target, property);
@@ -128,7 +166,7 @@ export function createRunStartDialogHarness() {
         return impl;
       },
     };
-    return new Proxy(served, handler) as DashboardClient;
+    return new Proxy(methods, handler) as DashboardClient;
   }
 
   let mounted: Root | undefined;
@@ -227,7 +265,7 @@ export function createRunStartDialogHarness() {
     intakeHandoffs.length = 0; closed.length = 0;
     await render(createElement(DashboardClientProvider, {
       client,
-      children: createElement(RunStartDialog, {
+      children: createElement(FixtureCommandBinding, { actorId: ACTOR_ID, children: createElement(RunStartDialog, {
         open: true,
         onOpenChange: next => closed.push(next),
         catalog: buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows)),
@@ -237,7 +275,7 @@ export function createRunStartDialogHarness() {
         onOpenIntake: (workflowId: string, intakeSessionId: string) => {
           intakeHandoffs.push({ workflowId, intakeSessionId });
         },
-      }),
+      }) }),
     }));
 
     const typedInput = (): HTMLTextAreaElement => {

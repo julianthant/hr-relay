@@ -1,3 +1,10 @@
+import { dirname } from "node:path";
+import { createOperatorProjection } from "../../../src/backend/app/composition/dashboard/queue.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
+import type { DashboardCommandBinding, DashboardAuthority } from "../../../src/dashboard/app/dashboard-app-model.js";
+import { FIXTURE_BOOTSTRAP } from "./dashboard/fixture-bootstrap.js";
+import { FIXTURE_DAY_WIRE } from "./dashboard/fixture-queue.js";
 import { z } from "zod";
 import { Hono } from "hono";
 import { flow } from "../../../src/workflow-kit/flow.js";
@@ -65,7 +72,10 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
   app.use("/api/v1/commands", operatorMutationIngressGuard);
-  registerQueueRoutes(app, { queue: { day: () => { throw new Error("unrequested queue"); } }, startPlans: h.planner });
+  const projection = createOperatorProjection({ database: h.database, reader: h.lifecycle, stateRoot: dirname(h.authorityPath), clock: h.clock,
+    appVersion: "0.1.0", descriptorSetHash: "a".repeat(64), ledger: createTransactionHistory(h.database.authority),
+    descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined } });
+  registerQueueRoutes(app, { queue: { day: day => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(day); } }, startPlans: h.planner });
   app.get("/api/v1/runs/:id/rerun-values", (c) => {
     const response = readRerunValues({ reader: h.lifecycle, database: h.database, descriptors: { resolve: () => descriptor } },
       { runId: c.req.param("id"), expectedVersion: Number(c.req.query("expectedVersion")) });
@@ -84,7 +94,16 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
     return result;
   } });
   const launch = createRunLaunchService(client, "local-operator", { uuid: () => h.ids.uuid(), now: () => h.clock.now().toISOString() });
-  return { ...h, get queueRoots() { return h.queueRoots; }, workflow, app, client, launch, submissions, finalCommands, loseResponse: () => { loseResponse = true; },
+  const bootstrap = { ...FIXTURE_BOOTSTRAP, serverClock: { ...FIXTURE_BOOTSTRAP.serverClock, now: h.clock.now().toISOString(), zone: "America/Los_Angeles" } };
+  const epoch = Object.freeze({ client, bootstrap });
+  const request = Object.freeze({ client, day: FIXTURE_DAY_WIRE.day, epoch, revision: 0 });
+  const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
+  const executor = new CommandExecutor(() => scope);
+  const authority: DashboardAuthority = { epoch, catalog: [], nowIso: bootstrap.serverClock.now, today: FIXTURE_DAY_WIRE.day, day: FIXTURE_DAY_WIRE.day,
+    dayState: { request, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" }, refresh: () => undefined },
+    selection: { route: {}, workflowId: descriptor.id } };
+  const binding: DashboardCommandBinding = { authority, executor, scope, feedback: () => undefined };
+  return { ...h, get queueRoots() { return h.queueRoots; }, workflow, app, client, launch, binding, submissions, finalCommands, loseResponse: () => { loseResponse = true; },
     async completeSource() { const run = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
       const result = await h.execute(run); if (result.state !== "done") throw new Error(`source did not complete: ${result.state}`); return h.fresh(run); },
     authoritySnapshot() { return JSON.stringify({ generation: h.database.getMeta(), roots: h.queueRoots,

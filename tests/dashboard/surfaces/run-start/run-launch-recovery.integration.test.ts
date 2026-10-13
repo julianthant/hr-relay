@@ -15,12 +15,12 @@ describe("minimal final submission recovery through production services", () => 
     const command = h.launch.prepareFinal(plan); retainLaunchFinal(persisted, command);
     const bytes = [...persisted.data.values()].join(""); assert.ok(!bytes.includes("10812345"));
     assert.ok(!bytes.includes("submissions") && !bytes.includes("rawInput"));
-    h.loseResponse(); await assert.rejects(h.launch.submit(command), /lost response/);
+    h.loseResponse(); const lost = await h.launch.submit(command, h.binding, plan); assert.equal(lost.kind, "uncertain"); assert.match(String(lost.cause), /lost response/);
     const roots = h.queueRoots; assert.equal(roots.length, 1);
     const restored = readLaunchRecovery(persisted, "local-operator"); assert.deepEqual(restored, command); assert.ok(restored);
-    const response = await h.launch.replay(restored); assert.equal(response.state, "already-applied");
+    const response = await h.launch.submit(restored, h.binding); assert.equal(response.kind, "confirmed"); assert.equal(response.reply && "state" in response.reply ? response.reply.state : undefined, "already-applied");
     assert.deepEqual(h.queueRoots, roots);
-    await assert.rejects(h.launch.replay({ ...restored, requestedAt: "2026-09-21T00:00:00.000Z" }), /divergent|reused/);
+    assert.throws(() => h.launch.submit({ ...restored, requestedAt: "2026-09-21T00:00:00.000Z" }, h.binding), /divergent|reused/);
     dismissLaunchRecovery(persisted, restored); assert.equal(readLaunchRecovery(persisted, "local-operator"), null);
   });
   it("refuses divergent pending identities, corrupt records, missing acknowledgments and failed persistence before sending", () => {
