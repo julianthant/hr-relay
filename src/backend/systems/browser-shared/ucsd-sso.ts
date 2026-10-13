@@ -13,12 +13,14 @@ import type {
   SystemLoginContext,
 } from "./login-contract.js";
 import type { BrowserSystemId } from "../../../rules/identity/ids.js";
+import { systemClock } from "../../../rules/time/clock.js";
 
 
 
 const DUO_HOST = "duosecurity.com";
 
 const SSO_SUBMIT_SELECTOR = 'button[name="_eventId_proceed"]';
+const TRAINING_REMINDER_SELECTOR = 'input[type="submit"][value*="Continue Log In"], button:has-text("Continue Log In")';
 
 const STALE_REQUEST_TEXT = "Web Login Service - Stale Request";
 // Match Duo's outcome sentence, not its factor-specific heading; use first for the union locator.
@@ -224,6 +226,63 @@ async function observeStaleRequest(page: Page, timeoutMs: number): Promise<"stal
 }
 
 
+async function observeTrainingReminder(
+  system: BrowserSystemId,
+  context: SystemLoginContext,
+  deadline: number,
+  isWaiting: () => boolean,
+  ownClick: (operation: Promise<void>) => void,
+): Promise<"training-reminder-repeated"> {
+  const control = context.page.locator(TRAINING_REMINDER_SELECTOR).first();
+  const remaining = (): number => Math.max(1, deadline - systemClock.monotonicMs());
+  try {
+    await control.waitFor({ state: "visible", timeout: remaining() });
+  } catch {
+    return await new Promise<"training-reminder-repeated">(() => undefined);
+  }
+  if (!isWaiting() || URL.parse(context.page.url())?.hostname !== "a5.ucsd.edu") {
+    return await new Promise<"training-reminder-repeated">(() => undefined);
+  }
+  const navigated = context.page.waitForEvent("framenavigated", {
+    predicate: frame => frame === context.page.mainFrame(), timeout: remaining(),
+  });
+  void navigated.catch(() => undefined);
+  const click = (async (): Promise<void> => {
+    try {
+      const element = await control.elementHandle({ timeout: remaining() });
+      if (element === null) throw new Error("training reminder control disappeared");
+      let clickFailure: unknown;
+      try {
+        if (!isWaiting() || URL.parse(context.page.url())?.hostname !== "a5.ucsd.edu") return;
+        await element.click({ timeout: remaining() });
+        recordBrowserAction("clicked", "ucsd.sso.training-reminder-continue");
+      } catch (error) {
+        clickFailure = error;
+        throw error;
+      } finally {
+        await element.dispose().catch((disposeError: unknown) => {
+          throw clickFailure === undefined ? disposeError : new AggregateError([clickFailure, disposeError]);
+        });
+      }
+    } catch (error) {
+      throw new BrowserLoginError(system, "duo-clearance",
+        "the UCSD training reminder Continue Log In control could not be clicked", "", { cause: error });
+    }
+  })();
+  ownClick(click);
+  await click;
+  if (!isWaiting()) return await new Promise<"training-reminder-repeated">(() => undefined);
+  try {
+    await Promise.race([navigated, control.waitFor({ state: "hidden", timeout: remaining() })]);
+    if (isWaiting()) await control.waitFor({ state: "visible", timeout: remaining() });
+    if (isWaiting() && URL.parse(context.page.url())?.hostname === "a5.ucsd.edu") {
+      return "training-reminder-repeated";
+    }
+  } catch { /* The landing arm owns timeout and diagnosis. */ }
+  return await new Promise<"training-reminder-repeated">(() => undefined);
+}
+
+
 export async function waitForAuthenticatedLanding(
   system: BrowserSystemId,
   context: SystemLoginContext,
@@ -234,18 +293,47 @@ export async function waitForAuthenticatedLanding(
   assertDuoCeremonyLeaseToken(token, { system });
   const remaining = context.acquisitionRemainingMs?.() ?? timeoutMs + 1_000;
   const landingMs = Math.max(1, Math.min(timeoutMs, remaining - Math.min(1_000, remaining / 2)));
+  const deadline = systemClock.monotonicMs() + landingMs;
+  let waiting = true;
+  let activeClick: Promise<void> | undefined;
+  const isWaiting = (): boolean => waiting && !context.signal.aborted
+    && systemClock.monotonicMs() < deadline && !landed(context.page.url());
   try {
-    const outcome = await raceCancellation(
-      Promise.race<"landed" | "duo-refused" | "stale-request">([
+    const result = await raceCancellation(
+      Promise.race<"landed" | "duo-refused" | "stale-request" | "training-reminder-repeated">([
         context.page.waitForURL((url) => landed(url.href), { timeout: landingMs })
           .then(() => "landed"),
         observeDuoTerminalRefusal(context.page, landingMs),
         observeStaleRequest(context.page, landingMs),
+        observeTrainingReminder(system, context, deadline, isWaiting, operation => { activeClick = operation; }),
       ]),
       system,
       "duo-clearance",
       context,
+    ).finally(() => { waiting = false; }).then(
+      outcome => ({ outcome }), (error: unknown) => ({ error }),
     );
+    try {
+      await activeClick;
+    } catch (clickError) {
+      if (context.signal.aborted || ("error" in result && result.error !== clickError)) {
+        throw new BrowserLoginError(system, "duo-clearance", context.signal.aborted
+          ? "the session was cancelled" : "the landing wait and training reminder click both failed", "", {
+          cause: "error" in result && result.error !== clickError
+            ? new AggregateError([result.error, clickError]) : clickError,
+        });
+      }
+      throw clickError;
+    }
+    if ("error" in result) throw result.error;
+    abortIfCancelled(system, "duo-clearance", context);
+    const outcome = result.outcome;
+    if (outcome === "training-reminder-repeated") {
+      const observed = URL.parse(context.page.url());
+      throw new BrowserLandingStallError(system, outcome, {
+        host: observed?.hostname ?? "", path: observed?.pathname ?? "", title: "",
+      });
+    }
     if (outcome === "stale-request") throw new Error("Shibboleth stale request observed");
     if (outcome === "duo-refused") {
       throw new DuoTerminalRefusalError(system, DUO_TERMINAL_REFUSAL_TEXT, context.page.url());

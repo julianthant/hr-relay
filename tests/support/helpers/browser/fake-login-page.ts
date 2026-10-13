@@ -12,10 +12,11 @@ export type FakeElementName =
   | "communities-login"
   | "kuali-app-chrome"
   | "stale-request"
-  | "duo-refusal";
+  | "duo-refusal"
+  | "training-reminder";
 
 
-const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal", "stale-request"]);
+const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal", "stale-request", "training-reminder"]);
 
 
 export const NEVER_SETTLES = "fake:never-settles";
@@ -68,6 +69,7 @@ export interface FakePageHarness {
 }
 
 function classify(kind: string, argument: string): FakeElementName | undefined {
+  if (kind === "locator" && argument === 'input[type="submit"][value*="Continue Log In"], button:has-text("Continue Log In")') return "training-reminder";
   if (kind === "locator" && argument.includes("_eventId_proceed")) return "sso-submit";
   if (kind === "locator" && (argument === "select" || argument.includes("authtype"))) return "login-type-select";
   if (kind === "locator" && argument.includes("ssousername")) return "sso-username";
@@ -92,6 +94,14 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   const settlements = [...(script.settlesTo ?? [])];
   const selected = new Set<FakeElementName>();
   const rendered = new Set<FakeElementName>();
+  const mainFrame = {};
+  let navigationGeneration = 0;
+  const navigationListeners = new Set<() => void>();
+  const navigate = (url: string): void => {
+    current = url;
+    navigationGeneration += 1;
+    for (const listener of navigationListeners) listener();
+  };
 
   const scriptFor = (name: FakeElementName): FakeElementScript =>
     script.elementsByUrl?.[current]?.[name]
@@ -101,6 +111,16 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   function makeLocator(name: FakeElementName | undefined): Record<string, unknown> {
     const locator: Record<string, unknown> = {
       first: () => locator,
+      elementHandle: async () => {
+        const generation = navigationGeneration;
+        return {
+          click: async (options: unknown) => {
+            if (generation !== navigationGeneration) throw new Error("fake page: original element detached");
+            await (locator.click as (options: unknown) => Promise<void>)(options);
+          },
+          dispose: async () => undefined,
+        };
+      },
       or: (other: Record<string, unknown>) => (name === undefined ? other : locator),
       count: async () => {
         if (name === undefined) return 0;
@@ -130,7 +150,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
           throw new Error(element.failWith ?? `fake page: ${name} is absent`);
         }
         actions.push(`click:${name}`);
-        if (element.navigatesTo !== undefined) current = element.navigatesTo;
+        if (element.navigatesTo !== undefined) navigate(element.navigatesTo);
       },
       inputValue: async () => {
         if (name === undefined) throw new Error("fake page: inputValue on an unclassified locator");
@@ -160,6 +180,21 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
 
   const page = {
     url: () => current,
+    mainFrame: () => mainFrame,
+    waitForEvent: async (_event: string, options: Readonly<{ predicate: (frame: unknown) => boolean; timeout: number }>) =>
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          navigationListeners.delete(listener);
+          reject(new Error("fake page: navigation event timed out"));
+        }, options.timeout);
+        const listener = (): void => {
+          if (!options.predicate(mainFrame)) return;
+          clearTimeout(timer);
+          navigationListeners.delete(listener);
+          resolve(mainFrame);
+        };
+        navigationListeners.add(listener);
+      }),
     title: async () => "Fixture login page",
     context: () => browserContext,
     goto: async (target: string) => {
@@ -169,7 +204,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
         current = failure.landedAt;
         throw new Error(failure.message);
       }
-      current = script.navigation?.[target] ?? target;
+      navigate(script.navigation?.[target] ?? target);
       return null;
     },
     waitForURL: async (predicate: (url: URL) => boolean) => {
