@@ -22,8 +22,8 @@ ls .tracker/locks/                                    # D181 role locks: server 
 npm run dashboard                                              # ONE terminal: BFF :3938 + vite :5174 (Ctrl+C stops both); BFF alone: npm run cli -- dashboard
 curl -s localhost:3938/api/v1/bootstrap | head -c 200          # ECONNREFUSED = not up yet; wait, don't retry the run
 curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint' | head   # SERVED fingerprints
-npm run build:manifest && git diff --quiet src/domain/workflow/generated-build-manifest.ts || echo "TREE MOVED — restart the BFF"
-npm run cli -- worker <workflow-id> [--drain]                  # one worker per workflow; parallelism = more workers / more queued items, see §3
+npm run build:manifest && git diff --quiet src/workflow-kit/validation/generated-build-manifest.ts || echo "TREE MOVED — restart the BFF"
+npm run cli -- worker <workflow-id> --pool-index 1 [--drain]   # one worker; batch pool indices must be admitted and distinct (1–3), see §3
 npm run cli -- storage doctor                                  # authority + span reconciliation (+ backup report) before a batch
 npm run cli -- storage backup                                  # the ONLY way a verified SQLite backup is written (D322)
 ```
@@ -40,7 +40,7 @@ The BFF is a singleton (pinned port + lock). A BFF started before a descriptor e
 
 1. **Worklist first.** Build it once from what the operator gave (names/EIDs/doc numbers) or from an intake artifact (hr-scan). Do not re-download a roster you already have. Print the worklist as a table with a row id per subject.
 2. **One first.** Run subject #1 alone, read its result, fix the systemic error if there is one. Then fan out.
-3. **Fan out.** Parallelism = N worker processes for that workflow (`npm run cli -- worker <id>` × N in background shells) + all items queued; or N dashboard sessions when the operator says "sessions". Keep N to what the operator said; default 3 if they said "parallel" without a number.
+3. **Fan out.** Use at most three worker processes for the workflow. Give each a distinct admitted `--pool-index` from 1 to 3 (`npm run cli -- worker <id> --pool-index <index>`). Queue all items; or use N dashboard sessions when the operator says "sessions". Keep N to what the operator said; default 3 if they said "parallel" without a number.
 4. **Monitor** (§4) until every row is terminal or parked.
 5. **Retry only genuine failures**: a `failed` with a cause you fixed → `retry` (new attempt, same item — D221). `parked-write` / `unknown` → NOT a retry: resolve via the parked-write panel or `ref write-safety` §4.1 after the source system is checked. A subject whose submit state is UNKNOWN is frozen until you (or the operator) confirm existence in the source system.
 6. **Close** with the table in §5.
