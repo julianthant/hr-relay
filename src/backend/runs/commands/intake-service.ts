@@ -254,6 +254,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       state: session.state,
       expectedVersion: session.version,
       ...(reviewBinding === undefined ? {} : { reviewBinding }),
+      ...(session.comparisonManifestId === undefined ? {} : { comparisonManifestId: session.comparisonManifestId }),
       ...(session.reservedManifestId === undefined ? {} : { reservedManifestId: session.reservedManifestId }),
       ...(session.intakeManifestId === undefined ? {} : { intakeManifestId: session.intakeManifestId }),
       ...(terminalManifest === undefined ? {} : { manifest: terminalManifest }),

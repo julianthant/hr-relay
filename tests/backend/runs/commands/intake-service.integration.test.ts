@@ -480,6 +480,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
     const { intake } = surface();
     const created = await uploadRoster(intake);
     assert.equal(created.session.rerun, undefined);
+    assert.equal(Object.hasOwn(created.session, "comparisonManifestId"), false);
     assert.equal(created.session.intakeManifestId, undefined);
     assert.equal(created.session.sourceName, "cohort-a.csv");
   });
@@ -540,6 +541,25 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
     const rereadB = await harness.intake.read(sessionB);
     assert.equal(rereadB.manifest?.manifestId, manifestB);
     assert.equal(rereadB.rerun?.intakeManifestId, manifestB);
+  });
+
+  it("serves the explicit comparison decision even when the implicit rerun was already the same manifest", async () => {
+    const harness = surface();
+    const completed = await runTheRoster(harness);
+    const manifestId = (await harness.intake.read(completed)).intakeManifestId;
+    assert.ok(manifestId);
+    harness.clock.advanceWall(1_000);
+    const uploaded = await uploadRoster(harness.intake);
+    const before = await harness.intake.read(uploaded.session.intakeSessionId);
+    assert.equal(before.rerun?.intakeManifestId, manifestId);
+    assert.equal(Object.hasOwn(before, "comparisonManifestId"), false);
+    assert.equal((await harness.send(before.intakeSessionId, before.expectedVersion, "inspect-intake", { comparisonManifestId: manifestId })).state, "applied");
+    const selected = await harness.intake.read(before.intakeSessionId);
+    assert.equal(selected.comparisonManifestId, manifestId);
+    assert.equal(selected.expectedVersion, before.expectedVersion + 1);
+    assert.equal(selected.rerun?.intakeManifestId, before.rerun?.intakeManifestId);
+    assert.equal((await harness.send(selected.intakeSessionId, selected.expectedVersion, "inspect-intake", { comparisonManifestId: manifestId })).state, "applied");
+    assert.equal((await harness.intake.read(selected.intakeSessionId)).expectedVersion, selected.expectedVersion);
   });
 
   it("selects its sole eligible manifest while excluding its reservation and a future manifest", async () => {

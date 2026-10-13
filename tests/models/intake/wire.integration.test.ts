@@ -69,6 +69,12 @@ function manifestWire(overrides: Record<string, unknown> = {}) {
 }
 
 describe("intake session wire", () => {
+  it("retains explicit comparison identity without inventing an implicit selection", () => {
+    const implicit = IntakeSessionWireSchema.parse(sessionWire());
+    assert.equal(Object.hasOwn(implicit, "comparisonManifestId"), false);
+    assert.equal(IntakeSessionWireSchema.parse(sessionWire({ comparisonManifestId: UUID_3 })).comparisonManifestId, UUID_3);
+    assert.equal(IntakeSessionWireSchema.safeParse(sessionWire({ comparisonManifestId: "invalid" })).success, false);
+  });
   it("accepts the exact terminal manifest committed under the reserved identity", () => {
     const wire = IntakeSessionWireSchema.parse(sessionWire({
       state: "enqueued",

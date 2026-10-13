@@ -67,6 +67,7 @@ export const IntakeSessionWireSchema = z.strictObject({
   expectedVersion: PositiveIntSchema,
   /** Exact served review; only open, validated, ready sessions can confirm enqueue. */
   reviewBinding: FingerprintSchema.optional(),
+  comparisonManifestId: IntakeManifestIdSchema.optional(),
   /** Absent only on a durable session created before manifest identities were reserved at upload. */
   reservedManifestId: IntakeManifestIdSchema.optional(),
   /** Set exactly when the session enqueued; the manifest is the rerun authority. */
