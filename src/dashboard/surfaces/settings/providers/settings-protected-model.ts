@@ -1,6 +1,7 @@
-import type { CommandExecutionOptions, CommandExecutionScope } from "../../../app/commands/command-executor.js";
+import type { CommandExecutionOptions, CommandExecutionScope, CommandOutcome } from "../../../app/commands/command-executor.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../../../models/config/protected-settings.js";
@@ -21,12 +22,15 @@ export function useProtectedSettings(input: {
   const [draft, setDraft] = useState<ProtectedDraft>({});
   const [errors, setErrors] = useState<Partial<Record<ProtectedSettingsName, string>>>({});
   const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
-  const pending = useRef<ProtectedSettingsAttempt | undefined>(undefined);
+  const pending = useRef<string | undefined>(undefined);
   const busy = useRef(false);
+  const recoveryFailure = useRef<CommandOutcome | undefined>(undefined);
   const attemptScope = useRef<CommandExecutionScope | undefined>(undefined);
   const retained = binding?.executor.retainedAttempts().find(attempt => (attempt.state === "pending" || attempt.outcome?.kind === "uncertain") && attempt.scope.actorId === binding.scope.actorId
     && attempt.request.family === "settings" && attempt.request.type === "apply-protected-settings");
-  if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-protected-settings") pending.current = retained.request;
+  if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-protected-settings") {
+    pending.current = retained.request.commandId;
+  }
   if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
   const available = input.document?.protectedSettings;
   const update = (name: ProtectedSettingsName, raw: string): void => {
@@ -51,18 +55,31 @@ export function useProtectedSettings(input: {
     if (busy.current) return;
     pending.current = undefined; setDraft({}); setErrors({}); setSave({ state: "idle" });
   };
-  const perform = async (command: ProtectedSettingsAttempt): Promise<void> => {
+  const perform = async (command: ProtectedSettingsAttempt | string): Promise<void> => {
+    const commandId = typeof command === "string" ? command : command.commandId;
     if (busy.current) return;
-    busy.current = true; pending.current = command; setSave({ state: "saving" });
-    if (binding === undefined) { busy.current = false; pending.current = undefined; setSave(commandSaveState(undefined)); return; }
+    busy.current = true; pending.current = commandId; setSave({ state: "saving" });
+    if (binding === undefined) { busy.current = false; setSave(settingsScopeRecoveryState()); return; }
     attemptScope.current = binding.scope;
+    const originalAttempt = binding.executor.retainedAttempts().find(attempt => attempt.request.commandId === commandId);
+    const original = typeof command === "string" ? originalAttempt?.request : command;
+    const parsed = ProtectedSettingsCommandRequestSchema.safeParse(original);
+    if (!parsed.success) {
+      recoveryFailure.current = { kind: "uncertain", commandId, cause: { request: original, error: parsed.error },
+        feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})) };
+      busy.current = false; setSave(commandSaveState(recoveryFailure.current)); return;
+    }
     let document: EditableSettingsWire | undefined;
+    let entryNames: readonly string[] = [];
     const options: CommandExecutionOptions = {
       scope: binding.scope,
-      readback: async (_request, reply) => {
-        const result = checkedSettingsResult(command, reply);
+      readback: async (request, reply) => {
+        if (request.family !== "settings" || request.type !== "apply-protected-settings") return { state: "mismatch", evidence: request };
+        const original = ProtectedSettingsCommandRequestSchema.parse(request);
+        const result = checkedSettingsResult(original, reply);
+        entryNames = Object.keys(original.payload.entries);
         document = await input.readCurrent();
-        return { state: protectedReadbackConfirms(command, result, document) ? "matched" : "mismatch", evidence: document };
+        return { state: protectedReadbackConfirms(original, result, document) ? "matched" : "mismatch", evidence: document };
       },
       publish: outcome => {
         if (!live.current) return;
@@ -73,14 +90,14 @@ export function useProtectedSettings(input: {
         const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome); setSave(next);
         if (outcome.kind === "confirmed" && document?.protectedSettings.state === "available") {
           setDraft({}); setErrors({});
-          input.onSaved?.(settingsSaveNotice(document.protectedSettings.rows.filter(row => row.name in command.payload.entries).map(row => row.name === "ucpathUserId" ? "UCPath username" : row.label), next.state === "applied" && next.replayed));
+          input.onSaved?.(settingsSaveNotice(document.protectedSettings.rows.filter(row => entryNames.includes(row.name)).map(row => row.name === "ucpathUserId" ? "UCPath username" : row.label), next.state === "applied" && next.replayed));
         }
         const problem = settingsSaveProblem(next, true);
         if (problem) input.onSaveProblem?.(problem);
       },
     };
     try {
-      if (binding.executor.retainedAttempts().some(attempt => attempt.request.commandId === command.commandId)) await binding.executor.replay(command.commandId, options);
+      if (typeof command === "string" || originalAttempt !== undefined) await binding.executor.replay(commandId, options);
       else await binding.executor.execute(command, options);
     } finally { busy.current = false; }
   };
