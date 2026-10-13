@@ -214,7 +214,7 @@ function hasCheckedSingleSettlement(dispatch: ts.Node): boolean {
 function hasOrderedBulkSettlement(dispatch: ts.Node): boolean {
   const calls = callSites(dispatch, "options.scope.client.executeBulkCommand");
   if (calls.length !== 1) return false;
-  const call = calls[0]!;
+  const call = calls[0];
   if (!callHasArguments(call, ["request"]) || !ts.isAwaitExpression(call.parent)) return false;
   const checked = call.parent.parent;
   if (!ts.isCallExpression(checked) || expressionPath(checked.expression) !== "checkedBulkCommandResult"
@@ -272,14 +272,14 @@ function hasRequiredReadbackSettlement(settle: ts.Node): boolean {
   const statement = declaration.parent.parent;
   const tryBlocks = findNodes(settle, (node): node is ts.TryStatement => ts.isTryStatement(node)
     && isDescendant(statement, node.tryBlock));
-  if (tryBlocks.length !== 1 || statement.parent !== tryBlocks[0]!.tryBlock) return false;
-  const readbackBlock = tryBlocks[0]!.tryBlock;
+  if (tryBlocks.length !== 1 || statement.parent !== tryBlocks[0].tryBlock) return false;
+  const readbackBlock = tryBlocks[0].tryBlock;
   const branches = readbackBlock.statements.filter((node): node is ts.IfStatement => ts.isIfStatement(node));
   const matched = branches.filter((node) => isStateComparison(node.expression, "matched"));
   const conflicts = branches.filter((node) => isStateComparison(node.expression, "conflict"));
   if (matched.length !== 1 || conflicts.length !== 1) return false;
-  const matchedBranch = matched[0]!;
-  const conflictBranch = conflicts[0]!;
+  const matchedBranch = matched[0];
+  const conflictBranch = conflicts[0];
   const statements = readbackBlock.statements;
   if (statements.indexOf(matchedBranch) <= statements.indexOf(statement)
     || statements.indexOf(conflictBranch) <= statements.indexOf(statement)) return false;
@@ -289,12 +289,12 @@ function hasRequiredReadbackSettlement(settle: ts.Node): boolean {
     .filter((statement) => returnKind(statement) === "conflict");
   const readbackReturns = findNodes(readbackBlock, (node): node is ts.ReturnStatement => ts.isReturnStatement(node));
   const uncertain = readbackReturns.filter((statement) => returnKind(statement) === "uncertain");
-  return confirmed.length === 1 && isDescendant(confirmed[0]!, matchedBranch.thenStatement)
-    && propertyValue(confirmed[0]!.expression!, "readback")?.getText() === "readback.evidence"
-    && conflictReturns.length === 1 && isDescendant(conflictReturns[0]!, conflictBranch.thenStatement)
-    && propertyValue(conflictReturns[0]!.expression!, "readback")?.getText() === "readback.evidence"
-    && uncertain.length === 1 && !isDescendant(uncertain[0]!, matchedBranch.thenStatement)
-    && !isDescendant(uncertain[0]!, conflictBranch.thenStatement);
+  return confirmed.length === 1 && isDescendant(confirmed[0], matchedBranch.thenStatement)
+    && propertyValue(confirmed[0].expression, "readback")?.getText() === "readback.evidence"
+    && conflictReturns.length === 1 && isDescendant(conflictReturns[0], conflictBranch.thenStatement)
+    && propertyValue(conflictReturns[0].expression, "readback")?.getText() === "readback.evidence"
+    && uncertain.length === 1 && !isDescendant(uncertain[0], matchedBranch.thenStatement)
+    && !isDescendant(uncertain[0], conflictBranch.thenStatement);
 }
 
 function isCommandDispatchCall(node: ts.Node): node is ts.CallExpression {
@@ -485,7 +485,7 @@ describe("command-result-exhaustive", () => {
       && node.name?.text === "settleCommandResult")[0];
     const branches = fold === undefined ? [] : findNodes(fold, (node): node is ts.SwitchStatement => ts.isSwitchStatement(node));
     expect(branches).toHaveLength(1);
-    const states = branches[0]!.caseBlock.clauses.map((clause) => ts.isCaseClause(clause) && ts.isStringLiteralLike(clause.expression)
+    const states = branches[0].caseBlock.clauses.map((clause) => ts.isCaseClause(clause) && ts.isStringLiteralLike(clause.expression)
       ? clause.expression.text : "unexpected");
     expect(states).toEqual(["applied", "already-applied", "confirmation-required", "conflict", "rejected"]);
   });
