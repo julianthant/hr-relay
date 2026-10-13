@@ -10,7 +10,7 @@ import type { BrowserDriver } from "../../../workflow-kit/task.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
-import { withBrowserActionSession } from "../../systems/browser-shared/action-notes.js";
+import { withBrowserActionSession, withoutBrowserActionNotes } from "../../systems/browser-shared/action-notes.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
 import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "../gates/duo-ceremony-gate.js";
@@ -556,7 +556,7 @@ export class WorkerSessionManager {
       if (need.session === "fresh") {
         await this.#closeSystem(need.system, "fresh-boundary");
       }
-      const resource = await this.#acquireBounded(need, instance, configFingerprint, browserMode, signal);
+      const resource = await withoutBrowserActionNotes(() => this.#acquireBounded(need, instance, configFingerprint, browserMode, signal));
       let operationCompleted = false;
       const screenshotFailures: unknown[] = [];
       const poisonCloseFailures: unknown[] = [];
@@ -566,7 +566,7 @@ export class WorkerSessionManager {
         const result = await withBrowserActionSession(resource.sessionId, () => use(resource.driver));
         resource.endDiagnostics?.();
         operationCompleted = true;
-        await this.#captureLeaseScreenshot(resource, "succeeded", configFingerprint);
+        await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, "succeeded", configFingerprint));
         await resource.reset({ signal });
         this.#observe(resource, "authenticated");
         this.#emit({
@@ -580,7 +580,7 @@ export class WorkerSessionManager {
         const failures: unknown[] = [leaseError];
         if (!operationCompleted) {
           try {
-            await this.#captureLeaseScreenshot(resource, "failed", configFingerprint);
+            await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, "failed", configFingerprint));
           } catch (captureError) {
             screenshotFailures.push(captureError);
           }

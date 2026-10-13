@@ -14,6 +14,7 @@ import { z } from "zod";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
+import { browserLoginFailure } from "../../systems/browser-shared/login-contract.js";
 import { TaskError, wrapUnhandledTaskError } from "../../../workflow-kit/errors.js";
 import type { ProviderClient } from "../../../workflow-kit/providers.js";
 import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
@@ -996,13 +997,16 @@ export async function executeClaimedRun(
             const record = checkpointRecords.get(String(dependency));
             if (record !== undefined) return [record];
             if (skippedReasons.get(String(dependency)) === "condition-false"
-              && nodes.some((candidate) => candidate.id === dependency && candidate.kind === "gate")) return [];
+              && nodes.some((candidate) => candidate.id === dependency && (candidate.kind === "gate" || candidate.kind === "task"))) return [];
             if (gateResultFor(String(dependency)) !== undefined) return [];
             throw new Error(
               `task ${contract.id} declared dependency "${dependency}" has no checkpoint record to hand `
               + "to the provenance collector",
             );
           }),
+          skippedTasks: node.dependsOn.filter((dependency) =>
+            skippedReasons.get(String(dependency)) === "condition-false"
+            && nodes.some((candidate) => candidate.id === dependency && candidate.kind === "task")),
           skippedGates: node.dependsOn.filter((dependency) =>
             skippedReasons.get(String(dependency)) === "condition-false"
             && nodes.some((candidate) => candidate.id === dependency && candidate.kind === "gate")),
@@ -1347,7 +1351,10 @@ export async function executeClaimedRun(
             throw abortReason(`run ${runId} was aborted during ${contract.id}`);
           }
           if (error instanceof RunAbandonedError) throw error;
-          const taskError = error instanceof TaskError ? error : wrapUnhandledTaskError(contract.id, error);
+          const loginFailure = browserLoginFailure(error);
+          const taskError = error instanceof TaskError ? error : loginFailure !== undefined
+            ? new TaskError(contract.id, loginFailure.code, loginFailure.fixedText, { cause: error })
+            : wrapUnhandledTaskError(contract.id, error);
           emit({
             t: "span.ended", kind: "task",
             ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,

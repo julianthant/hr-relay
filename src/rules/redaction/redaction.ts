@@ -229,7 +229,7 @@ export function sanitizeDebugText(text: string): string {
     redacted += text.slice(retainedFrom, start) + '"[removed]"';
     retainedFrom = end;
   }
-  text = redacted + text.slice(retainedFrom);
+  text = (redacted + text.slice(retainedFrom)).replace(/(?<!\d)\d{3}[- ]?\d{2}[- ]?\d{4}(?!\d)/gu, "[SSN masked]");
   return text.replace(/https?:\/\/[^\s<>"']+/gu, raw => {
     try { const url = new URL(raw); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); }
     catch { return "[invalid-url]"; }

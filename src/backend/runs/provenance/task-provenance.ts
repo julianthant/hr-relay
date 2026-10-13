@@ -1,6 +1,6 @@
 import { deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { evaluateNodeCondition, nodeConditionDependency } from "../../../models/workflow/node-condition.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -143,6 +143,7 @@ function validateCheckpointSet(
     ...evidence.checkpoints.map(({ nodeId }) => nodeId),
     ...evidence.gateResults.map(({ gateId }) => gateId),
     ...evidence.skippedGates,
+    ...evidence.skippedTasks,
     ...(evidence.children ?? []).map((child) => child.nodeId),
   ]);
   for (const checkpoint of evidence.checkpoints) {
@@ -160,6 +161,9 @@ function validateCheckpointSet(
   }
   for (const gateId of evidence.skippedGates) {
     if (!expected.has(gateId)) throw new Error(`task ${taskId} received undeclared skipped gate ${gateId}`);
+  }
+  for (const nodeId of evidence.skippedTasks) {
+    if (!expected.has(nodeId)) throw new Error(`task ${taskId} received undeclared skipped task ${nodeId}`);
   }
   for (const nodeId of expectedDependencies) {
     if (!actual.has(nodeId)) {
@@ -203,6 +207,25 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     if (evaluateNodeCondition(gate.when, { input: input.canonicalInput, outputs })) {
       throw new Error(`task ${execution.taskId} cannot skip required gate ${gateId}`);
     }
+  }
+  for (const nodeId of evidence.skippedTasks) {
+    const skipped = nodes.find((candidate) => candidate.id === nodeId);
+    if (skipped?.kind !== "task" || skipped.when === undefined) throw new Error(`task ${execution.taskId} cannot skip unconditional task ${nodeId}`);
+    if (input.canonicalInput === undefined) throw new Error(`skipped task ${nodeId} requires the validated canonical input`);
+    const dependency = nodeConditionDependency(skipped.when);
+    if (dependency !== undefined) {
+      const prerequisite = evidence.checkpoints.find((checkpoint) => checkpoint.nodeId === dependency);
+      if (prerequisite === undefined) {
+        if (!evidence.skippedTasks.some((taskId) => taskId === dependency)) throw new Error(`skipped task ${nodeId} has no condition dependency evidence for ${dependency}`);
+      } else {
+        const producer = nodes.find((candidate) => candidate.id === dependency);
+        if (producer?.kind !== "task" || prerequisite.output.schemaHash !== deriveSchemaHash(producer.uses.output, "output")) throw new Error(`skipped task ${nodeId} has invalid condition dependency evidence for ${dependency}`);
+        producer.uses.output.parse(prerequisite.output.value);
+        validateCheckpointFacts(execution.workflowId, prerequisite);
+      }
+    }
+    const outputs = Object.fromEntries(evidence.checkpoints.map((checkpoint) => [checkpoint.nodeId, checkpoint.output.value]));
+    if (evaluateNodeCondition(skipped.when, { input: input.canonicalInput, outputs })) throw new Error(`task ${execution.taskId} cannot skip required task ${nodeId}`);
   }
   const childFacts = (evidence.children ?? []).flatMap((child) => {
     const declared = nodes.find((candidate) => candidate.id === child.nodeId);

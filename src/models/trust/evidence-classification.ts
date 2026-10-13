@@ -8,6 +8,7 @@ import {
   RedactedFieldSchema,
   evidenceTransformAllowed,
   redactDiagnosticFields,
+  redactValue,
 } from "../../rules/redaction/redaction.js";
 
 /** Where a leaf came from. A path only means something inside one of these. */
@@ -327,35 +328,43 @@ function approvedSubjectLeaves(scope: EvidenceValueScope, prefix: string): unkno
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
   /* person-lookup ingress */
-  ...person(PERSON_LOOKUP_INPUT, "name", "emplId"),
-  ...open(PERSON_LOOKUP_INPUT, "keepNonHdh", "includeCrmDates"),
+  ...person(PERSON_LOOKUP_INPUT, "name", "emplId", "lastName", "firstName", "dob"),
+  { scope: PERSON_LOOKUP_INPUT, path: "ssn", classification: "direct-identifier", transform: "digest" },
+  ...open(PERSON_LOOKUP_INPUT, "mode", "crmCheck", "keepNonHdh", "includeCrmDates"),
 
       /* `selection.selected` is declared twice: as the `null` of the ambiguous arm and as the object the resolved arm carries. */
   ...population(SEARCH, "results", "selection.candidateEids"),
   ...person(SEARCH, "selection.selected.emplId", "selection.selected.name", "selection.searchName"),
   ...open(SEARCH, "selection.status", "selection.selected", "selection.selected.department",
-    "selection.selected.jobTitle", "selection.selected.employeeStatus", "selection.selected.hdh"),
+    "selection.selected.jobTitle", "selection.selected.employeeStatus", "selection.selected.hdh", "selection.selected.hrStatus", "selection.selected.startDate", "selection.selected.effectiveDate", "selection.selected.terminationDate", "selection.selected.terminationReason"),
 
   /* crm/read-onboarding-record */
   ...person(CRM_RECORD, "record.emplId", "record.fullName", "queriedEid"),
   ...open(CRM_RECORD, "state", "record.recordId", "record.rawStage", "reason"),
 
-  /* crm/read-onboarding-dates */
   ...person(CRM_DATES, "emplId"),
-  ...open(CRM_DATES, "invitedOn.state", "invitedOn.value", "invitedOn.reason",
-    "startsOn.state", "startsOn.value", "startsOn.reason",
-    "completedOn.state", "completedOn.value", "completedOn.reason"),
-
-  /* workflow:person-lookup/read-active-status */
-  ...open(ACTIVE_STATUS, "state", "reason", "hdh"),
-
-  /* person-lookup terminal result */
-  ...open(PERSON_LOOKUP_RESULT, "activeStatus.state", "activeStatus.reason", "activeStatus.hdh",
-    "crmDates.state", "crmDates.dates.invitedOn.state", "crmDates.dates.invitedOn.value",
-    "crmDates.dates.invitedOn.reason", "crmDates.dates.startsOn.state",
-    "crmDates.dates.startsOn.value", "crmDates.dates.startsOn.reason",
-    "crmDates.dates.completedOn.state", "crmDates.dates.completedOn.value",
-    "crmDates.dates.completedOn.reason"),
+  ...open(CRM_DATES, "state", "employmentDate", "oathDate", "reason"),
+  ...population(taskOutput("ucpath/search-person-match"), "hits", "confirmed", "dropped"),
+  ...population(taskOutput("crm/verify-onboarding-record"), "records"),
+  ...open(taskOutput("crm/verify-onboarding-record"), "state", "code", "reason"),
+  ...population(taskOutput("crm/search-onboarding-records"), "records"),
+  ...open(taskOutput("crm/search-onboarding-records"), "state", "code", "reason"),
+  ...open(taskOutput("workflow:person-lookup/read-resolved-identity"),
+    "state", "shouldCheckCrm", "ucpathFound", "crmErrorCode", "selected", "selected.department", "selected.jobTitle", "selected.employeeStatus", "selected.hdh",
+    "selected.hrStatus", "selected.startDate", "selected.effectiveDate", "selected.terminationDate", "selected.terminationReason", "crmRecord",
+    "crmRecord.recordId", "crmRecord.recordUrl", "crmRecord.department", "crmRecord.firstDayOfService", "crmRecord.dateSigned", "crmState", "method"),
+  ...person(taskOutput("workflow:person-lookup/read-resolved-identity"), "selected.emplId", "selected.name", "crmRecord.emplId", "crmRecord.name", "recoveryEid"),
+  ...population(taskOutput("workflow:person-lookup/read-resolved-identity"), "candidateEids"),
+  ...open(ACTIVE_STATUS, "state", "reason", "code", "hdh", "details.search", "details.department",
+    "details.hrStatus", "details.ucpath", "details.crm", "details.startDate", "details.endDate", "details.terminationReason", "details.foundInUcpath"),
+  ...person(ACTIVE_STATUS, "datesEid", "details.name", "details.eid", "details.matchedEid", "details.matchedName"),
+  ...population(ACTIVE_STATUS, "candidateEids"),
+  ...open(PERSON_LOOKUP_RESULT, "activeStatus.state", "activeStatus.reason", "activeStatus.code", "activeStatus.hdh",
+    "activeStatus.details.search", "activeStatus.details.department", "activeStatus.details.hrStatus", "activeStatus.details.ucpath", "activeStatus.details.crm",
+    "activeStatus.details.startDate", "activeStatus.details.endDate", "activeStatus.details.terminationReason", "activeStatus.details.foundInUcpath",
+    "crmDates.state", "crmDates.dates.state", "crmDates.dates.reason", "crmDates.dates.employmentDate", "crmDates.dates.oathDate"),
+  ...person(PERSON_LOOKUP_RESULT, "activeStatus.datesEid", "activeStatus.details.name", "activeStatus.details.eid", "activeStatus.details.matchedEid", "activeStatus.details.matchedName"),
+  ...population(PERSON_LOOKUP_RESULT, "activeStatus.candidateEids"),
   ...person(PERSON_LOOKUP_RESULT, "crmDates.dates.emplId"),
 
         /* These describe the READ, not about the person, so they are open. */
@@ -694,6 +703,9 @@ export function redactEvidenceLeaf(
   leaf: EvidenceLeaf,
 ): z.infer<typeof RedactedFieldSchema> {
   const declared = classifyEvidenceLeaf(scope, leaf.path);
+  if (leaf.field === "ssn") {
+    return RedactedFieldSchema.parse({ key: leaf.path, ...redactValue(declared.classification, declared.transform, leaf.value) });
+  }
   const redaction = redactDiagnosticFields([{
     key: leaf.field,
     classification: declared.classification,

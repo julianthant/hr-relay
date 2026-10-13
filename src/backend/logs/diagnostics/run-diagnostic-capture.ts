@@ -1,3 +1,4 @@
+import { recordBrowserAction } from "../../systems/browser-shared/action-notes.js";
 
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import type {
@@ -118,7 +119,7 @@ export function createRunBrowserScreenshotCapture(input: Readonly<{
 }>): RunBrowserScreenshotCapture {
   return Object.freeze({
     async capture(context: Parameters<RunBrowserScreenshotCapture["capture"]>[0]) {
-      await operatorRequestedCapture({
+      const bundle = await operatorRequestedCapture({
         service: input.service,
         runId: context.runId,
         configFingerprint: context.configFingerprint,
@@ -137,6 +138,11 @@ export function createRunBrowserScreenshotCapture(input: Readonly<{
           height: context.screenshot.height,
         }],
       });
+      if (context.screenshot.state === "available") {
+        const attachment = bundle.attachments.find((candidate) => candidate.kind === "screenshot");
+        if (attachment === undefined) throw new Error("Screenshot capture persisted without its screenshot artifact");
+        recordBrowserAction("screenshot", `${context.system}.browser-capture`, `${bundle.bundleId}:${attachment.artifactId}`);
+      }
     },
   });
 }

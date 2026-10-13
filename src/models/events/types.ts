@@ -407,7 +407,7 @@ const NoteBodyFields = {
   fields: z.array(NoteFieldWireSchema).optional(),
   confirmedAction: ConfirmedActionEventSchema.optional(),
   action: z.strictObject({
-    kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session"]),
+    kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session", "screenshot"]),
     targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
     value: z.union([z.string(), z.boolean()]).optional(),
     operation: DeclaredActionOccurrenceWireSchema.optional(),
@@ -442,7 +442,7 @@ export function browserActionMessage(action: { readonly kind: string; readonly t
   const verb = action.kind === "typed" ? "Typed" : action.kind === "selected" ? "Selected"
     : action.kind === "checked" ? "Checked" : action.kind === "set" ? "Set" : action.kind === "cleared" ? "Cleared"
       : action.kind === "pressed" ? "Pressed key in"
-      : action.kind === "opened" ? "Opened" : action.kind === "read" ? "Read" : action.kind === "computed" ? "Computed" : action.kind === "verified" ? "Verified" : action.kind === "branched" ? "Selected branch" : action.kind === "joined" ? "Joined" : action.kind === "gated" ? "Resolved gate" : action.kind === "delegated" ? "Delegated" : action.kind === "session" ? "Session lifecycle" : "Clicked";
+      : action.kind === "screenshot" ? "Screenshot" : action.kind === "opened" ? "Opened" : action.kind === "read" ? "Read" : action.kind === "computed" ? "Computed" : action.kind === "verified" ? "Verified" : action.kind === "branched" ? "Selected branch" : action.kind === "joined" ? "Joined" : action.kind === "gated" ? "Resolved gate" : action.kind === "delegated" ? "Delegated" : action.kind === "session" ? "Session lifecycle" : "Clicked";
   if (action.value === undefined) {
     if (action.kind === "typed") return `Typed into ${target}`;
     if (action.kind === "selected") return `Selected in ${target}`;

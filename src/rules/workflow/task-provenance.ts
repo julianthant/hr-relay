@@ -107,6 +107,7 @@ export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
     result: RunResultRecordSchema, results: z.array(RunResultRecordSchema).max(16), checkpoints: z.array(RunCheckpointRecordSchema).max(256) })).max(16).optional(),
   /** A false descriptor condition, re-evaluated by the collector; no operator fact. */
   skippedGates: z.array(GateIdSchema).default([]),
+  skippedTasks: z.array(NodeIdSchema).default([]),
     /* A GATE dependency's durable evidence: a gate produces an operator decision, not a checkpoint row, so it is admitted as its own kind of upstream evidence contributing one `operator`-sourced fact. */
   gateResults: z.array(GateResultRecordSchema).default([]),
 }).superRefine((evidence, context) => {
@@ -127,9 +128,16 @@ export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
       context.addIssue({ code: "custom", path: ["skippedGates", index], message: `duplicate upstream evidence for node ${gateId}` });
     }
   }
+  for (const [index, nodeId] of evidence.skippedTasks.entries()) {
+    if (checkpointNodes.has(nodeId) || evidence.skippedTasks.indexOf(nodeId) !== index
+      || evidence.skippedGates.some((gateId) => String(gateId) === String(nodeId))
+      || evidence.gateResults.some((gate) => String(gate.gateId) === String(nodeId))) {
+      context.addIssue({ code: "custom", path: ["skippedTasks", index], message: `duplicate upstream evidence for node ${nodeId}` });
+    }
+  }
   const childNodes = new Set<string>();
   for (const child of evidence.children ?? []) {
-    if (childNodes.has(child.nodeId) || checkpointNodes.has(child.nodeId)
+    if (childNodes.has(child.nodeId) || checkpointNodes.has(child.nodeId) || evidence.skippedTasks.includes(child.nodeId)
       || evidence.skippedGates.some((gateId) => String(gateId) === String(child.nodeId))) context.addIssue({ code: "custom", message: "duplicate child upstream evidence" });
     childNodes.add(child.nodeId);
   }

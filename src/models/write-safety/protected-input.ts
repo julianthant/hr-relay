@@ -136,7 +136,7 @@ export function valueFreeProtectedEvidence(value: unknown, protectedPaths: reado
     if (typeof name === "string" && typeof Reflect.get(node, "classification") === "string" && typeof Reflect.get(node, "transform") === "string") {
       if (name.includes("timekeeper") || name.endsWith("dateChangeComments") || name.endsWith("observedExistingComments")
         || (protectedPaths.some((path) => name === path || name.endsWith(`.${path}`))
-          || (protectedPaths.includes("emplId") && /(?:observedEid|eid)$/u.test(name))
+          || (protectedPaths.includes("emplId") && /(?:observedEid|eid|emplId|Eid|Eids)$/u.test(name))
           || (protectedPaths.length > 0 && /(?:idempotencyKeyDigest|businessKeyDigest|occurrenceKeyDigest)$/u.test(name))))
         return { key: name, state: "redacted", classification: "direct-identifier", transform: "drop" };
     }
