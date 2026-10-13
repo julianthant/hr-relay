@@ -2566,6 +2566,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/settings-storage.ts",
       "src/backend/storage/sqlite/timeline-repository.ts",
       "src/backend/storage/sqlite/transaction-selection.ts",
+      "src/backend/storage/sqlite/workbook-library-repository.ts",
       "src/backend/storage/sqlite/worker-control.ts",
       "src/backend/storage/sqlite/worker-slots.ts",
     ].sort();

@@ -470,6 +470,7 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root,"src/backend/app/boot.ts","export const boot = true;\n");
       writeFixture(root,"src/backend/runtime/engine.ts","export const engine = true;\n");
       writeFixture(root,"src/backend/storage/repository.ts","export const repository = true;\n");
+      writeFixture(root,"src/backend/workbooks/library.ts","export const library = true;\n");
       writeFixture(root,"src/backend/systems/browser-shared/adapter.ts","export const adapter = true;\n");
       writeFixture(root,"src/backend/app/worker/compose.ts","export const compose = true;\n");
       writeFixture(root,"src/base/pure.ts","export const pure = true;\n");
@@ -479,6 +480,7 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root,"src/backend/storage/repository.ts",'import { boot } from "../app/boot.js"; export const repository = boot;\n');
       writeFixture(root,"src/backend/systems/browser-shared/adapter.ts",'import { engine } from "../../runtime/engine.js"; export const adapter = engine;\n');
       writeFixture(root,"src/backend/runtime/engine.ts",'import type { compose } from "../app/worker/compose.js"; export type Engine = typeof compose;\n');
+      writeFixture(root,"src/backend/workbooks/library.ts",'import { engine } from "../runtime/engine.js"; import { compose } from "../app/worker/compose.js"; export const library = [engine, compose];\n');
       writeFixture(root,"src/base/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
       writeFixture(root,"src/domain/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
       writeFixture(root,"src/validation/pure.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Pure = typeof engine;\n');
@@ -487,6 +489,8 @@ describe("reviewed architecture guard manifest", () => {
       assert.match(issues,/backend\/storage\/repository\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/backend\/systems\/browser-shared\/adapter\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/runtime\/engine\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
+      assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
       assert.match(issues,/base\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/domain\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/validation\/pure\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
