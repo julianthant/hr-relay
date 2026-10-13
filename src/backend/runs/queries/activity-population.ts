@@ -139,9 +139,9 @@ export function createActivityPopulationService(input: {
     exportSelected: (range: unknown, token: unknown): ActivityPopulationExport => {
       const selection = read(range, signer.decode(token));
       const rows = [spreadsheetCsvRow(["Complete selected run population"]), spreadsheetCsvRow(["Population digest", selection.snapshot.populationDigest]), spreadsheetCsvRow(["Run id", "Workflow id", "Title", "Attempt", "Day", "Queue status", "Terminal", "Duration (ms)", "Read back", "Parent run id", "Shape", "Receipt result", "Warning count"]),
-        ...selection.population.map(row => spreadsheetCsvRow([row.runId, row.workflowId, row.title, row.attempt, row.day, row.status, row.terminal, row.durationMs ?? "Unavailable", row.readback ?? "Unavailable", row.parentRunId ?? "", row.shape, row.receiptResult ?? "Unavailable", row.warningCount ?? "Unavailable"]))];
+        ...selection.population.map(row => spreadsheetCsvRow([row.runId, row.workflowId, row.title, row.attempt, row.day, row.status, row.terminal, row.durationMs === null ? "Unavailable" : row.durationMs, row.readback === null ? "Unavailable" : row.readback, row.parentRunId === null ? "" : row.parentRunId, row.shape, row.receiptResult === null ? "Unavailable" : row.receiptResult, row.warningCount === null ? "Unavailable" : row.warningCount]))];
       const timing = [spreadsheetCsvRow(["Successful run timing"]), spreadsheetCsvRow(["Workflow id", "Total (ms)", "Measured", "Unmeasured"]),
-        ...selection.successfulTiming.map(row => spreadsheetCsvRow([row.workflowId, row.totalMs ?? "Unavailable", row.measured, row.unmeasured]))];
+        ...selection.successfulTiming.map(row => spreadsheetCsvRow([row.workflowId, row.totalMs === null ? "Unavailable" : row.totalMs, row.measured, row.unmeasured]))];
       return ExportSchema.parse({ selection, filename: activityReportCsvFileName(selection.report), mediaType: "text/csv; charset=utf-8", csv: `${activityReportCsv(selection.report)}\r\n${rows.join("\r\n")}\r\n\r\n${timing.join("\r\n")}\r\n` });
     },
   });
