@@ -85,12 +85,18 @@ export function projectStartSteps(descriptor: AnyWorkflowDescriptor): readonly S
     const condition = first?.kind === "task" ? first.when : undefined;
     const sameCondition = condition !== undefined
       && members.every((node) => node.kind === "task" && JSON.stringify(node.when) === JSON.stringify(condition));
-    const selectable = sameCondition
+    const inferredSelection = sameCondition
       && (condition.kind === "is-true" || condition.kind === "is-false")
       && condition.of.from === "input"
       && !String(condition.of.path).includes(".")
       ? { inputField: String(condition.of.path), selectedWhen: condition.kind === "is-true" }
       : undefined;
+    const selectable = step.selection ?? inferredSelection;
+    if (step.selection !== undefined) {
+      const constant = constants.find(constant => constant.field === step.selection?.inputField);
+      if (constant?.value.kind !== "boolean") throw new Error(`${descriptor.id} start step ${key} selection has no boolean default`);
+      if (inferredSelection !== undefined && JSON.stringify(inferredSelection) !== JSON.stringify(step.selection)) throw new Error(`${descriptor.id} start step ${key} contradicts its input condition`);
+    }
     const spec = specByStep.get(key);
     if (spec !== undefined) {
       // A conditional omission and an operator assertion cannot both own the same step.

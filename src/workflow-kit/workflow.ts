@@ -269,6 +269,7 @@ export interface AnyWorkflowDescriptor {
     /** The category's stable anchor: the step folder's name, and what a `chunk-harness.step` names. */
     key: string;
     label: string;
+    selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
     nodes: readonly Readonly<{ id: string; label: string }>[];
   }>[];
   /** DECLARED or DERIVED; the composition root's role audit is the reader. */
@@ -314,6 +315,7 @@ export interface WorkflowDescriptorSpec<
     key: string;
     label: string;
     nodes: readonly string[];
+    selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
     /** Present iff the step folder declared the step omittable. */
     omission?: StepOmissionDeclaration;
   }>[];
@@ -625,7 +627,7 @@ function deriveStepOmissions(
 function deriveTimeline(
   id: string,
   nodes: readonly RuntimeFlowNode[],
-  declared: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[] | undefined,
+  declared: readonly Readonly<{ key: string; label: string; selection?: Readonly<{ inputField: string; selectedWhen: boolean }>; nodes: readonly string[] }>[] | undefined,
 ): readonly TimelineCategoryProjection[] {
   if (declared === undefined) {
     // The per-node default's key is the NODE ID (the kebab anchor the nodes are already named by);
@@ -643,6 +645,7 @@ function deriveTimeline(
     return TimelineCategoryProjectionSchema.parse({
       key: parsed.key,
       label: parsed.label,
+      ...(parsed.selection === undefined ? {} : { selection: parsed.selection }),
       nodes: parsed.nodes.map((nodeId) => {
         const label = labelByNode.get(String(nodeId));
         if (label === undefined) {
@@ -1019,6 +1022,23 @@ export function defineWorkflowDescriptor<
   }
   // Which nodes an omitted step rebuilds (asserted) and which it leaves unread (omitted); derived
   // once so the terminal-dependency authentication and the retained declaration agree.
+  for (const step of spec.timeline ?? []) {
+    if (step.selection === undefined) continue;
+    const { inputField, selectedWhen } = step.selection;
+    assertSchemaOffersPath(spec.flow.input, inputField, `${id}: start step ${step.key} selection`);
+    const constant = spec.surfaces?.inputRun?.parser.constants?.find(constant => constant.field === inputField);
+    if (constant?.value.kind !== "boolean") throw new Error(`${id}: start step ${step.key} selection requires a boolean default`);
+    for (const sample of canonicalInputSamples(spec.canonicalInput)) {
+      const parsed = JsonValueSchema.parse(spec.canonicalInput.parse(sample));
+      if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object" || typeof Object.entries(parsed).find(([key]) => key === inputField)?.[1] !== "boolean") throw new Error(`${id}: start step ${step.key} selection field must be boolean`);
+    }
+    if (step.omission !== undefined) throw new Error(`${id}: start step ${step.key} has both selection and omission`);
+    for (const member of step.nodes) {
+      const node = nodes.find(node => node.id === member);
+      if (node?.kind === "task" && node.when?.of.from === "input" && String(node.when.of.path) === inputField
+        && (node.when.kind !== (selectedWhen ? "is-true" : "is-false"))) throw new Error(`${id}: start step ${step.key} selection contradicts its condition`);
+    }
+  }
   const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
   const rerunValues = spec.rerunValues === undefined ? undefined : validateRerunValueMappings({
     input: spec.flow.input, nodes, stepOmissions,
@@ -1049,7 +1069,7 @@ export function defineWorkflowDescriptor<
     result: spec.flow.result,
     nodes: spec.flow.nodes,
     scenarios: declaredScenarios,
-    timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, nodes: members }) => ({ key, label, nodes: members }))),
+    timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, selection, nodes: members }) => ({ key, label, ...(selection === undefined ? {} : { selection }), nodes: members }))),
     timelineDeclared: spec.timeline !== undefined,
     stepOmissions,
     ...(rerunValues === undefined ? {} : { rerunValues }),

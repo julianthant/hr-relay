@@ -57,6 +57,7 @@ export interface WorkflowTimelineGroup {
   readonly key: string;
   readonly label: string;
   readonly omission?: StepOmissionDeclaration;
+  readonly selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
   readonly [GROUP_OWNER]?: WorkflowTimelineGroup;
 }
 
@@ -1130,11 +1131,12 @@ export function compileWorkflow<
     key: group.key,
     label: group.label,
     nodes: entries.flatMap(entryNodeIds),
+    ...(group.selection === undefined ? {} : { selection: group.selection }),
     ...(group.omission === undefined ? {} : { omission: group.omission }),
   }));
   const usesDefaultTimeline = steps.every(([group, entries]) => {
     const [entry] = entries as readonly RuntimeEntry[];
-    if (entry === undefined || entries.length !== 1 || group.omission !== undefined) return false;
+    if (entry === undefined || entries.length !== 1 || group.omission !== undefined || group.selection !== undefined) return false;
     const label = defaultEntryLabel(entry);
     return label !== undefined && group.key === entry.id && group.label === label;
   });
