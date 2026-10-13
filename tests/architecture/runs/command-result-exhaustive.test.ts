@@ -17,10 +17,10 @@ const EXEMPT = new Set([
 ]);
 
 
-const FORWARDING_LAYERS = new Set([
-  "src/dashboard/client/index.ts",
-  "src/dashboard/surfaces/run-start/run-launch-model.ts",
-]);
+const COMMAND_EXECUTOR = "src/dashboard/app/commands/command-executor.ts";
+const DASHBOARD_CLIENT_ADAPTER = "src/dashboard/client/index.ts";
+const RUN_LAUNCH_MODEL = "src/dashboard/surfaces/run-start/run-launch-model.ts";
+const RUN_START_SURFACE = "src/dashboard/surfaces/run-start/run-start.tsx";
 
 function sourceFiles(root: string): readonly string[] {
   const absolute = join(REPO_ROOT, root);
@@ -146,6 +146,207 @@ function foldsFewerCommandsThanItPosts(path: string, text: string): boolean {
   return settles < posts;
 }
 
+function expressionPath(expression: ts.Expression): string | undefined {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (expression.kind === ts.SyntaxKind.ThisKeyword) return "this";
+  if (!ts.isPropertyAccessExpression(expression)) return undefined;
+  const parent = expressionPath(expression.expression);
+  return parent === undefined ? undefined : `${parent}.${expression.name.text}`;
+}
+
+function findNodes<T extends ts.Node>(root: ts.Node, isMatch: (node: ts.Node) => node is T): T[] {
+  const found: T[] = [];
+  const visit = (node: ts.Node): void => {
+    if (isMatch(node)) found.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return found;
+}
+
+function callSites(root: ts.Node, path: string): ts.CallExpression[] {
+  return findNodes(root, (node): node is ts.CallExpression => ts.isCallExpression(node) && expressionPath(node.expression) === path);
+}
+
+function callHasArguments(call: ts.CallExpression, args: readonly string[]): boolean {
+  return call.arguments.length === args.length && args.every((arg, index) => call.arguments[index]?.getText() === arg);
+}
+
+function methodNamed(root: ts.Node, name: string): ts.MethodDeclaration | undefined {
+  return findNodes(root, (node): node is ts.MethodDeclaration => ts.isMethodDeclaration(node)
+    && ts.isIdentifier(node.name) && node.name.text === name)[0];
+}
+
+function propertyValue(expression: ts.Expression, name: string): ts.Expression | undefined {
+  if (!ts.isObjectLiteralExpression(expression)) return undefined;
+  const property = expression.properties.find((entry) => ts.isPropertyAssignment(entry)
+    && ((ts.isIdentifier(entry.name) || ts.isStringLiteralLike(entry.name)) && entry.name.text === name));
+  return property !== undefined && ts.isPropertyAssignment(property) ? property.initializer : undefined;
+}
+
+function returnKind(statement: ts.ReturnStatement): string | undefined {
+  if (statement.expression === undefined) return undefined;
+  const kind = propertyValue(statement.expression, "kind");
+  return kind !== undefined && ts.isStringLiteralLike(kind) ? kind.text : undefined;
+}
+
+function isDescendant(node: ts.Node, ancestor: ts.Node): boolean {
+  for (let current: ts.Node | undefined = node; current !== undefined; current = current.parent) {
+    if (current === ancestor) return true;
+  }
+  return false;
+}
+
+function hasCheckedSingleSettlement(dispatch: ts.Node): boolean {
+  const calls = callSites(dispatch, "options.scope.client.executeCommand");
+  return calls.length === 1 && calls.every((call) => {
+    if (!callHasArguments(call, ["request"]) || !ts.isAwaitExpression(call.parent)) return false;
+    const checked = call.parent.parent;
+    if (!ts.isCallExpression(checked) || expressionPath(checked.expression) !== "checkedCommandResult"
+      || checked.arguments[0]?.getText() !== "request" || checked.arguments[1] !== call.parent) return false;
+    const settled = checked.parent;
+    return ts.isCallExpression(settled) && expressionPath(settled.expression) === "this.settle"
+      && callHasArguments(settled, ["request", checked.getText(), "options"])
+      && ts.isAwaitExpression(settled.parent);
+  });
+}
+
+function hasOrderedBulkSettlement(dispatch: ts.Node): boolean {
+  const calls = callSites(dispatch, "options.scope.client.executeBulkCommand");
+  if (calls.length !== 1) return false;
+  const call = calls[0]!;
+  if (!callHasArguments(call, ["request"]) || !ts.isAwaitExpression(call.parent)) return false;
+  const checked = call.parent.parent;
+  if (!ts.isCallExpression(checked) || expressionPath(checked.expression) !== "checkedBulkCommandResult"
+    || checked.arguments[0]?.getText() !== "request" || checked.arguments[1] !== call.parent) return false;
+  const reply = findNodes(dispatch, (node): node is ts.VariableDeclaration => ts.isVariableDeclaration(node)
+    && ts.isIdentifier(node.name) && node.name.text === "reply" && node.initializer === checked)[0];
+  if (reply === undefined) return false;
+  return findNodes(dispatch, (node): node is ts.ForOfStatement => ts.isForOfStatement(node)).some((loop) => {
+    if (!ts.isVariableDeclarationList(loop.initializer) || !ts.isCallExpression(loop.expression)
+      || expressionPath(loop.expression.expression) !== "commands.entries" || loop.expression.arguments.length !== 0) return false;
+    const binding = loop.initializer.declarations[0]?.name;
+    if (binding === undefined || !ts.isArrayBindingPattern(binding)) return false;
+    const index = binding.elements[0];
+    const command = binding.elements[1];
+    if (index === undefined || command === undefined || !ts.isBindingElement(index) || !ts.isBindingElement(command)
+      || !ts.isIdentifier(index.name) || !ts.isIdentifier(command.name)) return false;
+    const child = findNodes(loop.statement, (node): node is ts.VariableDeclaration => ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name) && node.name.text === "child" && node.initializer !== undefined
+      && ts.isElementAccessExpression(node.initializer) && expressionPath(node.initializer.expression) === "reply.results"
+      && node.initializer.argumentExpression?.getText() === index.name.text)[0];
+    if (child === undefined) return false;
+    return callSites(loop.statement, "outcomes.push").some((push) => {
+      const result = push.arguments[0];
+      if (result === undefined || !ts.isConditionalExpression(result)
+        || result.condition.getText() !== `${child.name.getText()} === undefined`) return false;
+      const refusal = result.whenTrue;
+      const settled = result.whenFalse;
+      if (!ts.isCallExpression(refusal) || expressionPath(refusal.expression) !== "this.refuse"
+        || !callHasArguments(refusal, [`${command.name.text}.commandId`, '"not-attempted"'])
+        || !ts.isAwaitExpression(settled) || !ts.isCallExpression(settled.expression)
+        || expressionPath(settled.expression.expression) !== "this.settle") return false;
+      return callHasArguments(settled.expression, [command.name.text, child.name.getText(), "options"]);
+    });
+  });
+}
+
+function isStateComparison(expression: ts.Expression, state: string): expression is ts.BinaryExpression {
+  return ts.isBinaryExpression(expression)
+    && expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+    && expressionPath(expression.left) === "readback.state"
+    && ts.isStringLiteralLike(expression.right) && expression.right.text === state;
+}
+
+function hasRequiredReadbackSettlement(settle: ts.Node): boolean {
+  const readbacks = callSites(settle, "options.readback");
+  const awaitedReadback = readbacks.find((call) => callHasArguments(call, ["request", "reply", "options.scope"])
+    && ts.isAwaitExpression(call.parent)
+    && ts.isVariableDeclaration(call.parent.parent)
+    && ts.isIdentifier(call.parent.parent.name) && call.parent.parent.name.text === "readback");
+  if (readbacks.length !== 1 || awaitedReadback === undefined) return false;
+  const declaration = awaitedReadback.parent.parent;
+  if (!ts.isVariableDeclaration(declaration) || !ts.isVariableStatement(declaration.parent.parent)) return false;
+  const statement = declaration.parent.parent;
+  const tryBlocks = findNodes(settle, (node): node is ts.TryStatement => ts.isTryStatement(node)
+    && isDescendant(statement, node.tryBlock));
+  if (tryBlocks.length !== 1 || statement.parent !== tryBlocks[0]!.tryBlock) return false;
+  const readbackBlock = tryBlocks[0]!.tryBlock;
+  const branches = readbackBlock.statements.filter((node): node is ts.IfStatement => ts.isIfStatement(node));
+  const matched = branches.filter((node) => isStateComparison(node.expression, "matched"));
+  const conflicts = branches.filter((node) => isStateComparison(node.expression, "conflict"));
+  if (matched.length !== 1 || conflicts.length !== 1) return false;
+  const matchedBranch = matched[0]!;
+  const conflictBranch = conflicts[0]!;
+  const statements = readbackBlock.statements;
+  if (statements.indexOf(matchedBranch) <= statements.indexOf(statement)
+    || statements.indexOf(conflictBranch) <= statements.indexOf(statement)) return false;
+  const returns = findNodes(settle, (node): node is ts.ReturnStatement => ts.isReturnStatement(node));
+  const confirmed = returns.filter((statement) => returnKind(statement) === "confirmed");
+  const conflictReturns = findNodes(conflictBranch.thenStatement, (node): node is ts.ReturnStatement => ts.isReturnStatement(node))
+    .filter((statement) => returnKind(statement) === "conflict");
+  const readbackReturns = findNodes(readbackBlock, (node): node is ts.ReturnStatement => ts.isReturnStatement(node));
+  const uncertain = readbackReturns.filter((statement) => returnKind(statement) === "uncertain");
+  return confirmed.length === 1 && isDescendant(confirmed[0]!, matchedBranch.thenStatement)
+    && propertyValue(confirmed[0]!.expression!, "readback")?.getText() === "readback.evidence"
+    && conflictReturns.length === 1 && isDescendant(conflictReturns[0]!, conflictBranch.thenStatement)
+    && propertyValue(conflictReturns[0]!.expression!, "readback")?.getText() === "readback.evidence"
+    && uncertain.length === 1 && !isDescendant(uncertain[0]!, matchedBranch.thenStatement)
+    && !isDescendant(uncertain[0]!, conflictBranch.thenStatement);
+}
+
+function isCommandDispatchCall(node: ts.Node): node is ts.CallExpression {
+  if (!ts.isCallExpression(node)) return false;
+  const member = ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text
+    : ts.isElementAccessExpression(node.expression) && node.expression.argumentExpression !== undefined
+      && ts.isStringLiteralLike(node.expression.argumentExpression)
+      ? node.expression.argumentExpression.text : undefined;
+  return member === "executeCommand" || member === "executeBulkCommand";
+}
+
+function hasOnlyOwnedDispatchCalls(path: string, source: ts.SourceFile): boolean {
+  const calls = findNodes(source, isCommandDispatchCall);
+  const dispatch = path === COMMAND_EXECUTOR ? methodNamed(source, "dispatch") : undefined;
+  return calls.every((call) => {
+    const callPath = expressionPath(call.expression);
+    return path === COMMAND_EXECUTOR
+      ? dispatch !== undefined && isDescendant(call, dispatch)
+        && (callPath === "options.scope.client.executeCommand" || callPath === "options.scope.client.executeBulkCommand")
+      : path === DASHBOARD_CLIENT_ADAPTER && callPath === "commands.executeCommand";
+  });
+}
+
+function isRunBindingDelegation(source: ts.SourceFile): boolean {
+  const submit = methodNamed(source, "submit");
+  const binding = submit?.parameters[1];
+  const bindingType = binding?.type;
+  if (submit === undefined || binding === undefined || !ts.isIdentifier(binding.name)
+    || bindingType === undefined || !ts.isTypeReferenceNode(bindingType) || !ts.isIdentifier(bindingType.typeName)
+    || bindingType.typeName.text !== "DashboardCommandBinding") return false;
+  const options = findNodes(submit, (node): node is ts.VariableDeclaration => ts.isVariableDeclaration(node)
+    && ts.isIdentifier(node.name) && node.name.text === "options" && node.initializer !== undefined
+    && ts.isObjectLiteralExpression(node.initializer))[0];
+  if (options === undefined || options.initializer === undefined || !ts.isObjectLiteralExpression(options.initializer)) return false;
+  const scope = propertyValue(options.initializer, "scope");
+  if (scope === undefined || expressionPath(scope) !== "binding.scope") return false;
+  const readback = propertyValue(options.initializer, "readback");
+  if (readback === undefined || !ts.isArrowFunction(readback)
+    || !callSites(readback, "verifyRunLaunchReadback").some((call) => callHasArguments(call, ["client", "request", "reply", "plan"]))) return false;
+  const hasRetainedLookup = callSites(submit, "binding.executor.retainedAttempts").length === 1;
+  const delegated = findNodes(submit, (node): node is ts.ConditionalExpression => ts.isConditionalExpression(node)).some((choice) => {
+    if (choice.condition.getText() !== "retained === undefined" || !ts.isCallExpression(choice.whenTrue)
+      || !ts.isCallExpression(choice.whenFalse) || expressionPath(choice.whenTrue.expression) !== "binding.executor.execute"
+      || expressionPath(choice.whenFalse.expression) !== "binding.executor.replay") return false;
+    return callHasArguments(choice.whenTrue, ["command", "options"])
+      && callHasArguments(choice.whenFalse, ["command.commandId", "options"]);
+  });
+  return hasRetainedLookup && delegated;
+}
+
+function parseSource(path: string, text = readFileSync(join(REPO_ROOT, path), "utf8")): ts.SourceFile {
+  return ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+}
+
 describe("command-result-exhaustive", () => {
   it("no dashboard module tests ONE refusal arm and lets the other fall through", () => {
     const offenders = sourceFiles(SCAN_ROOT)
@@ -174,35 +375,55 @@ describe("command-result-exhaustive", () => {
     for (const name of ["presentation", "shadow", "clean", "aliasedClean"] as const) expect(canonicalDecision(`src/dashboard/guard-proofs/${name}.tsx`), name).toBe(false);
   });
 
-  it("every dashboard module folds at least as many commands as it posts", () => {
-    const offenders = sourceFiles(SCAN_ROOT)
-      .map((path) => relative(REPO_ROOT, path))
-      .filter((path) => !EXEMPT.has(path) && !FORWARDING_LAYERS.has(path))
-      .filter((path) => foldsFewerCommandsThanItPosts(path, readFileSync(join(REPO_ROOT, path), "utf8")));
-    expect(offenders, offenders.join("\n")).toEqual([]);
+  it("settles checked transport replies in the shared executor and Run binding", () => {
+    const executor = parseSource(COMMAND_EXECUTOR);
+    const dispatch = methodNamed(executor, "dispatch");
+    const settle = methodNamed(executor, "settle");
+    expect(dispatch).toBeDefined();
+    expect(settle).toBeDefined();
+    expect(hasCheckedSingleSettlement(dispatch!)).toBe(true);
+    expect(hasOrderedBulkSettlement(dispatch!)).toBe(true);
+    expect(hasRequiredReadbackSettlement(settle!)).toBe(true);
+
+    const launch = parseSource(RUN_LAUNCH_MODEL);
+    expect(isRunBindingDelegation(launch)).toBe(true);
+    const surface = parseSource(RUN_START_SURFACE);
+    expect(callSites(surface, "launchService.submit").some((call) => call.arguments[1]?.getText() === "binding")).toBe(true);
   });
 
-  it("proves admitted forwarding layers forward command execution and their callers settle them", () => {
-    for (const path of FORWARDING_LAYERS) {
-      const text = readFileSync(join(REPO_ROOT, path), "utf8");
-      expect(canonicalDecision(path), `${path} must not decide settlement alone`).toBe(false);
-      expect(
-        /return\s+(await\s+)?(commands|client)\.executeCommand|:\s*\(input.*?\)\s*=>\s*client\.executeCommand/u.test(text),
-        `${path} must return or forward executeCommand`,
-      ).toBe(true);
+  it("keeps raw dispatch inside the executor and client adapter only", () => {
+    const offenders = sourceFiles(SCAN_ROOT)
+      .map((absolute) => ({ path: relative(REPO_ROOT, absolute), source: parseSource(relative(REPO_ROOT, absolute)) }))
+      .filter(({ path, source }) => !hasOnlyOwnedDispatchCalls(path, source))
+      .map(({ path }) => path);
+    expect(offenders, offenders.join("\n")).toEqual([]);
+
+    for (const method of ["executeCommand", "executeBulkCommand"] as const) {
+      const surfaceDispatch = parseSource("src/dashboard/surfaces/dispatch-fixture.ts", `client.${method}(request);`);
+      expect(hasOnlyOwnedDispatchCalls("src/dashboard/surfaces/dispatch-fixture.ts", surfaceDispatch), method).toBe(false);
     }
-    const runLaunchCallers = sourceFiles(SCAN_ROOT)
-      .map((path) => relative(REPO_ROOT, path))
-      .filter((path) => !FORWARDING_LAYERS.has(path) && !EXEMPT.has(path))
-      .filter((path) => {
-        const text = readFileSync(join(REPO_ROOT, path), "utf8");
-        return text.includes("createRunLaunchService") || text.includes("launchService.submit");
-      });
-    expect(runLaunchCallers.length).toBeGreaterThan(0);
-    for (const callerPath of runLaunchCallers) {
-      const text = readFileSync(join(REPO_ROOT, callerPath), "utf8");
-      expect(text.includes("settleCommandResult"), `${callerPath} must consume forwarded command with settleCommandResult`).toBe(true);
-    }
+  });
+
+  it("rejects removed or wrong settlement and readback bypasses", () => {
+    const checked = 'async function dispatch(request, options) { return await this.settle(request, checkedCommandResult(request, await options.scope.client.executeCommand(request)), options); }';
+    const missingSettle = 'async function dispatch(request, options) { return checkedCommandResult(request, await options.scope.client.executeCommand(request)); }';
+    const wrongFold = 'async function dispatch(request, options) { return settleCommandResult(checkedCommandResult(request, await options.scope.client.executeCommand(request))); }';
+    expect(hasCheckedSingleSettlement(parseSource("fixture.ts", checked))).toBe(true);
+    expect(hasCheckedSingleSettlement(parseSource("fixture.ts", missingSettle))).toBe(false);
+    expect(hasCheckedSingleSettlement(parseSource("fixture.ts", wrongFold))).toBe(false);
+
+    const bulk = 'async function dispatch(request, options, commands, outcomes) { const reply = checkedBulkCommandResult(request, await options.scope.client.executeBulkCommand(request)); for (const [index, command] of commands.entries()) { const child = reply.results[index]; outcomes.push(child === undefined ? this.refuse(command.commandId, "not-attempted") : await this.settle(command, child, options)); } }';
+    expect(hasOrderedBulkSettlement(parseSource("fixture.ts", bulk))).toBe(true);
+    expect(hasOrderedBulkSettlement(parseSource("fixture.ts", bulk.replace("await this.settle(command, child, options)", "child")))).toBe(false);
+
+    const readback = 'async function settle(request, reply, options) { if ("outcome" in reply) { if (reply.outcome === "errored") return { kind: "uncertain" }; if (reply.outcome === "conflict") return { kind: "conflict" }; } if ("state" in reply) { if (reply.state === "conflict") return { kind: "conflict" }; if (reply.state === "rejected") return { kind: "uncertain" }; } try { const readback = await options.readback(request, reply, options.scope); if (readback.state === "matched") return { kind: "confirmed", readback: readback.evidence }; if (readback.state === "conflict") return { kind: "conflict", readback: readback.evidence }; return { kind: "uncertain" }; } catch (cause) { return { kind: "uncertain" }; } }';
+    const bypass = readback.replace("await options.readback", "options.readback");
+    const prematureConfirmation = readback.replace('if (reply.state === "conflict") return { kind: "conflict" };', 'if (reply.state === "conflict") return { kind: "confirmed", readback: reply };');
+    const unmatchedConfirmation = readback.replace('if (readback.state === "matched") return { kind: "confirmed", readback: readback.evidence };', 'if (readback.state !== "matched") return { kind: "confirmed", readback: readback.evidence };');
+    expect(hasRequiredReadbackSettlement(parseSource("fixture.ts", readback))).toBe(true);
+    expect(hasRequiredReadbackSettlement(parseSource("fixture.ts", bypass))).toBe(false);
+    expect(hasRequiredReadbackSettlement(parseSource("fixture.ts", prematureConfirmation))).toBe(false);
+    expect(hasRequiredReadbackSettlement(parseSource("fixture.ts", unmatchedConfirmation))).toBe(false);
   });
 
   it("the call-site walker sees its own violations (negative control)", () => {
@@ -256,10 +477,14 @@ describe("command-result-exhaustive", () => {
     expect(foldsFewerCommandsThanItPosts("fixture.ts", "export const NOTHING_IS_POSTED = 1;")).toBe(false);
   });
 
-  it("the fold's own module is the only place the arms are enumerated for a verdict", () => {
-    const fold = readFileSync(join(REPO_ROOT, "src/dashboard/app/commands/command-result.ts"), "utf8");
-    for (const arm of ["applied", "already-applied", "conflict", "rejected"]) {
-      expect(fold, `settleCommandResult must handle ${arm}`).toContain(`case "${arm}"`);
-    }
+  it("the command-result fold handles every current wire state", () => {
+    const source = parseSource("src/dashboard/app/commands/command-result.ts");
+    const fold = findNodes(source, (node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node)
+      && node.name?.text === "settleCommandResult")[0];
+    const branches = fold === undefined ? [] : findNodes(fold, (node): node is ts.SwitchStatement => ts.isSwitchStatement(node));
+    expect(branches).toHaveLength(1);
+    const states = branches[0]!.caseBlock.clauses.map((clause) => ts.isCaseClause(clause) && ts.isStringLiteralLike(clause.expression)
+      ? clause.expression.text : "unexpected");
+    expect(states).toEqual(["applied", "already-applied", "confirmation-required", "conflict", "rejected"]);
   });
 });

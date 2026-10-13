@@ -18,12 +18,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/dashboard/surfaces/settings/editor/settings-editor-model.ts",
-    "sha256": "0749e98231804b2cdc52eaad4b928b045efb304451401cae56288f72d325f43e",
+    "sha256": "2b06d303effbe1f8695fc98f15e9ef21b571994e08172b8f9f88cf0f503003ca",
     "reason": "A refresh rejection publishes the read failure and still rejects with settings-read-unavailable; drafts are retained. Before-effect refusal clears the attempt, unconfirmed writes retain it."
   },
   {
     "path": "src/dashboard/surfaces/settings/providers/settings-protected-model.ts",
-    "sha256": "07940fec811247338a18a8e3f99bd3773271c8316c5e7e63db4ae758c57b2e22",
+    "sha256": "1b212dc4aab42fd8f7fd93ed87a31f8e6c9c65b13f447db5997510644d004867",
     "reason": "Only a before-effect refusal clears the attempt; unknown writes retain the exact attempt and draft and publish unconfirmed."
   },
   {
@@ -35,11 +35,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "path": "src/dashboard/ds/primitives/primitives-date.tsx",
     "sha256": "11a1f2b54858f4c97296409ca073c3d1324024c16bd7b395f95a4b4f2bfd1e01",
     "reason": "Invalid editable dates remain invalid without substitution; a supplied invalid bound now throws DS_DATE_BOUND_INVALID instead of silently dropping the constraint."
-  },
-  {
-    "path": "src/dashboard/surfaces/settings/general/settings-relocation-model.ts",
-    "sha256": "9b10e21450f6fd8dba65157363b3ee8d000294d6a6284e2eabc5ed1d07c00b71",
-    "reason": "Typed before-effect refusal clears only the attempt; unknown writes retain it and publish unconfirmed; unavailable reads lock editing."
   },
   {
     "path": "src/models/dashboard/activity-volume.ts",
@@ -63,7 +58,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runs/queries/item-attempt-history.ts",
-    "sha256": "cf5111910cf1a0277977c0a596f497b94a43d759a3d2359d8da092be4dce046b",
+    "sha256": "0a461642d4dc9a9278b761c9663bde7d5f98afec99d94c4b573721afe1be5e6f",
     "reason": "Malformed supplied cursors become explicit refusal before authority reads; omitted cursors remain distinct valid first-page requests."
   },
   {
