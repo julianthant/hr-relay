@@ -76,3 +76,27 @@ it("authenticates mirrored predecessor columns when resynchronizing a retired st
     assert.equal(f.hub.stats().lastError, "timeline-event-column-mismatch");
   } finally { f.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each([0, 1000, 10000])("does bounded predecessor query work with %s unrelated retained streams", count => {
+  const f = source(":memory:", true);
+  let identityReads = 0;
+  f.database.function("json_extract", { deterministic: true }, (json, path) => {
+    if (path === "$.payload.note.confirmedAction.workerStreamId") identityReads += 1;
+    let value: unknown = JSON.parse(String(json));
+    for (const key of String(path).slice(2).split(".")) {
+      if (value === null || typeof value !== "object") return null;
+      value = Reflect.get(value, key);
+    }
+    return typeof value === "string" || typeof value === "number" ? value : null;
+  });
+  try {
+    f.append("target", 1);
+    for (let index = 0; index < count; index++) f.append(`unrelated-${String(index)}`, 1);
+    f.append("target", 2);
+    identityReads = 0;
+    const heads = f.repository.confirmedActionHeads({ workerStreamIds: ["absent", "target"], before: count + 3 });
+    assert.equal(heads.length, 1);
+    assert.equal(heads[0].cursor, count + 2);
+    assert.ok(identityReads <= 2, `predecessor lookup evaluated ${String(identityReads)} unrelated identities`);
+  } finally { f.close(); }
+});
