@@ -10,7 +10,7 @@ describe("selected CRM record verification", () => {
   const base = createDeterministicCrmOnboardingDriver({ record: { state: "absent", queriedEid: record.emplId, reason: "none" }, dates: { state: "no-confident-record", emplId: record.emplId, employmentDate: null, oathDate: null, reason: "none" } });
   const failed = await verifyOnboardingRecordTask.impl.run({ input: record, ctx: { ...ctx, driver: { ...base, verifyOnboardingRecord: async () => { throw new Error("unavailable"); } } } });
   assert.deepEqual(failed, { state: "check-failed", code: "person-lookup-crm-check-failed", reason: "CRM check failed." });
-  await assert.rejects(verifyOnboardingRecordTask.impl.run({ input: record, ctx: { ...ctx, driver: { ...base, verifyOnboardingRecord: async () => { throw new CrmRecordIdentityDriftError(); } } } }), /subject-mismatch: CRM selected record identity changed/);
+  await assert.rejects(verifyOnboardingRecordTask.impl.run({ input: record, ctx: { ...ctx, driver: { ...base, verifyOnboardingRecord: async () => { throw new CrmRecordIdentityDriftError(); } } } }), /person-lookup-crm-record-identity-drift: CRM selected record identity changed/);
   const changed = { ...record, firstDayOfService: "07/02/2026" };
   assert.deepEqual(await verifyOnboardingRecordTask.impl.run({ input: record, ctx: { ...ctx, driver: { ...base, verifyOnboardingRecord: async () => changed } } }), { state: "checked", records: [changed] });
  });

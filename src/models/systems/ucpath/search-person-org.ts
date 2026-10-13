@@ -64,7 +64,7 @@ export const SearchPersonOrg = defineTaskContract({
   effect: "read",
   input: SearchPersonOrgInputSchema,
   output: SearchPersonOrgOutputSchema,
-  errorCodes: ["person-lookup-ucpath-search-failed", "search-unavailable", "unexpected-page-state"],
+  errorCodes: ["person-lookup-ucpath-search-failed"],
   // Name search resolves identity; it cannot require an already-known EID.
   subject: { kind: "none", reason: "the person search resolves identity rather than confirming it" },
   freshness: {

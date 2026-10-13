@@ -30,10 +30,15 @@ export function resolvePersonLookupIdentity({ input, person, match, crm }: z.out
   const knownEid = input.mode === "search" && "emplId" in input ? input.emplId : eid;
   const exactRecords = knownEid === undefined ? [] : records.filter((record) => record.emplId === knownEid);
   const crmRecord = exactRecords.length === 1 ? exactRecords[0] ?? null : null;
-  const state = candidateEids.length > 1 ? "multiple-matches" : selected !== null || input.mode === "match" && eid !== undefined ? "resolved" : crmRecord !== null ? "crm-only" : "not-found";
-  return { ucpathFound: input.mode === "match" ? (match?.confirmed.length ?? 0) > 0 : (person?.results.length ?? 0) > 0, crmErrorCode: crm?.state === "check-failed" ? crm.code : null, shouldCheckCrm: input.crmCheck && (input.mode === "search" || candidateEids.length === 1), state, selected, crmRecord, candidateEids: candidateEids.length === 0 && crmRecord !== null ? [crmRecord.emplId] : candidateEids,
-    recoveryEid: input.mode === "search" && state === "crm-only" ? crmRecord!.emplId : null,
-    crmState: crm === undefined ? "Not checked" : crm.state === "check-failed" ? "Check failed" : crmRecord === null ? "Not found" : "Found",
+  const unanimous = (field: "name" | "department" | "firstDayOfService"): string | null => {
+    const values = new Set(exactRecords.map(record => record[field]));
+    return values.size === 1 ? [...values][0] ?? null : null;
+  };
+  const crmIdentity = knownEid === undefined || exactRecords.length === 0 ? null : { emplId: knownEid, name: unanimous("name"), department: unanimous("department"), firstDayOfService: unanimous("firstDayOfService") };
+  const state = candidateEids.length > 1 ? "multiple-matches" : selected !== null || input.mode === "match" && eid !== undefined ? "resolved" : crmIdentity !== null ? "crm-only" : "not-found";
+  return { ucpathFound: input.mode === "match" ? (match?.confirmed.length ?? 0) > 0 : (person?.results.length ?? 0) > 0, crmErrorCode: crm?.state === "check-failed" ? crm.code : null, shouldCheckCrm: input.crmCheck && (input.mode === "search" || candidateEids.length === 1), state, selected, crmRecord, crmIdentity, candidateEids: candidateEids.length === 0 && crmIdentity !== null ? [crmIdentity.emplId] : candidateEids,
+    recoveryEid: input.mode === "search" && state === "crm-only" ? crmIdentity!.emplId : null,
+    crmState: crm === undefined ? "Not checked" : crm.state === "check-failed" ? "Check failed" : crmIdentity === null ? "Not found" : "Found",
     method: state === "multiple-matches" ? "multiple-matches" : state === "not-found" ? "no-match" : method };
 }
 
@@ -41,12 +46,13 @@ export function derivePersonLookupOutcome({ input, identity: originalIdentity, v
   const identity = verifiedCrm === undefined ? originalIdentity : {
     ...originalIdentity,
     crmRecord: verifiedCrm.state === "checked" ? verifiedCrm.records[0] ?? null : null,
+    crmIdentity: verifiedCrm.state === "checked" ? verifiedCrm.records[0] ?? null : null,
     crmState: verifiedCrm.state === "check-failed" ? "Check failed" as const : "Found" as const,
     crmErrorCode: verifiedCrm.state === "check-failed" ? verifiedCrm.code : null,
   };
   const selected = recovered?.selection.selected ?? identity.selected;
   if (selected !== null && identity.crmRecord !== null && selected.emplId !== identity.crmRecord.emplId) throw new PersonLookupIdentityError();
-  const crm = identity.crmRecord;
+  const crm = identity.crmIdentity;
   const matched = match?.confirmed.length === 1 ? match.confirmed[0] : undefined;
   let state: ActiveStatusOutcome["state"];
   let reason = ""; let code: string | null = null;
@@ -64,7 +70,7 @@ export function derivePersonLookupOutcome({ input, identity: originalIdentity, v
   const eid = ambiguous ? null : selected?.emplId ?? matched?.emplId ?? crm?.emplId ?? null;
   const name = ambiguous ? null : selected?.name ?? matched?.name ?? crm?.name ?? null;
   const terminated = !ambiguous && selected !== null && (selected.terminationDate !== "" || selected.employeeStatus === "terminated");
-  return { datesEid: input.mode === "search" && input.crmCheck && input.includeCrmDates && !ambiguous ? eid : null, state, reason, code: code ?? identity.crmErrorCode, hdh: selected?.hdh ?? null, candidateEids: identity.candidateEids,
+  return { ucpathSelection: ambiguous ? "ambiguous" : selected !== null || matched !== undefined ? "resolved" : "not-found", datesEid: input.mode === "search" && input.crmCheck && input.includeCrmDates && !ambiguous ? eid : null, state, reason, code: code ?? identity.crmErrorCode, hdh: selected?.hdh ?? null, candidateEids: identity.candidateEids,
     details: { search: personLookupSearchText(input), name, eid, department: ambiguous ? null : selected?.department ?? crm?.department ?? null,
       hrStatus: ambiguous ? null : selected?.hrStatus ?? null, ucpath: selected !== null || identity.ucpathFound ? "Found" : "Not found", crm: identity.crmState,
       startDate: ambiguous || crm?.firstDayOfService === "" ? null : crm?.firstDayOfService ?? null,

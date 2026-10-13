@@ -89,7 +89,7 @@ describe("Person Lookup task implementations", () => {
         input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: observedWrong },
       }),
-      new RegExp(`expected EID ${directIdentifierDisplay("10873698")} but bound ${directIdentifierDisplay("10001573")}`),
+      /CRM dates subject binding is invalid/,
     );
 
     const mismatchedOutputs = createDeterministicCrmOnboardingDriver({
@@ -112,7 +112,16 @@ describe("Person Lookup task implementations", () => {
         input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
-      new RegExp(`returned output for ${directIdentifierDisplay("10001573")}`),
+      /CRM dates subject binding is invalid/,
     );
   })
+  it("admits dates not-read only for an unavailable name with no observed dates", async () => {
+    const base = createDeterministicCrmOnboardingDriver({ record: crmRecord, dates: crmDates });
+    const absent = { emplId: candidate.emplId, state: "no-confident-record" as const, employmentDate: null, oathDate: null, reason: "No confident CRM record" };
+    const driver = { ...base, async readOnboardingDates() { return { binding: { state: "not-read" as const, expectedEid: candidate.emplId }, output: absent }; } };
+    assert.deepEqual(await readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId }, ctx: { ...commonCtx, driver } }), absent);
+    await assert.rejects(readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId, name: candidate.name }, ctx: { ...commonCtx, driver } }), /CRM dates subject binding is invalid/);
+    const populated = { ...driver, async readOnboardingDates() { return { binding: { state: "not-read" as const, expectedEid: candidate.emplId }, output: { ...absent, employmentDate: crmDates.employmentDate } }; } };
+    await assert.rejects(readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId }, ctx: { ...commonCtx, driver: populated } }), /CRM dates subject binding is invalid/);
+  });
 });

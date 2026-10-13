@@ -4,8 +4,9 @@ import { NodeIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { EvidenceLeafPathSchema } from "./evidence-classification.js";
 
 export const EvidenceObligationSourceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("workflow-result"), path: EvidenceLeafPathSchema }),
   z.strictObject({ kind: z.literal("workflow-input"), path: EvidenceLeafPathSchema }),
-  z.strictObject({ kind: z.literal("node-output"), nodeId: NodeIdSchema, path: EvidenceLeafPathSchema }),
+  z.strictObject({ kind: z.literal("node-output"), nodeId: NodeIdSchema, path: z.union([EvidenceLeafPathSchema, z.literal("records.0.emplId")]) }),
 ]);
 export type EvidenceObligationSource = z.infer<typeof EvidenceObligationSourceSchema>;
 
@@ -45,9 +46,8 @@ export const EVIDENCE_OBLIGATIONS: readonly EvidenceObligation[] = Object.freeze
     obligation: "identity.eid-agrees-across-sources",
     mandatory: true,
     sources: [
-      { kind: "workflow-input", path: "emplId" },
-      { kind: "node-output", nodeId: "searching", path: "selection.selected.emplId" },
-      { kind: "node-output", nodeId: "cross-verify", path: "record.emplId" },
+      { kind: "workflow-result", path: "activeStatus.details.eid" },
+      { kind: "node-output", nodeId: "crm-selected-record", path: "records.0.emplId" },
     ],
     summary: "the EID UCPath selected and the EID the CRM record displays are the same person",
   },
@@ -56,7 +56,7 @@ export const EVIDENCE_OBLIGATIONS: readonly EvidenceObligation[] = Object.freeze
     workflowId: "person-lookup",
     obligation: "identity.ucpath-selection-is-unambiguous",
     mandatory: true,
-    sources: [{ kind: "node-output", nodeId: "searching", path: "selection.status" }],
+    sources: [{ kind: "workflow-result", path: "activeStatus.ucpathSelection" }],
     literal: "resolved",
     summary: "UCPath resolved exactly one person; an ambiguous or empty search is not a selection",
   },

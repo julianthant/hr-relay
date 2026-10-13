@@ -55,6 +55,7 @@ export function createDeterministicCrmOnboardingDriver(input: Readonly<{
       };
     },
     async readOnboardingDates(request) {
+      if (request.name === undefined) return { binding: { state: "not-read", expectedEid: request.eid }, output: { emplId: request.eid, state: "no-confident-record", employmentDate: null, oathDate: null, reason: "No confident CRM record" } };
       return {
         binding: CrmSubjectBindingSchema.parse(input.datesBindingState === "absent-query"
           ? {

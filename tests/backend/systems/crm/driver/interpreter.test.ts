@@ -80,6 +80,7 @@ type RecordFixture = Readonly<{
   firstName: string;
   lastName: string;
   firstDayOfService: string;
+  dateSigned?: string;
 }>;
 
 type HistoryFixtureRow = readonly [string, string, string, string, string];
@@ -113,7 +114,7 @@ function recordFieldNodes(record: RecordFixture): readonly FixtureNode[] {
     ["Employee Last Name", record.lastName],
     ["First Day of Service (Effective Date)", record.firstDayOfService],
     ["Department", "Housing"],
-    ["Date Signed", "6/25/2026"],
+    ["Date Signed", record.dateSigned ?? "6/25/2026"],
   ]);
   return [...fields].map(([label, value]) => ({
     text: label,
@@ -284,6 +285,46 @@ describe("CRM onboarding selector-backed driver", () => {
       createCrmOnboardingDriver(page).readOnboardingRecord({ eid: EID, name: "Fixture, Person" }),
       /resolved 2 exact displayed-EID records/,
     );
+  });
+
+  it("restores exact discovery results before capture and refuses changed rows", async () => {
+    const rows = [
+      { fullName: "Fixture, Person", rawStage: "Completed", recordId: "first" },
+      { fullName: "Fixture, Person", rawStage: "Started", recordId: "last" },
+    ];
+    const records = {
+      first: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/1/2026" },
+      last: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" },
+    };
+    const page = fixturePage({ searches: { [EID]: rows }, records });
+    const found = await createCrmOnboardingDriver(page).searchOnboardingRecords({ eid: EID });
+    assert.deepEqual(found.map(record => record.recordId), ["first", "last"]);
+    assert.equal(new URL(page.url()).pathname, "/hr/ONB_SearchOnboardings");
+    assert.equal(new URL(page.url()).searchParams.get("q"), EID);
+    const changing = fixturePage({ searches: { [EID]: rows }, records });
+    const goto = changing.goto.bind(changing);
+    let searches = 0;
+    changing.goto = async (...args) => {
+      if (new URL(args[0]).pathname === "/hr/ONB_SearchOnboardings" && ++searches === 2) rows.pop();
+      return goto(...args);
+    };
+    await assert.rejects(createCrmOnboardingDriver(changing).searchOnboardingRecords({ eid: EID }),
+      /discovery results changed before capture/u);
+  });
+
+  it("validates both nonblank dates at the actual discovery record reader", async () => {
+    for (const invalid of [{ firstDayOfService: "2/30/2026" }, { dateSigned: "2/30/2026" }]) {
+      const page = fixturePage({ searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
+        records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "", ...invalid } },
+      });
+      await assert.rejects(createCrmOnboardingDriver(page).searchOnboardingRecords({ eid: EID }), /not a real calendar date/u);
+    }
+    const blank = fixturePage({ searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
+      records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "", dateSigned: "" } },
+    });
+    const found = await createCrmOnboardingDriver(blank).searchOnboardingRecords({ eid: EID });
+    assert.equal(found[0].firstDayOfService, "");
+    assert.equal(found[0].dateSigned, "");
   });
 
   it("reopens the selected record, refreshes its dates and refuses changed identity", async () => {

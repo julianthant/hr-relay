@@ -47,6 +47,17 @@ export const personLookupWorkflow = defineWorkflow({
   presentation: { title: personLookupTitle, subtitle: () => "Person Lookup" },
   input: PersonLookupInput, intake: personLookupIntake, role: defineWorkflowRole({ kind: "standalone" }),
   scenarios: ["person-lookup/s1", ...Array.from({ length: 15 }, (_, index) => `person-lookup/s${index + 2}`), "person-lookup/m1b", ...Array.from({ length: 5 }, (_, index) => `person-lookup/m${index + 1}`), ...Array.from({ length: 5 }, (_, index) => `person-lookup/f${index + 1}`)],
+  nodePurposes: [
+    { nodeId: "searching", purpose: "Read UCPath Person Org candidates for the submitted employee ID or name." },
+    { nodeId: "matching", purpose: "Match identifying data in UCPath and confirm displayed identities." },
+    { nodeId: "search-identity", purpose: "Resolve the initial UCPath identity without selecting an ambiguous person." },
+    { nodeId: "cross-verify", purpose: "Read exact displayed CRM identities from plausible onboarding records." },
+    { nodeId: "crm-identity", purpose: "Resolve one person from UCPath observations and CRM evidence." },
+    { nodeId: "crm-selected-record", purpose: "Reopen the selected CRM record and verify its current identity and facts." },
+    { nodeId: "crm-only-recovery", purpose: "Read UCPath again for the uniquely identified CRM employee ID." },
+    { nodeId: "active-status", purpose: "Derive employment status and final details from current verified observations." },
+    { nodeId: "crm-dates", purpose: "Read optional employment and oath dates from an exact CRM identity." },
+  ],
   steps: ({ task, result }) => {
     const searching = task({ id: "searching", contract: SearchPersonOrg, label: "Search for person", replay: "checkpoint", when: { kind: "equals", of: { from: "input", path: "mode" }, value: "search" } }, [], ({ input }) => {
       if (input.mode !== "search") throw new Error("Search node requires Search mode");
@@ -56,23 +67,23 @@ export const personLookupWorkflow = defineWorkflow({
       if (input.mode !== "match") throw new Error("Match node requires Match mode");
       return { lastName: input.lastName, firstName: input.firstName, ...(input.dob === undefined ? {} : { dob: input.dob }), ...(input.ssn === undefined ? {} : { ssn: input.ssn }) };
     });
-    const initial = task({ id: "search-identity", contract: ReadResolvedIdentity, replay: "always-rerun" }, [searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching }));
+    const initial = task({ id: "search-identity", contract: ReadResolvedIdentity, label: "Resolve UCPath identity", replay: "always-rerun" }, [searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching }));
     const crossVerify = task({ id: "cross-verify", contract: CrmSearchOnboardingRecords, label: "Cross-check identity", replay: "checkpoint", when: { kind: "is-true", of: { from: "node", nodeId: "search-identity", path: "shouldCheckCrm" } } }, [initial, searching, matching], ({ input, outputs }) => {
       const name = input.mode === "match" ? personLookupTitle(input) : "name" in input ? input.name : outputs.searching?.selection.selected?.name;
       return { ...(name === undefined ? {} : { name }), ...("emplId" in input ? { eid: input.emplId } : input.mode === "match" ? { eid: outputs.matching?.confirmed[0]?.emplId } : {}) };
     });
-    const identity = task({ id: "crm-identity", contract: ReadResolvedIdentity, replay: "always-rerun", when: { kind: "is-true", of: { from: "node", nodeId: "search-identity", path: "shouldCheckCrm" } } }, [initial, crossVerify, searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching, crm: outputs["cross-verify"] }));
+    const identity = task({ id: "crm-identity", contract: ReadResolvedIdentity, label: "Resolve cross-checked identity", replay: "always-rerun", when: { kind: "is-true", of: { from: "node", nodeId: "search-identity", path: "shouldCheckCrm" } } }, [initial, crossVerify, searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching, crm: outputs["cross-verify"] }));
     const selectedRecord = task({ id: "crm-selected-record", contract: CrmVerifyOnboardingRecord, replay: "checkpoint", when: { kind: "is-present", of: { from: "node", nodeId: "crm-identity", path: "crmRecord" } } }, [identity], ({ outputs }) => {
       const record = requireFact(outputs["crm-identity"]?.crmRecord, "crm-identity", "crmRecord"); return record;
     });
     const recovery = task({ id: "crm-only-recovery", contract: SearchPersonOrg, replay: "checkpoint", when: { kind: "is-present", of: { from: "node", nodeId: "crm-identity", path: "recoveryEid" } } }, [identity, selectedRecord], ({ outputs }) => ({ kind: "by-eid" as const, emplId: requireFact(outputs["crm-identity"]?.recoveryEid, "crm-identity", "recoveryEid") }));
     const activeStatus = task({ id: "active-status", contract: ReadActiveStatus, replay: "always-rerun", when: { kind: "equals", of: { from: "input", path: "mode" }, value: "search" } }, [initial, identity, recovery, selectedRecord], ({ input, outputs }) => ({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], verifiedCrm: outputs["crm-selected-record"], recovered: outputs["crm-only-recovery"] }));
-    const crmDates = task({ id: "crm-dates", contract: CrmReadOnboardingDates, replay: "checkpoint", when: { kind: "is-present", of: { from: "node", nodeId: "active-status", path: "datesEid" } } }, [activeStatus], ({ outputs }) => ({ eid: requireFact(outputs["active-status"]?.details.eid, "active-status", "details.eid"), name: requireFact(outputs["active-status"]?.details.name, "active-status", "details.name") }));
+    const crmDates = task({ id: "crm-dates", contract: CrmReadOnboardingDates, replay: "checkpoint", when: { kind: "is-present", of: { from: "node", nodeId: "active-status", path: "datesEid" } } }, [activeStatus], ({ outputs }) => ({ eid: requireFact(outputs["active-status"]?.details.eid, "active-status", "details.eid"), ...(outputs["active-status"]?.details.name == null ? {} : { name: outputs["active-status"].details.name }) }));
     return { steps: [
       [{ key: "searching", label: "Search for person" }, [searching, matching, initial]],
-      [{ key: "cross-verify", label: "Cross-check identity" }, [crossVerify, identity, selectedRecord]],
+      [{ key: "cross-verify", label: "Cross-check identity", selection: { inputField: "crmCheck", selectedWhen: true } }, [crossVerify, identity, selectedRecord]],
       [{ key: "active-status", label: "Read employment status" }, [recovery, activeStatus]],
-      [{ key: "crm-dates", label: "Read CRM dates" }, [crmDates]],
+      [{ key: "crm-dates", label: "Read CRM dates", selection: { inputField: "includeCrmDates", selectedWhen: true } }, [crmDates]],
     ], result: result(PersonLookupResultSchema, [initial, identity, matching, selectedRecord, activeStatus, crmDates], ({ input, outputs }) => ({
       activeStatus: outputs["active-status"] ?? derivePersonLookupOutcome({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], match: outputs.matching, verifiedCrm: outputs["crm-selected-record"] }),
       crmDates: outputs["crm-dates"] === undefined ? { state: "not-requested" as const } : { state: "included" as const, dates: outputs["crm-dates"] },

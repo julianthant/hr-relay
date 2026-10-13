@@ -5,7 +5,7 @@ import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-con
 export const CrmVerifyOnboardingRecord = defineTaskContract({
   id: taskId("crm/verify-onboarding-record"), title: "Verify selected CRM record", effect: "read",
   input: CrmDiscoveredRecordSchema, output: CrmDiscoveryOutputSchema,
-  errorCodes: ["person-lookup-crm-check-failed", "subject-mismatch"],
+  errorCodes: ["person-lookup-crm-check-failed", "person-lookup-crm-record-identity-drift"],
   subject: { kind: "person", expected: { fromInput: ContractFieldPathSchema.parse("emplId"), identity: "eid" }, observe: ObservationIdSchema.parse("crm.onboarding.displayed-eid"), match: "normalized-exact-eid", requiredAt: "before-subject-read" },
   freshness: { defaultMaxAgeMs: 3600000, defaultOverride: "forbidden" }, provenance: { default: "live" },
   scenarios: ["person-lookup/f2"], example: { state: "checked", records: [] },

@@ -251,14 +251,18 @@ async function openAndReadCrmRecord(
   recordBrowserAction("opened", "crm.onboarding.record");
   assertExactCrmLocation(page.url(), CRM_RECORD_PATH, row.recordId);
   const observedEid = EidSchema.parse(await readRecordField(page, "UCPath Employee ID", "reject"));
+  const firstDayOfService = await readRecordField(page, "First Day of Service (Effective Date)", "allow");
+  const dateSigned = await readRecordField(page, "Date Signed", "allow");
+  if (firstDayOfService !== "") parseCrmDateOnly(firstDayOfService, "First Day of Service");
+  if (dateSigned !== "") parseCrmDateOnly(dateSigned, "Date Signed");
   return ExactRecordSchema.parse({
     ...row,
     observedEid,
     firstName: await readRecordField(page, "Employee First Name", "reject"),
     lastName: await readRecordField(page, "Employee Last Name", "reject"),
-    firstDayOfService: await readRecordField(page, "First Day of Service (Effective Date)", "allow"),
+    firstDayOfService,
     department: await readRecordField(page, "Department", "allow"),
-    dateSigned: await readRecordField(page, "Date Signed", "allow"),
+    dateSigned,
   });
 }
 
@@ -423,6 +427,7 @@ async function readOnboardingDates(
   page: Page,
   input: z.output<typeof CrmReadOnboardingDates.input>,
 ): Promise<CrmOnboardingDatesRead> {
+  if (input.name === undefined) return CrmOnboardingDatesReadSchema.parse({ binding: { state: "not-read", expectedEid: input.eid }, output: { emplId: input.eid, state: "no-confident-record", employmentDate: null, oathDate: null, reason: "No confident CRM record" } });
   try {
     const records = new Map<string, ExactCrmOnboardingRecord>();
     for (const query of nameSearchQueries(input.name)) {
@@ -473,6 +478,9 @@ export function createCrmOnboardingDriver(page: Page): CrmOnboardingDriver {
           const record = await openAndReadCrmRecord(page, row);
           if (input.eid === undefined || record.observedEid === input.eid) discovered.set(record.recordId, record);
         }
+        const restoredRows = await searchCrmOnboardingRows(page, query);
+        if (JSON.stringify(restoredRows) !== JSON.stringify(rows)) throw new Error("CRM discovery results changed before capture");
+        recordBrowserAction("read", "crm.onboarding.restored-results", JSON.stringify(restoredRows));
         if (discovered.size > 0) break;
       }
       return [...discovered.values()].map((record) => CrmDiscoveredRecordSchema.parse({

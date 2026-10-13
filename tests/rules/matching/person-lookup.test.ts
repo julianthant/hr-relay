@@ -9,7 +9,7 @@ const other = UcpathCandidateSchema.parse({ ...person, emplId: "10000002", start
 const record = CrmDiscoveredRecordSchema.parse({ recordId: "ONB-1", recordUrl: "https://example.invalid/record", emplId: "10000003", name: person.name, department: person.department, firstDayOfService: "07/08/2026", dateSigned: "" });
 const input = PersonLookupInput.parse({ name: person.name, includeCrmDates: true });
 function resolve(candidates = [person, other], records = [record]) {
- return resolvePersonLookupIdentity({ input, person: SearchPersonOrgOutputSchema.parse({ results: candidates, selection: { status: "ambiguous", selected: null, candidateEids: [...new Set(candidates.map(p => p.emplId))], searchName: person.name } }), crm: { state: "checked", records } });
+ return resolvePersonLookupIdentity({ input, person: SearchPersonOrgOutputSchema.parse({ results: candidates, selection: candidates.length === 0 ? { status: "not-found", selected: null, candidateEids: [], searchName: person.name } : { status: "ambiguous", selected: null, candidateEids: [...new Set(candidates.map(p => p.emplId))], searchName: person.name } }), crm: { state: "checked", records } });
 }
 describe("Person Lookup identity evidence", () => {
  it("resolves inclusive date boundaries without claiming a different CRM EID", () => {
@@ -38,5 +38,16 @@ describe("Person Lookup identity evidence", () => {
   const identity = resolve([person, other], [{ ...record, emplId: person.emplId }, { ...record, recordId: "ONB-2", emplId: other.emplId }]);
   assert.equal(identity.state, "multiple-matches");
   assert.equal(identity.selected, null);
+ });
+ it("separates unique CRM person identity from conflicting form facts", () => {
+  const identity = resolve([], [record, { ...record, recordId: "ONB-2", name: "Different, Person", department: "Different", firstDayOfService: "07/09/2026" }]);
+  assert.equal(identity.state, "crm-only"); assert.equal(identity.crmState, "Found"); assert.equal(identity.recoveryEid, record.emplId);
+  assert.equal(identity.crmRecord, null);
+  assert.deepEqual(identity.crmIdentity, { emplId: record.emplId, name: null, department: null, firstDayOfService: null });
+  const result = derivePersonLookupOutcome({ input, identity });
+  assert.equal(result.details.eid, record.emplId); assert.equal(result.details.name, null); assert.equal(result.details.startDate, null);
+  assert.equal(result.datesEid, record.emplId); assert.equal(result.ucpathSelection, "not-found");
+  const agreed = resolve([], [record, { ...record, recordId: "ONB-2" }]);
+  assert.equal(agreed.crmIdentity?.name, record.name); assert.equal(agreed.crmRecord, null);
  });
 });

@@ -1,3 +1,9 @@
+import { join } from "node:path";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { createDiagnosticCaptureService } from "../../../src/backend/logs/diagnostics/diagnostic-capture.js";
+import { createRunBrowserScreenshotCapture } from "../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
+import { WorkerSessionManager } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
@@ -184,6 +190,15 @@ describe("approved Person Lookup scenarios", () => {
     }
     const terminal = database.authority.runResults.get(queued.envelope.runId); assert.ok(terminal);
     const output = PersonLookupResultSchema.parse(terminal.result.value);
+    const receiptRun = database.authority.runs.get(queued.envelope.runId); assert.ok(receiptRun);
+    const actualReceipt = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor, run: receiptRun, result: terminal,
+      checkpoints: database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId) });
+    const agreement = actualReceipt.verification.find(row => row.obligation === "identity.eid-agrees-across-sources");
+    const selection = actualReceipt.verification.find(row => row.obligation === "identity.ucpath-selection-is-unambiguous");
+    assert.ok(agreement); assert.ok(selection);
+    const verifiedRecord = terminal.dependencies.find(row => row.nodeId === "crm-selected-record")?.state === "resolved";
+    assert.equal(agreement.verdict === "verified", verifiedRecord);
+    assert.equal(selection.verdict === "verified", output.activeStatus.ucpathSelection === "resolved");
     if (input.mode === "match") {
       const run = database.authority.runs.get(queued.envelope.runId); assert.ok(run);
       const receipt = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor, run, result: terminal,
@@ -251,6 +266,58 @@ describe("approved Person Lookup scenarios", () => {
       assert.ok(actions.some((action) => action.targetId === "ucpath.match.result"));
     }
 
+  });
+  it("preserves CRM person identity with conflicting forms and requested dates", async () => {
+    const { harness, queued } = makeCase({ id: "multi-form", state: "crm-only", candidates: [], input: { name: candidate.name, includeCrmDates: true },
+      records: [record, { ...record, recordId: "ONB-2", name: "Different, Person", firstDayOfService: "07/02/2026" }] });
+    const { database, clock } = harness.authority;
+    const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
+    assert.equal((await executeClaimedRun(harness.deps, { ...claimed, signal: world.SIGNAL })).state, "done");
+    const terminal = database.authority.runResults.get(queued.envelope.runId); assert.ok(terminal);
+    const output = PersonLookupResultSchema.parse(terminal.result.value);
+    assert.equal(output.activeStatus.details.crm, "Found"); assert.equal(output.activeStatus.details.eid, candidate.emplId);
+    assert.equal(output.activeStatus.details.name, null); assert.equal(output.activeStatus.details.startDate, null);
+    assert.ok(output.crmDates.state === "included"); assert.equal(output.crmDates.dates.state, "no-confident-record");
+    assert.equal(terminal.dependencies.find(row => row.nodeId === "crm-selected-record")?.state, "not-run");
+  });
+  for (const failed of [false, true]) it(`persists actual ${failed ? "failure" : "success"} lease screenshot artifacts`, async () => {
+    const { harness, queued } = makeCase({ id: "capture", state: failed ? "failed" : "active", ucpathFailure: failed });
+    const { database, clock, stateRoot } = harness.authority;
+    const writer = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(stateRoot, "capture"), join(stateRoot, "capture/artifacts")) });
+    await writer.ready;
+    const service = createDiagnosticCaptureService({ artifacts: writer, authority: database.authority, clock, ids: sequentialIdFactory("d") });
+    const factory = { ...harness.sessions.factory, async open(input: Parameters<typeof harness.sessions.factory.open>[0]) {
+      const resource = await harness.sessions.factory.open(input);
+      return { ...resource, reset: async (options: Parameters<typeof resource.reset>[0]) => {
+        assert.ok(database.authority.diagnosticBundles.listByRun(queued.envelope.runId).length > 0, "capture persists before reset");
+        return resource.reset(options);
+      }, screenshot: async () => ({ pageVersion: 1, sessionId: resource.sessionId, observedAt: clock.now().toISOString(), state: "available" as const, bytes: Buffer.from([137,80,78,71]), width: 1, height: 1 }) };
+    } };
+    const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id, stores: harness.deps.stores,
+      factory, clock, scheduler: harness.scheduler, acquireDeadlineMs: 60000,
+      duoCeremony: (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(clock), browserScreenshotCapture: createRunBrowserScreenshotCapture({ service }) });
+    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint, captureBrowserScreenshots: !failed });
+    const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: !failed } }, clock.now().toISOString());
+    assert.equal((await executeClaimedRun({ ...harness.deps, sessions, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) }, { ...claimed, signal: world.SIGNAL })).state, failed ? "failed" : "done");
+    const actions = database.authority.timelineEvents.page({}).flatMap(event => event.payload.kind === "note" && event.payload.note.action?.kind === "screenshot" ? [event.payload.note.action] : []);
+    assert.ok(actions.length > 0);
+    const timeline = database.authority.timelineEvents.page({});
+    for (const row of timeline) {
+      if (row.payload.kind !== "note" || row.payload.note.action?.kind !== "screenshot") continue;
+      const note = row.payload.note;
+      assert.match(note.spanPath, /\/(searching|cross-verify|crm-selected-record)#1/u);
+      const endIndex = timeline.findIndex(event => event.payload.kind === "span"
+        && event.payload.event.t === "span.ended" && event.payload.event.spanPath === note.spanPath);
+      assert.ok(endIndex > timeline.indexOf(row), "capture note persists before its task ends");
+    }
+    for (const action of actions) {
+      assert.equal(typeof action.value, "string");
+      const association = typeof action.value === "string" ? action.value.split(":") : undefined; assert.equal(association?.length, 2);
+      const bundle = database.authority.diagnosticBundles.get(association?.[0] ?? ""); assert.ok(bundle);
+      assert.equal(bundle.runId, queued.envelope.runId);
+      assert.ok(bundle.attachments.some(row => row.artifactId === association?.[1] && row.kind === "screenshot"));
+    }
+    if (failed) assert.equal(actions.length, 1);
   });
   it("M4", () => {
     assert.throws(() => parsePersonLookupRequest("Example, Person, x, X", { mode: "match" }), /Match requires/);

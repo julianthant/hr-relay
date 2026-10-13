@@ -15,6 +15,8 @@ domain driver contract.
   throws.
 - Selected-record verification reopens its exact URL and record ID, refuses changed displayed EID
   or name, and returns the current record facts. Acquisition failures remain Check failed.
+- Multiple forms with one exact EID prove one person, but only unanimous facts can describe them; a single selected form requires separate confidence.
+- Dates without an available name return an explicit not-read binding and no-confident-record with null dates; no query or displayed identity is claimed.
 - Employment date is `First Day of Service (Effective Date)` and oath date is `Date Signed`.
   History transitions do not supply either date.
 - Blank dates become absence only after the record's displayed EID and the exact page state have

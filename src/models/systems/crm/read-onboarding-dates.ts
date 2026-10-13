@@ -7,6 +7,11 @@ export class PersonLookupCrmDatesCheckError extends Error {
   constructor(cause: unknown) { super("CRM dates check failed.", { cause }); this.name = "PersonLookupCrmDatesCheckError"; }
 }
 
+export class PersonLookupCrmDatesBindingError extends Error {
+  readonly code = "person-lookup-crm-dates-binding-invalid" as const;
+  constructor() { super("CRM dates subject binding is invalid."); this.name = "PersonLookupCrmDatesBindingError"; }
+}
+
 const datesFields = {
   emplId: EidSchema,
   employmentDate: DateOnlySchema.nullable(), oathDate: DateOnlySchema.nullable(),
@@ -23,9 +28,9 @@ export const CrmReadOnboardingDates = defineTaskContract({
   id: taskId("crm/read-onboarding-dates"),
   title: "CRM Dates",
   effect: "read",
-  input: z.strictObject({ eid: EidSchema, name: z.string().min(1) }),
+  input: z.strictObject({ eid: EidSchema, name: z.string().min(1).optional() }),
   output: ReadOnboardingDatesOutputSchema,
-  errorCodes: ["person-lookup-crm-dates-check-failed", "crm-unavailable", "unexpected-page-state", "subject-mismatch"],
+  errorCodes: ["person-lookup-crm-dates-check-failed", "person-lookup-crm-dates-binding-invalid"],
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("eid"), identity: "eid" },

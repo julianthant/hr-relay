@@ -11,6 +11,7 @@ export const ResolvedIdentitySchema = z.strictObject({
   ucpathFound: z.boolean(),
   crmErrorCode: z.string().nullable(),
   state: z.enum(["resolved", "crm-only", "multiple-matches", "not-found"]),
+  crmIdentity: z.strictObject({ emplId: EidSchema, name: z.string().nullable(), department: z.string().nullable(), firstDayOfService: z.string().nullable() }).nullable(),
   selected: UcpathCandidateSchema.nullable(), crmRecord: CrmDiscoveredRecordSchema.nullable(),
   candidateEids: z.array(EidSchema), recoveryEid: EidSchema.nullable(),
   crmState: z.enum(["Found", "Not found", "Not checked", "Check failed"]),
@@ -23,5 +24,5 @@ export const ReadResolvedIdentity = defineTaskContract({
   output: ResolvedIdentitySchema, errorCodes: ["person-lookup-multiple-matches"],
   subject: { kind: "none", reason: "pure resolution of exact system observations" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
-  example: { shouldCheckCrm: false, ucpathFound: false, crmErrorCode: null, state: "not-found", selected: null, crmRecord: null, candidateEids: [], recoveryEid: null, crmState: "Not checked", method: "no-match" },
+  example: { shouldCheckCrm: false, ucpathFound: false, crmErrorCode: null, state: "not-found", crmIdentity: null, selected: null, crmRecord: null, candidateEids: [], recoveryEid: null, crmState: "Not checked", method: "no-match" },
 });

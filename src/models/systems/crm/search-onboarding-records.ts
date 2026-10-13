@@ -22,7 +22,7 @@ export const CrmSearchOnboardingRecords = defineTaskContract({
 });
 
 export class CrmRecordIdentityDriftError extends Error {
-  readonly code = "subject-mismatch";
+  readonly code = "person-lookup-crm-record-identity-drift";
   constructor() { super("CRM selected record identity changed."); this.name = "CrmRecordIdentityDriftError"; }
 }
 

@@ -81,8 +81,9 @@ export const CrmOnboardingRecordReadSchema = z.strictObject({
 });
 export type CrmOnboardingRecordRead = z.infer<typeof CrmOnboardingRecordReadSchema>;
 
+export const CrmDatesBindingSchema = z.union([CrmSubjectBindingSchema, z.strictObject({ state: z.literal("not-read"), expectedEid: EidSchema })]);
 export const CrmOnboardingDatesReadSchema = z.strictObject({
-  binding: CrmSubjectBindingSchema,
+  binding: CrmDatesBindingSchema,
   output: ReadOnboardingDatesOutputSchema,
 });
 export type CrmOnboardingDatesRead = z.infer<typeof CrmOnboardingDatesReadSchema>;
