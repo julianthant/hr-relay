@@ -36,6 +36,19 @@ function shiftActivityDay(value:string,days:number):string {
   return date.toISOString().slice(0,10);
 }
 
+export function visitActivitySummaryRange(database: AuthorityDatabase, from: string, to: string, timeZone: string, visit: (row: SummaryRow) => void) {
+  const reportDayOf = createActivityDatePartReader(timeZone);
+  visitRange(database, shiftActivityDay(from, -2), shiftActivityDay(to, 2), row => {
+    const enqueuedDay = reportDayOf(row.enqueuedAt);
+    const storedDayIsInRange = row.localDay >= from && row.localDay <= to;
+    if (row.localDay !== enqueuedDay) {
+      if (storedDayIsInRange || (enqueuedDay >= from && enqueuedDay <= to)) throw new Error("activity-summary-local-day-time-zone-mismatch");
+      return;
+    }
+    if (storedDayIsInRange) visit(row);
+  });
+}
+
 function bucketForInstant(buckets:readonly {start:string;endExclusive:string}[],instant:number):number {
   let low=0,high=buckets.length;
   while(low<high) {
@@ -60,20 +73,11 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
   return database.withAuthorityReadSnapshot(()=>{
     const start=bounds.from,end=bounds.to;
     const volumeSkeleton=buildActivityVolumeBoundarySkeleton({from:start,to:end},timeZone);
-    const reportDayOf=createActivityDatePartReader(timeZone);
     const volumeCounts=volumeSkeleton.buckets.map(()=>0);
     const volumeStart=Date.parse(volumeSkeleton.interval.start),volumeEnd=Date.parse(volumeSkeleton.interval.endExclusive);
     const inRange:SummaryRow[]=[];
     const identities=new Set<string>();let evidenceRows=0,unavailableRows=0;
-    visitRange(database,shiftActivityDay(start,-2),shiftActivityDay(end,2),row=>{
-      const enqueuedDay=reportDayOf(row.enqueuedAt);
-      const storedDayIsInRange=row.localDay>=start&&row.localDay<=end;
-      const enqueuedDayIsInRange=enqueuedDay>=start&&enqueuedDay<=end;
-      if(row.localDay!==enqueuedDay) {
-        if(storedDayIsInRange||enqueuedDayIsInRange)throw new Error("activity-summary-local-day-time-zone-mismatch");
-        return;
-      }
-      if(!storedDayIsInRange)return;
+    visitActivitySummaryRange(database,start,end,timeZone,row=>{
       if(row.workflow==="separations" && row.shape!=="operation") {
         if(row.person.state==="available"){identities.add(row.person.identity);evidenceRows++;}
         else unavailableRows++;
