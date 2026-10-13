@@ -804,6 +804,8 @@ export async function executeClaimedRun(
         }
         const stored = deps.authority.authority.gateResults.get(`${runId}:${node.id}`);
         if (stored !== undefined) {
+          if (stored.runId !== runId || String(stored.gateId) !== String(node.id) || stored.result.schemaHash !== deriveSchemaHash(node.result, "output")) throw new Error(`gate "${node.id}" stored result binding changed`);
+          outputs[String(node.id)] = JsonValueSchema.parse(node.result.parse(stored.result.value));
           plan.set(String(node.id), { mode: "replay-gate" });
           continue;
         }
@@ -978,6 +980,15 @@ export async function executeClaimedRun(
           ...(initial.sessionId === undefined ? {} : { runSessionId: initial.sessionId }),
         });
       const declaredActionBinder = confirmedInvocation?.binder;
+      const conditionIds = new Set<string>();
+      const gatherCondition = (id: string): void => {
+        const skipped = nodes.find(candidate => String(candidate.id) === id);
+        if ((skipped?.kind !== "task" && !(skipped?.kind === "gate" && skipped.resolvedBy === "operator")) || skipped.when === undefined || skipped.when.of.from !== "node") return;
+        const source = String(skipped.when.of.nodeId);
+        if (!node.dependsOn.some(dependency => String(dependency) === source)) conditionIds.add(source);
+        if (skippedReasons.get(source) === "condition-false") gatherCondition(source);
+      };
+      for (const dependency of node.dependsOn) if (skippedReasons.get(String(dependency)) === "condition-false") gatherCondition(String(dependency));
       const collector = createTaskProvenanceCollector({
         descriptor,
         canonicalInput,
@@ -991,6 +1002,12 @@ export async function executeClaimedRun(
         },
 
         upstreamEvidence: {
+          conditionEvidence: {
+            checkpoints: [...conditionIds].flatMap(id => { const checkpoint = checkpointRecords.get(id); return checkpoint === undefined ? [] : [checkpoint]; }),
+            gateResults: [...conditionIds].flatMap(id => { const gate = gateResultFor(id); return gate === undefined ? [] : [gate]; }),
+            skippedTasks: [...conditionIds].filter(id => skippedReasons.get(id) === "condition-false" && nodes.some(node => String(node.id) === id && node.kind === "task")),
+            skippedGates: [...conditionIds].filter(id => skippedReasons.get(id) === "condition-false" && nodes.some(node => String(node.id) === id && node.kind === "gate")),
+          },
           children: node.dependsOn.flatMap((dependency) => { const child = childUpstreamEvidenceFor(dependency); return child === undefined ? [] : [child]; }),
           checkpoints: node.dependsOn.flatMap((dependency) => {
             if (childResultEvidence.has(String(dependency))) return [];

@@ -102,6 +102,8 @@ export type TaskProvenanceResult = z.infer<typeof TaskProvenanceResultSchema>;
 
 /** Whole authority checkpoints supplied as evidence by the later executor; the collector resolves the expected dependency ids from factory-authenticated descriptor metadata. */
 export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
+  conditionEvidence: z.strictObject({ checkpoints: z.array(RunCheckpointRecordSchema), gateResults: z.array(GateResultRecordSchema),
+    skippedTasks: z.array(NodeIdSchema), skippedGates: z.array(GateIdSchema) }).default({ checkpoints: [], gateResults: [], skippedTasks: [], skippedGates: [] }),
   checkpoints: z.array(RunCheckpointRecordSchema),
   children: z.array(z.strictObject({ nodeId: NodeIdSchema, parentRunId: RunIdSchema, edgeId: DelegationEdgeIdSchema,
     result: RunResultRecordSchema, results: z.array(RunResultRecordSchema).max(16), checkpoints: z.array(RunCheckpointRecordSchema).max(256) })).max(16).optional(),

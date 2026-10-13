@@ -83,6 +83,7 @@ const gateResumeFlow = flow(GateInput)
 
   .step("after-approval", CrmReadOnboardingRecord, {
     dependsOn: ["searching", "approval"],
+    when: { kind: "is-present", of: { from: "node", nodeId: "approval", path: "approved" } },
     replay: "checkpoint",
     bind: ({ outputs }) => {
       const selected = outputs.searching.selection.selected;
@@ -96,7 +97,7 @@ const gateResumeFlow = flow(GateInput)
     dependsOn: ["live-status", "after-approval"],
     derive: ({ outputs }) => ({
       hdh: outputs["live-status"].state === "active",
-      reReadState: outputs["after-approval"].state,
+      reReadState: outputs["after-approval"]?.state ?? "not-run",
     }),
   });
 
