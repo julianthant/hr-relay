@@ -172,11 +172,13 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const request = z.strictObject({ workerStreamIds: z.array(z.string().min(1)).max(200), before: z.number().int().positive() }).parse(input);
       if (request.workerStreamIds.length === 0) return [];
       return ports.read(() => {
-        const rows = prepare(`SELECT * FROM timeline_events WHERE cursor IN (
-          SELECT max(cursor) FROM timeline_events WHERE cursor<?
-          AND json_extract(payload_json,'$.payload.note.confirmedAction.workerStreamId') IN (${request.workerStreamIds.map(() => "?").join(",")})
-          GROUP BY json_extract(payload_json,'$.payload.note.confirmedAction.workerStreamId'))`)
-          .all(request.before, ...request.workerStreamIds);
+        const statement = prepare(`SELECT * FROM timeline_events
+          WHERE json_extract(payload_json,'$.payload.note.confirmedAction.workerStreamId')=? AND cursor<?
+          ORDER BY cursor DESC LIMIT 1`);
+        const rows = [...new Set(request.workerStreamIds)].flatMap(stream => {
+          const row = statement.get(stream, request.before);
+          return row === undefined ? [] : [row];
+        });
         return Object.freeze(rows.map(timelineEventFromRow));
       });
     },

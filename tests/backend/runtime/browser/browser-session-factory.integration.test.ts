@@ -75,7 +75,9 @@ describe("worker browser session factory", () => {
         ...fakeLauncher(),
         launcher: {launch: () => { launches += 1; return Promise.reject(new Error("uncertain launch failure")); }},
       }, recordingBindings());
-      await assert.rejects(factory.open(OPEN_INPUT), /uncertain launch failure/u);
+      await assert.rejects(factory.open(OPEN_INPUT), error => error instanceof AggregateError
+        && error.cause instanceof Error && /uncertain launch failure/u.test(error.cause.message)
+        && error.errors.includes(error.cause) && /closure is unproved/u.test(error.message));
       await assert.rejects(factory.open(OPEN_INPUT), ProfileCustodyUnavailableError);
       assert.equal(launches, 1);
     });

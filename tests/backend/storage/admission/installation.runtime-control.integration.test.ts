@@ -9,6 +9,7 @@ import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../../
 import { acquireInstallation, inspectPendingRelocationRecovery, inspectPendingRelocationStatus, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair } from "../../../../src/backend/storage/admission/installation.js";
 import { createStorageRelocationPlanReader, projectStorageRelocationPlanHistory } from "../../../../src/backend/storage/maintenance/storage-relocation-plans.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest, storageRelocationRequestFingerprint } from "../../../../src/rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -137,7 +138,7 @@ it("binds destination and retained source capabilities to one live relocation op
   operation.recordActivationIntent(() => activationIntent);
   expect(() => operation.recordActivationIntent(() => ({ ...activationIntent,
     managedInventoryDigest: "f".repeat(64) }))).toThrow(/activation intent changed/u);
-  expect(preparation).toMatchObject({ sourceSchemaVersion: 1, backupManifestSha256: "1".repeat(64),
+  expect(preparation).toMatchObject({ sourceSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, backupManifestSha256: "1".repeat(64),
     backupFileSha256: "2".repeat(64) });
   if (preparation === undefined) throw new Error("preparation missing");
   operation.recordVerifiedPreparation(() => preparation);

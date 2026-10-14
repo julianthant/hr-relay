@@ -18,7 +18,7 @@ import { resolutionApp, resolutionFixture } from "../../../support/helpers/failu
 const AT = new Date("2026-10-10T12:00:00.000Z");
 function fixture(path = ":memory:") {
   const database = new DatabaseSync(path);
-  for (const statement of SQLITE_MIGRATIONS[0].statements) database.exec(statement);
+  for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
   const repository = createTimelineRepository({ database, read: read => read(), assertOwner: () => {},
     mutate: work => { const nested = database.isTransaction; database.exec(nested ? "SAVEPOINT logging_fixture" : "BEGIN IMMEDIATE"); try { const result = work(); database.exec(nested ? "RELEASE logging_fixture" : "COMMIT"); return result.result; } catch (error) { database.exec(nested ? "ROLLBACK TO logging_fixture; RELEASE logging_fixture" : "ROLLBACK"); throw error; } } });
   return { database, repository };

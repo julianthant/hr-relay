@@ -2,7 +2,7 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 1;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 2;
 
 export function isCurrentAuthoritySchemaVersion(version: number): boolean {
   return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
@@ -667,6 +667,7 @@ CREATE TRIGGER run_requests_consume_once
         BEGIN
           SELECT RAISE(ABORT,'run-requests-consume-once');
         END;`] },
+  { version: 2, statements: ["CREATE INDEX timeline_confirmed_action_head_idx ON timeline_events(json_extract(payload_json,'$.payload.note.confirmedAction.workerStreamId'),cursor)"] },
 ]);
 
 export function auditMigrationTableCoverage(): readonly string[] {

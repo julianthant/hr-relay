@@ -3,16 +3,18 @@ import { existsSync,readFileSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe,it } from "vitest";
 import { credentialTrap,storageRecoveryFixture,storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,upgradeStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
 describe("current stopped authority initialization", () => {
-  it.each([2, 29, 31, 38, 46, 47, 48, 49, 56])("refuses noncurrent schema %s before credentials or rewriting bytes", async version => {
+  it.each([3, 29, 31, 38, 46, 47, 48, 49, 56])("refuses noncurrent schema %s before credentials or rewriting bytes", async version => {
     const f = storageRecoveryFixture(version);
     try {
       credentialTrap(f.root);
       writeFileSync(f.input.environmentFile, "malformed obsolete environment");
       const before = storageTree(f.root);
-      for (const plan of [true, false]) await assert.rejects(f.run(plan), /normal-authority-schema-mismatch/u);
+      for (const plan of [true, false]) await assert.rejects(f.run(plan), error => error instanceof AuthoritySchemaVersionError
+        && error.code === "authority-schema-mismatch" && error.schemaVersion === version);
       assert.deepEqual(storageTree(f.root), before);
       assert.equal(existsSync(f.input.processLockRoot), false);
     } finally { f.dispose(); }
@@ -27,7 +29,7 @@ describe("current stopped authority initialization", () => {
       assert.equal((await f.run(true)).state, "planned");
       assert.deepEqual(storageTree(f.root), before);
       assert.equal((await f.run()).state, "initialized");
-      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 1);
+      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 2);
       const initialized = storageTree(f.root);
       assert.equal((await f.run()).state, "already-upgraded");
       const repeated = storageTree(f.root);

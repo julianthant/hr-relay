@@ -20,7 +20,7 @@ import { WorkerSessionManager, WorkerSessionClosureUnprovedError } from "../../.
 
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGate, fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 
@@ -41,6 +41,38 @@ const { fakeLauncher, recordingBindings, withTempRuntime, factoryFor } =
 const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
 
 describe("worker browser session factory", () => {
+
+  it("retains custody after the real factory launcher rejects without a context", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const cause = new Error("uncertain launch failure");
+      let launches = 0;
+      const factory = factoryFor(config, {
+        ...fakeLauncher(),
+        launcher: { launch: async () => { launches += 1; throw cause; } },
+      }, recordingBindings());
+      const manager = new WorkerSessionManager({
+        workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry, factory,
+        clock: CLOCK, scheduler: new ManualScheduler(CLOCK),
+        acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: fixtureDuoCeremonyGates(CLOCK),
+      });
+      manager.bindRunConfigFingerprint(FINGERPRINT);
+      const acquire = () => manager.withDriver(
+        { system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
+        new AbortController().signal, async () => assert.fail("unlaunched context cannot run"),
+      );
+      await assert.rejects(acquire(), error => error instanceof AggregateError
+        && error.cause === cause && error.errors.includes(cause) && /closure is unproved/.test(error.message));
+      await assert.rejects(manager.closeAll("worker-stop"), WorkerSessionClosureUnprovedError);
+      await assert.rejects(manager.closeAll("worker-stop"), WorkerSessionClosureUnprovedError);
+      await assert.rejects(acquire());
+      await assert.rejects(factory.open({
+        workerId: WORKER_ID, workflowId: WORKFLOW_ID, system: "ucpath", instance: "prod",
+        configFingerprint: FINGERPRINT, acceptDownloads: false, exclusive: false,
+        signal: new AbortController().signal, duoCeremony: fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK),
+      }));
+      assert.equal(launches, 1, "uncertain profile stays reserved");
+    });
+  });
 
   it("poisons the manager's ownership when a failed setup cannot prove closure", async () => {
     await withTempRuntime(async ({ config }) => {

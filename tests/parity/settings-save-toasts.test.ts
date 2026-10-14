@@ -140,7 +140,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await shortcut.press("g"); await page.getByRole("button", { name: "Save shortcut", exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Edit shortcut" })).toHaveCount(0);
       await expect(toasts.filter({ hasText: "Saved Search runs shortcut" })).toBeVisible();
-      const storedShortcuts = await page.evaluate(() => localStorage.getItem("hr-gpt-shortcuts-v1"));
+      const storedShortcuts = await page.evaluate(() => localStorage.getItem("hr-gpt-shortcuts-v2"));
       expect(validateShortcutPreferences(JSON.parse(storedShortcuts ?? "null") as unknown).bindings.search).toEqual(["g"]);
       await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
       await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);

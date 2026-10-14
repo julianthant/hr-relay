@@ -233,12 +233,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const admission = installationAdmission(repoRoot);
     const artifactBefore = statSync(artifactRoot);
     const newer = new DatabaseSync(path);
-    newer.exec("PRAGMA user_version=2");
+    newer.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
     newer.close();
     const before = readFileSync(path);
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 2);
+      assert.equal(Reflect.get(raw.prepare("PRAGMA user_version").get() ?? {}, "user_version"), CURRENT_AUTHORITY_SCHEMA_VERSION + 1);
       assert.notEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name = 'database_upgrades'").get(), undefined);
     } finally {
       raw.close();
@@ -259,7 +259,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await assert.rejects(composeCurrentBuild({ admission,
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), new RegExp(`authority schema 2 does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`, "u"));
+        }), new RegExp(`authority schema ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`, "u"));
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))

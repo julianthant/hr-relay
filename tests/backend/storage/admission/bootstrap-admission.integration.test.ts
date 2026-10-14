@@ -17,6 +17,7 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { AdmissionMutexBusyError, recoverAbandonedAdmissionMutex } from "../../../../src/backend/storage/admission/installation.js";
 import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import * as locks_m1 from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import * as processLocks_m4 from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
@@ -344,7 +345,7 @@ try {
   assert.equal(existsSync(journalPath), false);
   const admission = acquireEntrypointAdmission(root, "shared");
   try { const db = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "native-crash-reopen" });
-    try { assert.equal(db.getMeta().schemaVersion, 1); } finally { db.close(); }
+    try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
   } finally { admission.release(); }
 
 } finally {
@@ -364,7 +365,7 @@ it.each(["wrong","newer","unsupported"] as const)("%s authority refuses read-onl
   const f=runtimeFixture(["dashboard.serve"]);
   try {
     const database=new DatabaseSync(f.databasePath);
-    try {if(kind==="wrong")database.exec("DROP TABLE runs");else {const version=kind==="newer"?999:2;database.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}}
+    try {if(kind==="wrong")database.exec("DROP TABLE runs");else {const version=kind==="newer"?999:1;database.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}}
     finally {database.close();}
     const before=readFileSync(f.databasePath);const report=await doctorAuthorityStorage(f.doctorOptions,f.clock);
     assert.equal(report.authority.state,"degraded");if(report.authority.state!=="degraded")throw new Error("unhealthy authority passed");

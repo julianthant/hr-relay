@@ -58,7 +58,7 @@ try {
     assert.equal(report.state, "verified");
     assert.equal(report.manifests.length, 1);
     const manifest = report.manifests[0]; assert.ok(manifest);
-    assert.equal(manifest.schemaVersion, 1);
+    assert.equal(manifest.schemaVersion, 2);
     assert.equal(manifest.authorityGeneration, source.authorityGeneration);
     assert.equal(manifest.authorityContentFingerprint, source.authorityContentFingerprint);
     const verified = await verifyBackupManifestAtPath(f.admission,

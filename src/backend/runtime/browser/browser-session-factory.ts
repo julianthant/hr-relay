@@ -230,15 +230,20 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     if (resetRequired) deleteOwnedBrowserProfile(config.paths.browserProfileRoot, profileDirectory);
     assertDuoAutopilotReady(config);
     profileReservations.add(profileDirectory);
-    mkdirSync(dirname(profileDirectory), { recursive: true, mode: 0o700 });
-    const context = await this.#launcher.launch({
-      profileDirectory,
-      headless: browserMode === "headless",
-      extensionDirectory: config.paths.duoExtensionDir,
-      acceptDownloads: input.acceptDownloads,
-      downloadsPath: config.paths.downloadsDir,
-      viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
-    });
+    let context: BrowserContext;
+    try {
+      mkdirSync(dirname(profileDirectory), { recursive: true, mode: 0o700 });
+      context = await this.#launcher.launch({
+        profileDirectory,
+        headless: browserMode === "headless",
+        extensionDirectory: config.paths.duoExtensionDir,
+        acceptDownloads: input.acceptDownloads,
+        downloadsPath: config.paths.downloadsDir,
+        viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
+      });
+    } catch (error) {
+      throw new AggregateError([error], `${system} browser launch failed and its closure is unproved`, { cause: error });
+    }
 
     const lifecycle = observeContextLifecycle(context);
     try {

@@ -68,7 +68,7 @@ describe("native SQLite authority schema", () => {
     const newer = new DatabaseSync(newerPath);
     newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
     newer.close();
-    assert.throws(() => openDatabase(newerPath), /authority schema 2 does not match supported 1/);
+    assert.throws(() => openDatabase(newerPath), /authority schema 3 does not match supported 2/);
 
     const malformedPath = databasePath("malformed.sqlite");
     openDatabase(malformedPath).close();

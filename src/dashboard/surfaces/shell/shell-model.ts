@@ -89,8 +89,7 @@ export function workflowStatusCounts(
 }
 
 
-/** ACTIVE — queued, running and cancelling, the union of "accepted, not finished".
- * Ported from `railEntryCounts` / `attentionAcrossWorkflows` */
+/** ACTIVE — queued, running and cancelling, the union of "accepted, not finished". */
 export function activeCount(counts: readonly StatusCountWire[]): number {
   return statusCount(counts, "queued") + statusCount(counts, "running") + statusCount(counts, "cancelling");
 }
@@ -110,7 +109,6 @@ export function totalCount(counts: readonly StatusCountWire[]): number {
 
 /** ── the toolbar control shape ───────────────────────────────────────────── */
 
-/** Ported from DemoBulkBar's `toolbarControl` (legacy hr-automation@793abe1f DemoBulkBar.tsx). */
 export const toolbarControl = (): string =>
   cn(
     "inline-flex shrink-0 cursor-pointer items-center border",

@@ -15,11 +15,10 @@ evidence. Active checked-in migration/provenance inputs live under
 `docs/rebuild/migrations/legacy/`; canonical field inventory and pending implementation bindings
 now live under `src/models/fields/` and `src/backend/app/registries/`.
 
-The operator retired the `tests/scenario/` and `tests/parity/` suites on 2026-10-02. Their commands,
-layouts and acceptance descriptions below are historical. Do not restore those suites; any future
-scenario or visual-test design requires a separate operator-led task. Workflow scenario IDs remain
-declaration data, not test evidence. The current suite map is
-`docs/rebuild/reference/codebase-structure.md`.
+`tests/parity/` is the active desktop visual contract; run `npm run test:parity` for visual changes.
+There is no current `tests/scenario/` rehearsal corpus. An absent `dry-run.scenario.ts` manifest
+reports unavailable before execution. Workflow scenario IDs are declarations, not test evidence.
+See [guards and tests](../../../docs/rebuild/reference/guards-and-tests.md) for the current suite map.
 
 ## Before you start
 
@@ -117,51 +116,31 @@ isolation" below for what still MUST differ from the legacy checkout.
 
 ## Operational isolation
 
-A repository boundary does not separate two runtimes on **one machine**. `config/runtime-isolation.json`
-pins what must differ, and `operational-isolation.test.ts` proves it:
+`config/runtime-isolation.json` declares Relay's checkout-relative default roots, ports, and browser
+session namespace. `rebuildRuntimeIsolation` supplies these values to the runtime.
 
-|                           | legacy                                           | rebuild                                                      |
-| ------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
-| state root                | `.tracker`                                       | `.tracker`                                           |
-| artifact root             | `.tracker`                                       | `.tracker/artifacts`                                 |
-| backend / frontend port   | 3838 / 5173                                      | 3938 / 5174                                                  |
-| process locks             | `.tracker/daemons`                               | `.tracker/locks`                                     |
-| browser profile / session | `.auth` / `hrauto-legacy`                        | `.auth` / `hrauto-rebuild` (D216 — roots are repo-relative and never collide; the SESSION namespace is the distinct half) |
-| launch commands           | `dashboard`, `dashboard:prod`, `dashboard:watch` | `dashboard`, `dashboard:prod`, `cli` (D247 — names may coincide; each must be byte-exactly its declared script) |
+| Resource | Rebuild default |
+| --- | --- |
+| State root | `.tracker/data` |
+| Artifact root | `.tracker/data/artifacts` |
+| Backend and frontend ports | `3938` and `5174` |
+| Process-lock root | `.tracker/data/locks` |
+| Browser profile root | `.tracker/data/browsers` |
+| Browser session namespace | `hrauto-rebuild` |
 
-Command NAMES are not an isolation resource (D247): a muscle-memory `npm run dashboard` in the wrong
-checkout starts that checkout's dashboard on its own port under its own roots and locks, which the
-rows above make legible and harmless. The state root NAME is not one either (D321, 2026-09-03): both
-repos use `.tracker`, a repo-relative root that never collides across checkouts, exactly as D216
-argued for `.auth`; the artifact root, lock root, ports and session namespace still differ. The
-as-built settings authority (`settings.json` + its `.authority.json` / `.prepare.json` / `.rollback.json` /
-lock siblings) lives INSIDE the state root since D321, beside the database whose command journal
-proves it, so deleting `.tracker` removes both halves together and the next `npm run dashboard`
-regenerates the root, a fresh migrated database and the never-applied revision-1 settings baseline.
-A settings file that outlives its database refuses by name ("no durable command journal") — that is
-the fail-loud rule working; never reset it by discarding one half silently. The state root holds only
-what the runtime writes on demand; an authority backup exists only after `npm run cli -- storage
-backup` (D322 — no start/interval/drain cadence, no stale-backup alert). Isolation values reach the runtime through one
-exported direct-`const` `defineRuntimeIsolation` call that `src/cli.ts` consumes in the declared
-exported `runCli` runner. The secure environment bootstrap is that runner's sole production invoker;
-an identifier mention, another function, or direct module execution is not proof.
+These paths are defaults. The installation locator selects the active state and artifact roots;
+process locks remain at the fixed checkout location. An established installation with a missing or
+malformed locator refuses instead of selecting a fallback root. `installation.ts` stores checkout
+control under `.tracker/control`.
 
-D327 plans the replacement without claiming it built, and 0.3 designed it (closed 2026-09-04) as three
-contracts 1.6 implements EXACTLY, without redesign: **D330** the run-record lifecycle service (ref
-dashboard-surfaces : identity tuple, three-way existence, the seven-state machine,
-`version` CAS + `claimGeneration` fence, one total queue order, D308 delete behind the tombstone, the
-adapter boundary and its guard), **D331** the settings catalog and protected `.tracker/settings/` root
-(ref clock-config-secrets : the closed 88-row catalog, five source classes, two CAS
-arms, write-only protected values, `settings > default` with the environment gone as a resolver input),
-and **D332** the one stopped-system `cli storage upgrade` with its preflight, journal, rollback, boot
-matrix and adapter roster A0–A8 (ref dashboard-surfaces  D332, its settings half in
-clock-config-secrets, the deletion tests in ref guards-and-tests). Until 1.6 lands, the
-as-built authorities described above stay in force. Doc 01 §1.6 binds each 1.6 task to one seam, gate,
-integration order and deletion test; 2.6 revalidates downstream consumers, and 3.1 finishes the
-dashboard. Provider API keys remain the sole `.env.providers` class; credentials and local canary inputs move
-under the protected settings root; D324's host display stays a derived default. The D321
-state-root/journal coupling, D308 terminal-only delete/tombstone semantics, and D322 explicit-only
-backup rule remain binding.
+SQLite owns ordinary settings and immutable snapshots; keep them with their native database
+authority. A missing or incompatible existing database refuses startup; never discard one half to
+hide a mismatch. The independent local credential store owns protected values. Only an explicit
+`npm run cli -- storage backup` writes an authority backup; ordinary shutdown does not.
+Run deletion requires terminal records and their `deleted_runs` tombstones. Read [clock,
+configuration, and secrets](../../../docs/rebuild/reference/clock-config-secrets.md), [workflow
+model](../../../docs/rebuild/reference/workflow-model.md), and [guards and
+tests](../../../docs/rebuild/reference/guards-and-tests.md) for the owning contracts.
 
 ## Live verification — standing pre-authorization (always available, never ask)
 
@@ -189,8 +168,8 @@ playwright-cli -s=sel close
 
 **Auth-gated pages (UCPath/PeopleSoft, CRM, Kuali, ServiceNow, I-9) — use Duo Autopilot.** The
 `duo-autopilot/` extension answers the Duo MFA WebAuthn ceremony itself, so an auth-gated login runs
-unattended. You still fill the SSO username/password from `.env`
-(`UCPATH_USER_ID` / `UCPATH_PASSWORD`). It needs Playwright's **full** bundled Chromium
+unattended. UCPath SSO credentials are protected Settings values read from the local credential
+store through the registered secret source; do not source them from `.env`. It needs Playwright's **full** bundled Chromium
 (`channel: chromium`) — the lightweight headless shell cannot load extensions. See
 `duo-autopilot/README.md`. The one thing it cannot do unattended is a brand-new credential
 enrollment.
@@ -203,36 +182,20 @@ for porting provenance; never restore a live legacy dependency (D93/D150).
 
 ## Environment
 
-`.env.providers` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
-`install -m 600 .env.example .env.providers`, then fill only supported provider pool cells.
-Keep an existing `.env` intact as operator reference; normal startup never opens it or falls back to it
-(D343). Never overwrite an existing runtime file as setup. CLI and D300 document-number smoke startup
-go through `scripts/dev/secure-env-bootstrap.ts`: normal runtime startup refuses migrated environment
-names, opens the fixed provider-only path without following symlinks, validates that descriptor,
-and admits its exact bytes before importing the allowlisted entrypoint. Storage commands bypass
-runtime environment admission so stopped upgrade can inspect historical sources without changing
-them. Ordinary settings come only from SQLite; `src/backend/app/config/resolve.ts` combines those
-values with defaults. Protected settings come from the independent credential store through the
-registered secret reader. Provider credentials remain environment-owned. The `display` default is the host's
-primary display (D324): `src/backend/app/host/primary-display.ts` probes it once per process tree,
-`hostAwareResolutionEnvironment` in `src/models/config/secrets.ts` publishes it as
-`HRAUTO_HOST_PRIMARY_DISPLAY` for every child process, and 2560×1440 remains only the headless
-fallback — never re-probe in a child, never guess on an unrecognized OS answer;
-`src/models/config/secrets.ts` is the **only** module permitted to read a credential from `process.env`
-(`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
-message — `no-secret-values-in-logs.test.ts` enforces that half. D361 permits complete
-classified local values already supplied to an authorized capture or presentation boundary;
-credential discovery/access and D346 provider/OS egress remain separately closed.
+Keep an existing `.env` intact; startup does not load environment files. `src/backend/app/bootstrap/secure-env-bootstrap.ts`
+accepts only `cli` and `test-target-document-number`. Normal runtime commands check migrated parent
+environment names after admission; `storage` and `test-data` commands skip that check.
 
-Dry-run subjects resolve by label through the typed registry; workflow/kind must match the manifest.
-Unavailable/consumed/unknown subjects and declared-pending leaves block before private reads or a
-browser; malformed available subjects fail by label/date. Subjects and shared data live in
-`config/test-data.json`; private identifiers/paths live only in ignored `config/test-data.local.json`,
-read through `src/backend/app/registries/test-data.ts` and the private reader
-`src/backend/storage/configuration/test-data-local.ts` (D341). `npm run cli -- test-data check
---json` reports names/states only. Read `ref guards-and-tests`  and `ref clock-config-secrets`
- for the detour's acceptance evidence. Never source a
-canary from `.env`, expose its value, silently substitute another target, or infer current availability.
+`hostAwareResolutionEnvironment` publishes the probed display as `HRAUTO_HOST_PRIMARY_DISPLAY`.
+Workers receive that value and allowlisted OS process keys; they read operational credentials from
+the local credential store. Never log secret values.
+
+The typed subject registry checks availability before private input reads or browser composition.
+Unknown, unavailable, consumed, or pending subjects block execution; an available subject with bad
+input fails. Never use application settings, credentials, or environment files as test-input
+fallbacks. Do not expose a canary, substitute another target, or infer current availability. Read
+[clock, configuration, and secrets](../../../docs/rebuild/reference/clock-config-secrets.md) and
+[guards and tests](../../../docs/rebuild/reference/guards-and-tests.md) for the owning rules.
 
 ## Coding conventions
 
@@ -244,8 +207,9 @@ canary from `.env`, expose its value, silently substitute another target, or inf
   `task-registry.ts` and `tasks/`, but no arbitrary descriptor/module/node files beside the entry.
   A step folder exists only when it carries a harness (`job-summary` has none). There is no
   `src/workflows/proving/`.
-- Workflow scenario suites and their T1 proof convention were retired on 2026-10-02. Do not rely on
-  old structural-scenario or parity files as current evidence. Future scenario tests must be designed
+- Workflow scenario suites and their T1 proof convention were retired on 2026-10-02; there is no
+  current scenario corpus. `tests/parity/` remains the active desktop visual contract. Old
+  structural-scenario files are not current rehearsal evidence. Future scenario tests must be designed
   with the operator; a declared workflow scenario ID alone proves no execution.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;

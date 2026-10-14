@@ -1,14 +1,15 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
-import { recordSmokeSlot, retireOwnedSmokeSlots, SmokeSlotOwnershipUnavailableError, createSmokeProfileAdmission, closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker } from "../../../scripts/verify/browser-login.js";
+import { recordSmokeSlot, retireOwnedSmokeSlots, SmokeSlotOwnershipUnavailableError, SmokeSessionClosureError, createSmokeProfileAdmission, closeSmokeSessions, smokeErrorDiagnostic, withSmokeWorker } from "../../../scripts/verify/browser-login.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
-import { WorkerSessionManager, SessionAcquisitionTimeoutError } from "../../../src/backend/runtime/workers/worker-sessions.js";
+import { WorkerSessionManager, WorkerSessionClosureUnprovedError, SessionAcquisitionTimeoutError } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { acquireRuntimeProcessLock, RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, writeLiveSmokeRuntimeFileExclusive } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { deleteOwnedBrowserProfile, PlaywrightWorkerSessionFactory, workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
 import { WorkerSlotRecordSchema } from "../../../src/models/run/worker-slot.js";
@@ -264,7 +265,7 @@ describe("registered browser-login smoke lifecycle", () => {
       const profileRoot = join(stateRoot, "scratch", "live-smoke", profileRunId, "browsers");
       const failure = new Error("fixture uncertain launcher rejection");
       try {
-        await expect(withSmokeWorker(database, async (slot, ownedGates) => {
+        await assert.rejects(withSmokeWorker(database, async (slot, ownedGates) => {
           const record = recordSmokeSlot({ processLockRoot, slot, profileRunId, system: "ucpath", credentialKey });
           const factory = new PlaywrightWorkerSessionFactory({ config: { ...config,
             paths: { ...config.paths, browserProfileRoot: profileRoot } },
@@ -286,7 +287,17 @@ describe("registered browser-login smoke lifecycle", () => {
           catch (error) { errors.push(error); }
           await closeSmokeSessions(manager, () => { deleteOwnedBrowserProfile(profileRoot, join(profileRoot, `w${slot.ordinal}`)); },
             errors, () => { record.proveClosure(clock); });
-        }, clock)).rejects.toMatchObject({ name: "SmokeSessionClosureError", errors: [failure, { name: "ProfileCustodyUnavailableError" }] });
+        }, clock), error => {
+          assert.ok(error instanceof SmokeSessionClosureError);
+          assert.equal(error.errors.length, 2);
+          const launch: unknown = error.errors[0], closure: unknown = error.errors[1];
+          assert.ok(launch instanceof AggregateError);
+          assert.equal(launch.cause, failure);
+          assert.deepEqual(launch.errors, [failure]);
+          assert.ok(closure instanceof WorkerSessionClosureUnprovedError);
+          assert.deepEqual(closure.errors, [launch]);
+          return true;
+        });
         lock.release();
         expect(existsSync(join(processLockRoot, "live-smoke-slots", "live-smoke-claims", `${lock.acquisitionId}.closed.json`))).toBe(false);
         expect(() => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot, clock,

@@ -14,6 +14,8 @@ import { describe } from "vitest";
 import { it } from "vitest";
 import { z } from "zod";
 import { TimelineAppendSchema } from "../../../src/models/events/timeline.js";
+import { AuthoritySchemaVersionError } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { insertMeasuredSearchRun } from "../../support/helpers/backend/cross-date-search-harness.js";
 import { foundationFixture } from "../../support/helpers/database-foundation/fixtures.js";
@@ -157,13 +159,14 @@ afterEach(_afterEachFixture0);
       finally { reopened.close(); }
     } finally { f.dispose(); }
   });
-  it.each([2, 29, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
+  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, 29, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
     const f = fresh(); await f.run();
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`); }
     finally { raw.close(); }
     const before = storageTree(f.root);
-    for (const plan of [true, false]) await assert.rejects(f.run(plan), /authority-schema-mismatch/u);
+    for (const plan of [true, false]) await assert.rejects(f.run(plan), error =>
+      error instanceof AuthoritySchemaVersionError && error.code === "authority-schema-mismatch" && error.schemaVersion === version);
     assert.deepEqual(storageTree(f.root), before);
   });
   it("refuses a missing selected snapshot before healthy open or upgrade with all bytes unchanged", async () => {

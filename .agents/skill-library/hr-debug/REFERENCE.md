@@ -65,10 +65,14 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.
 
 ## 8 · Visual and scenario-test evidence
-The operator retired the parity and scenario test suites on 2026-10-02. Old visual receipts are
-historical, not current acceptance. Future visual or scenario proof requires operator-led test
-design; do not restore the suites or imply an active screenshot lane. A green accessibility tree
-does not establish visual acceptance (D187).
+`npm run test:parity` is the active desktop visual contract. Read [guards and tests](../../../docs/rebuild/reference/guards-and-tests.md)
+for its runner and evidence requirements, and [dashboard parity](../../../src/dashboard/PARITY.md)
+for scene rules. Old visual receipts are historical; a green accessibility tree does not establish
+current visual acceptance (D187).
+
+There is no current `tests/scenario/` rehearsal corpus. An absent `dry-run.scenario.ts` manifest
+reports unavailable before execution. Scenario declarations and role-derived paths do not prove
+that a rehearsal ran. Scenario-test design remains operator-led.
 
 ## 9 · Dry-run audit ("dry run means nothing gets submitted")
 For a workflow (or all of them):
