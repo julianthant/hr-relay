@@ -20,7 +20,10 @@ import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 import { StorageDoctorWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
@@ -116,6 +119,8 @@ describe("stopped native upgrade admission",()=>{
   assert.equal(record.toSchemaVersion,2);
   assert.match(record.planDigest,/^[a-f0-9]{64}$/u);
   assert.notEqual(record.planDigest,source.authorityContentFingerprint);
+  assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:1,toSchemaVersion:2,
+   sourceContentFingerprint:source.authorityContentFingerprint,statements:SQLITE_MIGRATIONS[1].statements})).digest("hex"));
   const verified=await verifyBackupManifestAtPath(f.admission,record.backup.manifestPath,AuthorityDatabase.sourceDatabaseIdentity(f.path));
   assert.equal(verified.manifest.schemaVersion,1);
   assert.equal(verified.manifest.authorityContentFingerprint,source.authorityContentFingerprint);
@@ -204,17 +209,71 @@ describe("stopped native upgrade admission",()=>{
    assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get(),undefined);
   }finally{raw.close();}
  });
- it("atomically rolls back the real migration when current validation rejects",()=>{
-  const f=baselineFixture(),corrupt=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
-  try {corrupt.exec("DELETE FROM settings");}finally{corrupt.close();}
-  assert.throws(()=>AuthorityDatabase.upgradeStopped(f.admission,f.path,f.input.processLockRoot,clock),/settings/u);
+ it("refuses a source change after the verified backup and before migration",async()=>{
+  const f=baselineFixture(),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
+  let changedBytes:Buffer|undefined;
+  vi.spyOn(AuthorityDatabase,"upgradeStopped").mockImplementation((...args)=>{
+   assert.ok(args[5],"verified backup evidence reaches migration");
+   const raw=new DatabaseSync(f.path);
+   try{raw.prepare("UPDATE database_states SET updated_at=?").run("2026-10-01T12:01:00.000Z");}finally{raw.close();}
+   changedBytes=readFileSync(f.path);
+   return migrate(...args);
+  });
+  await assert.rejects(f.run(),/source-changed/u);
+  assert.ok(changedBytes);
+  assert.deepEqual(readFileSync(f.path),changedBytes);
+  const raw=new DatabaseSync(f.path,{readOnly:true});
+  try {
+   assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version,1);
+   assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get(),undefined);
+   assert.equal(raw.prepare("SELECT count(*) AS count FROM database_upgrades").get()?.count,1);
+  }finally{raw.close();}
+ });
+ it("atomically rolls back the real migration when current validation rejects",async()=>{
+  const f=baselineFixture();
+  const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
+  const report=await backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot);
+  const manifest=report.manifests[0];assert.ok(manifest);
+  const backup=await verifyBackupManifestAtPath(f.admission,join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`));
+  const exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
+  assert.ok(typeof exec==="function");
+  let reachedCurrentSchema=false;
+  vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
+   Reflect.apply(exec,this,[sql]);
+   if(sql==="PRAGMA user_version=2"){
+    reachedCurrentSchema=true;
+    assert.ok(this.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get());
+    Reflect.apply(exec,this,["DELETE FROM settings"]);
+   }
+  });
+  assert.throws(()=>AuthorityDatabase.upgradeStopped(f.admission,f.path,f.input.processLockRoot,clock,source.authorityContentFingerprint,backup),/settings/u);
+  assert.equal(reachedCurrentSchema,true);
   const raw=new DatabaseSync(f.path,{readOnly:true});
   try {
    assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version,1);
    assert.equal(raw.prepare("SELECT schema_version FROM database_states").get()?.schema_version,1);
    assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get(),undefined);
    assert.equal(raw.prepare("SELECT count(*) AS count FROM database_upgrades").get()?.count,1);
+   assert.equal(raw.prepare("SELECT count(*) AS count FROM settings").get()?.count,1);
   }finally{raw.close();}
+ });
+ it("refuses restoration of a verified schema 1 backup without changing current authority",async()=>{
+  const f=baselineFixture();
+  const report=await backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot);
+  const manifest=report.manifests[0];assert.ok(manifest);
+  const manifestPath=join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`);
+  assert.equal((await verifyBackupManifestAtPath(f.admission,manifestPath)).manifest.schemaVersion,1);
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),error=>error instanceof AuthoritySchemaVersionError && error.schemaVersion===1);
+  await f.run();
+  const sourceDatabaseIdentity=AuthorityDatabase.sourceDatabaseIdentity(f.path);
+  const proofs=new RecoveryStopProofStore({processLockRoot:f.input.processLockRoot,maxProofAgeMs:60_000},clock);
+  proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot:f.input.processLockRoot,sourceDatabaseIdentity},clock));
+  const stoppedSystemProof=proofs.issue({observedBy:"local-operator",sourceDatabaseIdentity});
+  const restore=new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
+   busyTimeoutMs:250,processLockRoot:f.input.processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>{throw new Error("unexpected projection rebuild");},clock);
+  const before=storageTree(f.root);
+  await assert.rejects(restore.restore({manifestPath,stoppedSystemProof}),/authority-schema-mismatch/u);
+  assert.deepEqual(storageTree(f.root),before);
  });
  it("refuses schema-valid journal column corruption during read-only preflight without effects",async()=>{
   const f=fixture();const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"journal-corruption-fixture"},clock);

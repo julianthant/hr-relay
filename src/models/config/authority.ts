@@ -155,15 +155,7 @@ const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.ext
   }),
 });
 
-const AuthoritySchemaUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
-  upgradeId: FingerprintSchema,
-  phase: z.literal("settled"),
-  fromSchemaVersion: z.literal(1),
-  toSchemaVersion: z.literal(2),
-});
-
 export const AuthorityUpgradeRecordSchema = z.union([
-  AuthoritySchemaUpgradeRecordSchema,
   AuthorityUpgradeBaselineRecordSchema,
   AuthorityForwardUpgradeRecordSchema,
 ]);

@@ -3,10 +3,9 @@ import { createReadonlyAuthoritySnapshot, openReadOnlyDatabase, withAuthorityDat
 import { resolve } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { inspectNormalAuthority } from "./authority-database.js";
+import { inspectNativeAuthority, inspectNormalAuthority } from "./authority-database.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { requireSupportedRecoverySchema } from "./recovery-admission.js";
-import { AUTHORITY_APPLICATION_ID } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
 export type BackupCopyInspection = ReturnType<typeof inspectOpenDatabase>;
 export type AuthorityBackupSourceReadOnly = Readonly<{
@@ -18,8 +17,7 @@ export type AuthorityBackupSourceReadOnly = Readonly<{
 
 
 export function inspectOpenDatabase(database:DatabaseSync,expectedSchemaVersion?:number) {
- if(expectedSchemaVersion!==undefined) requireSupportedRecoverySchema(expectedSchemaVersion);
- const inspection=inspectNormalAuthority(database);
+ const inspection=expectedSchemaVersion===undefined?inspectNormalAuthority(database):inspectNativeAuthority(database,expectedSchemaVersion);
  return Object.freeze({...inspection,invariantViolations:inspection.invariants.violations,exactTableRegistry:true as const});
 }
 
@@ -30,9 +28,9 @@ export function inspectAuthorityBackupReadOnly(admission:RuntimeAdmission,path:s
 export function authorityBackupSourceDatabaseIdentity(path:string):string {
  return createHash("sha256").update(`${String(AUTHORITY_APPLICATION_ID)}:${resolve(path)}`).digest("hex");
 }
-export function openAuthorityBackupSourceReadOnly(admission:RuntimeAdmission,pathInput:string,busyTimeoutMs=250):AuthorityBackupSourceReadOnly {
+export function openAuthorityBackupSourceReadOnly(admission:RuntimeAdmission,pathInput:string,busyTimeoutMs=250,expectedSchemaVersion:number=CURRENT_AUTHORITY_SCHEMA_VERSION):AuthorityBackupSourceReadOnly {
  const path=resolve(pathInput);
- inspectAuthorityBackupReadOnly(admission,path,undefined,busyTimeoutMs);
+ inspectAuthorityBackupReadOnly(admission,path,expectedSchemaVersion,busyTimeoutMs);
  const snapshot=createReadonlyAuthoritySnapshot(path);
  let database:DatabaseSync;
  try {database=openReadOnlyDatabase(snapshot.path,busyTimeoutMs);}
@@ -42,7 +40,7 @@ export function openAuthorityBackupSourceReadOnly(admission:RuntimeAdmission,pat
  let closed=false;
  const assertOpen=()=>{admission.assertLive();if(closed)throw new Error("authority-backup-source-closed");snapshot.assertUnchanged();};
  return Object.freeze({
- getMeta(){assertOpen();const row=z.strictObject({schema_version:z.number().int().positive(),authority_generation:z.number().int().nonnegative(),updated_at:z.string().datetime()}).parse(database.prepare("SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());requireSupportedRecoverySchema(row.schema_version);return Object.freeze({schemaVersion:row.schema_version,authorityGeneration:row.authority_generation,updatedAt:row.updated_at});},
+ getMeta(){assertOpen();const row=z.strictObject({schema_version:z.number().int().positive(),authority_generation:z.number().int().nonnegative(),updated_at:z.string().datetime()}).parse(database.prepare("SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());if(row.schema_version!==expectedSchemaVersion)throw new Error("authority-backup-source-schema-mismatch");return Object.freeze({schemaVersion:row.schema_version,authorityGeneration:row.authority_generation,updatedAt:row.updated_at});},
  getSourceDatabaseIdentity(){assertOpen();return authorityBackupSourceDatabaseIdentity(path);},
  async onlineBackupTo(destinationPath:string){assertOpen();admission.assertWritable();admission.assertStateRoot(destinationPath);const pages=await sqliteBackup(database,resolve(destinationPath),{rate:100});snapshot.assertUnchanged();return pages;},
  close(){if(closed)return;closed=true;try{database.close();}finally{try{snapshot.assertUnchanged();}finally{snapshot.dispose();}}},

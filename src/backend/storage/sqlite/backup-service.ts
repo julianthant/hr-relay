@@ -217,7 +217,7 @@ export class AuthorityBackupService {
       this.#admission.assertWritable();
       const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, await sha256File(temporaryBackupPath));
       let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
-      try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath); }
+      try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, this.#source.getMeta().schemaVersion); }
       finally { copyAdmission.release(); }
       removeReadOnlyInspectionCompanions(temporaryBackupPath);
       chmodSync(temporaryBackupPath, 0o600);

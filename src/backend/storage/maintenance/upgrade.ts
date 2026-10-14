@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { AuthorityBackupService } from "../sqlite/backup-service.js";
+import { AuthorityBackupService, verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { openAuthorityBackupSourceReadOnly, inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { pendingDiagnosticArtifacts } from "../artifacts/content-addressed-artifact-writer.js";
@@ -42,7 +42,8 @@ export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoo
   verifyHeld();
   try {
     requireStopped(admission,input,clock);
-    const source=openAuthorityBackupSourceReadOnly(admission,join(stateRoot,"state.db"));
+    const schemaVersion=AuthorityDatabase.inspectStoppedUpgrade(admission,join(stateRoot,"state.db"),processLockRoot,clock).schemaVersion;
+    const source=openAuthorityBackupSourceReadOnly(admission,join(stateRoot,"state.db"),250,schemaVersion);
     try {const report=await new AuthorityBackupService(admission,source,{directory:join(stateRoot,"backups","authority")},clock)
       .request({trigger:"operator",requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(admission,input,clock);return report;
     }finally{source.close();}
@@ -63,7 +64,11 @@ export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpg
     if(inspection!==undefined){const again=AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock);
       if(again.authorityGeneration!==inspection.authorityGeneration||again.authorityContentFingerprint!==inspection.authorityContentFingerprint)throw new Error("source-changed: re-plan upgrade");
       if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
-        AuthorityDatabase.upgradeStopped(admission,path,input.processLockRoot,clock,inspection.authorityContentFingerprint);
+        const backupReport=await backupStoppedAuthority(admission,input.stateRoot,clock,input.processLockRoot,restore);
+        const manifest=backupReport.manifests.at(-1);
+        if(manifest===undefined)throw new Error("upgrade-verified-backup-required");
+        const backup=await verifyBackupManifestAtPath(admission,join(input.stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`),AuthorityDatabase.sourceDatabaseIdentity(path));
+        AuthorityDatabase.upgradeStopped(admission,path,input.processLockRoot,clock,inspection.authorityContentFingerprint,backup);
         requireStopped(admission,input,clock);
         inspectAuthorityBackupReadOnly(admission,path);
         return report("upgraded");
