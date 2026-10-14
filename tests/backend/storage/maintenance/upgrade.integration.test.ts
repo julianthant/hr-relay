@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { mkdtempSync,readFileSync,realpathSync,rmSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it } from "vitest";
+import { afterEach,describe,it,vi } from "vitest";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
@@ -14,18 +14,19 @@ import { createTimelineRepository } from "../../../../src/backend/storage/sqlite
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
 import { AuthorityUpgradeInspectionSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 import { StorageDoctorWireSchema } from "../../../../src/models/dashboard/storage.js";
-import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const clock = manualClock(new Date("2026-10-01T12:00:00Z"));
 const owners: {workspace:string;admission:RuntimeAdmission}[] = [];
-afterEach(() => {for(const owner of owners.splice(0).reverse()){owner.admission.release();rmSync(owner.workspace,{recursive:true,force:true});}});
+afterEach(() => {vi.restoreAllMocks();for(const owner of owners.splice(0).reverse()){owner.admission.release();rmSync(owner.workspace,{recursive:true,force:true});}});
 function fixture(){
  const workspace=mkdtempSync(join(realpathSync(tmpdir()),"native-upgrade-admission-"));
  const admission=acquireEntrypointAdmission(workspace,"exclusive");owners.push({workspace,admission});
@@ -53,6 +54,80 @@ describe("stopped native upgrade admission",()=>{
   } finally {raw.close();}
   return f;
  }
+ it("verifies a schema 1 backup before converting the source",async()=>{
+  const f=baselineFixture(),bytes=readFileSync(f.path);
+  const directory=join(f.root,"backups","authority");
+  const migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
+  let observedManifestPath:string|undefined;
+  vi.spyOn(AuthorityDatabase,"upgradeStopped").mockImplementation((...args)=>{
+   assert.deepEqual(readFileSync(f.path),bytes);
+   assert.ok(existsSync(directory),"verified backup directory exists before conversion");
+   const manifests=readdirSync(directory).filter(name=>name.endsWith(".manifest.json"));
+   assert.equal(manifests.length,1,"one verified backup precedes conversion");
+   observedManifestPath=join(directory,manifests[0]);
+   const manifest=parseBackupManifestFile(observedManifestPath);
+   const backupBytes=readFileSync(join(directory,manifest.backupFileName));
+   assert.equal(manifest.schemaVersion,1);
+   assert.equal(manifest.verification.state,"verified");
+   assert.equal(manifest.verification.schemaVersion,1);
+   assert.equal(manifest.byteSize,backupBytes.length);
+   assert.equal(manifest.sha256,createHash("sha256").update(backupBytes).digest("hex"));
+   const backup=new DatabaseSync(join(directory,manifest.backupFileName),{readOnly:true});
+   try {
+    assert.equal(backup.prepare("PRAGMA user_version").get()?.user_version,1);
+    assert.equal(backup.prepare("SELECT schema_version FROM database_states").get()?.schema_version,1);
+    assert.equal(backup.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get(),undefined);
+   }finally{backup.close();}
+   return migrate(...args);
+  });
+  assert.equal((await f.run()).state,"upgraded");
+  assert.ok(observedManifestPath);
+  const verified=await verifyBackupManifestAtPath(f.admission,observedManifestPath,AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  assert.equal(verified.manifest.schemaVersion,1);
+ });
+ it("keeps schema 1 bytes unchanged when the backup destination refuses",async()=>{
+  const f=baselineFixture();
+  mkdirSync(join(f.root,"backups"),{recursive:true});
+  writeFileSync(join(f.root,"backups","authority"),"backup destination blocked");
+  const bytes=readFileSync(f.path);
+  await assert.rejects(f.run(),/EEXIST|ENOTDIR/u);
+  assert.deepEqual(readFileSync(f.path),bytes);
+  const raw=new DatabaseSync(f.path,{readOnly:true});
+  try {
+   assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version,1);
+   assert.equal(raw.prepare("SELECT count(*) AS count FROM database_upgrades").get()?.count,1);
+  }finally{raw.close();}
+ });
+ it("settles the forward record with the exact verified backup manifest",async()=>{
+  const f=baselineFixture();
+  const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
+  assert.equal((await f.run()).state,"upgraded");
+  const raw=new DatabaseSync(f.path,{readOnly:true});
+  let record:ReturnType<typeof AuthorityUpgradeRecordSchema.parse>;
+  try {
+   const row=raw.prepare("SELECT * FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
+   record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));
+   assert.ok("backup" in record,"settled record carries forward-upgrade backup evidence");
+   assert.equal(row.backup_digest,record.backup.sha256);
+  }finally{raw.close();}
+  assert.ok("backup" in record);
+  assert.equal(record.phase,"settled");
+  assert.equal(record.fromSchemaVersion,1);
+  assert.equal(record.toSchemaVersion,2);
+  assert.match(record.planDigest,/^[a-f0-9]{64}$/u);
+  assert.notEqual(record.planDigest,source.authorityContentFingerprint);
+  const verified=await verifyBackupManifestAtPath(f.admission,record.backup.manifestPath,AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  assert.equal(verified.manifest.schemaVersion,1);
+  assert.equal(verified.manifest.authorityContentFingerprint,source.authorityContentFingerprint);
+  assert.deepEqual(record.backup,{manifestPath:verified.manifestPath,sha256:verified.manifest.sha256,authorityGeneration:source.authorityGeneration});
+ });
+ it("plans the schema 1 upgrade without backup or source effects",async()=>{
+  const f=baselineFixture(),before=storageTree(f.root),bytes=readFileSync(f.path);
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:2,credentials:"unchanged"});
+  assert.deepEqual(storageTree(f.root),before);
+  assert.deepEqual(readFileSync(f.path),bytes);
+  assert.equal(existsSync(join(f.root,"backups")),false);
+ });
  it("forward upgrades a stopped baseline while preserving its settings and history",async()=>{
   const f=baselineFixture();
   const raw=new DatabaseSync(f.path,{readOnly:true});

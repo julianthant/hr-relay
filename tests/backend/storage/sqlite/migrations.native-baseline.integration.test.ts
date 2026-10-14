@@ -3,6 +3,7 @@ import { existsSync,readFileSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe,it } from "vitest";
 import { credentialTrap,storageRecoveryFixture,storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,upgradeStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
 describe("current stopped authority initialization", () => {
@@ -12,7 +13,8 @@ describe("current stopped authority initialization", () => {
       credentialTrap(f.root);
       writeFileSync(f.input.environmentFile, "malformed obsolete environment");
       const before = storageTree(f.root);
-      for (const plan of [true, false]) await assert.rejects(f.run(plan), /authority schema/u);
+      for (const plan of [true, false]) await assert.rejects(f.run(plan), error => error instanceof AuthoritySchemaVersionError
+        && error.code === "authority-schema-mismatch" && error.schemaVersion === version);
       assert.deepEqual(storageTree(f.root), before);
       assert.equal(existsSync(f.input.processLockRoot), false);
     } finally { f.dispose(); }
