@@ -8,6 +8,24 @@ export function createWorkerBrowserChannel(input: Readonly<{
   database: AuthorityDatabase; clock: Clock; scheduler: MonotonicDeadlineScheduler;
 }>) {
   return Object.freeze({
+    async closeForRemoval(commandId: string): Promise<void> {
+      const initial = input.database.authority.workerControls.get(commandId);
+      if (initial?.lifecycle?.operation.kind !== "remove") throw new Error("worker-removal-command-unavailable");
+      const deadline = input.clock.monotonicMs() + Math.max(0, Date.parse(initial.expiresAt) - input.clock.nowMs());
+      return new Promise<void>((resolve, reject) => {
+        const poll = () => {
+          try {
+            const current = input.database.authority.workerControls.get(commandId);
+            if (current?.lifecycle?.operation.kind !== "remove") throw new Error("worker-removal-authority-unavailable");
+            if (current.closure !== undefined) { resolve(); return; }
+            if (current.phase.state === "uncertain") throw new Error("worker-removal-closure-uncertain");
+            if (input.clock.monotonicMs() >= deadline) throw new Error("worker-removal-closure-unproved");
+            input.scheduler.schedule(Math.min(deadline, input.clock.monotonicMs() + 50), poll);
+          } catch (error) { reject(error instanceof Error ? error : new Error("worker-removal-channel-failed", { cause: error })); }
+        };
+        poll();
+      });
+    },
     async request(commandId: string): Promise<string> {
       const record = input.database.withAuthorityTransaction(repositories => {
         const current = repositories.workerControls.get(commandId);

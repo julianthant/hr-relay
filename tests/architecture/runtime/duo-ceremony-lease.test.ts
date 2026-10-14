@@ -109,11 +109,23 @@ describe("worker reset owner closure provenance", () => {
   const home = "src/backend/storage/sqlite/worker-control.ts";
   const owner = "src/backend/runtime/workers/worker-sessions.ts";
   const audit = (path: string, content: string) => path === home || path === owner ? []
-    : content.includes("mintWorkerResetClosure") ? [`${path}: only the session manager may mint reset closure`] : [];
+    : content.includes("mintWorkerControlClosure") ? [`${path}: only the session manager may mint reset closure`] : [];
   it("permits only the actual session manager to mint closure capability", () => {
     assert.deepEqual(sourceFiles().flatMap(path => audit(path, read(path))), []);
-    assert.match(read(owner), /return mintWorkerResetClosure\(binding/);
-    assert.equal(audit("src/forged.ts", "mintWorkerResetClosure(binding)").length, 1);
+    assert.match(read(owner), /return mintWorkerControlClosure\(binding/);
+    assert.equal(audit("src/forged.ts", "mintWorkerControlClosure(binding)").length, 1);
+  });
+});
+
+describe("worker lifecycle supervisor provenance", () => {
+  const home = "src/backend/storage/sqlite/worker-control.ts";
+  const owner = "src/backend/runtime/workers/worker-supervisor.ts";
+  const audit = (path: string, content: string) => path === home || path === owner ? []
+    : content.includes("mintWorkerSupervisorEffect") ? [`${path}: only the actual process supervisor may mint lifecycle effect proof`] : [];
+  it("permits only actual supervisor exit and birth paths to mint effect capability", () => {
+    assert.deepEqual(sourceFiles().flatMap(path => audit(path, read(path))), []);
+    assert.match(read(owner), /return mintWorkerSupervisorEffect\(binding/);
+    assert.equal(audit("src/forged.ts", "mintWorkerSupervisorEffect(binding)").length, 1);
   });
 });
 

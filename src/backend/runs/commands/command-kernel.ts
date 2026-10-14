@@ -1,4 +1,4 @@
-import { admitWorkerReset } from "../../storage/sqlite/worker-control.js";
+import { admitWorkerLifecycle, admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { requireWorkerPoolRoster, admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
@@ -66,6 +66,8 @@ const PHASE1_ACTIVE = {
     "plan-worker-count",
     "spawn-worker",
     "stop-worker",
+    "remove-worker",
+    "retry-worker",
     "pause-worker",
     "resume-worker",
     "refresh-browser",
@@ -235,6 +237,8 @@ export const WorkerPlanAcknowledgementSchema = z.strictObject({
 
 // Keep the async pool seam structural to avoid importing the worker loop back into its command dependency.
 export interface WorkerPoolRuntimeSeam {
+  beginLifecycle?(context: WorkerRuntimeContext): void;
+  assertLifecycleOwner?(operation: "remove" | "retry", workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
   assertResetOwner?(workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
   planPoolWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
   spawnPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
@@ -1851,6 +1855,9 @@ function validateWorkerPoolCommand(
       }
       return version;
     }
+    case "remove-worker":
+    case "retry-worker":
+      return reject(request, "invalid-state", "worker-lifecycle-dedicated-admission-required");
     case "stop-worker":
     case "pause-worker":
     case "resume-worker": {
@@ -1906,6 +1913,8 @@ async function settleWorkerPoolEffect(
     case "spawn-worker":
       WorkerRuntimeAcknowledgementSchema.parse(await pool.spawnPoolWorker(context));
       return { kind: "control" };
+    case "remove-worker":
+    case "retry-worker":
     case "stop-worker":
       throw new WorkerControlRefusal("worker-reset-settlement-unavailable");
     case "pause-worker":
@@ -1978,6 +1987,8 @@ function applyWorkerPoolCommand(
       // The child's own birth lease IS the authority fact, written by the
       // worker process and proved by the supervisor before it acknowledged.
       return applied(request, [workerTarget(request.payload.workerId)], []);
+    case "remove-worker":
+    case "retry-worker":
     case "stop-worker":
       throw new WorkerControlRefusal("worker-reset-settlement-unavailable");
     case "pause-worker":
@@ -2059,6 +2070,44 @@ async function executeWorkerPoolCommand(
         code: "invalid-state", message: error.message });
       throw error;
     }
+  }
+  if (request.type === "remove-worker" || request.type === "retry-worker") {
+    let context: WorkerRuntimeContext | undefined;
+    let admitted: CommandResult;
+    try {
+      admitted = dependencies.authority.withAuthorityTransaction(repositories => {
+        repositories.commands.assertIdentity(request);
+        const prior = repositories.workerControls.get(request.commandId);
+        if (prior !== undefined) return repositories.commandAudits.findByCommand(request.commandId) === undefined
+          ? CommandResultSchema.parse({ state: "pending", commandId: request.commandId }) : replay(dependencies, repositories, request, now);
+        const lease = repositories.workerLeases.get(request.target.workerId);
+        if (lease === undefined || pool.assertLifecycleOwner === undefined || pool.beginLifecycle === undefined) throw new WorkerControlRefusal("worker-lifecycle-owner-unavailable");
+        pool.assertLifecycleOwner(request.type === "remove-worker" ? "remove" : "retry", request.target.workerId, request.target.membershipRevision,
+          { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt });
+        const descriptor = dependencies.descriptors.resolve(request.target.workflowId);
+        if (descriptor === undefined) throw new WorkerControlRefusal("worker-lifecycle-descriptor-unavailable");
+        selectNewRunIdentity(repositories, dependencies.configIdentity);
+        const record = admitWorkerLifecycle(repositories, request, dependencies.ids.uuid(), now, { descriptor, mode: "initialize" });
+        context = { command: request, now };
+        repositories.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: now });
+        return CommandResultSchema.parse({ state: "pending", commandId: request.commandId });
+      });
+    } catch (error) {
+      if (error instanceof CommandIdentityConflictError) throw error;
+      return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: error instanceof Error ? error.message : "worker-lifecycle-authority-unavailable" });
+    }
+    if (context !== undefined) {
+      try { pool.beginLifecycle?.(context); }
+      catch (error) {
+        dependencies.authority.withAuthorityTransaction(repositories => {
+          const current = repositories.workerControls.get(request.commandId);
+          if (current?.phase.state === "executing") repositories.workerControls.transition(request.commandId, "executing", { state: "uncertain", startedAt: current.phase.startedAt,
+            observedAt: dependencies.clock.now().toISOString(), message: "worker-lifecycle-dispatch-unproved" });
+        });
+        throw error;
+      }
+    }
+    return admitted;
   }
   const browser = request.type === "refresh-browser" || request.type === "reopen-browser";
   const controls = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls);

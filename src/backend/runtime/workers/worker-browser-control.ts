@@ -13,7 +13,21 @@ import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 export function createWorkerBrowserControl(input: Readonly<{
   database: AuthorityDatabase; workerId: string; leaseGeneration: number; clock: Clock; signal: AbortSignal;
 }>) {
+  const removalAttempts = new Set<string>();
   return async (sessions: WorkerSessionManager): Promise<void> => {
+    const removal = input.database.authority.workerControls.lifecycleForWorker(input.workerId);
+    if (removal?.lifecycle?.operation.kind === "remove" && removal.closure === undefined && !removalAttempts.has(removal.commandId)) {
+      removalAttempts.add(removal.commandId);
+      try {
+        const proof = await sessions.closeForRetirement(removal.lifecycle);
+        input.database.observeWorkerRetirementClosure(removal.commandId, proof, input.clock.now().toISOString());
+      } catch (error) {
+        const current = input.database.authority.workerControls.get(removal.commandId);
+        if (current?.phase.state === "executing") input.database.authority.workerControls.transition(current.commandId, "executing", { state: "uncertain", startedAt: current.phase.startedAt,
+          observedAt: input.clock.now().toISOString(), message: "worker-removal-closure-unproved" });
+        throw error;
+      }
+    }
     const records = input.database.authority.workerControls.list().filter(record => record.phase.state === "ready"
       && "workerId" in record.request.target && record.request.target.workerId === input.workerId
       && record.request.target.controlBasis?.leaseGeneration === input.leaseGeneration);

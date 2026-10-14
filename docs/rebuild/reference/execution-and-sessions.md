@@ -398,6 +398,30 @@ audit cannot release a reset. Historical success survives later work in the same
 Historical Stop journal bytes remain immutable evidence. Missing historical reset authority remains
 unavailable and reserved when unresolved, and cannot authorize replay or a reset success.
 
+Remove and Retry use the same native worker-control journal and pool exclusion. They bind the
+selected member revision, old process lifetime, control basis and pool version. Remove admits
+only an actually owned idle child without current work. The session manager closes its warm and
+late resources and releases Duo before recording the exact closure milestone. The supervisor
+then sends the authenticated internal shutdown, observes OS exit and proves process/profile
+custody release. Its one-use effect capability binds that original operation to actual retirement.
+A dedicated transaction rechecks release, tombstones only the selected slot, decrements the pool
+once and persists application/audit together. Surviving identities and ordinals remain unchanged;
+the last member leaves a zero-size pool. Missing closure or exit proof retains the member and
+reservation, and replay never repeats an uncertain effect.
+
+Retry admits only a failed lifetime with proven owned-child OS death and released process,
+browser, Duo and write custody. A stopped lease alone cannot prove death. Replacement retains the
+logical slot and advances its lease generation, using the admitted current descriptor and effective
+settings. Actual supervised birth produces the starting acknowledgement and application/audit;
+a separate same-generation initialization barrier prevents claims until required browser systems
+are physically authenticated. Initialization uses registered session needs without creating a run,
+releases its config binding on success or failure and retains warm resource provenance. Authentication
+failure remains a worker lifetime failure, independent of the starting acknowledgement. Stop can
+abort initialization work and, after actual closure, atomically cancel its readiness barrier while
+recording reusable browserless idle. Browserless replacement mode opens no session. Public Stop
+recovery for a dead failed lifetime still requires its own original-to-replacement binding and
+acknowledgement; an ordinary Retry acknowledgement cannot prove that reset.
+
 `worker-browser-channel.ts` uses SQLite as the cross-process channel and polls at 50 ms within
 the request's expiry. `worker-browser-control.ts` consumes only ready requests for its exact
 worker lifetime, between whole runs. Kernel admission and child execution both refuse busy

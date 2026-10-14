@@ -1,4 +1,4 @@
-import { WorkerSessionClosureUnprovedError } from "../../runtime/workers/worker-sessions.js";
+import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
 import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../logs/emergency-faults.js";
@@ -21,14 +21,14 @@ import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, swee
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
-import { workflowProjections } from "../../../workflow-kit/workflow.js";
+import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
 import { runWorkerLoop, type WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 import type { DuoCeremonyGateFactory } from "../../runtime/gates/duo-ceremony-gate.js";
-import type { WorkerBrowserSessionFactory } from "../../runtime/workers/worker-sessions.js";
+import type { WorkerBrowserSessionFactory, WorkerSessionManager } from "../../runtime/workers/worker-sessions.js";
 import { createWriteSequencer } from "../../runtime/writes/write-sequencer.js";
 import { createGateSourceRuntime, type GateSourcePort } from "../../runtime/gates/gate-source-runtime.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
@@ -36,7 +36,7 @@ import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../../rules/identity/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import type { PositiveInt } from "../../../rules/identity/ids.js";
-import type { WorkerId, WorkflowId } from "../../../rules/identity/ids.js";
+import type { WorkerId, WorkflowId, Fingerprint } from "../../../rules/identity/ids.js";
 import type { WorkerDirective, WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
 import { hostAwareResolutionEnvironment } from "../../../models/config/secrets.js";
@@ -61,6 +61,42 @@ export const WORKER_CLAIM_STALE_AFTER_MS = 60_000;
 export const WORKER_SWEEP_INTERVAL_MS = 30_000;
 
 export { createTimeoutDeadlineScheduler };
+
+export async function initializeRetryWorker(input: Readonly<{
+  database: AuthorityDatabase; commandId: string; leaseGeneration: number; descriptor: AnyWorkflowDescriptor;
+  configFingerprint: Fingerprint; sessions: WorkerSessionManager; signal: AbortSignal; clock: Clock; scheduler: MonotonicDeadlineScheduler;
+}>): Promise<void> {
+  const { database, commandId, leaseGeneration, descriptor, configFingerprint, sessions, signal, clock, scheduler } = input;
+  const command = database.authority.workerControls.get(commandId);
+  const binding = command?.lifecycle;
+  if (command === undefined) throw new Error("worker-initialization-command-unavailable");
+  if (binding?.operation.kind !== "retry") return;
+  if (binding.member.workflowId !== descriptor.id || binding.operation.configSnapshotId !== database.authority.runtimeConfig.get()?.configSnapshotId || binding.operation.configFingerprint !== configFingerprint
+    || binding.operation.descriptorVersion !== descriptor.version || binding.operation.contractFingerprint !== descriptor.contractFingerprint) throw new Error("worker-initialization-current-settings-changed");
+  while (database.authority.workerControls.get(command.commandId)?.phase.state !== "succeeded") {
+    if (signal.aborted) throw signal.reason;
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => { handle.cancel(); reject(new Error("worker-initialization-aborted", { cause: signal.reason })); };
+      const handle = scheduler.schedule(clock.monotonicMs() + 50, () => { signal.removeEventListener("abort", onAbort); resolve(); });
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+  if (signal.aborted) throw signal.reason;
+  if (database.authority.workerControls.get(commandId)?.readiness?.state !== "initializing") throw new Error("worker-initialization-authority-unavailable");
+  if (binding.operation.mode === "initialize") {
+    await withBoundRunConfigFingerprint(sessions, binding.operation.configFingerprint, async () => {
+      const contracts = new Set(workflowProjections(descriptor).contracts.map(contract => contract.id));
+      const needs = taskStoreRegistry.stores.flatMap(store => Object.values(store.tasks).filter(task => contracts.has(task.contract.id)).flatMap(task => task.impl.sessions));
+      const systems = new Set<string>();
+      for (const need of needs) {
+        if (systems.has(need.system)) continue;
+        systems.add(need.system);
+        await sessions.withDriver({ ...need, access: "read", session: "reuse-worker" }, "prod", signal, async () => undefined);
+      }
+    });
+  }
+  database.completeWorkerInitialization(command.commandId, leaseGeneration, descriptor, clock.now().toISOString());
+}
 
 /** Structured stdout logging for the worker CLI process (never `console.*`). */
 export function lineTaskLogger(write: (line: string) => void, clock: Clock): TaskLogger {
@@ -276,11 +312,13 @@ function startWorkerMaintenance(input: Readonly<{
           || run.lifecycle.state === "validating"
           || run.lifecycle.state === "running")
         && run.lifecycle.workerId === input.workerId);
+      const initializing = database.authority.workerControls.initializingForWorker(input.workerId, input.leaseGeneration) !== undefined
+        || database.authority.workerControls.lifecycleForWorker(input.workerId)?.lifecycle?.operation.kind === "retry";
       const reported = database.authority.workerLeases.reportLifecycle({
         workerId: input.workerId,
         leaseGeneration: input.leaseGeneration,
         lifecycle: active === undefined
-          ? lease.control.directive === "pause"
+          ? initializing ? { state: "starting", startedAt: lease.lifecycle.startedAt } : lease.control.directive === "pause"
             ? { state: "paused", startedAt: lease.lifecycle.startedAt, heartbeatAt: now, pausedAt: lease.lifecycle.state === "paused" ? lease.lifecycle.pausedAt : now }
             : { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: now }
           : {
@@ -527,6 +565,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       browserSystems: workflowProjections(descriptor).systems,
       processId: input.processId ?? process.pid,
       requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+      ...(launch === undefined ? {} : { commandId: launch.commandId }),
       now,
     });
     if (started.state !== "started") {
@@ -618,6 +657,10 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         authority: database,
         lifecycle,
         gateSources,
+        initialize: async (sessions, signal) => {
+          if (launch !== undefined) await initializeRetryWorker({ database, commandId: launch.commandId, leaseGeneration,
+            descriptor, configFingerprint: resolved.fingerprint, sessions, signal, clock, scheduler });
+        },
         sessionFactory: baselineResources.sessionFactory,
         emitter,
         clock,

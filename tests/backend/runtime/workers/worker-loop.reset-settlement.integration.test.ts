@@ -89,7 +89,7 @@ describe("authenticated reset closure", () => {
   }
   it("rejects forged, wrong-command and stale-lifetime proofs without releasing the reservation", async () => {
     const f = fixture(), manager = f.manager();
-    expect(() => f.database.settleWorkerReset(f.record.commandId, { kind: "worker-reset-owner-closure" }, f.record.admittedAt, randomUUID())).toThrow();
+    expect(() => f.database.settleWorkerReset(f.record.commandId, { kind: "worker-control-owner-closure" }, f.record.admittedAt, randomUUID())).toThrow();
     const wrong = await manager.closeForReset(WorkerResetBindingSchema.parse({ ...f.reset, commandId: randomUUID() }));
     expect(() => f.database.settleWorkerReset(f.record.commandId, wrong, f.record.admittedAt, randomUUID())).toThrow();
     await expect(f.manager(WorkerResetBindingSchema.parse({ ...f.reset, basis: { ...f.reset.basis, leaseGeneration: f.reset.lifetime.leaseGeneration + 1 }, lifetime: { ...f.reset.lifetime, leaseGeneration: f.reset.lifetime.leaseGeneration + 1 } })).closeForReset(f.reset)).rejects.toThrow("member-conflict");

@@ -198,7 +198,15 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       }
       if (request.commandId === undefined) throw new WorkerControlRefusal("worker-control-command-identity-unavailable");
       const record = repositories.workerControls.get(request.commandId);
-      if (record === undefined || record.request.type !== request.command) throw new WorkerControlRefusal("worker-control-command-not-admitted");
+      if (record === undefined || record.request.type !== request.command && !(request.command === "spawn-worker" && record.request.type === "retry-worker")) throw new WorkerControlRefusal("worker-control-command-not-admitted");
+      if (record.lifecycle?.operation.kind === "retry") {
+        const active = repositories.runtimeConfig.get();
+        const lease = repositories.workerLeases.get(record.lifecycle.member.workerId);
+        if (record.phase.state !== "executing" || lease?.lifecycle.state !== "stopped" || lease.leaseGeneration !== record.lifecycle.lifetime.leaseGeneration
+          || lease.controlRevision !== record.lifecycle.reservedControlRevision || lease.controlCommandId !== record.commandId
+          || active?.configSnapshotId !== record.lifecycle.operation.configSnapshotId || active.configFingerprint !== record.lifecycle.operation.configFingerprint) throw new WorkerControlRefusal("worker-retry-current-authority-changed");
+        return;
+      }
       if (input.clock.nowMs() >= Date.parse(record.expiresAt)) throw new WorkerControlRefusal("worker-control-expired-before-effect");
       if ("workerId" in record.request.target) {
         const lease = repositories.workerLeases.get(record.request.target.workerId);
@@ -271,11 +279,14 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         const lease = repositories.workerLeases.get(member.workerId);
         const pending = repositories.workerControls.pending(`worker-pool:${member.workflowId}`);
         const reservation = pending.find(control => control.request.type === "plan-worker-count" && control.phase.state === "executing"
-          && control.roster?.excess.some(original => canonicalJsonStringify(original) === canonicalJsonStringify(slot)));
+          && control.roster?.excess.some(original => canonicalJsonStringify(original) === canonicalJsonStringify(slot))
+          || control.lifecycle !== undefined && control.phase.state === "executing" && canonicalJsonStringify(control.lifecycle.member) === canonicalJsonStringify(member)
+            && (control.lifecycle.operation.kind === "retry" || control.closure !== undefined));
         if (slot === undefined || slot.retiredAt !== null || slot.membershipRevision !== member.membershipRevision
           || canonicalJsonStringify(workerPoolMember(slot)) !== canonicalJsonStringify(member) || reservation === undefined || pending.length !== 1
           || lease !== undefined && isLiveWorker(lease)
           || repositories.workerControls.browsers(member.workerId).some(browser => browser.health !== "closed")) throw new WorkerControlRefusal("worker-retirement-closure-not-proved");
+        input.database.assertWorkerLifecycleRelease(member.workerId);
         const profileDirectory = join(input.profileRoot, `w${String(slot.ordinal)}`);
         for (const browser of repositories.workerControls.browsers(member.workerId)) {
           if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
@@ -289,7 +300,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   });
   return Object.freeze({
     supervisor,
-    workerRuntime: Object.freeze({ pool: createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots) }),
+    workerRuntime: Object.freeze({ pool: createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots, { database: input.database, clock: input.clock }) }),
   });
 }
 

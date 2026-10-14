@@ -48,6 +48,8 @@ export const CommandActionSchema = z.enum([
   "plan-worker-count",
   "spawn-worker",
   "stop-worker",
+  "remove-worker",
+  "retry-worker",
   "pause-worker",
   "resume-worker",
   "refresh-browser",
@@ -161,7 +163,11 @@ export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
 export const LiveWorkerResetRequestSchema = z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"),
   target: WorkerVersionTargetSchema.extend({ expectedVersion: PositiveIntSchema.optional(), membershipRevision: PositiveIntSchema, controlBasis: WorkerControlBasisSchema }) });
 
+const WorkerMemberControlTargetSchema = z.strictObject({ workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
+  membershipRevision: PositiveIntSchema, controlBasis: WorkerControlBasisSchema, expectedVersion: NonNegativeIntSchema });
+
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["remove-worker", "retry-worker"]), target: WorkerMemberControlTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"), target: WorkerVersionTargetSchema.extend({ expectedVersion: PositiveIntSchema.optional(), membershipRevision: PositiveIntSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: z.number().int().min(0) }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ workerId: WorkerIdSchema }) }),
@@ -712,7 +718,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
-  "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
+  "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
@@ -744,7 +750,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "workflow-batch", actions: ["set-batch-grouping"] },
   { family: "start", actions: ["start-run"] },
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
-  { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
+  { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
   { family: "storage-relocation", actions: ["plan-storage-relocation", "cancel-storage-relocation"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },

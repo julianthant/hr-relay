@@ -36,6 +36,8 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
       case "intake": return (target.family === "intake" && target.intakeSessionId === command.target.intakeSessionId)
         || (command.type === "enqueue-intake-manifest" && target.family === "run");
       case "worker-browser":
+        if (command.type === "remove-worker") return target.family === "worker-browser" && target.workerId === command.target.workerId
+          || target.family === "worker-pool" && target.workflowId === command.target.workflowId;
         if (command.type === "plan-worker-count") return target.family === "worker-browser"
           || (target.family === "worker-pool" && target.workflowId === command.target.workflowId);
         return target.family === "worker-browser" && target.workerId === (command.type === "spawn-worker" ? command.payload.workerId : command.target.workerId);

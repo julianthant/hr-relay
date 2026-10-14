@@ -171,6 +171,13 @@ The recovery service rebuilds the exact commit input and binds the retained run 
 
 `wait` returns a scheduling instant rather than sleeping a worker. Inline same-owner recovery accepts valid positive proof but parks negative uncertainty; stabilized settlement belongs to the standalone recovery service.
 
+Worker Remove and Retry do not reconcile a write. Before profile release or replacement, native
+authority refuses held Duo, a current owned claim or an unattributable attempting write. Another
+worker's legitimately claimed write does not prevent an unrelated idle member's retirement. An
+exact safely released parked UNKNOWN may coexist with worker retirement or replacement; its
+intent, generation, attempt, run and resolution remain untouched. Final lifecycle settlement
+rechecks this authority and requires the actual supervisor's one-use exit or birth capability.
+
 An UNKNOWN submission never authorizes generic retry, another occurrence, cancellation, or automatic success. It retains its fence until typed positive or permitted negative evidence settles that exact generation.
 
 ## 4.1 Parked-write resolution

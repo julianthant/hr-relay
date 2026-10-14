@@ -121,7 +121,7 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
       const request = z.strictObject({ workflow: WorkflowIdSchema, poolIndex: z.number().int().min(1), commandId: CommandIdSchema.nullable(), now: IsoInstantSchema }).parse(input);
       return mutate(() => {
         if (database.prepare("SELECT 1 FROM worker_pools WHERE workflow=?").get(request.workflow) === undefined) throw new Error("worker-slot-pool-not-admitted");
-        if (database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL AND json_extract(payload_json,'$.request.type')='stop-worker'").get(`worker-pool:${request.workflow}`) !== undefined) throw new Error("worker-reset-reserved");
+        if (database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL AND json_extract(payload_json,'$.request.type') IN ('stop-worker','remove-worker','retry-worker')").get(`worker-pool:${request.workflow}`) !== undefined) throw new Error("worker-reset-reserved");
         if (verifications(request.workflow).length !== 0) throw new Error("worker-verification-reserved");
         const active = list(request.workflow).filter(slot => slot.retiredAt === null);
         const existing = active.find(slot => slot.poolIndex === request.poolIndex);
@@ -144,7 +144,7 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
           if (current.retirementCommandId !== request.commandId) throw new Error("worker-slot-retirement-conflict");
           return { result: current, changes: 0 };
         }
-        if (database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL AND json_extract(payload_json,'$.request.type')='stop-worker'").get(`worker-pool:${current.workflow}`) !== undefined) throw new Error("worker-reset-reserved");
+        if (database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL AND json_extract(payload_json,'$.request.type') IN ('stop-worker','remove-worker','retry-worker')").get(`worker-pool:${current.workflow}`) !== undefined) throw new Error("worker-reset-reserved");
         const hold = verification(request.workerId);
         if (hold === undefined && verifications(current.workflow).length !== 0) throw new Error("worker-verification-reserved");
         if (hold !== undefined) {
@@ -261,12 +261,14 @@ export function admitSupervisedWorker(
   const request = z.strictObject({ member: WorkerPoolMemberSchema, commandId: CommandIdSchema, now: IsoInstantSchema }).parse(input);
   const { member } = request, slot = repositories.workerSlots.get(member.workerId);
   const control = repositories.workerControls.get(request.commandId);
-  if (slot === undefined || slot.retiredAt !== null || slot.workflow !== member.workflowId || slot.poolIndex !== member.poolIndex
-    || slot.ordinal !== member.ordinal || slot.membershipRevision !== member.membershipRevision
-    || control?.phase.state !== "executing" || control.request.type !== "spawn-worker"
-    || control.request.payload.workerId !== member.workerId || control.request.target.workflowId !== member.workflowId
-    || repositories.workerPools.get(member.workflowId)?.version !== Number(control.request.target.expectedVersion)
-    || Date.parse(control.expiresAt) <= Date.parse(request.now)) throw new Error("worker-launch-reservation-not-admitted");
+  if (slot === undefined || slot.retiredAt !== null || canonicalJsonStringify(WorkerPoolMemberSchema.parse({ workflowId: slot.workflow, poolIndex: slot.poolIndex,
+    ordinal: slot.ordinal, workerId: slot.workerId, membershipRevision: slot.membershipRevision })) !== canonicalJsonStringify(member)
+    || control?.phase.state !== "executing" || Date.parse(control.expiresAt) <= Date.parse(request.now)) throw new Error("worker-launch-reservation-not-admitted");
+  if (control.request.type === "retry-worker") {
+    if (control.lifecycle?.operation.kind !== "retry" || canonicalJsonStringify(control.lifecycle.member) !== canonicalJsonStringify(member)
+      || repositories.workerPools.get(member.workflowId)?.version !== control.lifecycle.poolVersion) throw new Error("worker-retry-launch-not-admitted");
+  } else if (control.request.type !== "spawn-worker" || control.request.payload.workerId !== member.workerId
+    || control.request.target.workflowId !== member.workflowId || repositories.workerPools.get(member.workflowId)?.version !== Number(control.request.target.expectedVersion)) throw new Error("worker-launch-reservation-not-admitted");
   requireWorkerPoolRoster(repositories, member.workflowId);
   return slot.workerId;
 }

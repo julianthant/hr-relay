@@ -290,9 +290,11 @@ export class RunRecordService {
         return refused({ reason: "none-eligible" });
       }
       if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(record => record.request.type === "stop-worker" && record.reset === undefined)) throw new Error("worker-reset-authority-unavailable");
+      const slot = repositories.workerSlots.get(workerId), lease = repositories.workerLeases.get(workerId);
+      if (repositories.workerControls.lifecycleForWorker(workerId) !== undefined
+        || lease !== undefined && repositories.workerControls.initializingForWorker(workerId, lease.leaseGeneration) !== undefined) return refused({ reason: "none-eligible" });
       if (repositories.workerControls.resetForWorker(workerId) !== undefined) return refused({ reason: "none-eligible" });
       if (repositories.workerSlots.verification(workerId) !== undefined) return refused({ reason: "none-eligible" });
-      const slot = repositories.workerSlots.get(workerId), lease = repositories.workerLeases.get(workerId);
       if (slot === undefined || slot.retiredAt !== null || slot.workflow !== workflow
         || request.workerLifetime !== undefined && (slot.membershipRevision !== request.workerLifetime.membershipRevision
           || lease?.leaseGeneration !== request.workerLifetime.leaseGeneration || lease.lifecycle.state === "stopped")) return refused({ reason: "none-eligible" });

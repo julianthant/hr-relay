@@ -1,6 +1,6 @@
-import { mintWorkerResetClosure, type WorkerResetClosure } from "../../storage/sqlite/worker-control.js";
+import { mintWorkerControlClosure, type WorkerControlClosure } from "../../storage/sqlite/worker-control.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { WorkerResetBindingSchema, type WorkerResetBinding } from "../../../models/run/worker-control.js";
+import { WorkerLifecycleBindingSchema, WorkerResetBindingSchema, type WorkerLifecycleBinding, type WorkerResetBinding } from "../../../models/run/worker-control.js";
 import { WorkerControlRefusal, WorkerBrowserObservationSchema, type WorkerBrowserObservation } from "../../../models/run/worker-control.js";
 
 import { z } from "zod";
@@ -644,14 +644,23 @@ export class WorkerSessionManager {
     });
   }
 
-  async closeForReset(input: WorkerResetBinding): Promise<WorkerResetClosure> {
-    const binding = WorkerResetBindingSchema.parse(input);
+  async closeForReset(input: WorkerResetBinding): Promise<WorkerControlClosure> {
+    return this.#closeForControl(WorkerResetBindingSchema.parse(input));
+  }
+
+  async closeForRetirement(input: WorkerLifecycleBinding): Promise<WorkerControlClosure> {
+    const binding = WorkerLifecycleBindingSchema.parse(input);
+    if (binding.operation.kind !== "remove") throw new Error("worker-retirement-invalid-operation");
+    return this.#closeForControl(binding);
+  }
+
+  async #closeForControl(binding: WorkerResetBinding | WorkerLifecycleBinding): Promise<WorkerControlClosure> {
     if (binding.member.workerId !== this.#workerId || this.#resetOwner === undefined
       || canonicalJsonStringify(this.#resetOwner) !== canonicalJsonStringify({ member: binding.member, lifetime: binding.lifetime })) throw new Error("worker-reset-closure-member-conflict");
     await this.closeAll("worker-stop");
     if (this.#resources.size !== 0 || this.#starting.size !== 0 || this.#tails.size !== 0 || this.#acquisitionCleanupFailures.size !== 0) throw new Error("worker-reset-closure-unproved");
     const epoch = this.#resetEpoch;
-    return mintWorkerResetClosure(binding, [...this.#observedSessions], () => this.#resetEpoch === epoch
+    return mintWorkerControlClosure(binding, [...this.#observedSessions], () => this.#resetEpoch === epoch
       && this.#resources.size === 0 && this.#starting.size === 0 && this.#tails.size === 0);
   }
 

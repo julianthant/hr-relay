@@ -14,6 +14,9 @@ import { COMMAND_FIXTURES,HASH_A,NOW,UUID_1,UUID_2,UUID_3 } from "../../support/
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,
+  ...["remove-worker", "retry-worker"].map(type => ({ commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+    family: "worker-browser", type, target: { workflowId: "person-lookup", workerId: "person-lookup-worker-1", membershipRevision: 1,
+      expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } })),
   { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", family: "failure-resolution", type: "annotate-failure",
     target: { runId: UUID_1, failureId: UUID_2, expectedVersion: 1 }, payload: { action: "resolve", note: "Synthetic operator annotation" } },
   {

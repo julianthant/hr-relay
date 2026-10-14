@@ -2,7 +2,7 @@ import { z } from "zod";
 import { WorkerControlBasisSchema } from "./worker.js";
 import { WorkerPoolMemberSchema, WorkerPoolRosterAdmissionSchema, WorkerRetirementProofSchema } from "./worker-slot.js";
 import { CommandAuditRecordSchema, WorkerBrowserCommandRequestSchema } from "../../rules/commands/commands.js";
-import { BrowserSessionIdSchema, BrowserSystemIdSchema, CommandIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, WorkerIdSchema } from "../../rules/identity/ids.js";
+import { BrowserSessionIdSchema, BrowserSystemIdSchema, CommandIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, ConfigSnapshotIdSchema, WorkerIdSchema } from "../../rules/identity/ids.js";
 
 /** A pool and all its canonical members share one durable exclusion scope. */
 export function workerControlScope(request: z.infer<typeof WorkerBrowserCommandRequestSchema>): string {
@@ -15,6 +15,8 @@ export function workerControlScope(request: z.infer<typeof WorkerBrowserCommandR
 export const WorkerEffectAcknowledgementSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("plan"), workerIds: z.array(WorkerIdSchema), retirements: z.array(WorkerRetirementProofSchema) }),
   z.strictObject({ kind: z.literal("reset"), commandId: CommandIdSchema, leaseGeneration: PositiveIntSchema, controlRevision: PositiveIntSchema, membershipRevision: PositiveIntSchema, idleAt: IsoInstantSchema, closedSessionIds: z.array(BrowserSessionIdSchema), browsersClosed: z.literal(true), duoReleased: z.literal(true) }),
+  z.strictObject({ kind: z.literal("remove"), retirement: WorkerRetirementProofSchema, beforePoolVersion: PositiveIntSchema, afterPoolVersion: PositiveIntSchema, beforeCount: PositiveIntSchema, afterCount: z.number().int().nonnegative() }),
+  z.strictObject({ kind: z.literal("retry"), oldLeaseGeneration: PositiveIntSchema, leaseGeneration: PositiveIntSchema, processId: PositiveIntSchema, startedAt: IsoInstantSchema }),
   z.strictObject({ kind: z.literal("stop"), directiveLeaseVersions: z.strictObject({ before: PositiveIntSchema, after: PositiveIntSchema }) }),
   z.strictObject({ kind: z.literal("control"), browserSessionId: BrowserSessionIdSchema.optional() }),
 ]);
@@ -50,6 +52,21 @@ export const WorkerResetBindingSchema = z.strictObject({
 });
 export type WorkerResetBinding = z.infer<typeof WorkerResetBindingSchema>;
 
+export const WorkerLifecycleBindingSchema = z.strictObject({
+  commandId: CommandIdSchema, member: WorkerPoolMemberSchema,
+  lifetime: WorkerResetBindingSchema.shape.lifetime,
+  basis: WorkerControlBasisSchema, reservedControlRevision: PositiveIntSchema,
+  poolVersion: PositiveIntSchema, desiredWorkers: PositiveIntSchema,
+  operation: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("remove") }),
+    z.strictObject({ kind: z.literal("retry"), mode: z.enum(["initialize", "browserless"]),
+      systems: z.array(BrowserSystemIdSchema), configSnapshotId: ConfigSnapshotIdSchema, configFingerprint: FingerprintSchema,
+      descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema })]),
+}).superRefine((binding, context) => {
+  if (binding.lifetime.leaseGeneration !== binding.basis.leaseGeneration || binding.reservedControlRevision !== binding.basis.controlRevision + 1
+    || binding.operation.kind === "retry" && new Set(binding.operation.systems).size !== binding.operation.systems.length) context.addIssue({ code: "custom", message: "worker-lifecycle-binding-invalid" });
+});
+export type WorkerLifecycleBinding = z.infer<typeof WorkerLifecycleBindingSchema>;
+
 export const WorkerControlRecordSchema = z.strictObject({
   commandId: CommandIdSchema,
   request: WorkerBrowserCommandRequestSchema,
@@ -61,8 +78,23 @@ export const WorkerControlRecordSchema = z.strictObject({
   phase: WorkerControlPhaseSchema,
   roster: WorkerPoolRosterAdmissionSchema.optional(),
   reset: WorkerResetBindingSchema.optional(),
+  lifecycle: WorkerLifecycleBindingSchema.optional(),
+  readiness: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("initializing"), leaseGeneration: PositiveIntSchema }), z.strictObject({ state: z.enum(["ready", "cancelled"]), leaseGeneration: PositiveIntSchema, observedAt: IsoInstantSchema })]).optional(),
+  closure: z.strictObject({ observedAt: IsoInstantSchema, closedSessionIds: z.array(BrowserSessionIdSchema) }).optional(),
   auditedAt: IsoInstantSchema.optional(),
 }).superRefine((record, context) => {
+  if (record.request.type === "remove-worker" || record.request.type === "retry-worker") {
+    const binding = record.lifecycle;
+    if (binding === undefined || binding.commandId !== record.commandId || binding.operation.kind !== (record.request.type === "remove-worker" ? "remove" : "retry")
+      || binding.member.workerId !== record.request.target.workerId || binding.member.workflowId !== record.request.target.workflowId
+      || binding.member.membershipRevision !== record.request.target.membershipRevision || binding.poolVersion !== Number(record.request.target.expectedVersion)
+      || JSON.stringify(binding.basis) !== JSON.stringify(record.request.target.controlBasis)
+      || binding.reservedControlRevision !== binding.basis.controlRevision + 1) context.addIssue({ code: "custom", message: "worker-lifecycle-binding-required" });
+  } else if (record.lifecycle !== undefined || record.closure !== undefined) context.addIssue({ code: "custom", message: "worker-lifecycle-binding-unexpected" });
+  if (record.readiness !== undefined && (record.lifecycle?.operation.kind !== "retry" || record.phase.state !== "succeeded"
+    || record.readiness.leaseGeneration !== record.lifecycle.lifetime.leaseGeneration + 1)) context.addIssue({ code: "custom", message: "worker-initialization-binding-invalid" });
+  if (record.closure !== undefined && (record.lifecycle?.operation.kind !== "remove"
+    || new Set(record.closure.closedSessionIds).size !== record.closure.closedSessionIds.length)) context.addIssue({ code: "custom", message: "worker-retirement-closure-invalid" });
   if (record.request.type === "stop-worker") {
     if (record.reset !== undefined && (record.reset.commandId !== record.commandId
       || record.reset.member.workerId !== record.request.target.workerId
@@ -89,9 +121,15 @@ export const WorkerControlRecordSchema = z.strictObject({
   if (record.phase.state === "succeeded") {
     const browser = record.request.type === "refresh-browser" || record.request.type === "reopen-browser";
     if (!browser && record.phase.application === undefined) context.addIssue({ code: "custom", message: "worker-control-application-required" });
-    const expectedKind = record.request.type === "plan-worker-count" ? "plan" : record.request.type === "stop-worker" ? record.reset === undefined ? "stop" : "reset" : "control";
+    const expectedKind = record.request.type === "remove-worker" ? "remove" : record.request.type === "retry-worker" ? "retry" : record.request.type === "plan-worker-count" ? "plan" : record.request.type === "stop-worker" ? record.reset === undefined ? "stop" : "reset" : "control";
     if (record.phase.acknowledgement.kind !== expectedKind || browser && (record.phase.acknowledgement.kind !== "control" || record.phase.acknowledgement.browserSessionId === undefined)) context.addIssue({ code: "custom", message: "worker-control-outcome-kind-mismatch" });
     const acknowledgement = record.phase.acknowledgement;
+    if (record.lifecycle !== undefined && acknowledgement.kind === "remove" && (acknowledgement.retirement.workerId !== record.lifecycle.member.workerId
+      || acknowledgement.retirement.membershipRevision !== record.lifecycle.member.membershipRevision || acknowledgement.beforePoolVersion !== record.lifecycle.poolVersion
+      || acknowledgement.afterPoolVersion !== acknowledgement.beforePoolVersion + 1 || acknowledgement.beforeCount !== record.lifecycle.desiredWorkers
+      || acknowledgement.afterCount !== acknowledgement.beforeCount - 1 || record.closure === undefined)) context.addIssue({ code: "custom", message: "worker-removal-acknowledgement-mismatch" });
+    if (record.lifecycle !== undefined && acknowledgement.kind === "retry" && (acknowledgement.oldLeaseGeneration !== record.lifecycle.lifetime.leaseGeneration
+      || acknowledgement.leaseGeneration !== acknowledgement.oldLeaseGeneration + 1 || record.readiness === undefined)) context.addIssue({ code: "custom", message: "worker-retry-acknowledgement-mismatch" });
     if (record.reset !== undefined && acknowledgement.kind === "reset" && (acknowledgement.commandId !== record.commandId
       || acknowledgement.leaseGeneration !== record.reset.lifetime.leaseGeneration
       || acknowledgement.controlRevision !== record.reset.reservedControlRevision

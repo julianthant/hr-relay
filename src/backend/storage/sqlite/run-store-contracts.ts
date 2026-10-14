@@ -426,6 +426,7 @@ export type StartPlanConsumeOutcome = z.infer<typeof StartPlanConsumeOutcomeSche
 /* ── worker leases (ref execution-and-sessions ) ───────────────────────────────────────────── */
 
 export const WorkerStartRequestSchema = z.strictObject({
+  commandId: CommandIdSchema.optional(),
   workerId: WorkerIdSchema,
   workflow: WorkflowIdSchema,
   browserSystems: WorkerBrowserSystemsSchema,
