@@ -11,7 +11,7 @@ import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values
 import type { RerunWarningWire } from "../../../models/dashboard/rerun-warning.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import { candidateText, defaultRerunSteps, initialRerunValueDrafts, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
-import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "./run-launch-recovery.js";
+import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "./run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "./run-launch-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
@@ -584,9 +584,10 @@ export function RunStartDialog({
     const attempt = {};
     sending.current = attempt; setBusy(true); setError(null);
     try {
-      retainLaunchFinal(window.sessionStorage, command);
+      retainLaunchFinal(window.sessionStorage, command, plan?.startPlanId === command.target.startPlanId ? plan : undefined);
+      const verificationPlan = readLaunchVerificationPlan(window.sessionStorage, command.requestedBy);
       finalRequest.current = command; setRecovery(command);
-      await launchService.submit(command, binding, plan?.startPlanId === command.target.startPlanId ? plan : undefined, outcome => {
+      await launchService.submit(command, binding, verificationPlan, outcome => {
         if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
         binding.feedback(outcome);
         if (outcome.kind === "confirmed") {
