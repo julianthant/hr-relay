@@ -1,3 +1,4 @@
+import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -66,10 +67,8 @@ function collectAudit(): readonly string[] {
     readFileSync(resolve(REPO_ROOT, `tests/architecture/storage/fixtures/lifecycle/${kind}.txt`), "utf8")]));
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.ReactJSX, strict: true, skipLibCheck: true };
-  const host = ts.createCompilerHost(options); const original = host.readFile.bind(host);
-  host.readFile = (file) => extras.has(file) ? extras.get(file) : original(file);
   const files = [...roots.map((file) => resolve(REPO_ROOT, file)), ...extras.keys()];
-  const program = ts.createProgram(files, options, host); const checker = program.getTypeChecker();
+  const program = createGuardProgram(files, options, extras); const checker = program.getTypeChecker();
   // Only lifecycle mutators need overload resolution; resolving every call also infers unrelated arguments.
   const possibleMutators = new WeakMap<ts.Type, boolean>();
   function mayCallMutator(expression: ts.Expression): boolean {

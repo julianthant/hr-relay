@@ -1,3 +1,4 @@
+import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -105,7 +106,7 @@ describe("driver lease boundary", () => {
 
   it("keeps raw browser-resource minting inside the session manager", () => {
     const files = sourceFiles();
-    const program = ts.createProgram(files.map(file => join(REPO_ROOT, file.path)), { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext });
+    const program = createGuardProgram(files.map(file => join(REPO_ROOT, file.path)), { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext });
     const checker = program.getTypeChecker();
     const violations = files
       .filter(({ path, content }) => path !== "src/backend/runtime/workers/worker-sessions.ts"
@@ -118,12 +119,7 @@ describe("driver lease boundary", () => {
     const path = join(REPO_ROOT, "src/backend/app/preflight/worker-admission.ts");
     const content = readFileSync(path, "utf8");
     const audit = (candidate: string): boolean => {
-      const host = ts.createCompilerHost({});
-      const getSourceFile = host.getSourceFile.bind(host);
-      host.getSourceFile = (file, languageVersion, onError, shouldCreateNewSourceFile) => file === path
-        ? ts.createSourceFile(file, candidate, languageVersion, true)
-        : getSourceFile(file, languageVersion, onError, shouldCreateNewSourceFile);
-      const program = ts.createProgram([path], { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext }, host);
+      const program = createGuardProgram([path], { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext }, new Map([[path, candidate]]));
       return rawFactoryIssues(candidate, program.getSourceFile(path)!, program.getTypeChecker());
     };
     assert.equal(audit(content), false);

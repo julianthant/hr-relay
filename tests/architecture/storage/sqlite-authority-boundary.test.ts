@@ -1,3 +1,4 @@
+import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -38,7 +39,7 @@ function isPrivateMember(member: ts.ClassElement): boolean {
 }
 
 function publicSqliteLeaks(file: string): readonly string[] {
-  const program = ts.createProgram([file], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true });
+  const program = createGuardProgram([file], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true });
   const checker = program.getTypeChecker();
   const source = program.getSourceFile(file);
   if (source === undefined) throw new Error(`missing SQLite boundary source ${file}`);
