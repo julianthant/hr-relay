@@ -6,6 +6,7 @@ import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { privateEqual } from "../../../rules/validation/private-equal.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import { observeProcessIdentity } from "../sqlite/runtime-process-locks.js";
+import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 
 import { ChatGptCredentialLockSchema as LockSchema, CREDENTIAL_DIRECTORY_MODE, noSymlinkAncestry, statDirectory, ensureChildDirectory, removeExactPath, readPrivateFile, fsyncPath, createPrivateLock, writePrivateStage, replacePrivateFile, companionCredentialEntries, type DirectoryIdentity } from "./credential-safe-file.js";
 const MAX_BYTES = 64_000;
@@ -23,14 +24,8 @@ export const ChatGptCredentialRecordSchema = z.strictObject({
 }).refine(record => (record.registration === null || record.clientId !== null) && (record.session === null || record.registration !== null));
 export type ChatGptCredentialRecord = z.infer<typeof ChatGptCredentialRecordSchema>;
 
-const messages = {
-  CHATGPT_CREDENTIAL_UNAVAILABLE: "ChatGPT credentials could not be read or saved safely.",
-  CHATGPT_CREDENTIAL_BUSY: "ChatGPT credentials are in use by another operation.",
-  CHATGPT_CREDENTIAL_CONFLICT: "The ChatGPT account changed. Read its current state before trying again.",
-  CHATGPT_CREDENTIAL_UNCERTAIN: "The ChatGPT credential change could not be confirmed. Read its current state before trying again.",
-} as const;
 export class ChatGptCredentialError extends Error {
-  constructor(readonly code: keyof typeof messages) { super(messages[code]); this.name = "ChatGptCredentialError"; }
+  constructor(readonly code: Extract<ErrorCatalogCode, `CHATGPT_CREDENTIAL_${string}`>) { super(ERROR_CATALOG[code].text); this.name = "ChatGptCredentialError"; }
 }
 const unavailable = () => new ChatGptCredentialError("CHATGPT_CREDENTIAL_UNAVAILABLE");
 type Lock = z.infer<typeof LockSchema>;

@@ -72,6 +72,137 @@ export const ERROR_CATALOG = Object.freeze({
   COMMAND_DISPATCH_FAILED: catalogEntry(
     "The command could not be dispatched. Review local diagnostic evidence.",
     EmptyParametersSchema,
+  ),  CHATGPT_AUTH_BUSY: catalogEntry(
+    "A ChatGPT sign-in is already in progress.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_AUTH_CANCELLED: catalogEntry(
+    "ChatGPT sign-in was cancelled.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_AUTH_EXPIRED: catalogEntry(
+    "ChatGPT sign-in expired. Start a new sign-in.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_AUTH_INVALID: catalogEntry(
+    "The ChatGPT sign-in response could not be verified.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_AUTH_UNAVAILABLE: catalogEntry(
+    "ChatGPT sign-in is unavailable. Try again later.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_ACCOUNT_EXPIRED: catalogEntry(
+    "The ChatGPT session expired. Sign in again.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_PLAN_DISABLED: catalogEntry(
+    "ChatGPT plan use is not enabled for this connection.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_USAGE_LIMIT: catalogEntry(
+    "The ChatGPT plan usage limit has been reached.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_USAGE_UNAVAILABLE: catalogEntry(
+    "ChatGPT plan usage is unavailable.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_OCR_INVALID: catalogEntry(
+    "The OCR request is invalid.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_OCR_FAILED: catalogEntry(
+    "ChatGPT could not complete the OCR request.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_OCR_INCOMPLETE: catalogEntry(
+    "ChatGPT returned an incomplete OCR response.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_OCR_CANCELLED: catalogEntry(
+    "The OCR request was cancelled.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_SERVICE_CLOSED: catalogEntry(
+    "The ChatGPT account service is closed.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_CREDENTIAL_UNAVAILABLE: catalogEntry(
+    "ChatGPT credentials could not be read or saved safely.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_CREDENTIAL_BUSY: catalogEntry(
+    "ChatGPT credentials are in use by another operation.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_CREDENTIAL_CONFLICT: catalogEntry(
+    "The ChatGPT account changed. Read its current state before trying again.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_CREDENTIAL_UNCERTAIN: catalogEntry(
+    "The ChatGPT credential change could not be confirmed. Read its current state before trying again.",
+    EmptyParametersSchema,
+  ),
+  WORKBOOK_INVALID: catalogEntry(
+    "The workbook is malformed and cannot be saved.",
+    EmptyParametersSchema,
+  ),
+  WORKBOOK_NOT_FOUND: catalogEntry(
+    "The saved workbook was not found.",
+    EmptyParametersSchema,
+  ),
+  WORKBOOK_VERSION_CONFLICT: catalogEntry(
+    "The saved workbook changed. Read its current version before saving.",
+    EmptyParametersSchema,
+  ),
+  WORKBOOK_STORAGE_CORRUPT: catalogEntry(
+    "The saved workbook or its history is corrupt.",
+    EmptyParametersSchema,
+  ),
+  WORKBOOK_STORAGE_FAILED: catalogEntry(
+    "The workbook library storage operation failed.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_POPULATION_RANGE_INVALID: catalogEntry(
+    "The Analytics date range is invalid.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_POPULATION_BROWSE_INVALID: catalogEntry(
+    "The Analytics browse selection is invalid.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_POPULATION_WORKFLOW_UNAVAILABLE: catalogEntry(
+    "This workflow has no runs in the selected Analytics period.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_POPULATION_PAGE_UNAVAILABLE: catalogEntry(
+    "This Analytics page is unavailable.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_POPULATION_RUN_UNAVAILABLE: catalogEntry(
+    "This run is not part of the selected Analytics result.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_POPULATION_CONTENT_MISMATCH: catalogEntry(
+    "The selected Analytics population has changed. Select the period again.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_POPULATION_SOURCE_MISMATCH: catalogEntry(
+    "The Analytics report and run population disagree.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED: catalogEntry(
+    "The Analytics selection has expired. Select the period again.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH: catalogEntry(
+    "The Analytics selection no longer matches the current data. Select the period again.",
+    EmptyParametersSchema,
+  ),
+  ACTIVITY_SNAPSHOT_CONTENT_MISMATCH: catalogEntry(
+    "The selected Analytics report has changed. Select the period again.",
+    EmptyParametersSchema,
   ),
 });
 

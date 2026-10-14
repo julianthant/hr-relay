@@ -193,15 +193,15 @@ describe("selected Analytics population", () => {
   it("refuses tampering, range/source/generation changes, expiry and process recreation", () => {
     const f = fixture(); f.add(1); f.publish();
     const selected = f.service.read(range);
-    for (const token of [undefined, null, `${selected.snapshot.token}x`, selected.report.snapshot.token]) expect(() => f.service.readSelected(range, token)).toThrow("activity-snapshot-invalid-or-expired");
-    expect(() => f.service.readSelected({ ...range, to: "2026-10-02" }, selected.snapshot.token)).toThrow("activity-snapshot-stale-or-selection-mismatch");
+    for (const token of [undefined, null, `${selected.snapshot.token}x`, selected.report.snapshot.token]) expect(() => f.service.readSelected(range, token)).toThrow(expect.objectContaining({ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" }));
+    expect(() => f.service.readSelected({ ...range, to: "2026-10-02" }, selected.snapshot.token)).toThrow(expect.objectContaining({ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" }));
     expect(() => f.service.read({ from: "bad", to: range.to })).toThrow(ActivityPopulationError);
-    expect(() => createActivityPopulationService(f.input).exportSelected(range, selected.snapshot.token)).toThrow("activity-snapshot-invalid-or-expired");
+    expect(() => createActivityPopulationService(f.input).exportSelected(range, selected.snapshot.token)).toThrow(expect.objectContaining({ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" }));
     const spy = vi.spyOn(f.database, "getSourceDatabaseIdentity").mockReturnValue("b".repeat(64));
-    expect(() => f.service.readSelected(range, selected.snapshot.token)).toThrow("activity-snapshot-stale-or-selection-mismatch"); spy.mockRestore();
+    expect(() => f.service.readSelected(range, selected.snapshot.token)).toThrow(expect.objectContaining({ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" })); spy.mockRestore();
     f.database.authority.runs.enqueue(runRecordOf({ seed: 2, enqueuedAt: at, dryRun: true }));
-    expect(() => f.service.readSelected(range, selected.snapshot.token)).toThrow("activity-snapshot-stale-or-selection-mismatch");
+    expect(() => f.service.readSelected(range, selected.snapshot.token)).toThrow(expect.objectContaining({ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" }));
     const fresh = f.service.read(range); f.clock.advanceWall(15 * 60_000);
-    expect(() => f.service.exportSelected(range, fresh.snapshot.token)).toThrow("activity-snapshot-invalid-or-expired");
+    expect(() => f.service.exportSelected(range, fresh.snapshot.token)).toThrow(expect.objectContaining({ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" }));
   });
 });

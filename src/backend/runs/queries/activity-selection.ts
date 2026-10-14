@@ -6,11 +6,12 @@ import { ActivityReportWireSchema, type ActivityReportWire } from "../../../mode
 import { ActivityReportSelectionSchema, ActivitySnapshotIdentitySchema } from "../../../models/dashboard/activity-selection.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 
 const RangeSchema = z.strictObject({ from: z.iso.date(), to: z.iso.date() }).refine(range => range.from <= range.to, { message: "activity range ends before it starts" });
 export class ActivitySnapshotError extends Error {
-  constructor(readonly code: "activity-snapshot-invalid-or-expired" | "activity-snapshot-stale-or-selection-mismatch" | "activity-snapshot-content-mismatch") {
-    super(code);
+  constructor(readonly code: Extract<ErrorCatalogCode, `ACTIVITY_SNAPSHOT_${string}`>) {
+    super(ERROR_CATALOG[code].text);
     this.name = "ActivitySnapshotError";
   }
 }
@@ -25,12 +26,12 @@ export function createActivitySnapshotSigner<Identity extends { expiresAt: strin
   };
   const decode = (value: unknown): Identity => {
     const token = z.string().max(4096).safeParse(value);
-    if (!token.success || !new RegExp(`^${prefix}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$`, "u").test(token.data)) throw new ActivitySnapshotError("activity-snapshot-invalid-or-expired");
+    if (!token.success || !new RegExp(`^${prefix}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$`, "u").test(token.data)) throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED");
     const [, body, mac] = token.data.split(".");
     const observed = Buffer.from(mac, "base64url"), expected = signature(body);
-    if (observed.length !== expected.length || !timingSafeEqual(observed, expected)) throw new ActivitySnapshotError("activity-snapshot-invalid-or-expired");
+    if (observed.length !== expected.length || !timingSafeEqual(observed, expected)) throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED");
     const identity = schema.safeParse(JSON.parse(Buffer.from(body, "base64url").toString("utf8")));
-    if (!identity.success || encode(identity.data) !== token.data || Date.parse(identity.data.expiresAt) <= clock.nowMs()) throw new ActivitySnapshotError("activity-snapshot-invalid-or-expired");
+    if (!identity.success || encode(identity.data) !== token.data || Date.parse(identity.data.expiresAt) <= clock.nowMs()) throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED");
     return identity.data;
   };
   return { encode, decode };
@@ -45,12 +46,12 @@ export function createActivitySelectionService(input: {
   const read=(from:string,to:string,selected?:z.infer<typeof ActivitySnapshotIdentitySchema>)=>database.withAuthorityReadSnapshot(()=>{
     RangeSchema.parse({from,to});
     const authorityGeneration=database.getMeta().authorityGeneration,sourceIdentity=database.getSourceDatabaseIdentity();
-    if(selected!==undefined&&(selected.from!==from||selected.to!==to||selected.sourceIdentity!==sourceIdentity||selected.authorityGeneration!==authorityGeneration))throw new ActivitySnapshotError("activity-snapshot-stale-or-selection-mismatch");
+    if(selected!==undefined&&(selected.from!==from||selected.to!==to||selected.sourceIdentity!==sourceIdentity||selected.authorityGeneration!==authorityGeneration))throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH");
     const generatedAt=selected?.generatedAt??clock.now().toISOString();
     const report=ActivityReportWireSchema.parse(input.read(from,to,generatedAt));
     const identity=ActivitySnapshotIdentitySchema.parse({from,to,generatedAt,sourceIdentity,authorityGeneration,
       expiresAt:selected?.expiresAt??new Date(clock.nowMs()+15*60_000).toISOString(),reportDigest:sha256Hex(canonicalJsonStringify(report))});
-    if(selected!==undefined&&identity.reportDigest!==selected.reportDigest)throw new ActivitySnapshotError("activity-snapshot-content-mismatch");
+    if(selected!==undefined&&identity.reportDigest!==selected.reportDigest)throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_CONTENT_MISMATCH");
     return ActivityReportSelectionSchema.parse({...report,snapshot:{...identity,token:encode(identity)}});
   });
   return Object.freeze({read:(from:string,to:string)=>read(from,to),readSelected:(from:string,to:string,token:unknown)=>read(from,to,decode(token))});

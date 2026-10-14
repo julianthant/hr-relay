@@ -11,6 +11,7 @@ import { createActivitySelectionService, createActivitySnapshotSigner } from "./
 import { queryActivitySummaries, visitActivitySummaryRange } from "./activity-summaries.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { Clock } from "../../../rules/time/clock.js";
+import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 
 const RangeSchema = z.strictObject({ from: z.iso.date(), to: z.iso.date() }).refine(range => range.from <= range.to);
 const RunSchema = z.strictObject({
@@ -48,18 +49,9 @@ export type ActivityPopulationSelectedRead = z.infer<typeof SelectedReadSchema>;
 export type ActivityPopulationExport = z.infer<typeof ExportSchema>;
 export type ActivitySuccessfulTiming = z.infer<typeof TimingSchema>;
 
-const FAILURE_TEXT = {
-  "activity-population-range-invalid": "The Analytics date range is invalid.",
-  "activity-population-browse-invalid": "The Analytics browse selection is invalid.",
-  "activity-population-workflow-unavailable": "This workflow has no runs in the selected Analytics period.",
-  "activity-population-page-unavailable": "This Analytics page is unavailable.",
-  "activity-population-run-unavailable": "This run is not part of the selected Analytics result.",
-  "activity-population-content-mismatch": "The selected Analytics population has changed. Select the period again.",
-  "activity-population-source-mismatch": "The Analytics report and run population disagree.",
-} as const;
 export class ActivityPopulationError extends Error {
-  constructor(readonly code: keyof typeof FAILURE_TEXT) {
-    super(FAILURE_TEXT[code]);
+  constructor(readonly code: Extract<ErrorCatalogCode, `ACTIVITY_POPULATION_${string}`>) {
+    super(ERROR_CATALOG[code].text);
     this.name = "ActivityPopulationError";
   }
 }
@@ -67,9 +59,9 @@ export class ActivityPopulationError extends Error {
 const nameOrder = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 function browseSelection(selection: ActivityPopulationSelection, input: unknown): ActivityPopulationBrowseResult {
   const parsed = BrowseSchema.safeParse(input);
-  if (!parsed.success) throw new ActivityPopulationError("activity-population-browse-invalid");
+  if (!parsed.success) throw new ActivityPopulationError("ACTIVITY_POPULATION_BROWSE_INVALID");
   const browse = parsed.data;
-  if (browse.workflow !== undefined && !selection.population.some(row => row.workflowId === browse.workflow)) throw new ActivityPopulationError("activity-population-workflow-unavailable");
+  if (browse.workflow !== undefined && !selection.population.some(row => row.workflowId === browse.workflow)) throw new ActivityPopulationError("ACTIVITY_POPULATION_WORKFLOW_UNAVAILABLE");
   const population = selection.population.filter(row => (browse.workflow === undefined || row.workflowId === browse.workflow) &&
     (browse.metric === "completed" ? row.status === "done" : browse.metric === "failed" ? row.status === "failed" : browse.metric === "timed" ? row.status === "done" && row.parentRunId === null && row.durationMs !== null : ["queued", "running", "cancelling", "blocked", "awaiting-approval"].includes(row.status)));
   const terms = browse.query?.trim().toLocaleLowerCase("en").split(/\s+/u).filter(Boolean) ?? [];
@@ -86,9 +78,9 @@ function browseSelection(selection: ActivityPopulationSelection, input: unknown)
     const order = sort.column === "name" ? nameOrder.compare(a.title, b.title) : a.durationMs === null || b.durationMs === null ? 0 : a.durationMs - b.durationMs;
     return (sort.direction === "ascending" ? order : -order) || nameOrder.compare(a.runId, b.runId);
   });
-  if (browse.page > Math.max(0, Math.ceil(matches.length / 20) - 1)) throw new ActivityPopulationError("activity-population-page-unavailable");
+  if (browse.page > Math.max(0, Math.ceil(matches.length / 20) - 1)) throw new ActivityPopulationError("ACTIVITY_POPULATION_PAGE_UNAVAILABLE");
   const run = browse.run === undefined ? null : matches.find(row => row.runId === browse.run);
-  if (run === undefined) throw new ActivityPopulationError("activity-population-run-unavailable");
+  if (run === undefined) throw new ActivityPopulationError("ACTIVITY_POPULATION_RUN_UNAVAILABLE");
   const identity = { from: selection.report.from, to: selection.report.to, token: selection.snapshot.token, browse };
   const start = browse.page * 20;
   return BrowseResultSchema.parse({ identity: { ...identity, digest: sha256Hex(canonicalJsonStringify(identity)) }, total: population.length, totalMatches: matches.length, start, rows: matches.slice(start, start + 20), run });
@@ -105,7 +97,7 @@ export function createActivityPopulationService(input: {
   const signer = createActivitySnapshotSigner(IdentitySchema, "ap1", clock);
   const read = (rangeInput: unknown, selected?: z.infer<typeof IdentitySchema>): ActivityPopulationSelection => {
     const bounds = RangeSchema.safeParse(rangeInput);
-    if (!bounds.success) throw new ActivityPopulationError("activity-population-range-invalid");
+    if (!bounds.success) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
     const { from, to } = bounds.data;
     return database.withAuthorityReadSnapshot(() => {
       const report = selected === undefined ? reports.read(from, to) : reports.readSelected(from, to, selected.reportToken);
@@ -116,7 +108,7 @@ export function createActivityPopulationService(input: {
           status: deriveRunStatus(row), terminal: row.lifecycle.state === "terminal", durationMs: row.durationMs,
           receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" }));
       });
-      if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("activity-population-source-mismatch");
+      if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
       const successfulTiming = report.workflows.map(workflow => {
         const successful = population.filter(row => row.workflowId === workflow.workflowId && row.status === "done" && row.parentRunId === null);
         const measured = successful.flatMap(row => row.durationMs === null ? [] : [row.durationMs]);
@@ -124,7 +116,7 @@ export function createActivityPopulationService(input: {
           totalMs: measured.length === 0 ? null : measured.reduce((sum, duration) => sum + duration, 0) });
       });
       const populationDigest = sha256Hex(canonicalJsonStringify({ population, successfulTiming }));
-      if (selected !== undefined && populationDigest !== selected.populationDigest) throw new ActivityPopulationError("activity-population-content-mismatch");
+      if (selected !== undefined && populationDigest !== selected.populationDigest) throw new ActivityPopulationError("ACTIVITY_POPULATION_CONTENT_MISMATCH");
       const { token: reportToken, ...reportIdentity } = report.snapshot;
       const identity = IdentitySchema.parse({ ...reportIdentity, reportToken, populationDigest });
       return SelectionSchema.parse({ report, population, successfulTiming, snapshot: { ...identity, token: signer.encode(identity) } });

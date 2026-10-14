@@ -4,17 +4,11 @@ import { CANONICAL_FIELD_IDS } from "../../models/fields/registry.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
+import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 
-export const WORKBOOK_LIBRARY_ERRORS = Object.freeze({
-  WORKBOOK_INVALID: "The workbook is malformed and cannot be saved.",
-  WORKBOOK_NOT_FOUND: "The saved workbook was not found.",
-  WORKBOOK_VERSION_CONFLICT: "The saved workbook changed. Read its current version before saving.",
-  WORKBOOK_STORAGE_CORRUPT: "The saved workbook or its history is corrupt.",
-  WORKBOOK_STORAGE_FAILED: "The workbook library storage operation failed.",
-});
 export class WorkbookLibraryError extends Error {
-  constructor(readonly code: keyof typeof WORKBOOK_LIBRARY_ERRORS, options?: ErrorOptions) {
-    super(WORKBOOK_LIBRARY_ERRORS[code], options);
+  constructor(readonly code: Extract<ErrorCatalogCode, `WORKBOOK_${string}`>, options?: ErrorOptions) {
+    super(ERROR_CATALOG[code].text, options);
     this.name = "WorkbookLibraryError";
   }
 }

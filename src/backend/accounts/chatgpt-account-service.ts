@@ -6,29 +6,15 @@ import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { privateEqual } from "../../rules/validation/private-equal.js";
 import type { RuntimeAdmission } from "../storage/admission/admission.js";
 import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions } from "../storage/configuration/credential-store.js";
+import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 
 const AUTH = "https://auth.openai.com", RESOURCE = "https://api.openai.com/v1";
 const PLAN_SCOPES = ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"];
-const messages = {
-  CHATGPT_AUTH_BUSY: "A ChatGPT sign-in is already in progress.",
-  CHATGPT_AUTH_CANCELLED: "ChatGPT sign-in was cancelled.",
-  CHATGPT_AUTH_EXPIRED: "ChatGPT sign-in expired. Start a new sign-in.",
-  CHATGPT_AUTH_INVALID: "The ChatGPT sign-in response could not be verified.",
-  CHATGPT_AUTH_UNAVAILABLE: "ChatGPT sign-in is unavailable. Try again later.",
-  CHATGPT_ACCOUNT_EXPIRED: "The ChatGPT session expired. Sign in again.",
-  CHATGPT_PLAN_DISABLED: "ChatGPT plan use is not enabled for this connection.",
-  CHATGPT_USAGE_LIMIT: "The ChatGPT plan usage limit has been reached.",
-  CHATGPT_USAGE_UNAVAILABLE: "ChatGPT plan usage is unavailable.",
-  CHATGPT_OCR_INVALID: "The OCR request is invalid.",
-  CHATGPT_OCR_FAILED: "ChatGPT could not complete the OCR request.",
-  CHATGPT_OCR_INCOMPLETE: "ChatGPT returned an incomplete OCR response.",
-  CHATGPT_OCR_CANCELLED: "The OCR request was cancelled.",
-  CHATGPT_SERVICE_CLOSED: "The ChatGPT account service is closed.",
-} as const;
+type ChatGptAccountCode = Exclude<Extract<ErrorCatalogCode, `CHATGPT_${string}`>, `CHATGPT_CREDENTIAL_${string}`>;
 export class ChatGptAccountError extends Error {
-  constructor(readonly code: keyof typeof messages) { super(messages[code]); this.name = "ChatGptAccountError"; }
+  constructor(readonly code: ChatGptAccountCode) { super(ERROR_CATALOG[code].text); this.name = "ChatGptAccountError"; }
 }
-const fault = (code: keyof typeof messages) => new ChatGptAccountError(code);
+const fault = (code: ChatGptAccountCode) => new ChatGptAccountError(code);
 export const ChatGptAccountStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("signed-out") }),
   z.strictObject({ state: z.literal("expired") }),
@@ -94,7 +80,7 @@ async function boundedEmptyResponse(response: Response): Promise<boolean> {
 function publicState(record: ChatGptCredentialRecord | undefined, now: number): ChatGptAccountState {
   if (record?.session == null || record.registration === null) return { state: "signed-out" };
   if (Date.parse(record.session.expiresAt) <= now) return { state: "expired" };
-  if (record.session.usage === "unavailable") return { state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: messages.CHATGPT_USAGE_UNAVAILABLE };
+  if (record.session.usage === "unavailable") return { state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text };
   return { state: "connected", name: record.registration.name, email: record.registration.email, expiresAt: record.session.expiresAt,
     planUsage: !record.session.usePlan || !PLAN_SCOPES.every(scope => record.session?.scopes.includes(scope)) ? "disabled"
       : record.session.usage === "limit-reached" ? "limit-reached" : "enabled" };
