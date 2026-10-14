@@ -37,7 +37,7 @@ describe("worker-browser arms", () => {
     assert.deepEqual(harness.workerCalls, ["plan:plan-worker-count"]);
   });
 
-  it("writes durable lease directives for stop/pause/resume against current authority", async () => {
+  it("writes pause/resume directives and reserves Stop for owner reset against exact membership", async () => {
     const harness = createHarness();
     testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "kernel.sqlite"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
     const workerId = harness.database.authority.workerSlots.list(rejectActiveDescriptor.id)[0].workerId;
@@ -50,13 +50,13 @@ describe("worker-browser arms", () => {
     assert.equal(resumed.state, "applied");
     assert.equal(harness.database.authority.workerLeases.get(workerId)?.control.directive, "run");
 
-    const stopped = await harness.kernel.executeWorkerPool(workerCommand("stop-worker", { workerId, expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 3 } }));
-    assert.equal(stopped.state, "applied");
-    assert.equal(harness.database.authority.workerLeases.get(workerId)?.control.directive, "stop");
+    const stopped = await harness.kernel.executeWorkerPool(workerCommand("stop-worker", { workerId, membershipRevision: harness.database.authority.workerSlots.get(workerId)?.membershipRevision, expectedVersion: 999, controlBasis: { leaseGeneration: 1, controlRevision: 3 } }));
+    assert.equal(stopped.state, "pending");
+    assert.equal(harness.database.authority.workerLeases.get(workerId)?.control.directive, "run");
 
     const missing = await harness.kernel.executeWorkerPool(workerCommand("stop-worker", { workerId: "worker-9", expectedVersion: 1 }));
     assert.equal(missing.state, "rejected");
-    if (missing.state === "rejected") assert.equal(missing.code, "target-not-found");
+    if (missing.state === "rejected") assert.equal(missing.message, "worker-reset-authority-unavailable");
   });
 
   it("delegates plan/spawn/refresh/reopen to the typed runtime seam after authority validation", async () => {

@@ -1,3 +1,4 @@
+import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
@@ -135,6 +136,15 @@ describe("canonical run-record service", () => {
       commandId: commandId(), evidenceClass: "diagnostic-bundle", bundleId: UUID_6,
     }));
     assert.deepEqual(purged, { state: "purged", evidenceClass: "diagnostic-bundle", purged: 0 });
+
+    const slot = database.authority.workerSlots.get(WORKER_ID), lease = database.authority.workerLeases.get(WORKER_ID);
+    assert.ok(slot !== undefined && lease !== undefined);
+    const reset = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
+      commandId: commandId(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: NOW,
+      target: { workerId: WORKER_ID, membershipRevision: slot.membershipRevision, controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
+    }, commandId(), NOW));
+    database.authority.workerControls.transition(reset.commandId, "admitted", { state: "executing", startedAt: NOW });
+    measure("settleResetWork", 0, () => { service.settleResetWork(reset.reset); });
 
     const sourceText = readFileSync(join(process.cwd(), "src/backend/runs/lifecycle/run-record-service.ts"), "utf8");
     const sourceFile = ts.createSourceFile("run-record-service.ts", sourceText, ts.ScriptTarget.Latest, true);

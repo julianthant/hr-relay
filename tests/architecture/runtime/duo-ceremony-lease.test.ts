@@ -105,6 +105,18 @@ function storeSessionFiles(): readonly string[] {
   return gitVisibleFiles(["src/stores", "src/backend/systems"]).filter((path) => /\/session\.ts$/.test(path));
 }
 
+describe("worker reset owner closure provenance", () => {
+  const home = "src/backend/storage/sqlite/worker-control.ts";
+  const owner = "src/backend/runtime/workers/worker-sessions.ts";
+  const audit = (path: string, content: string) => path === home || path === owner ? []
+    : content.includes("mintWorkerResetClosure") ? [`${path}: only the session manager may mint reset closure`] : [];
+  it("permits only the actual session manager to mint closure capability", () => {
+    assert.deepEqual(sourceFiles().flatMap(path => audit(path, read(path))), []);
+    assert.match(read(owner), /return mintWorkerResetClosure\(binding/);
+    assert.equal(audit("src/forged.ts", "mintWorkerResetClosure(binding)").length, 1);
+  });
+});
+
 describe("the Duo ceremony lease is structural", () => {
   it("lets only the lease store mint or retire a token, anywhere in src/ and scripts/", () => {
     const files = sourceFiles();

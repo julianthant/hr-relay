@@ -271,5 +271,11 @@ A reset admitted after a fence leaves the existing write intent, claim, callback
 ownership intact. Its current-work signal cannot detach the fenced transaction callback, repeat
 the external submit, terminally cancel an attempting write, or overwrite UNKNOWN/parked evidence.
 Actual read-task callbacks are also tracked by run/claim/attempt across ordinary deadline races;
-reset retains the operation until owned settlement. Reset settlement and idle/closure proof remain
-unavailable in the current intermediate backend, so public Stop refuses before effects.
+reset retains the operation until owned settlement, including callbacks that reject or outlive their
+task deadline. After actual settlement, known committed evidence permits lawful residual-work
+cancellation without repeating the write. A released parked UNKNOWN may coexist with browserless
+idle; reset preserves its exact run, intent, attempt and resolution authority. Both lifecycle and final
+reset settlement authenticate parked run/intent generation, attempt, workflow, item and original
+parked attempt before releasing the barrier. Attempting writes or inconsistent parked identity retain
+the reservation. The dedicated authority transaction records idle, closure, exact success and audit
+atomically; no client acknowledgement or generic journal setter can supply those facts.

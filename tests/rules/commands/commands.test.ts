@@ -110,6 +110,8 @@ describe("authority classification and command families", () => {
       affectedDependencyIds: [],
     };
     assert.equal(CommandAuditRecordSchema.safeParse(audit).success, true);
+    assert.equal(CommandResultSchema.safeParse({ state: "pending", commandId: UUID_1 }).success, true);
+    assert.equal(CommandAuditRecordSchema.safeParse({ ...audit, result: { state: "pending", commandId: UUID_1 } }).success, false);
     assert.equal(CommandAuditRecordSchema.safeParse({ ...audit, requester: "anonymous" }).success, false);
     const bulk = {
       commandId: UUID_1,

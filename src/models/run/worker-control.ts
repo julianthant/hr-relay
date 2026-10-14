@@ -14,6 +14,7 @@ export function workerControlScope(request: z.infer<typeof WorkerBrowserCommandR
 /** The observed result survives the BFF's acknowledgement/audit crash window. */
 export const WorkerEffectAcknowledgementSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("plan"), workerIds: z.array(WorkerIdSchema), retirements: z.array(WorkerRetirementProofSchema) }),
+  z.strictObject({ kind: z.literal("reset"), commandId: CommandIdSchema, leaseGeneration: PositiveIntSchema, controlRevision: PositiveIntSchema, membershipRevision: PositiveIntSchema, idleAt: IsoInstantSchema, closedSessionIds: z.array(BrowserSessionIdSchema), browsersClosed: z.literal(true), duoReleased: z.literal(true) }),
   z.strictObject({ kind: z.literal("stop"), directiveLeaseVersions: z.strictObject({ before: PositiveIntSchema, after: PositiveIntSchema }) }),
   z.strictObject({ kind: z.literal("control"), browserSessionId: BrowserSessionIdSchema.optional() }),
 ]);
@@ -88,8 +89,16 @@ export const WorkerControlRecordSchema = z.strictObject({
   if (record.phase.state === "succeeded") {
     const browser = record.request.type === "refresh-browser" || record.request.type === "reopen-browser";
     if (!browser && record.phase.application === undefined) context.addIssue({ code: "custom", message: "worker-control-application-required" });
-    const expectedKind = record.request.type === "plan-worker-count" ? "plan" : record.request.type === "stop-worker" ? "stop" : "control";
+    const expectedKind = record.request.type === "plan-worker-count" ? "plan" : record.request.type === "stop-worker" ? record.reset === undefined ? "stop" : "reset" : "control";
     if (record.phase.acknowledgement.kind !== expectedKind || browser && (record.phase.acknowledgement.kind !== "control" || record.phase.acknowledgement.browserSessionId === undefined)) context.addIssue({ code: "custom", message: "worker-control-outcome-kind-mismatch" });
+    const acknowledgement = record.phase.acknowledgement;
+    if (record.reset !== undefined && acknowledgement.kind === "reset" && (acknowledgement.commandId !== record.commandId
+      || acknowledgement.leaseGeneration !== record.reset.lifetime.leaseGeneration
+      || acknowledgement.controlRevision !== record.reset.reservedControlRevision
+      || acknowledgement.membershipRevision !== record.reset.member.membershipRevision
+      || acknowledgement.idleAt !== record.phase.completedAt
+      || new Set(acknowledgement.closedSessionIds).size !== acknowledgement.closedSessionIds.length)) context.addIssue({ code: "custom", message: "worker-reset-acknowledgement-mismatch" });
+    if (record.phase.application !== undefined && record.phase.application.result.state !== "applied" && record.phase.application.result.state !== "already-applied") context.addIssue({ code: "custom", message: "worker-control-success-result-required" });
     if (record.phase.application !== undefined && record.phase.application.result.commandId !== record.commandId) context.addIssue({ code: "custom", message: "worker-control-application-identity-mismatch" });
   }
   if (record.commandId !== record.request.commandId) context.addIssue({ code: "custom", message: "worker-control-command-identity-mismatch" });

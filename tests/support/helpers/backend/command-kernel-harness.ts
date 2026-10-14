@@ -148,6 +148,7 @@ export function createCommandKernelTestWorld() {
       return { state: "accepted" };
     };
     return { pool: {
+      assertResetOwner: () => undefined,
       planPoolWorkerCount: async context => { calls.push(`plan:${context.command.type}`); assert.ok(context.roster);
         return { state: "accepted", workerIds: context.roster.selected.map(slot => slot.workerId), retirements: [] }; },
       spawnPoolWorker: control, refreshPoolBrowser: control, reopenPoolBrowser: control,

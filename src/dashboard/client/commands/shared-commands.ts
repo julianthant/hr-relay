@@ -22,7 +22,7 @@ function identityMismatch(response: unknown): never {
 
 export function checkedCommandResult(command: CommandRequest, response: unknown): CommandResult {
   const result = parseOrThrow(CommandResultSchema, "POST /api/v1/commands", response);
-  if (result.commandId !== command.commandId) identityMismatch(response);
+  if (result.commandId !== command.commandId || result.state === "pending" && command.family !== "worker-browser") identityMismatch(response);
   if (result.state !== "applied" && result.state !== "already-applied") return result;
   const targets = result.affectedTargets;
   const matches = (target: typeof targets[number]): boolean => {

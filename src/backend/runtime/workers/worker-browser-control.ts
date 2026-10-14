@@ -1,3 +1,9 @@
+import { workerPoolMember } from "../../../models/run/worker-slot.js";
+import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
+import { RunRecordService } from "../../runs/lifecycle/run-record-service.js";
+import { randomUUID } from "node:crypto";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { WorkerSessionManager } from "./worker-sessions.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -53,6 +59,69 @@ export function createWorkerBrowserControl(input: Readonly<{
               : { state: "uncertain", startedAt: current.phase.state === "executing" ? current.phase.startedAt : now(), observedAt: now(), message: "worker-browser-effect-failed-or-uncertain" });
         });
       }
+    }
+  };
+}
+
+export function createWorkerResetObserver(input: Readonly<{ database: AuthorityDatabase; workerId: string; leaseGeneration: number; clock: Clock; scheduler: MonotonicDeadlineScheduler; onFailure: (error: unknown) => void }>) {
+  let scheduled: Readonly<{ commandId: string; cancel: () => void }> | undefined;
+  let failure: Error | undefined;
+  let stopped = false;
+  const stop = () => { stopped = true; scheduled?.cancel(); scheduled = undefined; };
+  const observe = (): WorkerResetBinding | undefined => {
+    if (failure !== undefined) throw failure;
+    if (stopped) throw new Error("worker-reset-observer-stopped");
+    const reset = observeWorkerReset(input);
+    if (scheduled?.commandId !== reset?.commandId) { scheduled?.cancel(); scheduled = undefined; }
+    if (reset !== undefined && scheduled === undefined) {
+      const record = input.database.authority.workerControls.get(reset.commandId);
+      if (record === undefined) throw new Error("worker-reset-observer-authority-unavailable");
+      const handle = input.scheduler.schedule(input.clock.monotonicMs() + Math.max(0, Date.parse(record.expiresAt) - input.clock.nowMs()), () => {
+        try { observeWorkerReset(input); }
+        catch (error) { failure = error instanceof Error ? error : new Error("worker-reset-observer-failed", { cause: error }); input.onFailure(failure); }
+      });
+      scheduled = { commandId: reset.commandId, cancel: () => { handle.cancel(); } };
+    }
+    return reset;
+  };
+  return Object.assign(observe, { stop, failure: () => failure });
+}
+
+function observeWorkerReset(input: Readonly<{ database: AuthorityDatabase; workerId: string; leaseGeneration: number; clock: Clock }>): WorkerResetBinding | undefined {
+  return input.database.withAuthorityTransaction(repositories => {
+    const current = repositories.workerControls.resetForWorker(input.workerId, input.leaseGeneration);
+    if (current === undefined) return undefined;
+    const reset = current.reset;
+    const slot = repositories.workerSlots.get(input.workerId);
+    const lease = repositories.workerLeases.get(input.workerId);
+    if (reset === undefined || slot === undefined || slot.retiredAt !== null || canonicalJsonStringify(workerPoolMember(slot)) !== canonicalJsonStringify(reset.member)
+      || lease?.controlRevision !== reset.reservedControlRevision || lease.controlCommandId !== current.commandId
+      || lease.processId !== reset.lifetime.processId || lease.lifecycle.startedAt !== reset.lifetime.startedAt) throw new Error("worker-reset-observer-authority-unavailable");
+    const now = input.clock.now().toISOString();
+    let observed = current;
+    if (observed.phase.state === "admitted") observed = repositories.workerControls.transition(observed.commandId, "admitted", { state: "executing", startedAt: now });
+    if (observed.phase.state === "executing" && input.clock.nowMs() >= Date.parse(observed.expiresAt)) repositories.workerControls.transition(observed.commandId, "executing", {
+      state: "uncertain", startedAt: observed.phase.startedAt, observedAt: now, message: "worker-reset-owner-release-pending" });
+    return reset;
+  });
+}
+
+export function createWorkerResetControl(input: Readonly<{ database: AuthorityDatabase; workerId: string; leaseGeneration: number; clock: Clock; lifecycle: RunRecordService }>) {
+  return async (sessions: WorkerSessionManager, reset: WorkerResetBinding): Promise<void> => {
+    const now = () => input.clock.now().toISOString();
+    const observed = observeWorkerReset(input);
+    if (observed === undefined || canonicalJsonStringify(observed) !== canonicalJsonStringify(reset)) throw new Error("worker-reset-owner-conflict");
+    try {
+      input.lifecycle.settleResetWork(reset);
+      const proof = await sessions.closeForReset(reset);
+      input.database.settleWorkerReset(reset.commandId, proof, now(), randomUUID());
+    } catch (error) {
+      input.database.withAuthorityTransaction(repositories => {
+        const current = repositories.workerControls.get(reset.commandId);
+        if (current?.phase.state === "executing") repositories.workerControls.transition(reset.commandId, "executing", {
+          state: "uncertain", startedAt: current.phase.startedAt, observedAt: now(), message: "worker-reset-closure-or-settlement-unproved" });
+      });
+      throw error;
     }
   };
 }

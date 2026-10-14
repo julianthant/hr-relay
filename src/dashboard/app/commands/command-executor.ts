@@ -147,6 +147,7 @@ export class CommandExecutor {
       }
     } else {
       switch (reply.state) {
+        case "pending": return uncertain(commandId, reply, reply);
         case "conflict": return { kind: "conflict", commandId, reply, feedback: feedback("COMMAND_CONFLICT") };
         case "confirmation-required": return { kind: "confirmation-required", commandId, reply, warningDigest: reply.warningDigest, feedback: feedback("COMMAND_CONFIRMATION_REQUIRED") };
         case "rejected": return reply.code === "authority-unjournaled" || reply.code === "authority-uncertain"

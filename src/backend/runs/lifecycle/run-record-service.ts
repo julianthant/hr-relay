@@ -1,3 +1,5 @@
+import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
+import { WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
 import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "../settings/run-settings.js";
@@ -22,6 +24,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { deriveItemId, deriveTraceId, lifecycleCommandId, type IdFactory } from "../../../rules/identity/identifiers.js";
 import {
+  IsoInstantSchema,
   CommandIdSchema,
   FingerprintSchema,
   RunIdSchema,
@@ -557,6 +560,49 @@ export class RunRecordService {
           { commandId: request.commandId, terminal: request.terminal },
           factoryAuthorization,
         );
+  }
+
+  settleResetWork(input: unknown): void {
+    const reset = WorkerResetBindingSchema.parse(input);
+    this.dependencies.database.withAuthorityTransaction(repositories => {
+      repositories.workerControls.assertResetGraph(reset);
+      const record = repositories.workerControls.get(reset.commandId);
+      if (record?.reset === undefined || canonicalJsonStringify(record.reset) !== canonicalJsonStringify(reset)
+        || !["executing", "uncertain"].includes(record.phase.state)) throw new Error("worker-reset-settlement-owner-unavailable");
+      const members = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
+      for (const member of members) {
+        const run = repositories.runs.get(member.runId);
+        if (run === undefined || run.envelope.attempt !== member.attempt) throw new Error("worker-reset-settlement-run-conflict");
+        if (repositories.writeIntents.listByRun(member.runId).some(intent => intent.status === "attempting")) throw new Error("worker-reset-write-callback-unresolved");
+        if (member.state === "claimed" && run.lifecycle.state !== "terminal" && run.lifecycle.state !== "parked-write") {
+          const claim = runClaim(run);
+          if (claim?.workerId !== member.workerId || claim.claimGeneration !== member.claimGeneration) throw new Error("worker-reset-settlement-claim-conflict");
+        }
+      }
+      for (const member of [...members].reverse()) {
+        const run = repositories.runs.get(member.runId);
+        if (run === undefined) throw new Error("worker-reset-settlement-run-conflict");
+        const writes = repositories.writeIntents.listByRun(member.runId);
+        if (run.lifecycle.state === "terminal") continue;
+        if (run.lifecycle.state === "parked-write") {
+          assertWorkerResetParkedWrite(repositories, run);
+          continue;
+        }
+        if (writes.some(intent => intent.status === "parked")) throw new Error("worker-reset-write-release-unproved");
+        if (member.state === "queued") {
+          if (run.lifecycle.state !== "queued" || run.version !== member.version) throw new Error("worker-reset-cascade-changed");
+          const outcome = this.transition({ commandId: lifecycleCommandId("reset-cascade-cancel", { commandId: reset.commandId, runId: member.runId }),
+            runId: member.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: this.dependencies.clock.now().toISOString() } });
+          if (outcome.state !== "applied") throw new Error("worker-reset-cascade-cancel-refused");
+        } else {
+          const requested = repositories.runs.requestCancellation({ runId: member.runId, expectedVersion: run.version, now: this.dependencies.clock.now().toISOString() });
+          if (requested.state !== "applied") throw new Error("worker-reset-cancel-request-refused");
+          const outcome = this.terminalizeCancellation({ kind: "cancelled", commandId: lifecycleCommandId("reset-current-cancel", { commandId: reset.commandId, runId: member.runId }),
+            runId: member.runId, expectedVersion: requested.run.version, claim: { workerId: member.workerId, claimGeneration: member.claimGeneration }, endedAt: IsoInstantSchema.parse(this.dependencies.clock.now().toISOString()) });
+          if (outcome.state !== "applied") throw new Error("worker-reset-cancel-refused");
+        }
+      }
+    });
   }
 
   private terminalizeCancellation(request: z.infer<typeof CanonicalCancellationTerminalizeRequestSchema>): RunMutationOutcome {

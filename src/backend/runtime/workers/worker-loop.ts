@@ -1,3 +1,4 @@
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { WorkerPoolMemberSchema, WorkerRetirementProofSchema, workerPoolMember, type WorkerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 export { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import type { WorkerBrowserObservation } from "../../../models/run/worker-control.js";
@@ -127,6 +128,8 @@ export interface WorkerLoopDependencies {
   /** Ref data-intake-and-edit-data's blocking sink projector; absent, a declaring node fails loud. */
   readonly artifactProjector?: RunArtifactProjector;
 
+  readonly resetOwner?: Pick<WorkerResetBinding, "member" | "lifetime">;
+  readonly resetControl?: (sessions: WorkerSessionManager, reset: WorkerResetBinding) => Promise<void>;
   readonly pendingReset?: () => WorkerResetBinding | undefined;
   readonly activeWorkReset?: (run: RunRecord, claim: Readonly<{ workerId: string; claimGeneration: number }>) => boolean;
   readonly controlPoll?: () => WorkerDirective;
@@ -231,6 +234,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   };
 
   const sessions = new WorkerSessionManager({
+    ...(deps.resetOwner === undefined ? {} : { resetOwner: deps.resetOwner }),
     workerId,
     workflowId,
     stores: deps.stores,
@@ -287,12 +291,31 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     callbacks.set(operation, identity);
     void operation.then(() => { callbacks.delete(operation); }, () => { callbacks.delete(operation); });
   };
+  let resetSettlement: Readonly<{ binding: string; operation: Promise<void> }> | undefined;
+  const finishReset = async (reset: WorkerResetBinding): Promise<void> => {
+    const bound = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
+    const owned = [...callbacks.entries()].filter(([, identity]) => bound.some(member => member.state === "claimed"
+      && member.runId === identity.runId && member.claimGeneration === identity.claimGeneration && member.attempt === identity.attempt));
+    if (owned.length !== callbacks.size) {
+      while (!deps.stopSignal.aborted) await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+      return;
+    }
+    await Promise.allSettled(owned.map(([operation]) => operation));
+    if (deps.stopSignal.aborted) return;
+    const binding = canonicalJsonStringify(reset);
+    if (resetSettlement?.binding !== binding) resetSettlement = { binding, operation: deps.resetControl?.(sessions, reset) ?? Promise.resolve() };
+    try { await resetSettlement.operation; }
+    catch { await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal); }
+  };
   const outcomes: RunExecutionOutcome[] = [];
   let closure: WorkerLoopReport["closure"] = "proved";
   let stopped: "idle" | "stop-signal" | "stop-directive" = "stop-signal";
   try {
     while (!deps.stopSignal.aborted) {
-      if (deps.pendingReset?.() !== undefined) {
+      const pendingReset = deps.pendingReset?.();
+      if (pendingReset !== undefined) {
+        await finishReset(pendingReset);
+        if (deps.pendingReset?.() === undefined) continue;
         await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
         continue;
       }
@@ -413,17 +436,12 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
               : { captureBrowserScreenshots: run.envelope.captureBrowserScreenshots }),
           },
         );
-        const reset = deps.pendingReset?.();
-        if (reset !== undefined) {
-          const bound = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
-          const owned = [...callbacks.entries()].filter(([, identity]) => bound.some(member => member.state === "claimed"
-            && member.runId === identity.runId && member.claimGeneration === identity.claimGeneration && member.attempt === identity.attempt));
-          if (owned.length !== callbacks.size) {
-            while (!deps.stopSignal.aborted) await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
-          } else await Promise.allSettled(owned.map(([operation]) => operation));
-        }
         outcomes.push(outcome);
+      } catch (error) {
+        if (deps.pendingReset?.() === undefined) throw error;
       } finally {
+        const reset = deps.pendingReset?.();
+        if (reset !== undefined) await finishReset(reset);
         resetPolling = false;
         resetPoll.cancel();
         heartbeat.stop();
@@ -702,11 +720,13 @@ export type WorkerSupervisorRequest =
 
 
 export interface WorkerPoolProcessSupervisor {
+  assertResetOwner?(member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
   execute(request: WorkerSupervisorRequest): unknown;
 }
 
 
 export interface WorkerPoolRuntimeExecutor {
+  assertResetOwner?(workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
   planPoolWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
   spawnPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
   refreshPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
@@ -831,6 +851,12 @@ export function createWorkerPoolRuntimeExecutor(
     return member;
   };
   return Object.freeze({
+    assertResetOwner(workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
+      const member = poolMemberFromIdentity(WorkerIdSchema.parse(workerId));
+      if (member.membershipRevision !== membershipRevision) throw new Error("worker-reset-owned-member-changed");
+      if (supervisor.assertResetOwner === undefined) throw new Error("worker-reset-owner-unavailable");
+      supervisor.assertResetOwner(member, lifetime);
+    },
     async planPoolWorkerCount(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerPlanAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "plan-worker-count") {

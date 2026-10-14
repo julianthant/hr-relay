@@ -476,6 +476,7 @@ const CommandLandingResultSchema = z.strictObject({
 
 export const CommandResultSchema = z.discriminatedUnion("state", [
   CommandLandingResultSchema,
+  z.strictObject({ state: z.literal("pending"), commandId: CommandIdSchema }),
   z.strictObject({ state: z.literal("confirmation-required"), commandId: CommandIdSchema, warningDigest: FingerprintSchema, message: z.string().min(1) }),
   // Only unplanned pools report version zero; all other targets start at one.
   z.strictObject({ state: z.literal("conflict"), commandId: CommandIdSchema, currentVersion: NonNegativeIntSchema, message: z.string().min(1) }),
@@ -501,6 +502,7 @@ export const CommandAuditRecordSchema = z.strictObject({
   affectedDependencyIds: z.array(DependencyIdSchema),
   writeResolution: WriteIntentRecordSchema.optional(),
 }).superRefine((audit, context) => {
+  if (audit.result.state === "pending") context.addIssue({ code: "custom", path: ["result"], message: "pending-command-cannot-have-terminal-audit" });
   const request = audit.request;
   const resolved = request.family === "run" && (request.type === "resolve-write-present" || request.type === "resolve-write-absent") && audit.result.state === "applied";
   if (!resolved) {

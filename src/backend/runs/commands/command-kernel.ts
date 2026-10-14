@@ -1,3 +1,4 @@
+import { admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { requireWorkerPoolRoster, admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
@@ -234,6 +235,7 @@ export const WorkerPlanAcknowledgementSchema = z.strictObject({
 
 // Keep the async pool seam structural to avoid importing the worker loop back into its command dependency.
 export interface WorkerPoolRuntimeSeam {
+  assertResetOwner?(workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
   planPoolWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
   spawnPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
   refreshPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
@@ -2031,7 +2033,32 @@ async function executeWorkerPoolCommand(
   const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
   if (request.type === "stop-worker") {
     if (!LiveWorkerResetRequestSchema.safeParse(request).success) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "worker-reset-authority-unavailable" });
-    return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "worker-reset-settlement-unavailable" });
+    try { return dependencies.authority.withAuthorityTransaction(repositories => {
+      repositories.commands.assertIdentity(request);
+      const prior = repositories.workerControls.get(request.commandId);
+      if (prior !== undefined) {
+        if (prior.reset === undefined) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "worker-reset-authority-unavailable" });
+        if (repositories.commandAudits.findByCommand(request.commandId) !== undefined) return replay(dependencies, repositories, request, now);
+        return CommandResultSchema.parse({ state: "pending", commandId: request.commandId });
+      }
+      try {
+        const live = LiveWorkerResetRequestSchema.parse(request);
+        const lease = repositories.workerLeases.get(live.target.workerId);
+        if (lease === undefined || pool.assertResetOwner === undefined) throw new WorkerControlRefusal("worker-reset-owner-unavailable");
+        pool.assertResetOwner(live.target.workerId, live.target.membershipRevision, { leaseGeneration: lease.leaseGeneration,
+          processId: lease.processId, startedAt: lease.lifecycle.startedAt });
+        admitWorkerReset(repositories, request, dependencies.ids.uuid(), now);
+      }
+      catch (error) {
+        if (error instanceof CommandIdentityConflictError) throw error;
+        throw new WorkerControlRefusal(error instanceof Error ? error.message : "worker-reset-authority-unavailable");
+      }
+      return CommandResultSchema.parse({ state: "pending", commandId: request.commandId });
+    }); } catch (error) {
+      if (error instanceof WorkerControlRefusal) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
+        code: "invalid-state", message: error.message });
+      throw error;
+    }
   }
   const browser = request.type === "refresh-browser" || request.type === "reopen-browser";
   const controls = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls);

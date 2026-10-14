@@ -1,4 +1,4 @@
-import { RunRecordSchema, runClaim } from "../../../models/run/record.js";
+import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
 import { WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
 import { runRecordFromRow } from "./run-record-row.js";
 import { DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
@@ -11,8 +11,25 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { CommandIdentityConflictError, LiveWorkerResetRequestSchema } from "../../../rules/commands/commands.js";
-import { WorkerResetBindingSchema, WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase } from "../../../models/run/worker-control.js";
+import { WorkerResetBindingSchema, WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase, type WorkerResetBinding } from "../../../models/run/worker-control.js";
 import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
+
+const resetClosures = new WeakMap<object, Readonly<{ binding: WorkerResetBinding; sessions: readonly string[]; valid: () => boolean }>>();
+export type WorkerResetClosure = Readonly<{ readonly kind: "worker-reset-owner-closure" }>;
+export function authenticateWorkerResetClosure(proof: WorkerResetClosure, binding: WorkerResetBinding): readonly string[] {
+  const owned = resetClosures.get(proof);
+  if (owned === undefined || !owned.valid() || canonicalJsonStringify(owned.binding) !== canonicalJsonStringify(binding)) throw new Error("worker-reset-closure-authority-unavailable");
+  return owned.sessions;
+}
+
+export function mintWorkerResetClosure(binding: WorkerResetBinding, sessions: readonly string[], valid: () => boolean): WorkerResetClosure {
+  const proof: WorkerResetClosure = Object.freeze({ kind: "worker-reset-owner-closure" });
+  resetClosures.set(proof, { binding, sessions, valid });
+  return proof;
+}
+export function consumeWorkerResetClosure(proof: WorkerResetClosure): void {
+  if (!resetClosures.delete(proof)) throw new Error("worker-reset-closure-already-consumed");
+}
 
 const ControlRowSchema = z.strictObject({ command_id: z.string(), scope: z.string(), worker_id: z.string().nullable(),
   phase: z.string(), audited_at: z.string().nullable(), payload_json: z.string(), created_at: z.string() });
@@ -130,6 +147,29 @@ export function createWorkerControlRepository(deps: {
         .run(record.commandId,record.scope,workerId,canonicalJsonStringify(record),record.admittedAt);
       return { result: record, changes: 1 };
     }),
+    assertResetGraph: (input: unknown) => {
+      const reset = WorkerResetBindingSchema.parse(input), current = get(reset.commandId);
+      if (current?.reset === undefined || canonicalJsonStringify(current.reset) !== canonicalJsonStringify(reset)) throw new Error("worker-reset-graph-authority-unavailable");
+      const bound = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
+      for (const member of bound) {
+        const row = database.prepare("SELECT * FROM runs WHERE id=?").get(member.runId);
+        if (row === undefined) throw new Error("worker-reset-graph-run-missing");
+        const run = runRecordFromRow(row);
+        if (run.envelope.attempt !== member.attempt) throw new Error("worker-reset-graph-attempt-changed");
+        const children = database.prepare("SELECT * FROM runs WHERE parent_id=?").all(member.runId).map(runRecordFromRow);
+        for (const child of children) {
+          const edges = database.prepare("SELECT payload_json FROM delegation_dependencies WHERE json_extract(payload_json,'$.parentRunId')=? AND json_extract(payload_json,'$.childRunId')=?").all(member.runId, child.envelope.runId)
+            .map(row => DependencyRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json)));
+          if (edges.length !== 1) throw new Error("worker-reset-cascade-authority-unavailable");
+          const edge = edges[0];
+          if (edge?.policy.cascadeCancel === "independent") continue;
+          const selected = bound.find(value => value.runId === child.envelope.runId);
+          if (selected === undefined) {
+            if (child.lifecycle.state !== "terminal") throw new Error("worker-reset-cascade-changed");
+          } else if (selected.state !== "queued" || selected.dependencyFingerprint !== sha256Hex(canonicalJsonStringify(edge))) throw new Error("worker-reset-cascade-changed");
+        }
+      }
+    },
     transition: (id: string, expected: WorkerControlPhase["state"], input: unknown) => deps.mutate("worker_controls", () => {
       const current = get(id);
       if (current === undefined) throw new Error("worker-control-not-found");
@@ -185,6 +225,18 @@ export function validateWorkerControls(database: DatabaseSync): void {
     if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
   }
   for (const row of database.prepare("SELECT * FROM browser_sessions").all()) workerBrowserFromRow(row);
+}
+
+export function assertWorkerResetParkedWrite(repositories: AuthorityRepositories, run: RunRecord): void {
+  if (run.lifecycle.state !== "parked-write") throw new Error("worker-reset-parked-write-authority-unavailable");
+  const intent = repositories.writeIntents.get(run.lifecycle.writeIntentId);
+  if (intent?.status !== "parked" || intent.generation !== run.lifecycle.intentGeneration
+    || intent.runId !== run.envelope.runId || intent.runAttempt !== run.envelope.attempt
+    || intent.workflowId !== run.envelope.workflow || intent.itemId !== run.envelope.itemId) throw new Error("worker-reset-parked-write-authority-unavailable");
+  const attempt = repositories.writeAttempts.get(intent.currentAttemptId);
+  if (attempt?.outcome.state !== "parked" || attempt.writeIntentId !== intent.writeIntentId
+    || attempt.generation !== intent.generation || attempt.runId !== intent.runId || attempt.runAttempt !== intent.runAttempt
+    || attempt.bindingProofDigest !== intent.bindingProofDigest) throw new Error("worker-reset-parked-write-authority-unavailable");
 }
 
 export function admitWorkerReset(repositories: AuthorityRepositories, input: unknown, executorId: string, now: string) {

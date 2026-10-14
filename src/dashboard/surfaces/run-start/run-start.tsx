@@ -390,7 +390,7 @@ export function RunStartDialog({
   const [browserMode, setBrowserMode] = useState<BrowserMode>("headed");
   const [captureBrowserScreenshots, setCaptureBrowserScreenshots] = useState(true);
   const [plan, setPlan] = useState<StartPlanResponse | null>(null);
-  const [result, setResult] = useState<CommandResult | null>(null);
+  const [result, setResult] = useState<Exclude<CommandResult, { state: "pending" }> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { sending.current = false; setBusy(false); }, [commandBinding?.scope]);

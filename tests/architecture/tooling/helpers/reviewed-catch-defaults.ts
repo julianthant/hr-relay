@@ -63,7 +63,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/workers/worker-supervisor.ts",
-    "sha256": "7ab8d7fc0e7011711d23910f3361deaf6a1e8eadffb82a095957534bf46f9bf4",
+    "sha256": "cc6eafe75cc434b799d42dbc3ac04850627285bd7ea66fdc6fde6c3a43d7fcef",
     "reason": "The rejection observer does not replace the original drain promise; shutdown races that promise and throws aggregate failure."
   },
   {
@@ -88,7 +88,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "d2e7991107255c461305d522684ea568e56958b592a8cb668e0df37c7241ddd9",
+    "sha256": "515576fdfba0782d7ef67d304921da8497b4ffb257ffb115d96354c561469bfb",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states."
   },
   {

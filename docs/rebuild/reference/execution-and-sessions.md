@@ -368,8 +368,11 @@ An unresolved control blocks another effect in its scope. An expired unstarted r
 an expired executing request becomes uncertain. Reused command identity with different bytes
 refuses. Requested directives remain distinct from observed lifecycle.
 
-Public Stop currently refuses before effects with `worker-reset-settlement-unavailable`; it cannot
-acknowledge lifetime shutdown as a reset. New Stop admission requires `membershipRevision` and
+Public Stop returns a pending command identity after durable admission; the same-process worker
+completes reset independently of the HTTP client. Before new admission, the supervisor must prove
+its exact born, running child and member against the current lease PID/start identity; external,
+unborn, changed, dead or uncertain ownership refuses without reservation. Exact journal replay
+does not depend on current child ownership. New Stop admission requires `membershipRevision` and
 `controlBasis`; optional carried `expectedVersion` is observation evidence and does not gate Stop
 on a heartbeat row version. The internal `admitWorkerReset` boundary binds the existing journal to the exact
 member, process lifetime, reserved control revision, current run/claim/attempt or explicit absence,
@@ -381,8 +384,17 @@ The worker observes reset during current execution, acquisition and sign-in usin
 signal separate from lifetime shutdown. Actual read callback promises retain run/claim/attempt
 ownership across deadline races and loop iterations. An admitted reset blocks another claim and
 cannot report idle while callbacks remain unresolved. Ordinary task deadlines remain bounded.
-Reset settlement and browser/Duo closure milestones are unavailable until their implementation;
-reset reservations cannot expire into refusal or release through the ordinary audit path.
+A scheduled observer remains live through callback and browser-close waits; expiry marks uncertainty
+while retaining ownership and reservation. After actual callbacks settle, the lifecycle service cancels
+safe residual work and queued cascade members atomically. Settled committed receipts remain intact;
+a safely released parked UNKNOWN remains parked and resolvable without delaying browserless idle.
+The session manager closes its actual acquisitions and browsers and proves Duo/exclusivity release.
+It mints a one-use closure capability bound to its immutable member and lifetime; any new driver,
+authentication or reopen invalidates that proof. Only the dedicated authority settlement transaction
+can persist exact closed-session identities, same-generation idle, reset acknowledgement, application
+and audit before releasing the claim barrier. It rechecks the entire graph and parked write identity.
+Missing callback, custody or closure proof retains uncertainty; generic journal setters and ordinary
+audit cannot release a reset. Historical success survives later work in the same worker lifetime.
 Historical Stop journal bytes remain immutable evidence. Missing historical reset authority remains
 unavailable and reserved when unresolved, and cannot authorize replay or a reset success.
 

@@ -374,3 +374,26 @@ for (const code of ["OPERATOR_MUTATION_ORIGIN_REFUSED", "OPERATOR_MUTATION_MEDIA
     });
   }
 }
+
+it("retains admitted worker pending without readback or a terminal result", async () => {
+  const h = harness();
+  const request = CommandRequestSchema.parse({ ...command(), family: "worker-browser", type: "stop-worker",
+    target: { workerId: "person-lookup-worker-1", membershipRevision: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } });
+  h.setReply(() => ({ state: "pending", commandId: request.commandId }));
+  const options = h.options();
+  const outcome = await h.executor.execute(request, { ...options, readback: async () => { assert.fail("pending cannot confirm from readback"); } });
+  assert.equal(outcome.kind, "uncertain");
+  assert.equal(h.executor.retainedAttempts()[0]?.request.commandId, request.commandId);
+  assert.deepEqual(outcome.reply, { state: "pending", commandId: request.commandId });
+});
+
+it("treats unexpected pending Start as protocol uncertainty and retains the original attempt", async () => {
+  const h = harness();
+  const request = CommandRequestSchema.parse({ ...command(), family: "start", type: "start-run",
+    target: { workflowId: "person-lookup", startPlanId: id(50), expectedVersion: 1 },
+    payload: Object.fromEntries(["descriptorFingerprint", "configFingerprint", "ingressSchemaHash", "canonicalInputSchemaHash", "inputFingerprint"].map(key => [key, "ab".repeat(32)])) });
+  h.setReply(() => ({ state: "pending", commandId: request.commandId }));
+  const outcome = await h.executor.execute(request, h.options());
+  assert.equal(outcome.kind, "uncertain");
+  assert.equal(h.executor.retainedAttempts()[0]?.request.commandId, request.commandId);
+});

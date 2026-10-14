@@ -4,12 +4,12 @@ import { readFileSync as readBuildFile } from "node:fs";
 import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../logs/emergency-faults.js";
 import { admitDirectWorker, admitSupervisedWorker } from "../../storage/sqlite/worker-slots.js";
 import { z } from "zod";
-import { WorkerPoolMemberSchema } from "../../../models/run/worker-slot.js";
+import { workerPoolMember, WorkerPoolMemberSchema } from "../../../models/run/worker-slot.js";
 import { CommandIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { composeRuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { claimWithPreflight } from "../preflight/worker-admission.js";
-import { createWorkerBrowserControl } from "../../runtime/workers/worker-browser-control.js";
+import { createWorkerBrowserControl, createWorkerResetControl, createWorkerResetObserver } from "../../runtime/workers/worker-browser-control.js";
 import { selectRunRuntime } from "../../runs/settings/run-settings.js";
 import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
@@ -605,6 +605,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       }
       return lease.control.directive;
     };
+    const resetObserver = createWorkerResetObserver({ database, workerId, leaseGeneration, clock, scheduler, onFailure: error => { stopController.abort(error); } });
     let report: WorkerLoopReport;
     let stopGateSources: () => Promise<void> = async () => undefined;
     try {
@@ -638,10 +639,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
-        pendingReset: () => database.authority.workerControls.resetForWorker(workerId, leaseGeneration)?.reset,
+        resetOwner: { member: workerPoolMember(currentMember), lifetime: { leaseGeneration, processId: started.lease.processId, startedAt: started.lease.lifecycle.startedAt } },
+        resetControl: createWorkerResetControl({ database, workerId, leaseGeneration, clock, lifecycle: runRecordService }),
+        pendingReset: resetObserver,
         activeWorkReset: (run, claim) => {
+          const observed = resetObserver();
           const record = database.authority.workerControls.resetForWorker(workerId, leaseGeneration);
-          if (record === undefined) return false;
+          if (observed === undefined || record === undefined) return false;
           const reset = record.reset;
           const slot = database.authority.workerSlots.get(workerId);
           const lease = database.authority.workerLeases.get(workerId);
@@ -698,10 +702,12 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       maintenance.stop();
       settleLease(database, clock, workerId, leaseGeneration, "crashed", loopError, log);
       throw loopError;
+    } finally {
+      resetObserver.stop();
     }
     await stopGateSources();
     maintenance.stop();
-    const background = maintenance.failure();
+    const background = maintenance.failure() ?? resetObserver.failure();
     if (background !== undefined) {
       // The loop settled because maintenance aborted it; the background error
       // is the real cause and must not be flattened into an "abandoned" report.

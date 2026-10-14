@@ -235,7 +235,7 @@ describe("the composed worker process control through the kernel pool door", () 
 
 
 
-  it("refuses an externally started worker Stop before reset effects with no directive", async () => {
+  it("refuses an externally started worker Stop before reservation or shutdown effects", async () => {
     const harness = openControlHarness();
     assert.equal(admitExternalSlot(harness), WORKER_1);
     // An operator started this worker by hand: the lease is live under a pid
@@ -263,7 +263,8 @@ describe("the composed worker process control through the kernel pool door", () 
     const stopResult = await harness.kernel.executeWorkerPool({ ...envelope(harness, stopId), type: "stop-worker",
       target: { workerId: WORKER_1, membershipRevision: 1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) } });
     assert.equal(stopResult.state, "rejected");
-    if (stopResult.state === "rejected") assert.match(stopResult.message, /worker-reset-settlement-unavailable/);
+    if (stopResult.state === "rejected") assert.match(stopResult.message, /externally started.*never adopted/u);
+    assert.equal(harness.database.authority.workerControls.get(stopId), undefined);
     assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.control.directive, "run");
     assert.equal(harness.database.authority.commandAudits.findByCommand(stopId), undefined);
 
@@ -689,7 +690,7 @@ describe("every control retains a crash after effect admission", () => {
         }
         throw new Error("injected-owner-loss-after-admission");
       };
-      return { planPoolWorkerCount: wrap(c => pool.planPoolWorkerCount(c)), spawnPoolWorker: wrap(c => pool.spawnPoolWorker(c)),
+      return { assertResetOwner: pool.assertResetOwner?.bind(pool), planPoolWorkerCount: wrap(c => pool.planPoolWorkerCount(c)), spawnPoolWorker: wrap(c => pool.spawnPoolWorker(c)),
         pausePoolWorker: wrap(c => pool.pausePoolWorker(c)), resumePoolWorker: wrap(c => pool.resumePoolWorker(c)),
         stopPoolWorker: wrap(c => pool.stopPoolWorker(c)), refreshPoolBrowser: wrap(c => pool.refreshPoolBrowser(c)), reopenPoolBrowser: wrap(c => pool.reopenPoolBrowser(c)) };
     } });
@@ -709,12 +710,16 @@ describe("every control retains a crash after effect admission", () => {
       const strict = { ...command, target: { ...command.target, membershipRevision: 1 } };
       const before = harness.database.authority.workerLeases.get(WORKER_1);
       const first = await harness.kernel.executeWorkerPool(strict);
-      assert.equal(first.state, "rejected"); if (first.state === "rejected") assert.match(first.message, /worker-reset-settlement-unavailable/);
+      assert.equal(first.state, "pending");
       const replay = await harness.kernel.executeWorkerPool(strict);
       assert.deepEqual(replay, first);
       assert.equal(calls, 0);
-      assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1), before);
-      assert.equal(harness.database.authority.workerControls.get(command.commandId), undefined);
+      assert.ok(before !== undefined);
+      assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1), { ...before, version: before.version + 1,
+        controlRevision: before.controlRevision + 1, controlCommandId: command.commandId, updatedAt: harness.clock.now().toISOString() });
+      assert.equal(harness.database.authority.workerControls.get(command.commandId)?.phase.state, "admitted");
+      const divergent = await harness.kernel.executeWorkerPool({ ...strict, requestedBy: "another-actor" });
+      assert.equal(divergent.state, "rejected"); if (divergent.state === "rejected") assert.equal(divergent.code, "command-divergent");
       assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
       return;
     }

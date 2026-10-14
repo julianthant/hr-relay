@@ -952,6 +952,13 @@ export function createDashboardWorkerProcessSupervisor(
         `worker supervisor received an unknown request: ${JSON.stringify(request)}`,
       );
     },
+    assertResetOwner(member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
+      if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-reset-supervisor-unavailable");
+      const owned = requireLiveOwnedChild("stop-worker", WorkerPoolMemberSchema.parse(member));
+      const current = deps.leases.observe(member.workerId);
+      if (owned.state !== "running" || owned.stopInFlight || current === undefined || current.processId !== lifetime.processId
+        || current.startedAt !== lifetime.startedAt) throw new WorkerControlRefusal("worker-reset-owned-lifetime-unavailable");
+    },
     ownsWorker(workerId: string, processId: number, startedAt: string): boolean {
       const record = records.get(workerId);
       return !closed && record !== undefined && (record.state === "running" || record.state === "stopping") && record.pid === processId && record.leaseStartedAt === startedAt;
