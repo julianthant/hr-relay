@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
-import { isAbsolute, join, parse, resolve } from "node:path";
+import { lstatSync, readdirSync, type Stats } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
-import { IsoInstantSchema } from "../../rules/identity/ids.js";
-import { privateEqual } from "../../rules/validation/private-equal.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../storage/admission/admission.js";
-import { observeProcessIdentity, ProcessStartIdentitySchema } from "../storage/sqlite/runtime-process-locks.js";
+import { IsoInstantSchema } from "../../../rules/identity/ids.js";
+import { privateEqual } from "../../../rules/validation/private-equal.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { observeProcessIdentity } from "../sqlite/runtime-process-locks.js";
 
-export const CHATGPT_CREDENTIAL_DIRECTORY = "chatgpt-credentials";
+import { ChatGptCredentialLockSchema as LockSchema, CREDENTIAL_DIRECTORY_MODE, noSymlinkAncestry, statDirectory, ensureChildDirectory, removeExactPath, readPrivateFile, fsyncPath, createPrivateLock, writePrivateStage, replacePrivateFile, companionCredentialEntries, type DirectoryIdentity } from "./credential-safe-file.js";
 const MAX_BYTES = 64_000;
 const text = z.string().min(1).max(16_384);
 const ClientIdSchema = z.string().regex(/^oaiapp_[A-Za-z0-9_-]+$/u);
@@ -33,27 +33,10 @@ export class ChatGptCredentialError extends Error {
   constructor(readonly code: keyof typeof messages) { super(messages[code]); this.name = "ChatGptCredentialError"; }
 }
 const unavailable = () => new ChatGptCredentialError("CHATGPT_CREDENTIAL_UNAVAILABLE");
-const LockSchema = z.strictObject({ id: z.uuid(), pid: z.number().int().positive(), identity: ProcessStartIdentitySchema });
 type Lock = z.infer<typeof LockSchema>;
 
-function same(left: Stats, right: Stats): boolean { return left.dev === right.dev && left.ino === right.ino; }
 function privateFile(path: string): { bytes: Buffer; stat: Stats } | undefined {
-  const named = lstatSync(path, { throwIfNoEntry: false });
-  if (named === undefined) return undefined;
-  if (!named.isFile() || named.isSymbolicLink() || named.nlink !== 1 || (named.mode & 0o7777) !== 0o600
-    || process.getuid === undefined || named.uid !== process.getuid() || named.size > MAX_BYTES) throw unavailable();
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  try {
-    const before = fstatSync(fd);
-    if (!same(named, before) || !before.isFile() || before.nlink !== 1 || (before.mode & 0o7777) !== 0o600
-      || before.uid !== process.getuid() || before.size > MAX_BYTES) throw unavailable();
-    const bytes = readFileSync(fd), after = fstatSync(fd), live = lstatSync(path);
-    if (!same(before, after) || !same(before, live) || before.size !== after.size || before.mode !== after.mode
-      || before.uid !== after.uid || before.nlink !== after.nlink || before.mtimeMs !== after.mtimeMs
-      || before.ctimeMs !== after.ctimeMs || before.mode !== live.mode || before.uid !== live.uid
-      || before.nlink !== live.nlink || bytes.length !== before.size) throw unavailable();
-    return { bytes, stat: after };
-  } finally { closeSync(fd); }
+  return readPrivateFile(path, { label: "ChatGPT", maxBytes: MAX_BYTES });
 }
 function decode(bytes: Buffer): unknown { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown; }
 function parseRecord(bytes: Buffer): ChatGptCredentialRecord {
@@ -65,8 +48,6 @@ function parseRecord(bytes: Buffer): ChatGptCredentialRecord {
   } catch { throw unavailable(); }
 }
 export function verifyChatGptCredentialBytes(bytes: Buffer): void { parseRecord(bytes); }
-function sync(path: string): void { const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); try { fsyncSync(fd); } finally { closeSync(fd); } }
-
 export interface ChatGptCredentialRepositoryOptions {
   readonly admission: RuntimeAdmission;
   readonly stateRoot: string;
@@ -80,40 +61,28 @@ export interface ChatGptCredentialTransaction {
 export function createChatGptCredentialRepository(options: ChatGptCredentialRepositoryOptions) {
   const admission = requireRuntimeAdmission(options.admission), stateRoot = options.stateRoot;
   if (!isAbsolute(stateRoot) || resolve(stateRoot) !== stateRoot || admission.stateRoot !== stateRoot) throw unavailable();
-  const directory = join(stateRoot, CHATGPT_CREDENTIAL_DIRECTORY), path = join(directory, "account.json"), lockPath = join(directory, ".writer");
-  const ancestry = new Map<string, Stats>();
+  const directory = join(stateRoot, "credentials"), path = join(directory, "chatgpt-account.json"), lockPath = join(directory, ".chatgpt-account.lock");
+  const ancestry = new Map<string, DirectoryIdentity>();
   function inspect(create: boolean): boolean {
     admission.assertStateRoot(stateRoot);
-    let cursor = parse(directory).root;
-    for (const segment of directory.slice(cursor.length).split("/")) {
-      cursor = join(cursor, segment);
-      let stat = lstatSync(cursor, { throwIfNoEntry: false });
-      if (stat === undefined) {
-        if (ancestry.has(cursor)) throw unavailable();
-        if (cursor !== directory || !create) return false;
-        mkdirSync(directory, { mode: 0o700 });
-        stat = lstatSync(directory);
-      }
-      if (!stat.isDirectory() || stat.isSymbolicLink() || process.getuid === undefined
-        || stat.uid !== process.getuid() && stat.uid !== 0 || (stat.mode & 0o022) !== 0 && (stat.mode & 0o1000) === 0
-        || cursor === directory && (stat.uid !== process.getuid() || (stat.mode & 0o7777) !== 0o700)) throw unavailable();
-      const prior = ancestry.get(cursor);
-      if (prior !== undefined && !same(prior, stat)) throw unavailable();
-      ancestry.set(cursor, stat);
-    }
+    if (!noSymlinkAncestry(stateRoot, ancestry)) return false;
+    if (create) ensureChildDirectory(stateRoot, directory, "credential directory", CREDENTIAL_DIRECTORY_MODE, CREDENTIAL_DIRECTORY_MODE);
+    if (!noSymlinkAncestry(directory, ancestry)) return false;
+    statDirectory(directory, "credential directory", CREDENTIAL_DIRECTORY_MODE);
     return true;
   }
   function read(): ChatGptCredentialRecord | undefined {
     try {
       if (!inspect(false)) return undefined;
       const names = readdirSync(directory).sort();
-      if (names.some(name => name !== "account.json" && name !== ".writer" && !/^\.account\.[0-9a-f-]{36}\.tmp$/u.test(name))) throw unavailable();
-      const stages = names.filter(name => name.endsWith(".tmp"));
+      const companions = companionCredentialEntries(directory, "ChatGPT");
+      if (names.some(name => name !== "chatgpt-account.json" && name !== ".chatgpt-account.lock" && !companions.has(name) && !/^\.chatgpt-account\.[0-9a-f-]{36}\.tmp$/u.test(name))) throw unavailable();
+      const stages = names.filter(name => name.startsWith(".chatgpt-account.") && name.endsWith(".tmp"));
       if (stages.length !== 0) {
         const lock = privateFile(lockPath);
         if (lock === undefined) throw unavailable();
         const owner = LockSchema.safeParse(decode(lock.bytes));
-        if (!owner.success || stages.length !== 1 || stages[0] !== `.account.${owner.data.id}.tmp`) throw unavailable();
+        if (!owner.success || stages.length !== 1 || stages[0] !== `.chatgpt-account.${owner.data.id}.tmp`) throw unavailable();
       }
       const first = privateFile(path), second = privateFile(path);
       inspect(false);
@@ -125,8 +94,7 @@ export function createChatGptCredentialRepository(options: ChatGptCredentialRepo
   }
   function removeExact(file: string, observed: Stats): void {
     inspect(false);
-    if (!same(observed, lstatSync(file))) throw unavailable();
-    unlinkSync(file);
+    removeExactPath(file, { device: observed.dev, inode: observed.ino }, false, "credential file changed before removal");
   }
   function acquire(): Lock {
     admission.assertWritable(); inspect(true);
@@ -140,16 +108,14 @@ export function createChatGptCredentialRepository(options: ChatGptCredentialRepo
       const owner = observeProcessIdentity(decoded.data.pid);
       if (owner.state === "alive" && privateEqual(owner.identity, decoded.data.identity)) throw new ChatGptCredentialError("CHATGPT_CREDENTIAL_BUSY");
       admission.assertExclusive();
-      const temporary = join(directory, `.account.${decoded.data.id}.tmp`), stage = privateFile(temporary);
+      const temporary = join(directory, `.chatgpt-account.${decoded.data.id}.tmp`), stage = privateFile(temporary);
       if (stage !== undefined) removeExact(temporary, stage.stat);
-      removeExact(lockPath, existing.stat); sync(directory);
+      removeExact(lockPath, existing.stat); fsyncPath(directory);
     }
-    try { writeFileSync(lockPath, JSON.stringify(lock), { mode: 0o600, flag: "wx" }); }
-    catch (error) {
-      if (typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST") throw new ChatGptCredentialError("CHATGPT_CREDENTIAL_BUSY");
-      throw unavailable();
-    }
-    sync(lockPath); sync(directory);
+    if (!createPrivateLock(lockPath, directory, Buffer.from(JSON.stringify(lock)), () => {
+      const current = privateFile(lockPath);
+      return current !== undefined && privateEqual(decode(current.bytes), lock);
+    })) throw new ChatGptCredentialError("CHATGPT_CREDENTIAL_BUSY");
     return lock;
   }
   async function withLock<T>(operation: (transaction: ChatGptCredentialTransaction) => Promise<T>): Promise<T> {
@@ -172,14 +138,14 @@ export function createChatGptCredentialRepository(options: ChatGptCredentialRepo
         if (!parsed.success) throw unavailable();
         const bytes = Buffer.from(JSON.stringify(parsed.data));
         if (bytes.length > MAX_BYTES) throw unavailable();
-        const temporary = join(directory, `.account.${lock.id}.tmp`);
+        const temporary = join(directory, `.chatgpt-account.${lock.id}.tmp`);
         let renamed = false;
         try {
-          writeFileSync(temporary, bytes, { mode: 0o600, flag: "wx" }); sync(temporary);
+          writePrivateStage(temporary, bytes);
           assertLock();
           if (!privateEqual(current ?? null, read() ?? null)) throw new ChatGptCredentialError("CHATGPT_CREDENTIAL_CONFLICT");
-          renameSync(temporary, path); renamed = true; committed = true;
-          options.afterRename?.(); sync(directory);
+          replacePrivateFile(temporary, path); renamed = true; committed = true;
+          options.afterRename?.(); fsyncPath(directory);
           const stored = privateFile(path);
           if (stored === undefined || !stored.bytes.equals(bytes)) throw unavailable();
           inspect(false);
@@ -193,7 +159,7 @@ export function createChatGptCredentialRepository(options: ChatGptCredentialRepo
         }
       } }) };
     } catch (error) { outcome = { kind: "error", error }; }
-    try { removeExact(lockPath, assertLock()); sync(directory); }
+    try { removeExact(lockPath, assertLock()); fsyncPath(directory); }
     catch { throw new ChatGptCredentialError(committed ? "CHATGPT_CREDENTIAL_UNCERTAIN" : "CHATGPT_CREDENTIAL_UNAVAILABLE"); }
     if (outcome.kind === "error") throw outcome.error;
     return outcome.value;
@@ -203,8 +169,8 @@ export function createChatGptCredentialRepository(options: ChatGptCredentialRepo
 
 export function verifyChatGptCredentialStore(options: ChatGptCredentialRepositoryOptions): void {
   options.admission.assertExclusive();
-  const directory = join(options.stateRoot, CHATGPT_CREDENTIAL_DIRECTORY);
+  const directory = join(options.stateRoot, "credentials");
   if (lstatSync(directory, { throwIfNoEntry: false }) === undefined) return;
-  if (readdirSync(directory).some(name => name !== "account.json")) throw unavailable();
+  if (readdirSync(directory).some(name => name !== "chatgpt-account.json" && name !== "protected.json")) throw unavailable();
   createChatGptCredentialRepository(options).read();
 }

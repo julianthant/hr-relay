@@ -1,18 +1,20 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
-import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../src/backend/accounts/chatgpt-credential-repository.js";
-import { fixtureAdmission, initializeAdmissionFixture, releaseAdmissionFixture } from "../../support/helpers/admission-fixture.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
+import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { createCredentialStore, createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { fixtureAdmission, initializeAdmissionFixture, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
 
 function fixture(afterRename?: () => void) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-credential-"))), admission = RuntimeAdmission.syntheticRoots(root, root);
-  const repository = createChatGptCredentialRepository({ admission, stateRoot: root, afterRename }), directory = join(root, "chatgpt-credentials"), path = join(directory, "account.json");
+  const repository = createChatGptCredentialRepository({ admission, stateRoot: root, afterRename }), directory = join(root, "credentials"), path = join(directory, "chatgpt-account.json");
   const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
   return { root, admission, repository, directory, path, record, cleanup() { admission.release(); rmSync(root, { recursive: true, force: true }); } };
 }
@@ -31,7 +33,7 @@ it("stale revision refuses without changing confirmed bytes", async () => {
 it("post-rename uncertainty retains readback and never claims rollback", async () => {
   const f = fixture(() => { throw new Error("synthetic private value must not escape"); }); try {
     await assert.rejects(f.repository.withLock(async tx => { tx.replace(f.record, null); }), error => typeof error === "object" && error !== null && "code" in error && error.code === "CHATGPT_CREDENTIAL_UNCERTAIN" && "message" in error && !String(error.message).includes("private value"));
-    assert.deepEqual(f.repository.read(), f.record); assert.equal(existsSync(join(f.directory, ".writer")), false);
+    assert.deepEqual(f.repository.read(), f.record); assert.equal(existsSync(join(f.directory, ".chatgpt-account.lock")), false);
   } finally { f.cleanup(); }
 });
 it("concurrent repository owners cannot race a rotating-token transaction", async () => {
@@ -49,10 +51,10 @@ it("shared admission refuses stale lock cleanup without changing credentials", a
     initializeAdmissionFixture(root);
     const admission = fixtureAdmission(root), stateRoot = admission.stateRoot;
     const repository = createChatGptCredentialRepository({ admission, stateRoot });
-    const directory = join(stateRoot, "chatgpt-credentials"), path = join(directory, "account.json");
+    const directory = join(stateRoot, "credentials"), path = join(directory, "chatgpt-account.json");
     const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
     await repository.withLock(async tx => { tx.replace(record, null); });
-    const id = randomUUID(), lockPath = join(directory, ".writer"), stagePath = join(directory, `.account.${id}.tmp`);
+    const id = randomUUID(), lockPath = join(directory, ".chatgpt-account.lock"), stagePath = join(directory, `.chatgpt-account.${id}.tmp`);
     const lock = Buffer.from(JSON.stringify({ id, pid: 2_147_483_647, identity: { platform: "linux", startToken: "stale" } }));
     const stage = Buffer.from("interrupted account stage"), account = readFileSync(path);
     writeFileSync(lockPath, lock, { mode: 0o600 }); writeFileSync(stagePath, stage, { mode: 0o600 });
@@ -78,10 +80,10 @@ it("exclusive runtime admission recovers a stale credential writer and stage", a
     try {
       admission.assertExclusive();
       const stateRoot = admission.stateRoot, repository = createChatGptCredentialRepository({ admission, stateRoot });
-      const directory = join(stateRoot, "chatgpt-credentials");
+      const directory = join(stateRoot, "credentials");
       const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
       await repository.withLock(async tx => { tx.replace(record, null); });
-      const id = randomUUID(), lockPath = join(directory, ".writer"), stagePath = join(directory, `.account.${id}.tmp`);
+      const id = randomUUID(), lockPath = join(directory, ".chatgpt-account.lock"), stagePath = join(directory, `.chatgpt-account.${id}.tmp`);
       writeFileSync(lockPath, JSON.stringify({ id, pid: 2_147_483_647, identity: { platform: "linux", startToken: "stale" } }), { mode: 0o600 });
       writeFileSync(stagePath, "interrupted account stage", { mode: 0o600 });
 
@@ -100,7 +102,7 @@ it("reports credential uncertainty when lock cleanup fails after commit", async 
   try {
     await assert.rejects(f.repository.withLock(async tx => {
       tx.replace(f.record, null);
-      rmSync(join(f.directory, ".writer"));
+      rmSync(join(f.directory, ".chatgpt-account.lock"));
     }), { code: "CHATGPT_CREDENTIAL_UNCERTAIN", message: "The ChatGPT credential change could not be confirmed. Read its current state before trying again." });
     assert.deepEqual(f.repository.read(), f.record);
   } finally { f.cleanup(); }
@@ -123,5 +125,66 @@ it("refuses directory replacement and unadmitted roots", async () => {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); }); rmSync(f.directory, { recursive: true }); mkdirSync(f.directory, { mode: 0o700 });
     assert.throws(() => f.repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
     assert.throws(() => createChatGptCredentialRepository({ admission: f.admission, stateRoot: join(f.root, "other") }), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
+  } finally { f.cleanup(); }
+});
+
+function protectedRequest() {
+  return ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: 1,
+    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-12T12:00:00.000Z", entries: { ucpathPassword: { set: "synthetic-protected" } } });
+}
+
+it("both records retain independent revisions while their writers and authenticated stages coexist", async () => {
+  const f = fixture();
+  try {
+    await f.repository.withLock(async tx => { tx.replace(f.record, null); });
+    let protectedStageObserved = false;
+    const store = createCredentialStore({ admission: f.admission, stateRoot: f.root, hooks: { beforeRename() {
+      assert.ok(readdirSync(f.directory).some(name => /^\.protected\..+\.tmp$/u.test(name)));
+      assert.deepEqual(f.repository.read(), f.record);
+      protectedStageObserved = true;
+    } } });
+    await f.repository.withLock(async tx => {
+      const lock = JSON.parse(readFileSync(join(f.directory, ".chatgpt-account.lock"), "utf8")) as { id: string };
+      const stage = join(f.directory, `.chatgpt-account.${lock.id}.tmp`);
+      writeFileSync(stage, JSON.stringify({ ...f.record, revision: 2 }), { mode: 0o600 });
+      try {
+        assert.equal(store.read().revision, 1);
+        const outcome = store.apply(protectedRequest());
+        assert.equal(outcome.state, "applied");
+        assert.equal(store.read().revision, 2);
+        assert.equal(protectedStageObserved, true);
+        assert.deepEqual(tx.read(), f.record);
+      } finally { rmSync(stage); }
+      tx.replace({ ...f.record, revision: 2 }, 1);
+    });
+    assert.equal(store.read().revision, 2);
+    assert.deepEqual(f.repository.read(), { ...f.record, revision: 2 });
+    assert.deepEqual(readdirSync(f.directory).sort(), ["chatgpt-account.json", "protected.json"]);
+    verifyChatGptCredentialStore({ admission: f.admission, stateRoot: f.root });
+  } finally { f.cleanup(); }
+});
+
+it("companion stages require exact writer custody and cannot hide unknown entries", async () => {
+  const f = fixture();
+  try {
+    await f.repository.withLock(async tx => { tx.replace(f.record, null); });
+    const store = createCredentialStore({ admission: f.admission, stateRoot: f.root });
+    await f.repository.withLock(async () => {
+      const stage = join(f.directory, `.chatgpt-account.${randomUUID()}.tmp`);
+      writeFileSync(stage, "synthetic-stage", { mode: 0o600 });
+      try { assert.throws(() => store.read(), /companion credential stage is not owned/u); }
+      finally { rmSync(stage); }
+      writeFileSync(join(f.directory, "unexpected.json"), "synthetic", { mode: 0o600 });
+      try { assert.throws(() => store.read(), /unsettled entries/u); }
+      finally { rmSync(join(f.directory, "unexpected.json")); }
+    });
+    const owner = observeProcessIdentity(process.pid);
+    assert.equal(owner.state, "alive");
+    if (owner.state !== "alive") throw new Error("synthetic test process identity is unavailable");
+    const acquisitionId = randomUUID(), stage = join(f.directory, `.protected.${randomUUID()}.${randomUUID()}.tmp`);
+    writeFileSync(join(f.directory, ".protected.lock"), JSON.stringify({ schemaVersion: 1, kind: "writer", pid: process.pid, processIdentity: owner.identity, acquisitionId }), { mode: 0o600 });
+    writeFileSync(stage, "synthetic-stage", { mode: 0o600 });
+    assert.throws(() => f.repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
+    assert.equal(existsSync(stage), true);
   } finally { f.cleanup(); }
 });

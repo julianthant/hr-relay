@@ -1,8 +1,8 @@
 # Clock, configuration, and secrets
 
 Relay resolves ordinary settings into immutable run configuration. SQLite owns saved settings and
-snapshots. The independent credential store owns protected values. Installation admission owns the
-active storage roots. None of these authorities substitutes for another.
+snapshots. The independent credential store owns protected values and ChatGPT account credentials.
+Installation admission owns the active storage roots. None of these authorities substitutes for another.
 
 ## Owners
 
@@ -19,6 +19,7 @@ active storage roots. None of these authorities substitutes for another.
 | Protected names, value schemas, and marked patches | `src/models/config/protected-settings.ts` |
 | Credential access | `src/models/config/secrets.ts` |
 | Private credential persistence | `src/backend/storage/configuration/credential-store.ts` |
+| Shared credential file safety | `src/backend/storage/configuration/credential-safe-file.ts` |
 | Installation identity, locator, ownership witnesses, and relocation journal | `src/backend/storage/admission/installation.ts` |
 | Lifetime and path-specific storage capability | `src/backend/storage/admission/admission.ts` |
 | Entrypoint admission and secure bootstrap | `src/backend/storage/admission/bootstrap-admission.ts`, `src/backend/app/bootstrap/secure-env-bootstrap.ts` |
@@ -273,15 +274,20 @@ owns counter custody.
 
 ### Independent private credential authority
 
+`src/backend/storage/configuration/` owns both private records under `<stateRoot>/credentials/`.
+`credential-store.ts` exposes the protected-settings store and the ChatGPT account repository.
+Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 directories,
+0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
+Each record retains its own transaction and recovery contract.
+
 `createCredentialStore({ admission, stateRoot })` stores `<stateRoot>/credentials/protected.json`.
 The schema-2 document contains the schema-1 current record and private replay history.
 Each current entry holds `{ valueId, value, updatedAt }`; history retains exact private requests
 and allocated value IDs. A missing store represents the empty revision-one baseline.
 The store requires a live, path-bound `RuntimeAdmission`.
 
-`credential-store.ts` validates directory ancestry and bound identities, uses an owned 0700
-credential directory, and reads one owned 0600 regular file through `O_NOFOLLOW`. It verifies link
-count, size, descriptor identity, path identity, and stable readback. The document limit is
+The protected-settings reader verifies link count, size, descriptor identity, path identity,
+and stable readback. The document limit is
 16 MiB; admitted private requests are bounded to 64,000 bytes. Unexpected or unsettled directory
 entries refuse. Schema and replayed history must agree with the current record.
 
@@ -310,6 +316,15 @@ Protected values are not `Config` leaves, so they cannot enter configuration fin
 and values in addition to presence readback. `buildSettingsEditor` reports an unavailable credential
 store as `protectedSettings: { state: "unknown", reason: "credential-store-unavailable" }`, rather
 than an empty store. This local display does not widen command journals, logs, or provider egress.
+
+`chatgpt-credential-repository.ts` stores `<stateRoot>/credentials/chatgpt-account.json` as a
+schema-1 record with registration metadata and the current session, without token history.
+`createChatGptCredentialRepository` exposes `read()` and asynchronous `withLock()` transactions
+through `credential-store.ts`. Replacement checks the expected revision and advances it by one.
+The record has a 64,000-byte limit and uses `.chatgpt-account.lock`; stale-lock cleanup requires
+exclusive `RuntimeAdmission`. Unconfirmed completion after replacement reports
+`CHATGPT_CREDENTIAL_UNCERTAIN`. The account service in `accounts/` imports this credential-store API.
+Storage relocation carries both records under `credentials/`.
 
 ### Environment and private test inputs
 
@@ -476,5 +491,5 @@ instead of reading the map directly.
 ## Not built yet
 
 - The Settings dashboard connection to these saved settings, credentials, relocation, and readiness authorities is pending in the wiring base.
-- ChatGPT subscription OAuth and credential-store integration for OCR are pending; provider keys and an executable OCR connection are not current support.
+- ChatGPT OAuth, account, and Responses OCR services exist; their runtime and dashboard wiring is pending. Provider keys and an executable OCR connection are not current support.
 - The packaged desktop application's OS credential backend is pending; the current credential backend is the independent private local file.

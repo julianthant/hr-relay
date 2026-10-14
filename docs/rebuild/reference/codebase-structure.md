@@ -53,7 +53,7 @@ Paths in this table are relative to `src/backend/`.
 
 | Path | Ownership |
 | --- | --- |
-| `accounts/` | ChatGPT OAuth, verified account and usage state, Responses OCR, and the private ChatGPT credential repository. |
+| `accounts/` | ChatGPT OAuth, verified account and usage state, and Responses OCR. |
 | `app/` | Bootstrap, configuration, host admission, preflight, dry-run setup, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. |
 | `app/registries/` | Workflow, task, step-proof, and test-target registration. `task-registry.ts` composes system, processing, and workflow task stores. |
@@ -64,6 +64,7 @@ Paths in this table are relative to `src/backend/`.
 | `runs/trust/` | Canonical run readers and receipt services. |
 | `runtime/` | Browser sessions, checkpoints, execution, gates, policies, preflight, scheduling, settings, workers, and writes. |
 | `storage/` | Admission, artifacts, configuration, events, maintenance, and SQLite persistence. |
+| `storage/configuration/` | Settings and private credential persistence. `credential-store.ts` exposes the protected-settings and ChatGPT account records under `<stateRoot>/credentials/`; both use `credential-safe-file.ts` for file safety. |
 | `storage/events/` | Native timeline writers, readers, and emitters. |
 | `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `timeline-repository.ts` owns ordered event persistence. |
 | `systems/` | Browser-system sessions, drivers, semantic UI registries, and tasks. CRM, Kuali, New Kronos, and UCPath have driver implementations. I-9, Old Kronos, OnBase, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. |

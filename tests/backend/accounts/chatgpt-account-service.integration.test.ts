@@ -8,7 +8,7 @@ import { createChatGptAccountService } from "../../../src/backend/accounts/chatg
 
 const image = { model: "gpt-6.1-sol", instruction: "Read this synthetic form", input: { kind: "image" as const, mediaType: "image/png" as const, base64: "YQ==" } };
 it("absent account read is signed out without creating storage", async () => {
-  const f = chatGptFixture(); try { assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); assert.equal(existsSync(join(f.root, "chatgpt-credentials")), false); assert.equal(f.calls.length, 0); } finally { await f.cleanup(); }
+  const f = chatGptFixture(); try { assert.deepEqual(f.service.readAccount(), { state: "signed-out" }); assert.equal(existsSync(join(f.root, "credentials")), false); assert.equal(f.calls.length, 0); } finally { await f.cleanup(); }
 });
 it("binds PKCE, nonce and exact loopback URI and keeps tokens private", async () => {
   const f = chatGptFixture(); try {
@@ -42,9 +42,9 @@ it("refuses first registration without issued client and OAuth denial without to
 });
 it("signout revokes then clears tokens and retains issued client and host for return sign-in", async () => {
   const f = chatGptFixture(); try {
-    await f.connected(); const original = JSON.parse(readFileSync(join(f.root, "chatgpt-credentials/account.json"), "utf8")) as { hostId: string };
+    await f.connected(); const original = JSON.parse(readFileSync(join(f.root, "credentials/chatgpt-account.json"), "utf8")) as { hostId: string };
     assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "confirmed" });
-    const bytes = readFileSync(join(f.root, "chatgpt-credentials/account.json"), "utf8"); assert.equal(bytes.includes("synthetic-access"), false); assert.equal(bytes.includes("synthetic-refresh"), false); assert.equal(bytes.includes('"idToken"'), false);
+    const bytes = readFileSync(join(f.root, "credentials/chatgpt-account.json"), "utf8"); assert.equal(bytes.includes("synthetic-access"), false); assert.equal(bytes.includes("synthetic-refresh"), false); assert.equal(bytes.includes('"idToken"'), false);
     const revocation = f.calls.find(call => call.url.endsWith("/revoke")); assert.ok(revocation);
     const body = revocation.init.body; assert.ok(body instanceof URLSearchParams); assert.equal(body.get("token_type_hint"), "refresh_token");
     const attempt = await f.service.signIn({ usePlan: false }), url = new URL(attempt.authorizationUrl);
@@ -65,7 +65,7 @@ it("refresh replaces rotating tokens before Responses and survives restart", asy
   const f = chatGptFixture(); try {
     await f.connected(); f.clock.advanceWall(3_600_000); assert.deepEqual(f.service.readAccount(), { state: "expired" });
     assert.deepEqual(await f.service.extractText(image), { text: "Synthetic form" });
-    const bytes = readFileSync(join(f.root, "chatgpt-credentials/account.json"), "utf8"); assert.equal(bytes.includes("synthetic-access-1"), false); assert.ok(bytes.includes("synthetic-refresh-2"));
+    const bytes = readFileSync(join(f.root, "credentials/chatgpt-account.json"), "utf8"); assert.equal(bytes.includes("synthetic-access-1"), false); assert.ok(bytes.includes("synthetic-refresh-2"));
     const request = f.calls.find(call => call.url.endsWith("/responses")); assert.ok(request); assert.equal(new Headers(request.init.headers).get("Authorization"), "Bearer synthetic-access-2");
     const restarted = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport }); assert.equal(restarted.readAccount().state, "connected"); await restarted.close();
   } finally { await f.cleanup(); }
@@ -149,7 +149,7 @@ it("parallel sign-in startup refuses the second attempt as busy", async () => {
 });
 it("corrupt private storage becomes unavailable without leaking input", async () => {
   const f = chatGptFixture(); try {
-    await f.connected(); writeFileSync(join(f.root, "chatgpt-credentials/account.json"), '{"private":"synthetic-sensitive"');
+    await f.connected(); writeFileSync(join(f.root, "credentials/chatgpt-account.json"), '{"private":"synthetic-sensitive"');
     const state = f.service.readAccount(); assert.equal(state.state, "unavailable"); assert.equal(JSON.stringify(state).includes("synthetic-sensitive"), false);
   } finally { await f.cleanup(); }
 });

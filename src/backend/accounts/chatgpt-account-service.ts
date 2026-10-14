@@ -5,7 +5,7 @@ import type { Clock } from "../../rules/time/clock.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { privateEqual } from "../../rules/validation/private-equal.js";
 import type { RuntimeAdmission } from "../storage/admission/admission.js";
-import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions } from "./chatgpt-credential-repository.js";
+import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions } from "../storage/configuration/credential-store.js";
 
 const AUTH = "https://auth.openai.com", RESOURCE = "https://api.openai.com/v1";
 const PLAN_SCOPES = ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"];
