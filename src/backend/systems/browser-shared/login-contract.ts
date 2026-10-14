@@ -66,6 +66,7 @@ export class DuoTerminalRefusalError extends BrowserLoginError {
 
 
 export const BROWSER_LANDING_STALL_TEXT = {
+  "training-reminder-repeated": "the UCSD training reminder appeared again after Continue Log In",
   "shibboleth-stale-request": "Shibboleth served its stale-request page; the SAML execution expired during login",
   "duo-prompt-stalled": "the Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current",
   "duo-refusal-unproven": "the Duo prompt never cleared, and its terminal refusal could not be probed",
