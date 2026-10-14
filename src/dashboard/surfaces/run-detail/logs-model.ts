@@ -200,7 +200,12 @@ export function appendLogPage(page: NotePage, requestedCursor: string, next: Not
   if (left?.state !== right?.state || (left?.state === "observed" && right?.state === "observed" && left.definition.contentDigest !== right.definition.contentDigest)) throw new Error("log-operation-frozen-definition-mismatch");
   const operationStructure = left?.state === "observed" && right?.state === "observed"
     ? ObservedOperationStructureWireSchema.parse({ ...left, observations: [...left.observations, ...right.observations] }) : left;
-  return { runId: page.runId, rows, notes, nextCursor: next.nextCursor, ...(operationStructure === undefined ? {} : { operationStructure }) };
+  const confirmedActions = page.confirmedActions === undefined || next.confirmedActions === undefined
+    ? undefined : [...page.confirmedActions, ...next.confirmedActions];
+  if (confirmedActions !== undefined && new Set(confirmedActions.map(action => action.eventId)).size !== confirmedActions.length) {
+    throw new Error("log-confirmed-action-duplicate");
+  }
+  return { runId: page.runId, rows, notes, ...(confirmedActions === undefined ? {} : { confirmedActions }), nextCursor: next.nextCursor, ...(operationStructure === undefined ? {} : { operationStructure }) };
 }
 
 export interface LogPagesState {
