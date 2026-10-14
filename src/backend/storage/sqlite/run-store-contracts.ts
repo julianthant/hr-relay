@@ -54,7 +54,10 @@ export const RunClaimTokenSchema = z.strictObject({
 });
 export type RunClaimToken = z.infer<typeof RunClaimTokenSchema>;
 
+export const WorkerClaimLifetimeSchema = z.strictObject({ membershipRevision: PositiveIntSchema, leaseGeneration: PositiveIntSchema });
+
 export const RunClaimRequestSchema = z.strictObject({
+  workerLifetime: WorkerClaimLifetimeSchema.optional(),
   workflow: WorkflowIdSchema,
   workerId: WorkerIdSchema,
   now: IsoInstantSchema,
@@ -244,6 +247,7 @@ export const CanonicalListRunsRequestSchema = z.strictObject({
 });
 
 export const CanonicalClaimNextRequestSchema = z.strictObject({
+  workerLifetime: WorkerClaimLifetimeSchema.optional(),
   commandId: CommandIdSchema,
   workflow: WorkflowIdSchema,
   workerId: WorkerIdSchema,

@@ -121,6 +121,7 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
       const request = z.strictObject({ workflow: WorkflowIdSchema, poolIndex: z.number().int().min(1), commandId: CommandIdSchema.nullable(), now: IsoInstantSchema }).parse(input);
       return mutate(() => {
         if (database.prepare("SELECT 1 FROM worker_pools WHERE workflow=?").get(request.workflow) === undefined) throw new Error("worker-slot-pool-not-admitted");
+        if (database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL AND json_extract(payload_json,'$.request.type')='stop-worker'").get(`worker-pool:${request.workflow}`) !== undefined) throw new Error("worker-reset-reserved");
         if (verifications(request.workflow).length !== 0) throw new Error("worker-verification-reserved");
         const active = list(request.workflow).filter(slot => slot.retiredAt === null);
         const existing = active.find(slot => slot.poolIndex === request.poolIndex);
@@ -143,6 +144,7 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
           if (current.retirementCommandId !== request.commandId) throw new Error("worker-slot-retirement-conflict");
           return { result: current, changes: 0 };
         }
+        if (database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL AND json_extract(payload_json,'$.request.type')='stop-worker'").get(`worker-pool:${current.workflow}`) !== undefined) throw new Error("worker-reset-reserved");
         const hold = verification(request.workerId);
         if (hold === undefined && verifications(current.workflow).length !== 0) throw new Error("worker-verification-reserved");
         if (hold !== undefined) {

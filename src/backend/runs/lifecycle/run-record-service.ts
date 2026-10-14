@@ -282,16 +282,22 @@ export class RunRecordService {
     return this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome => {
       const journal = this.inspectJournal(repositories, "claim-next", request, { kind: "none" });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
-      if (journal.state === "replay") return this.replayRun(journal.result);
       if (!this.runtimeMatches(runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(control => control.request.type === "plan-worker-count")) {
         return refused({ reason: "none-eligible" });
       }
+      if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(record => record.request.type === "stop-worker" && record.reset === undefined)) throw new Error("worker-reset-authority-unavailable");
+      if (repositories.workerControls.resetForWorker(workerId) !== undefined) return refused({ reason: "none-eligible" });
       if (repositories.workerSlots.verification(workerId) !== undefined) return refused({ reason: "none-eligible" });
+      const slot = repositories.workerSlots.get(workerId), lease = repositories.workerLeases.get(workerId);
+      if (slot === undefined || slot.retiredAt !== null || slot.workflow !== workflow
+        || request.workerLifetime !== undefined && (slot.membershipRevision !== request.workerLifetime.membershipRevision
+          || lease?.leaseGeneration !== request.workerLifetime.leaseGeneration || lease.lifecycle.state === "stopped")) return refused({ reason: "none-eligible" });
+      if (journal.state === "replay") return this.replayRun(journal.result);
       const held = repositories.runs.listByWorker(workerId).find((run) => runClaim(run) !== undefined);
       if (held !== undefined) return refused({ reason: "worker-busy", runId: held.envelope.runId });
       const outcome = repositories.runs.claimEligible({
-        workflow, workerId, runtimeConfig, configFingerprint: runtimeConfig.configFingerprint,
+        workflow, workerId, ...(request.workerLifetime === undefined ? {} : { workerLifetime: request.workerLifetime }), runtimeConfig, configFingerprint: runtimeConfig.configFingerprint,
         now: this.dependencies.clock.now().toISOString(),
       }, admit);
       if (outcome.state === "refused") return outcome;

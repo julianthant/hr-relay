@@ -23,7 +23,7 @@ import { activeRunsForItem, fanOutQueuedRuns, requireApplied, runTarget, type Ta
 import { buildRerunPlan, RerunRefusedError } from "../start/rerun.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
+import { LiveWorkerResetRequestSchema, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
 import { deriveItemId, deriveStableUuid, type IdFactory } from "../../../rules/identity/identifiers.js";
 import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
@@ -230,22 +230,7 @@ export const WorkerPlanAcknowledgementSchema = z.strictObject({
 });
 
 
-// Audit the directive write's versions; a later heartbeat can change the lease version.
-const WorkerStopPoolAcknowledgementSchema = z.strictObject({
-  state: z.literal("accepted"),
-  directiveLeaseVersions: z.strictObject({
-    before: z.number().int().positive(),
-    after: z.number().int().positive(),
-  }).superRefine((versions, context) => {
-    if (versions.after !== versions.before + 1) {
-      context.addIssue({
-        code: "custom",
-        message: `a lease directive write bumps its version by exactly one; before ${String(versions.before)} → `
-          + `after ${String(versions.after)} is not one write`,
-      });
-    }
-  }),
-});
+
 
 // Keep the async pool seam structural to avoid importing the worker loop back into its command dependency.
 export interface WorkerPoolRuntimeSeam {
@@ -1919,10 +1904,8 @@ async function settleWorkerPoolEffect(
     case "spawn-worker":
       WorkerRuntimeAcknowledgementSchema.parse(await pool.spawnPoolWorker(context));
       return { kind: "control" };
-    case "stop-worker": {
-      const acknowledgement = WorkerStopPoolAcknowledgementSchema.parse(await pool.stopPoolWorker(context));
-      return WorkerEffectAcknowledgementSchema.parse({ kind: "stop", directiveLeaseVersions: acknowledgement.directiveLeaseVersions });
-    }
+    case "stop-worker":
+      throw new WorkerControlRefusal("worker-reset-settlement-unavailable");
     case "pause-worker":
       WorkerRuntimeAcknowledgementSchema.parse(await pool.pausePoolWorker(context));
       return { kind: "control" };
@@ -1993,30 +1976,8 @@ function applyWorkerPoolCommand(
       // The child's own birth lease IS the authority fact, written by the
       // worker process and proved by the supervisor before it acknowledged.
       return applied(request, [workerTarget(request.payload.workerId)], []);
-    case "stop-worker": {
-      if (acknowledgement.kind !== "stop") {
-        throw new Error("stop-worker settled without a stop acknowledgement; the pool seam is inconsistent");
-      }
-      const lease = repositories.workerLeases.get(request.target.workerId);
-      if (lease === undefined) {
-        throw new Error(
-          `worker lease ${request.target.workerId} vanished after its stop settled; the durable record is inconsistent`,
-        );
-      }
-      if (lease.control.directive !== "stop" || lease.control.requestedAt !== now) {
-        throw new Error(
-          `stop-worker for ${request.target.workerId} settled, but authority shows directive `
-          + `${lease.control.directive} requested at ${lease.control.requestedAt}, not the acknowledged stop `
-          + `at the command's now ${now}; refusing to audit an effect the durable record does not show`,
-        );
-      }
-
-      return applied(request, [workerTarget(request.target.workerId)], [{
-        target: workerTarget(request.target.workerId),
-        before: acknowledgement.directiveLeaseVersions.before,
-        after: acknowledgement.directiveLeaseVersions.after,
-      }]);
-    }
+    case "stop-worker":
+      throw new WorkerControlRefusal("worker-reset-settlement-unavailable");
     case "pause-worker":
     case "resume-worker": {
       requireReservedWorkerControl(repositories, request);
@@ -2068,6 +2029,10 @@ async function executeWorkerPoolCommand(
   request: WorkerBrowserCommand,
 ): Promise<CommandResult> {
   const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+  if (request.type === "stop-worker") {
+    if (!LiveWorkerResetRequestSchema.safeParse(request).success) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "worker-reset-authority-unavailable" });
+    return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "worker-reset-settlement-unavailable" });
+  }
   const browser = request.type === "refresh-browser" || request.type === "reopen-browser";
   const controls = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls);
   const pre = dependencies.authority.withAuthorityTransaction((repositories) => {

@@ -535,6 +535,9 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       );
     }
     const leaseGeneration = started.lease.leaseGeneration;
+    const currentMember = database.authority.workerSlots.get(workerId);
+    if (currentMember === undefined || currentMember.retiredAt !== null) throw new Error("worker-claim-membership-unavailable");
+    const workerLifetime = { leaseGeneration, membershipRevision: currentMember.membershipRevision };
 
 
     for (const outcome of sweepWorkerClaims(database, lifecycle, { workerId, now })) {
@@ -635,6 +638,20 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
+        pendingReset: () => database.authority.workerControls.resetForWorker(workerId, leaseGeneration)?.reset,
+        activeWorkReset: (run, claim) => {
+          const record = database.authority.workerControls.resetForWorker(workerId, leaseGeneration);
+          if (record === undefined) return false;
+          const reset = record.reset;
+          const slot = database.authority.workerSlots.get(workerId);
+          const lease = database.authority.workerLeases.get(workerId);
+          if (reset === undefined || slot?.membershipRevision !== reset.member.membershipRevision || slot.retiredAt !== null
+            || lease?.controlRevision !== reset.reservedControlRevision || lease.controlCommandId !== record.commandId
+            || lease.processId !== reset.lifetime.processId || lease.lifecycle.startedAt !== reset.lifetime.startedAt
+            || reset.work.kind !== "current" || reset.work.current.runId !== run.envelope.runId
+            || reset.work.current.claimGeneration !== claim.claimGeneration || reset.work.current.attempt !== run.envelope.attempt) throw new Error("worker-reset-observer-authority-unavailable");
+          return true;
+        },
         browserControl: createWorkerBrowserControl({ database, workerId, leaseGeneration, clock, signal: stopController.signal }),
         browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration }); },
         configFingerprint: resolved.fingerprint,
@@ -651,7 +668,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
             && record.request.target.workerId === workerId && record.request.target.controlBasis?.leaseGeneration === leaseGeneration);
           if (control !== undefined) return { state: "refused" as const, refusal: { reason: "none-eligible" as const } };
           const outcome = lifecycle.claimNext({ commandId: request.commandId,
-            workflow: request.workflow, workerId: request.workerId, runtimeConfig: selectRunRuntime(repositories) }, admit);
+            workflow: request.workflow, workerId: request.workerId, workerLifetime, runtimeConfig: selectRunRuntime(repositories) }, admit);
           if (outcome.state === "refused" && outcome.refusal.reason !== "none-eligible") requireLifecycleApplied(outcome);
           return outcome;
         }) }),

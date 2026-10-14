@@ -198,6 +198,7 @@ export interface RunExecutorDependencies {
   readonly log: TaskLogger;
   /** Optional production sink for task messages and browser actions. */
   readonly taskNotes?: Pick<NoteTimelineWriter, "emitRunLog" | "emitRunAction">;
+  readonly retainCallback?: (identity: Readonly<{ runId: string; claimGeneration: number; attempt: number }>, operation: Promise<unknown>) => void;
   readonly confirmedActionPublisher?: ConfirmedActionPublisher;
   readonly writeSequencer?: WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
@@ -271,7 +272,9 @@ async function raceAbortable<Result>(
   operation: Promise<Result>,
   signal: AbortSignal,
   label: string,
+  retain?: (operation: Promise<unknown>) => void,
 ): Promise<Result> {
+  retain?.(operation);
   // Observe the race loser to prevent a late rejection becoming unhandled.
   operation.catch(observeRaceLoser);
   if (signal.aborted) {
@@ -1126,13 +1129,16 @@ export async function executeClaimedRun(
         ...(capabilityWiring.artifacts === undefined ? {} : { artifacts: capabilityWiring.artifacts }),
       } as const;
 
+      const retain = deps.retainCallback === undefined ? undefined : (operation: Promise<unknown>) => {
+        deps.retainCallback?.({ runId, claimGeneration: claim.claimGeneration, attempt: envelope.attempt }, operation);
+      };
       let raw: unknown;
       try {
         if (need === undefined) {
           raw = await (confirmedInvocation?.withNotes ?? ((operation, drain) => withBrowserActionNotes(clock, operation, drain)))(() => raceAbortable(
             Promise.resolve().then(() => withBrowserActionBinding(declaredActionBinder,
               () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras } }))),
-            controller.signal, contract.id,
+            controller.signal, contract.id, retain,
           ), (actions) => drainBrowserActions(spanPath, actions));
         } else {
           const instanceSelection = envelope.resolvedInstance[need.system];
@@ -1149,10 +1155,10 @@ export async function executeClaimedRun(
                   () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver } }),
                 )),
                 controller.signal,
-                contract.id,
+                contract.id, retain,
               )),
               controller.signal,
-              contract.id,
+              contract.id, retain,
             ),
             (actions) => drainBrowserActions(spanPath, actions),
           );

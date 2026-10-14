@@ -158,10 +158,14 @@ export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("enqueue-intake-manifest"), target: IntakeVersionTargetSchema, payload: z.strictObject({ dryRun: z.boolean(), reviewBinding: FingerprintSchema.optional() }) }),
 ]);
 
+export const LiveWorkerResetRequestSchema = z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"),
+  target: WorkerVersionTargetSchema.extend({ expectedVersion: PositiveIntSchema.optional(), membershipRevision: PositiveIntSchema, controlBasis: WorkerControlBasisSchema }) });
+
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("stop-worker"), target: WorkerVersionTargetSchema.extend({ expectedVersion: PositiveIntSchema.optional(), membershipRevision: PositiveIntSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: z.number().int().min(0) }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ workerId: WorkerIdSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["stop-worker", "pause-worker", "resume-worker"]), target: WorkerVersionTargetSchema }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["pause-worker", "resume-worker"]), target: WorkerVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema, controlBasis: WorkerControlBasisSchema.optional() }) }),
 ]);
 

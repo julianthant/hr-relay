@@ -258,3 +258,18 @@ The corresponding runtime tests exercise preview, parked resolution, proof verif
 - Onboarding has no hire commit/probe contract; its workflow needs a stable pre-hire business identity and evidence-qualified duplicate probe.
 - Separation workflow cutover still requires operator-approved controlled-write evidence for each write, safe target disposition, and measured probe-to-fence budgets.
 - Kuali finalization's configured stabilized policy still needs its own controlled-write propagation confirmation before production reliance.
+
+## Worker reset admission
+
+The native worker-control journal binds an admitted reset to the exact member and process lifetime,
+reserved revision, current run/claim/attempt and queued cascade. The SQLite claim boundary and common
+`#writeFenceRefusal` used by `fenceAttempt` and `refenceRetryable` respect this reservation. An unsafe
+or foreign-owned cascade refuses before reservation. An unresolved historical Stop without reset
+identity remains authority-unavailable and blocks admission through its unknown effect.
+
+A reset admitted after a fence leaves the existing write intent, claim, callback and sequencer
+ownership intact. Its current-work signal cannot detach the fenced transaction callback, repeat
+the external submit, terminally cancel an attempting write, or overwrite UNKNOWN/parked evidence.
+Actual read-task callbacks are also tracked by run/claim/attempt across ordinary deadline races;
+reset retains the operation until owned settlement. Reset settlement and idle/closure proof remain
+unavailable in the current intermediate backend, so public Stop refuses before effects.

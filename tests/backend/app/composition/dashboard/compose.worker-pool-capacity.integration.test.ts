@@ -235,7 +235,7 @@ describe("the composed worker process control through the kernel pool door", () 
 
 
 
-  it("refuses an externally started worker end-to-end with a retained refusal and no directive", async () => {
+  it("refuses an externally started worker Stop before reset effects with no directive", async () => {
     const harness = openControlHarness();
     assert.equal(admitExternalSlot(harness), WORKER_1);
     // An operator started this worker by hand: the lease is live under a pid
@@ -261,11 +261,11 @@ describe("the composed worker process control through the kernel pool door", () 
 
     const stopId = nextCommandId();
     const stopResult = await harness.kernel.executeWorkerPool({ ...envelope(harness, stopId), type: "stop-worker",
-      target: { workerId: WORKER_1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) } });
+      target: { workerId: WORKER_1, membershipRevision: 1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) } });
     assert.equal(stopResult.state, "rejected");
-    if (stopResult.state === "rejected") assert.match(stopResult.message, /never spawned person-lookup-worker-1/);
+    if (stopResult.state === "rejected") assert.match(stopResult.message, /worker-reset-settlement-unavailable/);
     assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.control.directive, "run");
-    assert.equal(harness.database.authority.commandAudits.findByCommand(stopId)?.result.state, "rejected");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(stopId), undefined);
 
   });
 
@@ -705,6 +705,19 @@ describe("every control retains a crash after effect admission", () => {
       : { target: { workerId: WORKER_1, expectedVersion: 2, controlBasis: servedControlBasis(harness.database, WORKER_1),
         ...(type === "refresh-browser" || type === "reopen-browser" ? { browserSessionId: sessionId } : {}) } }) };
     fault = true;
+    if (type === "stop-worker") {
+      const strict = { ...command, target: { ...command.target, membershipRevision: 1 } };
+      const before = harness.database.authority.workerLeases.get(WORKER_1);
+      const first = await harness.kernel.executeWorkerPool(strict);
+      assert.equal(first.state, "rejected"); if (first.state === "rejected") assert.match(first.message, /worker-reset-settlement-unavailable/);
+      const replay = await harness.kernel.executeWorkerPool(strict);
+      assert.deepEqual(replay, first);
+      assert.equal(calls, 0);
+      assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1), before);
+      assert.equal(harness.database.authority.workerControls.get(command.commandId), undefined);
+      assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+      return;
+    }
     await assert.rejects(harness.kernel.executeWorkerPool(command), /injected-owner-loss/);
     assert.equal(harness.database.authority.workerControls.get(command.commandId)?.phase.state, "uncertain");
     const replay = await harness.kernel.executeWorkerPool(command); assert.equal(replay.state, "rejected");

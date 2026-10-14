@@ -1,5 +1,7 @@
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
-import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
+import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +12,7 @@ import { lifecycleCommandId, requireLifecycleApplied, runContinuationPort, worke
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { LATER, NOW, UUID_1, UUID_5, UUID_6, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
@@ -229,13 +231,14 @@ describe("worker lifecycle service capability", () => {
 for (const finishingGeneration of [2, 3]) {
   it(`rejects generation1 after reassignment; generation${finishingGeneration} finishes and Retry preserves completion`, () => {
     const f = fixture(); let next = 20;
+    testWorkerPorts(f.database, f.clock, { path: syntheticDatabasePath(f.database), descriptor: personLookupDescriptor, poolIndex: 2 });
     const id = () => `99000000-0000-4000-8000-${String(next++).padStart(12, "0")}`;
     let running = runningRun(f.service, f.request, f.runtimeConfig);
     const stale = failureTerminalRequest(running, id());
     for (let generation = 2; generation <= finishingGeneration; generation++) {
       assert.equal(f.service.requeue({ commandId: id(), runId: running.envelope.runId,
         expectedVersion: running.version, cause: "recovery", staleBefore: LATER }).state, "applied");
-      const workerId = generation === 2 ? "worker-b" : WORKER_ID;
+      const workerId = generation === 2 ? "person-lookup-worker-2" : WORKER_ID;
       const claimed = requireLifecycleApplied(f.service.claimNext({ commandId: id(), workflow: WORKFLOW_ID, workerId, runtimeConfig: f.runtimeConfig }));
       assert.equal(claimed.claimGeneration, generation);
       const claim = { workerId, claimGeneration: generation };
@@ -249,7 +252,7 @@ for (const finishingGeneration of [2, 3]) {
       assert.equal(f.database.authority.runs.get(running.envelope.runId)?.completion, undefined);
     }
     const current = failureTerminalRequest(running, id());
-    current.terminal.authorization.claim = { workerId: finishingGeneration === 2 ? "worker-b" : WORKER_ID, claimGeneration: finishingGeneration };
+    current.terminal.authorization.claim = { workerId: finishingGeneration === 2 ? "person-lookup-worker-2" : WORKER_ID, claimGeneration: finishingGeneration };
     const terminal = requireLifecycleApplied(f.service.terminalize(current, personLookupDescriptor));
     assert.equal(terminal.completion?.claim.claimGeneration, finishingGeneration);
     const retry = requireLifecycleApplied(f.service.retry({ commandId: id(), runId: terminal.envelope.runId,

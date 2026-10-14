@@ -12,7 +12,7 @@ import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/reco
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_6, HASH_C, LATER } from "../../fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, WORKFLOW_ID, WORKER_ID } from "../../fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { AuthorityDatabase, type AuthorityLifecycleHooks, type AuthorityTerminalizationHooks } from "../synthetic-storage-admission.js";
@@ -21,6 +21,9 @@ import { Worker } from "node:worker_threads";
 import { z } from "zod";
 
 
+
+export const CANONICAL_WORKER_ID = "person-lookup-worker-1";
+const WORKER_ID = CANONICAL_WORKER_ID;
 
 export function createRunRecordServiceTestWorld() {
   const cleanups: (() => void)[] = [];

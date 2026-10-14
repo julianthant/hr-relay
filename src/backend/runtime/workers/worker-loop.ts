@@ -1,6 +1,7 @@
 import { WorkerPoolMemberSchema, WorkerRetirementProofSchema, workerPoolMember, type WorkerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 export { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import type { WorkerBrowserObservation } from "../../../models/run/worker-control.js";
+import type { WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { RunRecord } from "../../../models/run/record.js";
 
 import { z } from "zod";
@@ -126,6 +127,8 @@ export interface WorkerLoopDependencies {
   /** Ref data-intake-and-edit-data's blocking sink projector; absent, a declaring node fails loud. */
   readonly artifactProjector?: RunArtifactProjector;
 
+  readonly pendingReset?: () => WorkerResetBinding | undefined;
+  readonly activeWorkReset?: (run: RunRecord, claim: Readonly<{ workerId: string; claimGeneration: number }>) => boolean;
   readonly controlPoll?: () => WorkerDirective;
   readonly browserControl?: (sessions: WorkerSessionManager) => Promise<void>;
   readonly browserObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
@@ -279,11 +282,20 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 
   emit({ t: "span.started", kind: "worker", workerId, spanPath: workerPath, name: workflowId });
 
+  const callbacks = new Map<Promise<unknown>, Readonly<{ runId: string; claimGeneration: number; attempt: number }>>();
+  const retainCallback = (identity: Readonly<{ runId: string; claimGeneration: number; attempt: number }>, operation: Promise<unknown>) => {
+    callbacks.set(operation, identity);
+    void operation.then(() => { callbacks.delete(operation); }, () => { callbacks.delete(operation); });
+  };
   const outcomes: RunExecutionOutcome[] = [];
   let closure: WorkerLoopReport["closure"] = "proved";
   let stopped: "idle" | "stop-signal" | "stop-directive" = "stop-signal";
   try {
     while (!deps.stopSignal.aborted) {
+      if (deps.pendingReset?.() !== undefined) {
+        await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+        continue;
+      }
       await deps.browserControl?.(sessions);
       // Between items only: the active run always settles before the next poll.
       const directive = deps.controlPoll === undefined
@@ -334,6 +346,19 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         runController.abort(new Error(`worker ${workerId} received its stop signal mid-run`));
       };
       deps.stopSignal.addEventListener("abort", onStop, { once: true });
+      let resetPoll = { cancel: (): void => undefined };
+      let resetPolling = true;
+      const observeReset = (): void => {
+        if (!resetPolling) return;
+        try {
+          if (deps.activeWorkReset?.(run, claim) === true) {
+            runController.abort(new Error("worker-reset-current-work"));
+            return;
+          }
+        } catch (error) { runController.abort(error); return; }
+        resetPoll = deps.scheduler.schedule(clock.monotonicMs() + deps.idleRepollMs, observeReset);
+      };
+      if (deps.activeWorkReset !== undefined) observeReset();
       const heartbeat = startHeartbeat({
         lifecycle: deps.lifecycle,
         ids: deps.ids,
@@ -369,6 +394,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             taskDeadlineMs,
             log: deps.log,
             confirmedActionPublisher,
+            retainCallback,
             ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
@@ -387,8 +413,19 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
               : { captureBrowserScreenshots: run.envelope.captureBrowserScreenshots }),
           },
         );
+        const reset = deps.pendingReset?.();
+        if (reset !== undefined) {
+          const bound = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
+          const owned = [...callbacks.entries()].filter(([, identity]) => bound.some(member => member.state === "claimed"
+            && member.runId === identity.runId && member.claimGeneration === identity.claimGeneration && member.attempt === identity.attempt));
+          if (owned.length !== callbacks.size) {
+            while (!deps.stopSignal.aborted) await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+          } else await Promise.allSettled(owned.map(([operation]) => operation));
+        }
         outcomes.push(outcome);
       } finally {
+        resetPolling = false;
+        resetPoll.cancel();
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }

@@ -344,7 +344,7 @@ requires stopped process custody, a non-live lease, closed browser observations,
 and exclusive profile deletion through `composeWorkerProcessControl`. Only then does authority
 retire the slot and update the declaration. A failed closure cannot become a smaller completed pool.
 
-Stop requests the durable directive, waits `WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000`, sends
+Internal pool retirement and lifetime shutdown request the durable stop directive, wait `WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000`, sends
 SIGTERM, waits `WORKER_SIGTERM_TIMEOUT_MS = 30_000`, then sends SIGKILL. Observed escalation stages
 are a timestamped prefix of that policy. An initial acknowledgement records only the graceful
 request, not future signals or exit. Failed delivery and uncertain stop effects remain visible.
@@ -353,20 +353,38 @@ During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_T
 ### 11.2 Durable worker and browser controls
 
 `src/backend/runs/commands/command-kernel.ts` admits `plan-worker-count`, `spawn-worker`,
-`pause-worker`, `resume-worker`, `stop-worker`, `refresh-browser`, and `reopen-browser` into
+`pause-worker`, `resume-worker`, `refresh-browser`, and `reopen-browser` into
 `worker_controls` before asynchronous effects. `src/backend/storage/sqlite/worker-control.ts`
 binds every record to the exact stored command and any admitted roster.
 
-Pause, Resume, and Stop carry `controlBasis` with `leaseGeneration` and `controlRevision`.
+Pause and Resume carry `controlBasis` with `leaseGeneration` and `controlRevision`.
 Refresh and Reopen also name `browserSessionId`. Reservation increments the control revision.
 Heartbeats preserve the basis; another instruction or lifetime invalidates it. Composition and
 child execution recheck the reserved basis before effects.
 
-Controls expire after 180,000 ms. Their phases are `admitted`, `ready`, `executing`, `succeeded`,
+Ordinary controls expire after 180,000 ms. Their phases are `admitted`, `ready`, `executing`, `succeeded`,
 `refused`, and `uncertain`. Replay consults the retained outcome rather than repeating the effect.
 An unresolved control blocks another effect in its scope. An expired unstarted request refuses;
 an expired executing request becomes uncertain. Reused command identity with different bytes
 refuses. Requested directives remain distinct from observed lifecycle.
+
+Public Stop currently refuses before effects with `worker-reset-settlement-unavailable`; it cannot
+acknowledge lifetime shutdown as a reset. New Stop admission requires `membershipRevision` and
+`controlBasis`; optional carried `expectedVersion` is observation evidence and does not gate Stop
+on a heartbeat row version. The internal `admitWorkerReset` boundary binds the existing journal to the exact
+member, process lifetime, reserved control revision, current run/claim/attempt or explicit absence,
+and queued cascade dependencies. A separately claimed child refuses as foreign custody. Admission
+atomically blocks subsequent claims and both write-fence paths. A prior fenced callback remains
+owned by its sequencer and may settle or park UNKNOWN; reset never cancels or retries that write.
+
+The worker observes reset during current execution, acquisition and sign-in using a work abort
+signal separate from lifetime shutdown. Actual read callback promises retain run/claim/attempt
+ownership across deadline races and loop iterations. An admitted reset blocks another claim and
+cannot report idle while callbacks remain unresolved. Ordinary task deadlines remain bounded.
+Reset settlement and browser/Duo closure milestones are unavailable until their implementation;
+reset reservations cannot expire into refusal or release through the ordinary audit path.
+Historical Stop journal bytes remain immutable evidence. Missing historical reset authority remains
+unavailable and reserved when unresolved, and cannot authorize replay or a reset success.
 
 `worker-browser-channel.ts` uses SQLite as the cross-process channel and polls at 50 ms within
 the request's expiry. `worker-browser-control.ts` consumes only ready requests for its exact

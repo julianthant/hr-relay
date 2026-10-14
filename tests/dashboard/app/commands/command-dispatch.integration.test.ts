@@ -1,3 +1,6 @@
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { PositiveIntSchema as positiveIntSchemaForReset } from "../../../../src/rules/identity/ids.js";
 
 import assert_m0 from "node:assert/strict";
 import { mkdtempSync as mkdtempSync_m0,realpathSync as realpathSync_m0,rmSync as rmSync_m0 } from "node:fs";
@@ -142,8 +145,8 @@ afterEach_m0(_afterEachFixture0);
     const harness = createHarness();
     const runId = "11111111-1111-4000-8000-111111111111";
     enqueueRun(harness, runId);
-    // Advance run to version 2 via claim
-    const claim = harness.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: "worker-1", now: NOW_m0 });
+    testWorkerPorts(harness.database, harness.clock, { path: syntheticDatabasePath(harness.database), descriptor: personLookupDescriptor_m0, poolIndex: 1 });
+    const claim = harness.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: "person-lookup-worker-1", now: NOW_m0 });
     assert_m0.equal(claim.state, "claimed");
     const currentRun = harness.database.authority.runs.get(runId);
     assert_m0.ok(currentRun !== undefined);
@@ -622,12 +625,12 @@ describe_m1("the controls post the arms the wire declares", () => {
 
   it_m1("stops a worker against its LEASE version, which is a different basis", () => {
     const request = CommandRequestSchema_m1.parse(composeStopWorkerCommand_m1(
-      { workerId: "person-lookup-worker-1", leaseVersion: 12 },
+      { workerId: "person-lookup-worker-1", membershipRevision: positiveIntSchemaForReset.parse(1), leaseVersion: 12, controlBasis: { leaseGeneration: positiveIntSchemaForReset.parse(2), controlRevision: positiveIntSchemaForReset.parse(3) } },
       ACTOR,
     ));
 
     assert_m1.equal(request.type, "stop-worker");
-    assert_m1.deepEqual(request.target, { workerId: "person-lookup-worker-1", expectedVersion: 12 });
+    assert_m1.deepEqual(request.target, { workerId: "person-lookup-worker-1", membershipRevision: 1, expectedVersion: 12, controlBasis: { leaseGeneration: 2, controlRevision: 3 } });
   });
 });
 }

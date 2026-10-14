@@ -4096,6 +4096,14 @@ export class AuthorityDatabase implements Disposable {
       return { state: "refused", refusal: { reason: "runtime-stale" } };
     }
     return this.withAuthorityTransaction((): CanonicalRunClaimOutcome => {
+      const slot = this.authority.workerSlots.get(request.workerId);
+      const lease = this.authority.workerLeases.get(request.workerId);
+      if (slot === undefined || slot.retiredAt !== null || slot.workflow !== request.workflow
+        || request.workerLifetime !== undefined && (slot.membershipRevision !== request.workerLifetime.membershipRevision
+          || lease?.leaseGeneration !== request.workerLifetime.leaseGeneration || !isLiveWorker(lease))) {
+        if (canonical) return { state: "refused", refusal: { reason: "none-eligible" } };
+        throw new Error("worker-claim-membership-unavailable");
+      }
       if (request.runtimeConfig !== undefined) {
         if (!this.authority.runtimeConfig.matchesClaim(request.runtimeConfig)) {
           if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
@@ -4103,6 +4111,11 @@ export class AuthorityDatabase implements Disposable {
         }
       }
 
+      if (this.authority.workerControls.pending(`worker-pool:${request.workflow}`).some(record => record.request.type === "stop-worker" && record.reset === undefined)) throw new Error("worker-reset-authority-unavailable");
+      if (this.authority.workerControls.resetForWorker(request.workerId) !== undefined) {
+        if (canonical) return { state: "refused", refusal: { reason: "none-eligible" } };
+        throw new Error("worker-reset-reserved");
+      }
       if (this.authority.workerSlots.verification(request.workerId) !== undefined) {
         if (canonical) return { state: "refused", refusal: { reason: "none-eligible" } };
         throw new Error("worker-verification-reserved");
@@ -4148,6 +4161,10 @@ export class AuthorityDatabase implements Disposable {
         return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
       }
       const current = runRecordFromRow(row);
+      if (this.authority.workerControls.resetForRun(current.envelope.runId) !== undefined) {
+        if (canonical) return { state: "refused", refusal: { reason: "none-eligible" } };
+        throw new Error("worker-reset-cascade-reserved");
+      }
       if (request.configFingerprint !== undefined) {
         if (!this.authority.runtimeConfig.matchesRun(request.configFingerprint, current.envelope.configFingerprint)) {
           if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
@@ -4923,6 +4940,7 @@ export class AuthorityDatabase implements Disposable {
       plan: (input: unknown): WorkerPoolPlanOutcome => {
         const request = WorkerPoolPlanRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          if (this.authority.workerControls.pending(`worker-pool:${request.workflow}`).some(record => record.request.type === "stop-worker")) throw new Error("worker-reset-reserved");
           if (this.authority.workerSlots.verifications(request.workflow).length !== 0) throw new Error("worker-verification-reserved");
           const existing = read(request.workflow);
           const currentVersion = workerPoolVersion(existing);
@@ -4999,6 +5017,9 @@ export class AuthorityDatabase implements Disposable {
       start: (input: unknown) => {
         const request = WorkerStartRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          const member = this.authority.workerSlots.get(request.workerId);
+          if (member === undefined || member.retiredAt !== null || member.workflow !== request.workflow) throw new Error("worker-lease-membership-unavailable");
+          if (this.authority.workerControls.resetForWorker(request.workerId) !== undefined) throw new Error("worker-reset-reserved");
           if (this.authority.workerSlots.verification(request.workerId) !== undefined) throw new Error("worker-verification-reserved");
           const existing = this.#readWorkerLease(request.workerId);
           if (existing !== undefined && isLiveWorker(existing)) {
@@ -5065,6 +5086,7 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       reserveControl: (workerId, input, commandId, now) => this.withAuthorityTransaction(() => {
+        if (this.authority.workerControls.resetForWorker(workerId) !== undefined) throw new Error("worker-reset-reserved");
         const basis = WorkerControlBasisSchema.parse(input);
         const current = this.#readWorkerLease(workerId);
         if (current === undefined || !isLiveWorker(current)) throw new Error("worker-control-target-unavailable");
@@ -5077,6 +5099,7 @@ export class AuthorityDatabase implements Disposable {
       control: (input: unknown) => {
         const request = WorkerControlRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          if (this.authority.workerControls.resetForWorker(request.workerId) !== undefined) throw new Error("worker-reset-reserved");
           const current = this.#readWorkerLease(request.workerId);
           if (current === undefined) throw new Error(`worker lease ${request.workerId} does not exist`);
           if (current.version !== request.expectedVersion) {
@@ -5178,6 +5201,15 @@ export class AuthorityDatabase implements Disposable {
     const held = run === undefined ? undefined : runClaim(run);
     if (held === undefined || held.workerId !== claim.workerId || held.claimGeneration !== claim.claimGeneration) {
       return { reason: "lost" };
+    }
+    if (this.authority.workerControls.pending(`worker-pool:${intent.workflowId}`).some(record => record.request.type === "stop-worker" && record.reset === undefined)) throw new Error("worker-reset-authority-unavailable");
+    const reset = this.authority.workerControls.resetForWorker(claim.workerId);
+    if (reset !== undefined) {
+      const binding = reset.reset;
+      if (binding === undefined) throw new Error("worker-reset-authority-unavailable");
+      const runs = binding.work.kind === "absent" ? [] : [binding.work.current, ...binding.work.cascade];
+      if (runs.some(member => member.runId === intent.runId)) return { reason: "invalid-state" };
+      throw new Error("worker-reset-current-run-conflict");
     }
     if (run?.lifecycle.state !== "running" || run.cancelRequested === true || run.envelope.attempt !== intent.runAttempt) {
       return { reason: "invalid-state" };
