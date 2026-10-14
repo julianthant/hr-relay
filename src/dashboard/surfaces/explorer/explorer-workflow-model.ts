@@ -27,7 +27,12 @@ export function workflowChoices(id: MockWorkflowId): readonly Choice[] {
   };
   return options[`fixture-${id}`] ?? [];
 }
-export function initialWorkflowChoices(id: MockWorkflowId): WorkflowChoices { return Object.fromEntries(workflowChoices(id).map(item => [item.key, item.options[0][0]])); }
+export const DEFAULT_EXPLORER_WORKFLOW_ID = "fixture-separations";
+const DEFAULT_EXPLORER_PREVIEW = mockWorkflow(DEFAULT_EXPLORER_WORKFLOW_ID.replace(/^fixture-/u, ""));
+export function explorerRecoveryWorkflow(catalog: readonly WorkflowCatalogEntry[]): string {
+  return catalog.some(entry => entry.id === DEFAULT_EXPLORER_PREVIEW.id && entry.source === "served") ? DEFAULT_EXPLORER_PREVIEW.id : DEFAULT_EXPLORER_WORKFLOW_ID;
+}
+export function initialWorkflowChoices(id: MockWorkflowId = DEFAULT_EXPLORER_PREVIEW.id): WorkflowChoices { return Object.fromEntries(workflowChoices(id).map(item => [item.key, item.options[0][0]])); }
 export function updateWorkflowChoice(id: MockWorkflowId, values: WorkflowChoices, key: string, value: string): WorkflowChoices {
   const option = workflowChoices(id).find(item => item.key === key);
   if (!option?.options.some(([candidate]) => candidate === value)) throw new Error(`EXPLORER_CHOICE_INVALID: ${id}:${key}:${value}`);
@@ -116,6 +121,6 @@ export function workflowContractSource(id: MockWorkflowId, values: WorkflowChoic
     ...(row.proof ? { chain: [{ step, title: "Verify the result", detail: row.proof }] } : {}) };
 }
 export function explorerWorkflowOptions(catalog: readonly WorkflowCatalogEntry[]) {
-  return catalog.map(entry => ({ id: `fixture-${entry.id}`, title: entry.label,
-    count: entry.preview ? workflowPreviewGraph(entry.preview.id).nodes.length : 0, disabled: entry.preview === undefined }));
+  return catalog.map(entry => ({ id: entry.source === "served" ? entry.id : `fixture-${entry.id}`, title: entry.label,
+    count: entry.preview ? workflowPreviewGraph(entry.preview.id).nodes.length : 0, disabled: entry.source !== "served" && entry.preview === undefined }));
 }
