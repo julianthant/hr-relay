@@ -25,6 +25,14 @@ export const ERROR_CATALOG = Object.freeze({
     "The failure could not be formatted safely. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
+  DASHBOARD_READ_FAILED: catalogEntry(
+    "The dashboard could not load this from the local service. Try again.",
+    EmptyParametersSchema,
+  ),
+  EXPLORER_TASK_BINDING_UNAVAILABLE: catalogEntry(
+    "This workflow definition is unavailable because a task implementation is not registered.",
+    EmptyParametersSchema,
+  ),
   DASHBOARD_DAY_INVALID: catalogEntry(
     "The selected work date is invalid. Choose a valid date.",
     EmptyParametersSchema,

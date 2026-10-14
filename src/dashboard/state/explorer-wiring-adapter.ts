@@ -5,7 +5,7 @@ import type { BrowserSystemId } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import type { OperationActionKind } from "../../models/workflow/operation-display.js";
 import { describeNodeCondition } from "../../models/workflow/node-condition.js";
-import { requireWorkflowOperationDisplaySnapshot, type WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
+import { requireWorkflowOperationDisplaySnapshot, WorkflowOperationDisplaySnapshotError, type WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
 import type { ExplorerQueries } from "../client/queries/explorer-queries.js";
 import type { FieldSource, FlowPart, FlowStep } from "../surfaces/explorer/explorer-flow-model.js";
 import { observeResource } from "./async-resource.js";
@@ -26,7 +26,8 @@ function taskSystem(task: ExplorerTaskWire): FlowStep["system"] {
   if (task.binding.driverSystem) return systems[task.binding.driverSystem];
   return task.binding.storeKind === "headless" ? "Local" : undefined;
 }
-function mismatch(fact: string): never { throw new Error(`explorer-definition-divergence: ${fact}`); }
+class ExplorerDefinitionDivergenceError extends Error { override name = "ExplorerDefinitionDivergenceError"; }
+function mismatch(fact: string): never { throw new ExplorerDefinitionDivergenceError(`explorer-definition-divergence: ${fact}`); }
 const equal = (actual: unknown, expected: unknown, fact: string) => {
   if (canonicalJsonStringify(actual) !== canonicalJsonStringify(expected)) mismatch(fact);
 };
@@ -59,7 +60,8 @@ function declaredActions(items: readonly WorkflowOperationDisplaySnapshot["invoc
 function compositionParts(definition: WorkflowOperationDisplaySnapshot, items: readonly WorkflowOperationDisplaySnapshot["presentation"][number][] = definition.presentation): FlowPart[] {
   return items.map(item => {
     if (item.kind === "operation") {
-      const invocation = definition.invocations.find(invocation => invocation.id === item.invocationId)!;
+      const invocation = definition.invocations.find(invocation => invocation.id === item.invocationId);
+      if (!invocation) mismatch(`presentation ${item.id}`);
       return { kind: "detail", id: `display:${item.id}`, title: `${invocation.label ?? invocation.id} · node ${invocation.entryId} · task ${invocation.taskId}`, parts: [...invocation.outcomes.map(outcome => ({ kind: "note" as const, text: `Invocation outcome ${outcome.id} · ${outcome.label}: ${canonicalJsonStringify(outcome.when)}${outcome.continuation ? ` · continuation ${outcome.continuation}` : ""}. No outcome is selected.` })), ...declaredActions(invocation.operation.actions), ...compositionParts(definition, item.children ?? [])] };
     }
     return { kind: "detail", id: `display:${item.id}`, title: `${item.id} · ${item.kind}`, parts: [
@@ -71,6 +73,8 @@ function compositionParts(definition: WorkflowOperationDisplaySnapshot, items: r
 }
 
 export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): ExplorerWiringState {
+  const pending = workflow.nodes.flatMap(node => node.tasks).find(task => task.binding.state === "pending");
+  if (pending) return { state: "refused", failure: createErrorCatalogFailure("EXPLORER_TASK_BINDING_UNAVAILABLE", {}), evidence: { taskId: pending.taskId, binding: pending.binding } };
   if (workflow.definitionPreview.state === "unavailable") return { state: "unavailable", reason: workflow.definitionPreview.reason };
   try {
     const preview = workflow.definitionPreview;
@@ -135,27 +139,36 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
     const steps: FlowStep[] = [];
     const anchors = new Map<string, { step: number; fieldId: string; system: string; page: string }[]>();
     for (const group of preview.groups) for (const entry of group.entries) for (const nodeId of entry.nodeIds) {
-      const node = nodes.get(nodeId)!;
-      const number = steps.length + 1;
-      const parts: FlowPart[] = [{ kind: "note", text: `${group.label} · ${node.purpose.state === "authored" ? node.purpose.text : node.purpose.reason}` }, ...structuralParts(node, workflow.nodes)];
-      if (number === 1 && definition) parts.push({ kind: "detail", id: "declared-presentation", title: "Declared operation and control structure", parts: compositionParts(definition) });
+      const node = nodes.get(nodeId);
+      if (!node) mismatch(`node ${nodeId}`);
+      const taskGroups: { system: FlowStep["system"]; tasks: ExplorerTaskWire[] }[] = [];
       for (const task of node.tasks) {
-        const systemText = taskSystem(task) ?? (task.binding.state === "pending" ? `Unavailable · ${task.binding.note}` : "Unavailable · browser driver not declared");
-        const fields = task.fields.map(field => {
-          const id = `${node.id}:${task.arm}:${task.taskId}:${field.side}:${field.path}`;
-          const anchorKey = `${node.id}:${field.side}:${field.path}`;
-          anchors.set(anchorKey, [...(anchors.get(anchorKey) ?? []), { step: number, fieldId: id, system: systemText, page: task.title }]);
-          sources.set(id, { origin: sourceText(task.contractSource), detail: `Contract ${task.taskId} · ${field.side}.${field.path}. Implementation: ${sourceText(task.implSource)}. System: ${systemText}. No run value is available.` });
-          return { id, label: `${field.side} · ${field.path}`, value: "Unavailable · no run value", mode: field.side === "input" ? "fill" as const : "read" as const, source: id };
-        });
-        parts.push({ kind: "note", text: `Task ${task.taskId} · system ${systemText}.` });
-        parts.push({ kind: "form", id: `${node.id}:${task.arm}:${task.taskId}`, title: task.title, mode: task.effect, parts: [{ kind: "rows", fields }] });
+        const system = taskSystem(task);
+        if (!system) mismatch(`task system ${task.taskId}`);
+        const previous = taskGroups.at(-1);
+        if (previous?.system === system) previous.tasks.push(task);
+        else taskGroups.push({ system, tasks: [task] });
       }
-      if (!definition) parts.push({ kind: "note", text: workflow.operationStructure.state === "legacy" ? workflow.operationStructure.reason : "Operation declaration unavailable" });
-      const taskSystems = node.tasks.map(taskSystem);
-      const distinctSystems = new Set(taskSystems);
-      const system = distinctSystems.size === 1 ? taskSystems[0] : undefined;
-      steps.push({ number, title: node.label, ...(system ? { system } : {}), parts });
+      if (!taskGroups.length) taskGroups.push({ system: undefined, tasks: [] });
+      for (const { system, tasks } of taskGroups) {
+        const number = steps.length + 1;
+        const parts: FlowPart[] = [{ kind: "note", text: `${group.label} · ${node.purpose.state === "authored" ? node.purpose.text : node.purpose.reason}` }, ...structuralParts(node, workflow.nodes)];
+        if (number === 1 && definition) parts.push({ kind: "detail", id: "declared-presentation", title: "Declared operation and control structure", parts: compositionParts(definition) });
+        for (const task of tasks) {
+          const systemText = system ?? mismatch(`task system ${task.taskId}`);
+          const fields = task.fields.map(field => {
+            const id = `${node.id}:${task.arm}:${task.taskId}:${field.side}:${field.path}`;
+            const anchorKey = `${node.id}:${field.side}:${field.path}`;
+            anchors.set(anchorKey, [...(anchors.get(anchorKey) ?? []), { step: number, fieldId: id, system: systemText, page: task.title }]);
+            sources.set(id, { origin: sourceText(task.contractSource), detail: `Contract ${task.taskId} · ${field.side}.${field.path}. Implementation: ${sourceText(task.implSource)}. System: ${systemText}. No run value is available.` });
+            return { id, label: `${field.side} · ${field.path}`, value: "Unavailable · no run value", mode: field.side === "input" ? "fill" as const : "read" as const, source: id };
+          });
+          parts.push({ kind: "note", text: `Task ${task.taskId} · system ${systemText}.` });
+          parts.push({ kind: "form", id: `${node.id}:${task.arm}:${task.taskId}`, title: task.title, mode: task.effect, parts: [{ kind: "rows", fields }] });
+        }
+        if (!definition) parts.push({ kind: "note", text: workflow.operationStructure.state === "legacy" ? workflow.operationStructure.reason : "Operation declaration unavailable" });
+        steps.push({ number, title: node.label, ...(system ? { system } : {}), parts });
+      }
     }
     if (definition) for (const invocation of definition.invocations) for (const slot of invocation.operation.values) {
       if (slot.source.kind !== "contract-input") continue;
@@ -179,11 +192,13 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
         } else details.push(reference.kind === "run-input" ? `Run input · ${reference.path}` : reference.kind === "configuration" ? `Configuration · ${reference.key}` : reference.kind === "child-output" ? `Unresolved child-output anchor: ${reference.entryId}.${reference.path}` : `Static constant digest · ${reference.valueDigest}`);
       };
       visit(binding.value, []);
-      const source = sources.get(destinations[0].fieldId)!;
+      const source = sources.get(destinations[0].fieldId);
+      if (!source) mismatch(`destination source ${invocation.id}:${slot.id}`);
       sources.set(destinations[0].fieldId, { ...source, detail: `${source.detail}${details.length ? ` ${details.join("; ")}.` : ""}`, ...(reads.length ? { reads } : {}), ...(chain.length ? { chain } : {}) });
     }
     return { state: "ready", projection: { steps, sources } };
   } catch (evidence) {
+    if (!(evidence instanceof ExplorerDefinitionDivergenceError || evidence instanceof WorkflowOperationDisplaySnapshotError)) throw evidence;
     return { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence };
   }
 }
@@ -200,7 +215,7 @@ export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplore
       else if (version !== undefined && workflow.version !== version) value = { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence: "explorer-catalog-version-mismatch" };
       else value = projectExplorerDefinition(workflow);
       setResult({ request, value });
-    }, evidence => setResult({ request, value: { state: "refused", failure: createErrorCatalogFailure("TASK_UNHANDLED_FAILURE", {}), evidence } }));
+    }, evidence => setResult({ request, value: { state: "refused", failure: createErrorCatalogFailure("DASHBOARD_READ_FAILED", {}), evidence } }));
   }, [client, workflowId, version, request]);
   if (workflowId === undefined) return { state: "idle" };
   if (client === undefined) return { state: "unavailable", reason: "Registered workflow data is unavailable because the dashboard client is not connected." };

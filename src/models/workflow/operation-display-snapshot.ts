@@ -520,6 +520,8 @@ export function freezeWorkflowOperationDisplaySnapshot(input: Readonly<{
   });
 }
 
+export class WorkflowOperationDisplaySnapshotError extends Error { override name = "WorkflowOperationDisplaySnapshotError"; }
+
 /** Parse and integrity-check a stored complete snapshot; an absent payload is a named historical-integrity failure rather than a fallback to today's registry. */
 export function requireWorkflowOperationDisplaySnapshot(
   stored: unknown,
@@ -528,19 +530,19 @@ export function requireWorkflowOperationDisplaySnapshot(
   const workflowId = WorkflowIdSchema.parse(identity.workflowId);
   const definitionFingerprint = FingerprintSchema.parse(identity.definitionFingerprint);
   if (stored === undefined) {
-    throw new Error(`complete run ${workflowId} is missing its frozen operation display snapshot`);
+    throw new WorkflowOperationDisplaySnapshotError(`complete run ${workflowId} is missing its frozen operation display snapshot`);
   }
   const parsed = WorkflowOperationDisplaySnapshotSchema.safeParse(stored);
   if (!parsed.success) {
-    throw new Error(`complete run ${workflowId} has a corrupt frozen operation display snapshot`);
+    throw new WorkflowOperationDisplaySnapshotError(`complete run ${workflowId} has a corrupt frozen operation display snapshot`);
   }
   const snapshot = parsed.data;
   if (snapshot.workflowId !== workflowId || snapshot.definitionFingerprint !== definitionFingerprint) {
-    throw new Error(`complete run ${workflowId} frozen operation display snapshot identity does not match its envelope`);
+    throw new WorkflowOperationDisplaySnapshotError(`complete run ${workflowId} frozen operation display snapshot identity does not match its envelope`);
   }
   const { contentDigest, ...payload } = snapshot;
   if (contentDigest !== displaySnapshotDigest(payload)) {
-    throw new Error(`complete run ${workflowId} has a corrupt frozen operation display snapshot digest`);
+    throw new WorkflowOperationDisplaySnapshotError(`complete run ${workflowId} has a corrupt frozen operation display snapshot digest`);
   }
   return snapshot;
 }

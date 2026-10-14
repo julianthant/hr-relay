@@ -26,7 +26,7 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
     setIdentity({ client, workflowId, epoch: identity.epoch + (identity.client !== client ? 1 : 0) }); setScenario(DEFAULT_SCENARIO); setMockScenario(DEFAULT_MOCK_SCENARIO);
     setChoices(initialWorkflowChoices(id));
   }
-  const workflow = workflows.find((item) => item.id === workflowId)!;
+  const workflow = workflows.find((item) => item.id === workflowId);
   const flow = useMemo(() => workflowId === "fixture-onboarding" ? buildOnboardingMock(mockScenario) : workflowId === "fixture-emergency-contact" ? buildEmergencyContactMock(mockScenario) : {
     steps: buildExplorerPreview(scenario), summary: "Kuali request → UCPath termination → Kuali completion", completion: "Separation filed and Kuali document verified",
     path: { step: 17, control: "preview-pending" }, stopAfter: blockedAfter(scenario),
@@ -37,12 +37,13 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
     return <ExplorerTimeline key={identity.epoch} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} title={served.label} steps={steps} scenario={scenario} onScenario={setScenario} onMockChoice={() => undefined}
       sourceFor={field => resource.state === "ready" ? resource.projection.sources.get(field.source ?? "") : undefined} summary="Registered workflow definition" completion="No run values are available." path={{ step: 1, control: "explorer-step-1" }} />;
   }
-  const activeFlow = ["fixture-separations", "fixture-onboarding", "fixture-emergency-contact"].includes(workflowId) ? flow : buildWorkflowMock(id!, choices);
+  if (!id) throw new Error(`explorer-mock-workflow-unknown: ${workflowId}`);
+  const activeFlow = ["fixture-separations", "fixture-onboarding", "fixture-emergency-contact"].includes(workflowId) ? flow : buildWorkflowMock(id, choices);
   return <ExplorerTimeline key={identity.epoch} workflowId={workflowId} workflows={workflows} onWorkflow={(nextId) => {
     const next = workflows.find((item) => item.id === nextId);
     if (!next) throw new Error(`explorer-mock-workflow-unknown: ${nextId}`);
     setWorkflowId(next.id);
   }} title={workflow.title} {...activeFlow} scenario={scenario} onScenario={setScenario}
-    onMockChoice={(key, value) => key.startsWith("workflow:") ? setChoices(current => updateWorkflowChoice(id!, current, key.slice(9), value)) : setMockScenario(current => updateMockScenario(current, key, value))}
-    sourceFor={(field, step) => workflowId === "fixture-separations" ? previewFieldSource(field.source ?? "", step, scenario) : workflowId === "fixture-onboarding" || workflowId === "fixture-emergency-contact" ? mockFieldSource(field.source ?? "") : workflowContractSource(id!, choices, field, step)} />;
+    onMockChoice={(key, value) => key.startsWith("workflow:") ? setChoices(current => updateWorkflowChoice(id, current, key.slice(9), value)) : setMockScenario(current => updateMockScenario(current, key, value))}
+    sourceFor={(field, step) => workflowId === "fixture-separations" ? previewFieldSource(field.source ?? "", step, scenario) : workflowId === "fixture-onboarding" || workflowId === "fixture-emergency-contact" ? mockFieldSource(field.source ?? "") : workflowContractSource(id, choices, field, step)} />;
 }

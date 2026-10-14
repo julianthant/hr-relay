@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it } from "vitest";
+import { formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
 import { WorkflowExplorerWireSchema, ExplorerWorkflowWireSchema, ExplorerTaskWireSchema, SourceLinkWireSchema, type ExplorerWorkflowWire, type WorkflowExplorerWire } from "../../../src/models/dashboard/explorer.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
@@ -256,29 +257,57 @@ describe("complete source and structure declarations", () => {
     const operations = text.filter(text => text.startsWith("source-operation · node") || text.startsWith("destination-operation · node"));
     assert.deepEqual(operations, ["source-operation · node source-node · task crm/source-value", "destination-operation · node destination-node · task crm/destination-value"]);
   });
-  it("keeps explicit system absence and multiple task systems without a plausible Local or first-system label", () => {
-    for (const multi of [false, true]) {
-      const workflow = lineageWorkflow();
-      workflow.operationStructure = { state: "legacy", reason: "No complete action declaration" };
-      const destination = workflow.nodes.find(node => node.id === "destination-node")!;
-      if (multi) destination.tasks.push(ExplorerTaskWireSchema.parse({ ...destination.tasks[0], taskId: "kuali/other-task", title: "Other system contract", binding: { state: "bound", storeNamespace: "kuali", storeKind: "browser", driverSystem: "kuali" } }));
-      else destination.tasks[0].binding = { state: "pending", note: "Implementation not registered" };
-      assert.ok(workflow.definitionPreview.state === "compiled");
-      workflow.definitionPreview.groups[0].entries[0].taskIds = workflow.nodes.flatMap(node => node.tasks.map(task => task.taskId));
-      workflow.definitionPreview.systemsFirstUse = multi ? ["crm", "kuali"] : ["crm"];
-      const result = projectExplorerDefinition(workflow);
-      assert.equal(result.state, "ready");
-      if (result.state !== "ready") continue;
-      const step = result.projection.steps.find(step => step.title === destination.label)!;
-      assert.equal(step.system, undefined);
-      const text = partText(step.parts).join("\n");
-      if (multi) { assert.ok(text.includes("system CRM")); assert.ok(text.includes("system Kuali")); }
-      else {
-        assert.ok(text.includes("system Unavailable · Implementation not registered"));
-        assert.equal(text.includes("system Local"), false);
-        assert.ok(result.projection.sources.get("destination-node:task:crm/destination-value:input:direct")?.detail?.includes("System: Unavailable · Implementation not registered"));
-      }
+  it("refuses pending bindings and splits multi-system tasks in declaration order without Local", () => {
+    const pending = lineageWorkflow();
+    pending.nodes[2].tasks[0].binding = { state: "pending", note: "Implementation not registered" };
+    const refusal = projectExplorerDefinition(pending);
+    assert.equal(refusal.state, "refused");
+    if (refusal.state === "refused") {
+      assert.equal(refusal.failure.code, "EXPLORER_TASK_BINDING_UNAVAILABLE");
+      assert.deepEqual(refusal.evidence, { taskId: pending.nodes[2].tasks[0].taskId, binding: pending.nodes[2].tasks[0].binding });
     }
+    pending.definitionPreview = { state: "unavailable", reason: "Preview not compiled" };
+    assert.equal(projectExplorerDefinition(pending).state, "refused");
+    const workflow = lineageWorkflow();
+    const source = workflow.nodes[1];
+    source.tasks.push(ExplorerTaskWireSchema.parse({ ...source.tasks[0], taskId: "kuali/other-source", binding: { state: "bound", storeNamespace: "kuali", storeKind: "browser", driverSystem: "kuali" }, fields: [{ ...source.tasks[0].fields[0], path: "other" }] }));
+    source.tasks.push(ExplorerTaskWireSchema.parse({ ...source.tasks[0], taskId: "crm/final-source", fields: [{ ...source.tasks[0].fields[0], path: "final" }] }));
+    assert.ok(workflow.definitionPreview.state === "compiled");
+    workflow.definitionPreview.groups[0].entries[0].taskIds = workflow.nodes.flatMap(node => node.tasks.map(task => task.taskId));
+    workflow.definitionPreview.systemsFirstUse = ["crm", "kuali"];
+    const result = projectExplorerDefinition(workflow);
+    assert.equal(result.state, "ready", result.state === "refused" ? String(result.evidence) : "");
+    if (result.state !== "ready") return;
+    assert.deepEqual(result.projection.steps.map(step => [step.number, step.title, step.system]), [
+      [1, "Declared parallel", undefined], [2, "Declared source", "CRM"], [3, "Declared source", "Kuali"], [4, "Declared source", "CRM"], [5, "Declared destination", "CRM"],
+    ]);
+    assert.deepEqual(result.projection.steps.flatMap(step => allFields(step.parts).map(field => field.id)), workflow.nodes.flatMap(node => node.tasks.flatMap(task => task.fields.map(field => `${node.id}:${task.arm}:${task.taskId}:${field.side}:${field.path}`))));
+    for (const step of result.projection.steps) for (const field of allFields(step.parts)) {
+      assert.ok(step.system);
+      assert.ok(result.projection.sources.has(field.id));
+      assert.ok(result.projection.sources.get(field.id)?.detail?.includes(`System: ${step.system}`));
+      assert.notEqual(step.system, "Local");
+    }
+    const direct = result.projection.sources.get("destination-node:task:crm/destination-value:input:direct");
+    assert.equal(direct?.reads?.[0].step, 2);
+    assert.equal(result.projection.sources.get("destination-node:task:crm/destination-value:input:derived")?.chain?.[0].step, 5);
+    assert.ok(partText(result.projection.steps[2].parts).join("\n").includes("Member of parallel parallel-owner, branch left"));
+  });
+  it("rethrows unrelated projection exceptions instead of classifying them as invalid definitions", () => {
+    const workflow = lineageWorkflow();
+    const fault = new Error("unexpected projection fault");
+    Object.defineProperty(workflow, "timeline", { get() { throw fault; } });
+    assert.throws(() => projectExplorerDefinition(workflow), error => error === fault);
+  });
+  it("labels headless task fields as Local from their binding", () => {
+    const workflow = lineageWorkflow();
+    workflow.operationStructure = { state: "legacy", reason: "No complete action declaration" };
+    for (const node of workflow.nodes) for (const task of node.tasks) task.binding = { state: "bound", storeNamespace: "local", storeKind: "headless" };
+    assert.ok(workflow.definitionPreview.state === "compiled");
+    workflow.definitionPreview.systemsFirstUse = [];
+    const result = projectExplorerDefinition(workflow);
+    assert.equal(result.state, "ready");
+    if (result.state === "ready") for (const step of result.projection.steps.filter(step => allFields(step.parts).length)) assert.equal(step.system, "Local");
   });
   it("names branch alternatives and membership without simulating all alternatives", () => {
     const workflow = lineageWorkflow();
@@ -438,4 +467,19 @@ describe("complete source and structure declarations", () => {
       assert.equal("projection" in result, false);
     }
   });
+});
+
+it("maps failed Explorer reads to the shared dashboard read catalog text", async () => {
+  const root = createRoot(document.createElement("div"));
+  const client = { workflowExplorer: async () => { throw new Error("fixture read failed"); } };
+  let result: ReturnType<typeof useExplorerWiring> | undefined;
+  function Probe() { result = useExplorerWiring(client, compiled.id); return null; }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    assert.equal(result?.state, "refused");
+    if (result?.state === "refused") {
+      assert.equal(result.failure.code, "DASHBOARD_READ_FAILED");
+      assert.equal(formatErrorCatalogFailure(result.failure).text, "The dashboard could not load this from the local service. Try again.");
+    }
+  } finally { await act(async () => root.unmount()); }
 });
