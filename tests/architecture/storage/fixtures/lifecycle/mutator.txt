@@ -1,9 +1,13 @@
 import type { AuthorityRepositories } from "../../backend/storage/sqlite/authority-database.js";
+function mutatorFactory(repositories: AuthorityRepositories) {
+  return repositories.runs.resume;
+}
 export function forbidden(repositories: AuthorityRepositories) {
   const { transition: mutate } = repositories.runs;
   mutate({});
   const insert = repositories.archivedRuns.insert;
   insert({});
+  mutatorFactory(repositories)({});
 }
 
 // These aliases expose no direct repository property access to the caller.

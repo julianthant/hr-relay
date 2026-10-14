@@ -73,6 +73,12 @@ function collectAudit(): readonly string[] {
   // Only lifecycle mutators need overload resolution; resolving every call also infers unrelated arguments.
   const possibleMutators = new WeakMap<ts.Type, boolean>();
   function mayCallMutator(expression: ts.Expression): boolean {
+    if (ts.isIdentifier(expression)) {
+      let symbol = checker.getSymbolAtLocation(expression);
+      if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+      const declarations = symbol?.declarations;
+      if (declarations?.length && declarations.every(ts.isFunctionDeclaration)) return false;
+    }
     const type = checker.getApparentType(checker.getNonNullableType(checker.getTypeAtLocation(expression)));
     const cached = possibleMutators.get(type);
     if (cached !== undefined) return cached;
@@ -166,6 +172,7 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.ok(found.some((entry) => entry.includes("UPDATE tasks")), "historical run table remains protected");
     assert.ok(found.some((entry) => entry.includes("UPDATE workflow_workers")), "renamed worker table remains protected");
     assert.ok(found.some((entry) => entry.includes("mutate({})")), "destructured mutator is still resolved");
+    assert.ok(found.some((entry) => entry.includes("mutatorFactory(repositories)({})")), "factory-returned mutator is still resolved");
     assert.ok(!found.some((entry) => entry.includes('overloaded("safe")')), "safe selected overload remains allowed");
     for (const call of ["facade.move({})", 'indexed["continue"]({})', "overloaded({})", "optional?.({})", "generic({})", "union({})"]) {
       assert.ok(found.some((entry) => entry.includes(call)), `indirect mutator remains protected: ${call}`);
