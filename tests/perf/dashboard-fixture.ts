@@ -704,7 +704,9 @@ export function seedDashboardPerfFixture(): PerfFixture {
     descriptors,
   });
 
-  projection.ingestFromTimeline();
+  projection.rebuildFromTimeline();
+  // Prime the benchmark subject so its next refresh emits a count-neutral patch.
+  projection.refreshRun(uuidOf(ID_SPACE.run + SEEDS.done));
 
   const runDetail: RunDetailQueryDeps = { timeline: database.authority.timelineEvents, runReader: sqliteRunReader(database, clock),
     stateRoot,
