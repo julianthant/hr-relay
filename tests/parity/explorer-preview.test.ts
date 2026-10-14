@@ -23,7 +23,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
       await expect(surface).toBeVisible();
       await expect(surface.getByRole("list", { name: "Workflow steps" }).getByRole("listitem")).toHaveCount(22);
-      await expect(surface).toContainText("Fictional preview data.");
+      await expect(surface).toContainText("Browse workflows, their steps and field sources.");
+      await expect(surface).not.toContainText("Fictional preview data");
       const workflows = surface.getByRole("combobox", { name: "Explorer workflow", exact: true });
       await expect(workflows).toHaveAttribute("data-value", "fixture-separations");
       await workflows.click();

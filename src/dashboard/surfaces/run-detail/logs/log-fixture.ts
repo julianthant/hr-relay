@@ -11,7 +11,7 @@ const fields = (id: string, title: string | undefined, rows: readonly FieldInput
 });
 const click = (id: string, time: string, label: string, screenshot?: LogScreenshot): LogEntry => ({ id, kind: "click", time, label, ...(screenshot === undefined ? {} : { screenshots: [screenshot] }) });
 const capture = (name: string, label: string, time: string, system: string, kind: NonNullable<LogScreenshot["kind"]>, height = 300): LogScreenshot => ({
-  src: `/logs-preview/${name}.svg`, alt: `Fictional ${system} ${label} for Alex Morgan · sample data`, label, time, system, kind, width: 850, height,
+  src: `/logs-preview/${name}.svg`, alt: `${system} ${label} for Alex Morgan`, label, time, system, kind, width: 850, height,
 });
 const comments = "Termination eff 09/26/2026. Last Day Worked 09/25/2026. Holiday Pay on 09/25/2026. Kuali form #SIM-48216.";
 

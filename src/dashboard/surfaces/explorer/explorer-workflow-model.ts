@@ -55,7 +55,7 @@ function operationStep(run: MockRun, node: PreviewNode) {
   const key = run.workflowId === "ocr" ? ocrKeys[node.id] : undefined;
   return key ? { key, label: node.id, message: node.purpose } : mockWorkflow(run.workflowId).steps.find(step => mockStepNode(run, step)?.id === node.id);
 }
-export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): MockFlow {
+export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): Omit<MockFlow, "completion"> {
   const key = `fixture-${id}`;
   const graph = workflowPreviewGraph(id), nodes = workflowNodes(id, values), run = previewRun(id, values);
   const controls = workflowChoices(id).map<FlowPart>(item => ({ kind: "mock-choice", id: `workflow:${item.key}`, label: item.label, value: values[item.key], options: item.options }));
@@ -94,7 +94,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
     steps.push({ number, title: node.id, system: node.delegatesTo === "fixture-ocr" || key === "fixture-ocr" && node.system === "i9" || key === "fixture-i9-check" && node.system === "i9" ? "OCR" : node.system ? systems[node.system] ?? "Local" : "Local", parts });
     if (blocked && stopAfter === undefined) stopAfter = number;
   }
-  return { steps, summary: graph.summary, completion: "Fictional workflow path complete. No external system contacted.", path: { step: 1, control: controls.length ? `preview-workflow:${workflowChoices(id)[0].key}` : "explorer-step-1" }, stopAfter };
+  return { steps, summary: graph.summary, path: { step: 1, control: controls.length ? `preview-workflow:${workflowChoices(id)[0].key}` : "explorer-step-1" }, stopAfter };
 }
 export function workflowContractSource(id: MockWorkflowId, values: WorkflowChoices, field: FlowField, step: number): FieldSource | undefined {
   const operation = /^operation:(\d+):(\d+):(\d+)$/u.exec(field.source ?? "");

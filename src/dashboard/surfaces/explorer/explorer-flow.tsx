@@ -11,14 +11,14 @@ type ExplorerTimelineProps = {
   sourceFor: (field: FlowField, step: number) => FieldSource | undefined;
   workflows: readonly { readonly id: string; readonly title: string; readonly count: number; readonly disabled?: boolean }[];
   workflowId: string; onWorkflow: (id: string) => void;
-  summary: string; completion: string; path: { readonly step: number; readonly control: string }; stopAfter?: number;
+  summary: string; completion?: string; path: { readonly step: number; readonly control: string }; stopAfter?: number;
   onMockChoice: (id: string, value: string) => void;
 };
 
 export function ExplorerTimeline(props: ExplorerTimelineProps) {
   const { workflows, workflowId, onWorkflow } = props;
   return <section aria-label="Workflow explorer preview" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
-    <PageHeading title="Explorer" description="Browse workflows, their steps and field sources. Fictional preview data." className="settings-heading-actions" actions={
+    <PageHeading title="Explorer" description="Browse workflows, their steps and field sources." className="settings-heading-actions" actions={
       <Select aria-label="Explorer workflow" className="settings-heading-select" value={workflowId} onChange={event => {
         if (event.target.value !== workflowId) onWorkflow(event.target.value);
       }}>{workflows.map(workflow => <option key={workflow.id} value={workflow.id} disabled={workflow.disabled} title={workflow.disabled ? "Workflow preview unavailable" : undefined}>{workflow.title}</option>)}</Select>
@@ -97,7 +97,7 @@ function ExplorerWorkflowTimeline({ steps, scenario, onScenario, sourceFor, comp
           </li>;
         })}
       </ol>
-      <p className={`ml-10 mt-3 border-t border-ui-stroke pt-4 text-body ${stop === undefined ? "text-ui-secondary" : "text-ui-danger"}`}>{stop === undefined ? completion : "This preview path stops before downstream writes."}</p>
+      {(stop !== undefined || completion !== undefined) && <p className={`ml-10 mt-3 border-t border-ui-stroke pt-4 text-body ${stop === undefined ? "text-ui-secondary" : "text-ui-danger"}`}>{stop === undefined ? completion : "This preview path stops before downstream writes."}</p>}
     </div>
     {source && <ExplorerSource key={`${source.step.number}-${source.field.id}`} label={source.field.label} destination={`${source.step.system ?? "Local"} · ${source.form ?? `Step ${source.step.number}`}`} source={sourceFor(source.field, source.step.number)} onClose={closeSource} onJump={(step, fieldId) => {
       setSource(undefined); setSelected(fieldId === undefined ? `explorer-step-${step}` : `explorer-field-${step}-${fieldId}`); focusAt(step, fieldId);
