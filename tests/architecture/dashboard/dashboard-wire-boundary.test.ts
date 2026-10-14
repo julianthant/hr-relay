@@ -11,13 +11,22 @@ import { REPO_ROOT, repoRelative, walkFiles } from "../support/helpers/guard-fil
 const { RETAINED_MOCK_SITES, retainedLiteralSite, RETAINED_MOCK_LITERALS } = createRetainedDashboardMockFixtures();
 
 
+const literalSites = new WeakMap<ts.SourceFile, { ids: string; values: readonly string[] }>();
+
 function workflowLiteralIssues(sources: ReadonlyMap<string, string>, ids: readonly string[]): readonly string[] {
   const violations: string[] = [];
+  const key = JSON.stringify(ids);
   for (const path of Object.keys(RETAINED_MOCK_LITERALS)) if (!sources.has(path)) violations.push(`${path}: missing retained fixture owner`);
   for (const [path, content] of sources) {
-    const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true);
-    const values: string[] = [];
-    visit(source, node => { if (ts.isStringLiteralLike(node) && ids.includes(node.text)) values.push(retainedLiteralSite(node, source)); });
+    const source = parseContent(path, content);
+    let cached = literalSites.get(source);
+    if (cached?.ids !== key) {
+      const values: string[] = [];
+      visit(source, node => { if (ts.isStringLiteralLike(node) && ids.includes(node.text)) values.push(retainedLiteralSite(node, source)); });
+      cached = { ids: key, values };
+      literalSites.set(source, cached);
+    }
+    const values = cached.values;
     const expected = RETAINED_MOCK_SITES[path];
     if (expected !== undefined && JSON.stringify(values) === JSON.stringify(expected)) continue;
     if (values.length > 0 || expected !== undefined) violations.push(`${path}: unadmitted workflow literals ${values.join(", ")}`);
@@ -147,14 +156,18 @@ function bundleClosure(entry: string): ReadonlySet<string> {
   return new Set([...seen].map((file) => repoRelative(file)));
 }
 
+const parsedSources = new Map<string, ts.SourceFile>();
+
+function parseContent(file: string, content: string): ts.SourceFile {
+  const cached = parsedSources.get(file);
+  if (cached?.text === content) return cached;
+  const source = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true);
+  parsedSources.set(file, source);
+  return source;
+}
+
 function parse(file: string): ts.SourceFile {
-  return ts.createSourceFile(
-    file,
-    readFileSync(file, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
+  return parseContent(file, readFileSync(file, "utf8"));
 }
 
 function visit(node: ts.Node, callback: (node: ts.Node) => void): void {

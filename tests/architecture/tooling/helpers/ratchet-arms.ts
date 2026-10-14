@@ -146,9 +146,15 @@ function parse(file: string): ts.SourceFile {
   return parseContent(file, readFileSync(file, "utf8"), kind);
 }
 
+const parsedSources = new Map<string, { kind: ts.ScriptKind; source: ts.SourceFile }>();
+
 function parseContent(file: string, content: string, kind?: ts.ScriptKind): ts.SourceFile {
   const scriptKind = kind ?? (file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  return ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, scriptKind);
+  const cached = parsedSources.get(file);
+  if (cached?.kind === scriptKind && cached.source.text === content) return cached.source;
+  const source = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, scriptKind);
+  parsedSources.set(file, { kind: scriptKind, source });
+  return source;
 }
 
 function visit(node: ts.Node, callback: (node: ts.Node) => void): void {

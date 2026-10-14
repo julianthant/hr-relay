@@ -63,6 +63,8 @@ function resolveSource(fromFile: string, specifier: string): string {
   return found;
 }
 
+const closureSources = new Map<string, { content: string; sha256: SourceHash["sha256"]; specifiers: readonly string[] }>();
+
 /** The closure, sorted by repo-relative path so iteration order cannot leak into the hash. */
 export function collectSourceClosure(repoRoot: string, entry: string): readonly SourceHash[] {
   const manifestModule = resolve(repoRoot, BUILD_MANIFEST_PATH);
@@ -74,11 +76,13 @@ export function collectSourceClosure(repoRoot: string, entry: string): readonly 
     if (file === undefined || seen.has(file) || file === manifestModule) continue;
     seen.add(file);
     const content = readFileSync(file, "utf8");
-    sources.push({
-      path: posix(relative(repoRoot, file)),
-      sha256: FingerprintSchema.parse(sha256(content)),
-    });
-    for (const specifier of relativeSpecifiers(file, content)) {
+    let cached = closureSources.get(file);
+    if (cached?.content !== content) {
+      cached = { content, sha256: FingerprintSchema.parse(sha256(content)), specifiers: relativeSpecifiers(file, content) };
+      closureSources.set(file, cached);
+    }
+    sources.push({ path: posix(relative(repoRoot, file)), sha256: cached.sha256 });
+    for (const specifier of cached.specifiers) {
       pending.push(resolveSource(file, specifier));
     }
   }
