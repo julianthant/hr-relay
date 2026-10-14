@@ -1,5 +1,11 @@
 // Conflicts and rejections are refusals; settle every result arm before reporting success.
 import type { CommandResult } from "../../../rules/commands/commands.js";
+import { DashboardClientError } from "../../client/errors.js";
+
+export function beforeEffectRefusal(error: unknown): boolean {
+  return error instanceof DashboardClientError && error.kind === "http"
+    && (error.code === "OPERATOR_MUTATION_ORIGIN_REFUSED" || error.code === "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED");
+}
 
 /** The kernel's own rejection vocabulary, taken from the wire union rather than restated. */
 type CommandRejectionCode = Extract<CommandResult, { state: "rejected" }>["code"];

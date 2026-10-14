@@ -180,8 +180,8 @@ export const TimelineWireSchema = z.strictObject({
 /** The `resolved` arm carries the APPROVER: `resolvedBy` is REQUIRED and safe to require, because the arm is newly reachable and no stored record predates the field. */
 export const GateDecisionWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  z.strictObject({ state: z.literal("open"), gateId: NoteIdSchema, label: z.string().min(1), openedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
-  z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
+  z.strictObject({ state: z.literal("open"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), openedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
+  z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
 ]);
 /** A REHEARSAL's terminal outcome: `rehearsal` states that this run's terminal record is a dry-run PREVIEW, so nothing downstream reads it as a completed workflow. */
 export const OutcomeWireSchema = z.discriminatedUnion("state", [

@@ -989,6 +989,7 @@ export class RunQueueProjection {
     const batch = this.#deps.authority.getRunBatch(authority.sessionId);
     if (batch === undefined || batch.workflow !== authority.envelope.workflow) throw new Error(`workflow batch ${authority.sessionId} is missing or belongs to another workflow`);
     return { state: "present", sessionId: batch.sessionId,
+      origin: batch.origin,
       presentation: { groupInQueue: batch.groupInQueue, version: PositiveIntSchema.parse(batch.version), startedAt: batch.startedAt } };
   }
 

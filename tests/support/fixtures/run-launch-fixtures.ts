@@ -1,7 +1,23 @@
+import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
+import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
+import { composeQueueSummaries } from "../../../src/backend/app/composition/dashboard/queue-summaries.js";
+import { serverLocalDay } from "../../../src/dashboard/surfaces/shell/date-navigation-model.js";
+import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/queries/item-attempt-history.js";
+import { ItemAttemptHistoryRequestSchema } from "../../../src/models/dashboard/item-attempt-history.js";
+import { dirname } from "node:path";
+import { createOperatorProjection } from "../../../src/backend/app/composition/dashboard/queue.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
+import type { DashboardCommandBinding, DashboardAuthority } from "../../../src/dashboard/app/dashboard-app-model.js";
+import { FIXTURE_BOOTSTRAP } from "./dashboard/fixture-bootstrap.js";
+import { FIXTURE_DAY_WIRE } from "./dashboard/fixture-queue.js";
 import { z } from "zod";
 import { Hono } from "hono";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
+import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
+import type { ProtectedSecretSource } from "../../../src/models/config/secrets.js";
 import { defineTaskStoreRegistry } from "../../../src/workflow-kit/task-registry.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
@@ -47,13 +63,13 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active") {
       }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
   });
 }
-export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2]) {
-  const h = sourceBoundHarness(launchDescriptor(enqueue), (world) => {
+export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>) {
+  const h = sourceBoundHarness(selection?.descriptor ?? launchDescriptor(enqueue), (world) => {
     const reads = sourceBoundReadStores(world); const writes = buildWriteFixtureRegistry(world);
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
     });
-  }, initializeRuntime);
+  }, initializeRuntime, selection?.protectedSecrets);
   const descriptor = h.descriptor;
   if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
   const workflow: RunStartWorkflow = { workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category,
@@ -65,11 +81,23 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
   app.use("/api/v1/commands", operatorMutationIngressGuard);
-  registerQueueRoutes(app, { queue: { day: () => { throw new Error("unrequested queue"); } }, startPlans: h.planner });
+  const reader = { read: h.lifecycle.read.bind(h.lifecycle), list: h.lifecycle.list.bind(h.lifecycle),
+    summaries: { ...composeQueueSummaries(h.database), activity: () => { throw new Error("unrequested fixture activity"); } } };
+  const projection = createOperatorProjection({ database: h.database, reader, stateRoot: dirname(h.authorityPath), clock: h.clock,
+    appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(h.database.authority),
+    descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined } });
+  registerQueueRoutes(app, { queue: { day: day => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(day); } }, startPlans: h.planner });
   app.get("/api/v1/runs/:id/rerun-values", (c) => {
     const response = readRerunValues({ reader: h.lifecycle, database: h.database, descriptors: { resolve: () => descriptor } },
       { runId: c.req.param("id"), expectedVersion: Number(c.req.query("expectedVersion")) });
     return c.json(response, response.state === "available" ? 200 : response.code === "target-deleted" ? 410 : response.code === "target-not-found" ? 404 : 409);
+  });
+  const history = createItemAttemptHistoryQuery({ database: h.database, reader: h.lifecycle });
+  app.get("/api/v1/runs/:runId/attempt-history", c => {
+    const limit = c.req.query("limit"); const cursor = c.req.query("cursor");
+    return c.json(history.read(c.req.param("runId"), ItemAttemptHistoryRequestSchema.parse({
+      ...(limit === undefined ? {} : { limit: Number(limit) }), ...(cursor === undefined ? {} : { cursor }),
+    })));
   });
   app.post("/api/v1/commands", async (c) => c.json(h.kernel.execute(await c.req.json())));
   const submissions: unknown[] = []; const finalCommands: unknown[] = [];
@@ -84,7 +112,18 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
     return result;
   } });
   const launch = createRunLaunchService(client, "local-operator", { uuid: () => h.ids.uuid(), now: () => h.clock.now().toISOString() });
-  return { ...h, get queueRoots() { return h.queueRoots; }, workflow, app, client, launch, submissions, finalCommands, loseResponse: () => { loseResponse = true; },
+  const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, serverClock: { ...FIXTURE_BOOTSTRAP.serverClock, now: h.clock.now().toISOString(), zone: "America/Los_Angeles" } });
+  const epoch = Object.freeze({ client, bootstrap });
+  const day = serverLocalDay(bootstrap.serverClock);
+  const dayWire = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, day });
+  const request = Object.freeze({ client, day, epoch, revision: 0 });
+  const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
+  const executor = new CommandExecutor(() => scope);
+  const authority: DashboardAuthority = { epoch, catalog: [], nowIso: bootstrap.serverClock.now, today: day, day,
+    dayState: { request, day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
+    selection: { route: { start: false }, workflowId: descriptor.id } };
+  const binding: DashboardCommandBinding = { authority, executor, scope, feedback: () => undefined };
+  return { ...h, get queueRoots() { return h.queueRoots; }, workflow, app, client, launch, binding, submissions, finalCommands, loseResponse: () => { loseResponse = true; },
     async completeSource() { const run = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
       const result = await h.execute(run); if (result.state !== "done") throw new Error(`source did not complete: ${result.state}`); return h.fresh(run); },
     authoritySnapshot() { return JSON.stringify({ generation: h.database.getMeta(), roots: h.queueRoots,

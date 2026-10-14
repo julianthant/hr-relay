@@ -631,3 +631,63 @@ describe_m1("the controls post the arms the wire declares", () => {
   });
 });
 }
+
+it_m0("verifies real cascade tombstones after a lost delete reply and explicit executor recovery", async () => {
+  const { createCommandKernelTestWorld } = await import("../../../support/helpers/backend/command-kernel-harness.js");
+  const { kernelRejectMemberRecord } = await import("../../../support/helpers/backend/kernel-reject-member-run.js");
+  const { singleAppliedRunId } = await import("../../../support/fixtures/operator-command-fixtures.js");
+  const { createItemAttemptHistoryQuery } = await import("../../../../src/backend/runs/queries/item-attempt-history.js");
+  const { sqliteRunReader } = await import("../../../support/helpers/canonical-run-reader.js");
+  const { createDashboardClient } = await import("../../../../src/dashboard/client/index.js");
+  const { CommandExecutor } = await import("../../../../src/dashboard/app/commands/command-executor.js");
+  const { verifyShellCommandEffect } = await import("../../../../src/dashboard/app/commands/command-dispatch.js");
+  const world = createCommandKernelTestWorld();
+  try {
+    const h = world.createHarness();
+    const plan = world.createPlan(h, world.rejectActiveDescriptor, ["10800000"]);
+    const parentId = singleAppliedRunId(h.kernel.execute(world.startCommand(plan)));
+    const parent = h.database.authority.runs.get(parentId); assert_m0.ok(parent);
+    const childId = "aaaaaaaa-4444-4444-8444-aaaaaaaaaaaa", manifestId = "bbbbbbbb-4444-4444-8444-bbbbbbbbbbbb", dependencyId = "cccccccc-4444-4444-8444-cccccccccccc";
+    const childItemId = deriveItemId_m0("kernel-reject", "child:delete");
+    const policy = { onChildFailed: "fail-parent" as const, cascadeCancel: "cascade" as const, afterChildRetry: "resume-parent" as const, visibility: "inline" as const };
+    assert_m0.equal(h.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, childId, "child:delete", "kr-170000-4444", "delete-edge", NOW_m0)).state, "inserted");
+    h.database.authority.delegationManifests.insert({ manifestId, parentRunId: parentId, edgeId: "delete-edge", inputSchemaHash: HASH_A_m0, resultSchemaHash: HASH_B_m0,
+      cardinality: "one", join: "one", policy, children: [{ dependencyId, childRunId: childId, childItemId, canonicalInputFingerprint: HASH_A_m0 }], createdAt: NOW_m0, manifestFingerprint: HASH_A_m0 });
+    h.database.authority.dependencies.insert({ dependencyId, manifestId, edgeId: "delete-edge", parentRunId: parentId, childRunId: childId, childItemId, policy, state: "active", version: 1, createdAt: NOW_m0, updatedAt: NOW_m0 });
+    for (const id of [parentId, childId]) {
+      const run = h.database.authority.runs.get(id); assert_m0.ok(run);
+      assert_m0.equal(h.database.authority.runs.transition({ runId: id, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW_m0 }, now: NOW_m0 }).state, "applied");
+    }
+    const terminal = h.database.authority.runs.get(parentId); assert_m0.ok(terminal);
+    const request = world.runCommand("delete", parentId, terminal.version);
+    const history = createItemAttemptHistoryQuery({ database: h.database, reader: sqliteRunReader(h.database, h.clock) });
+    const bodies: string[] = [];
+    const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+      if (url.endsWith("/commands")) {
+        assert_m0.equal(typeof init?.body, "string"); if (typeof init?.body !== "string") throw new Error("missing body");
+        bodies.push(init.body);
+        const result = h.kernel.execute(CommandRequestSchema_m0.parse(JSON.parse(init.body)));
+        if (bodies.length === 1) throw new Error("lost acknowledgment");
+        return Response.json(result);
+      }
+      const selectedId = url.includes(childId) ? childId : parentId;
+      return Response.json(history.read(selectedId, { limit: 25 }));
+    } });
+    let scope: import("../../../../src/dashboard/app/commands/command-executor.js").CommandExecutionScope | undefined = { actorId: request.requestedBy, client, authority: {}, dayRequest: { day: "2026-08-03" } };
+    const executor = new CommandExecutor(() => scope);
+    const readback: import("../../../../src/dashboard/app/commands/command-executor.js").CommandExecutionOptions["readback"] = (child, reply) => verifyShellCommandEffect(client, "2026-08-03", child, reply);
+    const firstScope = scope;
+    assert_m0.equal((await executor.execute(request, { scope, readback })).kind, "uncertain");
+    assert_m0.equal(h.database.authority.runs.get(parentId), undefined); assert_m0.equal(h.database.authority.runs.get(childId), undefined);
+    scope = undefined;
+    assert_m0.equal((await executor.replay(request.commandId, { scope: firstScope, readback })).kind, "refused");
+    scope = { ...firstScope, authority: {}, dayRequest: { day: "2026-08-04" } };
+    const result = await executor.replay(request.commandId, { scope, readback });
+    assert_m0.equal(result.kind, "confirmed"); assert_m0.deepEqual(bodies, [bodies[0], bodies[0]]);
+    assert_m0.ok(result.reply !== undefined && "affectedTargets" in result.reply);
+    assert_m0.deepEqual(result.reply.affectedTargets.map(target => target.family === "run" ? target.runId : undefined), [childId, parentId]);
+  } finally {
+    for (const database of world.openDatabases.splice(0)) database.close();
+    for (const path of world.roots.splice(0)) rmSync_m0(path, { recursive: true, force: true });
+  }
+});

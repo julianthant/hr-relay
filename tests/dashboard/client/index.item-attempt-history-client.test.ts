@@ -64,3 +64,12 @@ describe("same-item attempt history client", () => {
     assert.equal(String(receivedPath), `http://fixture.test/api/v1/runs/${RUN}/attempt-history?limit=10&cursor=page%2B2`);
   });
 });
+
+it("requires and retains the durable delete command provenance", async () => {
+  const commandId = "11111111-1111-4111-8111-111111111111";
+  const selected = { state: "deleted", disposition: "deleted", runId: RUN, workflowId: "person-lookup", itemId: ITEM, attempt: 1, deletedAt: "2026-08-03T12:00:00.000Z" };
+  await assert.rejects(() => clientReturning({ schemaVersion: 1, state: "unavailable", selected, reason: "item-identity-unknown" }).itemAttemptHistory(RUN));
+  const response = await clientReturning({ schemaVersion: 1, state: "unavailable", selected: { ...selected, commandId }, reason: "item-identity-unknown" }).itemAttemptHistory(RUN);
+  assert.ok("selected" in response && response.selected.state === "deleted");
+  assert.equal(response.selected.commandId, commandId);
+});

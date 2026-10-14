@@ -32,14 +32,9 @@ export function useServedNow(servedInstant: string, tickMs: number = SERVED_CLOC
   );
   const [, setTick] = useState(0);
 
-  // Keep the initial calibration object when nothing changed; mounting must not reseed it later.
-  useEffect(() => {
-    setOrigin((current) => (
-      current.instant === servedInstant
-        ? current
-        : { instant: servedInstant, monotonicMs: systemClock.monotonicMs() }
-    ));
-  }, [servedInstant]);
+  const current = origin.instant === servedInstant
+    ? origin : { instant: servedInstant, monotonicMs: systemClock.monotonicMs() };
+  if (current !== origin) setOrigin(current);
 
   useEffect(() => {
     const advance = (): void => setTick((tick) => tick + 1);
@@ -51,5 +46,5 @@ export function useServedNow(servedInstant: string, tickMs: number = SERVED_CLOC
     };
   }, [tickMs]);
 
-  return deriveServedNow(origin.instant, systemClock.monotonicMs() - origin.monotonicMs);
+  return deriveServedNow(current.instant, systemClock.monotonicMs() - current.monotonicMs);
 }

@@ -1,3 +1,8 @@
+import type { DashboardClient } from "../../client/index.js";
+import type { CommandRequest, CommandResult, BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
+import type { DashboardDayWire, QueueSurfaceWire } from "../../../models/dashboard/projection.js";
+import type { CommandReadbackVerification } from "./command-executor.js";
+import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 /** Turning a SERVED action descriptor into the ONE command envelope (ref frontend-backend-integration
  * §3.4), for the confirm-first flow the app root mounts. */
 import { systemClock } from "../../../rules/time/clock.js";
@@ -209,3 +214,94 @@ export function composeCommandRequest(
 }
 
 export { composeStopWorkerCommand, composePlanWorkerCountCommand, composeSpawnWorkerCommand } from "./worker-command-dispatch.js";
+
+/** Read effect facts from the same served day, including cross-day delegated rows. */
+export async function verifyShellCommandEffect(
+  client: DashboardClient,
+  day: string,
+  request: CommandRequest,
+  reply: CommandResult | BulkRunCommandOutcome,
+): Promise<CommandReadbackVerification> {
+  const mismatch = (evidence: unknown) => ({ state: "mismatch" as const, evidence });
+  if (request.family === "gate") {
+    const detail = await client.runDetail(request.target.runId);
+    const value = request.payload.result.value;
+    const decision = typeof value === "object" && value !== null && "decision" in value ? value.decision : undefined;
+    return detail.rowRevision > request.target.expectedVersion && detail.gate.state === "resolved"
+      && detail.gate.nodeId !== undefined && String(detail.gate.nodeId) === String(request.target.gateId) && detail.gate.resolvedBy === request.requestedBy
+      && detail.gate.resolution === decision ? { state: "matched", evidence: detail } : mismatch(detail);
+  }
+  if (request.family === "run" && request.type === "delete") {
+    if (!("affectedTargets" in reply)) return mismatch(reply);
+    const expected = lifecycleCommandId("operator-delete", request.commandId);
+    const histories = [];
+    for (const target of reply.affectedTargets) {
+      if (target.family !== "run") return mismatch(reply);
+      const history = await client.itemAttemptHistory(target.runId);
+      histories.push(history);
+      if (!("selected" in history) || history.selected.state !== "deleted" || history.selected.commandId !== expected) return mismatch(histories);
+    }
+    return { state: "matched", evidence: histories };
+  }
+  if (request.family !== "run" && request.family !== "workflow-batch") return mismatch(request);
+  const snapshots = new Map<string, DashboardDayWire>();
+  const snapshot = async (partition: string) => {
+    const previous = snapshots.get(partition);
+    if (previous !== undefined) return previous;
+    const next = await client.dashboardDay(partition); snapshots.set(partition, next); return next;
+  };
+  const current = await snapshot(day);
+  if (request.family === "workflow-batch") {
+    const sessions = current.queueSurfaces.filter(row => row.session.state === "present" && row.session.sessionId === request.target.batchId);
+    return sessions.length > 0 && sessions.every(row => row.session.state === "present"
+      && row.session.presentation?.version === request.target.expectedVersion + 1 && row.session.presentation.groupInQueue === request.payload.groupInQueue)
+      ? { state: "matched", evidence: current } : mismatch(current);
+  }
+  const readRow = async (runId: string): Promise<QueueSurfaceWire | undefined> => {
+    for (const wire of snapshots.values()) {
+      const row = wire.queueSurfaces.find(candidate => candidate.runId === runId);
+      if (row !== undefined) return row;
+    }
+    let history = await client.itemAttemptHistory(runId);
+    while (history.state === "available") {
+      const entry = history.page.entries.find(candidate => candidate.runId === runId);
+      if (entry?.disposition === "live") {
+        const row = (await snapshot(entry.partitionDay)).queueSurfaces.find(candidate => candidate.runId === runId);
+        return row;
+      }
+      if (history.page.nextCursor === null) break;
+      history = await client.itemAttemptHistory(runId, { cursor: history.page.nextCursor });
+    }
+    return undefined;
+  };
+  const rootRead = await readRow(request.target.runId);
+  if (rootRead === undefined) return mismatch([...snapshots.values()]);
+  const root = rootRead;
+  if (request.type === "rename") return root.rowRevision === request.target.expectedVersion + 1
+    && root.displayName.state === "present" && root.displayName.value === request.payload.displayName
+    ? { state: "matched", evidence: root } : mismatch(root);
+  if (request.type === "bump") return root.rowRevision >= request.target.expectedVersion && root.priority === "interactive"
+    ? { state: "matched", evidence: root } : mismatch(root);
+  if (request.type !== "cancel") return mismatch(root);
+  const legal = new Map<string, QueueSurfaceWire>([[root.runId, root]]);
+  const affected = "affectedTargets" in reply ? reply.affectedTargets : [{ family: "run" as const, runId: request.target.runId }];
+  for (const target of affected) {
+    if (target.family !== "run") return mismatch(reply);
+    let descendant = await readRow(target.runId);
+    const path = new Map<string, QueueSurfaceWire>();
+    while (descendant !== undefined && !legal.has(descendant.runId)) {
+      const row = descendant;
+      if (path.has(row.runId) || row.lineage.state !== "child") return mismatch([...path.values()]);
+      path.set(row.runId, row);
+      descendant = await readRow(row.lineage.parentRunId);
+    }
+    if (descendant === undefined) return mismatch([...snapshots.values()]);
+    for (const [runId, row] of path) legal.set(runId, row);
+  }
+  const matches = root.rowRevision > request.target.expectedVersion && affected.every(target => {
+    if (target.family !== "run") return false;
+    const row = legal.get(target.runId);
+    return row !== undefined && (row.status === "cancelled" || row.status === "cancelling");
+  });
+  return matches ? { state: "matched", evidence: [...legal.values()] } : mismatch([...legal.values()]);
+}

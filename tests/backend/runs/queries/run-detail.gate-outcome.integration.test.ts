@@ -105,6 +105,8 @@ describe("a settled gate's panel names the verdict, the approver and the instant
     assert.equal(gate.resolvedBy, "local-operator");
     assert.equal(gate.resolvedAt, RESOLVED_AT);
     assert.equal(gate.label, GATE);
+    assert.equal(gate.nodeId, GATE);
+    assert.notEqual(String(gate.gateId), GATE);
   });
 
   it("serves a REJECTION as a rejection — a receipt that could only describe approvals is not a record", () => {

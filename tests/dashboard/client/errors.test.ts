@@ -11,6 +11,7 @@ import { act as act_m1,createElement as createElement_m1 } from "react";
 import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
 import { it as it_m1 } from "vitest";
 import { DashboardClientError as DashboardClientError_m1 } from "../../../src/dashboard/client/errors.js";
+import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 import type { DashboardClient as DashboardClient_m1 } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m1 } from "../../../src/dashboard/state/client-context.js";
 import type { SettingsSaveNotice as SettingsSaveNotice_m1 } from "../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
@@ -89,7 +90,7 @@ async function mount(client: DashboardClient_m1) {
   host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
   let controller: ReturnType<typeof useStorageRelocation_m1> | undefined;
   function Surface() { controller = useStorageRelocation_m1({ actorId: "local-operator", onSaved: notice => notices.push(notice) }); currentController = controller; return createElement_m1(StorageRelocationRows_m1, { editor: controller }); }
-  await act_m1(async () => { root?.render(createElement_m1(DashboardClientProvider_m1, { client, children: createElement_m1(Surface) })); });
+  await act_m1(async () => { root?.render(createElement_m1(DashboardClientProvider_m1, { client, children: createElement_m1(FixtureCommandBinding, { actorId: "local-operator", children: createElement_m1(Surface) }) })); });
   await act_m1(async () => undefined);
   if (controller === undefined) throw new Error("relocation-controller-missing");
   return { notices, controller: () => { if (controller === undefined) throw new Error("relocation-controller-missing"); return controller; }, host };
@@ -108,7 +109,7 @@ try {
   const commands: unknown[] = [];
   let beforeEffect = true;
   const client = { storageRelocationPlans: () => Promise.resolve(INITIAL),
-    applyStorageRelocation: (command: unknown) => {
+    executeCommand: (command: unknown) => {
       commands.push(structuredClone(command));
       return Promise.reject(beforeEffect
         ? new DashboardClientError_m1({ kind: "http", status: 403, code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "synthetic admission refusal" })

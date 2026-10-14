@@ -1,4 +1,4 @@
-import { useCallback,useState } from "react";
+import { useCallback,useEffect,useState } from "react";
 import { z } from "zod";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../models/dashboard/bootstrap.js";
 import type {
@@ -37,7 +37,8 @@ const SELECTED_WORKFLOW_STORAGE_KEY = "hr-dashboard.selected-workflow";
 
 export function useSelectedWorkflow(workflows: readonly { readonly id: string }[]): {
   selectedWorkflowId: string;
-  setSelectedWorkflowId: (workflowId: string) => void;
+  setSelectedWorkflowId: (workflowId: string) => boolean;
+  canSelectWorkflowId: (workflowId: string) => boolean;
 } {
   const [selectedWorkflowId, setSelectedWorkflowIdState] = useState(() =>
     readEnumPreference(
@@ -46,11 +47,19 @@ export function useSelectedWorkflow(workflows: readonly { readonly id: string }[
       String(workflows[0]?.id ?? ""),
     ),
   );
+  const valid = workflows.some(workflow => workflow.id === selectedWorkflowId);
+  if (!valid && selectedWorkflowId !== "") setSelectedWorkflowIdState("");
+  useEffect(() => {
+    if (!valid) void writePreference(SELECTED_WORKFLOW_STORAGE_KEY, "");
+  }, [valid]);
+  const canSelectWorkflowId = useCallback((workflowId: string) => workflows.some(workflow => workflow.id === workflowId), [workflows]);
   const setSelectedWorkflowId = useCallback((workflowId: string) => {
+    if (!canSelectWorkflowId(workflowId)) return false;
     setSelectedWorkflowIdState(workflowId);
     void writePreference(SELECTED_WORKFLOW_STORAGE_KEY, workflowId);
-  }, []);
-  return { selectedWorkflowId, setSelectedWorkflowId };
+    return true;
+  }, [canSelectWorkflowId]);
+  return { selectedWorkflowId: valid ? selectedWorkflowId : "", setSelectedWorkflowId, canSelectWorkflowId };
 }
 
 

@@ -1,6 +1,7 @@
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import type { TaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
+import type { ProtectedSecretSource } from "../../../../src/models/config/secrets.js";
 import type { WriteFixtureWorld } from "../write-sequencer-fixtures.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
@@ -29,7 +30,7 @@ import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../operator-comm
 import { writeFixtureDescriptor, createWriteFixtureWorld, buildWriteFixtureRegistry, writeFixtureSessions,
   writeFixtureSessionManager, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_EID } from "../write-sequencer-fixtures.js";
 
-export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig) {
+export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-source-bound-")));
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "repeat-proof" }, clock);
@@ -62,6 +63,7 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
       stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
   });
   const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock,
+    ...(protectedSecrets === undefined ? {} : { protectedSecrets }),
     ids: planIds, planTtlMs: 600_000, configFingerprint: activeConfig.configFingerprint, configSnapshotId: activeConfig.configSnapshotId, plannedBy: "local-operator" });
   const world = createWriteFixtureWorld();
   const stores = customStores === undefined ? buildWriteFixtureRegistry(world) : customStores(world);

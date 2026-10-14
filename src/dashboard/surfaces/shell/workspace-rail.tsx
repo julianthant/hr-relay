@@ -1,11 +1,12 @@
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { ToggleButton } from "@heroui/react/toggle-button";
 import { Bell } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { NavbarData, NavbarSearchResult } from "./search/navbar-view-model.js";
 import { RailSearch } from "./search/navbar-view.js";
 import { NotificationPing, NotificationsView } from "../notifications/notifications-view.js";
-import { applyNotificationReads, notificationView, type NotificationDestination, type NotificationsState } from "../notifications/notifications-view-model.js";
+import { useNotificationRailModel } from "../notifications/notification-rail-model.js";
+import type { NotificationDestination, NotificationsState } from "../notifications/notifications-view-model.js";
 import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
@@ -20,18 +21,12 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   onSearch: (result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => void;
   onOpenNotification: (destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => void;
 }) {
-  const scenario = typeof window === "undefined" ? "normal" : new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
-  const [reads, setReads] = useState<Readonly<Record<string, boolean>>>({});
-  const state = useMemo(() => applyNotificationReads(notifications, reads), [notifications, reads]);
   const [filter, setFilter] = useViewState("notificationFilter", "all");
   const [category, setCategory] = useViewState("notificationCategory", "all");
   const [open, setOpen] = useViewState("notifications", false);
   const [notice, setNotice] = useState("");
-  const [ping, setPing] = useState(scenario === "ping");
+  const notificationRail = useNotificationRailModel({ notifications, filter, setOpen, setNotice, onOpenNotification });
   const bell = useRef<HTMLButtonElement>(null);
-  const view = notificationView(state, filter);
-  const pingItem = state.state === "ready" ? state.items.find(item => item.destination.kind === "run" && item.title === "Run completed") : undefined;
-  const changeOpen = (next: boolean) => { setOpen(next); if (next) setPing(false); };
   useEffect(() => {
     if (!open || settingsOpen) return;
     const escape = (event: KeyboardEvent) => {
@@ -47,20 +42,18 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
     <header className="workspace-rail-header">
       <h2>Relay</h2>
       <div className="flex shrink-0 items-center gap-0.5">
-        <ToggleButton ref={bell} isIconOnly size="sm" variant="ghost" isSelected={open} onChange={changeOpen} aria-controls={open ? "workspace-notifications" : undefined}
-          aria-label={state.state === "loading" ? "Notifications loading" : state.state === "unavailable" ? "Notifications unavailable" : `Notifications, ${view.unread} unread`} className="rail-notification-toggle">
-          <Bell aria-hidden className="size-4" />{view.unread !== undefined && view.unread > 0 && <span aria-label={`${view.unread} unread notifications`} className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ui-info" />}
+        <ToggleButton ref={bell} isIconOnly size="sm" variant="ghost" isSelected={open} onChange={notificationRail.changeOpen} aria-controls={open ? "workspace-notifications" : undefined}
+          aria-label={notificationRail.state.state === "loading" ? "Notifications loading" : notificationRail.state.state === "unavailable" ? "Notifications unavailable" : `Notifications, ${notificationRail.unread} unread`} className="rail-notification-toggle">
+          <Bell aria-hidden className="size-4" />{notificationRail.unread !== undefined && notificationRail.unread > 0 && <span aria-label={`${notificationRail.unread} unread notifications`} className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ui-info" />}
         </ToggleButton>
         <RailSearch data={searchData} onResult={onSearch} />
       </div>
     </header>
     <div className="workspace-rail-body" id={open ? "workspace-notifications" : undefined}>
-      {open ? <NotificationsView state={state} filter={filter} onFilter={setFilter} category={category} onCategory={setCategory}
-          onControl={(id, control) => setReads(current => ({ ...current, [id]: control === "read" }))}
-          onReadAll={() => { if (state.state === "ready") setReads(current => ({ ...current, ...Object.fromEntries(state.items.map(item => [item.id, true])) })); }}
-          onOpen={item => { setNotice(""); onOpenNotification(item.destination, () => { setReads(current => ({ ...current, [item.id]: true })); changeOpen(false); }, setNotice); }} notice={notice} />
+      {open ? <NotificationsView state={notificationRail.state} filter={filter} onFilter={setFilter} category={category} onCategory={setCategory}
+          onControl={notificationRail.onControl} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} notice={notice} />
         : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} />}
     </div>
-    {ping && pingItem && <NotificationPing item={pingItem} onClose={() => setPing(false)} onOpen={() => changeOpen(true)} />}
+    {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} onClose={notificationRail.onClosePing} onOpen={notificationRail.onOpenPing} />}
   </aside>;
 });

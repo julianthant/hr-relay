@@ -6,6 +6,49 @@ import { RunSessionRecordSchema } from "../../../../src/models/run/session.js";
 import { instantOffsetOf,makeWorld,DAY as PROJECTION_DAY,queuedEventOf,runRecordOf,uuidOf as runUuidOf,taskEventsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 
+describe("session origin projection", () => {
+  it.each([
+    { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
+    { kind: "intake-manifest", intakeManifestId: runUuidOf(72), actorId: "local-operator" },
+  ] as const)("round trips the $kind origin", (origin) => {
+    const w = makeWorld();
+    try {
+      const batch = RunSessionRecordSchema.parse({ sessionId: runUuidOf(70), workflow: "person-lookup", origin,
+        startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 });
+      w.authority.batches.set(batch.sessionId, batch);
+      queuedEventOf(w, { seed: 1, sessionId: batch.sessionId });
+
+      const row = w.projection.buildDashboardDayWire(PROJECTION_DAY).queueSurfaces[0];
+      assert.deepEqual(row?.session, {
+        state: "present",
+        sessionId: batch.sessionId,
+        origin,
+        presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) },
+      });
+    } finally { w.dispose(); }
+  });
+
+  it.each(["missing", "mismatched workflow"] as const)("fails loudly for a %s session", (problem) => {
+    const w = makeWorld();
+    try {
+      const batch = RunSessionRecordSchema.parse({ sessionId: runUuidOf(70), workflow: "person-lookup",
+        origin: { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
+        startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 });
+      w.authority.batches.set(batch.sessionId, problem === "mismatched workflow"
+        ? RunSessionRecordSchema.parse({ ...batch, workflow: "separations" })
+        : batch);
+      queuedEventOf(w, { seed: 1, sessionId: batch.sessionId });
+      if (problem === "missing") w.authority.batches.delete(batch.sessionId);
+
+      assert.throws(
+        () => w.projection.buildDashboardDayWire(PROJECTION_DAY),
+        /workflow batch .* is missing or belongs to another workflow/,
+      );
+    } finally { w.dispose(); }
+  });
+});
+
+
 describe("batch presentation publication", () => {
   it.each(["command", "span"] as const)("keeps every rendered batch consistent when a %s update beats the poll", (trigger) => {
     const w = makeWorld();

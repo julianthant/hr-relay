@@ -61,7 +61,7 @@
         - button "Old Kronos Reports": Old Kronos Reports 0 · 1
 - main:
   - heading "Person Lookup queue" [level=1]
-  - text: Could not load queue Synthetic queue unavailable
+  - text: Could not load queue This failure code is not in the current catalog. Review the recorded local evidence.
   - region "Action panel":
     - group "Action panel controls":
       - button "Start a run"

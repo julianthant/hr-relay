@@ -1,3 +1,4 @@
+import { FixtureCommandBinding } from "./command-binding.js";
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
@@ -47,12 +48,18 @@ async function fill(node: HTMLInputElement | HTMLTextAreaElement, value: string)
 }
 async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.client) {
   const workflows = [h.workflow]; const sourceRef = { runId: source.envelope.runId, expectedVersion: source.version };
-  function Launcher() { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
+  function Launcher({ actorId }: { actorId: string }) { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
     createElement("button", { onClick: () => controller.openRerun(sourceRef) }, "Rerun source"),
-    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
+    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(Launcher) })));
+  async function replaceBinding(nextClient: DashboardClient, { actorId = "local-operator", requestKey = 0, nowIso = h.clock.now().toISOString(), bound = true } = {}) {
+    const launcher = createElement(Launcher, { actorId });
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client: nextClient,
+      children: bound ? createElement(FixtureCommandBinding, { actorId, requestKey, nowIso, children: launcher }) : launcher })));
+  }
+  await replaceBinding(client);
   button("Rerun source").focus(); await press("Rerun source");
+  return replaceBinding;
 }
 return { setup, text, button, press, checkbox, field, fill, mount, cleanup, unmount };
 }

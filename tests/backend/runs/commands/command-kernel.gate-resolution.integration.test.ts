@@ -1,3 +1,11 @@
+import { buildRunDetail, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { CommandExecutor, type CommandExecutionScope } from "../../../../src/dashboard/app/commands/command-executor.js";
+import { verifyShellCommandEffect } from "../../../../src/dashboard/app/commands/command-dispatch.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
+import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { createCommandKernelTestWorld, type Harness } from "../../../support/helpers/backend/command-kernel-harness.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
@@ -185,6 +193,69 @@ describe("gate resolution", () => {
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
     return result;
   }
+
+  it("confirms the real gate node through typed transport and retains uncertainty for divergent readback", async () => {
+    const harness = createHarness();
+    const staged = stageIdentityGateRun(harness);
+    const world = makeWorld();
+    try {
+      const reader = sqliteRunReader(harness.database, harness.clock);
+      const deps: RunDetailQueryDeps = {
+        stateRoot: harness.stateRoot, timeline: world.timeline, projection: world.projection,
+        runReader: reader, authority: { ...world.authority,
+          listGateResults: runId => harness.database.authority.gateResults.listByRun(runId) },
+        descriptors: { resolve: () => ({}) },
+        canonical: { reader, database: harness.database, descriptors: { resolve: () => identityCheckDescriptor } },
+      };
+      const open = buildRunDetail(deps, staged.runId).gate;
+      assert.ok(open.state === "open");
+      assert.equal(open.nodeId, "identity-approval");
+      assert.notEqual(String(open.gateId), String(open.nodeId));
+      const command = CommandRequestSchema.parse(gateCommand(staged.runId, staged.version, identityResult(staged)));
+      let fault: "none" | "node" | "missing-node" | "actor" | "decision" | "version" = "none";
+      const bodies: string[] = [];
+      const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+        if (url.endsWith("/commands")) {
+          if (typeof init?.body !== "string") throw new Error("gate command body missing");
+          bodies.push(init.body);
+          return Response.json(harness.kernel.execute(JSON.parse(init.body)));
+        }
+        assert.equal(url, `http://fixture.test/api/v1/runs/${staged.runId}`);
+        const detail = buildRunDetail(deps, staged.runId);
+        assert.ok(detail.gate.state === "resolved");
+        const wire = RunDetailWireSchema.parse({ ...detail,
+          rowRevision: fault === "version" ? staged.version : detail.rowRevision,
+          gate: { ...detail.gate,
+            nodeId: fault === "missing-node" ? undefined : fault === "node" ? "different-gate" : detail.gate.nodeId,
+            resolvedBy: fault === "actor" ? "other-operator" : detail.gate.resolvedBy,
+            resolution: fault === "decision" ? "rejected" : detail.gate.resolution,
+          },
+        });
+        return Response.json(wire);
+      } });
+      const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
+      const executor = new CommandExecutor(() => scope);
+      const options = { scope, readback: (request: Parameters<typeof verifyShellCommandEffect>[2], reply: Parameters<typeof verifyShellCommandEffect>[3]) =>
+        verifyShellCommandEffect(client, "2026-08-03", request, reply) };
+      assert.equal((await executor.execute(command, options)).kind, "confirmed");
+      const resolved = buildRunDetail(deps, staged.runId).gate;
+      assert.ok(resolved.state === "resolved");
+      assert.equal(resolved.gateId, open.gateId, "the UI display UUID remains the same across resolution");
+      assert.equal(resolved.nodeId, harness.database.authority.gateResults.listByRun(staged.runId)[0].nodeId);
+      for (const failure of ["node", "missing-node", "actor", "decision", "version"] as const) {
+        fault = failure;
+        const result = await executor.replay(command.commandId, options);
+        assert.equal(result.kind, "uncertain", failure);
+        assert.ok(result.kind === "uncertain");
+        assert.equal(result.feedback.code, "COMMAND_READBACK_MISMATCH");
+        assert.equal(executor.retainedAttempts()[0].request.commandId, command.commandId);
+        assert.equal(bodies.at(-1), bodies[0], "readback failure does not mint another command envelope");
+      }
+      fault = "none";
+      assert.equal((await executor.replay(command.commandId, options)).kind, "confirmed");
+      assert.equal(harness.database.authority.gateResults.listByRun(staged.runId).length, 1);
+    } finally { world.dispose(); }
+  });
 
   it("rolls back gate result, resume and command when the required SQLite event cannot persist", () => {
     const harness = createHarness();

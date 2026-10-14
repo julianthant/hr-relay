@@ -1,11 +1,13 @@
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { lifecycleCommandId } from "../../../../src/rules/commands/lifecycle-command-id.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
-import { composeCommandRequest, type CommandAction } from "../../../../src/dashboard/app/commands/command-dispatch.js";
+import { composeCommandRequest, verifyShellCommandEffect, type CommandAction } from "../../../../src/dashboard/app/commands/command-dispatch.js";
 import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { type IdentityEvidencePacket, buildIdentityEvidencePacket, deriveIdentityEvidenceDigest } from "../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
@@ -478,3 +480,52 @@ describe("queue-row action descriptors — every served verb has a command behin
   });
 });
 }
+
+// The actual transport and verifier must agree on every deleted target's durable command identity.
+it("confirms cascade deletion only through the exact lifecycle tombstone provenance", async () => {
+  const runId = "11111111-1111-4111-8111-111111111111";
+  const childId = "22222222-2222-4222-8222-222222222222";
+  const command = CommandRequestSchema.parse({ family: "run", type: "delete", commandId: "33333333-3333-4333-8333-333333333333",
+    requestedBy: "local-operator", requestedAt: "2026-08-03T12:00:00.000Z", source: "queue", target: { runId, expectedVersion: 2 } });
+  const expected = lifecycleCommandId("operator-delete", command.commandId);
+  let childCommandId = expected;
+  let absent = false;
+  const reads: string[] = [];
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
+    const target = url.includes(childId) ? childId : runId;
+    reads.push(target);
+    const selected = absent ? { state: "absent", disposition: "absent", runId: target }
+      : { state: "deleted", disposition: "deleted", runId: target, commandId: target === childId ? childCommandId : expected,
+        workflowId: "person-lookup", itemId: "44444444-4444-4444-8444-444444444444", attempt: 1, deletedAt: "2026-08-03T12:00:00.000Z" };
+    return Response.json({ schemaVersion: 1, state: "unavailable", selected, reason: "item-identity-unknown" });
+  } });
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+    affectedTargets: [{ family: "run", runId }, { family: "run", runId: childId }] });
+  assert.equal((await verifyShellCommandEffect(client, "2026-08-03", command, reply)).state, "matched");
+  assert.deepEqual(reads, [runId, childId]);
+  childCommandId = lifecycleCommandId("operator-delete", "55555555-5555-4555-8555-555555555555");
+  assert.equal((await verifyShellCommandEffect(client, "2026-08-03", command, reply)).state, "mismatch");
+  absent = true;
+  assert.equal((await verifyShellCommandEffect(client, "2026-08-03", command, reply)).state, "mismatch", "absence alone cannot prove deletion");
+});
+
+it("checks cancellation effect and rejects an unrelated acknowledged run", async () => {
+  const { FIXTURE_DAY_WIRE } = await import("../../../support/fixtures/dashboard/fixture-queue.js");
+  const roots = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.lineage.state === "root");
+  const root = roots.find(row => row.actions.some(action => action.kind === "command" && action.command === "cancel"));
+  assert.ok(root); const other = roots.find(row => row.runId !== root.runId); assert.ok(other);
+  let cancelled = true;
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({ ...FIXTURE_DAY_WIRE,
+    queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === root.runId || row.runId === other.runId
+      ? { ...row, status: cancelled ? "cancelled" : row.status, rowRevision: row.rowRevision + 1, actions: [],
+        endedAt: cancelled ? { state: "present", value: row.updatedAt } : row.endedAt,
+        gateOpenedAt: { state: "absent", reason: "No open gate after cancellation" } } : row),
+  }) });
+  const command = CommandRequestSchema.parse({ family: "run", type: "cancel", commandId: "77777777-7777-4777-8777-777777777777", source: "queue",
+    requestedBy: "local-operator", requestedAt: "2026-08-03T12:00:00.000Z", target: { runId: root.runId, expectedVersion: root.rowRevision } });
+  const reply = { state: "applied" as const, commandId: command.commandId, affectedTargets: [{ family: "run" as const, runId: root.runId }] };
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "matched");
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, { ...reply, affectedTargets: [...reply.affectedTargets, { family: "run", runId: other.runId }] })).state, "mismatch");
+  cancelled = false;
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "mismatch", "acknowledgment cannot replace effect readback");
+});

@@ -1,10 +1,13 @@
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StartCommandRequestSchema } from "../../../rules/commands/commands.js";
-import { systemClock } from "../../../rules/time/clock.js";
+import { StartCommandRequestSchema, CommandIdentityConflictError, type CommandRequest, type BulkRunCommandOutcome, type CommandResult } from "../../../rules/commands/commands.js";
+import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
+import type { CommandOutcome, CommandReadbackVerification } from "../../app/commands/command-executor.js";
 import { canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { RerunValuesSnapshotSchema, type RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
-import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
+import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest, type StartPlanWire } from "../../../models/dashboard/start-plan.js";
+import { ITEM_ATTEMPT_HISTORY_MAX_LIMIT, type ItemAttemptHistoryRun } from "../../../models/dashboard/item-attempt-history.js";
+import type { QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import type { DashboardClient } from "../../client/index.js";
 import { START_DOOR_ABSENCE } from "./run-start-model.js";
 import type { RunStartWorkflow } from "./run-start.js";
@@ -98,8 +101,8 @@ export function prefillRerun(input: RerunValuesSnapshot, options: Readonly<{
 }
 
 /** Shared launch door; confirmation/replay send the same immutable envelope. */
-export function createRunLaunchService(client: Pick<DashboardClient, "rerunValues" | "previewRerunWarnings" | "submitStartPlan" | "executeCommand">, actorId: string,
-  identity: { uuid(): string; now(): string } = { uuid: () => crypto.randomUUID(), now: () => systemClock.now().toISOString() }) {
+export function createRunLaunchService(client: Pick<DashboardClient, "rerunValues" | "previewRerunWarnings" | "submitStartPlan" | "dashboardDay" | "itemAttemptHistory">, actorId: string,
+  identity?: { uuid(): string; now(): string }) {
   const preview = (input: unknown) => client.submitStartPlan(StartPlanRequestSchema.parse(input));
   return Object.freeze({
     openRerun: (input: unknown) => client.rerunValues(input), prefill: prefillRerun, preview,
@@ -112,11 +115,95 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
       return preview({ ...request, warningAcknowledgment: plan.rerun.warningDigest });
     },
     prepareFinal(input: unknown) {
+      if (identity === undefined) throw new Error("RUN_LAUNCH_AUTHORITY_UNAVAILABLE");
       const plan = StartPlanWireSchema.parse(input);
       return StartCommandRequestSchema.parse({ commandId: identity.uuid(), requestedAt: identity.now(), requestedBy: actorId,
         source: "run-start", family: "start", type: "start-run", target: { workflowId: plan.workflowId,
           startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
     },
-    submit: (input: unknown) => client.executeCommand(input), replay: (input: unknown) => client.executeCommand(input),
+    submit(input: unknown, binding: DashboardCommandBinding, plan?: StartPlanWire, publish?: (outcome: CommandOutcome) => void) {
+      const command = StartCommandRequestSchema.parse(input);
+      const options = { scope: binding.scope, readback: async (request: CommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
+        if (request.family !== "start" || !("state" in reply)) return { state: "mismatch" as const, evidence: reply };
+        return verifyRunLaunchReadback(client, request, reply, plan);
+      }, ...(publish === undefined ? {} : { publish }) };
+      const retained = binding.executor.retainedAttempts().find(attempt => attempt.request.commandId === command.commandId);
+      if (retained !== undefined && canonicalJsonStringify(retained.request) !== canonicalJsonStringify(command)) throw new CommandIdentityConflictError();
+      return retained === undefined ? binding.executor.execute(command, options) : binding.executor.replay(command.commandId, options);
+    },
   });
+}
+
+async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardDay" | "itemAttemptHistory">,
+  command: z.infer<typeof StartCommandRequestSchema>, reply: CommandResult, plan?: StartPlanWire): Promise<CommandReadbackVerification> {
+  if (reply.state !== "applied" && reply.state !== "already-applied") return { state: "mismatch", evidence: reply };
+  const targets = reply.affectedTargets;
+  const starts = targets.filter(target => target.family === "start");
+  const target = starts[0];
+  if (starts.length !== 1 || target?.workflowId !== command.target.workflowId || target.startPlanId !== command.target.startPlanId
+    || target.expectedVersion !== command.target.expectedVersion || targets.some(target => target.family !== "start" && target.family !== "run")) {
+    return { state: "mismatch", evidence: reply };
+  }
+  if (plan !== undefined && (plan.startPlanId !== command.target.startPlanId || plan.workflowId !== command.target.workflowId
+    || plan.plannedBy !== command.requestedBy || plan.expectedVersion !== command.target.expectedVersion
+    || canonicalJsonStringify(plan.fingerprints) !== canonicalJsonStringify(command.payload))) return { state: "mismatch", evidence: plan };
+  const runs = targets.filter(target => target.family === "run").map(target => target.runId);
+  if (runs.length === 0 || new Set(runs).size !== runs.length) return { state: "mismatch", evidence: reply };
+  const liveRuns = new Map<string, Extract<ItemAttemptHistoryRun, { disposition: "live" }>>();
+  for (const runId of runs) {
+    let cursor: string | undefined;
+    let offset = 0;
+    do {
+      const history = await client.itemAttemptHistory(runId, { limit: ITEM_ATTEMPT_HISTORY_MAX_LIMIT, ...(cursor === undefined ? {} : { cursor }) });
+      if (history.state !== "available" || history.selected.state !== "present" || history.selected.runId !== runId
+        || history.selected.workflowId !== command.target.workflowId || history.page.offset !== offset) return { state: "mismatch", evidence: history };
+      const selected = history.selected;
+      const entries = history.page.entries.filter(entry => entry.runId === runId);
+      if (entries.length !== 0) {
+        const entry = entries[0];
+        if (entries.length !== 1 || entry?.disposition !== "live" || entry.workflowId !== selected.workflowId
+          || entry.itemId !== selected.itemId || entry.attempt !== selected.attempt || entry.rowRevision !== selected.rowRevision) {
+          return { state: "mismatch", evidence: history };
+        }
+        liveRuns.set(runId, entry);
+        break;
+      }
+      if (history.page.nextCursor !== null && history.page.entries.length === 0) return { state: "mismatch", evidence: history };
+      offset += history.page.entries.length;
+      cursor = history.page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    if (!liveRuns.has(runId)) return { state: "mismatch", evidence: { runId } };
+  }
+  const snapshots = await Promise.all([...new Set([...liveRuns.values()].map(entry => entry.partitionDay))].map(day => client.dashboardDay(day)));
+  const rows = snapshots.flatMap(snapshot => snapshot.queueSurfaces);
+  const evidence = { reply, snapshots, liveRuns: [...liveRuns.values()] };
+  const originMatches = (row: QueueSurfaceWire) => row.session.state === "present"
+    && row.session.origin?.kind === "start-plan" && row.session.origin.startPlanId === command.target.startPlanId
+    && row.session.origin.actorId === command.requestedBy;
+  const roots = rows.filter(row => originMatches(row) && row.lineage.state === "root");
+  const rootIds = new Set(roots.map(row => row.runId));
+  if (roots.length === 0
+    || roots.some(row => !runs.includes(row.runId)) || (plan !== undefined && roots.length !== plan.planned.length)) {
+    return { state: "mismatch", evidence };
+  }
+  const superseded = plan?.planned.flatMap(entry => entry.supersedeTargets ?? []) ?? [];
+  for (const runId of runs) {
+    const entry = liveRuns.get(runId);
+    const row = snapshots.find(snapshot => snapshot.day.valueOf() === entry?.partitionDay.valueOf())?.queueSurfaces.find(row => row.runId === runId);
+    if (row === undefined || entry === undefined || row.workflowId !== command.target.workflowId || row.itemId !== entry.itemId
+      || row.attempt !== entry.attempt || row.rowRevision.valueOf() !== entry.rowRevision.valueOf()) return { state: "mismatch", evidence };
+    if (!originMatches(row)) {
+      const prior = superseded.find(target => target.runId === runId);
+      if (prior === undefined || row.traceId !== prior.traceId || row.attempt !== prior.attempt || row.rowRevision !== prior.version + 1
+        || row.status !== "cancelled") return { state: "mismatch", evidence };
+      continue;
+    }
+    if (row.actorId !== command.requestedBy || row.configFingerprint !== command.payload.configFingerprint
+      || row.descriptorHash !== command.payload.descriptorFingerprint || (plan !== undefined && row.dryRun !== plan.dryRun)
+      || (row.lineage.state === "child" && !rootIds.has(row.lineage.parentRunId))) {
+      return { state: "mismatch", evidence };
+    }
+  }
+  if (superseded.some(target => !runs.includes(target.runId))) return { state: "mismatch", evidence };
+  return { state: "matched", evidence: { ...evidence, createdRuns: roots.map(row => row.runId) } };
 }

@@ -148,8 +148,8 @@ afterEach(_afterEachFixture0);
     const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
 
 
-    assert.deepEqual(rows[0].session, { state: "present", sessionId: uuidOf(70), presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
-    assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70), presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
+    assert.deepEqual(rows[0].session, { state: "present", sessionId: uuidOf(70), origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
+    assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70), origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
     assert.deepEqual(rows[2].session, {
       state: "absent",
       reason: "no session grouping was recorded for this run or its retry source",

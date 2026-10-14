@@ -1,3 +1,4 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import "./launch-presentation.css";
@@ -51,7 +52,7 @@ import {
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import type { StartPlanResponse } from "../../client/index.js";
-import { useDashboardClient } from "../../state/client-context.js";
+import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
 import {
   EnqueueResultBanner,
   LockedFact,
@@ -347,9 +348,17 @@ export function RunStartDialog({
   const previewDrafts = useRef(new Map<string, MockDraft>());
   const [pickerQuery, setPickerQuery] = useState("");
   const client = useDashboardClient();
-  const launchService = useMemo(() => createRunLaunchService(client, actorId), [client, actorId]);
+  const commandBinding = useDashboardCommandBinding();
+  const commandBindingRef = useRef(commandBinding);
+  commandBindingRef.current = commandBinding;
+  const launchService = useMemo(() => createRunLaunchService(client, actorId, { uuid: () => crypto.randomUUID(), now: () => {
+    const binding = commandBindingRef.current;
+    if (binding === undefined || binding.scope.client !== client || binding.scope.actorId !== actorId) throw new Error("RUN_LAUNCH_AUTHORITY_UNAVAILABLE");
+    return binding.authority.nowIso;
+  } }), [client, actorId]);
   const finalRequest = useRef<LaunchFinalCommand | null>(null);
-  const sending = useRef(false);
+  const sending = useRef<object | false>(false);
+  const finalDiagnostic = useRef<Readonly<{ command: LaunchFinalCommand; cause: unknown }> | null>(null);
   const launchInstance = useRef(0);
   const [recovery, setRecovery] = useState<LaunchFinalCommand | null>(null);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
@@ -384,6 +393,7 @@ export function RunStartDialog({
   const [result, setResult] = useState<CommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { sending.current = false; setBusy(false); }, [commandBinding?.scope]);
 
   /** Changing workflow clears its parser input and bound plan; another workflow cannot reuse either. */
   const selectWorkflow = useCallback((next: string, preserveStage = false) => {
@@ -415,7 +425,7 @@ export function RunStartDialog({
     if (!routed) setLocalPreviewSelection(previewLaunch);
     setPickerQuery("");
     setSnapshot(null); setSourceError(null); setValueDrafts({}); setCopiedOmissions({});
-    setWarning(null); setAcknowledgment(undefined); setBusy(false);
+    setWarning(null); setAcknowledgment(undefined); setBusy(false); sending.current = false;
     try { setRecovery(readLaunchRecovery(window.sessionStorage, actorId)); setRecoveryError(null); }
     catch (caught) { setRecoveryError(caught instanceof Error ? caught.message : String(caught)); }
     if (rerunSource !== undefined) {
@@ -568,37 +578,49 @@ export function RunStartDialog({
 
   const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
     if (sending.current) return;
+    const binding = commandBindingRef.current;
+    if (binding === undefined || binding.scope.client !== client || binding.scope.actorId !== actorId || command.requestedBy !== binding.scope.actorId) { setError(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text); return; }
     const instance = launchInstance.current;
-    sending.current = true; setBusy(true); setError(null);
+    const attempt = {};
+    sending.current = attempt; setBusy(true); setError(null);
     try {
       retainLaunchFinal(window.sessionStorage, command);
       finalRequest.current = command; setRecovery(command);
-      const next = await launchService.submit(command);
-      // Durable recovery remains available even if this launch closed or changed.
-      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
-      setResult(next);
-      if (settleCommandResult(next).kind === "applied") {
-        dismissLaunchRecovery(window.sessionStorage, command);
-        finalRequest.current = null; setRecovery(null); setPlan(null); setResult(null); setBusy(false);
-        onApplied?.(command.target.workflowId, plan?.planned.length);
-        onOpenChange(false);
-        ++launchInstance.current;
-      }
+      await launchService.submit(command, binding, plan?.startPlanId === command.target.startPlanId ? plan : undefined, outcome => {
+        if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
+        binding.feedback(outcome);
+        if (outcome.kind === "confirmed") {
+          dismissLaunchRecovery(window.sessionStorage, command);
+          finalRequest.current = null; setRecovery(null); setPlan(null); setResult(null); setBusy(false);
+          onApplied?.(command.target.workflowId, plan?.planned.length);
+          onOpenChange(false);
+          ++launchInstance.current;
+        } else {
+          setError(outcome.feedback.text);
+          const reply = outcome.reply;
+          if (outcome.kind !== "uncertain" && reply !== undefined && "state" in reply
+            && (reply.state === "rejected" || reply.state === "conflict" || reply.state === "confirmation-required")) {
+            setResult({ ...reply, message: outcome.feedback.text });
+          }
+        }
+      });
     } catch (caught) {
-      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
-      setError(caught instanceof Error ? caught.message : String(caught));
+      finalDiagnostic.current = { command, cause: caught };
+      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
+      setError(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_DISPATCH_FAILED", {})).text);
     } finally {
-      sending.current = false;
-      if (launchInstance.current === instance) setBusy(false);
+      if (sending.current === attempt) sending.current = false;
+      if (launchInstance.current === instance && commandBindingRef.current?.scope === binding.scope) setBusy(false);
     }
-  }, [launchService, onApplied, onOpenChange, plan]);
+  }, [launchService, onApplied, onOpenChange, plan, client, actorId]);
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null || sending.current || recoveryError !== null) return;
+    if (commandBinding === undefined || commandBinding.scope.client !== client || commandBinding.scope.actorId !== actorId) { setError(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text); return; }
     if (finalRequest.current === null || finalRequest.current.target.startPlanId !== plan.startPlanId) {
       finalRequest.current = launchService.prepareFinal(plan);
     }
     await sendFinal(finalRequest.current, requestFingerprint);
-  }, [launchService, plan, requestFingerprint, recoveryError, sendFinal]);
+  }, [client, actorId, commandBinding, launchService, plan, requestFingerprint, recoveryError, sendFinal]);
 
   // already-applied confirms the same enqueue; its plan token is single-use.
   const applied = result !== null && settleCommandResult(result).kind === "applied";

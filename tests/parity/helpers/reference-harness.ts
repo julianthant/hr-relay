@@ -4,14 +4,15 @@ import { PARITY_DIST_DIR,ensureParityBundle } from "./bundle.js";
 import { startFixtureServer,type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./fixture-queue.js";
-import { FIXTURE_SEPARATIONS_START_PLAN,FIXTURE_START_PICKER_BOOTSTRAP,FIXTURE_START_PICKER_DAY_WIRE,FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./fixture-start.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP,FIXTURE_START_PICKER_DAY_WIRE,FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./fixture-start.js";
 import { FIXTURE_STORAGE_DEGRADED_BOOTSTRAP } from "./fixture-storage.js";
 import { startSeededServer,type SeededServer } from "./seeded-bff.js";
+import { startSeparationsStartServer } from "./run-rerun-server.js";
 export const REFERENCES = resolve(import.meta.dirname, "../references");
 export function registerReferenceServers(kinds: readonly ("server" | "startPickerServer" | "separationsStartServer" | "storageServer" | "seeded")[]) {
 let server: FixtureServer | undefined;
 let startPickerServer: FixtureServer | undefined;
-let separationsStartServer: FixtureServer | undefined;
+let separationsStartServer: Awaited<ReturnType<typeof startSeparationsStartServer>> | undefined;
 let storageServer: FixtureServer | undefined;
 let seeded: SeededServer | undefined;
 test.beforeAll(async () => {
@@ -30,16 +31,7 @@ test.beforeAll(async () => {
     },
   });
 
-  if (kinds.includes("separationsStartServer")) separationsStartServer = await startFixtureServer({
-    distDir: PARITY_DIST_DIR,
-    bundle: { proof: "working-tree" },
-    profile: {
-      bootstrap: FIXTURE_START_PICKER_BOOTSTRAP,
-      day: FIXTURE_START_PICKER_DAY_WIRE,
-      descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
-      startPlan: FIXTURE_SEPARATIONS_START_PLAN,
-    },
-  });
+  if (kinds.includes("separationsStartServer")) separationsStartServer = await startSeparationsStartServer();
 
   if (kinds.includes("storageServer")) storageServer = await startFixtureServer({
     distDir: PARITY_DIST_DIR,

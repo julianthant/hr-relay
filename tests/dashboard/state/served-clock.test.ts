@@ -1,7 +1,10 @@
+// @vitest-environment jsdom
 
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
-import { deriveServedNow } from "../../../src/dashboard/state/served-clock.js";
+import { describe,it,vi } from "vitest";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { deriveServedNow, useServedNow } from "../../../src/dashboard/state/served-clock.js";
 import { runTiming } from "../../../src/dashboard/surfaces/shared/status/format.js";
 import { isTerminalQueueStatus } from "../../../src/models/dashboard/projection.js";
 
@@ -55,4 +58,21 @@ describe("the served clock", () => {
     assert.deepEqual(early, { text: "8m 20s" });
     assert.deepEqual(late, early);
   });
+});
+
+
+it("recalibrates every render exposing a changed served instant", async () => {
+  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+  const monotonic = vi.spyOn(performance, "now").mockReturnValue(10);
+  const seen: string[] = [];
+  function Probe({ instant }: { instant: string }) { seen.push(useServedNow(instant)); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe, { instant: BOOTSTRAP_INSTANT })));
+    monotonic.mockReturnValue(5000);
+    const start = seen.length;
+    const next = "2026-08-21T15:00:00.000Z";
+    await act(async () => root.render(createElement(Probe, { instant: next })));
+    assert.ok(seen.slice(start).every(value => value === next));
+  } finally { await act(async () => root.unmount()); monotonic.mockRestore(); }
 });

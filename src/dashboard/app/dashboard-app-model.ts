@@ -1,3 +1,35 @@
+import type { FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
+import type { DashboardClient } from "../client/index.js";
+import type { DashboardDayState } from "../state/use-dashboard-day.js";
+import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
+import type { AppRouteState } from "./navigation/url-state.js";
+import type { CommandExecutionScope, CommandExecutor, CommandOutcome } from "./commands/command-executor.js";
+
+export interface DashboardCommandBinding {
+  readonly authority: DashboardAuthority;
+  readonly executor: CommandExecutor;
+  readonly scope: CommandExecutionScope;
+  readonly feedback: (outcome: CommandOutcome) => void;
+}
+
+export function currentCommandConfirmation(
+  currentScope: CommandExecutionScope | undefined,
+  pending: Readonly<{ scope: CommandExecutionScope }> | null,
+  clicked: unknown,
+): boolean {
+  return pending !== null && pending === clicked && pending.scope === currentScope;
+}
+
+export interface DashboardAuthority {
+  readonly epoch: Readonly<{ client: DashboardClient; bootstrap: FrontendBootstrapWire }>;
+  readonly catalog: readonly WorkflowCatalogEntry[];
+  readonly nowIso: string;
+  readonly today: string;
+  readonly day: string;
+  readonly dayState: DashboardDayState;
+  readonly selection: Readonly<{ route: AppRouteState; workflowId: string }>;
+}
+
 // Restore focus after route commit; an open discard dialog still traps focus away from the toolbar door.
 import { SETTINGS_GEAR_ID } from "../surfaces/settings/settings-model.js";
 

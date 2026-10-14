@@ -25,8 +25,8 @@ function hello(cursor: string, projectionGeneration = 7): Record<string, unknown
   return { type: "hello", wireVersion: 1, descriptorHash: HASH_D, projectionGeneration, cursor };
 }
 
-function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[]): Record<string, unknown> {
-  return { type: "snapshot", topic: "dashboard-day", cursor, payload: dayOf(surfaces, cursor) };
+function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[], projectionGeneration = 7): Record<string, unknown> {
+  return { type: "snapshot", topic: "dashboard-day", cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
 }
 
 function replacePatch(cursor: string, rowRevision: number): Record<string, unknown> {
@@ -260,7 +260,7 @@ describe("dashboard day subscription — cursor idempotence", () => {
     const h = liveAtCursorTwo();
 
     h.streams[0].push(hello("pc:1", 8));
-    h.streams[0].push(snapshotEnvelope("pc:1", [surfaceOf(5)]));
+    h.streams[0].push(snapshotEnvelope("pc:1", [surfaceOf(5)], 8));
     assert.equal(h.days.length, 3);
     assert.equal(h.days[2].queueSurfaces[0].rowRevision, 5);
     h.close();
@@ -407,4 +407,64 @@ it("rejects a wrong-day snapshot and ignores callbacks from superseded handles",
   assert.match(state.error?.message ?? "", /day-request-identity-mismatch/u);
   h.close(); h.streams[1].push(snapshotEnvelope("pc:5", [surfaceOf(5)]));
   assert.equal(h.days.length, prior + 1);
+});
+
+
+describe("dashboard day subscription authority", () => {
+  for (const field of ["day", "descriptorHash", "projectionGeneration", "snapshotCursor"] as const) {
+    it(`stops a snapshot with mismatched ${field}`, () => {
+      const h = subscribe();
+      h.streams[0].push(hello("pc:1"));
+      const payload = { ...dayOf([], "pc:1"), [field]: field === "day" ? "2026-08-04" : field === "descriptorHash" ? "e".repeat(64) : field === "projectionGeneration" ? 8 : "pc:2" };
+      h.streams[0].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload });
+      assert.equal(h.days.length, 0);
+      assert.equal(h.states.at(-1)?.state, "stopped");
+      h.close();
+    });
+  }
+  it("requires the replacement stream's hello before publishing a reconnect snapshot", async () => {
+    const h = liveAtCursorTwo();
+    h.streams[0].eof();
+    await tick();
+    h.runScheduled();
+    h.streams[1].push(snapshotEnvelope("pc:2", [surfaceOf(2)]));
+    assert.equal(h.days.length, 2);
+    assert.equal(h.states.at(-1)?.state, "stopped");
+    h.close();
+  });
+});
+
+
+it("rejects a lower-cursor snapshot with stale authority instead of silently discarding it", () => {
+  for (const field of ["day", "descriptorHash", "projectionGeneration"] as const) {
+    const h = liveAtCursorTwo();
+    const payload = { ...dayOf([], "pc:1"), [field]: field === "day" ? "2026-08-04" : field === "descriptorHash" ? "e".repeat(64) : 8 };
+    h.streams[0].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload });
+    assert.equal(h.days.length, 2);
+    const state = h.states.at(-1);
+    assert.equal(state?.state, "stopped");
+    assert.ok(state?.state === "stopped" && state.error?.kind === "protocol");
+    h.close();
+  }
+});
+
+it("resets a high cursor on same-generation descriptor replacement and publishes the lower matching snapshot", async () => {
+  const h = liveAtCursorTwo();
+  const descriptorHash = "e".repeat(64);
+  h.streams[0].eof();
+  await tick();
+  h.runScheduled();
+  assert.equal(h.streams[1].lastEventId, "pc:2");
+  assert.equal(h.streams[1].lastProjectionGeneration, 7);
+  h.streams[1].push({ ...hello("pc:1"), descriptorHash });
+  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload: { ...dayOf([surfaceOf(5)], "pc:1"), descriptorHash } });
+  assert.equal(h.days.length, 3);
+  assert.equal(h.days[2].descriptorHash, descriptorHash);
+  assert.equal(h.days[2].queueSurfaces[0].rowRevision, 5);
+  h.streams[1].eof();
+  await tick();
+  h.runScheduled();
+  assert.equal(h.streams[2].lastEventId, "pc:1");
+  assert.equal(h.streams[2].lastProjectionGeneration, 7);
+  h.close();
 });

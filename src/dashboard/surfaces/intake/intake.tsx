@@ -14,10 +14,8 @@ Play,
 Table2,
 X,
 } from "lucide-react";
-import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
+import { useCallback,useEffect,useMemo,useState,type ReactNode } from "react";
 import type { z } from "zod";
-import { systemClock } from "../../../rules/time/clock.js";
-import type { CommandResult } from "../../../rules/commands/commands.js";
 import type { RowRejectSchema } from "../../../models/intake/manifest.js";
 import type {
 ColumnBindingSchema,
@@ -25,9 +23,7 @@ DetectedColumnSchema,
 } from "../../../models/intake/mapping.js";
 import type { IntakeTargetSchema } from "../../../models/intake/projection.js";
 import type { SuggestionSchema } from "../../../models/intake/suggestions.js";
-import type { IntakeSessionWire } from "../../../models/intake/wire.js";
-import { settleCommandResult } from "../../app/commands/command-result.js";
-import { DashboardClientError } from "../../client/index.js";
+import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../models/intake/wire.js";
 import {
 Badge,
 Banner,
@@ -69,6 +65,7 @@ Well,
 } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useIntakeClient as useDashboardClient } from "./intake-client.js";
+import { intakeFailureMessage, useIntakeCommands, type CommandProblem } from "./intake-command-model.js";
 import { fmtClock,plural,pluralize,shortHash } from "../shared/status/format.js";
 import {
 correctionEditorLabel,
@@ -107,44 +104,6 @@ type ColumnBinding = z.infer<typeof ColumnBindingSchema>;
 type IntakeTarget = z.infer<typeof IntakeTargetSchema>;
 type Suggestion = z.infer<typeof SuggestionSchema>;
 type RowReject = z.infer<typeof RowRejectSchema>;
-
-const SOURCE_SURFACE = "intake-workspace";
-
-/** ── command plumbing ─────────────────────────────────────────────────────── */
-
-/** The five mapping arms plus the enqueue, as the workspace issues them. */
-type IntakeCommand =
-  | { readonly type: "inspect-intake"; readonly payload: { sheet?: string; headerRowIndex?: number; comparisonManifestId?: string } }
-  | {
-    readonly type: "confirm-intake-mapping";
-    readonly payload: { targetFieldId: string; sourceColumnId: string; headerFingerprint: string };
-  }
-  | {
-    readonly type: "correct-intake-row";
-    readonly payload: { sourceRow: number; field: string; correctedValue: string };
-  }
-  | { readonly type: "exclude-intake-row"; readonly payload: { sourceRow: number; reason: string } }
-  | { readonly type: "validate-intake" }
-  | { readonly type: "enqueue-intake-manifest"; readonly payload: { dryRun: boolean; reviewBinding?: string } };
-
-/** A command outcome the surface renders rather than throws.
- * `conflict` and `rejected` are ANSWERS — the operator acts on them — so they */
-type CommandProblem =
-  | { readonly kind: "rejected"; readonly code: string; readonly message: string }
-  | { readonly kind: "confirmation-required"; readonly message: string }
-  | { readonly kind: "conflict"; readonly currentVersion: number; readonly message: string }
-  | { readonly kind: "transport"; readonly message: string };
-
-/** / — WHETHER the command landed is the fold's answer, not this surface's.
- * What stays here is the PRESENTATION vocabulary */
-function problemOf(result: CommandResult): CommandProblem | undefined {
-  const settlement = settleCommandResult(result);
-  if (settlement.kind === "applied") return undefined;
-  if (settlement.reason === "confirmation-required") return { kind: "confirmation-required", message: settlement.message };
-  return settlement.reason === "rejected"
-    ? { kind: "rejected", code: settlement.code, message: settlement.message }
-    : { kind: "conflict", currentVersion: settlement.currentVersion, message: settlement.message };
-}
 
 /** Wraps something that has just MOUNTED so it arrives rather than blinks.
  * It is a WRAPPER rather than props spread onto `Banner`, because `Banner` */
@@ -1290,7 +1249,7 @@ function OutcomeBand({
 type SessionState =
   | { readonly state: "loading" }
   | { readonly state: "loaded"; readonly session: IntakeSessionWire }
-  | { readonly state: "failed"; readonly message: string };
+  | { readonly state: "failed"; readonly message: string; readonly cause: unknown };
 
 export function IntakeWorkspace(props: Parameters<typeof IntakeSessionWorkspace>[0]) {
   return <IntakeSessionWorkspace key={props.sessionId} {...props} />;
@@ -1298,7 +1257,6 @@ export function IntakeWorkspace(props: Parameters<typeof IntakeSessionWorkspace>
 
 function IntakeSessionWorkspace({
   workflowLabel,
-  actorId,
   supportsDryRun,
   sessionId,
   onClose,
@@ -1317,16 +1275,14 @@ function IntakeSessionWorkspace({
 }) {
   const client = useDashboardClient();
   const [resource, setResource] = useState<SessionState>({ state: "loading" });
-  /** Show the busy state on the exact command control, not only a locked page. */
-  const [pending, setPending] = useState<string | null>(null);
-  const [problem, setProblem] = useState<CommandProblem | null>(null);
-  /** Acknowledgement belongs to the served rejection set; later authority invalidates it before Run is offered. */
+  /** Acknowledgement belongs to the served rejection set. */
   const [reviewedRejectionKey, setReviewedRejectionKey] = useState<string | undefined>(undefined);
-  const [recovery, setRecovery] = useState<{ retry: () => void } | null>(null);
-  const active = useRef(true);
-  const locked = useRef(false);
-  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
-  const busy = pending !== null || recovery !== null;
+  const adopt = useCallback((session: IntakeSessionWire, command: { type: string }) => {
+    setResource({ state: "loaded", session });
+    if (command.type === "validate-intake") setTab("review");
+    if (command.type === "enqueue-intake-manifest") setTab("manifest");
+  }, []);
+  const { issue, pending, problem, setProblem, recovery, busy, commandView } = useIntakeCommands(client, sessionId, adopt);
   const [confirmedReview, setConfirmedReview] = useState<string | undefined>(undefined);
   /** Validated sessions open on rejection review until the operator selects another tab. */
   const [tab, setTab] = useState<IntakeTab | undefined>(undefined);
@@ -1337,61 +1293,14 @@ function IntakeSessionWorkspace({
 
   useEffect(() => {
     setResource({ state: "loading" });
-    return observeResource(() => client.intakeSession(sessionId),
+    return observeResource(async () => {
+      const session = IntakeSessionWireSchema.parse(await client.intakeSession(sessionId));
+      if (session.intakeSessionId !== sessionId) throw new Error("Intake session identity mismatch");
+      return session;
+    },
       (session) => setResource({ state: "loaded", session }),
-      (caught) => setResource({ state: "failed", message: messageOf(caught) }));
-  }, [client, sessionId]);
-
-  const issue = useCallback(
-    (session: IntakeSessionWire, command: IntakeCommand, pendingKey: string): void => {
-      if (locked.current) return;
-      locked.current = true;
-      const request = {
-        commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(),
-        requestedBy: actorId, source: SOURCE_SURFACE, family: "intake", type: command.type,
-        target: { intakeSessionId: session.intakeSessionId, expectedVersion: session.expectedVersion },
-        ...("payload" in command ? { payload: command.payload } : {}),
-      };
-      const read = async (): Promise<void> => {
-        if (!active.current) return;
-        setPending(pendingKey); setProblem(null);
-        try {
-          const next = await client.intakeSession(session.intakeSessionId);
-          if (!active.current) return;
-          if (next.intakeSessionId !== session.intakeSessionId) throw new Error("Intake read returned a different session");
-          setPending(null); setRecovery(null); locked.current = false;
-          setResource({ state: "loaded", session: next });
-          if (command.type === "validate-intake") setTab("review");
-          if (command.type === "enqueue-intake-manifest") setTab("manifest");
-        } catch (caught) {
-          if (!active.current) return;
-          setPending(null);
-          setProblem({ kind: "transport", message: `${command.type} applied; session read failed: ${messageOf(caught)}` });
-          setRecovery({ retry: () => { void read(); } });
-        }
-      };
-      const execute = async (): Promise<void> => {
-        if (!active.current) return;
-        setPending(pendingKey); setProblem(null);
-        try {
-          const result = await client.executeCommand(request);
-          if (!active.current) return;
-          const failure = problemOf(result);
-          if (failure !== undefined) {
-            setPending(null); setRecovery(null); locked.current = false; setProblem(failure); return;
-          }
-          await read();
-        } catch (caught) {
-          if (!active.current) return;
-          setPending(null);
-          setProblem({ kind: "transport", message: `Delivery is unknown: ${messageOf(caught)}` });
-          // Keep the exact envelope. Recovery replays it before any new effects.
-          setRecovery({ retry: () => { void execute(); } });
-        }
-      };
-      void execute();
-    }, [actorId, client],
-  );
+      (cause) => setResource({ state: "failed", message: intakeFailureMessage(), cause }));
+  }, [client, sessionId, commandView]);
 
   const body = ((): ReactNode => {
     if (resource.state === "loading") {
@@ -1547,10 +1456,4 @@ function IntakeSessionWorkspace({
       )}
     </TakeoverFrame>
   );
-}
-
-function messageOf(caught: unknown): string {
-  if (caught instanceof DashboardClientError) return caught.message;
-  if (caught instanceof Error) return caught.message;
-  return String(caught);
 }

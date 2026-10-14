@@ -64,6 +64,8 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
   let cancelTimer: (() => void) | undefined;
   let snapshot: DashboardDayWire | undefined;
   let generation: number | undefined;
+  let descriptorHash: string | undefined;
+  let greeted = false;
   let lastCursorNumber: number | undefined;
   let lastCursorId: string | undefined;
 
@@ -85,14 +87,17 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
 
   function handleEnvelope(envelope: DashboardStreamEnvelope): void {
     if (envelope.type === "hello") {
-      if (generation !== undefined && envelope.projectionGeneration !== generation) {
+      if (generation !== undefined && (envelope.projectionGeneration !== generation || envelope.descriptorHash !== descriptorHash)) {
         snapshot = undefined;
         lastCursorNumber = undefined;
         lastCursorId = undefined;
       }
       generation = envelope.projectionGeneration;
+      descriptorHash = envelope.descriptorHash;
+      greeted = true;
       return;
     }
+    if (!greeted) throw protocolError("day-stream-hello-missing");
     if (envelope.type === "health") {
       if (envelope.state === "degraded") deps.onState({ state: "degraded" });
       else if (envelope.state === "live") deps.onState({ state: "live" });
@@ -112,11 +117,15 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
 
     // Accept same-cursor snapshots but reject duplicate patches; only snapshots refresh worker and count rollups.
     if (envelope.type === "snapshot") {
-      if (lastCursorNumber !== undefined && cursorNumber < lastCursorNumber) return;
       if (envelope.topic !== "dashboard-day") {
         throw protocolError(`unexpected snapshot topic ${envelope.topic}; this subscription serves dashboard-day`);
       }
       if (envelope.payload.day !== day) throw protocolError("day-request-identity-mismatch");
+      if (envelope.payload.descriptorHash !== descriptorHash || envelope.payload.projectionGeneration !== generation) {
+        throw protocolError("day-stream-authority-mismatch");
+      }
+      if (envelope.payload.snapshotCursor !== envelope.cursor) throw protocolError("day-stream-cursor-mismatch");
+      if (lastCursorNumber !== undefined && cursorNumber < lastCursorNumber) return;
       snapshot = envelope.payload;
       lastCursorNumber = cursorNumber;
       lastCursorId = envelope.cursor;
@@ -156,6 +165,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     const lastEventId = withResume ? lastCursorId : undefined;
     const lastProjectionGeneration = lastEventId === undefined ? undefined : generation;
     const identity = ++streamIdentity;
+    greeted = false;
     const handle = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
       ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),

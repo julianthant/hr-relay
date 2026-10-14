@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  CommandIdSchema,
   DateOnlySchema,
   IsoInstantSchema,
   ItemIdSchema,
@@ -62,6 +63,7 @@ export const ItemAttemptHistorySelectedSchema = z.discriminatedUnion("state", [
   }),
   z.strictObject({
     state: z.literal("deleted"),
+    commandId: CommandIdSchema,
     disposition: z.literal("deleted"),
     runId: RunIdSchema,
     workflowId: WorkflowIdSchema,

@@ -364,7 +364,7 @@ describe("typed queries and error normalization", () => {
 
   it.each([
     [403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
-    [415, "OPERATOR_MUTATION_JSON_REQUIRED"],
+    [415, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED"],
   ] as const)("surfaces an operator-ingress %i command refusal as an HTTP error", async (status, code) => {
     const client = createDashboardClient({
       baseUrl: "http://127.0.0.1:3938",
@@ -674,5 +674,19 @@ describe("resumable subscription protocol", () => {
     assert.equal(last?.state, "stopped");
     if (last?.state !== "stopped") assert.fail("expected stopped");
     assert.equal(last.error?.kind, "protocol");
+  });
+});
+
+
+describe("command response identity", () => {
+  it.each(["commandId", "affectedTargets"])("refuses a valid single reply with wrong %s", async field => {
+    const commandId = "11111111-1111-4111-8111-111111111111";
+    const reply = { state: "applied", commandId: field === "commandId" ? "22222222-2222-4222-8222-222222222222" : commandId,
+      affectedTargets: [{ family: "run", runId: field === "affectedTargets" ? "33333333-3333-4333-8333-333333333333" : RUN_ID }] };
+    const client = createDashboardClient({ baseUrl: "http://bff.test", fetchImpl: async () => Response.json(reply) });
+    await assert.rejects(client.executeCommand({ commandId, requestedAt: "2026-08-03T12:00:00.000Z", requestedBy: "local-operator",
+      source: "dashboard", family: "run", type: "bump", target: { runId: RUN_ID, expectedVersion: 1 } }),
+      (error: unknown) => error instanceof DashboardClientError && error.code === "COMMAND_RESULT_IDENTITY_MISMATCH"
+        && error.kind === "protocol" && JSON.stringify(error.cause) === JSON.stringify(reply));
   });
 });

@@ -3,8 +3,10 @@ import { ordinaryReadbackConfirms } from "./settings-draft-model.js";
 import { CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, type CommandResult } from "../../../../rules/commands/commands.js";
 import { ProtectedSettingsReadbackSchema } from "../../../../models/config/protected-settings.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import { DashboardClientError } from "../../../client/errors.js";
+export { beforeEffectRefusal } from "../../../app/commands/command-result.js";
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
+import type { CommandOutcome } from "../../../app/commands/command-executor.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 
 export type OrdinarySettingsAttempt = z.infer<typeof SettingsCommandRequestSchema>;
 export type ProtectedSettingsAttempt = z.infer<typeof ProtectedSettingsCommandRequestSchema>;
@@ -18,6 +20,14 @@ export type SettingsSaveNotice = Readonly<{ title: string; description?: string 
 export type SettingsSaveListener = (notice: SettingsSaveNotice) => void;
 export type SettingsSaveProblem = SettingsSaveNotice & Readonly<{ tone: "danger" | "warning" }>;
 export type SettingsSaveProblemListener = (notice: SettingsSaveProblem) => void;
+export function commandSaveState(outcome: CommandOutcome | undefined): SettingsSaveState {
+  if (outcome === undefined) return { state: "refused", code: "DASHBOARD_AUTHORITY_REPLACED", message: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text };
+  if (outcome.kind === "confirmed") return { state: "applied", replayed: outcome.reply !== undefined && "state" in outcome.reply && outcome.reply.state === "already-applied" };
+  return { state: outcome.kind === "uncertain" ? "unconfirmed" : outcome.kind === "conflict" ? "conflict" : "refused", code: outcome.feedback.code, message: outcome.feedback.text };
+}
+export function settingsScopeRecoveryState(): SettingsSaveState {
+  return { state: "unconfirmed", code: "DASHBOARD_AUTHORITY_REPLACED", message: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text };
+}
 export function settingsSaveProblem(save: SettingsSaveState, protectedStore = false): SettingsSaveProblem | undefined {
   const name = protectedStore ? "Credentials" : "Settings";
   if (save.state === "unconfirmed") return { tone: "warning", title: `${name} save unconfirmed`, description: "Your draft is retained. Retry the exact attempt to confirm the result." };
@@ -55,11 +65,6 @@ export function settingsRefusal(code: string): string {
   }
 }
 export function uncertainSettingsCode(code: string): boolean { return code === "authority-uncertain" || code === "authority-unjournaled"; }
-/** Only typed admission refusals known to precede execution can claim no effect. */
-export function beforeEffectRefusal(error: unknown): boolean {
-  return error instanceof DashboardClientError && error.kind === "http"
-    && ["OPERATOR_MUTATION_ORIGIN_REFUSED", "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED"].includes(error.code ?? "");
-}
 export function protectedReadbackConfirms(command: ProtectedSettingsAttempt, result: CommandResult, document: EditableSettingsWire): boolean {
   if ((result.state !== "applied" && result.state !== "already-applied") || document.protectedSettings.state !== "available") return false;
   const current = document.protectedSettings.readback;
