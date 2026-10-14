@@ -4,6 +4,8 @@ import { createRunClaimFixtures } from "../../../support/helpers/backend/run-cla
 
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 
 
 import { afterEach,describe,it } from "vitest";
@@ -57,6 +59,46 @@ afterEach(() => {
 });
 
 describe("run claim store", () => {
+
+  it("advances lifecycle without reassigning the run identity or losing checkpoints", () => {
+    const database = openDatabase();
+    database.authority.runs.enqueue(QUEUED_RUN);
+    const raw = new DatabaseSync(syntheticDatabasePath(database));
+    try {
+      raw.exec("CREATE TRIGGER reject_run_id_update BEFORE UPDATE OF id ON runs BEGIN SELECT RAISE(ABORT, 'run-id-reassigned'); END");
+    } finally { raw.close(); }
+
+    const claimed = claimOne(database);
+    const checkpoint = database.authority.runCheckpoints.insert({
+      workflowId: WORKFLOW_ID, itemId: ITEM_ID, runId: RUN_ID, nodeId: "searching",
+      attempt: 1, claimGeneration: claimed.claimGeneration,
+      output: { schemaHash: HASH_A, value: { state: "resolved" } },
+      descriptorVersion: claimed.envelope.descriptorVersion,
+      contractFingerprint: claimed.envelope.contractFingerprint,
+      implFingerprint: HASH_A, provenance: [], writtenAt: NOW,
+    }).record;
+    let current = claimed;
+    for (const state of ["validating", "running"] as const) {
+      const changed = database.authority.runs.transition({
+        runId: RUN_ID, expectedVersion: current.version,
+        claim: { workerId: WORKER_ID, claimGeneration: claimed.claimGeneration },
+        lifecycle: { state, workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER },
+        now: LATER,
+      });
+      assert.equal(changed.state, "applied");
+      if (changed.state !== "applied") throw new Error("lifecycle transition should apply");
+      current = changed.run;
+    }
+    const cancelled = database.authority.runs.transition({
+      runId: RUN_ID, expectedVersion: current.version,
+      claim: { workerId: WORKER_ID, claimGeneration: claimed.claimGeneration },
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: LATER }, now: LATER,
+    });
+    assert.equal(cancelled.state, "applied");
+    assert.equal(database.authority.runs.get(RUN_ID)?.version, claimed.version + 3);
+    assert.deepEqual(database.authority.runs.get(RUN_ID)?.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: LATER });
+    assert.deepEqual(database.authority.runCheckpoints.get(WORKFLOW_ID, ITEM_ID, "searching", 1, claimed.claimGeneration), checkpoint);
+  });
 
   it("atomically refuses a claim after the dashboard active generation advances", () => {
     const database = openDatabase();
