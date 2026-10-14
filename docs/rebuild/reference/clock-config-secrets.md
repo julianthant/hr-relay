@@ -387,16 +387,20 @@ Storage causes use the closed codes in `recovery-contracts.ts`, including `autho
 `authority-schema-mismatch`, `authority-migration-locked`, `authority-foreign-key`,
 `authority-invariant`, `authority-locked`, `authority-corrupt`, and `authority-unavailable`.
 
-`storage upgrade --plan` requires exclusive installation admission and stopped runtime locks.
+`storage upgrade --plan` requires exclusive installation admission and stopped runtime locks. For an
+existing schema 1 database, the plan validates its native form without converting a disposable copy
+and takes no backup.
 `upgradeStorage` reports `planned`, `initialized`, `upgraded`, or `already-upgraded`, with
 `credentials: "unchanged"`. It initializes absent current authority, verifies existing current authority,
-or applies the additive stream-head index migration from schema 1 to 2 under stopped exclusive custody. A disposable
-copy validates the retained records and exact baseline shape before source conversion; the source
-fingerprint is rechecked under restore admission. The schema update and migration journal commit
-atomically after current-format validation. For pending diagnostic stages it reclaims through
-`diagnostic-maintenance` and verifies unchanged authority generation and content fingerprint. Only that declared forward migration
-converts a prior schema.
-Source changes refuse with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
+or applies the additive stream-head index migration from schema 1 to 2 under stopped exclusive custody.
+Before converting schema 1, it rechecks the source fingerprint under restore admission, calls
+`backupStoppedAuthority` with that held admission, and verifies the backup manifest. The migration
+rechecks the source and backup, then atomically commits schema 2 and the settled forward-upgrade record.
+The record carries the verified backup and canonical migration-plan digest; `backup_digest` matches the
+backup SHA-256. For pending diagnostic stages it reclaims through `diagnostic-maintenance` and verifies
+unchanged authority generation and content fingerprint. Only that declared forward migration converts
+a prior schema.
+A changed source fails with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
 explicit operations in their storage owners; ordinary shutdown does not create a backup.
 
 ### Storage relocation
