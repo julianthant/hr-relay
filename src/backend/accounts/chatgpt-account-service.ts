@@ -208,9 +208,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       if (attemptGeneration !== generation || closed) throw fault("CHATGPT_AUTH_CANCELLED");
       const state = randomBytes(32).toString("base64url"), nonce = randomBytes(32).toString("base64url"), verifier = randomBytes(32).toString("base64url");
       const expiresAt = new Date(clock.nowMs() + 300_000).toISOString();
-      let resolveCompletion: (state: ChatGptAccountState) => void = () => { throw fault("CHATGPT_AUTH_INVALID"); };
-      let rejectCompletion: (error: unknown) => void = () => { throw fault("CHATGPT_AUTH_INVALID"); };
-      const completion = new Promise<ChatGptAccountState>((resolve, reject) => { resolveCompletion = resolve; rejectCompletion = reject; });
+      type CompletionOutcome = { readonly state: "completed"; readonly account: ChatGptAccountState } | { readonly state: "failed"; readonly error: unknown };
+      let resolveCompletion: (outcome: CompletionOutcome) => void = () => { throw fault("CHATGPT_AUTH_INVALID"); };
+      const completionOutcome = new Promise<CompletionOutcome>(resolve => { resolveCompletion = resolve; });
+      let completion: Promise<ChatGptAccountState> | undefined;
       let settled = false, exchanging = false;
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -252,11 +253,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         if (settled) return; settled = true; controller.abort(); if (timer !== undefined) clearTimeout(timer);
         try { await closeServer(server); } catch { error = fault("CHATGPT_AUTH_UNAVAILABLE"); }
         if (attemptGeneration === generation) pending = undefined;
-        if (error !== undefined) rejectCompletion(error); else if (result !== undefined) resolveCompletion(result); else rejectCompletion(fault("CHATGPT_AUTH_INVALID"));
+        if (error !== undefined) resolveCompletion({ state: "failed", error });
+        else if (result !== undefined) resolveCompletion({ state: "completed", account: result });
+        else resolveCompletion({ state: "failed", error: fault("CHATGPT_AUTH_INVALID") });
       }
       cancelAttempt = () => finish(fault("CHATGPT_AUTH_CANCELLED"));
-      // Attach rejection handling before returning a pending operation to its caller.
-      void completion.catch(() => undefined);
       try {
         await new Promise<void>((resolve, reject) => { server.once("error", () => reject(fault("CHATGPT_AUTH_UNAVAILABLE"))); server.listen(0, "127.0.0.1", resolve); });
         if (attemptGeneration !== generation || closed) throw fault("CHATGPT_AUTH_CANCELLED");
@@ -264,14 +265,20 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         redirectUri = `http://127.0.0.1:${String(address.port)}/auth/callback`;
         timer = setTimeout(() => { void finish(fault("CHATGPT_AUTH_EXPIRED")); }, 300_000); timer.unref();
         const url = new URL(`${AUTH}/api/accounts/authorize`);
-        const parameters = { client_id: record.clientId ?? "dynamic_agent_client", ext_agent_host_id: record.hostId, response_type: "code", redirect_uri: redirectUri,
+        const parameters = { client_id: record.clientId === null ? "dynamic_agent_client" : record.clientId, ext_agent_host_id: record.hostId, response_type: "code", redirect_uri: redirectUri,
           scope: ["openid", "profile", "email", ...(input.usePlan ? PLAN_SCOPES : [])].join(" "), resource: RESOURCE, state, nonce,
           code_challenge_method: "S256", code_challenge: createHash("sha256").update(verifier).digest("base64url") };
         for (const [key, value] of Object.entries(parameters)) url.searchParams.set(key, value);
         if (record.clientId === null) url.searchParams.set("agent_name_hint", "Relay");
         if (record.registration !== null) url.searchParams.set("login_hint", record.registration.email);
         startupComplete = true;
-        return { authorizationUrl: url.href, expiresAt, completion, cancel: reservation.cancel };
+        return { authorizationUrl: url.href, expiresAt, get completion() {
+          if (completion === undefined) completion = completionOutcome.then(outcome => {
+            if (outcome.state === "failed") throw outcome.error;
+            return outcome.account;
+          });
+          return completion;
+        }, cancel: reservation.cancel };
       } catch (error) { await finish(error); throw error; }
     } finally {
       if (!startupComplete && pending === reservation) pending = undefined;

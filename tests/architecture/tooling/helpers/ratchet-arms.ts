@@ -365,7 +365,7 @@ function layer(path: string): number | undefined {
     if (parts[1] === "app") return parts[2] === "config" || parts[2] === "host" ? 1 : 3;
     if (parts[1] === "transports") return 3;
     if (["runs", "runtime", "logs"].includes(parts[1] ?? "")) return 2;
-    if (["systems", "processing", "workflow-tasks", "storage"].includes(parts[1] ?? "")) return 1;
+    if (["accounts", "systems", "processing", "workflow-tasks", "storage"].includes(parts[1] ?? "")) return 1;
     return undefined;
   }
   return first ? LAYERS.get(first) : undefined;
