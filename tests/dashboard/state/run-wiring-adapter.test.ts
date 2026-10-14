@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
 import { readRunLogs, projectRunLogs, useRunWiring, gateLogActions } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
@@ -498,7 +499,11 @@ describe("served Logs wiring", () => {
       await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
       const text = document.body.textContent ?? "";
       if (supplied) { assert.match(text, /No actions yet/); assert.doesNotMatch(text, /Confirmed actions unavailable/); }
-      else { assert.match(text, /Confirmed actions unavailable/); assert.doesNotMatch(text, /No actions yet/); }
+      else {
+        assert.ok(text.includes(formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE", {})).text));
+        assert.ok(text.includes(formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE", {})).text));
+        assert.doesNotMatch(text, /No actions yet/);
+      }
       await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
     }
   });
@@ -676,9 +681,33 @@ describe("served Logs wiring", () => {
   it("does not turn a failed served read into a mock or a verified empty result", async () => {
     const client = clientFor(() => { throw new Error("offline"); });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
-    assert.match(document.body.textContent ?? "", /Could not load logs/);
+    const text = document.body.textContent ?? "";
+    for (const code of ["LOGS_READ_FAILED_TITLE", "LOGS_UNAVAILABLE_TITLE", "DASHBOARD_READ_FAILED"] as const) {
+      assert.ok(text.includes(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text));
+    }
+    assert.doesNotMatch(text, /offline|unclassified failure/);
     assert.doesNotMatch(document.body.textContent ?? "", /No actions yet/);
     assert.doesNotMatch(document.body.textContent ?? "", /Approve match|Reading the employment record/);
+  });
+  it("selects preview explicitly for the same failed client and selection without retrying the served read", async () => {
+    let reads = 0;
+    const client = clientFor(() => { reads++; throw new Error("offline"); });
+    const selected = selection();
+    const panel = (source?: "mock" | "served") => createElement(DashboardClientProvider, { client,
+      children: createElement(LogSample, { selection: selected, source }) });
+    await mount(panel());
+    assert.ok(reads > 0);
+    assert.match(document.body.textContent ?? "", /Could not load logs/);
+    assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
+    const failedReads = reads;
+    await act(async () => root?.render(panel("mock")));
+    assert.equal(reads, failedReads);
+    assert.match(document.body.textContent ?? "", /Separation request verified/);
+    assert.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
+    await act(async () => root?.render(panel()));
+    assert.ok(reads > failedReads);
+    assert.match(document.body.textContent ?? "", /Could not load logs/);
+    assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
   });
   for (const replacement of ["day", "epoch", "day-request", "scope"] as const) it(`revokes stale reads after ${replacement} authority replacement`, async () => {
     const h = launchHarness();

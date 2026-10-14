@@ -8,7 +8,8 @@ export function servedFixtureSources(workflows: readonly RunStartWorkflow[]): Wo
 
 export function PARITY_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow[]): WorkflowComposition {
   const sources = servedFixtureSources(workflows);
-  return Object.freeze({ sources, explorerSources: Object.freeze({ ...sources, ...WORKFLOW_SOURCES }), dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }),
+  const previewSources = Object.freeze({ ...sources, ...WORKFLOW_SOURCES });
+  return Object.freeze({ sources, explorerSources: previewSources, logsSources: previewSources, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }),
     sourceForRoute: (id: string, requestedPreview: boolean) => requestedPreview && id in WORKFLOW_SOURCES ? "mock" : workflowSource(id, sources),
   });
 }

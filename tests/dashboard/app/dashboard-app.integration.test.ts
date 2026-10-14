@@ -1,3 +1,4 @@
+import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
 import { servedFixtureSources } from "../../parity/helpers/workflow-composition.js";
@@ -389,6 +390,33 @@ try {
 } finally {
 await _afterEachFixture0();
 }
+});
+it_m1("keeps served Logs failures while explicit parity composition selects mock Logs for the same run", async () => {
+  try {
+    const { DashboardClientError } = await import("../../../src/dashboard/client/index.js");
+    let reads = 0;
+    const search = `?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.openGateRun}&section=logs`;
+    const client = await mount(search, {
+      runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", message: "private transport detail" }); },
+    }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
+    assert_m1.ok(reads > 0);
+    assert_m1.ok(document.body.textContent?.includes("The dashboard could not load this from the local service. Try again."));
+    assert_m1.match(document.body.textContent ?? "", /Could not load logs|Logs unavailable/);
+    assert_m1.doesNotMatch(document.body.textContent ?? "", /Confirm the employee match|private transport detail/);
+    const failedReads = reads;
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
+      children: createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }) })));
+    await settle();
+    assert_m1.equal(reads, failedReads);
+    assert_m1.match(document.body.textContent ?? "", /Confirm the employee match/);
+    assert_m1.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
+    const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows))[0];
+    assert_m1.ok(workflow);
+    const composition = PARITY_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
+    assert_m1.equal(composition.sources["person-lookup"], "mock");
+    assert_m1.equal(composition.logsSources?.["person-lookup"], "mock");
+    assert_m1.equal(composition.logsSources?.["generic-served-workflow"], "served");
+  } finally { await _afterEachFixture0(); }
 });
 it_m1("passes the app client to a served Explorer read while parity explicitly retains mock Explorer", async () => {
   try {

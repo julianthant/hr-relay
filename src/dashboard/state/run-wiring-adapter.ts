@@ -222,7 +222,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
       const error = cause instanceof DashboardClientError && cause.kind !== "schema"
-        ? formatErrorCatalogFailure(createErrorCatalogFailure("TASK_UNHANDLED_FAILURE", {})).text
+        ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
       setSettled(current => ({ request, value: { state: "failed", error, diagnostic: cause,
         ...(current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));

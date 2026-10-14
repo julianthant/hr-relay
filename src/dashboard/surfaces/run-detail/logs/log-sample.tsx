@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import type { WorkflowSource } from "../../../app/workflow-sources.js";
 import { Badge, Banner, Button } from "../../../ds/ui.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
@@ -14,9 +16,9 @@ import { projectRunLogs, useRunWiring } from "../../../state/run-wiring-adapter.
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
 
-export function LogSample({ selection, nowIso }: { selection?: LogSelection; nowIso?: string }) {
+export function LogSample({ selection, nowIso, source = "served" }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource }) {
   const requestedPreview = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("logPreview");
-  if (selection !== undefined && requestedPreview === null) return <ServedLogSample selection={selection} nowIso={nowIso} />;
+  if (source === "served" && selection !== undefined && requestedPreview === null) return <ServedLogSample selection={selection} nowIso={nowIso} />;
   return <PreviewLogSample selection={selection} nowIso={nowIso} />;
 }
 
@@ -24,13 +26,17 @@ function ServedLogSample({ selection, nowIso }: { selection: LogSelection; nowIs
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
   const resource = useRunWiring(client, selection, binding);
+  const logsReadFailedTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_READ_FAILED_TITLE", {})).text;
+  const logsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_UNAVAILABLE_TITLE", {})).text;
+  const confirmedActionsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE", {})).text;
+  const incompleteActionEvidenceText = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE", {})).text;
   const projection = useMemo(() => resource.snapshot === undefined ? { steps: [], timeline: [] } : projectRunLogs(resource.snapshot, client), [resource.snapshot, client]);
-  const toolbar = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" ? <Banner tone="danger" title="Could not load logs">{resource.error}</Banner> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}<Badge tone="neutral">Source order · cross-source chronology unavailable</Badge></>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error]);
+  const toolbar = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" ? <Banner tone="danger" title={logsReadFailedTitle}>{resource.error}</Banner> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}<Badge tone="neutral">Source order · cross-source chronology unavailable</Badge></>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
   return <LogPanel title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
     status={<StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" />}
     toolbar={toolbar}
-    content={resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Banner tone="danger" title="Logs unavailable">{resource.error}</Banner> : undefined : resource.snapshot.actionEvidence?.state === "unavailable" && projection.steps.length === 0 ? <Banner tone="warning" title="Confirmed actions unavailable">The response did not supply complete confirmed-action evidence.</Banner> : undefined} />;
+    content={resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Banner tone="danger" title={logsUnavailableTitle}>{resource.error}</Banner> : undefined : resource.snapshot.actionEvidence?.state === "unavailable" && projection.steps.length === 0 ? <Banner tone="warning" title={confirmedActionsUnavailableTitle}>{incompleteActionEvidenceText}</Banner> : undefined} />;
 }
 
 function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; nowIso?: string }) {

@@ -30,6 +30,21 @@ describe("error catalog", () => {
     }
   });
 
+  it("registers the exact Logs integration messages through the catalog types", () => {
+    const expected = {
+      DASHBOARD_READ_FAILED: "The dashboard could not load this from the local service. Try again.",
+      LOGS_READ_FAILED_TITLE: "Could not load logs",
+      LOGS_UNAVAILABLE_TITLE: "Logs unavailable",
+      LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE: "Confirmed actions unavailable",
+      LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE: "The response did not supply complete confirmed-action evidence.",
+    } as const;
+    for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
+      const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+      assert.equal(message.code, code);
+      assert.equal(message.text, expected[code]);
+    }
+  });
+
   it("derives a closed code schema from the frozen catalog and keeps parameters strict", () => {
     const codes = Object.keys(ERROR_CATALOG);
     assert.equal(Object.isFrozen(ERROR_CATALOG), true);
