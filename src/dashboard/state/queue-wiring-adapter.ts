@@ -27,10 +27,16 @@ export function useQueueWiring(input: Readonly<{
 }>) {
   const { allRows, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
     workflowLabelOf, selectRun, setActiveWorkflowId, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
-    runPreviewAction, runQueueAction } = input;
+    runQueueAction } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (allRows === undefined) return [];
-    const scoped = rows.filter((s) => s.workflowId === activeWorkflowId);
+    const canonical = new Map(allRows.map((surface) => [surface.runId, surface]));
+    const scoped = rows.flatMap((row) => {
+      const surface = canonical.get(row.runId);
+      if (surface === undefined || surface.workflowId !== activeWorkflowId) return [];
+      const actions = surface.actions.filter((action) => action.kind !== "command" || action.command !== "archive");
+      return [actions.length === surface.actions.length ? surface : { ...surface, actions }];
+    });
     return filterQueueSurfaces(scoped, filter);
   }, [allRows, rows, activeWorkflowId, filter]);
 
@@ -66,8 +72,6 @@ export function useQueueWiring(input: Readonly<{
       onSetBatchGrouping: setBatchGrouping,
       onSelect: selectRun,
       onExitSelection: exitQueueSelection,
-      onPreviewAction: runPreviewAction,
-
       onAction: runQueueAction,
       onToggleWell: (runId) => {
         const next = new Set(openWells);
@@ -93,7 +97,7 @@ export function useQueueWiring(input: Readonly<{
         selectRun(String(link.runId), link.partitionDay);
       },
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, allRows, setActiveWorkflowId, exitQueueSelection, runPreviewAction],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, allRows, setActiveWorkflowId, exitQueueSelection],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);

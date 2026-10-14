@@ -91,6 +91,37 @@ try {
 _afterEachFixture0();
 }
 });
+
+it_m0('does not transfer a missing selected attempt or its command version to the surviving attempt', async () => {
+try {
+  const first = FIXTURE_DAY_WIRE_m0.queueSurfaces.find(row => row.surfaceKind === 'single');
+  assert_m0.ok(first);
+  const action = { kind: 'command' as const, key: 'cancel', command: 'cancel' as const, label: 'Cancel surviving attempt',
+    intent: 'neutral' as const, placement: ['footer' as const, 'menu' as const], expectedVersion: first.rowRevision + 1 };
+  const newest = QueueSurfaceWireSchema_m1.parse({ ...first, runId: '00000000-8000-4000-8000-000000000001',
+    attempt: first.attempt + 1, rowRevision: action.expectedVersion, actions: [action] });
+  const sent: unknown[] = [];
+  const handlers: QueueHandlers_m0 = { onSelect() {}, onAction(descriptor, target) { sent.push([descriptor, target]); } };
+  const state: QueueViewState_m0 = { nowIso: FIXTURE_NOW_m0, openWells: new Set(), selectedRunId: first.runId };
+  const label = () => 'Fixture';
+  const actionsOf = (row: typeof first) => row.actions;
+  host = document.createElement('div'); document.body.append(host); root = createRoot_m0(host);
+  const draw = (surfaces: readonly typeof first[]) => act_m0(() => root?.render(createElement_m0(QueuePanel_m0, {
+    surfaces, state, handlers, actionsOf, workflowLabelOf: label, panelLabel: 'Fixture', day: FIXTURE_DAY_WIRE_m0.day,
+  })));
+  draw([first, newest]);
+  assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('data-demo-row-id'), first.runId);
+  draw([newest]);
+  assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('data-demo-row-id'), newest.runId);
+  assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('aria-pressed'), 'false');
+  const cancel = host.querySelector<HTMLButtonElement>('button[aria-label="Cancel surviving attempt"]');
+  assert_m0.ok(cancel);
+  act_m0(() => cancel.click());
+  assert_m0.deepEqual(sent, [[action, { runId: newest.runId, expectedVersion: newest.rowRevision }]]);
+} finally {
+_afterEachFixture0();
+}
+});
 }
 
 {
