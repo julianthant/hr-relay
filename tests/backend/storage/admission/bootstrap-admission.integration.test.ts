@@ -1,3 +1,4 @@
+import { withSynchronousMutexDeadline } from "../../../support/helpers/storage/synchronous-mutex-deadline.js";
 import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -483,7 +484,12 @@ try {
   const unknown = new Error("process birth identity unavailable");
   if (condition === "unknown") vi.spyOn(processLocks_m4, "observeProcessIdentity").mockImplementation(() => { throw unknown; });
   if (condition === "unknown") assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === unknown);
-  else if (condition === "malformed") assert.throws(() => acquireEntrypointAdmission(root, "shared"), SyntaxError);
+  else if (condition === "malformed") withSynchronousMutexDeadline(() => {
+    assert.throws(() => acquireEntrypointAdmission(root, "shared"), SyntaxError);
+  });
+  else if (condition === "live") withSynchronousMutexDeadline(() => {
+    assert.throws(() => acquireEntrypointAdmission(root, "shared"), AdmissionMutexBusyError);
+  });
   else assert.throws(() => acquireEntrypointAdmission(root, "shared"), AdmissionMutexBusyError);
   assert.deepEqual(readdirSync_m1(mutex).map(name => ({ name, bytes: readFileSync(join(mutex, name)) })), before);
   assert.equal(existsSync(join(root, ".tracker/control", "admission-mutex-recovery")), false);

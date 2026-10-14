@@ -1,3 +1,4 @@
+import { withSynchronousMutexDeadline } from "../../../support/helpers/storage/synchronous-mutex-deadline.js";
 import { createInstallationControlTestWorld } from "../../../support/helpers/backend/installation-control-world.js";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -114,7 +115,9 @@ it("keeps low-level installation admission from reaping a crashed child's mutex"
   try {
     await new Promise<void>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => data.toString().includes("READY") ? resolve() : reject(new Error(String(data)))); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
   } finally { await stopChild(child); }
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/admission mutex remained busy after 5000ms/u);
+  withSynchronousMutexDeadline(() => {
+    expect(() => acquireInstallation(workspace, "shared")).toThrow(/admission mutex remained busy after 5000ms/u);
+  });
 });
 
 it.each(["temporary", "published"])('startup recovers a proven abandoned %s mutex owner', (kind) => {
@@ -126,7 +129,7 @@ it.each(["temporary", "published"])('startup recovers a proven abandoned %s mute
     processIdentity: { platform: process.platform, startToken: "synthetic-dead-owner" } };
   const ownerName = kind === "temporary" ? `.${randomUUID()}.tmp` : "owner.json";
   writeFileSync(join(mutex, ownerName), `${JSON.stringify(owner)}\n`, { mode: 0o600 });
-  const admitted = acquireEntrypointAdmission(workspace, "shared");
+  const admitted = withSynchronousMutexDeadline(() => acquireEntrypointAdmission(workspace, "shared"));
   admitted.release();
   expect(existsSync(mutex)).toBe(false);
   const history = join(workspace, ".tracker/control", "admission-mutex-recovery");
@@ -159,7 +162,9 @@ it.each(["live owner", "pending journal", "live lease", "malformed owner"])(
       writeFileSync(join(control, "leases", `${admissionId}.json`), JSON.stringify({ schemaVersion: 1,
         admissionId, mode: "shared", pid: process.pid, processIdentity: current.identity }), { mode: 0o600 });
     }
-    expect(() => acquireEntrypointAdmission(workspace, "shared")).toThrow();
+    withSynchronousMutexDeadline(() => {
+      expect(() => acquireEntrypointAdmission(workspace, "shared")).toThrow();
+    });
     expect(existsSync(ownerPath)).toBe(true);
     expect(existsSync(join(control, "admission-mutex-recovery"))).toBe(false);
   },
