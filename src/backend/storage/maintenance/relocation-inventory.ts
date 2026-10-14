@@ -17,7 +17,7 @@ const ARTIFACT = /^([0-9a-f]{64})\.artifact$/u;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const ROOT_FILES = new Set(["state.db", "state.db-wal", "state.db-shm"]);
 const ROOT_DIRECTORIES = new Set(["backups", "credentials", "browsers", "scratch", "logs"]);
-const CREDENTIAL_FILES = new Set(["protected.json", "chatgpt-account.json", ".protected.lock", ".protected.reaper", ".protected.reaper-claim"]);
+const CREDENTIAL_FILES = new Set(["protected.json", "chatgpt-account.json", "duo-webauthn.json", ".protected.lock", ".protected.reaper", ".protected.reaper-claim"]);
 const StoredArtifactSchema = z.strictObject({ ref: ArtifactRefSchema, payloadBase64: z.string() });
 const issuedInventories = new WeakSet<object>();
 
@@ -158,7 +158,8 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
   }
   if (top === "credentials") {
     if (parts.length !== 2 || kind !== "file" || !CREDENTIAL_FILES.has(name)) throw new Error("relocation-inventory: unknown credentials entry");
-    if (name !== "protected.json" && name !== "chatgpt-account.json") throw new Error("relocation-inventory: credential write lock is present");
+    if (name !== "protected.json" && name !== "chatgpt-account.json" && name !== "duo-webauthn.json") throw new Error("relocation-inventory: credential write lock is present");
+    if (name === "duo-webauthn.json" && ((lstatSync(path).mode & 0o7777) !== 0o600 || lstatSync(path).size > 64_000)) throw new Error("relocation-inventory: unsafe Duo credential");
     if (name === "chatgpt-account.json") {
       if ((lstatSync(path).mode & 0o7777) !== 0o600) throw new Error("relocation-inventory: unknown or unsafe ChatGPT credentials entry");
       if (lstatSync(path).size > 64_000) throw new Error("relocation-inventory: malformed ChatGPT credentials");

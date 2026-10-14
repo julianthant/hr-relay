@@ -137,7 +137,7 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   const admittedPair = runtimeStoragePair === undefined ? undefined : RuntimeStoragePairSchema.parse(runtimeStoragePair);
   const defaults = ConfigSchema.parse({
     paths: { ...defaultRuntimePaths(), ...admittedPair,
-      ...(admittedPair === undefined ? {} : { browserProfileRoot: join(admittedPair.stateRoot, "browsers") }) }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
+      ...(admittedPair === undefined ? {} : { browserProfileRoot: join(admittedPair.stateRoot, "browsers"), duoCredential: join(admittedPair.stateRoot, "credentials", "duo-webauthn.json") }) }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
   });
   const config = mergeSettings(defaults, settings);
 

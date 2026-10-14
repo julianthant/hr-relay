@@ -29,6 +29,29 @@ function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }
   }) };
 }
 
+it("relocates the Duo key with the other credentials and refuses an unsafe one", () => {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-duo-")));
+  const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
+  const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
+  for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot]) mkdirSync(path, { recursive: true, mode: 0o700 });
+  const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot), destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
+  try {
+    const protectedStore = createCredentialStore({ admission: sourceAdmission, stateRoot: source.stateRoot });
+    assert.equal(protectedStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: 1,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-12T12:00:00.000Z", entries: { ucpathPassword: { set: "synthetic-relocation-protected" } } })).state, "applied");
+    const duo = join(source.stateRoot, "credentials", "duo-webauthn.json");
+    writeFileSync(duo, '{"synthetic":"duo-key"}', { mode: 0o600 });
+    const input = { admission: sourceAdmission, source, destination, fixedLockRoot: join(source.stateRoot, "locks") };
+    const inventory = inspectRelocationFiles(input), file = inventory.files.find(entry => entry.relativePath === "credentials/duo-webauthn.json"); assert.ok(file);
+    assert.equal(JSON.stringify(inventory).includes("duo-key"), false);
+    prepareRelocationDirectories({ destinationAdmission, inventory });
+    copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file, operationId: randomUUID() });
+    assert.equal(lstatSync(join(destination.stateRoot, file.relativePath)).mode & 0o777, 0o600);
+    chmodSync(duo, 0o644);
+    assert.throws(() => inspectRelocationFiles(input), /unsafe Duo credential/u);
+  } finally { sourceAdmission.release(); destinationAdmission.release(); rmSync(workspace, { recursive: true, force: true }); }
+});
+
 it("relocates only a validated private ChatGPT record and refuses unsafe token authority", async () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-chatgpt-")));
   const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };

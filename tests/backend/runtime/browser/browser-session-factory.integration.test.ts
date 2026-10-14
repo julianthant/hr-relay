@@ -86,7 +86,7 @@ describe("worker browser session factory", () => {
     // Assert production path derivation as a string; never create or remove a real runtime profile root.
     const production = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.paths;
     assert.equal(production.browserProfileRoot, resolvePath(rebuildRuntimeIsolation.browserProfileRoot));
-    assert.equal(production.duoCredential, resolvePath(".tracker/credentials/duo-webauthn.json"));
+    assert.equal(production.duoCredential, resolvePath(".tracker/data/credentials/duo-webauthn.json"));
 
     const profileRoot = join(tmpdir(), "hrauto-profile-derivation");
     const directory = workerProfileDirectory({ profileRoot: profileRoot, slotOrdinal: 1, system: "ucpath" });

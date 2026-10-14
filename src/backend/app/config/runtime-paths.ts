@@ -22,7 +22,7 @@ export function defaultRuntimePaths(): ConfigPaths {
     stateRoot: resolve(rebuildRuntimeIsolation.stateRoot),
     artifactRoot: resolve(rebuildRuntimeIsolation.artifactRoot),
     browserProfileRoot: profileRoot,
-    duoCredential: join(resolve(".tracker/credentials"), "duo-webauthn.json"),
+    duoCredential: join(resolve(rebuildRuntimeIsolation.stateRoot), "credentials", "duo-webauthn.json"),
     duoExtensionDir: resolve("duo-autopilot"),
   });
 }

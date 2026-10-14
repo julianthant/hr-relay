@@ -91,8 +91,9 @@ describe("composition-reads-no-environment-leaf", () => {
       assert.equal(before.config.paths.stateRoot, join(root, rebuildRuntimeIsolation.stateRoot));
       assert.equal(before.config.paths.artifactRoot, join(root, rebuildRuntimeIsolation.artifactRoot));
       assert.equal(before.config.paths.browserProfileRoot, join(root, rebuildRuntimeIsolation.stateRoot, "browsers"));
+      assert.equal(before.config.paths.duoCredential, join(root, rebuildRuntimeIsolation.stateRoot, "credentials", "duo-webauthn.json"));
       configs.push({ config: { ...before.config, paths: { ...before.config.paths,
-        stateRoot: "owned-state-root", artifactRoot: "owned-artifact-root", browserProfileRoot: "owned-browser-root" } }, provenance: before.provenance });
+        stateRoot: "owned-state-root", artifactRoot: "owned-artifact-root", browserProfileRoot: "owned-browser-root", duoCredential: "owned-duo-credential" } }, provenance: before.provenance });
     }
     assert.deepEqual(configs[1], configs[0]);
   });

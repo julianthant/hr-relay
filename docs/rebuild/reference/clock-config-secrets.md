@@ -221,7 +221,7 @@ supplies the default browser root `<stateRoot>/browsers`. A saved browser root c
 | `paths.stateRoot` | Admitted installation root, initially `.tracker/data` |
 | `paths.artifactRoot` | Admitted installation root, initially `.tracker/data/artifacts` |
 | `paths.browserProfileRoot` | Admitted `<stateRoot>/browsers`, or the isolation default `.tracker/data/browsers` without an admitted pair |
-| `paths.duoCredential` | Absolute `.tracker/credentials/duo-webauthn.json` |
+| `paths.duoCredential` | Absolute `<stateRoot>/credentials/duo-webauthn.json` |
 | `paths.duoExtensionDir` | Absolute `duo-autopilot` |
 
 The first four paths and the three browser/Duo paths are ordinary settings. State and artifact roots
@@ -274,7 +274,9 @@ owns counter custody.
 
 ### Independent private credential authority
 
-`src/backend/storage/configuration/` owns both private records under `<stateRoot>/credentials/`.
+`<stateRoot>/credentials/` is the one home for credentials: protected settings, the ChatGPT account
+and the Duo key (`duo-webauthn.json`, read through `paths.duoCredential`).
+`src/backend/storage/configuration/` owns the two private records there.
 `credential-store.ts` exposes the protected-settings store and the ChatGPT account repository.
 Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 directories,
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
@@ -324,7 +326,8 @@ through `credential-store.ts`. Replacement checks the expected revision and adva
 The record has a 64,000-byte limit and uses `.chatgpt-account.lock`; stale-lock cleanup requires
 exclusive `RuntimeAdmission`. Unconfirmed completion after replacement reports
 `CHATGPT_CREDENTIAL_UNCERTAIN`. The account service in `accounts/` imports this credential-store API.
-Storage relocation carries both records under `credentials/`.
+Storage relocation carries all three files under `credentials/`, and `paths.duoCredential`
+follows the admitted state root.
 
 ### Environment and private test inputs
 
