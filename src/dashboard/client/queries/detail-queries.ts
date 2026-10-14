@@ -21,7 +21,7 @@ function runIdentityError(context: string, code: string, requestedRunId: string)
 export interface DetailQueries {
   operationSource(runId: string, request: OperationSourceRequest, signal?: AbortSignal): Promise<OperationSourceResponse>;
 
-  runDetail(runId: string): Promise<RunDetailWire>;
+  runDetail(runId: string, signal?: AbortSignal): Promise<RunDetailWire>;
 
   runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse>;
 
@@ -58,12 +58,12 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       return response;
     },
 
-    async runDetail(runId: string): Promise<RunDetailWire> {
+    async runDetail(runId: string, signal?: AbortSignal): Promise<RunDetailWire> {
       const context = `GET /api/v1/runs/${runId}`;
       const detail = parseOrThrow(
         RunDetailWireSchema,
         context,
-        await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}`),
+        await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}`, signal === undefined ? undefined : { signal }),
       );
       if (detail.runId !== runId) {
         throw runIdentityError(context, "RUN_DETAIL_IDENTITY_MISMATCH", runId);
@@ -82,10 +82,11 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
           signal === undefined ? undefined : { signal },
         ),
       );
-      if ((section === "captures" && response.section !== "captures")
-        || (response.section === "captures" && response.payload.runId !== runId)) {
-        throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
-      }
+      if (response.section !== section) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
+      const payload = response.payload;
+      const owner = "runId" in payload ? payload.runId
+        : "state" in payload && payload.state === "available" && "runId" in payload.value ? payload.value.runId : undefined;
+      if (owner !== undefined && owner !== runId) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
       return response;
     },
 
