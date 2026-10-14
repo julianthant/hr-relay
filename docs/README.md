@@ -35,4 +35,4 @@ The [roadmap site](roadmap/index.html) is generated from [the roadmap source](ro
 
 ## Evidence
 
-Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Selector manifests used by semantic registry tests live under [`tests/support/fixtures/ui/`](../tests/support/fixtures/ui/).
+Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Git worktrees live in its gitignored `.worktrees/<branch>/` folder. Selector manifests used by semantic registry tests live under [`tests/support/fixtures/ui/`](../tests/support/fixtures/ui/).

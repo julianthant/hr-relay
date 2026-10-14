@@ -34,6 +34,9 @@ duo-autopilot/node_modules/
 # Briefs, receipts and task evidence (see root AGENTS.md)
 .work/
 
+# Git worktrees, one per branch (see root AGENTS.md)
+.worktrees/
+
 # Coverage lane output (`npm run test:coverage`) — regenerated every run.
 coverage/
 

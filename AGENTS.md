@@ -85,6 +85,7 @@ The repository holds only the current version. No compatibility readers, old mig
 
 - Never push without explicit instruction. Work on a dedicated branch, in a separate worktree for
   concurrent work. Verify base, path and ownership before editing.
+- Worktrees live in the main checkout's gitignored `.worktrees/<branch>/` folder.
 - Stage exact paths and commit by logical category. Never switch, reset or repurpose another
   checkout.
 - The operator launches every task and chooses every integration into `master`.
