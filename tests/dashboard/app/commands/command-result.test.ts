@@ -1,5 +1,3 @@
-import { URL as FileURL } from "node:url";
-
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,it as it_m0 } from "vitest";
 import { commandFailureToast as commandFailureToast_m0,settleCommandResult as settleCommandResult_m0 } from "../../../../src/dashboard/app/commands/command-result.js";
@@ -10,11 +8,13 @@ import { describe as describe_m1,it as it_m1 } from "vitest";
 import { commandFailureToast as commandFailureToast_m1 } from "../../../../src/dashboard/app/commands/command-result.js";
 
 import assert_m2 from "node:assert/strict";
-import { readFileSync as readFileSync_m2 } from "node:fs";
 import { describe as describe_m2,it as it_m2 } from "vitest";
+import { CommandExecutor as CommandExecutor_m2, type CommandExecutionOptions as CommandExecutionOptions_m2, type CommandOutcome as CommandOutcome_m2 } from "../../../../src/dashboard/app/commands/command-executor.js";
 import { commandFailureToast as commandFailureToast_m2,settleCommandResult as settleCommandResult_m2 } from "../../../../src/dashboard/app/commands/command-result.js";
+import { createSharedCommands as createSharedCommands_m2 } from "../../../../src/dashboard/client/commands/shared-commands.js";
+import { createDashboardTransport as createDashboardTransport_m2 } from "../../../../src/dashboard/client/transport.js";
 import { toastAppliedCommandResult as toastAppliedCommandResult_m2 } from "../../../../src/dashboard/surfaces/shared/actions/actions-model.js";
-import { CommandResultSchema as CommandResultSchema_m2 } from "../../../../src/rules/commands/commands.js";
+import { CommandRequestSchema as CommandRequestSchema_m2,CommandResultSchema as CommandResultSchema_m2 } from "../../../../src/rules/commands/commands.js";
 
 import assert_m3 from "node:assert/strict";
 import { describe as describe_m3,it as it_m3 } from "vitest";
@@ -206,51 +206,138 @@ describe_m1("dispatchBulk's rejection arm (the selection band's bulk post)", () 
 
 
 const COMMAND_ID = "1a000000-0000-4000-8000-000000000001";
+const RUN_ID = "1a000000-0000-4000-8000-000000000002";
 
-const DASHBOARD_APP = new FileURL("../../../../src/dashboard/app/dashboard-app.tsx", import.meta.url);
-
-
-function dispatchCommandChain(): string {
-  const source = readFileSync_m2(DASHBOARD_APP, "utf8");
-  const opens = source.indexOf("client.executeCommand(requestToExecute)");
-  const closes = source.indexOf("[boot.actor.id, client, toast, dayWire", opens);
-  if (opens === -1 || closes === -1) {
-    throw new Error(
-      "dashboard-app.tsx no longer contains dispatchCommand's executeCommand chain between its "
-      + "known landmarks — re-point this guard rather than deleting it",
-    );
-  }
-  return source.slice(opens, closes);
+function command_m2(n: number, runId = RUN_ID, expectedVersion = 7) {
+  return CommandRequestSchema_m2.parse({
+    commandId: `1a000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    requestedAt: "2026-08-03T12:00:00.000Z",
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "run",
+    type: "cancel",
+    target: { runId, expectedVersion },
+  });
 }
 
-describe_m2("dispatchCommand's settlement handler surfaces its own guards", () => {
-  it_m2("still has guards worth catching", () => {
-    const chain = dispatchCommandChain();
-    assert_m2.match(
-      chain,
-      /toastAppliedCommandResult\(toast, \{/u,
-      "the applied-toast fold throws on a refused settlement; if it left this chain, so did the hazard",
-    );
-    assert_m2.match(
-      chain,
-      /throw new Error\("refused command settlement produced no feed entry"\)/u,
-      "the second guard in the same arm, and it floats or lands by the same chain shape",
-    );
+function executionHarness_m2() {
+  const sent: string[] = [];
+  const persisted = new Map<string, { runId: string; version: number; cancelled: boolean }>();
+  const client = createSharedCommands_m2(createDashboardTransport_m2({
+    baseUrl: "http://fixture.test",
+    fetchImpl: async (_url, init) => {
+      if (typeof init?.body !== "string") assert_m2.fail("JSON command body missing");
+      const body = init.body;
+      sent.push(body);
+      const request = CommandRequestSchema_m2.parse(JSON.parse(body));
+      if (request.family !== "run") assert_m2.fail("expected a run command");
+      persisted.set(request.target.runId, {
+        runId: request.target.runId,
+        version: request.target.expectedVersion + 1,
+        cancelled: true,
+      });
+      return Response.json({
+        state: "applied",
+        commandId: request.commandId,
+        affectedTargets: [{ family: "run", runId: request.target.runId }],
+      });
+    },
+  }));
+  const scope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
+  const executor = new CommandExecutor_m2(() => scope);
+  const options = (): CommandExecutionOptions_m2 => ({
+    scope,
+    readback: async (request) => {
+      if (request.family !== "run") return { state: "mismatch", evidence: undefined };
+      const observed = persisted.get(request.target.runId);
+      return observed?.runId === request.target.runId
+        && observed.version === request.target.expectedVersion + 1
+        && observed.cancelled
+        ? { state: "matched", evidence: observed }
+        : { state: "mismatch", evidence: observed };
+    },
+  });
+  return { executor, options, persisted, sent };
+}
+
+describe_m2("CommandExecutor settlement and publication guards", () => {
+  it_m2("keeps an applied command uncertain and locked when authoritative readback throws", async () => {
+    const h = executionHarness_m2();
+    const request = command_m2(1);
+    const cause = new Error("the authoritative readback failed");
+    const published: CommandOutcome_m2[] = [];
+    const defaults = h.options();
+    const outcome = await h.executor.execute(request, {
+      ...defaults,
+      publish: result => published.push(result),
+      readback: async command => {
+        if (command.family !== "run") assert_m2.fail("expected a run command");
+        const observed = h.persisted.get(command.target.runId);
+        assert_m2.equal(observed?.runId, command.target.runId);
+        assert_m2.equal(observed?.version, command.target.expectedVersion + 1);
+        assert_m2.equal(observed?.cancelled, true);
+        throw cause;
+      },
+    });
+
+    if (outcome.kind !== "uncertain") assert_m2.fail("expected an uncertain outcome");
+    assert_m2.equal(outcome.cause, cause);
+    assert_m2.equal(outcome.feedback.text, "The command outcome is uncertain. Check its result before taking further action.");
+    const [retained] = h.executor.retainedAttempts();
+    assert_m2.ok(retained);
+    assert_m2.deepEqual(retained.request, request);
+    assert_m2.equal(retained.state, "settled");
+    assert_m2.equal(retained.outcome, outcome);
+    assert_m2.equal(published.length, 1);
+    const blocked = await h.executor.execute(command_m2(2, RUN_ID, 8), h.options());
+    assert_m2.deepEqual({ kind: blocked.kind, reason: blocked.kind === "refused" ? blocked.reason : undefined }, { kind: "refused", reason: "locked" });
+    assert_m2.equal(h.sent.length, 1, "the uncertain target cannot dispatch a fresh command");
   });
 
-  it_m2("terminates the chain in a `.catch`, which is the only handler a throw from the fulfilment arm can reach", () => {
-    const chain = dispatchCommandChain();
-    assert_m2.match(
-      chain,
-      /\)\.catch\(\(caught: unknown\) => \{/u,
-      "without a trailing .catch a guard that fires produces no toast and no feed entry",
-    );
-    assert_m2.doesNotMatch(
-      chain,
-      /\}\s*,\s*\(caught: unknown\)/u,
-      "a second `.then` argument is the shape that swallowed the guards: it is installed on the "
-      + "promise BEFORE the fulfilment arm and never sees what that arm throws",
-    );
+  it_m2("resolves a matched applied result with the applied-toast guard's publication error attached", async () => {
+    const h = executionHarness_m2();
+    const request = command_m2(3);
+    const published: CommandOutcome_m2[] = [];
+    let guardCause: unknown;
+    const outcome = await h.executor.execute(request, {
+      ...h.options(),
+      publish: result => {
+        published.push(result);
+        try {
+          toastAppliedCommandResult_m2(() => "toast-id", {
+            settlement: settleCommandResult_m2(CommandResultSchema_m2.parse({
+              state: "rejected",
+              commandId: request.commandId,
+              code: "policy-refused",
+              message: "policy blocks this retry",
+            })),
+            actionLabel: "Retry",
+            subject: "Jordan Reyes",
+            clock: "3:07 PM",
+            actorId: "local-operator",
+          });
+        } catch (caught) {
+          guardCause = caught;
+          throw caught;
+        }
+      },
+    });
+
+    if (outcome.kind !== "confirmed") assert_m2.fail("expected the authoritative readback to confirm the command");
+    if (request.family !== "run") assert_m2.fail("expected a run command");
+    assert_m2.equal(h.persisted.get(RUN_ID)?.version, request.target.expectedVersion + 1);
+    assert_m2.equal(h.persisted.get(RUN_ID)?.cancelled, true);
+    assert_m2.equal(published.length, 1);
+    assert_m2.equal(published[0]?.kind, "confirmed");
+    assert_m2.equal(outcome.cause, guardCause);
+    assert_m2.ok(outcome.cause instanceof Error);
+    assert_m2.equal(outcome.cause.message, "an applied-command toast was composed for a refused settlement of Retry on Jordan Reyes");
+    const [retained] = h.executor.retainedAttempts();
+    assert_m2.ok(retained);
+    assert_m2.equal(retained.request.commandId, request.commandId);
+    assert_m2.equal(retained.state, "settled");
+    assert_m2.equal(retained.outcome, outcome);
+    assert_m2.equal(h.sent.length, 1);
   });
 });
 
