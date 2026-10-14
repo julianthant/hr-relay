@@ -1,3 +1,4 @@
+import { syntheticSettingsAuthority } from "../../support/helpers/dashboard/settings-harness.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 import { useDashboardCommandBinding } from "../../../src/dashboard/state/client-context.js";
 import { QueueToolbar, ConfirmBulkCommandDialog, type PendingBulkCommand } from "../../../src/dashboard/surfaces/queue/queue-toolbar.js";
@@ -5,7 +6,7 @@ import { CommandRecovery } from "../../../src/dashboard/surfaces/shared/actions/
 import { composeBulkRunCommand, planBulkVerb } from "../../../src/dashboard/app/commands/bulk-dispatch.js";
 import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
 import type { CommandOutcome, CommandExecutionOptions } from "../../../src/dashboard/app/commands/command-executor.js";
-import { BulkRunCommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, BulkRunCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
 import { URL as FileURL } from "node:url";
 // @vitest-environment jsdom
@@ -499,7 +500,7 @@ const _afterEachFixture0 = async () => {
 };
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
 
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; product?: boolean; search?: string; command?: (body: unknown) => Promise<Response> } = {}) {
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; product?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response> } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
@@ -516,6 +517,7 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
       if (options.boot) return options.boot;
       if (options.bootFailure) return Response.json({ code: 'FIXTURE_UNAVAILABLE', message: 'Synthetic boot unavailable' }, { status: 503 });
     }
+    if (url.endsWith("/settings/editable") && options.settingsRead !== undefined) return Response.json(options.settingsRead());
     if (url.includes('/events/v1?')) {
       const body = new ReadableStream<Uint8Array>({ start(controller) {
         streams.push(controller);
@@ -624,10 +626,16 @@ afterEach_m2(_afterEachFixture0);
   for (const save of [
     { section: "performance", field: "Task", value: "240", title: "Settings save unconfirmed", inline: "Settings write unconfirmed" },
     { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed", inline: "Credentials write unconfirmed" },
-  ]) it_m2(`publishes one existing ${save.title} toast from the original command`, async () => {
+  ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
     const commands: unknown[] = [];
-    const h = await mount({ search: `settings=${save.section}`, command: body => {
-      commands.push(body); return Promise.reject(new Error("private-transport-sentinel"));
+    const authority = syntheticSettingsAuthority(); disposers.push(authority.close);
+    const h = await mount({ search: `settings=${save.section}`, settingsRead: authority.read, command: body => {
+      commands.push(body);
+      if (commands.length <= 2) return Promise.reject(new Error("private-transport-sentinel"));
+      const command = CommandRequestSchema.parse(body);
+      return Promise.resolve(replacement === "confirmed" ? Response.json(authority.execute(command)) : Response.json(replacement === "conflict"
+        ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
+        : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));
     } });
     const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === save.field);
     assert_m2.ok(label, `missing ${save.field} label`);
@@ -651,6 +659,62 @@ afterEach_m2(_afterEachFixture0);
     assert_m2.match(h.host.textContent ?? "", new RegExp(save.inline, "u"));
     assert_m2.equal(input.value, save.value);
     await settle(); assert_m2.equal(commands.length, 1, "uncertainty must not retry automatically");
+    const retry = async () => {
+      const button = [...h.host.querySelectorAll("button")].find(candidate => candidate.textContent === "Retry exact attempt");
+      assert_m2.ok(button, "missing exact retry");
+      await act_m2(async () => button.click()); await settle();
+    };
+    await retry();
+    assert_m2.equal(commands.length, 2);
+    assert_m2.equal(document.querySelectorAll('[data-slot="toast"]').length, 1, "repeated uncertainty keeps the existing warning");
+    assert_m2.equal(document.querySelector('[data-slot="toast"]') === toasts[0], true, "the original warning identity is retained");
+    await retry();
+    assert_m2.equal(commands.length, 3);
+    assert_m2.deepEqual(commands, [commands[0], commands[0], commands[0]], "all retries keep the original command identity and bytes");
+    assert_m2.equal(toasts[0]?.isConnected === false || toasts[0]?.hasAttribute("data-ending-style"), true, "known replacement dismisses the exact original warning");
+    const activeToasts = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
+    assert_m2.equal(activeToasts.length, 1);
+    assert_m2.doesNotMatch(activeToasts[0]?.textContent ?? "", /save unconfirmed/u);
+    assert_m2.match(activeToasts[0]?.textContent ?? "", replacement === "confirmed" ? /Saved|Already saved/u : replacement === "conflict" ? /changed/u : /weren't saved/u);
+  });
+  it_m2("dismisses only the recovered command warning while another Settings command remains unknown", async () => {
+    const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
+    const authority = syntheticSettingsAuthority(); disposers.push(authority.close);
+    const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
+      const command = CommandRequestSchema.parse(body); commands.push(command);
+      const attempts = commands.filter(candidate => candidate.commandId === command.commandId).length;
+      if (attempts === 1) return Promise.reject(new Error("Synthetic lost response"));
+      return Promise.resolve(Response.json(authority.execute(command)));
+    } });
+    const edit = async (field: string, value: string) => {
+      const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === field);
+      assert_m2.ok(label);
+      const input = document.getElementById(label.htmlFor); assert_m2.ok(input instanceof HTMLInputElement);
+      await act_m2(async () => {
+        input.focus();
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+        if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
+        descriptor.set.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act_m2(async () => input.blur()); await settle();
+    };
+    await edit("Task", "240");
+    const ordinaryWarning = document.querySelector('[data-slot="toast"]'); assert_m2.ok(ordinaryWarning);
+    const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Credentials");
+    assert_m2.ok(credentials); await act_m2(async () => credentials.click()); await settle();
+    await edit("UCPath username", "Synthetic credential");
+    assert_m2.equal(commands.length, 2);
+    assert_m2.notEqual(commands[0]?.commandId, commands[1]?.commandId);
+    assert_m2.equal(document.querySelectorAll('[data-slot="toast"]').length, 2);
+    const retry = [...h.host.querySelectorAll("button")].find(button => button.textContent === "Retry exact attempt"); assert_m2.ok(retry);
+    await act_m2(async () => retry.click()); await settle();
+    assert_m2.equal(commands.length, 3); assert_m2.deepEqual(commands[2], commands[1]);
+    assert_m2.equal(ordinaryWarning.isConnected, true);
+    assert_m2.equal(ordinaryWarning.hasAttribute("data-ending-style"), false, "another command cannot dismiss the unresolved warning");
+    const active = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
+    assert_m2.equal(active.length, 2);
+    assert_m2.equal(active.filter(node => node.textContent?.includes("Settings save unconfirmed")).length, 1);
+    assert_m2.equal(active.filter(node => node.textContent?.includes("Credentials save unconfirmed")).length, 0);
   });
   it_m2("retains the served Delete run label when its original row disappears", async () => {
     const candidate = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.surfaceKind === "single" && row.actions.some(action => action.kind === "command" && action.command === "delete"));

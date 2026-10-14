@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, it } from "vitest";
@@ -98,7 +99,9 @@ for (const problem of ["rollback", "divergent-fingerprint", "divergent-values", 
     }
     h.setRead(() => Promise.resolve(next));
     await act(async () => h.controller().reload());
-    assert.ok(h.controller().readProblem); assert.equal(h.controller().locked, true); assert.equal(h.controller().protectedEditor.locked, true);
+    assert.ok(h.controller().readProblem);
+    assert.equal(h.controller().readProblem, formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_REFRESH_UNAVAILABLE", {})).text);
+    assert.equal(h.controller().locked, true); assert.equal(h.controller().protectedEditor.locked, true);
     const editor = h.controller().editor; assert.ok(editor.state === "loaded"); assert.deepEqual(editor.document, h.newer);
     assert.deepEqual(h.writes, []);
   });

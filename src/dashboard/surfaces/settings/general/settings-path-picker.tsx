@@ -1,3 +1,4 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import { PathControl } from "../../../ds/ui.js";
@@ -25,14 +26,14 @@ export function SettingsPathPicker({ field, label, value, disabled, onSelected }
       const response = await client.pickSettingsPath({ field, initialPath: value });
       if (!active.current || currentRequest.current !== request) return;
       if (response.state === "selected" && !disabled) onSelected(response.path);
-      else if (response.state === "unavailable") setError({
-        busy: "Another path picker is already open.",
-        timeout: "The path picker timed out. Try again.",
-        "unsupported-platform": "The path picker is unavailable on this host.",
-        "dialog-failed": "The path picker could not be opened. Try again.",
-      }[response.reason]);
+      else if (response.state === "unavailable") setError(formatErrorCatalogFailure(createErrorCatalogFailure({
+        busy: "SETTINGS_PATH_PICKER_BUSY" as const,
+        timeout: "SETTINGS_PATH_PICKER_TIMEOUT" as const,
+        "unsupported-platform": "SETTINGS_PATH_PICKER_UNSUPPORTED" as const,
+        "dialog-failed": "SETTINGS_PATH_PICKER_FAILED" as const,
+      }[response.reason], {})).text);
     } catch {
-      if (active.current && currentRequest.current === request) setError("The path picker could not be opened. Try again.");
+      if (active.current && currentRequest.current === request) setError(formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_PATH_PICKER_FAILED", {})).text);
     } finally {
       if (active.current) setBusy(false);
     }

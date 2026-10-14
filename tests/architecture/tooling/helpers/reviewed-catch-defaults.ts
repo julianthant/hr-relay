@@ -18,12 +18,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/dashboard/surfaces/settings/editor/settings-editor-model.ts",
-    "sha256": "2b06d303effbe1f8695fc98f15e9ef21b571994e08172b8f9f88cf0f503003ca",
+    "sha256": "b7ef2840c0d853b8bf4b70328f13ebe8628c52dc6cd7c3a7dc033517575eb1cc",
     "reason": "A refresh rejection publishes the read failure and still rejects with settings-read-unavailable; drafts are retained. Before-effect refusal clears the attempt, unconfirmed writes retain it."
   },
   {
     "path": "src/dashboard/surfaces/settings/providers/settings-protected-model.ts",
-    "sha256": "1b212dc4aab42fd8f7fd93ed87a31f8e6c9c65b13f447db5997510644d004867",
+    "sha256": "558f28727e4d9d0739fb2e2ed2052ae1ee08f96bfa834f7a33aaa34652037451",
     "reason": "Only a before-effect refusal clears the attempt; unknown writes retain the exact attempt and draft and publish unconfirmed."
   },
   {

@@ -335,7 +335,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   routeRef.current = route;
   const bulkIdsRef = useRef(bulkIds);
   bulkIdsRef.current = bulkIds;
-  const { toast } = useToasts();
+  const { toast, dismiss } = useToasts();
+  const unknownWarnings = useRef(new Map<string, string>());
   const executor = useDashboardCommandExecutor();
   const commandScope = useMemo(() => Object.freeze({ actorId: boot.actor.id, client, authority: authorityEpoch, dayRequest: dayState.request }), [boot.actor.id, client, authorityEpoch, dayState.request]);
   const currentCommandScope = useRef<CommandExecutionScope | undefined>(commandScope);
@@ -347,12 +348,19 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     return () => { if (currentCommandScope.current === commandScope) currentCommandScope.current = undefined; };
   }, [commandScope]);
   const commandFeedback = useCallback((outcome: CommandOutcome): void => {
+    const warningId = unknownWarnings.current.get(outcome.commandId);
+    if (outcome.kind === "uncertain" && warningId !== undefined) return;
+    if (outcome.kind !== "uncertain" && warningId !== undefined) {
+      dismiss(warningId);
+      unknownWarnings.current.delete(outcome.commandId);
+    }
     if (outcome.kind === "confirmed") return;
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     const notice = original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")
       ? settingsSaveProblem(commandSaveState(outcome), original.type === "apply-protected-settings") : undefined;
-    toast(notice ?? { tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
-  }, [executor, toast]);
+    const toastId = toast(notice ?? { tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+    if (outcome.kind === "uncertain") unknownWarnings.current.set(outcome.commandId, toastId);
+  }, [executor, toast, dismiss]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
   const recoveryEntries: readonly UncertainCommandEntry[] = executor.retainedAttempts().flatMap<UncertainCommandEntry>(attempt => {
     const request = attempt.request;

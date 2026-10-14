@@ -45,6 +45,50 @@ export const ERROR_CATALOG = Object.freeze({
     "The plan write could not be confirmed. It may already be recorded. Retry the exact attempt; your draft is retained.",
     EmptyParametersSchema,
   ),
+  SETTINGS_INITIAL_READ_UNAVAILABLE: catalogEntry(
+    "Settings could not be read. Try again.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_REFRESH_UNAVAILABLE: catalogEntry(
+    "Current settings could not be read. Your drafts are retained.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_DRAFT_INVALID: catalogEntry(
+    "Check the draft values. No request was sent.",
+    EmptyParametersSchema,
+  ),
+  PROTECTED_SETTINGS_DRAFT_INVALID: catalogEntry(
+    "Check the credential draft. No request was sent.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RELOCATION_DRAFT_INVALID: catalogEntry(
+    "Check the folder paths. No plan was sent.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RELOCATION_DRAFT_UNCHANGED: catalogEntry(
+    "The draft matches the current plan. Undo the edit or choose another folder.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RELOCATION_CANCEL_REQUIRED: catalogEntry(
+    "Cancel the current plan to keep the active locations, or choose another folder.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_PATH_PICKER_BUSY: catalogEntry(
+    "Another path picker is already open.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_PATH_PICKER_TIMEOUT: catalogEntry(
+    "The path picker timed out. Try again.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_PATH_PICKER_UNSUPPORTED: catalogEntry(
+    "The path picker is unavailable on this host.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_PATH_PICKER_FAILED: catalogEntry(
+    "The path picker could not be opened. Try again.",
+    EmptyParametersSchema,
+  ),
   COMMAND_RESULT_IDENTITY_MISMATCH: catalogEntry(
     "The command response did not match the requested command. Review local diagnostic evidence.",
     EmptyParametersSchema,

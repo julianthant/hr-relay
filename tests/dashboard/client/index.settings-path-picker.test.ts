@@ -6,6 +6,7 @@ import { afterEach,describe,it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { SettingsPathPicker } from "../../../src/dashboard/surfaces/settings/general/settings-path-picker.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -25,16 +26,16 @@ async function mount(pickSettingsPath: DashboardClient["pickSettingsPath"], onSe
 describe("native Paths picker control", () => {
 
   it("uses concise host and timeout messages without changing the path", async () => {
-    let reason: "timeout" | "unsupported-platform" | "dialog-failed" = "timeout";
+    let reason: "busy" | "timeout" | "unsupported-platform" | "dialog-failed" = "timeout";
     const selected: string[] = [];
     const surface = await mount(() => Promise.resolve({ state: "unavailable", field: "paths.duoCredential", reason }), path => selected.push(path));
     const button = surface.querySelector("button");
     if (!(button instanceof HTMLButtonElement)) throw new Error("picker button missing");
-    for (const [next, expected] of [["timeout", /timed out/u], ["unsupported-platform", /unavailable on this host/u],
-      ["dialog-failed", /could not be opened/u]] as const) {
+    for (const [next, code] of [["busy", "SETTINGS_PATH_PICKER_BUSY"], ["timeout", "SETTINGS_PATH_PICKER_TIMEOUT"], ["unsupported-platform", "SETTINGS_PATH_PICKER_UNSUPPORTED"],
+      ["dialog-failed", "SETTINGS_PATH_PICKER_FAILED"]] as const) {
       reason = next;
       await act(async () => { button.click(); await Promise.resolve(); });
-      assert.match(surface.querySelector('[role="alert"]')?.textContent ?? "", expected);
+      assert.equal(surface.querySelector('[role="alert"]')?.textContent, formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text);
     }
     assert.deepEqual(selected, []);
   });

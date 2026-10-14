@@ -8,14 +8,14 @@ import {
   storageRelocationDesiredDigest, storageRelocationRequestFingerprint,
   type CommandResult, type StorageRelocationCommandRequest, type StorageRelocationPlanView,
 } from "../../../../rules/commands/commands.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { commandSaveState, settingsScopeRecoveryState, type SettingsSaveListener } from "../editor/settings-attempt-model.js";
 import { useSettingsClient } from "../editor/settings-client.js";
 
 type Pair = StorageRelocationPlanView["sourcePair"];
 type Field = keyof Pair;
 type Draft = Partial<Record<Field, string>>;
-type Save = { readonly state: "idle" | "saving" | "applied" } | { readonly state: "conflict" | "refused" | "unconfirmed"; readonly code?: string; readonly message: string };
+type Save = { readonly state: "idle" | "saving" | "applied" } | { readonly state: "conflict" | "refused" | "unconfirmed"; readonly code?: ErrorCatalogCode; readonly message: string };
 type Read = { readonly state: "loading" } | { readonly state: "unavailable" } | { readonly state: "available"; readonly view: StorageRelocationPlanView };
 
 function validPath(value: string): boolean {
@@ -159,13 +159,13 @@ export function useStorageRelocation(input: Readonly<{ actorId: string; descript
     const pair = desiredRelocationPair(read.view, draft);
     const previousDesired = desiredRelocationPair(read.view, {});
     if (pair.stateRoot === previousDesired.stateRoot && pair.artifactRoot === previousDesired.artifactRoot) {
-      setSave({ state: "refused", message: "The draft matches the current plan. Undo the edit or choose another folder." }); return;
+      setSave({ state: "refused", code: "STORAGE_RELOCATION_DRAFT_UNCHANGED", message: formatErrorCatalogFailure(createErrorCatalogFailure("STORAGE_RELOCATION_DRAFT_UNCHANGED", {})).text }); return;
     }
     if (pair.stateRoot === read.view.sourcePair.stateRoot && pair.artifactRoot === read.view.sourcePair.artifactRoot) {
-      setSave({ state: "refused", message: "Cancel the current plan to keep the active locations, or choose another folder." }); return;
+      setSave({ state: "refused", code: "STORAGE_RELOCATION_CANCEL_REQUIRED", message: formatErrorCatalogFailure(createErrorCatalogFailure("STORAGE_RELOCATION_CANCEL_REQUIRED", {})).text }); return;
     }
     try { if (binding === undefined) { setSave(commandSaveState(undefined)); return; } void perform(planRelocationCommand(read.view, pair, binding.scope.actorId, binding.authority.nowIso)); }
-    catch { setSave({ state: "refused", message: "Check the folder paths. No plan was sent." }); }
+    catch { setSave({ state: "refused", code: "STORAGE_RELOCATION_DRAFT_INVALID", message: formatErrorCatalogFailure(createErrorCatalogFailure("STORAGE_RELOCATION_DRAFT_INVALID", {})).text }); }
   };
   const cancel = (): void => {
     if (read.state !== "available" || locked || read.view.pending === null || Object.keys(draft).length > 0) return;

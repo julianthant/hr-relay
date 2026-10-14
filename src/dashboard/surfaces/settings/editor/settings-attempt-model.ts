@@ -6,7 +6,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 export { beforeEffectRefusal } from "../../../app/commands/command-result.js";
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import type { CommandOutcome } from "../../../app/commands/command-executor.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 
 export type OrdinarySettingsAttempt = z.infer<typeof SettingsCommandRequestSchema>;
 export type ProtectedSettingsAttempt = z.infer<typeof ProtectedSettingsCommandRequestSchema>;
@@ -15,7 +15,7 @@ export type SettingsSaveState =
   | { readonly state: "idle" }
   | { readonly state: "saving" }
   | { readonly state: "applied"; readonly replayed: boolean }
-  | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: string };
+  | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: ErrorCatalogCode };
 export type SettingsSaveNotice = Readonly<{ title: string; description?: string }>;
 export type SettingsSaveListener = (notice: SettingsSaveNotice) => void;
 export type SettingsSaveProblem = SettingsSaveNotice & Readonly<{ tone: "danger" | "warning" }>;

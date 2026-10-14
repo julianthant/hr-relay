@@ -12,6 +12,11 @@ async function mount(element: ReturnType<typeof createElement>) { const host = d
 const button = (name: string) => { const found = [...document.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === name); assert(found, name); return found; };
 const press = async (name: string) => act(async () => button(name).click());
 describe('mounted frontend reliability contracts', () => {
+  it('uses the registered ordinary draft code when a refusal has no explicit code', async () => {
+    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'refused', message: 'Check the draft values. No request was sent.' }, retry: () => undefined }));
+    assert.match(host.textContent ?? '', /SETTINGS_DRAFT_INVALID/u);
+    assert.doesNotMatch(host.textContent ?? '', /settings-draft-invalid/u);
+  });
   it('retains saved status, distinguishes restart-required and preserves uncertain retry', async () => {
     vi.useFakeTimers(); let retry = 0;
     const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'applied', replayed: false }, restartRequired: true, retry: () => retry++ }));

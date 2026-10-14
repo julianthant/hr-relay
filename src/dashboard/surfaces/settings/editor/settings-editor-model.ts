@@ -1,3 +1,4 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
@@ -42,7 +43,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-settings") pending.current = retained.request;
   if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
   const readReady = acceptedRequest.current === request;
-  const readProblem = reportedReadProblem ?? (editor.state === "loaded" && !readReady ? "Current settings could not be read. Your drafts are retained." : undefined);
+  const readProblem = reportedReadProblem ?? (editor.state === "loaded" && !readReady ? formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_REFRESH_UNAVAILABLE", {})).text : undefined);
   const { preflight, rerunPreflight } = useSettingsPreflight(editor, input);
   const refresh = useCallback(async (publish = true): Promise<EditableSettingsWire> => {
     try {
@@ -62,13 +63,13 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       if (publish && generation.current === request) { acceptedRequest.current = request; current.current = document; setEditor({ state: "loaded", document }); setReadProblem(undefined); }
       return document;
     } catch {
-      if (publish && generation.current === request) setReadProblem("Current settings could not be read. Your drafts are retained.");
+      if (publish && generation.current === request) setReadProblem(formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_REFRESH_UNAVAILABLE", {})).text);
       throw new Error("settings-read-unavailable");
     }
   }, [client, request]);
   useEffect(() => {
     let active = true;
-    void refresh().catch(() => { if (active && current.current === undefined) setEditor({ state: "failed", message: "Settings could not be read. Try again." }); });
+    void refresh().catch(() => { if (active && current.current === undefined) setEditor({ state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text }); });
     return () => { active = false; };
   }, [refresh]);
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; current.current = document; setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
@@ -163,7 +164,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       const command = deepFreeze(SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "settings-surface", family: "settings", type: "apply-settings",
         target: { expectedRevision: editor.document.revision }, payload: { settingsSchemaHash: editor.document.settingsSchemaHash, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }));
       void perform(command);
-    } catch { setSave({ state: "refused", message: "Check the draft values. No request was sent." }); }
+    } catch { setSave({ state: "refused", code: "SETTINGS_DRAFT_INVALID", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_DRAFT_INVALID", {})).text }); }
   };
   const autosave = useEffectEvent(submit);
   useEffect(() => {
