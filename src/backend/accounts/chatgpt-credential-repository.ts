@@ -206,5 +206,5 @@ export function verifyChatGptCredentialStore(options: ChatGptCredentialRepositor
   const directory = join(options.stateRoot, CHATGPT_CREDENTIAL_DIRECTORY);
   if (lstatSync(directory, { throwIfNoEntry: false }) === undefined) return;
   if (readdirSync(directory).some(name => name !== "account.json")) throw unavailable();
-  if (createChatGptCredentialRepository(options).read() === undefined) throw unavailable();
+  createChatGptCredentialRepository(options).read();
 }

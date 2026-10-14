@@ -78,7 +78,7 @@ it("exclusive runtime admission recovers a stale credential writer and stage", a
     try {
       admission.assertExclusive();
       const stateRoot = admission.stateRoot, repository = createChatGptCredentialRepository({ admission, stateRoot });
-      const directory = join(stateRoot, "chatgpt-credentials"), path = join(directory, "account.json");
+      const directory = join(stateRoot, "chatgpt-credentials");
       const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
       await repository.withLock(async tx => { tx.replace(record, null); });
       const id = randomUUID(), lockPath = join(directory, ".writer"), stagePath = join(directory, `.account.${id}.tmp`);

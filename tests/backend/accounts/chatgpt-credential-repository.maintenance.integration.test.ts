@@ -3,10 +3,23 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
-import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../src/backend/accounts/chatgpt-credential-repository.js";
+import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
+import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../src/backend/accounts/chatgpt-credential-repository.js";
+import { verifyRelocationLiveReferences } from "../../../src/backend/storage/maintenance/relocation-inventory.js";
 import { createStorageRestoreTestWorld } from "../../support/helpers/backend/storage-restore-world.js";
 import { upgradeStorage } from "../../../src/backend/storage/maintenance/upgrade.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+
+it("signed-out credential cleanup remains valid for custody and relocation", async () => {
+  const world = createStorageRestoreTestWorld(), paths = world.drillPaths();
+  const service = createChatGptAccountService({ admission: paths.admission, stateRoot: paths.stateRoot, clock: world.CLOCK });
+  try {
+    assert.deepEqual(await service.signOut(), { state: "signed-out", remoteRevocation: "not-needed" });
+    assert.deepEqual(readdirSync(join(paths.stateRoot, "chatgpt-credentials")), []);
+    verifyChatGptCredentialStore({ admission: paths.admission, stateRoot: paths.stateRoot });
+    verifyRelocationLiveReferences({ admission: paths.admission, source: { stateRoot: paths.stateRoot, artifactRoot: paths.admission.artifactRoot } });
+  } finally { await service.close(); world.cleanup(); }
+});
 
 it("SQLite backup, stopped upgrade and restore leave the current token authority untouched", async () => {
   const world = createStorageRestoreTestWorld(), paths = world.drillPaths();
