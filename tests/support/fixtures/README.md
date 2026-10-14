@@ -90,6 +90,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |
 | `helpers/browser/fake-login-page.ts` | fake login page |
 | `helpers/canonical-run-reader.ts` | canonical run reader |
+| `helpers/chatgpt-account-fixtures.ts` | synthetic ChatGPT account fixtures |
 | `helpers/dashboard-model-fixtures.ts` | dashboard run detail, queue, pagination and artifact data |
 | `helpers/dashboard/fixture-bff.ts` | fixture bff |
 | `helpers/dashboard/profiles/bundle-setup.ts` | bundle profile setup |

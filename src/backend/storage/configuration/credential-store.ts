@@ -1,20 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { linkSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import {
-  closeSync,
-  constants,
-  fstatSync,
-  fsyncSync,
-  linkSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, parse, resolve } from "node:path";
+  CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, fsyncPath, noSymlinkAncestry, statDirectory,
+  sameDirectory, removeExactPath, ensureChildDirectory, readPrivateFile,
+  createPrivateLock, writePrivateStage, replacePrivateFile, companionCredentialEntries,
+  type DirectoryIdentity,
+} from "./credential-safe-file.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type {
@@ -36,17 +28,13 @@ import {
   type SettingsApplyRejectionCode,
 } from "../../../models/config/settings.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { encodePrivate, privateEqual as privateEqualBounded } from "../../../rules/validation/private-equal.js";
 import {
-  ProcessStartIdentitySchema,
   observeProcessIdentity,
   type ProcessIdentityObserver,
 } from "../sqlite/runtime-process-locks.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 
-const CREDENTIAL_DIRECTORY_MODE = 0o700;
-const CREDENTIAL_FILE_MODE = 0o600;
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
 const MAX_CREDENTIAL_DOCUMENT_BYTES = 16 * 1024 * 1024;
 const CREDENTIAL_FILE_NAME = "protected.json";
@@ -75,14 +63,6 @@ const CredentialDocumentSchema = z.strictObject({
   schemaVersion: z.literal(2),
   record: ProtectedStoreRecordSchema,
   history: z.array(CredentialHistoryEntrySchema),
-});
-
-const CredentialLockRecordSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  kind: z.enum(["writer", "reaper"]),
-  pid: PositiveIntSchema,
-  processIdentity: ProcessStartIdentitySchema,
-  acquisitionId: z.uuid(),
 });
 
 type CredentialHistoryEntry = z.infer<typeof CredentialHistoryEntrySchema>;
@@ -124,11 +104,6 @@ class CredentialStoreLockUnavailableError extends Error {
   }
 }
 
-interface DirectoryIdentity {
-  readonly device: number;
-  readonly inode: number;
-}
-
 interface ReadDocument {
   readonly bytes: Uint8Array;
   readonly document: CredentialDocument;
@@ -154,13 +129,6 @@ interface CredentialLockHandle {
 interface LockedResult<Result> {
   readonly committed: boolean;
   readonly result: Result;
-}
-
-const expectedUid = typeof process.getuid === "function" ? process.getuid() : undefined;
-
-function errorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
-  return typeof error.code === "string" ? error.code : undefined;
 }
 
 function frozenRefusal(
@@ -195,111 +163,6 @@ function admit(input: unknown): ProtectedSettingsApplyInput | CredentialStoreApp
     );
   }
   return parsed.data;
-}
-
-function fsyncPath(path: string): void {
-  const descriptor = openSync(path, "r");
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
-/** Verify each component before descendants; retain identities across every operation. */
-function noSymlinkAncestry(path: string, identities: Map<string, DirectoryIdentity>): boolean {
-  const absolute = resolve(path);
-  const root = parse(absolute).root;
-  const segments = absolute.slice(root.length).split(/[/\\]+/u).filter((segment) => segment !== "");
-  let cursor = root;
-  const paths = [root, ...segments.map((segment) => { cursor = join(cursor, segment); return cursor; })];
-  for (const component of paths) {
-    const status = lstatSync(component, { throwIfNoEntry: false });
-    const prior = identities.get(component);
-    if (status === undefined) {
-      if (prior !== undefined) throw new Error("directory-integrity: credential ancestor disappeared");
-      return false;
-    }
-    if (status.isSymbolicLink()) throw new Error("directory-integrity: credential path ancestry contains a symbolic link");
-    if (!status.isDirectory()) throw new Error("directory-integrity: credential path ancestry contains a non-directory");
-    if (expectedUid === undefined || (status.uid !== expectedUid && status.uid !== 0)) {
-      throw new Error("directory-integrity: credential ancestor has an untrusted owner");
-    }
-    if ((status.mode & 0o022) !== 0 && (status.mode & 0o1000) === 0) {
-      throw new Error("directory-integrity: credential ancestor is group/world-writable without sticky protection");
-    }
-    const observed = { device: status.dev, inode: status.ino };
-    if (prior !== undefined && !sameDirectory(prior, observed)) throw new Error("directory-integrity: credential ancestor identity changed");
-    identities.set(component, observed);
-  }
-  return true;
-}
-
-function statDirectory(path: string, label: string, exactMode?: number): DirectoryIdentity {
-  let status;
-  try {
-    status = lstatSync(path);
-  } catch {
-    throw new Error(`directory-integrity: ${label} is unavailable`);
-  }
-  if (!status.isDirectory() || status.isSymbolicLink()) {
-    throw new Error(`directory-integrity: ${label} is not a private directory`);
-  }
-  if (expectedUid !== undefined && status.uid !== expectedUid) {
-    throw new Error(`directory-integrity: ${label} is owned by another user`);
-  }
-  if (exactMode !== undefined && (status.mode & 0o7777) !== exactMode) {
-    throw new Error(`directory-integrity: ${label} permissions must be 0700`);
-  }
-  return { device: status.dev, inode: status.ino };
-}
-
-function sameDirectory(left: DirectoryIdentity, right: DirectoryIdentity): boolean {
-  return left.device === right.device && left.inode === right.inode;
-}
-
-function removeExactPath(
-  path: string,
-  expected: DirectoryIdentity,
-  missingIsSettled: boolean,
-  changedMessage: string,
-): boolean {
-  let status;
-  try {
-    status = lstatSync(path, { throwIfNoEntry: false });
-  } catch (error) {
-    throw new Error(changedMessage, { cause: error });
-  }
-  if (status === undefined) {
-    if (missingIsSettled) return false;
-    throw new Error(changedMessage);
-  }
-  if (!status.isFile() || status.isSymbolicLink()
-    || status.dev !== expected.device || status.ino !== expected.inode
-    || (expectedUid !== undefined && status.uid !== expectedUid)) {
-    throw new Error(changedMessage);
-  }
-  unlinkSync(path);
-  return true;
-}
-
-function ensureChildDirectory(
-  parent: string,
-  child: string,
-  label: string,
-  creationMode: number,
-  requiredMode?: number,
-): void {
-  statDirectory(parent, `${label} parent`);
-  try {
-    mkdirSync(child, { mode: creationMode });
-    fsyncPath(parent);
-  } catch (error) {
-    if (errorCode(error) !== "EEXIST") {
-      throw new Error(`directory-integrity: ${label} could not be created`, { cause: error });
-    }
-  }
-  statDirectory(child, label, requiredMode);
 }
 
 function privateEqual(left: unknown, right: unknown): boolean {
@@ -388,59 +251,12 @@ function initialDocument(): CredentialDocument {
 }
 
 function readPrivateDocument(path: string): ReadDocument | undefined {
-  let pathStatus;
-  try {
-    pathStatus = lstatSync(path, { throwIfNoEntry: false });
-  } catch (error) {
-    throw new Error("credential store protected.json is unavailable", { cause: error });
-  }
-  if (pathStatus === undefined) return undefined;
-  if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || pathStatus.nlink !== 1
-    || (expectedUid !== undefined && pathStatus.uid !== expectedUid)) {
-    throw new Error("directory-integrity: protected.json must be one private regular file");
-  }
-
-  let descriptor: number;
-  try {
-    descriptor = openSync(
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
-  } catch {
-    throw new Error("credential store protected.json is unavailable");
-  }
-  try {
-    const before = fstatSync(descriptor);
-    if (!before.isFile() || before.nlink !== 1 || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
-      || (expectedUid !== undefined && before.uid !== expectedUid)) {
-      throw new Error("directory-integrity: protected.json permissions or identity are invalid");
-    }
-    if (before.size > MAX_CREDENTIAL_DOCUMENT_BYTES) {
-      throw new Error("document-too-large: credential store protected.json exceeds its private bound");
-    }
-    const bytes = readFileSync(descriptor);
-    const after = fstatSync(descriptor);
-    const live = lstatSync(path);
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
-      || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
-      || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
-      || live.dev !== before.dev || live.ino !== before.ino || bytes.byteLength !== before.size) {
-      throw new Error("directory-integrity: protected.json moved while it was read");
-    }
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-    } catch {
-      throw new Error("credential store protected.json is malformed");
-    }
-    return {
-      bytes,
-      document: authenticateDocument(decoded),
-      identity: { device: before.dev, inode: before.ino },
-    };
-  } finally {
-    closeSync(descriptor);
-  }
+  const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_DOCUMENT_BYTES });
+  if (file === undefined) return undefined;
+  let decoded: unknown;
+  try { decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)); }
+  catch { throw new Error("credential store protected.json is malformed"); }
+  return { bytes: file.bytes, document: authenticateDocument(decoded), identity: file.identity };
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
@@ -453,62 +269,14 @@ function readCredentialLock(
   kind: CredentialLockRecord["kind"],
   allowedLinkCounts: readonly number[] = [1],
 ): ReadLock | undefined {
-  let pathStatus;
-  try {
-    pathStatus = lstatSync(path, { throwIfNoEntry: false });
-  } catch (error) {
-    throw new Error("directory-integrity: credential lock is unavailable", { cause: error });
-  }
-  if (pathStatus === undefined) return undefined;
-  if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(pathStatus.nlink)
-    || (pathStatus.mode & 0o7777) !== CREDENTIAL_FILE_MODE
-    || (expectedUid !== undefined && pathStatus.uid !== expectedUid)) {
-    throw new Error("directory-integrity: credential lock permissions or identity are invalid");
-  }
-
-  let descriptor: number;
-  try {
-    descriptor = openSync(
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
-  } catch (error) {
-    throw new Error("directory-integrity: credential lock is unavailable", { cause: error });
-  }
-  try {
-    const before = fstatSync(descriptor);
-    if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || before.size > 4_096
-      || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
-      || (expectedUid !== undefined && before.uid !== expectedUid)) {
-      throw new Error("directory-integrity: credential lock permissions or identity are invalid");
-    }
-    const bytes = readFileSync(descriptor);
-    const after = fstatSync(descriptor);
-    const live = lstatSync(path);
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
-      || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
-      || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
-      || live.dev !== before.dev || live.ino !== before.ino || bytes.byteLength !== before.size) {
-      throw new Error("directory-integrity: credential lock moved while it was read");
-    }
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-    } catch {
-      throw new Error("directory-integrity: credential lock is malformed");
-    }
-    const parsed = CredentialLockRecordSchema.safeParse(decoded);
-    if (!parsed.success || parsed.data.kind !== kind) {
-      throw new Error("directory-integrity: credential lock is malformed");
-    }
-    return {
-      bytes,
-      record: parsed.data,
-      identity: { device: before.dev, inode: before.ino },
-    };
-  } finally {
-    closeSync(descriptor);
-  }
+  const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096, allowedLinkCounts });
+  if (file === undefined) return undefined;
+  let decoded: unknown;
+  try { decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)); }
+  catch { throw new Error("directory-integrity: credential lock is malformed"); }
+  const parsed = CredentialLockRecordSchema.safeParse(decoded);
+  if (!parsed.success || parsed.data.kind !== kind) throw new Error("directory-integrity: credential lock is malformed");
+  return { bytes: file.bytes, record: parsed.data, identity: file.identity };
 }
 
 function releaseLock(
@@ -525,20 +293,6 @@ function releaseLock(
     current.identity,
     false,
     "directory-integrity: credential lock changed before release",
-  );
-  fsyncPath(credentialDirectory);
-}
-
-function removeCreatedLock(
-  path: string,
-  credentialDirectory: string,
-  expected: DirectoryIdentity,
-): void {
-  removeExactPath(
-    path,
-    expected,
-    false,
-    "directory-integrity: new credential lock changed during cleanup",
   );
   fsyncPath(credentialDirectory);
 }
@@ -613,6 +367,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       CREDENTIAL_REAPER_NAME,
       CREDENTIAL_REAPER_CLAIM_NAME,
     ]);
+    for (const name of companionCredentialEntries(credentialDirectory, "protected")) permitted.add(name);
     for (const temporaryPath of ownTemporaryPaths) {
       permitted.add(temporaryPath.slice(credentialDirectory.length + 1));
     }
@@ -649,62 +404,10 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   }
 
   function createLock(path: string, record: CredentialLockRecord): boolean {
-    let descriptor: number | undefined;
-    try {
-      descriptor = openSync(
-        path,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-        CREDENTIAL_FILE_MODE,
-      );
-    } catch (error) {
-      if (errorCode(error) !== "EEXIST") throw new Error("credential store lock could not be created", { cause: error });
-    }
-    if (descriptor === undefined) return false;
-    const createdStatus = fstatSync(descriptor);
-    const createdIdentity = { device: createdStatus.dev, inode: createdStatus.ino };
-    let preparationError: Error | undefined;
-    try {
-      if (!createdStatus.isFile() || createdStatus.nlink !== 1
-        || (createdStatus.mode & 0o777) !== CREDENTIAL_FILE_MODE
-        || (expectedUid !== undefined && createdStatus.uid !== expectedUid)) {
-        throw new Error("directory-integrity: new credential lock permissions or identity are invalid");
-      }
-      writeFileSync(descriptor, encodePrivate(record));
-      fsyncSync(descriptor);
-    } catch (error) {
-      preparationError = error instanceof Error
-        ? new Error("credential store lock could not be made durable", { cause: error })
-        : new Error("credential store lock could not be made durable");
-    } finally {
-      closeSync(descriptor);
-    }
-
-    const failWithCleanup = (error: Error): never => {
-      try {
-        removeCreatedLock(path, credentialDirectory, createdIdentity);
-      } catch (cleanupError) {
-        throw new AggregateError(
-          [error, cleanupError],
-          "credential lock creation failed and its owned file could not be removed",
-          { cause: cleanupError },
-        );
-      }
-      throw error;
-    };
-    if (preparationError !== undefined) failWithCleanup(preparationError);
-
-    try {
-      fsyncPath(credentialDirectory);
+    return createPrivateLock(path, credentialDirectory, encodePrivate(record), () => {
       const observed = readCredentialLock(path, record.kind);
-      if (observed === undefined || !privateEqual(observed.record, record)) {
-        throw new Error("directory-integrity: credential lock differs after creation");
-      }
-    } catch (error) {
-      failWithCleanup(error instanceof Error
-        ? new Error("credential store lock could not be published exactly", { cause: error })
-        : new Error("credential store lock could not be published exactly"));
-    }
-    return true;
+      return observed !== undefined && privateEqual(observed.record, record);
+    });
   }
 
   function assertNoExistingReaperClaim(): void {
@@ -927,8 +630,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     let renamed = false;
     try {
       try {
-        writeFileSync(temporaryPath, bytes, { mode: CREDENTIAL_FILE_MODE, flag: "wx" });
-        fsyncPath(temporaryPath);
+        writePrivateStage(temporaryPath, bytes);
       } catch (error) {
         throw new Error("credential store replacement could not be staged", { cause: error });
       }
@@ -940,7 +642,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       hooks.beforeRename?.();
       assertDirectory();
       try {
-        renameSync(temporaryPath, protectedPath);
+        replacePrivateFile(temporaryPath, protectedPath);
         renamed = true;
       } catch (error) {
         throw new Error("credential store protected.json could not be atomically replaced", { cause: error });
@@ -1010,6 +712,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       CREDENTIAL_REAPER_NAME,
       CREDENTIAL_REAPER_CLAIM_NAME,
     ]);
+    for (const name of companionCredentialEntries(credentialDirectory, "protected")) permitted.add(name);
     if (beforeNames.some((name) => !permitted.has(name))) {
       throw new Error("directory-integrity: credential directory contains unsettled entries");
     }
@@ -1164,3 +867,5 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     },
   });
 }
+
+export { createChatGptCredentialRepository, verifyChatGptCredentialBytes, verifyChatGptCredentialStore, ChatGptCredentialError, ChatGptCredentialRecordSchema, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions, type ChatGptCredentialTransaction } from "./chatgpt-credential-repository.js";

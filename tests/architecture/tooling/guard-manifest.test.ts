@@ -484,6 +484,7 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root,"src/base/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
       writeFixture(root,"src/domain/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
       writeFixture(root,"src/validation/pure.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Pure = typeof engine;\n');
+      writeFixture(root,"src/backend/accounts/account-service.ts",'import { boot } from "../app/boot.js"; import { engine } from "../runtime/engine.js"; export const service = { boot, engine };\n');
       writeFixture(root,"src/backend/misc/helper.ts","export const helper = true;\n");
       const issues=auditRebuildRatchetArm("control-layering",root).violations.join("\n");
       assert.match(issues,/backend\/storage\/repository\.ts: layer inversion imports backend\/app\/boot\.ts/u);
@@ -494,6 +495,8 @@ describe("reviewed architecture guard manifest", () => {
       assert.match(issues,/base\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/domain\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/validation\/pure\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/app\/boot\.ts/u);
+      assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/misc\/helper\.ts: unclassified backend responsibility/u);
     } finally {rmSync(root,{recursive:true,force:true});}
   });

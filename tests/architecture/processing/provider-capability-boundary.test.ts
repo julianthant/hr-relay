@@ -21,6 +21,8 @@ function moduleText(node: ts.Expression | undefined): string | undefined {
 
 function isNetworkOwner(path: string): boolean {
   if (path.startsWith("src/backend/processing/providers/")) return true;
+  // The ChatGPT account service owns OAuth loopback and bounded OpenAI transport.
+  if (path === "src/backend/accounts/chatgpt-account-service.ts") return true;
   // The local Vite probe checks the dashboard's owned development server; it
   // is a host resource, not a provider adapter.
   if (path === "src/backend/app/host/local-vite-probe.ts") return true;
@@ -232,16 +234,24 @@ describe("provider capability boundary", () => {
   it("catches direct network use and adapter forgery outside network owners", () => {
     const root = resolve(tmpdir(), `hrauto-provider-boundary-${process.pid}-${Date.now()}`);
     const path = resolve(root, "src/backend/processing/ocr/tasks/bad.ts");
+    const accountOwner = resolve(root, "src/backend/accounts/chatgpt-account-service.ts");
+    const accountSibling = resolve(root, "src/backend/accounts/chatgpt-account-service-peer.ts");
     try {
       mkdirSync(dirname(path), { recursive: true });
+      mkdirSync(dirname(accountOwner), { recursive: true });
       writeFileSync(
         path,
         'import "node:https";\nimport type { ProviderAdapter } from "../../../../base/providers.js";\nconst forged = {} satisfies ProviderAdapter<"ocr.extract">;\nexport async function bad() { return fetch("https://example.invalid"); }\nvoid forged;\n',
       );
+      writeFileSync(accountOwner, 'import "node:https";\nexport async function request() { return fetch("https://example.invalid"); }\n');
+      writeFileSync(accountSibling, 'import "node:https";\nexport async function request() { return fetch("https://example.invalid"); }\n');
       const issues = auditProviderCapabilityBoundary(root).join("\n");
       assert.match(issues, /raw network\/provider module/);
       assert.match(issues, /raw fetch/);
       assert.match(issues, /ProviderAdapter implementations/);
+      assert.doesNotMatch(issues, /chatgpt-account-service\.ts:/);
+      assert.match(issues, /chatgpt-account-service-peer\.ts: raw network\/provider module/);
+      assert.match(issues, /chatgpt-account-service-peer\.ts: raw fetch/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

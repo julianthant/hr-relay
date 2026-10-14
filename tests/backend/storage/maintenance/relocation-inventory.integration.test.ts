@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
-import { linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
+import { chmodSync, linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import {
 copyRelocationFile,inspectRelocationFiles,prepareRelocationDirectories,
@@ -14,9 +15,11 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { insertGeneratedArtifact } from "../../../../src/backend/storage/sqlite/generated-artifacts.js";
 import { insertImportedArtifact } from "../../../../src/backend/storage/sqlite/imported-artifacts.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
 import { GeneratedArtifactSchema } from "../../../../src/models/artifacts/generated-artifact.js";
 import { importedArtifact } from "../../../../src/models/intake/imported-artifact.js";
 import { IntakeSessionSchema } from "../../../../src/models/intake/session.js";
+import { createCredentialStore, createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
 
 function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }> {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -25,6 +28,50 @@ function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }
     payloadBase64: bytes.toString("base64"),
   }) };
 }
+
+it("relocates only a validated private ChatGPT record and refuses unsafe token authority", async () => {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-chatgpt-")));
+  const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
+  const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
+  for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot]) mkdirSync(path, { recursive: true, mode: 0o700 });
+  const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot), destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
+  try {
+    const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_fixture",
+      registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
+      session: { accessToken: "synthetic-relocation-access", refreshToken: "synthetic-relocation-refresh", idToken: "synthetic-relocation-id",
+        expiresAt: IsoInstantSchema.parse("2026-10-12T12:00:00.000Z"), earliestRefreshAt: null, scopes: [], usePlan: false, usage: "available" } };
+    await createChatGptCredentialRepository({ admission: sourceAdmission, stateRoot: source.stateRoot }).withLock(async tx => { tx.replace(record, null); });
+    const protectedStore = createCredentialStore({ admission: sourceAdmission, stateRoot: source.stateRoot });
+    const protectedOutcome = protectedStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: 1,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-12T12:00:00.000Z", entries: { ucpathPassword: { set: "synthetic-relocation-protected" } } }));
+    assert.equal(protectedOutcome.state, "applied");
+    const input = { admission: sourceAdmission, source, destination, fixedLockRoot: join(source.stateRoot, "locks") };
+    const inventory = inspectRelocationFiles(input), file = inventory.files.find(file => file.relativePath === "credentials/chatgpt-account.json"); assert.ok(file);
+    assert.equal(JSON.stringify(inventory).includes("synthetic-relocation"), false);
+    prepareRelocationDirectories({ destinationAdmission, inventory });
+    copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file, operationId: randomUUID() });
+    const protectedFile = inventory.files.find(file => file.relativePath === "credentials/protected.json");
+    assert.ok(protectedFile);
+    copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file: protectedFile, operationId: randomUUID() });
+    assert.deepEqual(createCredentialStore({ admission: destinationAdmission, stateRoot: destination.stateRoot }).read(), protectedStore.read());
+    verifyRelocationFileCopies({ sourceAdmission, destinationAdmission, inventory });
+    assert.deepEqual(createChatGptCredentialRepository({ admission: destinationAdmission, stateRoot: destination.stateRoot }).read(), record);
+    assert.equal(lstatSync(join(destination.stateRoot, "credentials")).mode & 0o777, 0o700); assert.equal(lstatSync(join(destination.stateRoot, file.relativePath)).mode & 0o777, 0o600);
+    const path = join(source.stateRoot, file.relativePath);
+    writeFileSync(path, '{"refreshToken":"synthetic-sensitive"');
+    assert.throws(() => inspectRelocationFiles(input), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE", message: "ChatGPT credentials could not be read or saved safely." });
+    writeFileSync(path, JSON.stringify(record));
+    chmodSync(path, 0o644);
+    assert.throws(() => inspectRelocationFiles(input), /unknown or unsafe ChatGPT/u);
+    chmodSync(path, 0o600);
+    const stage = join(source.stateRoot, "credentials", `.chatgpt-account.${randomUUID()}.tmp`);
+    writeFileSync(stage, "synthetic-stage", { mode: 0o600 });
+    assert.throws(() => inspectRelocationFiles(input), /unsafe state descendant/u);
+    rmSync(stage);
+    writeFileSync(join(source.stateRoot, "credentials", ".chatgpt-account.lock"), "synthetic");
+    assert.throws(() => inspectRelocationFiles(input), /unsafe state descendant|unknown or unsafe ChatGPT/u);
+  } finally { sourceAdmission.release(); destinationAdmission.release(); rmSync(workspace, { recursive: true, force: true }); }
+});
 
 it("enumerates nested artifacts once and copies private bytes with exact retry", () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-inventory-")));
