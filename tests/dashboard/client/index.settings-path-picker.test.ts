@@ -5,6 +5,7 @@ import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 import { SettingsPathPicker } from "../../../src/dashboard/surfaces/settings/general/settings-path-picker.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -38,3 +39,30 @@ describe("native Paths picker control", () => {
     assert.deepEqual(selected, []);
   });
 });
+
+for (const replacement of ["client", "scope", "field", "value", "disabled"] as const) {
+  for (const responseState of ["selected", "unavailable"] as const) {
+    it(`ignores a delayed ${responseState} picker reply after ${replacement} changes`, async () => {
+      const selected: string[] = [];
+      let resolveReply: ((value: Awaited<ReturnType<DashboardClient["pickSettingsPath"]>>) => void) | undefined;
+      const client = { pickSettingsPath: () => new Promise(resolve => { resolveReply = resolve; }) } as unknown as DashboardClient;
+      host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+      const render = async (changed: boolean) => {
+        await act(async () => root?.render(createElement(DashboardClientProvider, { client: changed && replacement === "client" ? { ...client } : client,
+          children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: changed && replacement === "scope" ? 1 : 0,
+            children: createElement(SettingsPathPicker, { field: changed && replacement === "field" ? "paths.reportsDir" : "paths.duoCredential",
+              label: "Duo credential file", value: changed && replacement === "value" ? "/tmp/changed.json" : "/tmp/private/duo.json",
+              disabled: changed && replacement === "disabled", onSelected: path => selected.push(path) }) }) })));
+      };
+      await render(false);
+      const button = host.querySelector("button"); assert.ok(button instanceof HTMLButtonElement);
+      await act(async () => button.click()); assert.ok(resolveReply);
+      await render(true);
+      await act(async () => resolveReply?.(responseState === "selected"
+        ? { state: "selected", field: "paths.duoCredential", path: "/tmp/late.json" }
+        : { state: "unavailable", field: "paths.duoCredential", reason: "dialog-failed" }));
+      assert.deepEqual(selected, []); assert.equal(host.querySelector('[role="alert"]'), null);
+      assert.equal(button.disabled, replacement === "disabled");
+    });
+  }
+}
