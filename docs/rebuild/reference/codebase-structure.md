@@ -64,7 +64,7 @@ Paths in this table are relative to `src/backend/`.
 | `runs/trust/` | Canonical run readers and receipt services. |
 | `runtime/` | Browser sessions, checkpoints, execution, gates, policies, preflight, scheduling, settings, workers, and writes. |
 | `storage/` | Admission, artifacts, configuration, events, maintenance, and SQLite persistence. |
-| `storage/configuration/` | Settings and private credential persistence. `credential-store.ts` exposes the protected-settings and ChatGPT account records under `<stateRoot>/credentials/`; both use `credential-safe-file.ts` for file safety. |
+| `storage/configuration/` | Settings and private credential persistence. `credential-store.ts` exposes the protected-settings and ChatGPT account records under `<stateRoot>/credentials/`, which also holds the Duo key; both use `credential-safe-file.ts` for file safety. |
 | `storage/events/` | Native timeline writers, readers, and emitters. |
 | `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `timeline-repository.ts` owns ordered event persistence. |
 | `systems/` | Browser-system sessions, drivers, semantic UI registries, and tasks. CRM, Kuali, New Kronos, and UCPath have driver implementations. I-9, Old Kronos, OnBase, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. |
@@ -73,6 +73,7 @@ Paths in this table are relative to `src/backend/`.
 | `systems/ui-task-links.ts` | Explorer task attribution from system registries. |
 | `transports/cli/` | CLI dispatch and command handling. |
 | `transports/http/` | Dashboard HTTP routes, request schemas, and SSE subscriptions. |
+| `workbooks/` | Saved workbook library: validated workbook records, versions and history over its SQLite repository. |
 
 ### Dashboard and shared packages
 
