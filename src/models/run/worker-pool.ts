@@ -4,7 +4,7 @@ import { ActorIdSchema, IsoInstantSchema, PositiveIntSchema, WorkflowIdSchema } 
 
 export const WorkerPoolRecordSchema = z.strictObject({
   workflow: WorkflowIdSchema,
-  desiredWorkers: z.number().int().min(0).max(3),
+  desiredWorkers: z.number().int().min(0),
   /** Who last planned this count, and when — the declaration's provenance. */
   plannedBy: ActorIdSchema,
   plannedAt: IsoInstantSchema,

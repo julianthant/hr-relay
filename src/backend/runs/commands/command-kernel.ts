@@ -1,6 +1,6 @@
 import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
-import { admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
+import { requireWorkerPoolRoster, admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
 import { WorkerRetirementProofSchema, type WorkerPoolRosterAdmission } from "../../../models/run/worker-slot.js";
 import { PreflightAdmissionRefusal, type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
@@ -226,7 +226,7 @@ export const WorkerPlanAcknowledgementSchema = z.strictObject({
   state: z.literal("accepted"),
   /** The exact worker ids the plan reconciles toward; never an empty guess. */
   workerIds: z.array(WorkerIdSchema),
-  retirements: z.array(WorkerRetirementProofSchema).max(3),
+  retirements: z.array(WorkerRetirementProofSchema),
 });
 
 
@@ -1837,6 +1837,8 @@ function validateWorkerPoolCommand(
   repositories: AuthorityRepositories,
   request: WorkerBrowserCommand,
 ): number {
+  const workflow = "workflowId" in request.target ? request.target.workflowId : repositories.workerSlots.get(request.target.workerId)?.workflow;
+  if (workflow !== undefined && repositories.workerSlots.verifications(workflow).length !== 0) reject(request, "invalid-state", "worker-verification-reserved");
   requireWorkerControlBasis(repositories, request);
   switch (request.type) {
     case "plan-worker-count": {
@@ -1850,6 +1852,7 @@ function validateWorkerPoolCommand(
       );
       const slot = repositories.workerSlots.get(request.payload.workerId);
       if (slot === undefined || slot.retiredAt !== null || slot.workflow !== request.target.workflowId) reject(request, "invalid-state", "worker-slot-not-admitted: select a current reserved member");
+      requireWorkerPoolRoster(repositories, request.target.workflowId);
       const existing = repositories.workerLeases.get(request.payload.workerId);
       if (existing !== undefined && isLiveWorker(existing)) {
         reject(
@@ -1976,6 +1979,7 @@ function applyWorkerPoolCommand(
           requestedBy: request.requestedBy, now });
         if (planned.state !== "applied" || planned.pool.version !== roster.afterVersion) throw new Error("worker-pool-version-conflict");
       } else if (currentPool.desiredWorkers !== request.payload.desiredWorkers) throw new Error("worker-pool-declaration-mismatch");
+      requireWorkerPoolRoster(repositories, request.target.workflowId);
       return applied(
         request,
         [

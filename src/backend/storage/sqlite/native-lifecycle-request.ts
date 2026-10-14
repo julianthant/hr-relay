@@ -3,12 +3,13 @@ import { PublicRerunPlanSchema, SourceBoundRunSchema } from "../../../models/run
 import { RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { CanonicalWorkerAdmissionRequestSchema, CanonicalCreateRunRequestSchema, CanonicalClaimNextRequestSchema, CanonicalTransitionRequestSchema,
+import { WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema, CanonicalCreateRunRequestSchema, CanonicalClaimNextRequestSchema, CanonicalTransitionRequestSchema,
   CanonicalRenewClaimRequestSchema, CanonicalWorkerTransitionRequestSchema, CanonicalFailureTerminalizeRequestSchema,
   CanonicalSuccessTerminalizeRequestSchema, CanonicalCancellationTerminalizeRequestSchema, CanonicalRequeueRequestSchema,
   CanonicalRetrySourceRequestSchema, CanonicalDeleteRequestSchema, CanonicalPurgeRequestSchema } from "./run-store-contracts.js";
 
 const schemas = {
+  "worker-verification-admission":WorkerVerificationAdmissionRequestSchema, "worker-verification-retirement":WorkerVerificationRetirementRequestSchema,
   "worker-admission":CanonicalWorkerAdmissionRequestSchema, create:CanonicalCreateRunRequestSchema.extend({sourceBound:PublicRerunPlanSchema.extend({confirmationCommandId:SourceBoundRunSchema.shape.confirmationCommandId}).optional()}),"claim-next":CanonicalClaimNextRequestSchema,transition:CanonicalTransitionRequestSchema,
   "renew-claim":CanonicalRenewClaimRequestSchema,"worker-transition":CanonicalWorkerTransitionRequestSchema,
   terminalize:z.union([CanonicalFailureTerminalizeRequestSchema,CanonicalSuccessTerminalizeRequestSchema,CanonicalCancellationTerminalizeRequestSchema]),
@@ -18,7 +19,7 @@ const schemas = {
 export function validateNativeLifecycleRequest(input: unknown): void {
   const command = RunLifecycleCommandRecordSchema.parse(input);
   if (!Object.hasOwn(schemas,command.operation)) throw new Error("run-lifecycle-operation-unavailable");
-  const operation = z.enum(["create","claim-next","transition","renew-claim","worker-transition","worker-admission","terminalize","requeue","retry","restart","delete","purge"]).parse(command.operation);
+  const operation = z.enum(["create","claim-next","transition","renew-claim","worker-transition","worker-admission","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","delete","purge"]).parse(command.operation);
   const parsed = schemas[operation].parse(command.request);
   if (z.object({commandId:z.string()}).parse(parsed).commandId !== command.commandId
     || canonicalJsonStringify(parsed) !== canonicalJsonStringify(command.request)
@@ -26,7 +27,7 @@ export function validateNativeLifecycleRequest(input: unknown): void {
     throw new Error("run-lifecycle-request-binding-mismatch");
   }
   let expectedFence: unknown;
-  if (["create","claim-next","purge","worker-admission"].includes(operation)) expectedFence = {kind:"none"};
+  if (["create","claim-next","purge","worker-admission","worker-verification-admission","worker-verification-retirement"].includes(operation)) expectedFence = {kind:"none"};
   else if (operation === "renew-claim" || operation === "worker-transition") expectedFence = {kind:"claim",...z.object({claim:z.object({workerId:z.string(),claimGeneration:z.number()})}).parse(parsed).claim};
   else if (operation === "terminalize") {
     const request = z.object({terminal:z.object({authorization:z.object({expectedVersion:z.number(),claim:z.object({workerId:z.string(),claimGeneration:z.number()})})}).optional(),

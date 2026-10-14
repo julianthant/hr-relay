@@ -159,7 +159,7 @@ export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: z.number().int().min(0).max(3) }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: z.number().int().min(0) }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ workerId: WorkerIdSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["stop-worker", "pause-worker", "resume-worker"]), target: WorkerVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema, controlBasis: WorkerControlBasisSchema.optional() }) }),
@@ -517,6 +517,8 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "renew-claim",
   "worker-transition",
   "worker-admission",
+  "worker-verification-admission",
+  "worker-verification-retirement",
   "terminalize",
   "requeue",
   "retry",

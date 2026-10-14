@@ -1,8 +1,11 @@
+import { WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";
+import { RuntimeProcessLockFileSchema } from "./runtime-process-locks.js";
 import { ParkedWriteResolutionBindingSchema } from "../../../rules/write-safety/write-safety.js";
 
 import { z } from "zod";
 import {
   ActorIdSchema,
+  BrowserSystemIdSchema,
   CommandIdSchema,
   DiagnosticBundleIdSchema,
   FingerprintSchema,
@@ -470,7 +473,7 @@ export const WorkerSweepRequestSchema = z.strictObject({
 export const WorkerPoolPlanRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   expectedVersion: NonNegativeIntSchema,
-  desiredWorkers: z.number().int().min(0).max(3),
+  desiredWorkers: z.number().int().min(0),
   requestedBy: ActorIdSchema,
   now: IsoInstantSchema,
 });
@@ -496,7 +499,28 @@ export type RunPresentationRequest = z.infer<typeof RunPresentationRequestSchema
 export type RunClaimSweepRequest = z.infer<typeof RunClaimSweepRequestSchema>;
 
 export const CanonicalWorkerAdmissionRequestSchema = z.strictObject({
-  commandId: CommandIdSchema, workflow: WorkflowIdSchema, poolIndex: z.number().int().min(1).max(3),
+  commandId: CommandIdSchema, workflow: WorkflowIdSchema, poolIndex: z.number().int().min(1),
   expectedPoolVersion: NonNegativeIntSchema, processId: PositiveIntSchema, processAcquisitionId: z.uuid(),
   authorityPath: z.string().min(1), processLockRoot: z.string().min(1), now: IsoInstantSchema,
 });
+
+export const WorkerVerificationAdmissionRequestSchema = z.strictObject({
+  commandId: CommandIdSchema, workflow: WorkflowIdSchema, expectedPoolVersion: NonNegativeIntSchema,
+  processLockRoot: z.string().min(1), stateRoot: z.string().min(1), owner: RuntimeProcessLockFileSchema, now: IsoInstantSchema,
+}).refine(request => request.owner.name === "live-smoke" && request.owner.releasedAt === null,
+  "worker-verification-owner-unavailable");
+export const WorkerVerificationRetirementRequestSchema = z.strictObject({
+  commandId: CommandIdSchema, grantCommandId: CommandIdSchema, workerId: WorkerIdSchema,
+  expectedRevision: PositiveIntSchema, expectedPoolVersion: NonNegativeIntSchema, now: IsoInstantSchema,
+  cleanup: z.strictObject({ acquisitionId: z.uuid(), browsersClosed: z.literal(true),
+    profilesReleased: z.literal(true), duoReleased: z.literal(true), mode: z.enum(["live", "recovery"]),
+    evidence: z.enum(["browserless", "closed"]) }),
+});
+
+export const WorkerVerificationClaimSchema = z.strictObject({
+  source: z.literal("live-smoke"), slot: WorkerSlotRecordSchema, process: RuntimeProcessLockFileSchema,
+  profileRunId: z.uuid(), system: BrowserSystemIdSchema, credentialKey: FingerprintSchema,
+}).refine(claim => claim.process.name === "live-smoke" && claim.process.releasedAt === null
+  && claim.slot.retiredAt === null && claim.slot.reservationCommandId !== null, "worker-verification-claim-invalid");
+export const WorkerVerificationClosureProofSchema = z.strictObject({ acquisitionId: z.uuid(), workerId: WorkerIdSchema,
+  membershipRevision: PositiveIntSchema, browsersClosed: z.literal(true), checkedAt: IsoInstantSchema });

@@ -578,7 +578,7 @@ export const NotificationWireSchema = z.discriminatedUnion("kind", [
 /** Worker commands use only the worker_pools row version as their CAS basis. */
 export const WorkerPoolWireSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
-  desiredWorkers: PositiveIntSchema,
+  desiredWorkers: z.number().int().nonnegative(),
   version: PositiveIntSchema,
   plannedBy: ActorIdSchema,
   plannedAt: IsoInstantSchema,

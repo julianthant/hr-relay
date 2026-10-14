@@ -417,7 +417,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 /* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions ) ──── */
 
 
-export const MAX_WORKERS_PER_POOL = 3;
+
 export const WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000;
 export const WORKER_SIGTERM_TIMEOUT_MS = 30_000;
 
@@ -507,8 +507,8 @@ export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("st
 export const WorkerPoolReconciliationAcknowledgementSchema = z.strictObject({
   command: z.literal("plan-worker-count"),
   state: z.literal("acknowledged"),
-  desiredWorkers: z.number().int().min(0).max(MAX_WORKERS_PER_POOL),
-  members: z.array(WorkerPoolMemberReconciliationFactSchema).max(MAX_WORKERS_PER_POOL),
+  desiredWorkers: z.number().int().min(0),
+  members: z.array(WorkerPoolMemberReconciliationFactSchema),
 });
 
 const WorkerSpawnAcknowledgementSchema = z.strictObject({

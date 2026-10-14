@@ -26,6 +26,25 @@ describe("pool-capable worker runtime executor seam", () => {
 
 
 
+  it("acknowledges an uncapped roster with four exact members", async () => {
+    const authority = openAuthorityHarness();
+    disposers.push(authority.dispose);
+    const plan = workerBrowserCommand({ ...envelope, family: "worker-browser", type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 0 }, payload: { desiredWorkers: 4 } });
+    if (plan.type !== "plan-worker-count") throw new Error("fixture plan command required");
+    const roster = authority.database.withAuthorityTransaction(repositories => {
+      repositories.commands.insert(plan);
+      return admitWorkerPoolRoster(repositories, plan, requestedAt);
+    });
+    const executor = createWorkerPoolRuntimeExecutor({ execute: async request => {
+      if (request.command !== "plan-worker-count") throw new Error("unexpected runtime command");
+      return { command: request.command, state: "acknowledged", desiredWorkers: request.desiredWorkers, members: request.members.map(member => ({ member, stage: "unmet", reason: "not-started" })) };
+    } }, authority.database.authority.workerSlots);
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt, roster }), {
+      state: "accepted", retirements: [], workerIds: ["person-lookup-worker-1", "person-lookup-worker-2", "person-lookup-worker-3", "person-lookup-worker-4"],
+    });
+  });
+
   it("plans three deterministic members only after the supervisor acknowledges their lifecycle facts", async () => {
     const authority = openAuthorityHarness();
     disposers.push(authority.dispose);

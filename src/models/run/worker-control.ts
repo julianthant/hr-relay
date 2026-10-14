@@ -12,7 +12,7 @@ export function workerControlScope(request: z.infer<typeof WorkerBrowserCommandR
 
 /** The observed result survives the BFF's acknowledgement/audit crash window. */
 export const WorkerEffectAcknowledgementSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("plan"), workerIds: z.array(WorkerIdSchema), retirements: z.array(WorkerRetirementProofSchema).max(3) }),
+  z.strictObject({ kind: z.literal("plan"), workerIds: z.array(WorkerIdSchema), retirements: z.array(WorkerRetirementProofSchema) }),
   z.strictObject({ kind: z.literal("stop"), directiveLeaseVersions: z.strictObject({ before: PositiveIntSchema, after: PositiveIntSchema }) }),
   z.strictObject({ kind: z.literal("control"), browserSessionId: BrowserSessionIdSchema.optional() }),
 ]);

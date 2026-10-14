@@ -236,5 +236,5 @@ const NEEDS_YOU_STATUSES: QueueStatus[] = ["awaiting-approval", "blocked"];
 export function needsYouCount(counts: readonly StatusCountWire[]): number {
   return NEEDS_YOU_STATUSES.reduce((total, status) => total + statusCount(counts, status), 0);
 }
-export { ALWAYS_TALLIED,buildSessionPanelView,buildSessionPoolGroups,canStopWorker,capacityChip,connectionTone,planPoolIntent,poolFactsForWorkflow,poolIndexOfWorkerId,poolMemberWorkerId,poolSlotIsUnmet,SESSION_POOL_MAX_WORKERS,sessionMembershipForWorker,sessionPoolGroupFor,WORKER_STATE_ORDER,WORKER_STOP_REASON_LABEL,WORKER_TONE,workerBrowserView,workerDirectiveNote,workerElapsedSeconds } from "../sessions/session-panel-model.js";
+export { ALWAYS_TALLIED,buildSessionPanelView,buildSessionPoolGroups,canStopWorker,capacityChip,connectionTone,planPoolIntent,poolFactsForWorkflow,poolIndexOfWorkerId,poolMemberWorkerId,poolSlotIsUnmet,sessionMembershipForWorker,sessionPoolGroupFor,WORKER_STATE_ORDER,WORKER_STOP_REASON_LABEL,WORKER_TONE,workerBrowserView,workerDirectiveNote,workerElapsedSeconds } from "../sessions/session-panel-model.js";
 export type { PoolPlanIntent,SessionPoolGroup,SessionPoolMemberSlot,WorkerBrowserSlot,WorkerCardWire,WorkerPoolFacts,WorkerPoolWire,WorkerSessionMembership,WorkerState } from "../sessions/session-panel-model.js";

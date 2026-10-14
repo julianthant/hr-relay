@@ -415,12 +415,12 @@ describe("dashboard launch creates bounded worker capacity", () => {
       controls: h.database.authority.workerControls.list(), children: h.children.length }, before);
   });
 
-  it("reports queued capacity unavailable at cap without resuming paused or stopping members", async () => {
+  it("refuses growth across a pending stop without resuming paused or stopping members", async () => {
     const h = openControlHarness(); const { request } = dashboardLaunch(h);
     await admitPoolSlot(h, 3);
     for (let index = 1; index <= 3; index++) occupyMember(h, index, index === 2 ? "stop" : "pause");
     const before = JSON.stringify(h.database.authority.workerLeases.listLive());
-    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: all three/);
+    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: the admitted roster contains a pending stop/);
     assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).length, 1); assert.equal(h.children.length, 0);
     assert.equal(JSON.stringify(h.database.authority.workerLeases.listLive()), before);
   });
@@ -633,7 +633,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
         body: JSON.stringify({ commandId: nextId, requestedAt: NOW, requestedBy: "local-operator", source: "run-start", family: "start", type: "start-run",
           target: { workflowId: WORKFLOW, startPlanId: nextPlan.startPlanId, expectedVersion: nextPlan.expectedVersion }, payload: nextPlan.fingerprints }) });
       assert.equal(failure.status, 500);
-      assert.match(JSON.stringify(await failure.json()), /Runs queued .*worker startup unavailable: all three/);
+      assert.match(JSON.stringify(await failure.json()), /Runs queued .*worker startup did not complete at plan-worker-count .*externally owned; no worker was adopted/);
       const committed = AdmittedAuthorityDatabase.open(admission,
         { path: join(stateRoot, "state.db"), busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, clock);
       try {

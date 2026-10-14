@@ -24,7 +24,7 @@ Separate workers provide parallelism and own separate browser resources.
 | Duo lease | One credential-keyed row in `auth_leases`, exposed through `authority.duoCeremonyLeases`. |
 
 A slot's worker id is `${workflow}-worker-${ordinal}`. The ordinal is globally allocated and
-retained. `poolIndex` is a separate workflow member position from 1 through 3. Neither a caller nor
+retained. `poolIndex` is a separate positive workflow member position. Neither a caller nor
 a projection derives the worker id from the pool index.
 
 ## 2. Declared session needs
@@ -61,7 +61,7 @@ and the aggregate failure names the systems that could not close.
 
 `composeWorkerRuntime` in `src/backend/app/composition/worker-compose.ts` admits the worker slot,
 binds its exact process custody, starts its lease, and runs `runWorkerLoop`. CLI parsing requires
-`worker <workflow-id> --pool-index <positive-int>` with an index from 1 through 3. `--drain` exits
+`worker <workflow-id> --pool-index <positive-int>` with a positive integer index. `--drain` exits
 at the first idle claim result. Supervised launches additionally carry `--worker-id`, `--ordinal`,
 `--membership-revision`, and `--launch-command-id`; `admitSupervisedWorker` verifies those values
 against the executing Spawn reservation before admitting the child.
@@ -322,8 +322,9 @@ instant in `run_batches`. `runs.listBySession` derives membership from runs; ret
 session id. `groupInQueue` and version affect presentation only. [Workflow model](workflow-model.md)
 owns fan-out.
 
-`worker_pools` stores `desiredWorkers` from 0 through `MAX_WORKERS_PER_POOL = 3`, planner, time,
-and version.
+`worker_pools` stores a nonnegative `desiredWorkers` count, planner, time, and version.
+The count equals the nonretired admitted slot roster after each membership transaction. Missing
+or inconsistent roster authority refuses admission; leases never reconstruct membership.
 
 ### 11.1 Process effects and retirement
 
@@ -385,7 +386,7 @@ excludes run binding during controls and retains failed or uncertain health.
 start queues runs. A `run`-directed lease in `starting`, `idle`, or `busy` supplies capacity,
 including an external worker. Preview and a zero-run confirmation create no worker effects.
 
-Absent capacity, the service reuses a stopped slot or adds one within the cap through journaled
+Absent capacity, the service reuses a stopped slot or adds one through journaled
 Plan and Spawn. It preserves directives and refuses a Plan covering a pending stop. It starts one
 member, retaining command identity, actor, timestamp, and CAS basis for replay.
 
@@ -394,6 +395,16 @@ it does not call the queued runs rejected. Exact replay does not restart a settl
 another crash. Replay without retained startup evidence or a usable worker reports unknown startup
 and requires reconciliation. `src/backend/runs/commands/command-service.ts` serializes
 enqueue and startup per workflow.
+
+### 11.4 Browser-login verification
+
+The browser-login verifier reserves its temporary member through the native lifecycle journal's
+`worker-verification-admission` and `worker-verification-retirement` intents. Admission binds the
+actual live-smoke process acquisition. Its reservation excludes membership controls, claims and
+worker lease birth until browser closure, profile removal and Duo release are proved. An uncertain
+cleanup retains the member and reservation. Explicit recovery requires the original immutable
+process acquisition and release, a gone owner, and exact slot custody and closure evidence; it
+cannot adopt a PID or infer a member from a historical process-only claim.
 
 ## Not built yet
 

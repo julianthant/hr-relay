@@ -124,7 +124,7 @@ export function parseWorkerArguments(args: readonly string[], scenarioStepProofI
       if (!Number.isSafeInteger(numeric)) {
         throw new Error(`worker --pool-index must be a positive safe integer; received ${raw}`);
       }
-      poolIndex = PositiveIntSchema.refine(value => value <= 3, "worker pool index cannot exceed three").parse(numeric);
+      poolIndex = PositiveIntSchema.parse(numeric);
       index += 1;
       continue;
     }

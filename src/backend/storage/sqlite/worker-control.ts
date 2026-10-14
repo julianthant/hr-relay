@@ -1,5 +1,5 @@
 import { commandFromRow } from "./command-record-row.js";
-import { workerSlotFromRow } from "./worker-slots.js";
+import { workerSlotFromRow, verificationFromSlot } from "./worker-slots.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -54,6 +54,11 @@ export function createWorkerControlRepository(deps: {
         if (canonicalJsonStringify(prior.request) !== canonicalJsonStringify(record.request)) throw new CommandIdentityConflictError();
         return { result: prior, changes: 0 };
       }
+      const target = record.request.target;
+      const memberRow = "workerId" in target ? database.prepare("SELECT * FROM worker_slots WHERE id=?").get(target.workerId) : undefined;
+      const workflow = "workflowId" in target ? target.workflowId : memberRow === undefined ? undefined : workerSlotFromRow(memberRow).workflow;
+      if (workflow !== undefined && database.prepare("SELECT * FROM worker_slots WHERE workflow=?").all(workflow)
+        .some(row => verificationFromSlot(database, workerSlotFromRow(row)) !== undefined)) throw new Error("worker-verification-reserved");
       const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
       if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
       if (record.roster !== undefined) {

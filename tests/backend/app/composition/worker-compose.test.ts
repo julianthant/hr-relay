@@ -15,7 +15,8 @@ describe("current stable worker launch argv", () => {
   });
   it("admits fresh direct CLI without inventing a worker identity and refuses partial or mismatched launch metadata", () => {
     expect(parseWorkerArguments(["person-lookup", "--pool-index", "2", "--drain"])).toEqual({ workflowId: "person-lookup", poolIndex: 2, drain: true });
-    expect(() => parseWorkerArguments(["person-lookup", "--pool-index", "4"])).toThrow();
+    expect(parseWorkerArguments(["person-lookup", "--pool-index", "4"])).toEqual({ workflowId: "person-lookup", poolIndex: 4, drain: false });
+    expect(() => parseWorkerArguments(["person-lookup", "--pool-index", "0"])).toThrow();
     expect(() => parseWorkerArguments(["person-lookup", "--pool-index", "2", "--worker-id", member.workerId])).toThrow();
     const argv = [...workerCliArgv(member, UUID_5).slice(1)];
     argv[argv.indexOf("--ordinal") + 1] = "2";

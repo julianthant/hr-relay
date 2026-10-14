@@ -159,15 +159,13 @@ export function poolFactsForWorkflow(
 }
 
 
-/** Pin the bundle cap to the kernel; increasing it requires the agreed concurrency proof. */
-export const SESSION_POOL_MAX_WORKERS = 3;
 
 
 /** Pin canonical worker IDs to kernel derivation; out-of-range indices cannot mint pool identities. */
 export function poolMemberWorkerId(workflowId: string, poolIndex: number): string {
-  if (!Number.isInteger(poolIndex) || poolIndex < 1 || poolIndex > SESSION_POOL_MAX_WORKERS) {
+  if (!Number.isSafeInteger(poolIndex) || poolIndex < 1) {
     throw new Error(
-      `pool index ${String(poolIndex)} for ${workflowId} is outside 1..${String(SESSION_POOL_MAX_WORKERS)}`,
+      `pool index ${String(poolIndex)} for ${workflowId} must be a positive integer`,
     );
   }
   return `${workflowId}-worker-${String(poolIndex)}`;
@@ -183,7 +181,7 @@ export function poolIndexOfWorkerId(workflowId: string, workerId: string): numbe
   // `-worker-01` and `-worker-0` are not this workflow's canonical member 1.
   if (!/^[1-9][0-9]*$/u.test(suffix)) return undefined;
   const index = Number(suffix);
-  return index > SESSION_POOL_MAX_WORKERS ? undefined : index;
+  return Number.isSafeInteger(index) ? index : undefined;
 }
 
 
@@ -258,17 +256,15 @@ export function sessionPoolGroupFor(
   }
 
   const declaredCount = facts.state === "declared" ? facts.desiredWorkers : 0;
-  const indices: number[] = [];
-  for (let index = 1; index <= SESSION_POOL_MAX_WORKERS; index += 1) {
-    if (index <= declaredCount || cardsByIndex.has(index)) indices.push(index);
-  }
+  const indices = new Set(cardsByIndex.keys());
+  for (let index = 1; index <= declaredCount; index += 1) indices.add(index);
 
   return {
     workflowId,
     facts,
     declaration: workerPools.find((entry) => String(entry.workflowId) === workflowId),
     expectedVersion: facts.state === "declared" ? facts.version : 0,
-    slots: indices.map((poolIndex) => {
+    slots: [...indices].sort((a, b) => a - b).map((poolIndex) => {
       const card = cardsByIndex.get(poolIndex);
       return {
         poolIndex,
@@ -300,11 +296,10 @@ export type PoolPlanIntent =
 
 
 export function planPoolIntent(group: SessionPoolGroup, desiredWorkers: number): PoolPlanIntent {
-  if (!Number.isInteger(desiredWorkers) || desiredWorkers < 1 || desiredWorkers > SESSION_POOL_MAX_WORKERS) {
+  if (!Number.isSafeInteger(desiredWorkers) || desiredWorkers < 0) {
     return {
       kind: "refused",
-      reason: `a worker pool is planned at 1 to ${String(SESSION_POOL_MAX_WORKERS)} workers (D271); `
-        + `${String(desiredWorkers)} is outside that range`,
+      reason: `a worker pool requires a nonnegative integer count; received ${String(desiredWorkers)}`,
     };
   }
   if (group.facts.state === "declared" && group.facts.desiredWorkers === desiredWorkers) {
@@ -316,12 +311,12 @@ export function planPoolIntent(group: SessionPoolGroup, desiredWorkers: number):
   }
 
   const excess: { poolIndex: number; workerId: string; running: boolean }[] = [];
-  for (let poolIndex = desiredWorkers + 1; poolIndex <= SESSION_POOL_MAX_WORKERS; poolIndex += 1) {
-    const slot = group.slots.find((entry) => entry.poolIndex === poolIndex);
+  for (const slot of group.slots.filter(slot => slot.poolIndex > desiredWorkers)) {
+    const { poolIndex } = slot;
     excess.push({
       poolIndex,
-      workerId: poolMemberWorkerId(group.workflowId, poolIndex),
-      running: slot !== undefined && slot.membership.state === "live",
+      workerId: slot.workerId,
+      running: slot.membership.state === "live",
     });
   }
 

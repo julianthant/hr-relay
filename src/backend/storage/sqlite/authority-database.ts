@@ -13,7 +13,7 @@ import { workerSlotFromRow } from "./worker-slots.js";
 import { workerControlFromRow, workerBrowserFromRow } from "./worker-control.js";
 import { readAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
-import { createWorkerSlotRepository } from "./worker-slots.js";
+import { requireWorkerPoolRoster, createWorkerSlotRepository } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
@@ -1194,7 +1194,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
-  if ((expectedSchemaVersion !== 1 && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
+  if ((expectedSchemaVersion !== 1 && expectedSchemaVersion !== 2 && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
   assertNativeSchema(database, schemaVersion);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
@@ -1220,7 +1220,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
     if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
   }
-  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]) }).parse({
+  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]) }).parse({
     applicationId,
     schemaVersion,
     pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
@@ -1248,7 +1248,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   requireRuntimeAdmission(admission).assertExclusive();
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
-  if (version !== 1) throw new AuthoritySchemaVersionError(version);
+  if (version !== 1 && version !== 2) throw new AuthoritySchemaVersionError(version);
   database.exec("BEGIN EXCLUSIVE");
   try {
     if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority-application-mismatch");
@@ -1542,6 +1542,7 @@ export class AuthorityDatabase implements Disposable {
   #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
   #explorerOverridesDirty = false;
+  #workerMembershipChanges = new Set<string>();
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
 
@@ -2800,6 +2801,7 @@ export class AuthorityDatabase implements Disposable {
       const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
       const dirtyBefore = this.#authorityDirty;
       const explorerDirtyBefore = this.#explorerOverridesDirty;
+      const workerMembershipBefore = new Set(this.#workerMembershipChanges);
       const callbacksBefore = this.#authorityCommitCallbacks.length;
       this.#database.exec(`SAVEPOINT ${savepoint}`);
       this.#transactionDepth += 1;
@@ -2812,6 +2814,7 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
         this.#authorityDirty = dirtyBefore;
         this.#explorerOverridesDirty = explorerDirtyBefore;
+        this.#workerMembershipChanges = workerMembershipBefore;
         this.#authorityCommitCallbacks.splice(callbacksBefore);
         throw error;
       } finally { this.#transactionDepth -= 1; }
@@ -2822,12 +2825,14 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionMode = mode;
     this.#authorityDirty = false;
     this.#explorerOverridesDirty = false;
+    this.#workerMembershipChanges.clear();
     let result: Result;
     try {
       this.#validateExternalQuerySources("mutation", searchValidation);
       const search = createRunSearchIndex(this.#database);
       const priorSearch = search.publication();
       result = work();
+      for (const workflow of this.#workerMembershipChanges) requireWorkerPoolRoster(this.authority, workflow);
       if (this.#authorityDirty) {
         const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
@@ -2846,6 +2851,7 @@ export class AuthorityDatabase implements Disposable {
       this.#snapshotExternalDataVersion = undefined;
       this.#authorityDirty = false;
       this.#explorerOverridesDirty = false;
+      this.#workerMembershipChanges.clear();
     }
     const callbacks = this.#authorityCommitCallbacks.splice(0);
     for (const callback of callbacks) callback();
@@ -3454,7 +3460,11 @@ export class AuthorityDatabase implements Disposable {
       } }),
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
       workerPools: this.#buildWorkerPoolRepository(),
-      workerSlots: createWorkerSlotRepository({ database: this.#database, mutate: work => this.#authorityWrite("worker_slots",work) }),
+      workerSlots: createWorkerSlotRepository({ database: this.#database, mutate: work => this.#authorityWrite("worker_slots", () => {
+        const outcome = work();
+        if (outcome.changes > 0) this.#workerMembershipChanges.add(outcome.result.workflow);
+        return outcome;
+      }) }),
       runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
         assertIdentity: (input: unknown, parentCommandId?: string) => this.#assertCommandIdentity(AuthorityCommandRecordSchema.parse(input), parentCommandId),
@@ -4093,6 +4103,10 @@ export class AuthorityDatabase implements Disposable {
         }
       }
 
+      if (this.authority.workerSlots.verification(request.workerId) !== undefined) {
+        if (canonical) return { state: "refused", refusal: { reason: "none-eligible" } };
+        throw new Error("worker-verification-reserved");
+      }
       const held = HeldRunRowSchema.parse(this.#database.prepare(`
         SELECT id AS run_id FROM runs
         WHERE owner_worker_id = ? AND state IN ('claimed', 'validating', 'running')
@@ -4909,6 +4923,7 @@ export class AuthorityDatabase implements Disposable {
       plan: (input: unknown): WorkerPoolPlanOutcome => {
         const request = WorkerPoolPlanRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          if (this.authority.workerSlots.verifications(request.workflow).length !== 0) throw new Error("worker-verification-reserved");
           const existing = read(request.workflow);
           const currentVersion = workerPoolVersion(existing);
           if (currentVersion !== request.expectedVersion) {
@@ -4984,6 +4999,7 @@ export class AuthorityDatabase implements Disposable {
       start: (input: unknown) => {
         const request = WorkerStartRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          if (this.authority.workerSlots.verification(request.workerId) !== undefined) throw new Error("worker-verification-reserved");
           const existing = this.#readWorkerLease(request.workerId);
           if (existing !== undefined && isLiveWorker(existing)) {
             return WorkerStartOutcomeSchema.parse({

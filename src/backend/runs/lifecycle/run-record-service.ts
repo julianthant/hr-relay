@@ -287,6 +287,7 @@ export class RunRecordService {
       if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(control => control.request.type === "plan-worker-count")) {
         return refused({ reason: "none-eligible" });
       }
+      if (repositories.workerSlots.verification(workerId) !== undefined) return refused({ reason: "none-eligible" });
       const held = repositories.runs.listByWorker(workerId).find((run) => runClaim(run) !== undefined);
       if (held !== undefined) return refused({ reason: "worker-busy", runId: held.envelope.runId });
       const outcome = repositories.runs.claimEligible({
