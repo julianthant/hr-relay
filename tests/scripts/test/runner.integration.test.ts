@@ -30,10 +30,11 @@ it("contains inherited temporary files and removes them after a successful run",
 it("preserves a failing exit and diagnostics until explicit reclamation", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
   try {
-    const result = await runTestProcess({ command: process.execPath, args: ["-e", "console.error('sentinel-failure'); process.exit(23)"], cwd: root, env: process.env, rootDirectory: join(root, "runs") });
+    const result = await runTestProcess({ command: process.execPath, args: ["-e", "require('node:fs').writeFileSync(require('node:path').join(require('node:os').tmpdir(),'scratch-payload'),'sentinel');console.error('sentinel-failure');process.exitCode=23"], cwd: root, env: process.env, rootDirectory: join(root, "runs") });
     assert.equal(result.code, 23);
     const run = join(root, "runs", readdirSync(join(root, "runs"))[0]);
     assert.match(readFileSync(join(run, "failure.txt"), "utf8"), /sentinel-failure/);
+    assert.equal(existsSync(join(run, "tmp")), false);
     assert.deepEqual(reapTestRuns(join(root, "runs")), { removed: [run], retained: [] });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -50,12 +51,34 @@ it("fails and retains diagnostics for a silent stalled process", async () => {
 
 it("retains a killed worker's scratch for verified reclamation", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
+  const ready = join(root, "ready");
+  const descendant = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setInterval(()=>{},1000)`;
+  const worker = `const {spawn}=require('node:child_process'),fs=require('node:fs');spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'});const check=setInterval(()=>{if(fs.existsSync(${JSON.stringify(ready)})){clearInterval(check);process.kill(process.pid,'SIGKILL')}},10)`;
+  let group: number | undefined;
   try {
-    const result = await runTestProcess({ command: process.execPath, args: ["-e", "process.kill(process.pid,'SIGKILL')"], cwd: root, env: process.env, rootDirectory: join(root, "runs") });
+    const result = await runTestProcess({ command: process.execPath, args: ["-e", worker], cwd: root, env: process.env, rootDirectory: join(root, "runs") });
+    const run = join(root, "runs", readdirSync(join(root, "runs"))[0]);
+    const claimed = (JSON.parse(readFileSync(join(run, "owner.json"), "utf8")) as { groupId: unknown }).groupId;
+    assert.ok(typeof claimed === "number" && Number.isSafeInteger(claimed) && claimed > 1);
+    group = claimed;
+    const ownedGroup = claimed;
     assert.equal(result.code, 1);
     assert.match(result.detail, /SIGKILL/);
+    assert.equal(readFileSync(ready, "utf8"), "ready");
+    assert.equal(existsSync(join(run, "tmp")), true);
+    assert.equal(existsSync(join(run, "failure.txt")), true);
+    assert.deepEqual(reapTestRuns(join(root, "runs")), { removed: [], retained: [run] });
+    process.kill(-ownedGroup, "SIGKILL");
+    await until(() => !alive(ownedGroup));
     assert.equal(reapTestRuns(join(root, "runs")).removed.length, 1);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally {
+    const groupToClean = group;
+    if (groupToClean !== undefined && alive(groupToClean)) {
+      process.kill(-groupToClean, "SIGKILL");
+      await until(() => !alive(groupToClean));
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 it("refuses symlinked run directories and leaves the target intact", () => {

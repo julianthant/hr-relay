@@ -183,7 +183,10 @@ export async function runTestProcess(options: TestProcessOptions): Promise<TestP
   const live = owner.groupId !== null && groupAlive(owner.groupId);
   const final = live ? { code: 1, detail: `${result.detail}; child process group remains active` } : result;
   if (final.code === 0) rmSync(root, { recursive: true });
-  else writeFileSync(join(root, "failure.txt"), `${final.detail}\n${tail}`, { flag: "wx", mode: 0o600 });
+  else {
+    writeFileSync(join(root, "failure.txt"), `${final.detail}\n${tail}`, { flag: "wx", mode: 0o600 });
+    if (!live) rmSync(scratch, { recursive: true });
+  }
   process.stderr.write(`[test-run] ${basename(root)} ${final.detail}; ${systemClock.nowMs() - start}ms${final.code === 0 ? "; scratch removed" : `; retained ${root}`}\n`);
   return final;
 }

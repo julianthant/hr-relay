@@ -96,10 +96,11 @@ through `TMPDIR`, `TMP`, and `TEMP`, with file-creation mask `077`. The short ro
 UNIX socket path lengths.
 
 The runner streams child stdout/stderr while retaining the last **16,384 characters**. Successful
-scratch is removed only after the whole child group is absent. Failure retains `failure.txt`, the
-exit/signal or interruption detail, the tail, and the scratch path. A leader exiting while a
-descendant remains makes the result fail. SIGINT/SIGTERM sends TERM to the owned group, then KILL
-after **3,000 ms** if needed. A parent SIGKILL leaves the recorded group protected until it exits.
+scratch is removed only after the whole child group is absent. Failure writes `failure.txt` with the
+exit/signal or interruption detail and output tail. When the whole group is gone, it then removes
+`tmp/`; a live group keeps both for `npm run test:reap`. A leader exiting while a descendant remains
+makes the result fail. SIGINT/SIGTERM sends TERM to the owned group, then KILL after **3,000 ms** if
+needed. A parent SIGKILL leaves the recorded group protected until it exits.
 
 `reapTestRuns` validates the canonical base, direct owned private directories, run names, and
 strict ownership records. It refuses symlinks, wrong owners/modes, malformed records, unknown
