@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import {
 copyRelocationFile,inspectRelocationFiles,prepareRelocationDirectories,
@@ -37,7 +38,7 @@ it("relocates only a validated private ChatGPT record and refuses unsafe token a
     const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_fixture",
       registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
       session: { accessToken: "synthetic-relocation-access", refreshToken: "synthetic-relocation-refresh", idToken: "synthetic-relocation-id",
-        expiresAt: "2026-10-12T12:00:00.000Z", earliestRefreshAt: null, scopes: [], usePlan: false, usage: "available" } };
+        expiresAt: IsoInstantSchema.parse("2026-10-12T12:00:00.000Z"), earliestRefreshAt: null, scopes: [], usePlan: false, usage: "available" } };
     await createChatGptCredentialRepository({ admission: sourceAdmission, stateRoot: source.stateRoot }).withLock(async tx => { tx.replace(record, null); });
     const input = { admission: sourceAdmission, source, destination, fixedLockRoot: join(source.stateRoot, "locks") };
     const inventory = inspectRelocationFiles(input), file = inventory.files.find(file => file.relativePath === "chatgpt-credentials/account.json"); assert.ok(file);

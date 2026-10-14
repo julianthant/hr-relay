@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
+import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../src/backend/accounts/chatgpt-credential-repository.js";
 import { verifyRelocationLiveReferences } from "../../../src/backend/storage/maintenance/relocation-inventory.js";
@@ -28,7 +29,7 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     const original: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`,
       clientId: "oaiapp_fixture", registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
       session: { accessToken: "synthetic-before-backup-access", refreshToken: "synthetic-before-backup-refresh", idToken: "synthetic-before-backup-id",
-        expiresAt: "2026-10-12T12:00:00.000Z", earliestRefreshAt: null, scopes: [], usePlan: false, usage: "available" } };
+        expiresAt: IsoInstantSchema.parse("2026-10-12T12:00:00.000Z"), earliestRefreshAt: null, scopes: [], usePlan: false, usage: "available" } };
     await repository.withLock(async tx => { tx.replace(original, null); });
     const database = world.open(paths), manifest = await world.takeBackup(database, paths); database.close();
     assert.ok(readdirSync(paths.backupDirectory).every(name => name.endsWith(".sqlite") || name.endsWith(".manifest.json")));

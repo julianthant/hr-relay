@@ -175,7 +175,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     const claims = await verifiedClaims(parsed.data.id_token, clientId, nonce, signal);
     return { registration: { subject: claims.sub, name: claims.name, email: claims.email }, session: {
       accessToken: parsed.data.access_token, refreshToken: parsed.data.refresh_token ?? null, idToken: parsed.data.id_token,
-      expiresAt: new Date(clock.nowMs() + parsed.data.expires_in * 1000).toISOString(), earliestRefreshAt: parsed.data.earliest_refresh_at ?? null,
+      expiresAt: IsoInstantSchema.parse(new Date(clock.nowMs() + parsed.data.expires_in * 1000).toISOString()), earliestRefreshAt: parsed.data.earliest_refresh_at ?? null,
       scopes: parsed.data.scope.split(/\s+/u).filter(Boolean), usePlan, usage: "available" as const,
     } };
   }
