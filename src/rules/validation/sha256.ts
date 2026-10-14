@@ -10,10 +10,6 @@ const ROUND_CONSTANTS = new Uint32Array([
   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ]);
 
-function rotateRight(value: number, bits: number): number {
-  return (value >>> bits) | (value << (32 - bits));
-}
-
 /** Lowercase SHA-256 hex, implemented without a Node-only runtime import. */
 export function sha256Hex(text: string): string {
   const input = new TextEncoder().encode(text);
@@ -38,8 +34,8 @@ export function sha256Hex(text: string): string {
     for (let index = 16; index < 64; index += 1) {
       const left = words[index - 15];
       const right = words[index - 2];
-      const sigma0 = rotateRight(left, 7) ^ rotateRight(left, 18) ^ (left >>> 3);
-      const sigma1 = rotateRight(right, 17) ^ rotateRight(right, 19) ^ (right >>> 10);
+      const sigma0 = ((left >>> 7) | (left << 25)) ^ ((left >>> 18) | (left << 14)) ^ (left >>> 3);
+      const sigma1 = ((right >>> 17) | (right << 15)) ^ ((right >>> 19) | (right << 13)) ^ (right >>> 10);
       words[index] = (words[index - 16] + sigma0 + words[index - 7] + sigma1) >>> 0;
     }
 
@@ -52,10 +48,10 @@ export function sha256Hex(text: string): string {
     let g = hash[6];
     let h = hash[7];
     for (let index = 0; index < 64; index += 1) {
-      const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+      const sum1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
       const choose = (e & f) ^ (~e & g);
       const temporary1 = (h + sum1 + choose + ROUND_CONSTANTS[index] + words[index]) >>> 0;
-      const sum0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+      const sum0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
       const majority = (a & b) ^ (a & c) ^ (b & c);
       const temporary2 = (sum0 + majority) >>> 0;
       h = g;

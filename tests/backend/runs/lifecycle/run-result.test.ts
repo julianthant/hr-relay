@@ -1,7 +1,8 @@
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../../support/helpers/run-integration-world.js";
 
 import { default as assert } from "node:assert/strict";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
+import * as schemaBoundValue from "../../../../src/models/validation/schema-bound-value.js";
 import { z } from "zod";
 import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -83,6 +84,26 @@ const RESOLVED_READ = { state: "resolved" as const, nodeId: "read", checkpoint: 
 const NOT_RUN_SKIP = { state: "not-run" as const, nodeId: "skip", reason: "step-omitted" as const };
 
 describe("resolveTerminalDependencies under step omission", () => {
+  it("reuses descriptor schema identities while still validating each terminal output", () => {
+    const run = runningRun();
+    const evidence = [RESOLVED_READ, RESOLVED_FOLD, NOT_RUN_SKIP];
+    const hash = vi.spyOn(schemaBoundValue, "deriveSchemaHash");
+    try {
+      const first = buildRunResult(stepOmissionTerminalDescriptor, run, evidence, CLOCK).record;
+      const second = buildRunResult(stepOmissionTerminalDescriptor, run, evidence, CLOCK).record;
+      assert.deepEqual(second, first);
+      assert.throws(() => buildRunResult(stepOmissionTerminalDescriptor, run, [
+        { ...RESOLVED_READ, checkpoint: { ...RESOLVED_READ.checkpoint, output: { schemaHash: HASH_B, value: { eid: "10873698", present: true } } } },
+        RESOLVED_FOLD, NOT_RUN_SKIP,
+      ], CLOCK), /checkpoint output schema/);
+      assert.throws(() => buildRunResult(stepOmissionTerminalDescriptor, run, [
+        { ...RESOLVED_READ, checkpoint: { ...RESOLVED_READ.checkpoint, output: { schemaHash: OUTPUT_HASH, value: { eid: "10873698", present: "invalid" } } } },
+        RESOLVED_FOLD, NOT_RUN_SKIP,
+      ], CLOCK));
+      assert.equal(hash.mock.calls.length, 0);
+    } finally { hash.mockRestore(); }
+  });
+
   it("resolves a well-formed asserted dependency for an omitted, produced step", () => {
     const { record } = buildRunResult(
       stepOmissionTerminalDescriptor,
