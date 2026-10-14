@@ -20,7 +20,7 @@ it("owns Queue state/actions and keeps refused workflow jumps from navigating", 
     nowIso: row.updatedAt, workflowLabelOf: (id: string) => id, selectRun: (id: string) => selected.push(id),
     setActiveWorkflowId: (id: string) => { scopes.push(id); return false; }, onWells: (next: ReadonlySet<string>) => wells.push(next),
     onBulkIds: (next: ReadonlySet<string>) => bulk.push(next), setBatchGrouping: async () => undefined,
-    exitQueueSelection: () => undefined, runPreviewAction: () => undefined, runQueueAction: () => undefined,
+    exitQueueSelection: () => undefined, runQueueAction: () => undefined,
   };
   function Probe() { wiring = useQueueWiring(input); return null; }
   const root = createRoot(document.createElement("div"));
@@ -49,7 +49,7 @@ function mountWiring(overrides: Partial<WiringInput> = {}) {
     nowIso: row.updatedAt, workflowLabelOf: (id) => id, selectRun: () => undefined,
     setActiveWorkflowId: () => true, onWells: () => undefined, onBulkIds: () => undefined,
     setBatchGrouping: async () => undefined, exitQueueSelection: () => undefined,
-    runPreviewAction: () => { throw new Error("preview action reached served Queue"); }, runQueueAction: () => undefined,
+    runQueueAction: () => undefined,
     ...overrides,
   };
   let wiring: ReturnType<typeof useQueueWiring> | undefined;
@@ -74,7 +74,7 @@ it("uses served rows without local overlays or fictional actions and retains sta
     assert.deepEqual(first.surfaces, expected);
     assert.ok(first.surfaces.every((row, index) => row === expected[index]));
     assert.equal(first.queueHandlers.onPreviewAction, undefined);
-    const repeated = await mounted.draw({ runPreviewAction: () => undefined });
+    const repeated = await mounted.draw();
     assert.equal(repeated.surfaces, first.surfaces);
     assert.equal(repeated.queueHandlers, first.queueHandlers);
     const unbacked = QueueSurfaceWireSchema.parse({ ...expected[0], runId: "00000000-8000-4000-8000-000000000001" });

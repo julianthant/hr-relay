@@ -24,7 +24,7 @@ import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { Button,Dialog,DialogContent,DialogFooter,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { Button,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { useServedNow } from "../state/served-clock.js";
@@ -45,7 +45,7 @@ import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
-import type { QueueBatch } from "../surfaces/queue/queue-model.js";
+import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import {
   attentionRunIds,
 visibleRunIds,
@@ -57,7 +57,6 @@ BulkCommandFeedback,
 type PendingBulkCommand,
 } from "../surfaces/queue/queue-toolbar.js";
 import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
-import { queuePreviewCounts, useQueuePreview, type QueueMockAction } from '../surfaces/queue/queue-preview-model.js';
 import { QueuePanel,type QueueFilterScope } from "../surfaces/queue/queue.js";
 import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/identity/run-identity.js";
 import { RunStartButton } from "../surfaces/run-start/run-start.js";
@@ -65,7 +64,7 @@ import { SessionPanel } from "../surfaces/sessions/session-panel.js";
 import {
 DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 } from "../surfaces/settings/settings-model.js";
-import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell/shell-model.js";
+import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
@@ -107,6 +106,7 @@ type AppRouteState
 
 
 const NO_LOG_TABS: readonly PanelTab[] = Object.freeze([]);
+const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
 
@@ -287,8 +287,8 @@ function LoadedApp({
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
   const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
-  const previewQueue = useQueuePreview(workflowSurfaces, day);
-  const selectedRow = previewQueue.rows.find(row => String(row.runId) === route.run);
+  const queueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
+  const selectedRow = queueRows.find(row => String(row.runId) === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? route.view?.workflow ?? chosenWorkflowId;
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, catalog: workflowCatalog, nowIso, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
@@ -380,10 +380,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     (workflowId: string): string => workflowCatalog.find((w) => w.id === workflowId)?.label ?? workflowId,
     [workflowCatalog],
   );
-  /** Local mock counts follow the latest attempt; served day/rail counts keep their own scope. */
   const scopedStatusCounts = useMemo(
-    () => queuePreviewCounts(previewQueue.rows, activeWorkflowId),
-    [previewQueue.rows, activeWorkflowId],
+    () => workflowStatusCounts(dayWire?.workflowCounts ?? [], activeWorkflowId),
+    [dayWire, activeWorkflowId],
   );
 
   /** Use the status vocabulary for filter text so labels and empty states agree. */
@@ -577,42 +576,17 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     await executeShell(request, "Queue grouping");
   }, [boot.actor.id, nowIso, executeShell, executor, commandScope.actorId]);
 
-  const selectionOrigin = useRef<string | null>(null);
   const exitQueueSelection = useCallback(() => {
     onSelectMode(false);
     onBulkIds(new Set());
     queueMicrotask(() => {
-      const row = selectionOrigin.current === null ? null : document.querySelector<HTMLElement>(`[data-demo-row-id="${CSS.escape(selectionOrigin.current)}"]`);
-      (row ?? document.getElementById(RUN_START_DOOR_ID))?.focus({ preventScroll: true });
+      document.getElementById(RUN_START_DOOR_ID)?.focus({ preventScroll: true });
     });
   }, [onSelectMode, onBulkIds]);
-  const [pendingDelete, setPendingDelete] = useState<readonly string[] | null>(null);
-  const applyPreviewAction = useCallback((action: Exclude<QueueMockAction, 'archive'>, ids: readonly string[]) => {
-    if (ids.length === 0) return;
-    selectionOrigin.current = ids[0] ?? null;
-    let retriedIds: readonly string[];
-    try {
-      const result = previewQueue.apply(action, ids, nowIso);
-      retriedIds = result.createdIds;
-    }
-    catch (caught) {
-      toast({ tone: 'danger', title: 'Mock action unavailable', description: caught instanceof Error ? caught.message : String(caught) });
-      return;
-    }
-    if (action === 'retry') selectionOrigin.current = retriedIds[0] ?? null;
-    exitQueueSelection();
-    toast({ tone: 'success', title: `${ids.length} ${ids.length === 1 ? 'run' : 'runs'} ${action === 'retry' ? 'queued' : 'deleted'}`, description: action === 'retry' ? 'Original settings retained.' : undefined });
-    if (route.run !== undefined && ids.includes(route.run)) setRoute({ ...route, run: action === 'retry' ? retriedIds[0] : undefined });
-  }, [previewQueue, nowIso, exitQueueSelection, toast, route, setRoute]);
-
-  const runPreviewAction = useCallback((action: Exclude<QueueMockAction, 'archive'>, ids: readonly string[]) => {
-    if (action === "delete") setPendingDelete(ids); else applyPreviewAction(action, ids);
-  }, [applyPreviewAction]);
-
   const { surfaces, parentOf, viewState, queueHandlers, actionsOf } = useQueueWiring({
-    allRows: dayWire?.queueSurfaces, rows: previewQueue.rows, activeWorkflowId, filter, selectedRunId: route.run,
+    allRows: dayWire?.queueSurfaces, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
     openWells, selectMode, bulkIds, nowIso, workflowLabelOf, selectRun, setActiveWorkflowId, onWells, onBulkIds,
-    setBatchGrouping, exitQueueSelection, runPreviewAction, runQueueAction,
+    setBatchGrouping, exitQueueSelection, runQueueAction,
   });
 
   const keyboardOrder = useMemo(
@@ -718,15 +692,15 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const runs = mockRuns.filter(run => run.workflowId === id);
     setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
   }, [mockRuns, setRoute]);
-  const searchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: previewQueue.rows, workflowLabel: workflowLabelOf, mockRuns });
+  const searchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
   const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
   const notifications = useWorkspaceNotifications(notificationScenario, {
-    day, nowIso, rows: !hasServedWorkflows || dayWire ? previewQueue.rows : undefined, runs: mockRuns,
+    day, nowIso, rows: !hasServedWorkflows || dayWire ? queueRows : undefined, runs: mockRuns,
     workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
-  const notificationContext = useRef({ day, rows: previewQueue.rows, runs: mockRuns, canSelectWorkflowId });
-  notificationContext.current = { day, rows: previewQueue.rows, runs: mockRuns, canSelectWorkflowId };
+  const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canSelectWorkflowId });
+  notificationContext.current = { day, rows: queueRows, runs: mockRuns, canSelectWorkflowId };
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
     const destinationRefusal = () => {
       const context = notificationContext.current;
@@ -937,12 +911,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()}
       />
 
-      <Dialog open={pendingDelete !== null} onOpenChange={next => { if (!next) setPendingDelete(null); }}>
-        <DialogContent title="Delete this run?" description="Remove this run and its child rows." size="sm">
-          <p className="text-body text-ui-primary">{previewQueue.rows.find(row => row.runId === pendingDelete?.[0])?.title}</p>
-          <DialogFooter><Button variant="secondary" onClick={() => setPendingDelete(null)}>Keep run</Button><Button variant="danger" onClick={() => { if (pendingDelete) applyPreviewAction("delete", pendingDelete); setPendingDelete(null); }}>Delete run</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
       <RunLaunchHost
         controller={launch}
         catalog={workflowCatalog}

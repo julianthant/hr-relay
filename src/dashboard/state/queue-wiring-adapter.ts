@@ -22,7 +22,6 @@ export function useQueueWiring(input: Readonly<{
   onBulkIds: (next: ReadonlySet<string>) => void;
   setBatchGrouping: NonNullable<QueueHandlers["onSetBatchGrouping"]>;
   exitQueueSelection: () => void;
-  runPreviewAction: NonNullable<QueueHandlers["onPreviewAction"]>;
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
 }>) {
   const { allRows, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
