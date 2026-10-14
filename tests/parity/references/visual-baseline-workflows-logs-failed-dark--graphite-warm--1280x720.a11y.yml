@@ -353,7 +353,7 @@
         - figure "Document search":
           - text: Kuali Filled fields
           - button "Enlarge screenshot captured at 09:31:02":
-            - img "Fictional Kuali Document search for Alex Morgan · sample data"
+            - img "Kuali Document search for Alex Morgan"
           - text: Document search
         - time: 09:31:03
         - text: Go
@@ -412,7 +412,7 @@
         - figure "Separation request":
           - text: Kuali Browser
           - button "Enlarge screenshot captured at 09:31:10":
-            - img "Fictional Kuali Separation request for Alex Morgan · sample data"
+            - img "Kuali Separation request for Alex Morgan"
           - text: Separation request
       - region "Search employee name":
         - time: 09:31:14
@@ -425,7 +425,7 @@
         - figure "Employee search":
           - text: UCPath Filled fields
           - button "Enlarge screenshot captured at 09:31:14":
-            - img "Fictional UCPath Employee search for Alex Morgan · sample data"
+            - img "UCPath Employee search for Alex Morgan"
           - text: Employee search
         - time: 09:31:15
         - text: Search
@@ -441,7 +441,7 @@
         - figure "Matching employee":
           - text: UCPath Person record
           - button "Enlarge screenshot captured at 09:31:17":
-            - img "Fictional UCPath Matching employee for Alex Morgan · sample data"
+            - img "UCPath Matching employee for Alex Morgan"
           - text: Matching employee
       - region "Read Workforce Job Summary":
         - time: 09:31:19
@@ -477,7 +477,7 @@
         - figure "Job summary":
           - text: UCPath Browser
           - button "Enlarge screenshot captured at 09:31:23":
-            - img "Fictional UCPath Job summary for Alex Morgan · sample data"
+            - img "UCPath Job summary for Alex Morgan"
           - text: Job summary
       - region "Find and read the timecard":
         - time: 09:31:25
@@ -490,7 +490,7 @@
         - figure "Employee search":
           - text: Kronos Filled fields
           - button "Enlarge screenshot captured at 09:31:25":
-            - img "Fictional Kronos Employee search for Alex Morgan · sample data"
+            - img "Kronos Employee search for Alex Morgan"
           - text: Employee search
         - time: 09:31:27
         - text: Select matching employee
@@ -517,7 +517,7 @@
         - figure "Timecard":
           - text: Kronos Filled fields
           - button "Enlarge screenshot captured at 09:31:37":
-            - img "Fictional Kronos Timecard for Alex Morgan · sample data"
+            - img "Kronos Timecard for Alex Morgan"
           - text: Timecard
       - region "Read pending terminations":
         - time: 09:32:09
@@ -562,7 +562,7 @@
         - figure "Transaction fields":
           - text: UCPath Filled fields
           - button "Enlarge screenshot captured at 09:32:18":
-            - img "Fictional UCPath Transaction fields for Alex Morgan · sample data"
+            - img "UCPath Transaction fields for Alex Morgan"
           - text: Transaction fields
         - time: 09:32:20
         - text: Create Transaction
@@ -573,7 +573,7 @@
         - figure "Employee ID":
           - text: UCPath Filled fields
           - button "Enlarge screenshot captured at 09:32:22":
-            - img "Fictional UCPath Employee ID for Alex Morgan · sample data"
+            - img "UCPath Employee ID for Alex Morgan"
           - text: Employee ID
         - time: 09:32:23
         - text: Tab · resolve employee
@@ -589,7 +589,7 @@
         - figure "Employee and reason":
           - text: UCPath Filled fields
           - button "Enlarge screenshot captured at 09:32:25":
-            - img "Fictional UCPath Employee and reason for Alex Morgan · sample data"
+            - img "UCPath Employee and reason for Alex Morgan"
           - text: Employee and reason
         - time: 09:32:27
         - text: Continue
@@ -611,14 +611,14 @@
         - figure "Employment fields":
           - text: UCPath Filled fields
           - button "Enlarge screenshot captured at 09:32:32":
-            - img "Fictional UCPath Employment fields for Alex Morgan · sample data"
+            - img "UCPath Employment fields for Alex Morgan"
           - text: Employment fields
         - time: 09:32:38
         - text: Save and Submit
         - figure "Form after Save and Submit":
           - text: UCPath Full form
           - button "Enlarge screenshot captured at 09:32:38":
-            - img "Fictional UCPath Form after Save and Submit for Alex Morgan · sample data"
+            - img "UCPath Form after Save and Submit for Alex Morgan"
             - text: Full form · open to scroll
           - text: Form after Save and Submit
       - region "Verify termination":
@@ -640,7 +640,7 @@
         - figure "Submitted transaction":
           - text: UCPath Browser
           - button "Enlarge screenshot captured at 09:32:43":
-            - img "Fictional UCPath Submitted transaction for Alex Morgan · sample data"
+            - img "UCPath Submitted transaction for Alex Morgan"
           - text: Submitted transaction
       - region "Finalize Kuali document":
         - time: 09:33:18
@@ -680,14 +680,14 @@
         - figure "Separation fields":
           - text: Kuali Filled fields
           - button "Enlarge screenshot captured at 09:33:27":
-            - img "Fictional Kuali Separation fields for Alex Morgan · sample data"
+            - img "Kuali Separation fields for Alex Morgan"
           - text: Separation fields
         - time: 09:33:29
         - text: Save
         - figure "Form after Save":
           - text: Kuali Full form
           - button "Enlarge screenshot captured at 09:33:29":
-            - img "Fictional Kuali Form after Save for Alex Morgan · sample data"
+            - img "Kuali Form after Save for Alex Morgan"
             - text: Full form · open to scroll
           - text: Form after Save
       - region "Run decision":
@@ -705,17 +705,17 @@
             - figure "Last browser view":
               - text: UCPath
               - button "Enlarge screenshot captured at 09:32:39":
-                - img "Fictional Last browser view · sample data"
+                - img "Last browser view"
               - text: Last browser view
             - figure "Failed action":
               - text: Kuali
               - button "Enlarge screenshot captured at 09:32:39":
-                - img "Fictional Failed action · sample data"
+                - img "Failed action"
               - text: Failed action
             - figure "Last browser view":
               - text: Kronos
               - button "Enlarge screenshot captured at 09:32:39":
-                - img "Fictional Last browser view · sample data"
+                - img "Last browser view"
               - text: Last browser view
             - text: UCPath termination already verified
             - button "Retry Kuali step"

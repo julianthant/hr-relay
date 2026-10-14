@@ -44,7 +44,7 @@
         - /url: "?settings=keyboard"
     - region "Workflow explorer preview":
       - heading "Explorer" [level=1]
-      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - paragraph: Browse workflows, their steps and field sources.
       - combobox "Explorer workflow": Work-Study
       - list "Workflow steps":
         - listitem:
@@ -116,7 +116,6 @@
           - heading "Rollup" [level=2]
           - text: Local
           - paragraph: Close the coordinator once every member is terminal.
-      - paragraph: Fictional workflow path complete. No external system contacted.
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"

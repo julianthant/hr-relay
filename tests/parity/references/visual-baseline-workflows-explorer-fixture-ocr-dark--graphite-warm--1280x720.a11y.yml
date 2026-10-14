@@ -44,7 +44,7 @@
         - /url: "?settings=keyboard"
     - region "Workflow explorer preview":
       - heading "Explorer" [level=1]
-      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - paragraph: Browse workflows, their steps and field sources.
       - combobox "Explorer workflow": OCR
       - list "Workflow steps":
         - listitem:
@@ -110,7 +110,6 @@
           - group:
             - strong: Review selection
             - text: Read Records 1 Approved people 1
-      - paragraph: Fictional workflow path complete. No external system contacted.
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
