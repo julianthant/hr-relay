@@ -39,6 +39,7 @@ const WIRE_SCHEMA_MODULES = [
   "../../../src/models/dashboard/start-plan.js",
   "../../../src/models/dashboard/storage.js",
   "../../../src/models/dashboard/subscription.js",
+  "../../../src/models/dashboard/workbooks.js",
   "../../../src/models/intake/wire.js",
   "../../../src/models/trust/failure.js",
 ] as const;
@@ -193,6 +194,35 @@ describe("redaction surface scan — the declaration audit", () => {
       assert.equal(violations.length, 1, identity);
       assert.match(violations[0] ?? "", /carries no declared origin/u);
     }
+  });
+
+  it("pins every workbook boundary and refuses omitted classifications or HR values leaving local custody", () => {
+    const module = "src/models/dashboard/workbooks.ts";
+    const surfaces = REDACTION_SURFACES.filter(surface => surface.module === module);
+    assert.deepEqual(surfaces.map(surface => surface.id).sort(), [
+      "durable/editable-workbook", "durable/saved-workbook", "request/workbook-create", "request/workbook-intake",
+      "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
+      "wire/workbook-history", "wire/workbook-intake", "wire/workbook-list",
+    ]);
+    assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === module)?.state, "audited");
+    const origins = SURFACE_LEAF_ORIGINS.filter(entry => surfaces.some(surface => surface.id === entry.surface));
+    assert.ok(origins.length > 100);
+    for (const omitted of origins) {
+      const remaining = SURFACE_LEAF_ORIGINS.filter(entry => entry !== omitted);
+      assert.equal(remaining.length, SURFACE_LEAF_ORIGINS.length - 1);
+      const violations = auditSurfaceOrigins(REDACTION_SURFACES, remaining);
+      assert.equal(violations.length, 1, `${omitted.surface}|${omitted.path}`);
+      assert.match(violations[0] ?? "", /carries no declared origin/u);
+    }
+    for (const egress of ["process-egress", "os-notification"] as const) {
+      const moved = surfaces.map(surface => ({ ...surface, egress }));
+      const violations = auditSurfaceOrigins(moved, origins);
+      assert.ok(violations.some(problem => problem.includes("cells[].value") && problem.includes("may not carry at all")));
+      assert.ok(violations.some(problem => problem.includes("request.payload.correctedValue") && problem.includes("may not carry at all")));
+    }
+    const added = surfaces.map(surface => surface.id === "wire/saved-workbook"
+      ? { ...surface, schema: z.strictObject({ snapshot: surface.schema, unclassified: z.string() }) } : surface);
+    assert.ok(auditSurfaceOrigins(added, origins).some(problem => problem.includes('leaf "unclassified"')));
   });
 
   it("registers every surface-bearing module in both directions", () => {

@@ -28,7 +28,6 @@ function canonicalContent(value: unknown): string {
 }
 
 export function createWorkbookLibraryQueries(transport: DashboardTransport): WorkbookLibraryQueries {
-  const pathFor = (libraryId: string) => `/api/v1/workbooks/${encodeURIComponent(libraryId)}`;
   return Object.freeze({
     async workbookList() {
       const path = "/api/v1/workbooks/list";
@@ -37,7 +36,7 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       return records.map(decodeSavedWorkbook);
     },
     async workbookOpen(libraryId: string) {
-      const path = pathFor(libraryId);
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}`;
       const record = parseOrThrow(SavedWorkbookWireSchema, path, await transport.requestJson(path));
       if (record.libraryId !== libraryId) throw schemaError(path, "workbook identity mismatch");
       return decodeSavedWorkbook(record);
@@ -52,7 +51,7 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       return decodeSavedWorkbook(record);
     },
     async workbookSave(libraryId: string, expectedVersion: number, workbook: unknown) {
-      const path = `${pathFor(libraryId)}/save`;
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/save`;
       const request = parseOrThrow(WorkbookSaveRequestSchema, path, { expectedVersion, workbook: encodeWorkbook(workbook) });
       if (request.workbook.libraryId !== libraryId) throw schemaError(path, "workbook request identity mismatch");
       const record = parseOrThrow(SavedWorkbookWireSchema, path, await transport.requestJson(path, { method: "POST", body: JSON.stringify(request) }));
@@ -61,14 +60,14 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       return decodeSavedWorkbook(record);
     },
     async workbookHistory(libraryId: string) {
-      const path = `${pathFor(libraryId)}/history`;
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/history`;
       const records = parseOrThrow(WorkbookHistoryWireSchema, path, await transport.requestJson(path));
       if (records.length === 0 || records.some((record, index) => record.libraryId !== libraryId || record.version !== index + 1
         || record.createdAt !== records[0].createdAt)) throw schemaError(path, "workbook history identity or revision order mismatch");
       return records.map(decodeSavedWorkbook);
     },
     async workbookIntake(libraryId: string, expectedVersion: number, workflowId: string) {
-      const path = `${pathFor(libraryId)}/intake`;
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/intake`;
       const request = parseOrThrow(WorkbookIntakeRequestSchema, path, { expectedVersion, workflowId });
       const response = await transport.requestJsonResponse(path, { method: "POST", body: JSON.stringify(request) });
       if (response.status !== 200 && response.status !== 201 && response.status !== 422) throw httpError(response.status, response.body);
