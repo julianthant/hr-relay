@@ -1,14 +1,32 @@
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { useDeferredValue, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useDeferredValue, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, MoreHorizontal, Plus, Undo2, Redo2 } from 'lucide-react';
-import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageBreadcrumbs, PageHeading, SearchInput, Select } from '../../ds/ui.js';
+import { Spinner, Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageBreadcrumbs, PageHeading, SearchInput, Select } from '../../ds/ui.js';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ds/primitives/dropdown-menu.js';
-import { addSpreadsheetColumn, cellDisplayText, cellText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetCellProblem, spreadsheetForeground, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
+import { addSpreadsheetColumn, cellDisplayText, cellText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetCellProblem, spreadsheetForeground, spreadsheetSaveMatches, type SpreadsheetSaveResult, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
 import { exportSheetInWorker, exportSpreadsheetInWorker } from "./spreadsheet-import-client.js";
 import { EMPTY_WORKBOOK_HISTORY, recordWorkbookEdit, stepWorkbookHistory, type WorkbookHistory } from './spreadsheet-history-model.js';
 import './spreadsheet-editor.css';
 
-export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported }: { document: EditableWorkbook; dirty: boolean; onExported?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
+export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported, onSave }: { document: EditableWorkbook; dirty: boolean; onSave?: (draft: EditableWorkbook) => Promise<SpreadsheetSaveResult>; onExported?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
+  const [save, setSave] = useState<{ document: EditableWorkbook; result: SpreadsheetSaveResult | { state: 'pending' } }>();
+  const saveRequest = useRef<object | undefined>(undefined);
+  const latestDocument = useRef(document); latestDocument.current = document;
+  useEffect(() => () => { saveRequest.current = undefined; }, []);
+  const saveDocument = async () => {
+    if (!onSave || saveRequest.current) return;
+    const request = {}; const draft = document; saveRequest.current = request;
+    setSave({ document: draft, result: { state: 'pending' } });
+    let result: SpreadsheetSaveResult;
+    try { result = await onSave(draft); }
+    catch { result = { state: 'uncertain', reason: 'Save outcome is uncertain. Check the library before saving again.' }; }
+    if (saveRequest.current !== request) return;
+    saveRequest.current = undefined;
+    if (latestDocument.current !== draft) { setSave(undefined); return; }
+    if (result.state === 'confirmed' && !spreadsheetSaveMatches(draft, result)) result = { state: 'uncertain', reason: 'The library readback does not match this draft.' };
+    setSave({ document: draft, result });
+    if (result.state === 'confirmed') { savedCopy.current = draft; onDocument(draft, false); }
+  };
   const [sheetId, setSheetId] = useViewState('spreadsheetSheet', '');
   const [query, setQuery] = useViewState('spreadsheetRowsQuery', '', 'replace');
   const [page, setPage] = useViewState('spreadsheetPage', 0);
@@ -82,9 +100,11 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
   }} onBlur={event => { if (event.target.classList.contains('spreadsheet-cell-input')) { editGroup.current = undefined; setHistory(current => ({ ...current, group: undefined })); } }}>
     <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: () => dirty ? setCloseOpen(true) : onDocument(null, false) }, { label: document.name }]} />
     <PageHeading title={document.name} description={`${document.sheets.length} ${document.sheets.length === 1 ? 'sheet' : 'sheets'} · ${dirty ? 'Edited copy' : 'Saved copy'}`} actionAlignment="title" actions={<>
+      <Button variant="secondary" aria-busy={!!saveRequest.current || undefined} disabled={busy || !!saveRequest.current || !onSave} icon={saveRequest.current ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void saveDocument()}>Save</Button>
       <DropdownMenu><DropdownMenuTrigger asChild><Button variant="secondary" disabled={busy || !sheet} icon={<Download className="size-3.5" />}>Export copy</Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Export spreadsheet" align="end" className="w-52"><DropdownMenuItem onSelect={() => void exportFile('xlsx')}>Excel workbook (.xlsx)</DropdownMenuItem><DropdownMenuItem onSelect={() => void exportFile('csv')}>Current sheet (.csv)</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       {onMapping && <DropdownMenu><DropdownMenuTrigger asChild><IconButton variant="ghost" label="Workbook actions" disabled={busy} icon={<MoreHorizontal className="size-4" />} /></DropdownMenuTrigger><DropdownMenuContent aria-label="Workbook actions" align="end"><DropdownMenuItem onSelect={onMapping}>Edit column mappings</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
     </>} />
+    {save?.document === document && (save.result.state === 'pending' ? <p role="status" className="text-body text-ui-secondary">Saving… · Draft kept</p> : save.result.state === 'confirmed' ? <p role="status" className="text-body text-ui-secondary">Saved · version {save.result.version}</p> : <Banner tone="warning" title={save.result.state === 'conflict' ? 'Save version conflict' : save.result.state === 'uncertain' ? 'Save uncertain' : 'Save refused'}>{save.result.reason} Draft kept.</Banner>)}
     {!sheet && <Banner tone="danger" title="Sheet unavailable"><p>This sheet is no longer in the workbook.</p><Button onClick={() => { setSheetId(''); setPage(0); }}>Open first sheet</Button></Banner>}
     {error && <Banner tone="danger" title="Spreadsheet unavailable">{error}</Banner>}
     {sheet && <>

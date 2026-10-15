@@ -78,3 +78,5 @@ export function statusText(status: ProposedStatus, age?: string): string {
 export function statusAccessibleName(status: ProposedStatus, age?: string): string {
   return dsStatusAccessibleName(status, age);
 }
+
+export type QueueBusinessOutcome = Readonly<{ label: string; tone: "success" | "warning" | "neutral" }>;

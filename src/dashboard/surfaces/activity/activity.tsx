@@ -26,7 +26,7 @@ export function ActivityReport({ range, onRange }: { range: string; onRange: (ra
     selection={selection} onSelection={onSelection}
     onRange={next => { const value = activityRangeValue(next); setChoice({ range: value, value: "custom" }); setNotice(""); setSelection(null); onRange(value); }}
     onPreset={preset => { const value = preset === "custom" ? range : activityRangeValue(activityPresetRange(preset, ACTIVITY_SAMPLE_TODAY)); setChoice({ range: value, value: preset }); setNotice(""); if (preset !== "custom") { setSelection(null); setRangeRevision(current => current + 1); onRange(value); } }}
-    onExport={() => setNotice("Export is not connected yet.")}
+    onExport={() => setNotice("CSV export is unavailable in this preview.")}
     notice={notice}
   />;
 }

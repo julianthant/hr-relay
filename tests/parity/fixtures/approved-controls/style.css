@@ -1,0 +1,5 @@
+@import "../../../../src/dashboard/app/index.css";
+@import "../../../../src/dashboard/surfaces/settings/settings-data.css";
+@import "../../../../src/dashboard/surfaces/settings/reference-settings.css";
+@source "../../../../src/dashboard";
+@source ".";

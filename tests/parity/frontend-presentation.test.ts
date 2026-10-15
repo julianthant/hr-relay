@@ -210,7 +210,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(loading).toHaveAttribute("aria-busy", "true");
       await expect(loading).toContainText("Workflow outcomes");
       await expect(loading).toContainText("Run performance");
-      await expect(surface.getByRole("button", { name: "Export report", exact: true })).toHaveCount(0);
+      await expect(surface.getByRole("button", { name: "Export CSV", exact: true })).toBeDisabled();
       await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "unavailable" }))}`);
       await expect(surface.getByRole("alert")).toContainText("Analytics unavailable");
       await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "normal" }))}`);
