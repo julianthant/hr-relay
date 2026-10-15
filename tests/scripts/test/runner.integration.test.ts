@@ -243,7 +243,7 @@ describe("architecture project empty collection", () => {
   });
 });
 
-function suiteProcess(root: string, script: string, suiteLock: boolean | "borrowed" = true, waitTimeoutMs = 5_000) {
+function suiteProcess(root: string, script: string, suiteLock: boolean | "borrowed" = true, waitTimeoutMs = 5_000, detached = false) {
   const module = fileURLToPath(new URL("../../../scripts/test/runner.ts", import.meta.url));
   const options = {
     command: process.execPath, args: ["-e", script], cwd: root, env: {},
@@ -251,7 +251,7 @@ function suiteProcess(root: string, script: string, suiteLock: boolean | "borrow
     suiteLockWaitTimeoutMs: waitTimeoutMs, idleTimeoutMs: 500,
   };
   const source = `import {acquireSuiteLock,runTestProcess} from ${JSON.stringify(module)};const options=${JSON.stringify(options)};${suiteLock === "borrowed" ? "options.suiteLock=await acquireSuiteLock({directory:options.rootDirectory});" : ""}try{process.exitCode=(await runTestProcess(options)).code}catch(e){console.error(e.name+': '+e.message);process.exitCode=1}finally{${suiteLock === "borrowed" ? "await options.suiteLock.release();" : ""}}`;
-  const child = spawn(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), "--input-type=module", "-e", source], { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), "--input-type=module", "-e", source], { detached, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   child.stdout.on("data", (data: Buffer) => { output += data.toString(); });
   child.stderr.on("data", (data: Buffer) => { output += data.toString(); });
@@ -360,6 +360,42 @@ it("shuts down a whole-suite descendant before releasing the suite lease", async
 });
 
 for (const ownership of [true, "borrowed"] as const) {
+  it(`keeps the ${ownership === true ? "owned" : "borrowed"} suite lease through terminal-group SIGINT until detached tests stop`, async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
+    const ready = join(root, "ready"), marker = join(root, "waiter-started");
+    const holder = suiteProcess(root, `process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(${JSON.stringify(ready)},String(process.pid));setInterval(()=>console.log('progress'),50)`, ownership, 5_000, true);
+    let waiter: ReturnType<typeof suiteProcess> | undefined;
+    let group: number | undefined;
+    try {
+      await until(() => existsSync(ready));
+      group = Number(readFileSync(ready, "utf8"));
+      assert.ok(Number.isSafeInteger(group) && group > 1);
+      const wrapperGroup = holder.child.pid;
+      assert.ok(wrapperGroup !== undefined && wrapperGroup > 1);
+      assert.notEqual(wrapperGroup, group);
+      waiter = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(marker)},'started')`);
+      await until(() => waiter!.output().includes("waiting for another"));
+      assert.equal(existsSync(marker), false);
+      process.kill(-wrapperGroup, "SIGINT");
+      await sleep(200);
+      assert.equal(alive(wrapperGroup), true, "wrapper must be draining its detached group");
+      assert.equal(alive(group), true, "test leader must survive TERM until forced cleanup");
+      assert.equal(existsSync(marker), false, "waiter started while terminal-interrupted tests still ran");
+      assert.equal(await holder.closed, 1);
+      assert.equal(alive(group), false, "runner must finish group cleanup before releasing the lease");
+      assert.equal(await waiter.closed, 0);
+      assert.equal(existsSync(marker), true);
+    } finally {
+      holder.child.kill("SIGKILL");
+      if (group !== undefined && alive(group)) {
+        process.kill(-group, "SIGKILL");
+        await until(() => !alive(group!));
+      }
+      waiter?.child.kill("SIGTERM");
+      await holder.closed; await waiter?.closed;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it(`keeps the ${ownership === true ? "owned" : "borrowed"} suite lease until the detached child exits after runner SIGKILL`, async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
     const ready = join(root, "ready"), marker = join(root, "waiter-started");
