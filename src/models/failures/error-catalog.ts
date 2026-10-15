@@ -137,6 +137,14 @@ export const ERROR_CATALOG = Object.freeze({
     "The failure could not be formatted safely. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
+  NOTIFICATION_TARGET_UNAVAILABLE: catalogEntry(
+    "This notification target is no longer available. Refresh the inbox and try again.",
+    EmptyParametersSchema,
+  ),
+  NOTIFICATION_ARCHIVE_RETIRED: catalogEntry(
+    "Archived notification targets are no longer available.",
+    EmptyParametersSchema,
+  ),
   DASHBOARD_READ_FAILED: catalogEntry(
     "The dashboard could not load this from the local service. Try again.",
     EmptyParametersSchema,

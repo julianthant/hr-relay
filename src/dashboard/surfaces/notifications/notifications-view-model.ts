@@ -1,6 +1,8 @@
+import type { NotificationTarget } from "../../../models/notifications/notifications.js";
+
 export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";
-export type NotificationDestination = Readonly<{ kind: "run"; runId: string; day: string }>
+export type NotificationDestination = NotificationTarget
   | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>;
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;

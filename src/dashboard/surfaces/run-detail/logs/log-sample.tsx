@@ -16,13 +16,13 @@ import { projectRunLogs, useRunWiring } from "../../../state/run-wiring-adapter.
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
 
-export function LogSample({ selection, nowIso, source = "served" }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource }) {
+export function LogSample({ selection, nowIso, source = "served", initialStepId }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string }) {
   const requestedPreview = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("logPreview");
-  if (source === "served" && selection !== undefined && requestedPreview === null) return <ServedLogSample selection={selection} nowIso={nowIso} />;
+  if (source === "served" && selection !== undefined && requestedPreview === null) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} />;
   return <PreviewLogSample selection={selection} nowIso={nowIso} />;
 }
 
-function ServedLogSample({ selection, nowIso }: { selection: LogSelection; nowIso?: string }) {
+function ServedLogSample({ selection, nowIso, initialStepId }: { selection: LogSelection; nowIso?: string; initialStepId?: string }) {
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
   const resource = useRunWiring(client, selection, binding);
@@ -31,12 +31,13 @@ function ServedLogSample({ selection, nowIso }: { selection: LogSelection; nowIs
   const confirmedActionsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE", {})).text;
   const incompleteActionEvidenceText = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE", {})).text;
   const projection = useMemo(() => resource.snapshot === undefined ? { steps: [], timeline: [] } : projectRunLogs(resource.snapshot, client), [resource.snapshot, client]);
+  const failureMissing = resource.snapshot !== undefined && initialStepId !== undefined && !projection.steps.some(step => step.id === initialStepId);
   const toolbar = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" ? <Banner tone="danger" title={logsReadFailedTitle}>{resource.error}</Banner> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}<Badge tone="neutral">Source order · cross-source chronology unavailable</Badge></>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
-  return <LogPanel title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
+  return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
     status={<StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" />}
     toolbar={toolbar}
-    content={resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Banner tone="danger" title={logsUnavailableTitle}>{resource.error}</Banner> : undefined : resource.snapshot.actionEvidence?.state === "unavailable" && projection.steps.length === 0 ? <Banner tone="warning" title={confirmedActionsUnavailableTitle}>{incompleteActionEvidenceText}</Banner> : undefined} />;
+    content={failureMissing ? <Banner tone="danger" title={logsUnavailableTitle}>{formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}</Banner> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Banner tone="danger" title={logsUnavailableTitle}>{resource.error}</Banner> : undefined : resource.snapshot.actionEvidence?.state === "unavailable" && projection.steps.length === 0 ? <Banner tone="warning" title={confirmedActionsUnavailableTitle}>{incompleteActionEvidenceText}</Banner> : undefined} />;
 }
 
 function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; nowIso?: string }) {
