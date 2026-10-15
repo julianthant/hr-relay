@@ -80,14 +80,45 @@ export async function parseSpreadsheetGrid(input: Readonly<{
       invalid.cause = cause;
       throw invalid;
     }
+    let workbookRoot = false, relationshipsRoot = false;
+    const sheetRelations: string[] = [];
+    const worksheetPaths = new Map<string, string>();
     for (const file of Object.values(archive.files)) {
       if (file.dir || (!file.name.endsWith(".xml") && !file.name.endsWith(".rels"))) continue;
       let malformed = false;
       const parser = new SaxesParser({ xmlns: true });
+      const path: string[] = [];
       parser.on("error", () => { malformed = true; });
+      parser.on("opentag", tag => {
+        path.push(tag.local);
+        if (file.name === "xl/workbook.xml") {
+          if (path.length === 1 && tag.local === "workbook") workbookRoot = true;
+          if (path.join("/") === "workbook/sheets/sheet") {
+            const relationId = Object.values(tag.attributes).find(attribute => attribute.local === "id"
+              && attribute.uri === "http://schemas.openxmlformats.org/officeDocument/2006/relationships")?.value;
+            if (!tag.attributes.name?.value || !relationId) throw new InvalidSpreadsheetError("The XLSX worksheet identity is missing.");
+            sheetRelations.push(relationId);
+          }
+        } else if (file.name === "xl/_rels/workbook.xml.rels") {
+          if (path.length === 1 && tag.local === "Relationships") relationshipsRoot = true;
+          if (path.join("/") === "Relationships/Relationship"
+            && tag.attributes.Type?.value === "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet") {
+            const id = tag.attributes.Id?.value, target = tag.attributes.Target?.value;
+            if (!id || !target || worksheetPaths.has(id)) throw new InvalidSpreadsheetError("The XLSX worksheet relationship is invalid.");
+            worksheetPaths.set(id, target.startsWith("/") ? target.slice(1) : `xl/${target}`);
+          }
+        }
+      });
+      parser.on("closetag", () => { path.pop(); });
       parser.write(await file.async("string")).close();
       if (malformed) throw new InvalidSpreadsheetError("The XLSX contains malformed XML.");
     }
+    if (!workbookRoot || !relationshipsRoot) throw new InvalidSpreadsheetError("The XLSX workbook structure is missing.");
+    if (sheetRelations.length === 0) return { state: "refused", code: "unreadable-file", message: "workbook declares no worksheets" };
+    if (sheetRelations.some(id => {
+      const path = worksheetPaths.get(id);
+      return path === undefined || archive.file(path) === null;
+    })) throw new InvalidSpreadsheetError("The XLSX worksheet relationship is missing its worksheet.");
     const workbook = await readXlsxFile(bytes);
     sheets = workbook.map((entry) => entry.sheet);
     if (sheets.length === 0) {

@@ -68,7 +68,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(response)).code, "INTAKE_UNREADABLE_FILE");
     assert.deepEqual(seen, ["fixture-graph|roster.csv|text/csv|13"]);
   });
-  it.each(["archive", "truncated-pk", "directory", "xml", "rels"])("refuses malformed XLSX %s through the real upload/parser without creating a session", async corruption => {
+  it.each(["archive", "truncated-pk", "directory", "xml", "rels", "workbook-empty", "relationships-empty"])("refuses malformed XLSX %s through the real upload/parser without creating a session", async corruption => {
     const h = harness({ intake: { ...UNWIRED_INTAKE_SERVICE, upload: input => actual.upload(input) } });
     const actual = composeIntake({ database: h.database, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
       projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
@@ -76,6 +76,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const workbook = new Excel.Workbook(); workbook.addWorksheet("Roster").addRow(["Employee ID#"]);
     const archive = await JSZip.loadAsync(await workbook.xlsx.writeBuffer());
     if (corruption === "xml" || corruption === "rels") archive.file(corruption === "rels" ? "xl/_rels/workbook.xml.rels" : "xl/worksheets/sheet1.xml", "<worksheet><sheetData><row>");
+    if (corruption === "workbook-empty") archive.file("xl/workbook.xml", '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>');
+    if (corruption === "relationships-empty") archive.file("xl/_rels/workbook.xml.rels", '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
     const bytes = corruption === "archive" ? new Uint8Array([1, 2, 3]) : corruption === "truncated-pk" ? new Uint8Array([0x50, 0x4b, 3, 4]) : await archive.generateAsync({ type: "uint8array" });
     if (corruption === "directory") {
       const directory = Buffer.from(bytes).indexOf(Buffer.from([0x50, 0x4b, 1, 2]));
