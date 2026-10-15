@@ -1,3 +1,4 @@
+import { ChatGptAccountContext, createServedChatGptAccountPort } from "../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createDashboardClient } from "../../src/dashboard/client/index.js";
@@ -9,6 +10,7 @@ import "../../src/dashboard/app/index.css";
 const container = document.getElementById("root");
 if (container === null) throw new Error("parity dashboard root missing");
 const client = createDashboardClient({ baseUrl: window.location.origin });
+const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
 createRoot(container).render(<StrictMode><DashboardClientProvider client={client}>
-  <DashboardApp workflowComposition={PARITY_WORKFLOW_COMPOSITION} />
+  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={PARITY_WORKFLOW_COMPOSITION} /></ChatGptAccountContext.Provider>
 </DashboardClientProvider></StrictMode>);
