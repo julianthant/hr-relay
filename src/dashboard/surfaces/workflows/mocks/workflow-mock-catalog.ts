@@ -1,3 +1,4 @@
+import type { TypedInputSurface } from "../../../../models/workflow/ingress.js";
 import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 /** Label inventory copied from legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87 src/dashboard/components/dev/rebuild-demo/demo-wire.ts; presentation only. */
 const WORKFLOW_PREVIEW_DEFINITIONS = [{"id": "separations", "label": "Separations", "category": "Separations"}, {"id": "onboarding", "label": "Onboarding", "category": "Onboarding"}, {"id": "person-lookup", "label": "Person Lookup", "category": "Search"}, {"id": "i9-lookup", "label": "I-9 Lookup", "category": "Search"}, {"id": "work-study", "label": "Work-Study", "category": "Work Study"}, {"id": "kronos-pay-rule", "label": "Kronos Pay Rule", "category": "Payroll"}, {"id": "ocr", "label": "OCR", "category": "Utils"}, {"id": "oath-signature", "label": "Oath Signature", "category": "Onboarding"}, {"id": "oath-upload", "label": "Oath Upload", "category": "Onboarding"}, {"id": "emergency-contact", "label": "Emergency Contact", "category": "Onboarding"}, {"id": "onbase", "label": "OnBase", "category": "OnBase"}, {"id": "i9-check", "label": "I-9 Check", "category": "Separations"}, {"id": "crm-doc-download", "label": "CRM Doc Download", "category": "Utils"}, {"id": "sharepoint-download", "label": "SharePoint Download", "category": "Utils"}, {"id": "old-kronos-reports", "label": "Old Kronos Reports", "category": "Timekeeping"}] as const;
@@ -11,13 +12,33 @@ export type MockMethod = "typed" | "pdf" | "roster" | "delegated";
 export type MockStep = Readonly<{ key: string; label: string; system?: string; message: string; write?: boolean }>;
 export type MockWorkflow = Readonly<{
   id: MockWorkflowId; label: string; category: string; runnable: boolean; methods: readonly MockMethod[];
+  typedInput?: TypedInputSurface;
   inputLabel: string; placeholder: string; example: string; dryRun: boolean; roster: boolean;
   steps: readonly MockStep[]; result: readonly (readonly [string, string])[];
 }>;
 const step = (key: string, label: string, system: string | undefined, message: string, write = false): MockStep => ({ key, label, system, message, ...(write ? { write } : {}) });
 type Contract = Omit<MockWorkflow, "id" | "label" | "category">;
 const contracts: Record<MockWorkflowId, Contract> = {
-  "person-lookup": { runnable: true, methods: ["typed"], inputLabel: "Employee IDs or names", placeholder: "10000001; Lee, Jordan", example: "10000001", dryRun: false, roster: false, steps: [
+  "person-lookup": { typedInput: {
+    modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
+    modes: [
+      { value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
+        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
+        display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
+      },
+      { value: "match", label: "Match", inputLabel: "Name, DOB and SSN", hint: "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with semicolons.", placeholder: "Lee, Jordan, 01/01/2000, x",
+        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS" },
+        display: { kind: "tuple", fields: ["lastName", "firstName", "dob", "ssn"], separator: ", ", missing: "x", masked: ["ssn"] }, identityFields: ["lastName", "firstName", "dob", "ssn"],
+      },
+    ],
+    controls: [
+      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["search", "match"], requires: [] },
+      { field: "keepNonHdh", label: "Keep non-HDH candidates", placement: "hidden", modes: ["search"], requires: [] },
+      { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
+    ],
+  }, runnable: true, methods: ["typed"], inputLabel: "Employee IDs or names", placeholder: "10000001; Lee, Jordan", example: "10000001", dryRun: false, roster: false, steps: [
     step("searching", "Search for person", "UCPath", "Search Person Org Summary by Employee ID or name; Match uses HR-Tasks person matching."),
     step("cross-verification", "Cross-check identity", "CRM", "Cross-check the name match against CRM when CRM check is enabled."),
     step("active-status", "Read employment status", "UCPath", "Read department, HR status and employment dates."),

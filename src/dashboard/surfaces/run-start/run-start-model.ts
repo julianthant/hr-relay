@@ -4,26 +4,151 @@ import {
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
-import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface } from "../../../models/workflow/ingress.js";
+import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
-import { PersonLookupInput, parsePersonLookupRequest, personLookupSearchText } from "../../../models/workflows/person-lookup/input.js";
+import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 
 export interface RunInputPreview {
   readonly entries: readonly Readonly<{ index: number; sourceText: string }>[];
   readonly submissions: readonly JsonValue[];
   readonly problem: string | null;
 }
-export function previewRunInput(surface: InputRunSurface, text: string,
-  lookup: { mode: "search" | "match"; crmCheck: boolean; includeCrmDates: boolean; keepNonHdh?: boolean }, sourceInput?: JsonValue): RunInputPreview {
+export function typedInputMode(surface: TypedInputSurface, draft: TypedInputDraft) {
+  const value = draft[surface.modeField] ?? surface.initialMode;
+  const mode = surface.modes.find(candidate => candidate.value === value);
+  if (mode === undefined) throw new Error(`Undeclared input mode: ${String(value)}`);
+  return mode;
+}
+
+export function typedInputDefaults(surface: TypedInputSurface, mode = surface.initialMode): TypedInputDraft {
+  const selected = typedInputMode(surface, { [surface.modeField]: mode });
+  return { [surface.modeField]: mode, ...Object.fromEntries(selected.defaults.map(({ field, value }) => {
+    if (value.kind === "count") throw new Error("Typed input controls require text or boolean defaults");
+    return [field, value.kind === "text" ? value.text : value.value];
+  })) };
+}
+
+export function typedControlAvailable(surface: TypedInputSurface, draft: TypedInputDraft, field: string): boolean {
+  const control = surface.controls.find(candidate => candidate.field === field);
+  return control !== undefined && control.modes.includes(typedInputMode(surface, draft).value)
+    && control.requires.every(required => draft[required] === true);
+}
+
+export function changeTypedInput(surface: TypedInputSurface, draft: TypedInputDraft, field: string, value: string | boolean): TypedInputDraft {
+  const next = field === surface.modeField ? { ...typedInputDefaults(surface, String(value)),
+    ...Object.fromEntries(surface.controls.filter(control => control.placement === "hidden" && draft[control.field] !== undefined).map(control => [control.field, draft[control.field]])) }
+    : { ...draft, [field]: value };
+  for (const control of surface.controls) {
+    if (control.placement !== "hidden" && !typedControlAvailable(surface, next, control.field)) next[control.field] = false;
+  }
+  return next;
+}
+
+function typedRecord(input: JsonValue): Record<string, JsonValue> {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) throw new Error("Typed input must be an object");
+  return Object.fromEntries(Object.entries(input));
+}
+
+export function typedInputText(surface: TypedInputSurface, input: JsonValue): string {
+  const record = typedRecord(input);
+  const modeValue = record[surface.modeField];
+  if (typeof modeValue !== "string") throw new Error("Typed input source has no mode");
+  const display = typedInputMode(surface, { [surface.modeField]: modeValue }).display;
+  if (display.kind === "first-present") {
+    const value = display.fields.map(field => record[field]).find(value => value !== undefined);
+    if (typeof value !== "string" || value.length === 0) throw new Error("Typed input source has no display identity");
+    return value;
+  }
+  return display.fields.map(field => {
+    const value = record[field];
+    if (value === undefined) return display.missing;
+    if (typeof value !== "string" || value.length === 0) throw new Error(`Typed input source field ${field} is invalid`);
+    return display.masked.includes(field) ? "[masked]" : value;
+  }).join(display.separator);
+}
+
+export function restoreTypedInput(surface: TypedInputSurface, input: JsonValue): TypedInputDraft {
+  const record = typedRecord(input);
+  const mode = record[surface.modeField];
+  if (typeof mode !== "string") throw new Error("Typed input source has no mode");
+  const draft = { ...typedInputDefaults(surface, mode) };
+  for (const field of Object.keys(draft)) {
+    const value = record[field];
+    if (typeof value !== typeof draft[field]) throw new Error(`Typed input source field ${field} is invalid`);
+    if (typeof value === "string" || typeof value === "boolean") draft[field] = value;
+  }
+  const selected = typedInputMode(surface, draft);
+  if (selected.parser.kind === "name-tuple") {
+    const parser = selected.parser;
+    for (const field of [parser.familyName, parser.givenName]) {
+      const value = record[field];
+      CANONICAL_FIELDS.fullName.schema.parse(typeof value === "string" ? value.trim() : undefined);
+    }
+    if (!parser.identifiers.some(identifier => record[identifier.field] !== undefined))
+      throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
+    for (const identifier of parser.identifiers) {
+      const value = record[identifier.field];
+      if (value === undefined) continue;
+      if (identifier.canonicalField === "ssn") CANONICAL_FIELDS.ssn.schema.parse(value);
+      else if (typeof value !== "string" || value.trim().length === 0 || value.toLowerCase() === parser.missing.toLowerCase()) throw new Error(`Typed input source field ${identifier.field} is invalid`);
+    }
+  }
+  for (const control of surface.controls) {
+    if (draft[control.field] === true && !typedControlAvailable(surface, draft, control.field)) throw new Error(`${control.label} requires its declared mode and options`);
+  }
+  typedInputText(surface, input);
+  return draft;
+}
+
+function parseTypedEntries(surface: TypedInputSurface, text: string, draft: TypedInputDraft): readonly JsonValue[] {
+  const mode = typedInputMode(surface, draft);
+  const options = Object.fromEntries(mode.defaults.map(({ field }) => [field, draft[field]]));
+  for (const control of surface.controls) {
+    if (options[control.field] === true && !typedControlAvailable(surface, draft, control.field)) throw new Error(`${control.label} requires its declared mode and options`);
+  }
+  const parser = mode.parser;
+  if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), [surface.modeField]: mode.value, ...options }));
+  return text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
+    const fields = entry.split(",").map(field => field.trim());
+    const fail = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
+    if (fields.length < parser.identifiers.length + 1) throw fail();
+    const identifiers = fields.splice(-parser.identifiers.length);
+    const legalName = fields.join(", ");
+    const parts = legalName.split(",").map(part => part.trim());
+    const family = parts.length > 1 ? parts[0] : legalName.split(/\s+/u).at(-1);
+    const given = parts.length > 1 ? parts.slice(1).join(", ").trim() : legalName.split(/\s+/u).slice(0, -1).join(" ");
+    const values = Object.fromEntries(parser.identifiers.flatMap((identifier, index) => {
+      const value = identifiers[index];
+      if (!value || value.toLowerCase() === parser.missing.toLowerCase()) return [];
+      return [[identifier.field, identifier.canonicalField === "ssn" ? CANONICAL_FIELDS.ssn.schema.parse(value) : value]];
+    }));
+    if (Object.keys(values).length === 0) throw fail();
+    return JsonValueSchema.parse({ [surface.modeField]: mode.value,
+      [parser.familyName]: CANONICAL_FIELDS.fullName.schema.parse(family), [parser.givenName]: CANONICAL_FIELDS.fullName.schema.parse(given), ...values, ...options });
+  });
+}
+
+export function previewRunInput(surface: InputRunSurface, text: string, draft: TypedInputDraft = {}, sourceInput?: JsonValue): RunInputPreview {
   if (text.trim().length === 0) return { entries: [], submissions: [], problem: null };
   try {
     if (surface.typedInput !== undefined) {
-      const source = sourceInput === undefined ? undefined : PersonLookupInput.parse(sourceInput);
-      const people = source !== undefined && source.mode === lookup.mode && text === personLookupSearchText(source)
-        ? [PersonLookupInput.parse({ ...source, crmCheck: lookup.crmCheck, includeCrmDates: lookup.includeCrmDates })]
-        : parsePersonLookupRequest(text, lookup);
-      return { entries: people.map((person, index) => ({ index, sourceText: personLookupSearchText(person) })),
-        submissions: people.map(person => JsonValueSchema.parse(person.mode === "search" && lookup.keepNonHdh !== undefined ? { ...person, keepNonHdh: lookup.keepNonHdh } : person)), problem: null };
+      const declaration = surface.typedInput;
+      const values = { ...typedInputDefaults(declaration, String(draft[declaration.modeField] ?? declaration.initialMode)), ...draft };
+      const mode = typedInputMode(declaration, values);
+      if (sourceInput !== undefined) restoreTypedInput(declaration, sourceInput);
+      const source = sourceInput === undefined ? undefined : typedRecord(sourceInput);
+      const people = source !== undefined && source[declaration.modeField] === mode.value && text === typedInputText(declaration, source)
+        ? [JsonValueSchema.parse({ ...source, ...Object.fromEntries(mode.defaults.map(({ field }) => [field, values[field]])) })]
+        : parseTypedEntries(declaration, text, values);
+      const unique = new Map<string, JsonValue>();
+      for (const person of people) {
+        const record = typedRecord(person);
+        const key = JSON.stringify(mode.identityFields.map(field => record[field] ?? null)).toLowerCase().replace(/\s+/gu, " ");
+        if (!unique.has(key)) unique.set(key, person);
+      }
+      const submissions = [...unique.values()];
+      return { entries: submissions.map((person, index) => ({ index, sourceText: typedInputText(declaration, person) })), submissions, problem: null };
     }
     const entries = parseInputRunText(surface.parser, text);
     return { entries, submissions: entries.map(entry => JsonValueSchema.parse(toRawSubmission(entry))), problem: null };

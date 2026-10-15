@@ -1,3 +1,5 @@
+import type { TypedInputDraft } from "../../../../models/workflow/ingress.js";
+import { typedInputDefaults, changeTypedInput } from "../../run-start/run-start-model.js";
 import { manualFact, mockStepInputError, usesManualRead } from "./workflow-manual-model.js";
 import { displayExtractedDate } from "../../../lib/date-format.js";
 import { MOCK_WORKFLOWS, MOCK_ONBASE_TYPES, mockOnbaseDocumentType, mockWorkflow, type MockMethod, type MockStep, type MockWorkflowId } from "./workflow-mock-catalog.js";
@@ -15,6 +17,7 @@ import { OCR_DOCUMENT_FIXTURES, mockDocumentFixture } from "./workflow-document-
 export type MockFile = Readonly<{ name: string; size: number; digest: string }>;
 export type MockDraft = Readonly<{
   method: MockMethod; text: string; files: readonly MockFile[]; lookupMode: "search" | "match";
+  typedValues?: TypedInputDraft;
   crmCheck: boolean; hireType: "new-hire" | "rehire"; uploadMode: "full" | "upload-only";
   roster: "existing" | "download" | "none"; formType: string; documentType: string;
   effectiveDate: string; startDate: string; endDate: string; workers: number | "auto";
@@ -43,6 +46,18 @@ export function initialMockDraft(id: string): MockDraft {
     // Dry run is an explicit operator choice; every launch starts with it off.
     dryRun: false, priority: "interactive", browser: "headed", captures: true,
     ocrMode: "extract", manualSteps: [], manualValues: {}, selectedSteps: flow.steps.map(step => step.key) };
+}
+
+export function mockTypedInputValues(id: string, draft: MockDraft): TypedInputDraft {
+  const declaration = mockWorkflow(id).typedInput;
+  return draft.typedValues ?? (declaration === undefined ? {} : { ...typedInputDefaults(declaration), mode: draft.lookupMode, crmCheck: draft.crmCheck });
+}
+
+export function changeMockTypedInput(id: string, draft: MockDraft, field: string, value: string | boolean): Partial<MockDraft> {
+  const declaration = mockWorkflow(id).typedInput;
+  if (declaration === undefined) throw new Error("Mock workflow has no declared typed inputs");
+  const next = changeTypedInput(declaration, mockTypedInputValues(id, draft), field, value);
+  return { typedValues: next, ...(next.mode === "search" || next.mode === "match" ? { lookupMode: next.mode } : {}), crmCheck: next.crmCheck === true };
 }
 
 export function mockInputEntries(id: string, draft: MockDraft): readonly string[] {

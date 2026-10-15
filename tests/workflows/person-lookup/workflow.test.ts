@@ -1,3 +1,4 @@
+import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -5,6 +6,17 @@ import { workflowPlanning, workflowProjections } from "../../../src/workflow-kit
 import { personLookupDescriptor, personLookupModule, separationsIdentityCheckDescriptor, separationsKronosTimecardDescriptor, separationsUcpathTerminationDescriptor } from "../../support/helpers/registered-workflows.js";
 
 describe("workflow definition public equivalence characterization", () => {
+  it("carries the complete typed input declaration through a JSON surface round trip", () => {
+    const surface = personLookupDescriptor.surfaces.inputRun;
+    assert.ok(surface?.typedInput);
+    assert.deepEqual(InputRunSurfaceSchema.parse(JSON.parse(JSON.stringify(surface))), surface);
+    assert.deepEqual(surface.typedInput.modes.map(mode => mode.value), ["search", "match"]);
+    assert.deepEqual(surface.typedInput.controls.map(control => [control.field, control.placement, control.modes, control.requires]), [
+      ["crmCheck", "input", ["search", "match"], []],
+      ["keepNonHdh", "hidden", ["search"], []],
+      ["includeCrmDates", "step", ["search"], ["crmCheck"]],
+    ]);
+  });
   it("keeps person lookup's public descriptor, module stores, normalized timeline, and registry value", () => {
     const intake = personLookupModule.intake;
     if (intake === undefined) throw new Error("person-lookup registers no intake projection");
@@ -108,7 +120,26 @@ describe("workflow definition public equivalence characterization", () => {
     ],
     "surfaces": {
       "inputRun": {
-        "typedInput": "person-lookup",
+        "typedInput": {
+    modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
+    modes: [
+      { value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
+        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
+        display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
+      },
+      { value: "match", label: "Match", inputLabel: "Name, DOB and SSN", hint: "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with semicolons.", placeholder: "Lee, Jordan, 01/01/2000, x",
+        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS" },
+        display: { kind: "tuple", fields: ["lastName", "firstName", "dob", "ssn"], separator: ", ", missing: "x", masked: ["ssn"] }, identityFields: ["lastName", "firstName", "dob", "ssn"],
+      },
+    ],
+    controls: [
+      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["search", "match"], requires: [] },
+      { field: "keepNonHdh", label: "Keep non-HDH candidates", placement: "hidden", modes: ["search"], requires: [] },
+      { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
+    ],
+  },
         "placeholder": "Enter employee IDs or names separated by semicolons or new lines",
         "parser": {
           "split": {
