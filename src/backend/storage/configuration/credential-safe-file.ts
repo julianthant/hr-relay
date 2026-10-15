@@ -124,14 +124,14 @@ export function ensureChildDirectory(
 }
 
 interface PrivateFileOptions {
-  readonly label: "protected.json" | "lock" | "ChatGPT";
+  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential";
   readonly maxBytes: number;
   readonly allowedLinkCounts?: readonly number[];
 }
 
 export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
-  const lock = label === "lock", chat = label === "ChatGPT";
+  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential";
   const unavailable = lock ? "directory-integrity: credential lock is unavailable" : `credential store ${label} is unavailable`;
   const invalid = lock ? "directory-integrity: credential lock permissions or identity are invalid" : `directory-integrity: ${label} permissions or identity are invalid`;
   let pathStatus;
@@ -139,9 +139,9 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   catch (error) { throw new Error(unavailable, { cause: error }); }
   if (pathStatus === undefined) return undefined;
   if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(pathStatus.nlink)
-    || ((lock || chat) && (pathStatus.mode & 0o7777) !== CREDENTIAL_FILE_MODE)
+    || ((lock || record) && (pathStatus.mode & 0o7777) !== CREDENTIAL_FILE_MODE)
     || (expectedUid !== undefined && pathStatus.uid !== expectedUid)) {
-    throw new Error(lock || chat ? invalid : "directory-integrity: protected.json must be one private regular file");
+    throw new Error(lock || record ? invalid : "directory-integrity: protected.json must be one private regular file");
   }
   let descriptor;
   try { descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
@@ -151,14 +151,14 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
     if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
       || (expectedUid !== undefined && before.uid !== expectedUid)
       || (lock && before.size > maxBytes)
-      || (chat && (before.dev !== pathStatus.dev || before.ino !== pathStatus.ino))) throw new Error(invalid);
+      || (record && (before.dev !== pathStatus.dev || before.ino !== pathStatus.ino))) throw new Error(invalid);
     if (before.size > maxBytes) throw new Error(`document-too-large: credential store ${label} exceeds its private bound`);
     const bytes = readFileSync(descriptor), after = fstatSync(descriptor), live = lstatSync(path);
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
       || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
       || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
       || live.dev !== before.dev || live.ino !== before.ino || bytes.byteLength !== before.size
-      || (chat && (before.mode !== live.mode || before.uid !== live.uid || before.nlink !== live.nlink))) {
+      || (record && (before.mode !== live.mode || before.uid !== live.uid || before.nlink !== live.nlink))) {
       throw new Error(lock ? "directory-integrity: credential lock moved while it was read" : `directory-integrity: ${label} moved while it was read`);
     }
     return { bytes, stat: after, identity: { device: before.dev, inode: before.ino } };
@@ -236,6 +236,10 @@ export const CredentialLockRecordSchema = z.strictObject({ schemaVersion: z.lite
 
 export function companionCredentialEntries(directory: string, record: "protected" | "ChatGPT"): ReadonlySet<string> {
   const names = readdirSync(directory), permitted = new Set<string>();
+  if (names.includes("duo-webauthn.json")) {
+    if (readPrivateFile(join(directory, "duo-webauthn.json"), { label: "Duo credential", maxBytes: 64_000 }) === undefined) throw new Error("directory-integrity: companion credential record disappeared");
+    permitted.add("duo-webauthn.json");
+  }
   const chat = record === "protected";
   const fileName = chat ? "chatgpt-account.json" : "protected.json";
   if (names.includes(fileName)) {

@@ -166,6 +166,6 @@ export function verifyChatGptCredentialStore(options: ChatGptCredentialRepositor
   options.admission.assertExclusive();
   const directory = join(options.stateRoot, "credentials");
   if (lstatSync(directory, { throwIfNoEntry: false }) === undefined) return;
-  if (readdirSync(directory).some(name => name !== "chatgpt-account.json" && name !== "protected.json")) throw unavailable();
+  if (readdirSync(directory).some(name => name !== "chatgpt-account.json" && name !== "protected.json" && name !== "duo-webauthn.json")) throw unavailable();
   createChatGptCredentialRepository(options).read();
 }

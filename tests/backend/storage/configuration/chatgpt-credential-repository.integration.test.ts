@@ -164,6 +164,23 @@ it("both records retain independent revisions while their writers and authentica
   } finally { f.cleanup(); }
 });
 
+it("a private Duo key shares the credential folder with both records", async () => {
+  const f = fixture();
+  try {
+    await f.repository.withLock(async tx => { tx.replace(f.record, null); });
+    const store = createCredentialStore({ admission: f.admission, stateRoot: f.root });
+    const duo = join(f.directory, "duo-webauthn.json");
+    writeFileSync(duo, '{"synthetic":"duo-key"}', { mode: 0o600 });
+    assert.equal(store.apply(protectedRequest()).state, "applied");
+    assert.equal(store.read().revision, 2);
+    assert.deepEqual(f.repository.read(), f.record);
+    verifyChatGptCredentialStore({ admission: f.admission, stateRoot: f.root });
+    chmodSync(duo, 0o644);
+    assert.throws(() => store.read(), /Duo credential permissions or identity are invalid/u);
+    assert.throws(() => f.repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
+  } finally { f.cleanup(); }
+});
+
 it("companion stages require exact writer custody and cannot hide unknown entries", async () => {
   const f = fixture();
   try {
