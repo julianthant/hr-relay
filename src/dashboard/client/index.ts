@@ -62,3 +62,5 @@ export type { NotificationQueries } from "./queries/notification-queries.js";
 export type { RerunQueries } from "./queries/rerun-queries.js";
 
 export { StartPlanRefusalError } from "./commands/start-commands.js";
+
+export type { WorkbookLibraryQueries } from "./queries/workbook-library-queries.js";
