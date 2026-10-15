@@ -192,14 +192,14 @@ describe("composed Activity and Queue boundaries", () => {
         }));
       });
       f.db.readRunSummaries = () => { throw new Error("surface boundary cannot read the whole summary corpus"); };
-      const activity = composeActivity({ database: f.db, clock: f.clock,
+      const { activity, activityPopulation } = composeActivity({ database: f.db, clock: f.clock,
         descriptors: { resolve: workflowId => DESCRIPTORS.find(row => row.id === workflowId) },
         ledger: createTransactionHistory(f.db.authority),
       });
       const queue = composeQueueSummaries(f.db);
       const app: DashboardApp = new Hono();
       app.onError((error, context) => { const result = failureStatus(error); return context.json(result.body, result.status); });
-      registerActivityRoutes(app, { activity });
+      registerActivityRoutes(app, { activity, activityPopulation });
       const from = "2026-09-09", to = from;
       const expected = activity.read(from, to);
       assert.equal(expected.totalRuns, 7);

@@ -176,7 +176,7 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
           })),
         },
       }),
-      activity:composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)}),
+      ...composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)}),
       ...selectionServices,
       runDetail: runDetailDeps,
       commands,

@@ -1,3 +1,5 @@
+import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -42,6 +44,7 @@ export function resolutionCommand(overrides: Record<string, unknown> = {}) {
 /** The production HTTP route/admission/kernel; unrelated routes deliberately have no fixture. */
 export function resolutionApp(f: ReturnType<typeof resolutionFixture>) {
   return createDashboardApp({
+    ...composeActivity({ database: f.db, clock: f.clock, descriptors: { resolve: id => id === personLookupDescriptor.id ? personLookupDescriptor : undefined }, ledger: createTransactionHistory(f.db.authority) }),
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
     bootstrap: { clock: f.clock, appVersion: "0.1.0" }, commandJournal: f.db.authority.commands,
     protectedCommandAcceptedAt: () => undefined,

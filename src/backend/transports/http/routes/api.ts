@@ -1,3 +1,5 @@
+import { errorText } from "../../../runs/lifecycle/support.js";
+import { DashboardReadFailedError } from "../../../runs/commands/refusals.js";
 import { registerNotificationRoutes } from "./notifications.js";
 import { registerShellRoutes } from "./shell.js";
 import { registerSettingsPreflightRoutes } from "./settings-preflight.js";
@@ -32,9 +34,10 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   let reportWindow = 0, reportCount = 0;
   app.onError((error, c) => {
     const { status, body } = failureStatus(error);
+    const diagnostic = error instanceof DashboardReadFailedError ? error.cause : error;
     try { debugEvents.emit({ category: "http", phase: "failed", correlationId: randomUUID(),
       code: String(body.code), method: c.req.method, route: c.req.routePath, status,
-      message: error.message, stack: error.stack }); }
+      message: errorText(diagnostic), stack: diagnostic instanceof Error ? diagnostic.stack : undefined }); }
     catch { return c.json(wireError("LOGGING_UNAVAILABLE", "Debug logging is unavailable; inspect the local emergency fault log.", false), 500); }
     return c.json(body, status);
   });
@@ -95,7 +98,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerSettingsRoutes(app, deps);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);
-  registerActivityRoutes(app, { activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
+  registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
   registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: day => deps.projection.buildDashboardDayWire(day) } });
   registerIntakeRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,

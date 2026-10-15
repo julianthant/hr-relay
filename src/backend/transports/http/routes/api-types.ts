@@ -21,6 +21,7 @@ export interface DashboardAppDeps extends TrustRouteDeps, ShellRouteDeps, Settin
   readonly requestIdentity: RequestIdentityCheckpoint;
   readonly preflight: import("./settings-preflight-types.js").SettingsPreflightRouteDeps["preflight"];
   readonly projection: RunQueueProjection;
+  readonly activityPopulation: import("./activity-types.js").ActivityRouteDeps["activityPopulation"];
   readonly activity?: import("./activity-types.js").ActivityRouteDeps["activity"];
   readonly data?: ReturnType<typeof composeDataQueries>;
   readonly commands: DashboardCommandService;

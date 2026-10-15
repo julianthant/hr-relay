@@ -1,7 +1,9 @@
 
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { activityReportCsv } from "../../../../../src/backend/runs/queries/activity-export.js";
+import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema } from "../../../../../src/models/dashboard/activity-population.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import { activityReportCaveats } from "../../../../../src/models/dashboard/activity.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
@@ -113,3 +115,53 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);
+
+it("serves selected population reads and maps malformed, foreign and stale selections to catalog refusals", async () => {
+  const h = harness();
+  const path = "/api/v1/reports/activity/population";
+  const range = { from: DAY, to: DAY };
+  const selected = ActivityPopulationSelectionSchema.parse(await (await h.app.request(`${path}?${new URLSearchParams(range)}`)).json());
+  const query = { ...range, snapshot: selected.snapshot.token };
+  const read = await h.app.request(`${path}/selected?${new URLSearchParams(query)}`);
+  assert.equal(read.status, 200);
+  assert.deepEqual(ActivityPopulationSelectedReadSchema.parse(await read.json()), { selection: selected, browse: null });
+  const foreign = harness();
+  const cases = [
+    [h.app, `${path}?from=${DAY}`, "ACTIVITY_POPULATION_RANGE_INVALID", 400],
+    [h.app, `${path}?from=${DAY}&from=${DAY}&to=${DAY}`, "ACTIVITY_POPULATION_RANGE_INVALID", 400],
+    [h.app, `${path}?${new URLSearchParams({ ...range, extra: "x" })}`, "ACTIVITY_POPULATION_RANGE_INVALID", 400],
+    [h.app, `${path}/selected?${new URLSearchParams({ ...query, browse: "{" })}`, "ACTIVITY_POPULATION_BROWSE_INVALID", 400],
+    [h.app, `${path}/selected?${new URLSearchParams({ ...query, browse: JSON.stringify({ metric: "completed", page: -1 }) })}`, "ACTIVITY_POPULATION_BROWSE_INVALID", 400],
+    [h.app, `${path}/selected?${new URLSearchParams({ ...query, snapshot: selected.report.snapshot.token })}`, "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED", 409],
+    [foreign.app, `${path}/selected?${new URLSearchParams(query)}`, "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED", 409],
+    [h.app, `${path}.csv?${new URLSearchParams({ ...query, to: "2026-09-10" })}`, "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH", 409],
+  ] as const;
+  for (const [app, url, code, status] of cases) {
+    const response = await app.request(url);
+    assert.equal(response.status, status, url);
+    const failure = await json(response);
+    assert.equal(failure.code, code);
+    assert.equal(failure.message, ERROR_CATALOG[code].text);
+  }
+});
+
+it("logs the original population read failure privately and serves only catalog text", async () => {
+  const h = harness();
+  const detail = "activity-query-unavailable-detail";
+  const spy = vi.spyOn(h.database, "withAuthorityReadSnapshot").mockImplementation(() => { throw new Error(detail); });
+  let response: Response;
+  try { response = await h.app.request(`/api/v1/reports/activity/population?from=${DAY}&to=${DAY}`); }
+  finally { spy.mockRestore(); }
+  assert.equal(response.status, 500);
+  const body = await json(response);
+  assert.equal(body.code, "DASHBOARD_READ_FAILED");
+  assert.equal(body.message, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
+  assert.equal(JSON.stringify(body).includes(detail), false);
+  const events = h.database.authority.timelineEvents.page({ limit: 500 });
+  const diagnostic = events.find(row => row.payload.kind === "debug" && row.payload.event.code === "DASHBOARD_READ_FAILED");
+  assert.ok(diagnostic);
+  assert.equal(diagnostic.payload.kind, "debug");
+  if (diagnostic.payload.kind !== "debug") throw new Error("debug event expected");
+  assert.equal(diagnostic.payload.event.message, detail);
+  assert.ok(diagnostic.payload.event.stack?.includes(detail));
+});

@@ -47,3 +47,10 @@ export class DiagnosticBundleBytesMissingError extends DiagnosticBundleCorruptEr
     this.name = "DiagnosticBundleBytesMissingError";
   }
 }
+
+export class DashboardReadFailedError extends Error {
+  constructor(cause: unknown) {
+    super("dashboard-read-failed", { cause });
+    this.name = "DashboardReadFailedError";
+  }
+}
