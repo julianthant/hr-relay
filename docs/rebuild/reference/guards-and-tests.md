@@ -93,16 +93,19 @@ per-assertion progress messages. Multi-stage harnesses may emit stable phase mar
 It refuses Windows because this ownership model requires POSIX groups.
 
 Unfiltered `run`, `unit`, and `integration` invocations take a shared suite lock before starting a
-child or inactivity watchdog. Parity `assert` and `update` take the same lock when no spec filter is
-present. Options and their recognized values, including each `--project` value, do not count as
-positional test filters. A positional test-file or spec filter bypasses the lock without waiting.
-The interactive `test:watch` command remains outside this lock.
+child or inactivity watchdog. Vitest's `parseCLI` identifies positional test-file and spec filters
+as focused runs. Those filters bypass the suite lock. Parity `assert` and `update` take the same
+lock only when no argument follows the mode. Any argument skips the suite lock. Wrapper-owned
+parity policy validation still applies. The interactive `test:watch` command remains outside this
+lock.
 
 The lock is the mode-0600 `suite.lock` file under `testRunsDirectory()`, shared across this user's
 worktrees in the private mode-0700 directory. `/usr/bin/lockf -s -k -t 0` holds it while a piped
-`cat` waits for EOF. The runner waits for the holder's `held` marker before starting the suite.
-A runner exit or SIGKILL closes the pipe, so the kernel releases the lock without stale-lock or
-PID-reuse logic. Normal release occurs only after the child's whole process group is absent.
+`cat` waits for EOF. The runner waits for the holder's `held` marker before starting the suite. The
+runner passes the holder's stdin pipe to the detached test group leader as fd 3. The pipe reaches
+EOF only after both the runner and group leader exit, so the kernel releases the lock without
+stale-lock or PID-reuse logic. Normal release occurs only after the child's whole process group is
+absent.
 The lock carries no worktree, branch, session, or result data.
 
 Contention retries every **5 seconds**, with one line when waiting starts and once per minute:
