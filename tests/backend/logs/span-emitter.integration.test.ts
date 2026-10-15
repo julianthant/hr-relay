@@ -122,7 +122,7 @@ describe("failure, retry, and resume", () => {
               crmCalls += 1;
               return Promise.reject(new TaskError(
                 CrmSearchOnboardingRecords.id,
-                "person-lookup-crm-check-failed",
+                "PERSON_LOOKUP_CRM_CHECK_FAILED",
                 "CRM 502",
                 { transient: true },
               ));

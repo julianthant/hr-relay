@@ -238,7 +238,7 @@ export function createRunExecutorTestWorld() {
             const [input] = args;
             if (input.kind !== "by-eid") throw new Error("action binding fixture requires an EID search");
             if (options.failBeforeGesture === true) {
-              throw new TaskError(SearchPersonOrg.id, "person-lookup-ucpath-search-failed", "synthetic pre-gesture failure");
+              throw new TaskError(SearchPersonOrg.id, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED", "synthetic pre-gesture failure");
             }
             if (options.openedTarget !== undefined) recordBrowserAction("opened", options.openedTarget);
             if (options.lifecycle === true) {

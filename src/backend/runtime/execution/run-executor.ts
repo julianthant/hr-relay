@@ -1378,7 +1378,7 @@ export async function executeClaimedRun(
           if (error instanceof RunAbandonedError) throw error;
           const loginFailure = browserLoginFailure(error);
           const taskError = error instanceof TaskError ? error : loginFailure !== undefined
-            ? new TaskError(contract.id, loginFailure.code, loginFailure.fixedText, { cause: error })
+            ? new TaskError(contract.id, loginFailure.code, loginFailure.message, { cause: error })
             : wrapUnhandledTaskError(contract.id, error);
           emit({
             t: "span.ended", kind: "task",

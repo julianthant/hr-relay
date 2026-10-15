@@ -89,8 +89,8 @@ it("refuses a second UCSD training reminder appearance with its fixed stall code
   try {
     await assert.rejects(world.run(), error => {
       assert.ok(error instanceof BrowserLandingStallError);
-      assert.equal(error.code, "training-reminder-repeated");
-      assert.match(error.message, /the UCSD training reminder appeared again after Continue Log In/);
+      assert.equal(error.code, "TRAINING_REMINDER_REPEATED");
+      assert.match(error.message, /The UCSD training reminder appeared again after Continue Log In/);
       return true;
     });
     assert.deepEqual(world.harness.actions().filter(action => action.startsWith("click:")), ["click:training-reminder"]);
@@ -103,7 +103,7 @@ it("does not continue a matching training control on a different host", async ()
   try {
     await assert.rejects(world.run(), error => {
       assert.ok(error instanceof BrowserLandingStallError);
-      assert.equal(error.code, "authenticated-landing-missing");
+      assert.equal(error.code, "AUTHENTICATED_LANDING_MISSING");
       return true;
     });
     assert.deepEqual(world.harness.actions(), []);
@@ -128,7 +128,7 @@ for (const settlement of ["landing", "cancellation"] as const) {
     try {
       const run = world.run();
       const settled = settlement === "cancellation"
-        ? assert.rejects(run, error => error instanceof BrowserLoginError && /cancelled/.test(error.message))
+        ? assert.rejects(run, error => error instanceof BrowserLoginError && /cancelled/.test(error.detail))
         : run;
       await waiting;
       assert.ok(showReminder);
@@ -152,7 +152,7 @@ it("reports a training reminder click failure explicitly without a retry or acti
   };
   try {
     await assert.rejects(world.run(), error => error instanceof BrowserLoginError
-      && /Continue Log In control could not be clicked/.test(error.message));
+      && /Continue Log In control could not be clicked/.test(error.detail));
     assert.deepEqual(world.harness.actions(), []);
   } finally { world.cleanup(); }
 });
@@ -180,7 +180,7 @@ it("refuses a same-URL reminder replacement even when the control never appears 
     await assert.rejects(context.duoCeremony.withCeremony(token => waitForAuthenticatedLanding(
       "ucpath", { ...context, acquisitionRemainingMs: () => 600 }, token,
       url => url === APPLICATION, 60_000,
-    )), error => error instanceof BrowserLandingStallError && error.code === "training-reminder-repeated");
+    )), error => error instanceof BrowserLandingStallError && error.code === "TRAINING_REMINDER_REPEATED");
     assert.deepEqual(harness.actions(), ["click:training-reminder"]);
   } finally { clearTimeout(deadline); }
 });
@@ -212,7 +212,7 @@ for (const settlement of ["landing", "cancellation"] as const) {
       drained = true;
     }).finally(() => { settled = true; });
     const checked = settlement === "cancellation"
-      ? assert.rejects(run, error => error instanceof BrowserLoginError && /cancelled/.test(error.message))
+      ? assert.rejects(run, error => error instanceof BrowserLoginError && /cancelled/.test(error.detail))
       : run;
     try {
       await clickStarted;
@@ -265,7 +265,7 @@ it("does not retarget an initiated click to a control in a replacement document"
     return locator;
   };
   const checked = assert.rejects(world.run(), error => error instanceof BrowserLoginError
-    && /Continue Log In control could not be clicked/.test(error.message)
+    && /Continue Log In control could not be clicked/.test(error.detail)
     && error.cause instanceof Error && /original element detached/.test(error.cause.message));
   try {
     await started;
@@ -300,9 +300,9 @@ it("drains a timed-out active click within its original budget and retains cance
   let actions: readonly BrowserAction[] = [];
   const checked = assert.rejects(withBrowserActionNotes(manualClock(new Date("2026-08-03T09:00:00Z")), world.run,
     captured => { actions = captured; }), error => error instanceof BrowserLoginError
-    && /cancelled/.test(error.message) && error.cause instanceof AggregateError
+    && /cancelled/.test(error.detail) && error.cause instanceof AggregateError
     && error.cause.errors.some(cause => cause instanceof BrowserLoginError
-      && /Continue Log In control could not be clicked/.test(cause.message)));
+      && /Continue Log In control could not be clicked/.test(cause.detail)));
   try {
     await started;
     controller.abort();

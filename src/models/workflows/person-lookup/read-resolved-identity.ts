@@ -21,7 +21,7 @@ export type ResolvedIdentity = z.output<typeof ResolvedIdentitySchema>;
 export const ReadResolvedIdentity = defineTaskContract({
   id: taskId("workflow:person-lookup/read-resolved-identity"), title: "Identity cross-check", effect: "read",
   input: z.strictObject({ input: PersonLookupInput, person: SearchPersonOrgOutputSchema.optional(), match: SearchPersonMatchOutputSchema.optional(), crm: CrmDiscoveryOutputSchema.optional() }),
-  output: ResolvedIdentitySchema, errorCodes: ["person-lookup-multiple-matches"],
+  output: ResolvedIdentitySchema, errorCodes: ["PERSON_LOOKUP_MULTIPLE_MATCHES"],
   subject: { kind: "none", reason: "pure resolution of exact system observations" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
   example: { shouldCheckCrm: false, ucpathFound: false, crmErrorCode: null, state: "not-found", crmIdentity: null, selected: null, crmRecord: null, candidateEids: [], recoveryEid: null, crmState: "Not checked", method: "no-match" },

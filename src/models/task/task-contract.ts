@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import {
   BrowserSystemIdSchema,
@@ -45,10 +46,13 @@ export type {
 export { auditContractBoundarySchema } from "../validation/contract-boundary.js";
 
 export const TaskEffectSchema = z.enum(["read", "prepare", "commit"]);
-export const TaskErrorCodeSchema = z.string().regex(
-  /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/,
-  "task error code must be kebab-case",
-);
+export const TaskErrorCodeSchema = z.union([
+  z.string().regex(
+    /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/,
+    "task error code must be kebab-case",
+  ),
+  ErrorCatalogCodeSchema,
+]);
 export const ContractFieldPathSchema = z.string().regex(
   /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/,
   "contract field path must be a dot-delimited object path",

@@ -284,7 +284,7 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
       await completeUcpathCeremony(context, token);
     } catch (error) {
       if (!(error instanceof BrowserLandingStallError)
-        || error.code !== "shibboleth-stale-request" || error.host !== "a5.ucsd.edu"
+        || error.code !== "SHIBBOLETH_STALE_REQUEST" || error.host !== "a5.ucsd.edu"
         || context.signal.aborted
         || (context.acquisitionRemainingMs !== undefined && context.acquisitionRemainingMs() <= 1_000)
         || context.claimStaleRequestRecovery?.() === false) throw error;

@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../src/models/failures/error-catalog.js";
 import { WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema } from "../../src/backend/storage/sqlite/run-store-contracts.js";
 import { admitWorkerVerification, retireWorkerVerification } from "../../src/backend/storage/sqlite/worker-slots.js";
 import { z } from "zod";
@@ -31,7 +32,7 @@ import {
 import type { BrowserSessionFactoryOptions, BrowserDeadlineScheduler } from "../../src/backend/runtime/browser/browser-session-factory.js";
 import { createCredentialSecretSource, readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { probePrimaryDisplay } from "../../src/backend/app/host/primary-display.js";
-import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../src/backend/systems/browser-shared/login-contract.js";
 import type { AuthenticatedApplicationEvidence } from "../../src/backend/systems/browser-shared/login-contract.js";
 import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock, readRuntimeProcessLock, RuntimeProcessLockFileSchema, observeProcessIdentity, readLiveSmokeRuntimeFile, writeLiveSmokeRuntimeFileExclusive, removeOwnedLiveSmokeRuntimeFile } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
@@ -109,15 +110,15 @@ export function smokeErrorDiagnostic(error: unknown): string {
       if (system.success) diagnostic.system = system.data;
     }
     if (current instanceof DuoTerminalRefusalError) {
-      diagnostic.code = "duo-terminal-refusal";
-      diagnostic.text = DUO_TERMINAL_REFUSAL_TEXT;
+      diagnostic.code = "DUO_TERMINAL_REFUSAL";
+      diagnostic.text = ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text;
       diagnostic.host = current.host;
       diagnostic.path = current.path;
       diagnostic.title = current.title;
     }
-    if (current instanceof BrowserLandingStallError && Object.hasOwn(BROWSER_LANDING_STALL_TEXT, current.code)) {
+    if (current instanceof BrowserLandingStallError) {
       diagnostic.code = current.code;
-      diagnostic.text = BROWSER_LANDING_STALL_TEXT[current.code];
+      diagnostic.text = ERROR_CATALOG[current.code].text;
       diagnostic.host = current.host;
       diagnostic.path = current.path;
       diagnostic.title = current.title;

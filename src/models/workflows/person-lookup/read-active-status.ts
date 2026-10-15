@@ -23,10 +23,10 @@ export type ActiveStatusOutcome = z.output<typeof ActiveStatusOutcomeSchema>;
 export const ReadActiveStatus = defineTaskContract({
   id: taskId("workflow:person-lookup/read-active-status"), title: "Read employment status", effect: "read",
   input: z.strictObject({ input: PersonLookupInput, identity: ResolvedIdentitySchema, verifiedCrm: CrmDiscoveryOutputSchema.optional(), recovered: SearchPersonOrgOutputSchema.optional(), match: SearchPersonMatchOutputSchema.optional() }),
-  output: ActiveStatusOutcomeSchema, errorCodes: ["person-lookup-employment-status-undetermined", "inconsistent-inputs"],
+  output: ActiveStatusOutcomeSchema, errorCodes: ["PERSON_LOOKUP_EMPLOYMENT_STATUS_UNDETERMINED", "INCONSISTENT_INPUTS"],
   subject: { kind: "none", reason: "pure fold of this run's UCPath and CRM facts" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
-  example: { ucpathSelection: "not-found", datesEid: null, state: "not-found", reason: "Person not found.", code: "person-lookup-not-found", hdh: null, candidateEids: [], details: {
+  example: { ucpathSelection: "not-found", datesEid: null, state: "not-found", reason: "Person not found.", code: "PERSON_LOOKUP_NOT_FOUND", hdh: null, candidateEids: [], details: {
     search: "Example, Person", name: null, eid: null, department: null, hrStatus: null, ucpath: "Not found", crm: "Not found",
     startDate: null, endDate: null, terminationReason: null, foundInUcpath: null, matchedEid: null, matchedName: null,
   } },

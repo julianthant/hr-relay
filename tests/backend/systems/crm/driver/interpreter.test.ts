@@ -426,7 +426,7 @@ describe("CRM onboarding selector-backed driver", () => {
     const output = (await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" })).output;
     assert.equal(output.state, "check-failed");
     assert.ok(output.state === "check-failed");
-    assert.equal(output.code, "person-lookup-crm-dates-check-failed");
+    assert.equal(output.code, "PERSON_LOOKUP_CRM_DATES_CHECK_FAILED");
     assert.equal(output.reason, "CRM dates check failed.");
   });
 

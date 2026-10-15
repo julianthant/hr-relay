@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { randomUUID } from "node:crypto";
 import * as processLocks from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { admitWorkerVerification } from "../../../src/backend/storage/sqlite/worker-slots.js";
@@ -11,7 +12,7 @@ import { recordSmokeSlot, retireOwnedSmokeSlots, SmokeSlotOwnershipUnavailableEr
 import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
-import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
 import { WorkerSessionManager, WorkerSessionClosureUnprovedError, SessionAcquisitionTimeoutError } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { acquireRuntimeProcessLock, RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, writeLiveSmokeRuntimeFileExclusive } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { deleteOwnedBrowserProfile, PlaywrightWorkerSessionFactory, workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
@@ -548,7 +549,7 @@ describe("registered browser-login smoke lifecycle", () => {
   });
 
   it("prints fixed acquisition and stall text without free-form error messages", () => {
-    const stall = new BrowserLandingStallError("ucpath", "shibboleth-stale-request",
+    const stall = new BrowserLandingStallError("ucpath", "SHIBBOLETH_STALE_REQUEST",
       { host: "a5.ucsd.edu", path: "/Shibboleth.sso/SAML2/POST", title: "Web Login Service - Stale Request" });
     const timeout = new SessionAcquisitionTimeoutError("ucpath", 12_345);
     stall.message = "synthetic-message-secret";
@@ -559,7 +560,7 @@ describe("registered browser-login smoke lifecycle", () => {
       code: "browser-session-acquisition-timeout", text: "Browser-session acquisition (open + login) exceeded its 12345ms timeouts.sessionAcquireMs bound. "
         + "Check timeouts.duoApprovalSeconds against the acquisition bound; never lengthen taskMs to hide a dead session.",
     }, { error: "BrowserLandingStallError", system: "ucpath", phase: "duo-clearance",
-      code: "shibboleth-stale-request", text: BROWSER_LANDING_STALL_TEXT["shibboleth-stale-request"],
+      code: "SHIBBOLETH_STALE_REQUEST", text: ERROR_CATALOG["SHIBBOLETH_STALE_REQUEST"].text,
       host: "a5.ucsd.edu", path: "/Shibboleth.sso/SAML2/POST", title: "Web Login Service - Stale Request" }]);
     expect(diagnostic).not.toContain("secret");
   });
@@ -594,7 +595,7 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(diagnostic).not.toContain("authentication");
     const entries = z.array(z.record(z.string(), z.string())).parse(JSON.parse(diagnostic));
     expect(entries).toContainEqual({ error: "BrowserLoginError", system: "ucpath", phase: "sso-submit", host: "login.example.invalid" });
-    expect(entries).toContainEqual({ error: "DuoTerminalRefusalError", code: "duo-terminal-refusal", text: DUO_TERMINAL_REFUSAL_TEXT, system: "crm", phase: "duo-clearance", host: "login.example.invalid", path: "/sso", title: "" });
+    expect(entries).toContainEqual({ error: "DuoTerminalRefusalError", code: "DUO_TERMINAL_REFUSAL", text: ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text, system: "crm", phase: "duo-clearance", host: "login.example.invalid", path: "/sso", title: "" });
     expect(entries).toContainEqual({ error: "TypeError" });
     expect(entries.filter(entry => entry.error === "DuoTerminalRefusalError")).toHaveLength(1);
   });

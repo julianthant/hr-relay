@@ -33,7 +33,7 @@ Every contract has the following fields.
 | `id` | Branded `TaskId`, minted by `taskId`, with a registered namespace and a verb matching the effect. |
 | `title` | Nonempty default step label. |
 | `input`, `output` | Recursively strict Zod boundary schemas. Output is canonical JSON. |
-| `errorCodes` | Nonempty tuple of unique kebab-case codes. |
+| `errorCodes` | Nonempty tuple of unique contextual kebab-case codes or exact registered `ErrorCatalogCodeSchema` values. |
 | `subject` | Explicit `none`, `person`, or `artifact` binding. |
 | `scenarios` | Declared `ScenarioId` values. Empty is allowed only in a `workflow:` namespace. |
 | `example` | Required output fixture, parsed and canonicalized at declaration. |

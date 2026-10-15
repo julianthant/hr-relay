@@ -1,3 +1,4 @@
+import { ERROR_CATALOG, type ErrorCatalogCode } from "../../failures/error-catalog.js";
 import { z } from "zod";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
 import { EidSchema } from "../../../rules/identity/ids.js";
@@ -37,8 +38,7 @@ export const PersonLookupCanonicalInput = defineCanonicalInput(PersonLookupInput
 export type PersonLookupInputValue = z.output<typeof PersonLookupInput>;
 
 export class PersonLookupMatchInputError extends Error {
-  readonly code = "person-lookup-match-input-missing-identifiers";
-  constructor() { super("Match requires a date of birth or SSN."); this.name = "PersonLookupMatchInputError"; }
+  constructor(readonly code: Extract<ErrorCatalogCode, "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS"> = "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS") { super(ERROR_CATALOG[code].text); this.name = "PersonLookupMatchInputError"; }
 }
 
 /** Returns canonical people for the generic start planner; sensitive tuples stay out of display identity. */

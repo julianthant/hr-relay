@@ -126,7 +126,7 @@ describe("crm login recipe", () => {
     await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "sso-form");
-      assert.match(error.message, /not Active Directory; refusing to submit credentials/);
+      assert.match(error.detail, /not Active Directory; refusing to submit credentials/);
       return true;
     });
     assert.deepEqual(harness.filled(), [], "no credential may be typed into the wrong realm's form");
@@ -142,7 +142,7 @@ describe("crm login recipe", () => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.system, "crm");
       assert.equal(error.step, "sso-form");
-      assert.match(error.message, /Active Directory could not be selected/);
+      assert.match(error.detail, /Active Directory could not be selected/);
       return true;
     });
   });
@@ -183,7 +183,7 @@ describe("crm login recipe", () => {
     await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "verify-landing");
-      assert.match(error.message, /never issued its sid session cookie/);
+      assert.match(error.detail, /never issued its sid session cookie/);
       return true;
     });
   });

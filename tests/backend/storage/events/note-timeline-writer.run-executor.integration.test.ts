@@ -100,7 +100,7 @@ function actionBindingRetrySessions(): SessionFactoryHarness {
           recordBrowserAction("typed", "ucpath.person-org.eid-input", input.emplId);
           recordBrowserAction("clicked", "ucpath.person-org.search-button");
           if (openIndex === 1) {
-            throw new TaskError(SearchPersonOrg.id, "person-lookup-ucpath-search-failed", "synthetic retry", { transient: true });
+            throw new TaskError(SearchPersonOrg.id, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED", "synthetic retry", { transient: true });
           }
           return await driver.searchPersonOrg(...args);
         },

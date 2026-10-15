@@ -130,6 +130,14 @@ function commitContract() {
 }
 
 describe("sealed task contracts", () => {
+  it("accepts contextual kebab codes or registered catalog codes and refuses unknown uppercase codes", () => {
+    const codes = ["eid-not-found", "PERSON_LOOKUP_UCPATH_SEARCH_FAILED"] as const;
+    assert.deepEqual(defineTaskContract({ ...readDefinition(), errorCodes: codes }).errorCodes, codes);
+    for (const code of ["UNREGISTERED_TASK_FAILURE", "Person_LOOKUP_NOT_FOUND", "bad--code", "bad_code", " bad-code", "bad-code ", ""]) {
+      assert.throws(() => defineTaskContract({ ...readDefinition(), errorCodes: [code] }));
+    }
+  });
+
   it("seals a reusable operation declaration and refuses a cross-system one", () => {
     const operation = {
       version: 1,

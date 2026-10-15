@@ -1,4 +1,5 @@
 // Login requires positive application evidence and no sign-in form; shared hosts and redirects prove neither.
+import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import type { Page } from "playwright";
 import type { DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
 import type { Config } from "../../../models/config/schema.js";
@@ -17,26 +18,31 @@ export type BrowserLoginStep =
   | "verify-landing";
 
 
-export class BrowserLoginError extends Error {
-  readonly code: string;
-  get fixedText(): string { return `${this.system === "ucpath" ? "UCPath" : this.system === "crm" ? "CRM" : this.system} sign-in failed.`; }
-  readonly system: BrowserSystemId;
-  readonly step: BrowserLoginStep;
-  readonly observedUrl: string;
+type BrowserSignInCode = Extract<ErrorCatalogCode, `${string}_SIGN_IN_FAILED`>;
+export type BrowserLandingStallCode = Extract<ErrorCatalogCode,
+  | "TRAINING_REMINDER_REPEATED" | "SHIBBOLETH_STALE_REQUEST" | "DUO_PROMPT_STALLED"
+  | "DUO_REFUSAL_UNPROVEN" | "SSO_FIRST_FACTOR_REJECTED" | "LANDING_PROBE_UNAVAILABLE"
+  | "AUTHENTICATED_LANDING_MISSING"
+>;
+type BrowserLoginFailureCode = BrowserSignInCode | BrowserLandingStallCode
+  | Extract<ErrorCatalogCode, "DUO_TERMINAL_REFUSAL">;
+const SIGN_IN_CODES = {
+  ucpath: "UCPATH_SIGN_IN_FAILED", crm: "CRM_SIGN_IN_FAILED", onbase: "ONBASE_SIGN_IN_FAILED",
+  kuali: "KUALI_SIGN_IN_FAILED", servicenow: "SERVICENOW_SIGN_IN_FAILED", i9: "I9_SIGN_IN_FAILED",
+  "new-kronos": "NEW_KRONOS_SIGN_IN_FAILED", "old-kronos": "OLD_KRONOS_SIGN_IN_FAILED", sharepoint: "SHAREPOINT_SIGN_IN_FAILED",
+} as const satisfies Record<BrowserSystemId, BrowserSignInCode>;
 
+export class BrowserLoginError extends Error {
   constructor(
-    system: BrowserSystemId,
-    step: BrowserLoginStep,
-    detail: string,
-    observedUrl: string,
+    readonly system: BrowserSystemId,
+    readonly step: BrowserLoginStep,
+    readonly detail: string,
+    readonly observedUrl: string,
     options?: ErrorOptions,
+    readonly code: BrowserLoginFailureCode = SIGN_IN_CODES[system],
   ) {
-    super(`${system} login failed at ${step}: ${detail} (observed URL ${observedUrl})`, options);
+    super(ERROR_CATALOG[code].text, options);
     this.name = "BrowserLoginError";
-    this.system = system;
-    this.code = `${system}-sign-in-failed`;
-    this.step = step;
-    this.observedUrl = observedUrl;
   }
 }
 
@@ -51,26 +57,16 @@ export function browserLoginFailure(error: unknown): BrowserLoginError | undefin
   return undefined;
 }
 
-export const DUO_TERMINAL_REFUSAL_TEXT =
-  "Duo REFUSED the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; "
-  + "this login is dead and the prompt will not clear on its own. The cause is almost never Duo "
-  + "hand-approval: it is a Duo Autopilot signCount regression, where this browser profile's stored "
-  + "counter has fallen BEHIND the value Duo has already observed for the shared credential (a "
-  + "counter that does not advance is a cloned-key signal), which is what happens when any other "
-  + "profile using the same credential signed more recently. Check the extension's stored signCount "
-  + "before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs";
-
 // A refused Duo assertion burns the profile; only this failure permits one fresh-profile retry under the same lease.
 export class DuoTerminalRefusalError extends BrowserLoginError {
-  override readonly code = "duo-terminal-refusal" as const;
-  override get fixedText(): string { return DUO_TERMINAL_REFUSAL_TEXT; }
+  override readonly code = "DUO_TERMINAL_REFUSAL" as const;
   readonly refusal = "duo-terminal-refusal" as const;
   readonly host: string;
   readonly path: string;
   readonly title: string;
 
   constructor(system: BrowserSystemId, detail: string, observedUrl: string, options?: ErrorOptions, title = "") {
-    super(system, "duo-clearance", detail, observedUrl, options);
+    super(system, "duo-clearance", detail, observedUrl, options, "DUO_TERMINAL_REFUSAL");
     this.name = "DuoTerminalRefusalError";
     const url = URL.parse(observedUrl);
     this.host = url?.hostname ?? "unknown";
@@ -80,27 +76,15 @@ export class DuoTerminalRefusalError extends BrowserLoginError {
 }
 
 
-export const BROWSER_LANDING_STALL_TEXT = {
-  "training-reminder-repeated": "the UCSD training reminder appeared again after Continue Log In",
-  "shibboleth-stale-request": "Shibboleth served its stale-request page; the SAML execution expired during login",
-  "duo-prompt-stalled": "the Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current",
-  "duo-refusal-unproven": "the Duo prompt never cleared, and its terminal refusal could not be probed",
-  "sso-first-factor-rejected": "the UCSD SSO form is still on the page; the first factor was rejected",
-  "landing-probe-unavailable": "no authenticated landing appeared, and the stalled page could not be probed",
-  "authenticated-landing-missing": "no authenticated landing appeared",
-} as const;
-export type BrowserLandingStallCode = keyof typeof BROWSER_LANDING_STALL_TEXT;
-
 export class BrowserLandingStallError extends BrowserLoginError {
   override readonly code: BrowserLandingStallCode;
-  override get fixedText(): string { return BROWSER_LANDING_STALL_TEXT[this.code]; }
   readonly host: string;
   readonly path: string;
   readonly title: string;
 
   constructor(system: BrowserSystemId, code: BrowserLandingStallCode,
     page: Readonly<{ host: string; path: string; title: string }>, options?: ErrorOptions) {
-    super(system, "duo-clearance", BROWSER_LANDING_STALL_TEXT[code], "", options);
+    super(system, "duo-clearance", ERROR_CATALOG[code].text, "", options, code);
     this.name = "BrowserLandingStallError";
     this.code = code;
     const url = URL.parse(`https://${page.host}${page.path}`);

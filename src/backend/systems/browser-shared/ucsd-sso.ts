@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 // Select SSO submit by name: the enrollment navigation also looks like a Login button.
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "./action-notes.js";
@@ -5,7 +6,7 @@ import { assertDuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-
 import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { probeAbsentControl } from "./authenticated-application.js";
 import type { ObservedFact } from "./authenticated-application.js";
-import { BrowserLoginError, BrowserLandingStallError, DuoTerminalRefusalError, DUO_TERMINAL_REFUSAL_TEXT } from "./login-contract.js";
+import { BrowserLoginError, BrowserLandingStallError, DuoTerminalRefusalError } from "./login-contract.js";
 import type {
   AuthenticationProbe,
   BrowserLoginStep,
@@ -232,16 +233,16 @@ async function observeTrainingReminder(
   deadline: number,
   isWaiting: () => boolean,
   ownClick: (operation: Promise<void>) => void,
-): Promise<"training-reminder-repeated"> {
+): Promise<"TRAINING_REMINDER_REPEATED"> {
   const control = context.page.locator(TRAINING_REMINDER_SELECTOR).first();
   const remaining = (): number => Math.max(1, deadline - systemClock.monotonicMs());
   try {
     await control.waitFor({ state: "visible", timeout: remaining() });
   } catch {
-    return await new Promise<"training-reminder-repeated">(() => undefined);
+    return await new Promise<"TRAINING_REMINDER_REPEATED">(() => undefined);
   }
   if (!isWaiting() || URL.parse(context.page.url())?.hostname !== "a5.ucsd.edu") {
-    return await new Promise<"training-reminder-repeated">(() => undefined);
+    return await new Promise<"TRAINING_REMINDER_REPEATED">(() => undefined);
   }
   const navigated = context.page.waitForEvent("framenavigated", {
     predicate: frame => frame === context.page.mainFrame(), timeout: remaining(),
@@ -271,15 +272,15 @@ async function observeTrainingReminder(
   })();
   ownClick(click);
   await click;
-  if (!isWaiting()) return await new Promise<"training-reminder-repeated">(() => undefined);
+  if (!isWaiting()) return await new Promise<"TRAINING_REMINDER_REPEATED">(() => undefined);
   try {
     await Promise.race([navigated, control.waitFor({ state: "hidden", timeout: remaining() })]);
     if (isWaiting()) await control.waitFor({ state: "visible", timeout: remaining() });
     if (isWaiting() && URL.parse(context.page.url())?.hostname === "a5.ucsd.edu") {
-      return "training-reminder-repeated";
+      return "TRAINING_REMINDER_REPEATED";
     }
   } catch { /* The landing arm owns timeout and diagnosis. */ }
-  return await new Promise<"training-reminder-repeated">(() => undefined);
+  return await new Promise<"TRAINING_REMINDER_REPEATED">(() => undefined);
 }
 
 
@@ -300,7 +301,7 @@ export async function waitForAuthenticatedLanding(
     && systemClock.monotonicMs() < deadline && !landed(context.page.url());
   try {
     const result = await raceCancellation(
-      Promise.race<"landed" | "duo-refused" | "stale-request" | "training-reminder-repeated">([
+      Promise.race<"landed" | "duo-refused" | "stale-request" | "TRAINING_REMINDER_REPEATED">([
         context.page.waitForURL((url) => landed(url.href), { timeout: landingMs })
           .then(() => "landed"),
         observeDuoTerminalRefusal(context.page, landingMs),
@@ -328,7 +329,7 @@ export async function waitForAuthenticatedLanding(
     if ("error" in result) throw result.error;
     abortIfCancelled(system, "duo-clearance", context);
     const outcome = result.outcome;
-    if (outcome === "training-reminder-repeated") {
+    if (outcome === "TRAINING_REMINDER_REPEATED") {
       const observed = URL.parse(context.page.url());
       throw new BrowserLandingStallError(system, outcome, {
         host: observed?.hostname ?? "", path: observed?.pathname ?? "", title: "",
@@ -336,13 +337,13 @@ export async function waitForAuthenticatedLanding(
     }
     if (outcome === "stale-request") throw new Error("Shibboleth stale request observed");
     if (outcome === "duo-refused") {
-      throw new DuoTerminalRefusalError(system, DUO_TERMINAL_REFUSAL_TEXT, context.page.url());
+      throw new DuoTerminalRefusalError(system, ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text, context.page.url());
     }
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
     const observed = URL.parse(context.page.url());
     let title = "";
-    let diagnosis: BrowserLandingStallCode | "duo-refused" = "landing-probe-unavailable";
+    let diagnosis: BrowserLandingStallCode | "duo-refused" = "LANDING_PROBE_UNAVAILABLE";
     const budget = Math.max(1, Math.min(900, (context.acquisitionRemainingMs?.() ?? 1_000) - 100));
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -357,7 +358,7 @@ export async function waitForAuthenticatedLanding(
       clearTimeout(timer);
     }
     if (diagnosis === "duo-refused") {
-      throw new DuoTerminalRefusalError(system, DUO_TERMINAL_REFUSAL_TEXT, context.page.url(), { cause: error }, title);
+      throw new DuoTerminalRefusalError(system, ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text, context.page.url(), { cause: error }, title);
     }
     throw new BrowserLandingStallError(system, diagnosis, {
       host: observed?.hostname ?? "",
@@ -372,17 +373,17 @@ async function describeStalledLanding(
 ): Promise<BrowserLandingStallCode | "duo-refused"> {
   try {
     if (URL.parse(context.page.url())?.hostname === "a5.ucsd.edu"
-      && await context.page.getByText(STALE_REQUEST_TEXT).count() > 0) return "shibboleth-stale-request";
+      && await context.page.getByText(STALE_REQUEST_TEXT).count() > 0) return "SHIBBOLETH_STALE_REQUEST";
     const host = URL.parse(context.page.url())?.hostname;
     if (host === DUO_HOST || host?.endsWith(`.${DUO_HOST}`)) {
       try {
         if (await duoTerminalRefusalLocator(context.page).count() > 0) return "duo-refused";
-      } catch { return "duo-refusal-unproven"; }
-      return "duo-prompt-stalled";
+      } catch { return "DUO_REFUSAL_UNPROVEN"; }
+      return "DUO_PROMPT_STALLED";
     }
-    if (await isSsoFormPresent(context.page)) return "sso-first-factor-rejected";
-    return "authenticated-landing-missing";
-  } catch { return "landing-probe-unavailable"; }
+    if (await isSsoFormPresent(context.page)) return "SSO_FIRST_FACTOR_REJECTED";
+    return "AUTHENTICATED_LANDING_MISSING";
+  } catch { return "LANDING_PROBE_UNAVAILABLE"; }
 }
 
 

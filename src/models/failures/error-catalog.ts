@@ -9,6 +9,118 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS: catalogEntry(
+    "Match requires a date of birth or SSN.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_NOT_FOUND: catalogEntry(
+    "Person not found.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_MULTIPLE_MATCHES: catalogEntry(
+    "Multiple people match; none was chosen.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_MATCH_MULTIPLE_MATCHES: catalogEntry(
+    "Multiple UCPath people match; none was chosen.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_EMPLOYMENT_STATUS_UNDETERMINED: catalogEntry(
+    "Employment status could not be determined.",
+    EmptyParametersSchema,
+  ),
+  INCONSISTENT_INPUTS: catalogEntry(
+    "Person Lookup received inconsistent UCPath and CRM identities.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_UCPATH_SEARCH_FAILED: catalogEntry(
+    "UCPath search failed.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_CRM_RECORD_IDENTITY_DRIFT: catalogEntry(
+    "CRM selected record identity changed.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_CRM_CHECK_FAILED: catalogEntry(
+    "CRM check failed.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_CRM_DATES_CHECK_FAILED: catalogEntry(
+    "CRM dates check failed.",
+    EmptyParametersSchema,
+  ),
+  PERSON_LOOKUP_CRM_DATES_BINDING_INVALID: catalogEntry(
+    "CRM dates subject binding is invalid.",
+    EmptyParametersSchema,
+  ),
+  SHIBBOLETH_STALE_REQUEST: catalogEntry(
+    "Shibboleth served its stale-request page; the SAML execution expired during login.",
+    EmptyParametersSchema,
+  ),
+  DUO_PROMPT_STALLED: catalogEntry(
+    "The Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current.",
+    EmptyParametersSchema,
+  ),
+  DUO_REFUSAL_UNPROVEN: catalogEntry(
+    "The Duo prompt never cleared, and its terminal refusal could not be probed.",
+    EmptyParametersSchema,
+  ),
+  SSO_FIRST_FACTOR_REJECTED: catalogEntry(
+    "The UCSD SSO form is still on the page; the first factor was rejected.",
+    EmptyParametersSchema,
+  ),
+  LANDING_PROBE_UNAVAILABLE: catalogEntry(
+    "No authenticated landing appeared, and the stalled page could not be probed.",
+    EmptyParametersSchema,
+  ),
+  AUTHENTICATED_LANDING_MISSING: catalogEntry(
+    "No authenticated landing appeared.",
+    EmptyParametersSchema,
+  ),
+  TRAINING_REMINDER_REPEATED: catalogEntry(
+    "The UCSD training reminder appeared again after Continue Log In.",
+    EmptyParametersSchema,
+  ),
+  DUO_TERMINAL_REFUSAL: catalogEntry(
+    "Duo refused the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; this login is dead and the prompt will not clear on its own. The cause is almost never Duo hand-approval: it is a Duo Autopilot signCount regression, where this browser profile's stored counter has fallen behind the value Duo has already observed for the shared credential (a counter that does not advance is a cloned-key signal), which is what happens when any other profile using the same credential signed more recently. Check the extension's stored signCount before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs.",
+    EmptyParametersSchema,
+  ),
+  UCPATH_SIGN_IN_FAILED: catalogEntry(
+    "UCPath sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  CRM_SIGN_IN_FAILED: catalogEntry(
+    "CRM sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  ONBASE_SIGN_IN_FAILED: catalogEntry(
+    "OnBase sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  KUALI_SIGN_IN_FAILED: catalogEntry(
+    "Kuali sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  SERVICENOW_SIGN_IN_FAILED: catalogEntry(
+    "ServiceNow sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  I9_SIGN_IN_FAILED: catalogEntry(
+    "I-9 sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  NEW_KRONOS_SIGN_IN_FAILED: catalogEntry(
+    "New Kronos sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  OLD_KRONOS_SIGN_IN_FAILED: catalogEntry(
+    "Old Kronos sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  SHAREPOINT_SIGN_IN_FAILED: catalogEntry(
+    "SharePoint sign-in failed.",
+    EmptyParametersSchema,
+  ),
   ERROR_CATALOG_CODE_UNREGISTERED: catalogEntry(
     "This failure code is not in the current catalog. Review the recorded local evidence.",
     EmptyParametersSchema,

@@ -60,7 +60,7 @@ describe("failure, retry, and resume", () => {
         system: "crm" as const,
         searchOnboardingRecords: () => Promise.reject(new TaskError(
           CrmSearchOnboardingRecords.id,
-          "person-lookup-crm-check-failed",
+          "PERSON_LOOKUP_CRM_CHECK_FAILED",
           "CRM returned an unexpected page",
         )),
         readOnboardingDates: () => Promise.reject(new Error("unused")),

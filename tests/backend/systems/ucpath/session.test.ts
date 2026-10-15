@@ -182,7 +182,7 @@ describe("ucpath login recipe", () => {
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "navigate-login-entry");
-      assert.match(error.message, /neither campus discovery, nor the SSO form/);
+      assert.match(error.detail, /neither campus discovery, nor the SSO form/);
       return true;
     });
     assert.equal(harness.actions().includes("click:portal-login"), true);
@@ -306,8 +306,8 @@ describe("ucpath login recipe", () => {
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "verify-landing");
-      assert.match(error.message, /the login could not prove the authenticated application/);
-      assert.match(error.message, /never issued its PS_TOKEN session cookie/);
+      assert.match(error.detail, /the login could not prove the authenticated application/);
+      assert.match(error.detail, /never issued its PS_TOKEN session cookie/);
       return true;
     });
   });
@@ -325,7 +325,7 @@ describe("ucpath login recipe", () => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.system, "ucpath");
       assert.equal(error.step, "sso-form");
-      assert.match(error.message, /SSO form never rendered/);
+      assert.match(error.detail, /SSO form never rendered/);
       return true;
     });
   });
@@ -345,8 +345,8 @@ describe("ucpath login recipe", () => {
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "credential-fill");
-      assert.match(error.message, /username field matched no element/);
-      assert.match(error.message, /ssousername/);
+      assert.match(error.detail, /username field matched no element/);
+      assert.match(error.detail, /ssousername/);
       return true;
     });
     assert.deepEqual(harness.filled(), [], "nothing may be typed into an unidentified page");
@@ -394,7 +394,7 @@ describe("ucpath login recipe", () => {
     assert.ok(settled instanceof BrowserLoginError, `expected a refusal; got ${String(settled)}`);
     assert.equal(settled.step, "duo-clearance");
     assert.match(settled.message, /signCount/);
-    assert.match(settled.message, /Duo REFUSED/);
+    assert.match(settled.message, /Duo refused/);
     assert.doesNotMatch(settled.message, /fixture-value|fixture-user/);
   });
 
@@ -416,7 +416,7 @@ describe("ucpath login recipe", () => {
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "duo-clearance");
-      assert.match(error.message, /the Duo prompt never cleared/);
+      assert.match(error.message, /The Duo prompt never cleared/);
       assert.doesNotMatch(error.message, /signCount/);
       return true;
     });
@@ -440,7 +440,7 @@ describe("ucpath login recipe", () => {
     context.page.title = async () => "Duo https://auth.example/?private#private";
     await assert.rejects(ucpathLoginRecipe({ ...context, acquisitionRemainingMs: () => 600 }), error => {
       assert.ok(error instanceof BrowserLandingStallError);
-      assert.equal(error.code, "duo-prompt-stalled");
+      assert.equal(error.code, "DUO_PROMPT_STALLED");
       assert.equal(error.host, "api-ce13a1a7.duosecurity.com");
       assert.equal(error.path, "/prompt/DA6QL3UFNF54WTIT1EQC");
       assert.equal(error.title, "Duo [URL]");
@@ -463,7 +463,7 @@ describe("ucpath login recipe", () => {
     try {
       await assert.rejects(ucpathLoginRecipe({ ...context, acquisitionRemainingMs: () => 150 }), error => {
         assert.ok(error instanceof BrowserLandingStallError);
-        assert.equal(error.code, "landing-probe-unavailable");
+        assert.equal(error.code, "LANDING_PROBE_UNAVAILABLE");
         assert.equal(error.title, "");
         return true;
       });
@@ -512,9 +512,9 @@ describe("ucpath login recipe", () => {
 
   it("refuses stale text outside UCSD Shibboleth and an exhausted recovery budget", async () => {
     for (const [stalled, remaining, code, canRecover] of [
-      ["https://other.example/stale", 60_000, "sso-first-factor-rejected", true],
-      [SSO, 1_000, "shibboleth-stale-request", true],
-      [SSO, 60_000, "shibboleth-stale-request", false],
+      ["https://other.example/stale", 60_000, "SSO_FIRST_FACTOR_REJECTED", true],
+      [SSO, 1_000, "SHIBBOLETH_STALE_REQUEST", true],
+      [SSO, 60_000, "SHIBBOLETH_STALE_REQUEST", false],
     ] as const) {
       const { context, harness } = contextFor({
         url: "about:blank",
@@ -567,7 +567,7 @@ describe("ucpath login recipe", () => {
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "verify-landing");
-      assert.match(error.message, /TritON SSO form is still present/);
+      assert.match(error.detail, /TritON SSO form is still present/);
       return true;
     });
   });
@@ -576,7 +576,13 @@ describe("ucpath login recipe", () => {
     const controller = new AbortController();
     controller.abort();
     const { context, harness } = contextFor({ url: "about:blank" }, controller.signal);
-    await assert.rejects(ucpathLoginRecipe(context), /login failed at navigate-login-entry: the session was cancelled/);
+    await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.code, "UCPATH_SIGN_IN_FAILED");
+      assert.equal(error.step, "navigate-login-entry");
+      assert.equal(error.detail, "the session was cancelled");
+      return true;
+    });
     assert.deepEqual(harness.actions(), []);
   });
 });

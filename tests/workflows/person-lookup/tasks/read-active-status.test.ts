@@ -36,10 +36,10 @@ it("names inconsistent UCPath and CRM identities without recording output facts"
         shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null, candidateEids: [expectedEid], recoveryEid: null, crmState: "Found", method: "eid-match" }),
     },
     ctx,
-  }), (error: unknown) => error instanceof TaskRefusal && error.code === "inconsistent-inputs");
+  }), (error: unknown) => error instanceof TaskRefusal && error.code === "INCONSISTENT_INPUTS");
 
   assert.deepEqual(refusals, [new TaskRefusal(
-    "inconsistent-inputs",
+    "INCONSISTENT_INPUTS",
     "Person Lookup received inconsistent UCPath and CRM identities.",
   )]);
   assert.deepEqual(records, []);

@@ -9,6 +9,44 @@ import {
 } from "../../../src/models/failures/error-catalog.js";
 
 describe("error catalog", () => {
+  it("registers Person Lookup and shared sign-in codes with fixed sentence-case text", () => {
+    const expected = {
+      PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS: "Match requires a date of birth or SSN.",
+      PERSON_LOOKUP_NOT_FOUND: "Person not found.",
+      PERSON_LOOKUP_MULTIPLE_MATCHES: "Multiple people match; none was chosen.",
+      PERSON_LOOKUP_MATCH_MULTIPLE_MATCHES: "Multiple UCPath people match; none was chosen.",
+      PERSON_LOOKUP_EMPLOYMENT_STATUS_UNDETERMINED: "Employment status could not be determined.",
+      INCONSISTENT_INPUTS: "Person Lookup received inconsistent UCPath and CRM identities.",
+      PERSON_LOOKUP_UCPATH_SEARCH_FAILED: "UCPath search failed.",
+      PERSON_LOOKUP_CRM_RECORD_IDENTITY_DRIFT: "CRM selected record identity changed.",
+      PERSON_LOOKUP_CRM_CHECK_FAILED: "CRM check failed.",
+      PERSON_LOOKUP_CRM_DATES_CHECK_FAILED: "CRM dates check failed.",
+      PERSON_LOOKUP_CRM_DATES_BINDING_INVALID: "CRM dates subject binding is invalid.",
+      SHIBBOLETH_STALE_REQUEST: "Shibboleth served its stale-request page; the SAML execution expired during login.",
+      DUO_PROMPT_STALLED: "The Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current.",
+      DUO_REFUSAL_UNPROVEN: "The Duo prompt never cleared, and its terminal refusal could not be probed.",
+      SSO_FIRST_FACTOR_REJECTED: "The UCSD SSO form is still on the page; the first factor was rejected.",
+      LANDING_PROBE_UNAVAILABLE: "No authenticated landing appeared, and the stalled page could not be probed.",
+      AUTHENTICATED_LANDING_MISSING: "No authenticated landing appeared.",
+      TRAINING_REMINDER_REPEATED: "The UCSD training reminder appeared again after Continue Log In.",
+      DUO_TERMINAL_REFUSAL: "Duo refused the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; this login is dead and the prompt will not clear on its own. The cause is almost never Duo hand-approval: it is a Duo Autopilot signCount regression, where this browser profile's stored counter has fallen behind the value Duo has already observed for the shared credential (a counter that does not advance is a cloned-key signal), which is what happens when any other profile using the same credential signed more recently. Check the extension's stored signCount before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs.",
+      UCPATH_SIGN_IN_FAILED: "UCPath sign-in failed.",
+      CRM_SIGN_IN_FAILED: "CRM sign-in failed.",
+      ONBASE_SIGN_IN_FAILED: "OnBase sign-in failed.",
+      KUALI_SIGN_IN_FAILED: "Kuali sign-in failed.",
+      SERVICENOW_SIGN_IN_FAILED: "ServiceNow sign-in failed.",
+      I9_SIGN_IN_FAILED: "I-9 sign-in failed.",
+      NEW_KRONOS_SIGN_IN_FAILED: "New Kronos sign-in failed.",
+      OLD_KRONOS_SIGN_IN_FAILED: "Old Kronos sign-in failed.",
+      SHAREPOINT_SIGN_IN_FAILED: "SharePoint sign-in failed.",
+    } as const;
+    for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
+      const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+      assert.equal(message.code, code);
+      assert.equal(message.text, expected[code]);
+    }
+  });
+
   it("registers the exact Settings integration codes and fixed messages", () => {
     const expected = {
       SETTINGS_INITIAL_READ_UNAVAILABLE: "Settings could not be read. Try again.",
