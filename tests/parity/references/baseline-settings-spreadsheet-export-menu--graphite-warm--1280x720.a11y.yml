@@ -52,6 +52,7 @@
             - listitem: Baseline typed.csv
         - heading "Baseline typed.csv" [level=1]
         - paragraph: 1 sheet · Edited copy
+        - button "Save"
         - button "Export copy" [expanded]
         - menu "Export copy":
           - menuitem "Excel workbook (.xlsx)"

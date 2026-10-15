@@ -64,6 +64,7 @@
           - spinbutton "day, End*": "26"
           - spinbutton "year, End*": "2026"
           - button "Choose end date range End*"
+      - button "Export CSV"
       - region "Analytics runs":
         - heading "Separations run times" [level=2]
         - status: 4 of 24 completed runs with recorded duration
