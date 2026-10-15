@@ -6,7 +6,7 @@ import { LogPanel } from "../../run-detail/log-panel.js";
 import { queueRunHeader } from "../../run-detail/run-header-model.js";
 import { mockApprovalError, mockNeedsReview, mockQueueStatus, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
-import { mockQueueId, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
+import { mockQueueId, mockQueueOutcomes, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
 import type { QueueSortKey } from "../../queue/queue-model.js";
 import { StatusBadge } from "../../shared/status/status.js";
@@ -29,6 +29,7 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const deleted = useRef(false);
   const deleteLauncher = useRef<HTMLElement | null>(null);
   const surfaces = useMemo(() => mockQueueSurfaces(runs, day), [runs, day]);
+  const outcomes = useMemo(() => mockQueueOutcomes(runs), [runs]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
   const queueState = useMemo(() => ({
     selectedRunId: selected ? mockQueueId(selected) : undefined,
@@ -54,7 +55,7 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
     const target = queueRoot.current?.querySelector<HTMLElement>("[data-demo-row-id]") ?? queueRoot.current?.querySelector<HTMLElement>('[aria-label="Queue"]');
     if (target) { if (!target.hasAttribute("tabindex")) target.tabIndex = -1; target.focus(); }
   };
-  return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel surfaces={surfaces} panelLabel={label} header={false} day={day} sort={sort} filter={filter}
+  return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel outcomes={outcomes} surfaces={surfaces} panelLabel={label} header={false} day={day} sort={sort} filter={filter}
     state={queueState}
     handlers={queueHandlers} workflowLabelOf={mockWorkflowLabelOf} />
     <Dialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }}>

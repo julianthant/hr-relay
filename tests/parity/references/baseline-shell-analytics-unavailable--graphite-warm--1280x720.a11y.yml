@@ -59,6 +59,7 @@
           - spinbutton "day, End*": "26"
           - spinbutton "year, End*": "2026"
           - button "Choose end date range End*"
+      - button "Export CSV" [disabled]
       - alert:
         - heading "Analytics unavailable" [level=2]
         - paragraph: The report is unavailable. Try another period or return later.

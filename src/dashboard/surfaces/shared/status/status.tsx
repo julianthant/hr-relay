@@ -1,6 +1,7 @@
 import { cn } from "../../../lib/utils.js";
-import { StatusPill, dsText } from "../../../ds/ui.js";
+import { DS_STATUS, StatusPill, dsText } from "../../../ds/ui.js";
 import type {
+  QueueBusinessOutcome,
   OutcomeWire,
   ProposedStatus,
   QueueStatus,
@@ -20,14 +21,18 @@ export function StatusBadge({
   age,
   hideIcon,
   presentation,
+  outcome,
 }: {
   status: ProposedStatus;
+  outcome?: QueueBusinessOutcome;
   label?: string;
   age?: string;
   hideIcon?: boolean;
   presentation?: "default" | "queue";
 }) {
-  return <StatusPill status={status} label={label} age={age} size="sm" hideIcon={hideIcon} presentation={presentation} />;
+  const completedOutcome = (status === "verifiedDone" || status === "doneWarnings") ? outcome : undefined;
+  const tone = completedOutcome ? DS_STATUS[completedOutcome.tone === "success" ? "verifiedDone" : completedOutcome.tone === "warning" ? "doneWarnings" : "cancelled"] : undefined;
+  return <StatusPill status={status} className={tone && cn(tone.chip, tone.text)} label={completedOutcome?.label ?? label} age={age} size="sm" hideIcon={hideIcon} presentation={presentation} />;
 }
 
 /** A member's OUTCOME — what its run found — as a word in a column.

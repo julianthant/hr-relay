@@ -11,7 +11,7 @@ import { SpreadsheetColumnImport } from "./spreadsheet-column-import.js";
 import { prepareSpreadsheetColumns, selectSpreadsheetColumns } from "./spreadsheet-column-import-model.js";
 import { ROSTER_FIELD_GROUPS } from "./spreadsheet-mock-data.js";
 import { SPREADSHEET_FIELDS, fieldForSpreadsheetHeader } from './spreadsheet-fields-model.js';
-import { addMockSpreadsheetType, initialSpreadsheetSheets, registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, spreadsheetFields, useSpreadsheetMocks, type RegisteredSpreadsheet, type SpreadsheetType } from "./spreadsheet-mock-model.js";
+import { saveMockSpreadsheet, addMockSpreadsheetType, initialSpreadsheetSheets, registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, spreadsheetFields, useSpreadsheetMocks, type RegisteredSpreadsheet, type SpreadsheetType } from "./spreadsheet-mock-model.js";
 
 function SpreadsheetTypeDialog({ open, onOpenChange, type, returnFocus }: { open: boolean; onOpenChange: (open: boolean) => void; type?: SpreadsheetType; returnFocus: RefObject<HTMLButtonElement | null> }) {
   const { toast } = useToasts();
@@ -100,7 +100,7 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { 
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page min-w-0 text-body">
     <input ref={upload} disabled={busy || !!pendingImport} type="file" accept=".xlsx,.csv" aria-label="Open XLSX or CSV" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file); }} />
     {fileError && <Banner tone="danger" title="Spreadsheet unavailable">{fileError}</Banner>}
-    {selectedId !== null && !selected ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={visibleWorkbook === workbook && workbookDirty} onDocument={documentChange} onExported={() => toast({ tone: "success", title: "Spreadsheet copy exported" })} onMapping={selected ? () => {
+    {selectedId !== null && !selected ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={visibleWorkbook === workbook && workbookDirty} onSave={saveMockSpreadsheet} onDocument={documentChange} onExported={() => toast({ tone: "success", title: "Spreadsheet copy exported" })} onMapping={selected ? () => {
       setEditingId(selected.id);
       if (selected.typeId === 'local') {
         const draft = { ...visibleWorkbook, libraryId: undefined };
