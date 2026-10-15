@@ -1,4 +1,5 @@
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 
 import assert from "node:assert/strict";
@@ -336,9 +337,11 @@ describe("worker browser session factory", () => {
       await assert.rejects(
         dropped.reset({ signal: new AbortController().signal }),
         (error: unknown) => {
-          assert.ok(error instanceof Error);
-          assert.match(error.message, /the neutral reset did not land on the authenticated application/);
-          assert.match(error.message, /PeopleSoft signon form is still present/);
+          assert.ok(error instanceof BrowserLoginError);
+          assert.equal(error.code, "UCPATH_SIGN_IN_FAILED");
+          assert.equal(error.message, "UCPath sign-in failed.");
+          assert.match(error.detail, /the neutral reset did not land on the authenticated application/);
+          assert.match(error.detail, /PeopleSoft signon form is still present/);
           return true;
         },
       );
