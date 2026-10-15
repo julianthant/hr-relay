@@ -389,7 +389,7 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 2` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 3` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -406,18 +406,21 @@ Storage causes use the closed codes in `recovery-contracts.ts`, including `autho
 `authority-invariant`, `authority-locked`, `authority-corrupt`, and `authority-unavailable`.
 
 `storage upgrade --plan` requires exclusive installation admission and stopped runtime locks. For an
-existing schema 1 database, the plan validates its native form without converting a disposable copy
-and takes no backup.
+existing schema 1 or schema 2 database, the plan validates its native form without changing the
+source or creating a backup.
 `upgradeStorage` reports `planned`, `initialized`, `upgraded`, or `already-upgraded`, with
 `credentials: "unchanged"`. It initializes absent current authority, verifies existing current authority,
-or applies the additive stream-head index migration from schema 1 to 2 under stopped exclusive custody.
-Before converting schema 1, it rechecks the source fingerprint under restore admission, calls
-`backupStoppedAuthority` with that held admission, and verifies the backup manifest. The migration
-rechecks the source and backup, then atomically commits schema 2 and the settled forward-upgrade record.
-The record carries the verified backup and canonical migration-plan digest; `backup_digest` matches the
-backup SHA-256. For pending diagnostic stages it reclaims through `diagnostic-maintenance` and verifies
-unchanged authority generation and content fingerprint. Only that declared forward migration converts
-a prior schema.
+or upgrades schema 1 or schema 2 under stopped exclusive custody. The schema 1 path first adds the
+stream-head index. Both paths then rebuild `worker_pools` with `desired_workers >= 0`, replacing the old
+upper limit of 3.
+Under restore admission, the service rechecks the source fingerprint, creates a stopped-authority
+backup, and verifies its manifest. The migration rechecks the source and backup inside one exclusive
+SQLite transaction, then applies the required migrations. The settled record carries the verified backup
+and canonical plan digest.
+The record's `backup_digest` matches the backup SHA-256. A failed migration rolls back its database
+changes. For pending diagnostic stages it reclaims through `diagnostic-maintenance` and verifies
+unchanged authority generation and content fingerprint. Only the explicit stopped upgrade converts a
+prior schema.
 A changed source fails with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
 explicit operations in their storage owners; ordinary shutdown does not create a backup.
 

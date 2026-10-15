@@ -34,6 +34,10 @@ function rows(path: string) {
 
 describe("stopped native SQLite initialization", () => {
   it("plans a fresh root without files, creates the current schema directly, and reruns without writes", async () => {
+    const versionInReference = Number(readFileSync(
+      new URL("../../../../docs/rebuild/reference/clock-config-secrets.md", import.meta.url), "utf8",
+    ).match(/CURRENT_AUTHORITY_SCHEMA_VERSION = (\d+)/u)?.[1]);
+    assert.equal(versionInReference, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const f = fresh(); const before = storageTree(f.root);
     assert.deepEqual(await f.run(true), { state: "planned", fromSchemaVersion: 0,
       toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
