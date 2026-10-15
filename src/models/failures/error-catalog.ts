@@ -37,6 +37,18 @@ export const ERROR_CATALOG = Object.freeze({
     "This workflow is not available for selection in the current catalog.",
     EmptyParametersSchema,
   ),
+  SESSIONS_UNAVAILABLE: catalogEntry(
+    "Session information is unavailable.",
+    EmptyParametersSchema,
+  ),
+  WORKER_CRASHED: catalogEntry(
+    "crashed",
+    EmptyParametersSchema,
+  ),
+  WORKER_LEASE_EXPIRED: catalogEntry(
+    "lease expired — its process stopped reporting",
+    EmptyParametersSchema,
+  ),
   COMMAND_OUTCOME_UNCERTAIN: catalogEntry(
     "The command outcome is uncertain. Check its result before taking further action.",
     EmptyParametersSchema,

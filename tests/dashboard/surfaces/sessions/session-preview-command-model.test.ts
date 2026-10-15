@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
@@ -51,7 +52,7 @@ describe_m0("Session Panel Stop's rejection arm", () => {
   it_m0("retains uncertainty instead of claiming Nothing was recorded from a post-dispatch throw", () => {
     const arm = stopWorkerRejectionArm();
     assert_m0.match(arm, /port\.send\(request\)/u);
-    assert_m0.match(arm, /catch \{ result = \{ id: request\.id, state: 'uncertain', message: 'Response unavailable\. Check this command before another action\.'/u);
+    assert_m0.match(arm, /catch \(cause\) \{ diagnostic = cause; result = \{ id: request\.id, state: 'uncertain', message: commandFeedback\('COMMAND_OUTCOME_UNCERTAIN'\)/u);
     assert_m0.match(arm, /retain\(\{ request, state: result\.state,/u);
     assert_m0.doesNotMatch(arm, /Nothing was recorded/u);
   });
@@ -78,7 +79,9 @@ describe_m0("Session Panel Stop's rejection arm", () => {
       const operation = commands.operations[worker.id];
       assert_m0.equal(sent.length, 1);
       assert_m0.equal(operation.state, "uncertain");
-      assert_m0.equal(operation.message, "Response unavailable. Check this command before another action.");
+      assert_m0.equal(operation.message, ERROR_CATALOG.COMMAND_OUTCOME_UNCERTAIN.text);
+      assert_m0.ok(operation.diagnostic instanceof Error);
+      assert_m0.equal(operation.diagnostic.message, "Stop response unavailable");
       assert_m0.doesNotMatch(operation.message, /Nothing was recorded/u);
       assert_m0.deepEqual(commands.data, initial);
       await act_m0(async () => commands!.control(worker.id, "stop"));
@@ -151,7 +154,7 @@ afterEach_m1(_afterEachFixture0);
     const port: SessionPreviewCommandPort_m1 = { send: async request => { sent.push(request); return { id: 'foreign', state: 'confirmed' }; }, check: async request => { checked.push(request); return { id: request.id, state: 'confirmed', data: previewSessionControl(sessionsSample_m1('active'), request.target, 'pause') }; } };
     const host = await mount(createElement_m1(SessionsHarness, { port }));
     await act_m1(async () => (host.querySelector('button[aria-label="Pause"]') as HTMLButtonElement).click());
-    assert_m1.match(host.textContent ?? '', /response belongs to another command/);
+    assert_m1.match(host.textContent ?? '', /The command response did not match the requested command/);
     assert_m1.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 0);
     assert_m1((host.querySelector('button[aria-label="Pause"]') as HTMLButtonElement).disabled);
     await press('Check outcome'); assert_m1.equal(checked[0], sent[0]); assert_m1.equal(sent.length, 1);
@@ -190,3 +193,35 @@ _afterEachFixture0();
 }
 });
 }
+
+it_m2('maps malformed and replaced-context responses to fixed catalog text while retaining originals', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const initial = sessionsSample_m2('active'); assert_m2(initial.state === 'ready');
+  const target = initial.workers[0].id; const catalog = buildWorkflowCatalog_m1([]);
+  let scope = {}; let resolve!: (result: SessionPreviewResult_m1) => void; let reject!: (cause: Error) => void;
+  let raw: SessionPreviewResult_m1 | undefined;
+  let commands: ReturnType<typeof useSessionPreviewCommands_m2> | undefined;
+  const port: SessionPreviewCommandPort_m2 = { send: request => { raw = { id: request.id, state: 'refused', message: 'private malformed response' }; Reflect.set(raw, 'message', 42); return Promise.resolve(raw); }, check: request => new Promise((done, fail) => { raw = { id: request.id, state: 'confirmed' }; resolve = done; reject = fail; }) };
+  function Harness() { commands = useSessionPreviewCommands_m2(initial, catalog, port, { snapshot: initial, scope, actorId: 'local-operator' }); return null; }
+  const host = document.createElement('div'); const root = createRoot_m2(host);
+  try {
+    await act_m2(async () => root.render(createElement_m2(Harness)));
+    await act_m2(async () => commands!.control(target, 'pause'));
+    assert_m2.equal(commands!.operations[target].message, ERROR_CATALOG.COMMAND_READBACK_MISMATCH.text);
+    assert_m2.equal(commands!.operations[target].diagnostic, raw);
+    await act_m2(async () => commands!.check(target));
+    const response = raw!; scope = {};
+    await act_m2(async () => root.render(createElement_m2(Harness)));
+    await act_m2(async () => resolve(response));
+    assert_m2.equal(commands!.operations[target].state, 'uncertain');
+    assert_m2.equal(commands!.operations[target].message, ERROR_CATALOG.DASHBOARD_AUTHORITY_REPLACED.text);
+    assert_m2.equal(commands!.operations[target].diagnostic, response);
+    assert_m2.deepEqual(commands!.data, initial);
+    await act_m2(async () => commands!.check(target));
+    scope = {}; await act_m2(async () => root.render(createElement_m2(Harness)));
+    const cause = new Error('private transport failure');
+    await act_m2(async () => reject(cause));
+    assert_m2.equal(commands!.operations[target].message, ERROR_CATALOG.DASHBOARD_AUTHORITY_REPLACED.text);
+    assert_m2.equal(commands!.operations[target].diagnostic, cause, 'context replacement preserves the original transport cause');
+  } finally { await act_m2(async () => root.unmount()); vi.unstubAllGlobals(); }
+});

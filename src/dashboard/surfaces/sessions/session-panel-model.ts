@@ -1,3 +1,4 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { z } from "zod";
 import type {
 WorkerCardWireSchema,
@@ -356,8 +357,8 @@ export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle",
 export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopReason"]>, string> = {
   operator: "stopped by you",
   shutdown: "shut down",
-  crashed: "crashed",
-  "lease-expired": "lease expired — its process stopped reporting",
+  crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
+  "lease-expired": formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_LEASE_EXPIRED", {})).text,
 };
 
 

@@ -1,3 +1,6 @@
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
+import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
 // @vitest-environment jsdom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -217,7 +220,7 @@ it("hydrates mounted Remove after remount, retains original through outage/new f
     await act(async () => render());
     assert.match(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing lease", members: pendingDay.workerAuthority.members }, workerCards: [] }));
-    await act(async () => render()); assert.equal(document.querySelectorAll("article").length, 0); assert.match(document.body.textContent ?? "", /missing lease/);
+    await act(async () => render()); assert.equal(document.querySelectorAll("article").length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing lease/);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerCards: [{ ...pendingDay.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
     await act(async () => render()); assert.match(document.body.textContent ?? "", /Check outcome/);
     const retry = document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert(retry?.disabled, "same Remove still locks newest failed card");
@@ -298,4 +301,43 @@ it("keeps historical directive Stop success unavailable as reset proof", () => {
   const command = CommandRequestSchema.parse({ commandId: uuidOf(8980), family: "worker-browser", type: "stop-worker", requestedAt: now, requestedBy: "local-operator", source: "dashboard", target: { workerId: card.workerId, expectedVersion: 1 } });
   const historical = succeeded(day, command, { phase: { state: "succeeded", startedAt: now, completedAt: now, acknowledgement: { kind: "stop", directiveLeaseVersions: { before: 1, after: 2 } }, application: application(command) } });
   assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...day, workerOperations: [historical] }), command), undefined);
+});
+
+it("maps unavailable served authority/catalog to fixed text while retaining diagnostics without rendering them", async () => {
+  const h = harness(); const privateReason = "private authority detail";
+  const unavailable = DashboardDayWireSchema.parse({ ...h.day(), workerAuthority: { state: "unavailable", reason: privateReason, members: h.day().workerAuthority.members }, workerCards: [] });
+  const view = sessionsFromDay(unavailable, catalog, now); assert.equal(view.state, "unavailable");
+  if (view.state !== "unavailable") throw new Error("unavailable");
+  assert.equal(view.reason, ERROR_CATALOG.SESSIONS_UNAVAILABLE.text); assert.equal(view.diagnostic, unavailable.workerAuthority);
+  const missing = sessionsFromDay(h.day(), [], now); assert.equal(missing.state, "unavailable");
+  if (missing.state !== "unavailable") throw new Error("unavailable");
+  assert.equal(missing.reason, ERROR_CATALOG.SESSIONS_UNAVAILABLE.text);
+  assert.deepEqual(missing.diagnostic, { code: "SESSION_WORKFLOW_UNREGISTERED", workflowId: "person-lookup" });
+  assert.equal(WORKER_STOP_REASON_LABEL.crashed, ERROR_CATALOG.WORKER_CRASHED.text);
+  assert.equal(WORKER_STOP_REASON_LABEL["lease-expired"], ERROR_CATALOG.WORKER_LEASE_EXPIRED.text);
+  assert.equal(WORKER_STOP_REASON_LABEL.operator, "stopped by you"); assert.equal(WORKER_STOP_REASON_LABEL.shutdown, "shut down");
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const error = new DashboardClientError({ kind: "network", message: "private transport diagnostic" });
+  const base = h.binding();
+  try {
+    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", open: true, onOpenChange() {}, binding: { ...base, dayState: { ...base.dayState, day: { state: "failed", error } } } })));
+    assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic/);
+    assert.equal(error.message, "private transport diagnostic");
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("maps a cached ready card to fixed unavailable when the mounted catalog removes its registration", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); const binding = h.binding();
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    assert.equal(document.querySelectorAll("article").length, 1);
+    await act(async () => root.render(createElement(SessionPanel, { catalog: [], source: "served", binding, open: true, onOpenChange() {} })));
+    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.match(document.body.textContent ?? "", /Session information is unavailable/);
+    assert.doesNotMatch(document.body.textContent ?? "", /SESSION_WORKFLOW_UNREGISTERED|person-lookup/);
+    assert.equal(h.sent.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

@@ -1,3 +1,4 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { SYSTEM_LABEL } from "../shared/status/system-chip-model.js";
@@ -24,7 +25,11 @@ export type SessionWorker = Readonly<{
   browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unavailable" }>[];
 }>;
 export type SessionsViewState = Readonly<{ state: "ready"; workers: readonly SessionWorker[] }>
-  | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string }>;
+  | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string; diagnostic?: unknown }>;
+export function sessionsUnavailable(diagnostic?: unknown): SessionsViewState {
+  return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("SESSIONS_UNAVAILABLE", {})).text,
+    ...(diagnostic === undefined ? {} : { diagnostic }) };
+}
 export const SESSION_STATE_LABELS: Readonly<Record<SessionWorkerState, string>> = {
   running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", failed: "Failed",
 };
@@ -51,11 +56,11 @@ export function sessionWorkerAuthorityKey(card: WorkerCardWire): string {
 }
 
 export function sessionsFromDay(day: DashboardDayWire, catalog: readonly WorkflowCatalogEntry[], nowIso: string): SessionsViewState {
-  if (day.workerAuthority.state !== "present") return { state: "unavailable", reason: day.workerAuthority.reason };
+  if (day.workerAuthority.state !== "present") return sessionsUnavailable(day.workerAuthority);
   const workers: SessionWorker[] = [];
   for (const card of day.workerCards) {
     const registration = catalog.find(entry => entry.id === card.workflowId);
-    if (registration === undefined) return { state: "unavailable", reason: `SESSION_WORKFLOW_UNREGISTERED: ${card.workflowId}` };
+    if (registration === undefined) return sessionsUnavailable({ code: "SESSION_WORKFLOW_UNREGISTERED", workflowId: card.workflowId });
     const currentRun = card.currentRun;
     const row = currentRun.state === "present" ? day.queueSurfaces.find(run => run.runId === currentRun.runId && run.workflowId === card.workflowId) : undefined;
     const timelineUnavailable = currentRun.state === "absent" ? currentRun.reason : row === undefined ? "Run timeline is not served on this day"

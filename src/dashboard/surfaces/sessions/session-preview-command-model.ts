@@ -14,7 +14,7 @@ import { sessionWorkerAuthorityKey, type SessionControl, type SessionsViewState 
 
 export type SessionPreviewRequest = Readonly<{ id: string; target: string; action: SessionControl; authorityKey?: string } | { id: string; target: string; action: 'refresh'; browserIds: readonly string[]; nativeCommandIds?: readonly string[]; authorityKey?: string } | { id: string; target: 'add'; action: 'add'; workflow: string; count: number; ordinal: number }>;
 export type SessionPreviewResult = Readonly<{ data?: SessionsViewState } & ({ id: string; state: 'confirmed' } | { id: string; state: 'refused'; message: string } | { id: string; state: 'uncertain'; message: string })>;
-export type SessionPreviewOperation = Readonly<{ request: SessionPreviewRequest; state: 'pending' | 'checking' | 'confirmed' | 'refused' | 'uncertain'; message: string }>;
+export type SessionPreviewOperation = Readonly<{ request: SessionPreviewRequest; state: 'pending' | 'checking' | 'confirmed' | 'refused' | 'uncertain'; message: string; diagnostic?: unknown }>;
 export interface SessionPreviewCommandPort {
   send(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
   check(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
@@ -31,7 +31,7 @@ export interface SessionCommandBinding {
 type NativeAttempt = { readonly body: string; readonly actor: string; readonly client: DashboardClient; readonly authority: object;
   readonly commands: CommandRequest[]; readonly expected: number; snapshot?: DashboardDayWire; cause?: unknown };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
-const commandFeedback = (code: "COMMAND_REFUSED" | "COMMAND_OUTCOME_UNCERTAIN") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+const commandFeedback = (code: "COMMAND_REFUSED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_READBACK_MISMATCH" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "DASHBOARD_AUTHORITY_REPLACED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 /** Native readback is immutable operation evidence, independent of the worker's newest phase. */
 export function sessionCommandApplication(day: DashboardDayWire, request: CommandRequest): CommandResult | undefined {
@@ -239,15 +239,16 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     const attemptEpoch = epoch.current;
     const snapshot = latestSource.current;
     let result: SessionPreviewResult;
+    let diagnostic: unknown;
     try { result = await (checking ? port.check(request) : port.send(request)); }
-    catch { result = { id: request.id, state: 'uncertain', message: 'Response unavailable. Check this command before another action.' }; }
+    catch (cause) { diagnostic = cause; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_OUTCOME_UNCERTAIN') }; }
     if (!live.current) return;
-    if (attemptEpoch !== epoch.current) result = { id: request.id, state: 'uncertain', message: 'The worker response belongs to an earlier dashboard request. Check this command’s outcome.' };
-    if (!result || !['confirmed', 'refused', 'uncertain'].includes(result.state) || result.state !== 'confirmed' && typeof result.message !== 'string') result = { id: request.id, state: 'uncertain', message: 'The worker response was invalid. Check this command’s outcome.' };
-    if (result.id !== request.id) result = { id: request.id, state: 'uncertain', message: 'The response belongs to another command. Check this command’s outcome.' };
+    if (attemptEpoch !== epoch.current) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('DASHBOARD_AUTHORITY_REPLACED') }; }
+    if (!result || !['confirmed', 'refused', 'uncertain'].includes(result.state) || result.state !== 'confirmed' && typeof result.message !== 'string') { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_READBACK_MISMATCH') }; }
+    if (result.id !== request.id) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_RESULT_IDENTITY_MISMATCH') }; }
     if (result.data !== undefined && snapshot === latestSource.current && attemptEpoch === epoch.current) setReadback({ key: snapshot, data: result.data });
     if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
-    retain({ request, state: result.state, message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
+    retain({ request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
   }, [port, retain]);
   const keepAlive = useIdleSessionRefresh(data, operations, perform);
   idle.current = keepAlive.confirmed;

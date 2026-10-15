@@ -141,3 +141,20 @@ describe("error catalog", () => {
     assert.notEqual(result.catalogFault.text.includes("private formatter detail"), true);
   });
 });
+
+it("owns Sessions availability and actual worker failure labels with strict empty parameters", () => {
+  const entries = {
+    SESSIONS_UNAVAILABLE: "Session information is unavailable.",
+    WORKER_CRASHED: "crashed",
+    WORKER_LEASE_EXPIRED: "lease expired — its process stopped reporting",
+  } as const;
+  for (const code of Object.keys(entries) as (keyof typeof entries)[]) {
+    assert.equal(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text, entries[code]);
+    assert.equal(ERROR_CATALOG[code].parameters.safeParse({ reason: "private diagnostic" }).success, false);
+    const failure = { code, parameters: {}, message: "private diagnostic", cause: new Error("private cause") };
+    const resolved = resolveErrorCatalogFailure(failure, "subscription");
+    assert.equal(resolved.state, "resolved"); assert.equal(resolved.originalFailure, failure);
+    if (resolved.state !== "resolved") throw new Error("catalog mapping failed");
+    assert.equal(resolved.text, entries[code]); assert.equal(resolved.text.includes("private"), false);
+  }
+});
