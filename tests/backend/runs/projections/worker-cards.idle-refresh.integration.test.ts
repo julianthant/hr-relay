@@ -53,22 +53,28 @@ it("rearms idle refresh from genuine native admission, browser settlement and cu
   };
   try {
     sessions.bindRunConfigFingerprint(fingerprint, "headed");
-    try { await sessions.withDriver({ system: "crm", session: "reuse-worker", access: "read" }, "prod", signal, async () => undefined); }
+    try {
+      for (const system of world.BROWSER_SYSTEMS) await sessions.withDriver({ system, session: "reuse-worker", access: "read" }, "prod", signal, async () => undefined);
+    }
     finally { sessions.releaseRunConfigFingerprint(); }
     const warmResets = refreshes;
     schedule.sync(view(), elapsed());
     for (let cycle = 0; cycle < 2; cycle += 1) {
       h.clock.advanceWall(IDLE_REFRESH_MS);
       refresh = schedule.due(elapsed(), () => false)[0]; assert(refresh?.action === "refresh");
-      const lease = h.database.authority.workerLeases.get(world.WORKER_1); assert(lease);
-      const result = await h.kernel.executeWorkerPool({ ...world.envelope(h, refresh.id), type: "refresh-browser",
-        target: { workerId: world.WORKER_1, browserSessionId: refresh.browserIds[0], expectedVersion: lease.version, controlBasis: world.servedControlBasis(h.database, world.WORKER_1) } });
-      assert.equal(result.state, "applied");
-      const native = h.database.authority.workerControls.get(refresh.id); assert(native?.auditedAt); assert.equal(native.phase.state, "succeeded");
+      assert.equal(refresh.browserIds.length, world.BROWSER_SYSTEMS.length);
+      for (const [index, browserSessionId] of refresh.browserIds.entries()) {
+        const commandId: string | undefined = refresh.nativeCommandIds?.[index]; assert(commandId);
+        const lease = h.database.authority.workerLeases.get(world.WORKER_1); assert(lease);
+        const result = await h.kernel.executeWorkerPool({ ...world.envelope(h, commandId), type: "refresh-browser",
+          target: { workerId: world.WORKER_1, browserSessionId, expectedVersion: lease.version, controlBasis: world.servedControlBasis(h.database, world.WORKER_1) } });
+        assert.equal(result.state, "applied");
+        const native = h.database.authority.workerControls.get(commandId); assert(native?.auditedAt); assert.equal(native.phase.state, "succeeded");
+      }
       schedule.confirm(refresh, elapsed(), view());
       assert.deepEqual(schedule.view(elapsed())[world.WORKER_1], { remainingMs: IDLE_REFRESH_MS, waiting: false }, "native refresh must survive projection and rearm its retained idle countdown");
       assert.deepEqual(schedule.due(elapsed() + IDLE_REFRESH_MS - 1, () => false), []);
     }
-    assert.equal(refreshes - warmResets, 2);
+    assert.equal(refreshes - warmResets, 2 * world.BROWSER_SYSTEMS.length);
   } finally { await sessions.closeAll("worker-stop"); h.children[0]?.emitExit(0, null); }
 });

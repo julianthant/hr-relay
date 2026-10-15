@@ -1,3 +1,4 @@
+import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
@@ -368,4 +369,66 @@ it("compares complete immutable intent and authenticates both actors separately 
     assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [unsettled] }), request), undefined);
   }
   assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [{ ...record, auditedAt: undefined }] }), request), undefined);
+});
+
+
+it.each(["present", "unavailable"] as const)("renders starting browser requirements from served %s authority with no observations", async requirementState => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness();
+  const requirements = requirementState === "present" ? { state: "present", systems: ["ucpath", "kuali"] }
+    : { state: "unavailable", reason: "Launch-time browser requirements are unavailable" };
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "starting", browsers: [], browserRequirements: requirements }] }));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    const article = host.querySelector("article"); assert(article);
+    if (requirementState === "present") {
+      assert.deepEqual([...article.querySelectorAll("li")].map(item => item.textContent), ["UCPATHOpening", "KUALIOpening"]);
+      const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
+      assert.equal(new Set(view.workers[0].browsers.map(browser => browser.id)).size, 2);
+      assert(view.workers[0].browsers.every(browser => browser.state === "starting"));
+      assert.equal(h.day().workerCards[0].browsers.length, 0, "required slots never mint physical sessions");
+    } else {
+      assert.match(article.textContent ?? "", /Launch-time browser requirements are unavailable/);
+      assert.equal(article.querySelectorAll("li").length, 0);
+    }
+    assert.equal(h.sent.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("refreshes only observed physical sessions through required presentation slots and preserves failed and browserless workers", async () => {
+  const h = harness(); const card = h.day().workerCards[0];
+  const physicalId = uuidOf(9100);
+  const observed = { sessionId: physicalId, system: "crm", openedAt: now, observation: { state: "present", health: "authenticated", observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) } };
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [observed] }] }));
+  const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
+  assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "ready"], ["UCPATH", "unavailable"]]);
+  const requiredId = view.workers[0].browsers[1].id;
+  assert.notEqual(requiredId, physicalId);
+  const schedule = new IdleSessionSchedule(); schedule.sync(view, 0);
+  const partial = schedule.due(IDLE_REFRESH_MS, () => false)[0]; assert(partial?.action === "refresh");
+  assert.deepEqual(partial.browserIds, [physicalId], "only the observed CRM session is refreshed");
+  const emptySchedule = new IdleSessionSchedule();
+  emptySchedule.sync(sessionsFromDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], browsers: [] }] }), catalog, now), 0);
+  assert.deepEqual(emptySchedule.due(IDLE_REFRESH_MS, () => false), [], "required-only slots cannot create a refresh");
+  const refusal = await h.port.send({ id: uuidOf(9101), target: card.workerId, action: "refresh", browserIds: [requiredId], authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) });
+  assert.equal(refusal.state, "refused"); assert.equal(h.sent.length, 0);
+  const acknowledged = DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], controls: { ...card.controls,
+    basis: { state: "present", value: { leaseGeneration: 1, controlRevision: 2 } }, operation: { commandId: partial.nativeCommandIds?.[0], type: "refresh-browser", state: "succeeded", at: now, unresolved: false, browserSessionId: physicalId } } }] });
+  const acknowledgedView = sessionsFromDay(acknowledged, catalog, now);
+  schedule.sync(acknowledgedView, IDLE_REFRESH_MS, { [card.workerId]: { request: partial, state: "uncertain", message: "awaiting readback" } });
+  schedule.confirm(partial, IDLE_REFRESH_MS, acknowledgedView);
+  assert.deepEqual(schedule.view(IDLE_REFRESH_MS)[card.workerId], { remainingMs: IDLE_REFRESH_MS, waiting: false }, "unopened UCPath does not block exact physical CRM rearm");
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], browsers: [observed, { ...observed, sessionId: uuidOf(9102), system: "ucpath" }] }] }));
+  const complete = new IdleSessionSchedule(); complete.sync(sessionsFromDay(h.day(), catalog, now), 0);
+  const request = complete.due(IDLE_REFRESH_MS, () => false)[0]; assert(request?.action === "refresh");
+  assert.deepEqual(request.browserIds, [physicalId, uuidOf(9102)].sort());
+  assert(!request.browserIds.includes(requiredId));
+  for (const state of ["failed", "starting"] as const) {
+    const day = DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state, browsers: [], browserRequirements: { state: "present", systems: state === "failed" ? ["ucpath", "kuali"] : [] },
+      ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] });
+    const view = sessionsFromDay(day, catalog, now); assert(view.state === "ready");
+    assert.deepEqual(view.workers[0].browsers, []);
+    assert.equal(view.workers[0].problem, state === "failed" ? WORKER_STOP_REASON_LABEL.crashed : undefined);
+  }
 });

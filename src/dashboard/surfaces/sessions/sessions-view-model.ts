@@ -2,7 +2,7 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../m
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { SYSTEM_LABEL } from "../shared/status/system-chip-model.js";
-import { workerElapsedSeconds, WORKER_STOP_REASON_LABEL } from "./session-panel-model.js";
+import { workerBrowserView, workerElapsedSeconds, WORKER_STOP_REASON_LABEL } from "./session-panel-model.js";
 
 type WorkerCardWire = DashboardDayWire["workerCards"][number];
 
@@ -70,6 +70,8 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
       state: step.state === "done" ? "completed" : step.state === "blocked" ? "waiting" : step.state === "active" && card.state === "paused" ? "paused"
         : step.state === "active" ? "active" : step.state === "failed" ? "failed" : "pending" })) : undefined;
     const seconds = workerElapsedSeconds(card, nowIso);
+    const browserView = workerBrowserView(card);
+    const problem = card.stopReason === undefined ? browserView.unavailableReason : WORKER_STOP_REASON_LABEL[card.stopReason];
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
       authority: card, state: card.state,
       ...(row === undefined ? {} : { subject: row.title }),
@@ -77,9 +79,11 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
         ?? (card.state === "idle" ? "Ready for the next run" : card.state === "starting" ? "Preparing worker" : SESSION_STATE_LABELS[card.state]),
       ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s` }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
-      ...(card.stopReason === undefined ? {} : { problem: WORKER_STOP_REASON_LABEL[card.stopReason] }),
-      browsers: card.browsers.map(browser => ({ id: browser.sessionId, label: SYSTEM_LABEL[browser.system],
-        state: browser.observation?.state === "present" && browser.observation.health === "authenticated" ? "ready" : "unavailable" })),
+      ...(problem === undefined ? {} : { problem }),
+      browsers: browserView.slots.map((slot, index) => slot.state === "required"
+        ? { id: `required:${card.workerId}:${index}:${slot.system}`, label: SYSTEM_LABEL[slot.system], state: card.state === "starting" ? "starting" : "unavailable" }
+        : { id: slot.browser.sessionId, label: SYSTEM_LABEL[slot.browser.system],
+          state: slot.browser.observation?.state === "present" && slot.browser.observation.health === "authenticated" ? "ready" : "unavailable" }),
     });
   }
   return { state: "ready", workers };
