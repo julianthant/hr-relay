@@ -7,7 +7,7 @@ import { afterEach, describe, it } from "vitest";
 import { createRunQueueProjection } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { HASH_A, HASH_B, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { APP_VERSION, claimEventOf, DAY, DESCRIPTOR_SET_HASH, instantOffsetOf, taskEventsOf, traceOf, uuidOf, workerLeaseOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { declareProjectionWorker, APP_VERSION, claimEventOf, DAY, DESCRIPTOR_SET_HASH, instantOffsetOf, taskEventsOf, traceOf, uuidOf, workerLeaseOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor, separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const {world, runRecordOf, queuedEventOf, CLAIM, otherConnection, appendOther, seedWorld, cleanup } = createRunQueueProjectionTestWorld();
@@ -96,9 +96,10 @@ describe("THE run/queue projection", () => {
     }
   });
 
-  it("projects a worker card from its authority lease, with the sessions its spans hold open", () => {
+  it("projects a current lifetime claim from authority and never opens a browser from a span", () => {
 
     const w = world();
+    declareProjectionWorker(w.authority, "person-lookup-worker-1", 1);
     w.authority.putWorkerLease(workerLeaseOf({
       // Keep launch-time lease requirements different from the current registry to detect accidental rewriting.
       browserSystems: ["kuali"],
@@ -121,29 +122,27 @@ describe("THE run/queue projection", () => {
       parentSpanPath: "worker/person-lookup/person-lookup-worker-1",
       name: "browser-session:ucpath", system: "ucpath",
     });
-    queuedEventOf(w, { seed: 1 });
+    queuedEventOf(w, { seed: 1, lifecycle: { state: "running", ...CLAIM, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1, version: 2 });
     claimEventOf(w, 1);
     const day = w.projection.buildDashboardDayWire(DAY);
     assert.equal(day.workerCards.length, 1);
     const card = day.workerCards[0];
     assert.equal(card.workflowId, "person-lookup");
-    assert.equal(card.state, "working");
+    assert.equal(card.state, "running");
     assert.equal(card.directive, "run");
     assert.equal(card.startedAt, instantOffsetOf(0));
     assert.equal(card.endedAt, undefined);
-    // The CAS basis a `stop-worker` cites is the lease's version, never the
-    // span counter beside it.
+    // Heartbeat version remains display evidence; control identity is separate.
     assert.equal(card.leaseVersion, 7);
     assert.notEqual(Number(card.leaseVersion), Number(card.revision));
-    assert.deepEqual(card.browsers, [
-      { sessionId: uuidOf(50), system: "ucpath", openedAt: instantOffsetOf(0), observation: { state: "unavailable", reason: "No current owner observation." } },
-    ]);
+    assert.deepEqual(card.browsers, []);
     assert.deepEqual(card.browserRequirements, { state: "present", systems: ["kuali"] });
     assert.deepEqual(card.currentRun, { state: "present", runId: uuidOf(1), traceId: traceOf(1) });
   });
 
-  it("closes a browser tile when its session closes, and keeps a dead worker holding nothing", () => {
+  it("keeps observed browser spans from fabricating current physical ownership", () => {
     const w = world();
+    declareProjectionWorker(w.authority, "person-lookup-worker-1", 1);
     w.authority.putWorkerLease(workerLeaseOf());
     const spanPath = `worker/person-lookup/person-lookup-worker-1/browser:ucpath#${uuidOf(50)}`;
     w.writer.emit({
@@ -155,10 +154,9 @@ describe("THE run/queue projection", () => {
       workerId: "person-lookup-worker-1", spanPath, parentSpanPath: "worker/person-lookup/person-lookup-worker-1",
       name: "browser-session:ucpath", system: "ucpath",
     });
-    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0].browsers.length, 1);
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0].browsers.length, 0);
 
-    // A POISON close still closes: the session ended badly rather than still
-    // being there to act on.
+    // Closing a historical span cannot create a physical session either.
     w.writer.emit({
       t: "span.ended", kind: "browser", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId: "person-lookup-worker-1", spanPath, parentSpanPath: "worker/person-lookup/person-lookup-worker-1",
@@ -169,6 +167,8 @@ describe("THE run/queue projection", () => {
 
   it("splits a settled lease by its recorded reason and serves the terminal facts", () => {
     const w = world();
+    declareProjectionWorker(w.authority, "person-lookup-worker-1", 1);
+    declareProjectionWorker(w.authority, "person-lookup-worker-2", 2);
     w.authority.putWorkerLease(workerLeaseOf({
       workerId: "person-lookup-worker-1",
       lifecycle: {
@@ -204,7 +204,7 @@ describe("THE run/queue projection", () => {
     }
 
     const [stopped, failed] = w.projection.buildDashboardDayWire(DAY).workerCards;
-    assert.equal(stopped.state, "stopped");
+    assert.equal(stopped.state, "failed");
     assert.equal(stopped.stopReason, "operator");
     assert.equal(stopped.endedAt, instantOffsetOf(0, 60_000));
 

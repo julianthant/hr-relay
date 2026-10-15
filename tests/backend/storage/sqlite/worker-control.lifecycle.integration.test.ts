@@ -1,4 +1,4 @@
-import { WorkerLifecycleBindingSchema } from "../../../../src/models/run/worker-control.js";
+import { WorkerControlRecordSchema, WorkerLifecycleBindingSchema } from "../../../../src/models/run/worker-control.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { FakeWorkerChild } from "../../../support/helpers/backend/worker-supervision-world.js";
@@ -138,6 +138,20 @@ async function retryStarting(h: ReturnType<typeof fixture>, mode: "initialize" |
 const forgedEffect = Object.freeze({ kind: "worker-supervisor-effect" as const });
 
 describe("exact lifecycle reservation", () => {
+  it("refuses a caller-forged closure on an otherwise exact new Remove admission atomically", () => {
+    const h = fixture(), command = request(h, h.deps.workerId, "remove-worker");
+    const generation = h.database.getMeta().authorityGeneration;
+    const before = h.database.authority.workerLeases.get(h.deps.workerId);
+    expect(() => h.database.withAuthorityTransaction(repositories => admitWorkerLifecycle({ ...repositories,
+      workerControls: { ...repositories.workerControls, admit: input => repositories.workerControls.admit({
+        ...WorkerControlRecordSchema.parse(input), closure: { observedAt: command.requestedAt, closedSessionIds: [] },
+      }) } }, command, randomUUID(), command.requestedAt))).toThrow("worker-control-derived-milestone-admission-refused");
+    expect(h.database.getMeta().authorityGeneration).toBe(generation);
+    expect(h.database.authority.workerControls.get(command.commandId)).toBeUndefined();
+    expect(h.database.authority.commands.get(command.commandId)).toBeUndefined();
+    expect(h.database.authority.workerLeases.get(h.deps.workerId)).toEqual(before);
+  });
+
   for (const selected of [0, 1, 2]) {
     it(`retires selected member ${selected} without renaming survivors or reusing ordinal`, async () => {
       const h = fixture(3), before = h.database.authority.workerSlots.list();

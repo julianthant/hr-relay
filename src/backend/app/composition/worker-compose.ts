@@ -1,3 +1,4 @@
+import { isLiveWorker } from "../../../models/run/worker.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
@@ -52,7 +53,7 @@ import { createNoteTimelineWriter } from "../../storage/events/note-timeline-wri
 
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { assertWorkerProcessCustody, bindWorkerProcessAdmission, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
+import { retireWorkerStartupCustody, assertWorkerProcessCustody, bindWorkerProcessAdmission, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
 // Cadences are composition choices; the contracts constrain renewal and recovery ordering, not numeric defaults.
@@ -61,6 +62,26 @@ export const WORKER_CLAIM_STALE_AFTER_MS = 60_000;
 export const WORKER_SWEEP_INTERVAL_MS = 30_000;
 
 export { createTimeoutDeadlineScheduler };
+
+export async function initializeFailedWorkerReset(input: Readonly<{
+  database: AuthorityDatabase; commandId: string; leaseGeneration: number; descriptor: AnyWorkflowDescriptor;
+  handle: RuntimeProcessLockHandle; signal: AbortSignal; clock: Clock; scheduler: MonotonicDeadlineScheduler;
+}>): Promise<void> {
+  const { database, commandId, leaseGeneration, descriptor, handle, signal, clock, scheduler } = input;
+  while (database.authority.workerControls.get(commandId)?.effect === undefined) {
+    const record = database.authority.workerControls.get(commandId);
+    if (record?.lifecycle?.operation.kind !== "retry" || record.lifecycle.operation.mode !== "browserless"
+      || record.lifecycle.lifetime.leaseGeneration + 1 !== leaseGeneration || signal.aborted
+      || Date.parse(record.expiresAt) <= clock.nowMs()) throw new Error("worker-reset-replacement-birth-milestone-unavailable");
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => { timer.cancel(); reject(new Error("worker-reset-replacement-initialization-aborted", { cause: signal.reason })); };
+      const timer = scheduler.schedule(clock.monotonicMs() + 50, () => { signal.removeEventListener("abort", onAbort); resolve(); });
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+  if (signal.aborted) throw new Error("worker-reset-replacement-initialization-aborted", { cause: signal.reason });
+  database.completeFailedWorkerReset(commandId, handle, descriptor, clock.now().toISOString());
+}
 
 export async function initializeRetryWorker(input: Readonly<{
   database: AuthorityDatabase; commandId: string; leaseGeneration: number; descriptor: AnyWorkflowDescriptor;
@@ -312,12 +333,18 @@ function startWorkerMaintenance(input: Readonly<{
           || run.lifecycle.state === "validating"
           || run.lifecycle.state === "running")
         && run.lifecycle.workerId === input.workerId);
-      const initializing = database.authority.workerControls.initializingForWorker(input.workerId, input.leaseGeneration) !== undefined
+      if (active !== undefined && (!('workerId' in active.lifecycle) || active.lifecycle.workerLifetime === undefined
+        || active.lifecycle.workerLifetime.leaseGeneration !== input.leaseGeneration
+        || active.lifecycle.workerLifetime.membershipRevision !== database.authority.workerSlots.get(input.workerId)?.membershipRevision)) throw new Error("worker-current-run-lifetime-unavailable");
+      const initializing = database.authority.workerSlots.recovery(input.workerId) !== undefined
+        || database.authority.workerControls.initializingForWorker(input.workerId, input.leaseGeneration) !== undefined
         || database.authority.workerControls.lifecycleForWorker(input.workerId)?.lifecycle?.operation.kind === "retry";
       const reported = database.authority.workerLeases.reportLifecycle({
         workerId: input.workerId,
         leaseGeneration: input.leaseGeneration,
-        lifecycle: active === undefined
+        lifecycle: lease.lifecycle.state === "waiting"
+          ? { ...lease.lifecycle, heartbeatAt: now }
+          : active === undefined
           ? initializing ? { state: "starting", startedAt: lease.lifecycle.startedAt } : lease.control.directive === "pause"
             ? { state: "paused", startedAt: lease.lifecycle.startedAt, heartbeatAt: now, pausedAt: lease.lifecycle.state === "paused" ? lease.lifecycle.pausedAt : now }
             : { state: "idle", startedAt: lease.lifecycle.startedAt, heartbeatAt: now }
@@ -559,7 +586,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         workflow: expired.workflow,
       });
     }
-    const started = database.authority.workerLeases.start({
+    const started = database.startOwnedWorker({
       workerId,
       workflow: workflowId,
       browserSystems: workflowProjections(descriptor).systems,
@@ -567,7 +594,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       requestedBy: LOCAL_OPERATOR_ACTOR_ID,
       ...(launch === undefined ? {} : { commandId: launch.commandId }),
       now,
-    });
+    }, processLock);
     if (started.state !== "started") {
       throw new Error(
         `worker ${workerId} cannot start: ${started.message}; a second process may not answer to the same worker id`,
@@ -617,6 +644,32 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     }
 
 
+    const browserActivities = new Map<symbol, "acquiring" | "authenticating" | "closing">();
+    const reportBrowserActivity = (): void => {
+      const lease = database.authority.workerLeases.get(workerId);
+      const member = database.authority.workerSlots.get(workerId);
+      if (lease?.leaseGeneration !== leaseGeneration || member?.membershipRevision !== currentMember.membershipRevision
+        || member.retiredAt !== null || !isLiveWorker(lease)) throw new Error("worker-browser-activity-lifetime-unavailable");
+      const active = database.authority.runs.listByWorker(workerId).find(run => "workerId" in run.lifecycle);
+      if (active !== undefined && (!("workerId" in active.lifecycle) || active.lifecycle.workerLifetime?.leaseGeneration !== leaseGeneration
+        || active.lifecycle.workerLifetime.membershipRevision !== currentMember.membershipRevision)) throw new Error("worker-current-run-lifetime-unavailable");
+      const activity = [...browserActivities.values()].at(-1);
+      const now = clock.now().toISOString();
+      const base = { startedAt: lease.lifecycle.startedAt, heartbeatAt: now };
+      const initializing = database.authority.workerControls.initializingForWorker(workerId, leaseGeneration) !== undefined;
+      const settling = database.authority.workerControls.resetForWorker(workerId, leaseGeneration) !== undefined
+        || database.authority.workerControls.lifecycleForWorker(workerId)?.lifecycle?.operation.kind === "remove";
+      const lifecycle = activity === undefined && settling && lease.lifecycle.state === "waiting"
+        ? { ...lease.lifecycle, heartbeatAt: now }
+        : activity !== undefined ? { state: "waiting", ...base, activity,
+        ...(active === undefined ? {} : { runId: active.envelope.runId }) }
+        : active !== undefined ? { state: "busy", ...base, runId: active.envelope.runId }
+        : initializing ? { state: "starting", startedAt: lease.lifecycle.startedAt }
+        : lease.control.directive === "pause" ? { state: "paused", ...base, pausedAt: lease.lifecycle.state === "paused" ? lease.lifecycle.pausedAt : now }
+        : { state: "idle", ...base };
+      const reported = database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration, lifecycle, now });
+      if (reported.state !== "applied") throw new Error("worker-browser-activity-lifetime-unavailable");
+    };
     const maintenance = startWorkerMaintenance({
       database,
       lifecycle,
@@ -658,7 +711,14 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         lifecycle,
         gateSources,
         initialize: async (sessions, signal) => {
-          if (launch !== undefined) await initializeRetryWorker({ database, commandId: launch.commandId, leaseGeneration,
+          const standing = database.authority.workerSlots.recovery(workerId);
+          if (standing !== undefined) {
+            if (launch?.commandId !== standing.command.commandId || signal.aborted) throw new Error("worker-standing-recovery-initialization-unavailable");
+            database.completeStandingWorkerRecovery(standing.command.commandId, processLock, descriptor, clock.now().toISOString());
+          } else if (launch !== undefined && database.authority.workerControls.get(launch.commandId)?.request.type === "stop-worker") {
+            await initializeFailedWorkerReset({ database, commandId: launch.commandId, leaseGeneration,
+              descriptor, handle: processLock, signal, clock, scheduler });
+          } else if (launch !== undefined) await initializeRetryWorker({ database, commandId: launch.commandId, leaseGeneration,
             descriptor, configFingerprint: resolved.fingerprint, sessions, signal, clock, scheduler });
         },
         sessionFactory: baselineResources.sessionFactory,
@@ -700,10 +760,19 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
           return true;
         },
         browserControl: createWorkerBrowserControl({ database, workerId, leaseGeneration, clock, signal: stopController.signal }),
+        browserActivity: activity => {
+          retireWorkerStartupCustody(processLock);
+          const key = Symbol(activity);
+          browserActivities.set(key, activity);
+          reportBrowserActivity();
+          return () => { browserActivities.delete(key); reportBrowserActivity(); };
+        },
         browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration }); },
         configFingerprint: resolved.fingerprint,
         // The SQLite claim transaction fences settings and runtime tokens; the filesystem check fences its inode.
-        claimNext: (request) => claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+        claimNext: (request) => {
+          retireWorkerStartupCustody(processLock);
+          return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
           claim: admit => database.withAuthorityTransaction((repositories) => {
           const directive = controlPoll();
           // A directive can arrive from another process after the loop's poll.
@@ -718,7 +787,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
             workflow: request.workflow, workerId: request.workerId, workerLifetime, runtimeConfig: selectRunRuntime(repositories) }, admit);
           if (outcome.state === "refused" && outcome.refusal.reason !== "none-eligible") requireLifecycleApplied(outcome);
           return outcome;
-        }) }),
+        }) });
+        },
         providers: baselineResources.providers,
         resourcesForRun: resources.forRun,
         idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,

@@ -370,8 +370,10 @@ refuses. Requested directives remain distinct from observed lifecycle.
 
 Public Stop returns a pending command identity after durable admission; the same-process worker
 completes reset independently of the HTTP client. Before new admission, the supervisor must prove
-its exact born, running child and member against the current lease PID/start identity; external,
-unborn, changed, dead or uncertain ownership refuses without reservation. Exact journal replay
+its exact born, running child and member against the current lease PID/start identity. A stopped
+failed lifetime instead requires original retained birth custody and proven OS death before browserless
+replacement admission. External live, unborn, changed or uncertain ownership refuses without
+reservation. Exact journal replay
 does not depend on current child ownership. New Stop admission requires `membershipRevision` and
 `controlBasis`; optional carried `expectedVersion` is observation evidence and does not gate Stop
 on a heartbeat row version. The internal `admitWorkerReset` boundary binds the existing journal to the exact
@@ -409,8 +411,8 @@ once and persists application/audit together. Surviving identities and ordinals 
 the last member leaves a zero-size pool. Missing closure or exit proof retains the member and
 reservation, and replay never repeats an uncertain effect.
 
-Retry admits only a failed lifetime with proven owned-child OS death and released process,
-browser, Duo and write custody. A stopped lease alone cannot prove death. Replacement retains the
+Retry admits only a stopped failed lifetime with proven owned-child OS death or authenticated
+retained birth custody, and released process, browser, Duo and write custody. A stopped lease alone cannot prove death. Replacement retains the
 logical slot and advances its lease generation, using the admitted current descriptor and effective
 settings. Actual supervised birth produces the starting acknowledgement and application/audit;
 a separate same-generation initialization barrier prevents claims until required browser systems
@@ -419,8 +421,39 @@ releases its config binding on success or failure and retains warm resource prov
 failure remains a worker lifetime failure, independent of the starting acknowledgement. Stop can
 abort initialization work and, after actual closure, atomically cancel its readiness barrier while
 recording reusable browserless idle. Browserless replacement mode opens no session. Public Stop
-recovery for a dead failed lifetime still requires its own original-to-replacement binding and
-acknowledgement; an ordinary Retry acknowledgement cannot prove that reset.
+recovery for a dead failed lifetime retains its original reset binding and adds an exact browserless
+replacement binding. The supervisor records actual replacement birth before the fresh new owner
+can finalize original-to-replacement idle, application and audit. Missing effect evidence retains the
+barrier across generations; an ordinary Retry acknowledgement cannot prove that reset. For a stopped
+owner with safe pre-fence work, strict reset binding and canonical residual cancellation occur in the
+same synchronous admission transaction before the full owner-death/release check. Failed proof
+rolls back the original claim, cancellation journal, command and reservation together. No external
+shutdown, cleanup or spawn occurs before that transaction commits.
+
+The Day resource serves exactly `running`, `starting`, `idle`, `waiting`, `paused` and `failed`.
+Every card names its standing member revision. A live phase requires current owner custody;
+current-run joins require the active claim's exact membership and lease generation. Browser spans
+and parked historical runs cannot supply current activity. Actual acquisition, authentication and
+closure report `waiting`; failed closure remains unavailable until actual closure is proved.
+`workerAuthority` retains member references when evidence is unavailable. `workerOperations`
+retains exact native command outcomes, including retired members and confirmations preceding later
+work, without exposing native lock custody snapshots.
+
+Production lease birth atomically records a native `worker-lifetime-birth` journal reference from the
+actual bound process-lock handle. It binds authority path, lock root, acquisition, OS process-start
+identity, member and generation. Generic lease start cannot supply this proof. Missing, changed or
+reused identity never proves death; an exact recorded release still requires the old OS owner to be
+dead. Historical leases without proof remain unavailable for restart recovery.
+
+Native `worker-standing-recovery` reserves an existing idle or paused member after exact old-owner,
+browser, Duo, write and profile release. The lease retains its last observed healthy phase and pause
+intent through internal shutdown. A fresh replacement completes the original grant before any
+acquisition, authentication or claim, atomically recording browserless idle or paused and the audit.
+Starting, running and waiting hard losses do not automatically respawn; explicit Retry or eligible
+Stop remains available after definitive release. Failed members remain explicit, and retired or
+zero-size pools never recover. Pending grants and controls retain their original reservation after
+crash; durable authenticated effect milestones may finish settlement, while missing evidence never
+causes a second spawn or replays an uncertain write.
 
 `worker-browser-channel.ts` uses SQLite as the cross-process channel and polls at 50 ms within
 the request's expiry. `worker-browser-control.ts` consumes only ready requests for its exact

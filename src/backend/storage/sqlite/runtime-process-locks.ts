@@ -699,6 +699,7 @@ export function acquireRuntimeProcessLock(
     }
     throw admissionError;
   }
+  workerCustodyHandles.set(handle, { root, record, observer });
   return handle;
 }
 
@@ -792,6 +793,41 @@ export function assertWorkerProcessStopped(processLockRoot: string, workerId: st
   }
 }
 
+const workerCustodyHandles = new WeakMap<RuntimeProcessLockHandle, Readonly<{
+  root: string; record: WorkerProcessLockFile; observer: ProcessIdentityObserver; authorityPath?: string; startupFresh?: boolean;
+}>>();
+
+export function authenticateWorkerBirthCustody(handle: RuntimeProcessLockHandle, workerId: string, pid: number, authorityPath: string, requireFresh = false) {
+  const held = workerCustodyHandles.get(handle);
+  if (held === undefined || requireFresh && held.startupFresh !== true || held.authorityPath !== resolve(authorityPath) || !("workerId" in held.record) || held.record.workerId !== workerId
+    || held.record.pid !== pid) throw new Error("worker-birth-custody-unavailable");
+  const record = readWorkerProcessLockRecord(join(held.root, WORKER_PROCESS_LOCK_DIRECTORY), `${held.record.acquisitionId}.lock.json`);
+  if (record.releasedAt !== null || canonicalJsonStringify(record) !== canonicalJsonStringify(held.record)
+    || !recordOwnerIsAlive(record, held.observer)) throw new Error("worker-birth-custody-unavailable");
+  return Object.freeze({ processLockRoot: held.root, owner: record });
+}
+
+export function retireWorkerStartupCustody(handle: RuntimeProcessLockHandle): void {
+  const held = workerCustodyHandles.get(handle);
+  if (held === undefined || held.authorityPath === undefined) throw new Error("worker-birth-custody-unavailable");
+  workerCustodyHandles.set(handle, { ...held, startupFresh: false });
+}
+
+export function authenticateRetainedWorkerCustody(input: Readonly<{
+  processLockRoot: string; owner: WorkerProcessLockFile;
+}>, hooks: RuntimeLockObservationHooks = {}): "alive" | "released-alive" | "released" | "dead" {
+  if (!("workerId" in input.owner) || input.owner.releasedAt !== null) throw new Error("worker-birth-custody-unavailable");
+  const retained = readWorkerProcessLockRecord(join(resolve(input.processLockRoot), WORKER_PROCESS_LOCK_DIRECTORY), `${input.owner.acquisitionId}.lock.json`);
+  if (canonicalJsonStringify({ ...retained, releasedAt: null }) !== canonicalJsonStringify(input.owner)) throw new Error("worker-birth-custody-changed");
+  const observed = (hooks.observeProcessIdentity ?? observeProcessIdentity)(retained.pid);
+  if (observed.state === "alive") {
+    if (canonicalJsonStringify(observed.identity) !== canonicalJsonStringify(retained.processIdentity)) throw new Error("worker-birth-process-identity-changed");
+    return retained.releasedAt === null ? "alive" : "released-alive";
+  }
+  if (observed.state !== "gone") throw new Error("worker-birth-process-identity-unavailable");
+  return retained.releasedAt === null ? "dead" : "released";
+}
+
 export function assertWorkerProcessCustody(input: Readonly<{ processLockRoot: string; acquisitionId: string; pid: number; workerId?: string; authorityPath?: string }>, hooks: RuntimeLockObservationHooks = {}): void {
   const root = resolve(input.processLockRoot);
   const record = readWorkerProcessLockRecord(join(root, WORKER_PROCESS_LOCK_DIRECTORY), `${z.uuid().parse(input.acquisitionId)}.lock.json`);
@@ -825,6 +861,9 @@ export function bindWorkerProcessAdmission<T>(input: Readonly<{
     assertWorkerProcessCustody({ processLockRoot: input.processLockRoot,
       acquisitionId: z.uuid().parse(stable.acquisitionId), pid: input.pid, workerId }, input.hooks);
     if (stable !== initial) { initial.release(); initialReleased = true; }
+    const custody = workerCustodyHandles.get(stable);
+    if (custody === undefined || custody.root !== resolve(input.processLockRoot)) throw new Error("worker-birth-custody-unavailable");
+    workerCustodyHandles.set(stable, { ...custody, authorityPath: resolve(input.authorityPath), startupFresh: true });
     return Object.freeze({ value: opened.value, workerId, processLock: stable });
   } catch (error) {
     const failures: unknown[] = [error];

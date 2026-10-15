@@ -286,3 +286,17 @@ reset settlement authenticate parked run/intent generation, attempt, workflow, i
 parked attempt before releasing the barrier. Attempting writes or inconsistent parked identity retain
 the reservation. The dedicated authority transaction records idle, closure, exact success and audit
 atomically; no client acknowledgement or generic journal setter can supply those facts.
+
+
+Active claims retain the membership revision and lease generation supplied at genuine admission.
+Active transitions cannot rewrite or drop this identity. Historical absent or conflicting lifetime
+proof cannot become a current-run join or reset target by attaching a newer lease. Native standing
+recovery and failed Stop replacement hold claim and fence exclusion across the old and new
+lifetimes until their exact original audit is committed. Replacement never resolves, resumes,
+retries or cancels UNKNOWN to manufacture worker readiness.
+
+Failed-lifetime Stop can canonically cancel its exact safe pre-fence graph inside admission, before
+the full stopped-owner release check, in one synchronous authority transaction. Missing death,
+Duo, browser, graph or write proof rolls back the command, reservation and all provisional run and
+journal mutations. Attempting or foreign-owned work cannot use this ordering to become cancelled.
+Actual replacement is dispatched only after that transaction commits and rechecks release.

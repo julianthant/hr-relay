@@ -597,6 +597,7 @@ export function executeSequencedWriteCommit(
     const advance = () => transition.kind === "advance-running"
       ? transition.port.workerTransition({ commandId, ...parsed.run, claim: transition.claim, evidenceFingerprint,
           lifecycle: { state: "running", workerId: transition.claim.workerId, claimedAt: transition.claimedAt,
+            ...("workerId" in current.lifecycle && current.lifecycle.workerLifetime !== undefined ? { workerLifetime: current.lifecycle.workerLifetime } : {}),
             heartbeatAt: parsed.commit.confirmedAt, currentNodeId: NodeIdSchema.parse(parsed.checkpoint.nodeId) } })
       : transition.port.transition({ commandId, runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
           evidenceFingerprint, lifecycle: { state: "queued" }, writeResolution: {kind:"recovery",writeIntentId:parsed.commit.writeIntentId,generation:parsed.commit.generation,writeAttemptId:requireRecoveryIdentity(intent).currentAttemptId,bindingProofDigest:requireRecoveryIdentity(intent).bindingProofDigest,decision:"present"},
@@ -1176,6 +1177,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         lifecycle: {
           state: "running",
           workerId: current.lifecycle.workerId,
+          ...(current.lifecycle.workerLifetime === undefined ? {} : { workerLifetime: current.lifecycle.workerLifetime }),
           claimedAt: current.lifecycle.claimedAt,
           heartbeatAt: now,
           currentNodeId: context.node.id,

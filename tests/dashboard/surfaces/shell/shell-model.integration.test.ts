@@ -15,28 +15,26 @@ poolSlotIsUnmet,
 type SessionPoolGroup,
 type WorkerCardWire,
 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { DashboardDayWireSchema,type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
+import { WorkerCardWireSchema, DashboardDayWireSchema,type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 import { WorkerSlotRecordSchema,workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { FIXTURE_DAY_WIRE } from "../../../support/fixtures/dashboard/fixture-day.js";
 
 const ACTOR = { actorId: "local-operator", source: "session-panel" } as const;
 
 /** Every fixture card is what the STRICT day schema produced, never a hand-built object. */
 function parsedCard(source: WorkerCardWire, overrides: Readonly<Record<string, unknown>>): WorkerCardWire {
-  const parsed = DashboardDayWireSchema.parse({
-    ...FIXTURE_DAY_WIRE,
-    workerCards: [{ ...source, ...overrides }],
-    workerPools: [],
-  }).workerCards[0];
-  if (parsed === undefined) throw new Error("the parsed day wire dropped its only worker card");
-  return parsed;
+  const workflowId = WorkflowIdSchema.parse(overrides.workflowId ?? source.workflowId), workerId = WorkerIdSchema.parse(overrides.workerId ?? source.workerId);
+  const ordinal = poolIndexOfWorkerId(workflowId, workerId);
+  if (ordinal === undefined) throw new Error("worker card requires an exact canonical member");
+  return WorkerCardWireSchema.parse({ ...source, ...overrides,
+    member: { ...source.member, workflowId, workerId, ordinal, poolIndex: ordinal } });
 }
 
 /** One live card, cloned off the real wire fixture so no case can express a card authority refuses. */
 function cardOf(overrides: Readonly<Record<string, unknown>>): WorkerCardWire {
-  const live = FIXTURE_DAY_WIRE.workerCards.find((card) => card.state !== "stopped" && card.state !== "failed");
+  const live = FIXTURE_DAY_WIRE.workerCards.find((card) => card.state !== "failed");
   if (live === undefined) throw new Error("the wire fixture needs one non-terminal worker card");
   return parsedCard(live, overrides);
 }
@@ -57,7 +55,11 @@ function dayOf(
   workerCards: readonly WorkerCardWire[],
   workerPools: DashboardDayWire["workerPools"],
 ): DashboardDayWire {
-  return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards, workerPools });
+  const template = FIXTURE_DAY_WIRE.workerAuthority.members[0];
+  if (template === undefined) throw new Error("missing exact member fixture template");
+  const members = workerCards.map(card => ({ ...template, workerId: card.member.workerId, workflow: card.member.workflowId,
+    ordinal: card.member.ordinal, poolIndex: card.member.poolIndex, membershipRevision: card.member.membershipRevision }));
+  return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards, workerPools, workerAuthority: { state: "present", members } });
 }
 
 function poolRow(workflowId: string, desiredWorkers: number, version: number): DashboardDayWire["workerPools"][number] {
@@ -153,15 +155,11 @@ describe("the pool roster is folded from served facts only", () => {
     assert.equal(slotAt(group, 2).declared, false);
   });
 
-  it("keeps a worker id the pool contract cannot address out of the indexed roster", () => {
-    const day = dayOf(
-      [cardOf({ workerId: "person-lookup-daemon", workflowId: "person-lookup" })],
-      [poolRow("person-lookup", 1, 1)],
-    );
-    const group = groupFor(day, "person-lookup");
-
-    assert.deepEqual(group.unindexedCards.map((card) => String(card.workerId)), ["person-lookup-daemon"]);
-    assert.deepEqual(group.slots.map((slot) => slot.membership.state), ["not-served"]);
+  it("refuses a served worker card without exact canonical membership", () => {
+    const source = FIXTURE_DAY_WIRE.workerCards[0];
+    if (source === undefined) throw new Error("missing strict worker card fixture");
+    assert.throws(() => WorkerCardWireSchema.parse({ ...source, workerId: "person-lookup-daemon",
+      member: { ...source.member, workerId: "person-lookup-daemon" } }));
   });
 });
 

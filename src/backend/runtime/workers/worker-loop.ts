@@ -138,6 +138,7 @@ export interface WorkerLoopDependencies {
   readonly activeWorkReset?: (run: RunRecord, claim: Readonly<{ workerId: string; claimGeneration: number }>) => boolean;
   readonly controlPoll?: () => WorkerDirective;
   readonly browserControl?: (sessions: WorkerSessionManager) => Promise<void>;
+  readonly browserActivity?: (activity: "acquiring" | "authenticating" | "closing") => () => void;
   readonly browserObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
 
   readonly configFingerprint?: string;
@@ -251,6 +252,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     ...(deps.browserScreenshotCapture === undefined
       ? {}
       : { browserScreenshotCapture: deps.browserScreenshotCapture }),
+    ...(deps.browserActivity === undefined ? {} : { onActivity: deps.browserActivity }),
     ...(deps.browserObservation === undefined ? {} : { onObservation: deps.browserObservation }),
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
@@ -893,7 +895,7 @@ export function createWorkerPoolRuntimeExecutor(
     },
     beginLifecycle(context: WorkerRuntimeContext): void {
       const command = context.command;
-      if ((command.type !== "remove-worker" && command.type !== "retry-worker") || lifecycle === undefined || supervisor.ownWorkerControl === undefined) throw new Error("worker-lifecycle-owner-unavailable");
+      if ((command.type !== "remove-worker" && command.type !== "retry-worker" && command.type !== "stop-worker") || lifecycle === undefined || supervisor.ownWorkerControl === undefined) throw new Error("worker-lifecycle-owner-unavailable");
       const binding = lifecycle.database.authority.workerControls.get(command.commandId)?.lifecycle;
       if (binding === undefined) throw new Error("worker-lifecycle-binding-unavailable");
       supervisor.ownWorkerControl(command.commandId, async () => {
@@ -905,7 +907,8 @@ export function createWorkerPoolRuntimeExecutor(
           } else {
             if (supervisor.retryWorker === undefined) throw new Error("worker-retry-owner-unavailable");
             const proof = await supervisor.retryWorker(binding);
-            lifecycle.database.settleWorkerRetry(command.commandId, proof, lifecycle.clock.now().toISOString(), randomUUID());
+            if (command.type === "stop-worker") lifecycle.database.observeWorkerLifecycleEffect(command.commandId, proof, lifecycle.clock.now().toISOString());
+            else lifecycle.database.settleWorkerRetry(command.commandId, proof, lifecycle.clock.now().toISOString(), randomUUID());
           }
         } catch (error) {
           const current = lifecycle.database.authority.workerControls.get(command.commandId);

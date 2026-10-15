@@ -46,7 +46,11 @@ export function testWorkerPorts(database: AuthorityDatabase, clock: Clock, input
   return { lifecycle, claimNext: (request: { commandId: string; workflow: string; workerId: string }) => {
     assert.equal(request.workflow, slot.workflow);
     assert.equal(request.workerId, slot.workerId);
-    return lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow, workerId: slot.workerId, runtimeConfig: {
+    const currentMember = database.authority.workerSlots.get(slot.workerId), lease = database.authority.workerLeases.get(slot.workerId);
+    assert.ok(currentMember, "claim fixture requires its actual admitted member");
+    assert.ok(lease, "claim fixture requires its actual current lifetime");
+    return lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow, workerId: slot.workerId,
+      workerLifetime: { membershipRevision: currentMember.membershipRevision, leaseGeneration: lease.leaseGeneration }, runtimeConfig: {
       generation: runtimeConfig.generation, settingsRevision: runtimeConfig.settingsRevision,
       settingsFingerprint: runtimeConfig.settingsFingerprint, configFingerprint: runtimeConfig.configFingerprint,
     } });

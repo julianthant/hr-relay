@@ -42,7 +42,7 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   slots: readonly WorkerBrowserSlot[];
   unavailableReason?: string;
 }> {
-  if (card.state === "stopped" || card.state === "failed") return { slots: [] };
+  if (card.state === "failed") return { slots: [] };
   const open = [...card.browsers];
   const requirements = card.browserRequirements;
   if (requirements === undefined) {
@@ -145,7 +145,7 @@ export function poolFactsForWorkflow(
   workerPools: readonly WorkerPoolWire[],
 ): WorkerPoolFacts {
   const activeWorkers = workerCards.filter(
-    (card) => String(card.workflowId) === workflowId && card.state !== "stopped" && card.state !== "failed",
+    (card) => String(card.workflowId) === workflowId && card.state !== "failed",
   ).length;
   const pool = workerPools.find((entry) => String(entry.workflowId) === workflowId);
   return pool === undefined
@@ -272,7 +272,7 @@ export function sessionPoolGroupFor(
         declared: poolIndex <= declaredCount,
         membership: card === undefined
           ? { state: "not-served" as const }
-          : card.state === "stopped" || card.state === "failed"
+          : card.state === "failed"
             ? { state: "retained" as const, card }
             : { state: "live" as const, card },
       };
@@ -336,7 +336,7 @@ export type WorkerState = WorkerCardWire["state"];
 /** Render served worker state, not inferred activity; pending pause intent cannot claim a mid-write worker is paused. */
 export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text: string }> = {
   // Use the shared Running word so worker and run activity do not appear to be different facts.
-  working: { dot: "bg-[var(--ds-success-fg)]", label: "Running", text: "text-[color:var(--ds-success-fg)]" },
+  running: { dot: "bg-[var(--ds-success-fg)]", label: "Running", text: "text-[color:var(--ds-success-fg)]" },
   starting: {
     dot: "bg-[var(--ds-status-waiting-fg)] animate-pulse motion-reduce:animate-none",
     label: "Starting",
@@ -344,12 +344,12 @@ export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text
   },
   paused: { dot: "bg-[var(--ds-fg-faint)]", label: "Paused", text: "text-[color:var(--ds-fg-muted)]" },
   idle: { dot: "bg-[var(--ds-fg-faint)]", label: "Idle", text: "text-[color:var(--ds-fg-muted)]" },
-  stopped: { dot: "bg-[var(--ds-fg-faint)] opacity-60", label: "Stopped", text: "text-[color:var(--ds-fg-muted)]" },
+  waiting: { dot: "bg-[var(--ds-status-waiting-fg)]", label: "Waiting", text: "text-[color:var(--ds-status-waiting-fg)]" },
   failed: { dot: "bg-[var(--ds-danger)]", label: "Failed", text: "text-[color:var(--ds-danger)]" },
 };
 
 
-export const WORKER_STATE_ORDER: WorkerState[] = ["working", "starting", "idle", "paused", "failed", "stopped"];
+export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle", "waiting", "paused", "failed"];
 
 
 /** How a settled lease ended, in the operator's words rather than the enum's. */
@@ -363,7 +363,7 @@ export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopRe
 
 /** Directives describe intent, not state; pause waits for the current item to finish. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
-  if (card.state === "stopped" || card.state === "failed") return undefined;
+  if (card.state === "failed") return undefined;
   if (card.directive === "pause" && card.state !== "paused") return "Pausing after this item";
   if (card.directive === "run" && card.state === "paused") return "Resume requested";
   if (card.directive === "stop") return "Stopping after this item";
@@ -373,7 +373,7 @@ export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
 
 /** Settled leases take no directives; stopping twice must not offer another command. */
 export function canStopWorker(card: WorkerCardWire): boolean {
-  return card.state !== "stopped" && card.state !== "failed" && card.directive !== "stop";
+  return card.state !== "failed" && card.directive !== "stop";
 }
 
 
@@ -398,7 +398,7 @@ export const capacityChip = (full: boolean): string =>
 
 
 /** Keep zero tallies visible; starting daemons are capacity awaiting a phase, never idle workers. */
-export const ALWAYS_TALLIED: WorkerState[] = ["working", "starting", "idle"];
+export const ALWAYS_TALLIED: WorkerState[] = ["running", "starting", "idle"];
 
 
 /** Expose interrupted patch delivery; stale snapshots must not keep a quiet Live connection state. */

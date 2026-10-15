@@ -529,6 +529,8 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "renew-claim",
   "worker-transition",
   "worker-admission",
+  "worker-lifetime-birth",
+  "worker-standing-recovery",
   "worker-verification-admission",
   "worker-verification-retirement",
   "terminalize",
@@ -566,6 +568,9 @@ export const RunLifecycleCommandRecordSchema = z.strictObject({
 });
 
 export const RunLifecycleCommandResultIdentitySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("worker-recovery"), workerId: WorkerIdSchema, oldLeaseGeneration: PositiveIntSchema,
+    leaseGeneration: PositiveIntSchema, phase: z.enum(["idle", "paused"]), settledAt: IsoInstantSchema }),
+  z.strictObject({ kind: z.literal("worker-birth"), workerId: WorkerIdSchema, leaseGeneration: PositiveIntSchema }),
   z.strictObject({ kind: z.literal("worker"), slot: WorkerSlotRecordSchema,
     beforePoolVersion: NonNegativeIntSchema, afterPoolVersion: PositiveIntSchema }),
   z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, appliedVersion: PositiveIntSchema,

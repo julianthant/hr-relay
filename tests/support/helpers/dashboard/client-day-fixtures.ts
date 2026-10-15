@@ -55,7 +55,7 @@ export function createClientDayFixtures(DAY: string, HASH_D: string) {
         : [{ workflowId: "person-lookup", count: surfaces.length, statusCounts: [{ status: "queued", count: surfaces.length }] }],
       statusCounts: surfaces.length === 0 ? [] : [{ status: "queued", count: surfaces.length }],
       queueSurfaces: surfaces,
-      workerCards: [],
+      workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [],
       workerPools: [],
       notifications: [],
     });

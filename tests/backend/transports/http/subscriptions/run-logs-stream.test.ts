@@ -43,7 +43,7 @@ function harness(maxPending = 64, retention = 512) {
     cursor: () => "pc:1", generation: () => 1,
     buildDashboardDayWire(day: string) { return { day, descriptorHash: HASH, projectionGeneration: 1,
       snapshotCursor: "pc:1", monthCounts: [], workflowCounts: [], statusCounts: [],
-      queueSurfaces: [], workerCards: [], workerPools: [], notifications: [] }; },
+      queueSurfaces: [], workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [], workerPools: [], notifications: [] }; },
   } as unknown as RunQueueProjection;
   let authority = { envelope: { runId: RUN, traceId: "fpo-120000-0002",
     contractFingerprint: HASH, attempt: 1 } } as RunRecord;

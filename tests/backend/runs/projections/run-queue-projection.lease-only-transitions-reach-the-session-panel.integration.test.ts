@@ -1,9 +1,9 @@
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { DAY, instantOffsetOf, workerLeaseOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { DAY, instantOffsetOf, workerLeaseOf, declareProjectionWorker } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const {world, cleanup } = createRunQueueProjectionTestWorld();
+const {world, cleanup, queuedEventOf } = createRunQueueProjectionTestWorld();
 
 
 afterEach(cleanup);
@@ -17,9 +17,53 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     return w.changes.filter((change) => change.kind === "snapshot").length;
   }
 
+  for (const phase of ["running", "starting", "idle", "waiting", "paused", "failed"] as const) {
+    it(`serves exact ${phase} authority independently of the span fold`, () => {
+      const w = world();
+      declareProjectionWorker(w.authority, workerId, 1);
+      let runId: string | undefined;
+      if (phase === "running") {
+        const event = queuedEventOf(w, { seed: 51, lifecycle: { state: "running", workerId,
+          claimedAt: startedAt, heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1, version: 2 });
+        runId = event.runId;
+      }
+      const lifecycle = phase === "running" ? { state: "busy", startedAt, heartbeatAt: startedAt, runId }
+        : phase === "failed" ? { state: "stopped", startedAt, stoppedAt: startedAt, reason: "shutdown" }
+        : phase === "paused" ? { state: phase, startedAt, heartbeatAt: startedAt, pausedAt: startedAt }
+        : phase === "waiting" ? { state: phase, startedAt, heartbeatAt: startedAt, activity: "authenticating" }
+        : phase === "starting" ? { state: phase, startedAt } : { state: phase, startedAt, heartbeatAt: startedAt };
+      w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle, directive: phase === "failed" ? "stop" : phase === "paused" ? "pause" : "run" }));
+      const day = w.projection.buildDashboardDayWire(DAY);
+      assert.equal(day.workerAuthority.state, "present");
+      assert.equal(day.workerCards[0]?.state, phase);
+      assert.equal(day.workerCards[0]?.currentRun.state, phase === "running" ? "present" : "absent");
+      assert.equal(day.workerCards[0]?.member.membershipRevision, 1);
+    });
+  }
+
+  it("retains member refs and refuses dead idle or an old-generation current run", () => {
+    const w = world();
+    declareProjectionWorker(w.authority, workerId, 1);
+    w.authority.putWorkerLease(workerLeaseOf({ workerId }));
+    w.authority.workerOwners.clear();
+    let day = w.projection.buildDashboardDayWire(DAY);
+    assert.equal(day.workerAuthority.state, "unavailable");
+    assert.equal(day.workerAuthority.members.length, 1);
+    assert.deepEqual(day.workerCards, []);
+    declareProjectionWorker(w.authority, workerId, 1);
+    const event = queuedEventOf(w, { seed: 52, lifecycle: { state: "running", workerId, claimedAt: startedAt,
+      heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 2 } }, claimGeneration: 1, version: 2 });
+    w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "busy", startedAt, heartbeatAt: startedAt, runId: event.runId } }));
+    day = w.projection.buildDashboardDayWire(DAY);
+    assert.equal(day.workerAuthority.state, "unavailable");
+    assert.equal(day.workerAuthority.members.length, 1);
+    assert.deepEqual(day.workerCards, []);
+  });
+
   it("publishes a snapshot for a lease born before its first span, and an idle tick publishes nothing", () => {
     const w = world();
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 0);
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
     w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 1);
@@ -33,11 +77,13 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
 
   it("ignores heartbeat-only writes and publishes each phase, directive and settlement move exactly once", () => {
     const w = world();
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
     w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 1);
 
     // The maintenance ticker settles `idle`: a lease-only phase move.
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({
       workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 5_000) }, version: 2,
     }));
@@ -46,6 +92,7 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.state, "idle");
 
     // A heartbeat bumps the instant and the version and draws nothing.
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({
       workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 10_000) }, version: 3,
     }));
@@ -53,6 +100,7 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(snapshots(w), 2);
 
     // An operator directive is a lease write with no span of its own.
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({
       workerId, lifecycle: { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 10_000) }, directive: "pause", version: 4,
     }));
@@ -63,12 +111,14 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
 
   it("publishes a crash or expiry another process settled, keeping the card while its spans are retained", () => {
     const w = world();
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId }));
     w.writer.emit({
       t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId, spanPath: workerPath, name: "person-lookup",
     });
     const before = snapshots(w);
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({
       workerId,
       lifecycle: { state: "stopped", startedAt, stoppedAt: instantOffsetOf(0, 60_000), reason: "lease-expired" },
@@ -83,11 +133,13 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.deepEqual(card?.browsers, []);
   });
 
-  it("publishes the disappearance of a settled lease the span stream never named", () => {
+  it("retains the failed standing member even when its span stream never named it", () => {
     const w = world();
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId, lifecycle: { state: "starting", startedAt } }));
     w.projection.reconcileWorkerAuthority();
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 1);
+    declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({
       workerId,
       lifecycle: { state: "stopped", startedAt, stoppedAt: instantOffsetOf(0, 1_000), reason: "crashed" },
@@ -97,7 +149,7 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 2);
 
-    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 0);
+    assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.state, "failed");
   });
 
   it("publishes a pool declaration the operator planned, which no span carries", () => {

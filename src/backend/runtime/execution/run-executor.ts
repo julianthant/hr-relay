@@ -349,6 +349,7 @@ export async function executeClaimedRun(
     throw new Error(`run ${runId} is ${initial.lifecycle.state}; the executor starts from a fresh claim`);
   }
   const claimedAt = initial.lifecycle.claimedAt;
+  const workerLifetime = initial.lifecycle.workerLifetime;
   z.number().int().positive().parse(deps.taskDeadlineMs);
 
   const nodes = descriptorRuntimeNodes(descriptor);
@@ -410,6 +411,7 @@ export async function executeClaimedRun(
   const runningLifecycle = (currentNodeId?: NodeId): RunLifecycle => RunLifecycleSchema.parse({
     state: "running",
     workerId: claim.workerId,
+    ...(workerLifetime === undefined ? {} : { workerLifetime }),
     claimedAt,
     heartbeatAt: instant(),
     ...(currentNodeId === undefined ? {} : { currentNodeId }),
@@ -504,7 +506,7 @@ export async function executeClaimedRun(
 
   const interpret = async (): Promise<RunExecutionOutcome> => {
     /* ── validating: ref workflow-model entry validation, before any browser ────── */
-    transitionTo({ state: "validating", workerId: claim.workerId, claimedAt, heartbeatAt: instant() });
+    transitionTo({ state: "validating", workerId: claim.workerId, ...(workerLifetime === undefined ? {} : { workerLifetime }), claimedAt, heartbeatAt: instant() });
 
     const problems: string[] = [];
     let canonicalInput: JsonValue | undefined;

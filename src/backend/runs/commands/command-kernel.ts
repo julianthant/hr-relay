@@ -2044,7 +2044,9 @@ async function executeWorkerPoolCommand(
   const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
   if (request.type === "stop-worker") {
     if (!LiveWorkerResetRequestSchema.safeParse(request).success) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "worker-reset-authority-unavailable" });
-    try { return dependencies.authority.withAuthorityTransaction(repositories => {
+    let replacement: WorkerRuntimeContext | undefined;
+    let result: CommandResult;
+    try { result = dependencies.authority.withAuthorityTransaction(repositories => {
       repositories.commands.assertIdentity(request);
       const prior = repositories.workerControls.get(request.commandId);
       if (prior !== undefined) {
@@ -2054,13 +2056,28 @@ async function executeWorkerPoolCommand(
       }
       try {
         const live = LiveWorkerResetRequestSchema.parse(request);
-        const lease = repositories.workerLeases.get(live.target.workerId);
-        if (lease === undefined || pool.assertResetOwner === undefined) throw new WorkerControlRefusal("worker-reset-owner-unavailable");
-        pool.assertResetOwner(live.target.workerId, live.target.membershipRevision, { leaseGeneration: lease.leaseGeneration,
-          processId: lease.processId, startedAt: lease.lifecycle.startedAt });
-        admitWorkerReset(repositories, request, dependencies.ids.uuid(), now);
-      }
-      catch (error) {
+        const lease = repositories.workerLeases.get(live.target.workerId), slot = repositories.workerSlots.get(live.target.workerId);
+        if (lease === undefined || slot === undefined) throw new WorkerControlRefusal("worker-reset-owner-unavailable");
+        const lifetime = { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt };
+        let descriptor: AnyWorkflowDescriptor | undefined;
+        if (lease.lifecycle.state === "stopped") {
+          if (pool.assertLifecycleOwner === undefined || pool.beginLifecycle === undefined) throw new WorkerControlRefusal("worker-reset-replacement-owner-unavailable");
+          descriptor = dependencies.descriptors.resolve(slot.workflow);
+          if (descriptor === undefined) throw new WorkerControlRefusal("worker-reset-replacement-descriptor-unavailable");
+          selectNewRunIdentity(repositories, dependencies.configIdentity);
+        } else {
+          if (pool.assertResetOwner === undefined) throw new WorkerControlRefusal("worker-reset-owner-unavailable");
+          pool.assertResetOwner(live.target.workerId, live.target.membershipRevision, lifetime);
+        }
+        const record = admitWorkerReset(repositories, request, dependencies.ids.uuid(), now, descriptor);
+        if (record.lifecycle !== undefined) {
+          repositories.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: now });
+          dependencies.lifecycle.settleResetWork(record.reset);
+          if (pool.assertLifecycleOwner === undefined) throw new WorkerControlRefusal("worker-reset-replacement-owner-unavailable");
+          pool.assertLifecycleOwner("retry", live.target.workerId, live.target.membershipRevision, lifetime);
+          replacement = { command: request, now };
+        }
+      } catch (error) {
         if (error instanceof CommandIdentityConflictError) throw error;
         throw new WorkerControlRefusal(error instanceof Error ? error.message : "worker-reset-authority-unavailable");
       }
@@ -2070,6 +2087,19 @@ async function executeWorkerPoolCommand(
         code: "invalid-state", message: error.message });
       throw error;
     }
+    if (replacement !== undefined) {
+      try { pool.beginLifecycle?.(replacement); }
+      catch (error) {
+        const current = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls.get(request.commandId));
+        if (current?.phase.state === "executing") {
+          const startedAt = current.phase.startedAt;
+          dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls.transition(request.commandId, "executing", {
+            state: "uncertain", startedAt, observedAt: now, message: "worker-reset-replacement-dispatch-unproved" }));
+        }
+        throw error;
+      }
+    }
+    return result;
   }
   if (request.type === "remove-worker" || request.type === "retry-worker") {
     let context: WorkerRuntimeContext | undefined;

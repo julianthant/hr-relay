@@ -36,7 +36,7 @@ describe("same-lifetime durable reset settlement", () => {
       }
       if (current) {
         database.authority.runs.enqueue(personLookupQueuedRun());
-        const result = database.authority.runs.claimNext({ workerId, workflow: h.deps.workflowId, now: h.authority.clock.now().toISOString() });
+        const result = database.authority.runs.claimNext({ workerId, workflow: h.deps.workflowId, workerLifetime: { membershipRevision: database.authority.workerSlots.get(workerId)?.membershipRevision, leaseGeneration: database.authority.workerLeases.get(workerId)?.leaseGeneration }, now: h.authority.clock.now().toISOString() });
         expect(result.state).toBe("claimed");
       }
       const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
@@ -284,7 +284,7 @@ it("marks held actual browser close uncertain at its scheduled expiry without re
 it("exposes no raw success setter and atomically cancels a safe queued cascade before idle", async () => {
   const h = world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
   const parent = RunRecordSchema.parse(personLookupQueuedRun()); database.authority.runs.enqueue(parent);
-  expect(database.authority.runs.claimNext({ workerId, workflow: h.deps.workflowId, now: h.authority.clock.now().toISOString() }).state).toBe("claimed");
+  expect(database.authority.runs.claimNext({ workerId, workflow: h.deps.workflowId, workerLifetime: { membershipRevision: database.authority.workerSlots.get(workerId)?.membershipRevision, leaseGeneration: database.authority.workerLeases.get(workerId)?.leaseGeneration }, now: h.authority.clock.now().toISOString() }).state).toBe("claimed");
   const childId = randomUUID(), manifestId = randomUUID(), dependencyId = randomUUID();
   database.authority.runs.enqueue({ ...parent, envelope: { ...parent.envelope, runId: childId, itemId: childId,
     parent: { runId: parent.envelope.runId, tracePrefix: "pl-090000-2222", edgeId: "reset-child" } } });
@@ -406,4 +406,49 @@ it("does not redispatch an uncertain owner reset after failed closure authority"
   expect(database.authority.workerControls.pending(record.scope)).toHaveLength(1);
   h.stop.abort(new Error("owned shutdown after retained uncertainty"));
   await loop;
+});
+
+
+it("ends failed close activity while exact Stop retains and then closes the resource", async () => {
+  const h = world.loopHarness(), database = h.authority.database, workerId = h.deps.workerId;
+  const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
+  if (slot === undefined || lease === undefined) throw new Error("missing owner");
+  const activities = new Map<symbol, string>();
+  let closes = 0;
+  const factory = h.deps.sessionFactory;
+  const manager = new WorkerSessionManager({ workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
+    factory: { open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => {
+      closes += 1;
+      if (closes === 1) throw new Error("injected first close failure");
+      return resource.close(input);
+    } }; } },
+    clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony,
+    resetOwner: { member: workerPoolMember(slot), lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt } },
+    onActivity: activity => { const key = Symbol(activity); activities.set(key, activity); return () => { activities.delete(key); }; },
+    onObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration: lease.leaseGeneration }); },
+  });
+  const fingerprint = RunRecordSchema.parse(personLookupQueuedRun()).envelope.configFingerprint;
+  manager.bindRunConfigFingerprint(fingerprint);
+  const acquire = () => manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod", new AbortController().signal, async () => undefined);
+  await acquire();
+  await expect(manager.closeAll("worker-stop")).rejects.toThrow();
+  expect(activities.size).toBe(0);
+  expect(database.authority.workerControls.browsers(workerId)).toMatchObject([{ health: "failed" }]);
+  expect(manager.activeSystems()).toEqual(["ucpath"]);
+  const record = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
+    commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator",
+    requestedAt: h.authority.clock.now().toISOString(), target: { workerId, membershipRevision: slot.membershipRevision,
+      controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
+  }, randomUUID(), h.authority.clock.now().toISOString()));
+  if (record.reset === undefined) throw new Error("missing reset");
+  database.authority.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: record.admittedAt });
+  const proof = await manager.closeForReset(record.reset);
+  database.settleWorkerReset(record.commandId, proof, record.admittedAt, randomUUID());
+  expect(closes).toBe(2);
+  expect(activities.size).toBe(0);
+  expect(database.authority.workerControls.get(record.commandId)?.phase.state).toBe("succeeded");
+  await acquire();
+  expect(activities.size).toBe(0);
+  expect([...activities.values()]).not.toContain("closing");
+  await manager.closeAll("worker-stop");
 });

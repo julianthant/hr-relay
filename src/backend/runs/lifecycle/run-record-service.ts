@@ -294,11 +294,19 @@ export class RunRecordService {
       if (repositories.workerControls.lifecycleForWorker(workerId) !== undefined
         || lease !== undefined && repositories.workerControls.initializingForWorker(workerId, lease.leaseGeneration) !== undefined) return refused({ reason: "none-eligible" });
       if (repositories.workerControls.resetForWorker(workerId) !== undefined) return refused({ reason: "none-eligible" });
-      if (repositories.workerSlots.verification(workerId) !== undefined) return refused({ reason: "none-eligible" });
+      if (repositories.workerSlots.recovery(workerId) !== undefined || repositories.workerSlots.verification(workerId) !== undefined) return refused({ reason: "none-eligible" });
       if (slot === undefined || slot.retiredAt !== null || slot.workflow !== workflow
         || request.workerLifetime !== undefined && (slot.membershipRevision !== request.workerLifetime.membershipRevision
           || lease?.leaseGeneration !== request.workerLifetime.leaseGeneration || lease.lifecycle.state === "stopped")) return refused({ reason: "none-eligible" });
-      if (journal.state === "replay") return this.replayRun(journal.result);
+      if (journal.state === "replay") {
+        const replayed = this.replayRun(journal.result);
+        if (replayed.state !== "refused" && "run" in replayed && "workerId" in replayed.run.lifecycle) {
+          const owner = replayed.run.lifecycle.workerLifetime;
+          if (owner === undefined || lease === undefined || owner.leaseGeneration !== lease.leaseGeneration
+            || owner.membershipRevision !== slot.membershipRevision || replayed.run.lifecycle.workerId !== workerId) return refused({ reason: "none-eligible" });
+        }
+        return replayed;
+      }
       const held = repositories.runs.listByWorker(workerId).find((run) => runClaim(run) !== undefined);
       if (held !== undefined) return refused({ reason: "worker-busy", runId: held.envelope.runId });
       const outcome = repositories.runs.claimEligible({

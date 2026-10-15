@@ -1,3 +1,4 @@
+import { WorkerSlotRecordSchema } from "../../../../src/models/run/worker-slot.js";
 import { createWorkerLeaseFixtures } from "../../../support/helpers/backend/worker-lease-fixtures.js";
 
 import assert_m0 from "node:assert/strict";
@@ -61,12 +62,17 @@ function sessionDay(): DashboardDayWire_m0 {
       plannedBy: "local-operator",
       plannedAt: "2026-08-03T09:00:00.000-07:00",
     }],
+    workerAuthority: { state: "present", members: [
+      ...FIXTURE_DAY_WIRE_m0.workerAuthority.members,
+      { ...FIXTURE_DAY_WIRE_m0.workerAuthority.members[3], workerId: "person-lookup-worker-6", ordinal: 6, poolIndex: 6 },
+    ] },
     workerCards: [
       ...FIXTURE_DAY_WIRE_m0.workerCards,
       {
         ...failedWorker,
-        workerId: "person-lookup-worker-stopped-retained",
-        state: "stopped",
+        workerId: "person-lookup-worker-6",
+        member: { ...failedWorker.member, workerId: "person-lookup-worker-6", ordinal: 6, poolIndex: 6 },
+        state: "failed",
         stopReason: "operator",
       },
     ],
@@ -76,7 +82,7 @@ function sessionDay(): DashboardDayWire_m0 {
 describe_m0("Session Panel authority joins", () => {
   it_m0("joins a working card to its run's served session by exact run id", () => {
     const day = sessionDay();
-    const working = day.workerCards.find((card) => card.state === "working");
+    const working = day.workerCards.find((card) => card.state === "running");
     if (working === undefined) throw new Error("the real wire fixture needs a working worker");
 
     const membership = sessionMembershipForWorker_m0(working, day.queueSurfaces);
@@ -88,10 +94,11 @@ describe_m0("Session Panel authority joins", () => {
 
   it_m0("keeps an absent session as the row's served reason, never a guessed id", () => {
     const day = sessionDay();
-    const working = day.workerCards.find((card) => card.state === "working");
+    const working = day.workerCards.find((card) => card.state === "running");
     if (working === undefined) throw new Error("the real wire fixture needs a working worker");
     const onAbsentRow = DashboardDayWireSchema_m0.parse({
       ...day,
+      workerAuthority: { state: "present", members: day.workerAuthority.members.filter(member => member.workerId === working.workerId) },
       workerCards: [{ ...working, currentRun: { state: "present", runId: uuidOf_m0(4), traceId: "pl-160500-0004" } }],
     }).workerCards[0];
     if (onAbsentRow === undefined) throw new Error("the parsed day wire dropped its only worker card");
@@ -117,7 +124,7 @@ describe_m0("Session Panel authority joins", () => {
     });
     assert_m0.equal(day.workerCards.length, 6, "the fixture keeps failed and stopped worker cards as retained authority records");
     assert_m0.equal(
-      day.workerCards.filter((card) => card.state === "failed" || card.state === "stopped").length,
+      day.workerCards.filter((card) => card.state === "failed").length,
       2,
       "neither terminal record may inflate the active count",
     );
@@ -147,6 +154,7 @@ describe_m0("Session Panel authority joins", () => {
     if (ucpath === undefined) throw new Error("the real wire fixture needs an observed UCPath browser");
     const card = DashboardDayWireSchema_m0.parse({
       ...day,
+      workerAuthority: { state: "present", members: day.workerAuthority.members.filter(member => member.workerId === idle.workerId) },
       workerCards: [{
         ...idle,
         browserRequirements: { state: "present", systems: ["kuali", "ucpath", "crm"] },
@@ -187,7 +195,7 @@ describe_m0("Session Panel authority joins", () => {
 
   it_m0("shows no browser slots on a retained terminal worker card", () => {
     const day = sessionDay();
-    const terminal = day.workerCards.find((card) => card.state === "stopped");
+    const terminal = day.workerCards.find((card) => card.state === "failed");
     if (terminal === undefined) throw new Error("the real wire fixture needs a stopped retained worker card");
 
     assert_m0.deepEqual(workerBrowserView_m0({
@@ -320,7 +328,9 @@ describe_m2("the words the card carries", () => {
   const _live = workerCardOf_m2({
     lease: leaseOf(),
     fold: undefined,
-    resolveTrace: NO_TRACE,
+    resolveRun: NO_TRACE,
+    member: WorkerSlotRecordSchema.parse(FIXTURE_DAY_WIRE_m0.workerAuthority.members[0]),
+    ownerAlive: true,
   });
 
   it_m2("has a word for every state and every recorded stop reason", () => {

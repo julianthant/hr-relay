@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, assertWorkerProcessCustody, bindWorkerProcessAdmission, observeRuntimeLockSnapshot, RestoreAdmissionFileSchema, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { retireWorkerStartupCustody, authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, assertWorkerProcessCustody, bindWorkerProcessAdmission, observeRuntimeLockSnapshot, RestoreAdmissionFileSchema, RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { createFirstInstallCustodyFixture } from "../../../support/helpers/storage/first-install-custody-fixtures.js";
@@ -27,6 +27,46 @@ function fixture() {
 }
 describe("immutable singleton process custody", () => {
 afterEach(_afterEachFixture0);
+
+  it("authenticates only the actual stable live worker acquisition and retains immutable recovery evidence", () => {
+    const f = fixture();
+    const workerId = "person-lookup-worker-1";
+    const authorityPath = join(f.root, "state.db");
+    const unbound = acquireRuntimeProcessLock({ processLockRoot: f.root, name: "workers", pid: 4100,
+      admission: { kind: "unbound-worker", authorityPath: join(f.root, "state.db") } }, f.clock, { observeProcessIdentity: f.observer });
+    expect(() => authenticateWorkerBirthCustody(unbound, workerId, 4100, authorityPath)).toThrow("worker-birth-custody-unavailable");
+    const direct = acquireRuntimeProcessLock({ processLockRoot: f.root, name: "workers", pid: 4100, workerId }, f.clock, { observeProcessIdentity: f.observer });
+    expect(() => authenticateWorkerBirthCustody(direct, workerId, 4100, authorityPath)).toThrow("worker-birth-custody-unavailable");
+    direct.release();
+    const { processLock: lock } = bindWorkerProcessAdmission({ processLockRoot: f.root, authorityPath, workerId, pid: 4100,
+      clock: f.clock, hooks: { observeProcessIdentity: f.observer }, open: () => ({}), admit: () => WorkerIdSchema.parse(workerId), close: () => undefined });
+    expect(() => authenticateWorkerBirthCustody(lock, workerId, 4100, join(f.root, "other.db"))).toThrow("worker-birth-custody-unavailable");
+    const retained = authenticateWorkerBirthCustody(lock, workerId, 4100, authorityPath);
+    expect(retained.owner).toMatchObject({ workerId, acquisitionId: lock.acquisitionId, releasedAt: null });
+    expect(() => authenticateWorkerBirthCustody({ ...lock }, workerId, 4100, authorityPath)).toThrow("worker-birth-custody-unavailable");
+    expect(() => authenticateWorkerBirthCustody(lock, "person-lookup-worker-2", 4100, authorityPath)).toThrow("worker-birth-custody-unavailable");
+    expect(authenticateRetainedWorkerCustody(retained, { observeProcessIdentity: f.observer })).toBe("alive");
+    expect(authenticateWorkerBirthCustody(lock, workerId, 4100, authorityPath, true).owner).toEqual(retained.owner);
+    retireWorkerStartupCustody(lock);
+    expect(() => authenticateWorkerBirthCustody(lock, workerId, 4100, authorityPath, true)).toThrow("worker-birth-custody-unavailable");
+    expect(authenticateWorkerBirthCustody(lock, workerId, 4100, authorityPath).owner).toEqual(retained.owner);
+    lock.release();
+    expect(() => authenticateWorkerBirthCustody(lock, workerId, 4100, authorityPath)).toThrow("worker-birth-custody-unavailable");
+    expect(authenticateRetainedWorkerCustody(retained, { observeProcessIdentity: f.observer })).toBe("released-alive");
+    f.owners.delete(4100);
+    expect(authenticateRetainedWorkerCustody(retained, { observeProcessIdentity: f.observer })).toBe("released");
+    f.owners.set(4100, "reused-pid");
+    expect(() => authenticateRetainedWorkerCustody(retained, { observeProcessIdentity: f.observer })).toThrow("worker-birth-process-identity-changed");
+    f.owners.delete(4100);
+    const path = join(f.root, "workers", `${lock.acquisitionId}.lock.json`);
+    const current = readFileSync(path, "utf8");
+    writeFileSync(path, JSON.stringify({ ...JSON.parse(current), acquiredAt: "2025-01-01T00:00:00.000Z" }));
+    expect(() => authenticateRetainedWorkerCustody(retained, { observeProcessIdentity: f.observer })).toThrow("worker-birth-custody-changed");
+    unlinkSync(path);
+    expect(() => authenticateRetainedWorkerCustody(retained, { observeProcessIdentity: f.observer })).toThrow();
+    unbound.release();
+  });
+
 
   it.each(["server", "live-smoke"] as const)("refuses a stale %s acquisition after a competing owner publishes the same generation", role => {
     const f = fixture(); let winner: RuntimeProcessLockHandle | undefined;

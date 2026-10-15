@@ -100,6 +100,8 @@ export interface DashboardWorkerSupervisorDependencies {
   /** Birth-proof polling: re-probe the lease every `pollMs`, give up at `timeoutMs`. */
   readonly birth: Readonly<{ pollMs: number; timeoutMs: number }>;
 
+  readonly standingRecoverySettled?: (commandId: string) => boolean;
+  readonly assertRetainedOwnerDeath?: (member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>, birthCommandId?: string) => void;
   readonly proveRetirement: (member: WorkerPoolMember) => WorkerRetirementProof;
   readonly onFault: (error: Error) => void;
 }
@@ -217,6 +219,7 @@ export interface DashboardWorkerProcessSupervisor extends WorkerPoolProcessSuper
   memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined;
   ownsWorker(workerId: string, processId: number, startedAt: string): boolean;
 
+  restoreStandingWorker(binding: WorkerLifecycleBinding): Promise<void>;
   drainOwnedChildren(directive: WorkerStopDirectiveContext): Promise<void>;
 
   close(): readonly WorkerChildEvidence[];
@@ -909,6 +912,31 @@ export function createDashboardWorkerProcessSupervisor(
     }
   };
 
+  const spawnReplacement = async (input: WorkerLifecycleBinding) => {
+      const binding = WorkerLifecycleBindingSchema.parse(input);
+      if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
+      if (binding.operation.kind !== "retry") throw new WorkerControlRefusal("worker-retry-binding-required");
+      const { member, commandId } = binding;
+      const record = records.get(member.workerId);
+      if (record === undefined) {
+        if (deps.assertRetainedOwnerDeath === undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
+        deps.assertRetainedOwnerDeath(member, binding.lifetime, binding.birthCommandId);
+      } else if (record.state !== "exited" || record.exit?.reportedBy !== "os"
+        || record.pid !== binding.lifetime.processId || record.leaseStartedAt !== binding.lifetime.startedAt
+        || canonicalJsonStringify(record.member) !== canonicalJsonStringify(member) || deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
+      deps.proveRetirement(member);
+      const request = { command: "spawn-worker" as const, member, commandId };
+      await deps.prepareAdmission?.(request);
+      if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
+      if (records.get(member.workerId) !== record || record !== undefined && (record.state !== "exited" || record.exit?.reportedBy !== "os")) throw new WorkerControlRefusal("worker-retry-owner-changed");
+      if (record === undefined) deps.assertRetainedOwnerDeath?.(member, binding.lifetime, binding.birthCommandId);
+      deps.admission?.(request);
+      await spawnWorker(member, commandId);
+      const born = requireLiveOwnedChild("spawn-worker", member);
+      if (born.pid === undefined || born.leaseStartedAt === undefined) throw new WorkerControlRefusal("worker-retry-birth-unproved");
+      return { binding, born, birth: { processId: born.pid, startedAt: born.leaseStartedAt } };
+  };
+
   return Object.freeze({
     assertLifecycleOwner(operation: "remove" | "retry", member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
       if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
@@ -916,7 +944,10 @@ export function createDashboardWorkerProcessSupervisor(
       if (operation === "remove") {
         const current = requireLiveOwnedChild("stop-worker", member);
         if (current.state !== "running" || current.stopInFlight || current.pid !== lifetime.processId || current.leaseStartedAt !== lifetime.startedAt) throw new WorkerControlRefusal("worker-removal-owner-unavailable");
-      } else if (record === undefined || record.state !== "exited" || record.exit?.reportedBy !== "os"
+      } else if (record === undefined) {
+        if (deps.assertRetainedOwnerDeath === undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
+        deps.assertRetainedOwnerDeath(member, lifetime);
+      } else if (record.state !== "exited" || record.exit?.reportedBy !== "os"
         || record.pid !== lifetime.processId || record.leaseStartedAt !== lifetime.startedAt
         || canonicalJsonStringify(record.member) !== canonicalJsonStringify(member) || deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
     },
@@ -949,25 +980,20 @@ export function createDashboardWorkerProcessSupervisor(
       return mintWorkerSupervisorEffect(binding, { kind: "remove", retirement }, () => records.get(member.workerId) === owned && owned.state === "exited" && owned.exit?.reportedBy === "os");
     },
     async retryWorker(input: WorkerLifecycleBinding): Promise<WorkerSupervisorEffect> {
-      const binding = WorkerLifecycleBindingSchema.parse(input);
-      if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
-      if (binding.operation.kind !== "retry") throw new WorkerControlRefusal("worker-retry-binding-required");
-      const { member, commandId } = binding;
-      const record = records.get(member.workerId);
-      if (record === undefined || record.state !== "exited" || record.exit?.reportedBy !== "os"
-        || record.pid !== binding.lifetime.processId || record.leaseStartedAt !== binding.lifetime.startedAt
-        || canonicalJsonStringify(record.member) !== canonicalJsonStringify(member) || deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
-      deps.proveRetirement(member);
-      const request = { command: "spawn-worker" as const, member, commandId };
-      await deps.prepareAdmission?.(request);
-      if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
-      if (records.get(member.workerId) !== record || record.state !== "exited" || record.exit?.reportedBy !== "os") throw new WorkerControlRefusal("worker-retry-owner-changed");
-      deps.admission?.(request);
-      await spawnWorker(member, commandId);
-      const born = requireLiveOwnedChild("spawn-worker", member);
-      if (born.pid === undefined || born.leaseStartedAt === undefined) throw new WorkerControlRefusal("worker-retry-birth-unproved");
-      return mintWorkerSupervisorEffect(binding, { kind: "retry", leaseGeneration: binding.lifetime.leaseGeneration + 1, processId: born.pid, startedAt: born.leaseStartedAt },
-        () => records.get(member.workerId) === born && born.state === "running" && deps.leases.observe(member.workerId)?.processId === born.pid && deps.leases.observe(member.workerId)?.startedAt === born.leaseStartedAt);
+      const { binding, born, birth } = await spawnReplacement(input), member = binding.member;
+      return mintWorkerSupervisorEffect(binding, { kind: "retry", leaseGeneration: binding.lifetime.leaseGeneration + 1,
+        ...birth }, () => records.get(member.workerId) === born && born.state === "running"
+          && deps.leases.observe(member.workerId)?.processId === born.pid && deps.leases.observe(member.workerId)?.startedAt === born.leaseStartedAt);
+    },
+    async restoreStandingWorker(input: WorkerLifecycleBinding): Promise<void> {
+      if (deps.standingRecoverySettled === undefined) throw new WorkerControlRefusal("worker-standing-recovery-owner-unavailable");
+      const { binding, born } = await spawnReplacement(input);
+      const deadline = deps.clock.monotonicMs() + deps.birth.timeoutMs;
+      while (!deps.standingRecoverySettled(binding.commandId)) {
+        if (closed || draining !== undefined || records.get(binding.member.workerId) !== born || born.state !== "running"
+          || deps.clock.monotonicMs() >= deadline) throw new WorkerControlRefusal("worker-standing-recovery-settlement-unproved");
+        await new Promise<void>(resolve => { deps.scheduler.schedule(Math.min(deadline, deps.clock.monotonicMs() + deps.birth.pollMs), resolve); });
+      }
     },
     async execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement> {
       if (closed || draining !== undefined) {

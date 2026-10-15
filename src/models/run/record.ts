@@ -1,3 +1,4 @@
+import { WorkerClaimLifetimeSchema } from "./worker.js";
 import { ProtectedInputBindingsSchema, valueFreeProtectedInput } from "../write-safety/protected-input.js";
 /** The durable run record: lifecycle as one discriminated union, with the claim generation as the ownership fence. */
 import { z } from "zod";
@@ -51,6 +52,7 @@ export const RunStateSchema = z.enum([
 export type RunState = z.infer<typeof RunStateSchema>;
 
 const ClaimFields = {
+  workerLifetime: WorkerClaimLifetimeSchema.optional(),
   workerId: WorkerIdSchema,
   claimedAt: IsoInstantSchema,
   heartbeatAt: IsoInstantSchema,

@@ -2,7 +2,7 @@ import { lstatSync } from "node:fs";
 import { join } from "node:path";
 import { commandFromRow } from "./command-record-row.js";
 import { RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, readRuntimeProcessLock, observeProcessIdentity } from "./runtime-process-locks.js";
-import { WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
+import { WorkerStandingRecoveryRequestSchema, WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
 import { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -76,13 +76,28 @@ function requireVerificationCleanup(hold: NonNullable<ReturnType<typeof verifica
     || lstatSync(join(stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers", `w${hold.slot.ordinal}`, claim.system), { throwIfNoEntry: false }) !== undefined) throw new Error("worker-verification-cleanup-unproved");
 }
 
+export function recoveryFromSlot(database: DatabaseSync, slot: WorkerSlotRecord) {
+  if (slot.retiredAt !== null || slot.reservationCommandId === null) return undefined;
+  const row = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.reservationCommandId);
+  if (row === undefined) throw new Error("worker-slot-reservation-authority-unavailable");
+  const command = commandFromRow(row);
+  if (!("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "worker-standing-recovery") return undefined;
+  const request = WorkerStandingRecoveryRequestSchema.parse(command.request);
+  if (canonicalJsonStringify(request.binding.member) !== canonicalJsonStringify(WorkerPoolMemberSchema.parse({ workerId: slot.workerId,
+    workflowId: slot.workflow, ordinal: slot.ordinal, poolIndex: slot.poolIndex, membershipRevision: slot.membershipRevision }))
+    || database.prepare("SELECT 1 FROM command_audits WHERE command_id=?").get(command.commandId) !== undefined) throw new Error("worker-standing-recovery-reservation-invalid");
+  return { command, request, slot };
+}
+
 export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts) {
   const get = (workerId: string) => { const row = database.prepare("SELECT * FROM worker_slots WHERE id=?").get(WorkerIdSchema.parse(workerId)); return row === undefined ? undefined : workerSlotFromRow(row); };
   const list = (workflow?: string) => (workflow === undefined ? database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all()
     : database.prepare("SELECT * FROM worker_slots WHERE workflow=? ORDER BY ordinal").all(WorkflowIdSchema.parse(workflow))).map(workerSlotFromRow);
   const verification = (workerId: string) => { const slot = get(workerId); return slot === undefined ? undefined : verificationFromSlot(database, slot); };
   const verifications = (workflow: string) => list(workflow).flatMap(slot => { const hold = verificationFromSlot(database, slot); return hold === undefined ? [] : [hold]; });
-  return Object.freeze({ get, list, verification, verifications,
+  const recovery = (workerId: string) => { const slot = get(workerId); return slot === undefined ? undefined : recoveryFromSlot(database, slot); };
+  const recoveries = (workflow: string) => list(workflow).flatMap(slot => { const hold = recoveryFromSlot(database, slot); return hold === undefined ? [] : [hold]; });
+  return Object.freeze({ get, list, verification, verifications, recovery, recoveries,
     requireVerificationRetirements(workflow: string) {
       for (const slot of list(workflow)) {
         if (slot.retiredAt === null || slot.reservationCommandId === null) continue;
@@ -122,6 +137,7 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
       return mutate(() => {
         if (database.prepare("SELECT 1 FROM worker_pools WHERE workflow=?").get(request.workflow) === undefined) throw new Error("worker-slot-pool-not-admitted");
         if (database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL AND json_extract(payload_json,'$.request.type') IN ('stop-worker','remove-worker','retry-worker')").get(`worker-pool:${request.workflow}`) !== undefined) throw new Error("worker-reset-reserved");
+        if (recoveries(request.workflow).length !== 0) throw new Error("worker-standing-recovery-reserved");
         if (verifications(request.workflow).length !== 0) throw new Error("worker-verification-reserved");
         const active = list(request.workflow).filter(slot => slot.retiredAt === null);
         const existing = active.find(slot => slot.poolIndex === request.poolIndex);
@@ -145,6 +161,7 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
           return { result: current, changes: 0 };
         }
         if (database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL AND json_extract(payload_json,'$.request.type') IN ('stop-worker','remove-worker','retry-worker')").get(`worker-pool:${current.workflow}`) !== undefined) throw new Error("worker-reset-reserved");
+        if (recoveries(current.workflow).length !== 0) throw new Error("worker-standing-recovery-reserved");
         const hold = verification(request.workerId);
         if (hold === undefined && verifications(current.workflow).length !== 0) throw new Error("worker-verification-reserved");
         if (hold !== undefined) {
@@ -261,10 +278,17 @@ export function admitSupervisedWorker(
   const request = z.strictObject({ member: WorkerPoolMemberSchema, commandId: CommandIdSchema, now: IsoInstantSchema }).parse(input);
   const { member } = request, slot = repositories.workerSlots.get(member.workerId);
   const control = repositories.workerControls.get(request.commandId);
+  const recovery = repositories.workerSlots.recovery(member.workerId);
+  if (recovery !== undefined) {
+    if (recovery.command.commandId !== request.commandId || canonicalJsonStringify(recovery.request.binding.member) !== canonicalJsonStringify(member)
+      || repositories.workerPools.get(member.workflowId)?.version !== recovery.request.binding.poolVersion) throw new Error("worker-launch-reservation-not-admitted");
+    requireWorkerPoolRoster(repositories, member.workflowId);
+    return member.workerId;
+  }
   if (slot === undefined || slot.retiredAt !== null || canonicalJsonStringify(WorkerPoolMemberSchema.parse({ workflowId: slot.workflow, poolIndex: slot.poolIndex,
     ordinal: slot.ordinal, workerId: slot.workerId, membershipRevision: slot.membershipRevision })) !== canonicalJsonStringify(member)
     || control?.phase.state !== "executing" || Date.parse(control.expiresAt) <= Date.parse(request.now)) throw new Error("worker-launch-reservation-not-admitted");
-  if (control.request.type === "retry-worker") {
+  if (control.lifecycle?.operation.kind === "retry") {
     if (control.lifecycle?.operation.kind !== "retry" || canonicalJsonStringify(control.lifecycle.member) !== canonicalJsonStringify(member)
       || repositories.workerPools.get(member.workflowId)?.version !== control.lifecycle.poolVersion) throw new Error("worker-retry-launch-not-admitted");
   } else if (control.request.type !== "spawn-worker" || control.request.payload.workerId !== member.workerId

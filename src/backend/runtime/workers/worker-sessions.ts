@@ -109,6 +109,7 @@ export interface WorkerSessionManagerOptions {
   // Require the per-credential ceremony gate for every acquired login context.
   readonly duoCeremony: DuoCeremonyGateFactory;
   readonly onEvent?: (event: WorkerSessionEvent) => void;
+  readonly onActivity?: (activity: "acquiring" | "authenticating" | "closing") => () => void;
   readonly onObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
   /** Production persistence seam for explicit per-run browser screenshots. */
   readonly browserScreenshotCapture?: RunBrowserScreenshotCapture;
@@ -358,6 +359,7 @@ export class WorkerSessionManager {
   readonly #onEvent: (event: WorkerSessionEvent) => void;
   #defaultBrowserMode: BrowserPresentationMode;
   readonly #browserScreenshotCapture: RunBrowserScreenshotCapture | undefined;
+  readonly #onActivity: WorkerSessionManagerOptions["onActivity"];
   readonly #onObservation: WorkerSessionManagerOptions["onObservation"];
   readonly #resetOwner: Pick<WorkerResetBinding, "member" | "lifetime"> | undefined;
   #resetEpoch = 0;
@@ -384,6 +386,7 @@ export class WorkerSessionManager {
     this.#workflowId = WorkflowIdSchema.parse(options.workflowId);
     this.#stores = options.stores;
     this.#onObservation = options.onObservation;
+    this.#onActivity = options.onActivity;
     this.#factory = options.factory;
     this.#defaultBrowserMode = BrowserPresentationModeSchema.parse(options.defaultBrowserMode ?? "headless");
     this.#browserScreenshotCapture = options.browserScreenshotCapture;
@@ -947,7 +950,10 @@ export class WorkerSessionManager {
       throw new Error(`${need.system} session exclusivity disagrees with its registered provider`);
     }
     this.#resetEpoch += 1;
-    const resource = await this.#factory.open({
+    const acquired = this.#onActivity?.("acquiring");
+    let resource: WorkerBrowserResource;
+    try {
+    resource = await this.#factory.open({
       workerId: this.#workerId,
       workflowId: this.#workflowId,
       system: need.system,
@@ -961,6 +967,7 @@ export class WorkerSessionManager {
       claimStaleRequestRecovery: envelope.claimStaleRequestRecovery,
       acquisitionRemainingMs: () => Math.max(0, envelope.deadlineMonotonicMs - this.#clock.monotonicMs()),
     });
+    } finally { acquired?.(); }
     this.#observedSessions.add(resource.sessionId);
     this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
     let login: LoginResult;
@@ -981,10 +988,13 @@ export class WorkerSessionManager {
         || resource.exclusive !== exclusive) {
         throw new Error(`${need.system} session factory returned a resource with mismatched launch options`);
       }
+      const authenticated = this.#onActivity?.("authenticating");
+      try {
       login = LoginResultSchema.parse(await store.session.login(resource.authentication, {
         ...(instance === undefined ? {} : { instance }),
         signal,
       }));
+      } finally { authenticated?.(); }
     } catch (loginError) {
       try {
         await this.#closeResource(resource, "login-failed", exclusive);
@@ -1025,24 +1035,35 @@ export class WorkerSessionManager {
     reason: BrowserSessionCloseReason,
     exclusive: boolean,
   ): Promise<void> {
-    const proof = await resource.close({ reason });
-    if (proof.sessionId !== resource.sessionId || proof.system !== resource.system) {
-      throw new Error(`${resource.system} close proof does not identify the resource that was closed`);
-    }
-    if (proof.pagesClosed !== true || proof.contextClosed !== true) {
-      throw new Error(`${resource.system} close proof is missing page/context closure`);
-    }
-    if (exclusive && proof.exclusiveLeaseReleased !== true) {
-      throw new Error(`${resource.system} close proof is missing exclusive identity-lease release`);
-    }
-    this.#observe(resource, "closed");
-    this.#retained.delete(resource.sessionId);
-    this.#emit({
-      type: "browser-session:close",
-      system: resource.system,
-      sessionId: resource.sessionId,
-      reason,
-    });
+    const closed = this.#onActivity?.("closing");
+    let proved = false;
+    try {
+      const proof = await resource.close({ reason });
+      if (proof.sessionId !== resource.sessionId || proof.system !== resource.system) {
+        throw new Error(`${resource.system} close proof does not identify the resource that was closed`);
+      }
+      if (proof.pagesClosed !== true || proof.contextClosed !== true) {
+        throw new Error(`${resource.system} close proof is missing page/context closure`);
+      }
+      if (exclusive && proof.exclusiveLeaseReleased !== true) {
+        throw new Error(`${resource.system} close proof is missing exclusive identity-lease release`);
+      }
+      this.#observe(resource, "closed");
+      proved = true;
+      this.#retained.delete(resource.sessionId);
+      this.#emit({
+        type: "browser-session:close",
+        system: resource.system,
+        sessionId: resource.sessionId,
+        reason,
+      });
+    } catch (error) {
+      if (!proved) {
+        try { this.#observe(resource, "failed"); }
+        catch (observationError) { throw new AggregateError([error, observationError], "worker browser close and failure observation failed", { cause: observationError }); }
+      }
+      throw error;
+    } finally { closed?.(); }
   }
 
   #emit(event: WorkerSessionEventCore): void {

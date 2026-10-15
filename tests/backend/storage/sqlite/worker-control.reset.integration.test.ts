@@ -31,6 +31,36 @@ function admit(h: ReturnType<typeof world.harness>, request: unknown = resetRequ
 }
 
 describe("exact native worker reset reservation", () => {
+  it("retains genuine claim lifetime through active transitions and refuses rewriting or dropping it", () => {
+    const h = world.harness();
+    const { run, claim } = world.claimRunning(h.database, h.clock);
+    if (run.lifecycle.state !== "running") throw new Error("missing active fixture");
+    expect(run.lifecycle.workerLifetime).toEqual({ membershipRevision: 1, leaseGeneration: 1 });
+    const { workerLifetime, ...withoutLifetime } = run.lifecycle;
+    const before = JSON.stringify(h.database.authority.runs.get(run.envelope.runId));
+    for (const lifecycle of [withoutLifetime, { ...run.lifecycle, workerLifetime: { ...workerLifetime, leaseGeneration: 2 } }]) {
+      expect(() => h.database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: run.version,
+        claim, lifecycle, now: h.clock.now().toISOString() })).toThrow("run-claim-lifetime-immutable");
+      expect(JSON.stringify(h.database.authority.runs.get(run.envelope.runId))).toBe(before);
+    }
+    expect(admit(h).reset?.work.kind).toBe("current");
+  });
+
+  it("does not attach the newest lifetime to a historical unbound active claim", () => {
+    const h = world.harness();
+    const request = resetRequest(h);
+    h.database.authority.runs.enqueue(writeFixtureQueuedRun());
+    const claimed = h.database.authority.runs.claimNext({ workflow: "write-fixture", workerId: request.target.workerId,
+      now: h.clock.now().toISOString() });
+    expect(claimed.state).toBe("claimed");
+    if (claimed.state !== "claimed" || claimed.run.lifecycle.state !== "claimed") throw new Error("missing claim");
+    expect(claimed.run.lifecycle.workerLifetime).toBeUndefined();
+    const generation = h.database.getMeta().authorityGeneration;
+    expect(() => admit(h, request)).toThrow("worker-reset-current-run-lifetime-unavailable");
+    expect(h.database.getMeta().authorityGeneration).toBe(generation);
+    expect(h.database.authority.workerControls.get(request.commandId)).toBeUndefined();
+  });
+
   for (const operation of ["fenceAttempt", "refenceRetryable"] as const) {
     it(`reset admission wins before ${operation} without changing write authority`, () => {
       const h = world.harness();
@@ -236,6 +266,7 @@ describe("exact native worker reset reservation", () => {
     const request = resetRequest(h), runtime = h.database.authority.runtimeConfig.get();
     if (runtime === undefined) throw new Error("missing runtime");
     const claimRequest = { commandId: randomUUID(), workerId: request.target.workerId,
+      workerLifetime: { leaseGeneration: request.target.controlBasis.leaseGeneration, membershipRevision: request.target.membershipRevision },
       workflow: h.database.authority.workerSlots.list()[0]?.workflow, runtimeConfig: { generation: runtime.generation,
         configFingerprint: runtime.configFingerprint, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint } };
     expect(lifecycle.claimNext(claimRequest).state).toBe("applied");

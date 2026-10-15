@@ -1,5 +1,6 @@
-import { WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";
-import { RuntimeProcessLockFileSchema } from "./runtime-process-locks.js";
+import { WorkerLifecycleBindingSchema } from "../../../models/run/worker-control.js";
+import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";
+import { RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema } from "./runtime-process-locks.js";
 import { ParkedWriteResolutionBindingSchema } from "../../../rules/write-safety/write-safety.js";
 
 import { z } from "zod";
@@ -24,6 +25,7 @@ import {
 import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
 import {
   WorkerControlSchema,
+  WorkerClaimLifetimeSchema,
   WorkerBrowserSystemsSchema,
   WorkerLeaseRecordSchema,
   WorkerLifecycleSchema,
@@ -54,7 +56,7 @@ export const RunClaimTokenSchema = z.strictObject({
 });
 export type RunClaimToken = z.infer<typeof RunClaimTokenSchema>;
 
-export const WorkerClaimLifetimeSchema = z.strictObject({ membershipRevision: PositiveIntSchema, leaseGeneration: PositiveIntSchema });
+export { WorkerClaimLifetimeSchema } from "../../../models/run/worker.js";
 
 export const RunClaimRequestSchema = z.strictObject({
   workerLifetime: WorkerClaimLifetimeSchema.optional(),
@@ -424,6 +426,22 @@ export const StartPlanConsumeOutcomeSchema = z.discriminatedUnion("state", [
 export type StartPlanConsumeOutcome = z.infer<typeof StartPlanConsumeOutcomeSchema>;
 
 /* ── worker leases (ref execution-and-sessions ) ───────────────────────────────────────────── */
+
+export const WorkerStandingRecoveryRequestSchema = z.strictObject({
+  commandId: CommandIdSchema, binding: WorkerLifecycleBindingSchema,
+  previous: z.strictObject({ state: z.enum(["idle", "paused"]), directive: z.enum(["run", "pause"]), observedAt: IsoInstantSchema }),
+  now: IsoInstantSchema,
+}).refine(value => value.commandId === value.binding.commandId && value.binding.birthCommandId !== undefined
+  && value.binding.operation.kind === "retry" && value.binding.operation.mode === "browserless", "worker-standing-recovery-binding-invalid");
+
+export const WorkerLifetimeBirthSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  admissionCommandId: CommandIdSchema.optional(),
+  member: WorkerPoolMemberSchema, leaseGeneration: PositiveIntSchema, processId: PositiveIntSchema,
+  startedAt: IsoInstantSchema, authorityPath: z.string().min(1), processLockRoot: z.string().min(1),
+  owner: WorkerProcessLockFileSchema,
+}).refine(value => "workerId" in value.owner && value.owner.workerId === value.member.workerId
+  && value.owner.pid === value.processId && value.owner.releasedAt === null, "worker-birth-custody-binding-mismatch");
 
 export const WorkerStartRequestSchema = z.strictObject({
   commandId: CommandIdSchema.optional(),

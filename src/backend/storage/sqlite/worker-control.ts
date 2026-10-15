@@ -3,16 +3,16 @@ import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/r
 import { WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
 import { runRecordFromRow } from "./run-record-row.js";
 import { DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
-import { type WorkerRetirementProof, workerPoolMember } from "../../../models/run/worker-slot.js";
+import { workerPoolMember } from "../../../models/run/worker-slot.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { commandFromRow } from "./command-record-row.js";
-import { workerSlotFromRow, verificationFromSlot } from "./worker-slots.js";
+import { workerSlotFromRow, recoveryFromSlot, verificationFromSlot } from "./worker-slots.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { CommandIdentityConflictError, LiveWorkerResetRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../rules/commands/commands.js";
-import { WorkerLifecycleBindingSchema, WorkerResetBindingSchema, WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase, type WorkerResetBinding, type WorkerLifecycleBinding } from "../../../models/run/worker-control.js";
+import { WorkerSupervisorEffectObservationSchema, WorkerLifecycleBindingSchema, WorkerResetBindingSchema, WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase, type WorkerResetBinding, type WorkerLifecycleBinding, type WorkerSupervisorEffectObservation } from "../../../models/run/worker-control.js";
 import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 
 const resetClosures = new WeakMap<object, Readonly<{ binding: WorkerResetBinding | WorkerLifecycleBinding; sessions: readonly string[]; valid: () => boolean }>>();
@@ -33,16 +33,15 @@ export function consumeWorkerControlClosure(proof: WorkerControlClosure): void {
 }
 
 export type WorkerSupervisorEffect = Readonly<{ kind: "worker-supervisor-effect" }>;
-type SupervisorEffectObservation = Readonly<{ kind: "remove"; retirement: WorkerRetirementProof }>
-  | Readonly<{ kind: "retry"; leaseGeneration: number; processId: number; startedAt: string }>;
-const supervisorEffects = new WeakMap<object, Readonly<{ binding: WorkerLifecycleBinding; observation: SupervisorEffectObservation; valid: () => boolean }>>();
-export function mintWorkerSupervisorEffect(binding: WorkerLifecycleBinding, observation: SupervisorEffectObservation, valid: () => boolean): WorkerSupervisorEffect {
+const supervisorEffects = new WeakMap<object, Readonly<{ binding: WorkerLifecycleBinding; observation: WorkerSupervisorEffectObservation; valid: () => boolean }>>();
+export function mintWorkerSupervisorEffect(binding: WorkerLifecycleBinding, input: z.input<typeof WorkerSupervisorEffectObservationSchema>, valid: () => boolean): WorkerSupervisorEffect {
+  const observation = WorkerSupervisorEffectObservationSchema.parse(input);
   if (binding.operation.kind !== observation.kind) throw new Error("worker-lifecycle-effect-kind-mismatch");
   const proof: WorkerSupervisorEffect = Object.freeze({ kind: "worker-supervisor-effect" });
   supervisorEffects.set(proof, { binding: WorkerLifecycleBindingSchema.parse(binding), observation, valid });
   return proof;
 }
-export function authenticateWorkerSupervisorEffect(proof: WorkerSupervisorEffect, binding: WorkerLifecycleBinding): SupervisorEffectObservation {
+export function authenticateWorkerSupervisorEffect(proof: WorkerSupervisorEffect, binding: WorkerLifecycleBinding): WorkerSupervisorEffectObservation {
   const owned = supervisorEffects.get(proof);
   if (owned === undefined || !owned.valid() || canonicalJsonStringify(owned.binding) !== canonicalJsonStringify(binding)) throw new Error("worker-lifecycle-effect-authority-unavailable");
   return owned.observation;
@@ -103,12 +102,25 @@ export function createWorkerControlRepository(deps: {
       const reset = records.find(record => record?.request.type === "stop-worker");
       if (reset === undefined) return undefined;
       if (reset.reset === undefined) throw new Error("worker-reset-authority-unavailable");
-      if (leaseGeneration !== undefined && reset.reset.lifetime.leaseGeneration !== leaseGeneration) throw new Error("worker-reset-lifetime-conflict");
+      if (leaseGeneration !== undefined && reset.reset.lifetime.leaseGeneration !== leaseGeneration) {
+        if (reset.lifecycle?.operation.kind === "retry" && reset.lifecycle.operation.mode === "browserless"
+          && leaseGeneration === reset.reset.lifetime.leaseGeneration + 1) {
+          const row = database.prepare("SELECT payload_json FROM worker_leases WHERE id=?").get(workerId);
+          const lease = WorkerLeaseRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json));
+          const birth = lease.birthCommandId === undefined ? undefined : database.prepare("SELECT * FROM commands WHERE id=?").get(lease.birthCommandId);
+          const command = birth === undefined ? undefined : commandFromRow(birth);
+          if (lease.leaseGeneration === leaseGeneration && lease.lifecycle.state === "starting" && command !== undefined && "kind" in command
+            && command.kind === "run-lifecycle" && command.operation === "worker-lifetime-birth"
+            && z.object({ admissionCommandId: CommandIdSchema }).parse(command.request).admissionCommandId === reset.commandId) return undefined;
+        }
+        throw new Error("worker-reset-lifetime-conflict");
+      }
       return reset;
     },
     list: () => database.prepare("SELECT * FROM worker_controls ORDER BY rowid").all().map(workerControlFromRow),
     admit: (input: unknown) => deps.mutate("worker_controls", () => {
       const record = WorkerControlRecordSchema.parse(input);
+      if (record.closure !== undefined || record.readiness !== undefined || record.effect !== undefined) throw new Error("worker-control-derived-milestone-admission-refused");
       if (record.request.type === "stop-worker") {
         LiveWorkerResetRequestSchema.parse(record.request);
         if (record.reset === undefined) throw new Error("worker-reset-authority-unavailable");
@@ -134,8 +146,11 @@ export function createWorkerControlRepository(deps: {
       const target = record.request.target;
       const memberRow = "workerId" in target ? database.prepare("SELECT * FROM worker_slots WHERE id=?").get(target.workerId) : undefined;
       const workflow = "workflowId" in target ? target.workflowId : memberRow === undefined ? undefined : workerSlotFromRow(memberRow).workflow;
-      if (workflow !== undefined && database.prepare("SELECT * FROM worker_slots WHERE workflow=?").all(workflow)
-        .some(row => verificationFromSlot(database, workerSlotFromRow(row)) !== undefined)) throw new Error("worker-verification-reserved");
+      if (workflow !== undefined) {
+        const slots = database.prepare("SELECT * FROM worker_slots WHERE workflow=?").all(workflow).map(workerSlotFromRow);
+        if (slots.some(slot => recoveryFromSlot(database, slot) !== undefined)) throw new Error("worker-standing-recovery-reserved");
+        if (slots.some(slot => verificationFromSlot(database, slot) !== undefined)) throw new Error("worker-verification-reserved");
+      }
       const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
       if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
       if (record.reset !== undefined) {
@@ -173,7 +188,7 @@ export function createWorkerControlRepository(deps: {
           if (row === undefined || canonicalJsonStringify(workerSlotFromRow(row)) !== canonicalJsonStringify(original)) throw new Error("worker-control-roster-binding-mismatch");
         }
       }
-      if (record.phase.state !== "admitted" || record.auditedAt !== undefined) throw new Error("worker-control-invalid-admission");
+      if (record.phase.state !== "admitted" || record.auditedAt !== undefined || record.effect !== undefined) throw new Error("worker-control-invalid-admission");
       if (pending(record.scope).length !== 0) throw new Error("worker-control-unresolved-effect");
       const workerId = "workerId" in record.request.target ? record.request.target.workerId
         : record.request.type === "spawn-worker" ? record.request.payload.workerId : null;
@@ -213,7 +228,8 @@ export function createWorkerControlRepository(deps: {
       const allowed: Readonly<Record<WorkerControlPhase["state"], readonly WorkerControlPhase["state"][]>> = {
         admitted: ["ready", "executing", "refused"], ready: ["executing", "refused"], executing: ["succeeded", "refused", "uncertain"], succeeded: [], refused: [], uncertain: [],
       };
-      if (!allowed[expected].includes(phase.state)) throw new Error("worker-control-invalid-transition");
+      if (!allowed[expected].includes(phase.state) && !(phase.state === "uncertain" && (expected === "admitted" || expected === "ready")
+        && (current.request.type === "stop-worker" || current.lifecycle !== undefined))) throw new Error("worker-control-invalid-transition");
       const record = WorkerControlRecordSchema.parse({ ...current, phase });
       if (database.prepare("UPDATE worker_controls SET phase=?,audited_at=?,payload_json=? WHERE command_id=? AND payload_json=?")
         .run(record.phase.state,record.auditedAt ?? null,canonicalJsonStringify(record),id,canonicalJsonStringify(current)).changes !== 1) throw new Error("worker-control-phase-conflict");
@@ -273,13 +289,13 @@ export function assertWorkerResetParkedWrite(repositories: AuthorityRepositories
     || attempt.bindingProofDigest !== intent.bindingProofDigest) throw new Error("worker-reset-parked-write-authority-unavailable");
 }
 
-export function admitWorkerReset(repositories: AuthorityRepositories, input: unknown, executorId: string, now: string) {
+export function admitWorkerReset(repositories: AuthorityRepositories, input: unknown, executorId: string, now: string, replacementDescriptor?: AnyWorkflowDescriptor) {
   const request = LiveWorkerResetRequestSchema.parse(input);
   repositories.commands.assertIdentity(request);
   const slot = repositories.workerSlots.get(request.target.workerId);
   const lease = repositories.workerLeases.get(request.target.workerId);
   if (slot === undefined || slot.retiredAt !== null || slot.membershipRevision !== request.target.membershipRevision
-    || lease === undefined || lease.lifecycle.state === "stopped" || lease.lifecycle.state === "stopping"
+    || lease === undefined || lease.lifecycle.state === "stopped" && replacementDescriptor === undefined || lease.lifecycle.state === "stopping"
     || lease.leaseGeneration !== request.target.controlBasis.leaseGeneration || lease.controlRevision !== request.target.controlBasis.controlRevision
 ) throw new Error("worker-reset-target-conflict");
   const scope = `worker-pool:${slot.workflow}`;
@@ -290,6 +306,9 @@ export function admitWorkerReset(repositories: AuthorityRepositories, input: unk
   const claimed = (run: NonNullable<typeof current>) => {
     const claim = runClaim(run);
     if (claim === undefined || claim.workerId !== slot.workerId) throw new Error("worker-reset-foreign-cascade-owner");
+    if (!("workerId" in run.lifecycle) || run.lifecycle.workerLifetime === undefined
+      || run.lifecycle.workerLifetime.leaseGeneration !== lease.leaseGeneration
+      || run.lifecycle.workerLifetime.membershipRevision !== slot.membershipRevision) throw new Error("worker-reset-current-run-lifetime-unavailable");
     return { state: "claimed", runId: run.envelope.runId, version: run.version, attempt: run.envelope.attempt,
       workerId: claim.workerId, claimGeneration: claim.claimGeneration };
   };
@@ -316,9 +335,20 @@ export function admitWorkerReset(repositories: AuthorityRepositories, input: unk
     lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt },
     basis: request.target.controlBasis, reservedControlRevision: lease.controlRevision + 1,
     work: current === undefined ? { kind: "absent" } : { kind: "current", current: claimed(current), cascade } });
-  repositories.workerLeases.reserveControl(slot.workerId, request.target.controlBasis, request.commandId, now);
+  let lifecycle: WorkerLifecycleBinding | undefined;
+  if (lease.lifecycle.state === "stopped") {
+    const active = repositories.runtimeConfig.get(), pool = repositories.workerPools.get(slot.workflow);
+    if (replacementDescriptor?.id !== slot.workflow || lease.birthCommandId === undefined || active === undefined || pool === undefined) throw new Error("worker-reset-replacement-authority-unavailable");
+    lifecycle = WorkerLifecycleBindingSchema.parse({ commandId: request.commandId, birthCommandId: lease.birthCommandId,
+      member: reset.member, lifetime: reset.lifetime, basis: reset.basis, reservedControlRevision: reset.reservedControlRevision,
+      poolVersion: pool.version, desiredWorkers: pool.desiredWorkers, operation: { kind: "retry", mode: "browserless",
+        systems: workflowProjections(replacementDescriptor).systems, descriptorVersion: replacementDescriptor.version,
+        contractFingerprint: replacementDescriptor.contractFingerprint, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
+  }
   repositories.commands.insert(request);
-  return repositories.workerControls.admit({ commandId: request.commandId, request, reset, scope, executorId,
+  repositories.workerLeases.reserveControl(slot.workerId, request.target.controlBasis, request.commandId, now);
+  return repositories.workerControls.admit({ commandId: request.commandId, request, reset,
+    ...(lifecycle === undefined ? {} : { lifecycle }), scope, executorId,
     admittedAt: now, expiresAt: new Date(Date.parse(now) + 180_000).toISOString(), basisVersion: lease.version, phase: { state: "admitted" } });
 }
 
@@ -336,13 +366,13 @@ export function admitWorkerLifecycle(repositories: AuthorityRepositories, input:
   if (repositories.workerControls.pending(scope).length !== 0 || repositories.workerSlots.verifications(member.workflow).length !== 0) throw new Error("worker-lifecycle-reserved");
   if (repositories.runs.listByWorker(member.workerId).some(run => runClaim(run) !== undefined)) throw new Error("worker-lifecycle-current-work");
   if (request.type === "remove-worker" ? lease.lifecycle.state !== "idle" || lease.control.directive !== "run"
-    : lease.lifecycle.state !== "stopped" || !["crashed", "lease-expired"].includes(lease.lifecycle.reason)) throw new Error("worker-lifecycle-wrong-phase");
+    : lease.lifecycle.state !== "stopped") throw new Error("worker-lifecycle-wrong-phase");
   const active = repositories.runtimeConfig.get();
   if (request.type === "retry-worker" && (initialization === undefined || initialization.descriptor.id !== member.workflow || active === undefined)) throw new Error("worker-retry-initialization-unavailable");
   const operation = request.type === "remove-worker" ? { kind: "remove" } : initialization === undefined || active === undefined ? undefined : {
     kind: "retry", mode: initialization.mode, systems: workflowProjections(initialization.descriptor).systems, descriptorVersion: initialization.descriptor.version,
     contractFingerprint: initialization.descriptor.contractFingerprint, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint };
-  const binding = WorkerLifecycleBindingSchema.parse({ commandId: request.commandId, member: workerPoolMember(member), lifetime: { leaseGeneration: lease.leaseGeneration,
+  const binding = WorkerLifecycleBindingSchema.parse({ ...(lease.birthCommandId === undefined ? {} : { birthCommandId: lease.birthCommandId }), commandId: request.commandId, member: workerPoolMember(member), lifetime: { leaseGeneration: lease.leaseGeneration,
     processId: lease.processId, startedAt: lease.lifecycle.startedAt }, basis: request.target.controlBasis,
     reservedControlRevision: lease.controlRevision + 1, poolVersion: pool.version, desiredWorkers: pool.desiredWorkers,
     operation });
