@@ -355,7 +355,10 @@ During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_T
 `src/backend/runs/commands/command-kernel.ts` admits `plan-worker-count`, `spawn-worker`,
 `pause-worker`, `resume-worker`, `refresh-browser`, and `reopen-browser` into
 `worker_controls` before asynchronous effects. `src/backend/storage/sqlite/worker-control.ts`
-binds every record to the exact stored command and any admitted roster.
+binds every record to the exact stored command and any admitted roster. Fresh ordinary targeted
+controls also capture their authenticated member and full process lifetime at admission, after the
+exact control reservation. Worker cards project them only for that member and lifetime. Historical
+records without this binding remain unavailable; reads and replay never attach current identity.
 
 Pause and Resume carry `controlBasis` with `leaseGeneration` and `controlRevision`.
 Refresh and Reopen also name `browserSessionId`. Reservation increments the control revision.

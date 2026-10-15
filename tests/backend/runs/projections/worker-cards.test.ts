@@ -1,3 +1,5 @@
+import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
+import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { workerCardOf } from "../../../../src/backend/runs/projections/worker-cards.js";
@@ -116,4 +118,28 @@ describe("the exact current worker authority card", () => {
     assert.equal(workerElapsedSeconds(dead, "2026-08-20T18:00:00.000Z"), 60);
     assert.equal(workerElapsedSeconds(card(), "2026-08-20T16:00:45.000Z"), 45);
   });
+});
+
+
+it("projects ordinary controls only for their authenticated exact member and full process lifetime", () => {
+  const lease = leaseOf();
+  const record = WorkerControlRecordSchema.parse({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", scope: "worker-pool:person-lookup", executorId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    request: { commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", family: "worker-browser", type: "refresh-browser", source: "dashboard", requestedBy: "local-operator", requestedAt: STARTED,
+      target: { workerId: member.workerId, browserSessionId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", expectedVersion: 5, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } },
+    admittedAt: STARTED, expiresAt: "2026-08-20T16:03:00.000Z", basisVersion: 5, phase: { state: "ready" },
+    control: { member: workerPoolMember(member), lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt } } });
+  const binding = record.control; assert(binding);
+  assert.equal(card({ operations: [record] }).controls?.operation?.commandId, record.commandId);
+  for (const change of [
+    { member: { ...binding.member, membershipRevision: 2 } },
+    { member: { ...binding.member, poolIndex: 2 } },
+    { lifetime: { ...binding.lifetime, processId: 999 } },
+    { lifetime: { ...binding.lifetime, startedAt: "2026-08-20T16:01:00.000Z" } },
+  ]) {
+    const wrong = WorkerControlRecordSchema.parse({ ...record, control: { ...record.control, ...change } });
+    assert.equal(card({ operations: [wrong] }).controls?.operation, undefined);
+  }
+  assert.equal(card({ lease: leaseOf({ leaseGeneration: 2 }), operations: [record] }).controls?.operation, undefined);
+  const { control: _control, ...historical } = record;
+  assert.equal(card({ operations: [historical] }).controls?.operation, undefined);
 });

@@ -87,6 +87,7 @@ export const WorkerControlRecordSchema = z.strictObject({
   basisVersion: z.number().int().nonnegative(),
   phase: WorkerControlPhaseSchema,
   roster: WorkerPoolRosterAdmissionSchema.optional(),
+  control: z.strictObject({ member: WorkerPoolMemberSchema, lifetime: WorkerResetBindingSchema.shape.lifetime }).optional(),
   reset: WorkerResetBindingSchema.optional(),
   lifecycle: WorkerLifecycleBindingSchema.optional(),
   effect: z.strictObject({ observedAt: IsoInstantSchema, observation: WorkerSupervisorEffectObservationSchema,
@@ -95,6 +96,12 @@ export const WorkerControlRecordSchema = z.strictObject({
   closure: z.strictObject({ observedAt: IsoInstantSchema, closedSessionIds: z.array(BrowserSessionIdSchema) }).optional(),
   auditedAt: IsoInstantSchema.optional(),
 }).superRefine((record, context) => {
+  if (record.control !== undefined) {
+    const request = record.request;
+    if (!["pause-worker", "resume-worker", "refresh-browser", "reopen-browser"].includes(request.type)
+      || !("workerId" in request.target) || record.control.member.workerId !== request.target.workerId
+      || record.control.lifetime.leaseGeneration !== request.target.controlBasis?.leaseGeneration) context.addIssue({ code: "custom", message: "worker-control-binding-invalid" });
+  }
   if (record.request.type === "remove-worker" || record.request.type === "retry-worker") {
     const binding = record.lifecycle;
     if (binding === undefined || binding.commandId !== record.commandId || binding.operation.kind !== (record.request.type === "remove-worker" ? "remove" : "retry")

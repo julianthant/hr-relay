@@ -12,12 +12,15 @@ export class IdleSessionSchedule {
   private deadlines = new Map<string, Deadline>();
   private canceledRefreshes = new Map<string, Readonly<{ requestId: string; lifetimeKey: string }>>();
   sync(data: SessionsViewState, now: number, operations: Readonly<Record<string, SessionPreviewOperation>> = {}) {
-    const eligible = data.state === 'ready' ? data.workers.filter(worker => worker.state === 'idle' && worker.browsers.length > 0 && worker.browsers.every(browser => browser.state === 'ready') && (worker.authority === undefined || worker.authority.controls?.ownership.state === 'owned' && worker.authority.controls.basis.state === 'present')) : [];
+    const eligible = data.state === 'ready' ? data.workers.filter(worker => worker.state === 'idle' && (worker.authority === undefined
+      ? worker.browsers.length > 0 && worker.browsers.every(browser => browser.state === 'ready')
+      : worker.authority.browsers.length > 0 && worker.authority.browsers.every(browser => browser.observation?.state === "present" && browser.observation.health === "authenticated")
+        && worker.authority.controls?.ownership.state === 'owned' && worker.authority.controls.basis.state === 'present')) : [];
     if (data.state === "ready") for (const id of this.canceledRefreshes.keys()) if (!data.workers.some(worker => worker.id === id)) this.canceledRefreshes.delete(id);
     const ids = new Set(eligible.map(worker => worker.id));
     for (const id of this.deadlines.keys()) if (!ids.has(id)) this.deadlines.delete(id);
     for (const worker of eligible) {
-      const browserIds = worker.browsers.map(browser => browser.id).sort();
+      const browserIds = (worker.authority?.browsers.map(browser => browser.sessionId) ?? worker.browsers.map(browser => browser.id)).sort();
       const authorityKey = worker.authority === undefined ? undefined : sessionWorkerAuthorityKey(worker.authority);
       const lifetimeKey = worker.authority === undefined ? JSON.stringify(browserIds) : sessionWorkerLifetimeKey(worker.authority);
       const operation = operations[worker.id];
@@ -53,8 +56,13 @@ export class IdleSessionSchedule {
     const deadline = this.deadlines.get(request.target);
     if (deadline?.attempted && deadline.requestId === request.id && deadline.authorityKey === request.authorityKey && JSON.stringify(deadline.browserIds) === JSON.stringify(request.browserIds)) {
       const worker = data?.state === "ready" ? data.workers.find(worker => worker.id === request.target) : undefined;
-      if (worker !== undefined && (worker.state !== "idle" || JSON.stringify(worker.browsers.map(browser => browser.id).sort()) !== JSON.stringify(request.browserIds)
-        || !worker.browsers.every(browser => browser.state === "ready") || worker.authority !== undefined && sessionWorkerLifetimeKey(worker.authority) !== deadline.lifetimeKey)) return;
+      if (worker !== undefined) {
+        const browserIds = (worker.authority?.browsers.map(browser => browser.sessionId) ?? worker.browsers.map(browser => browser.id)).sort();
+        const ready = worker.authority === undefined ? worker.browsers.every(browser => browser.state === "ready")
+          : worker.authority.browsers.every(browser => browser.observation?.state === "present" && browser.observation.health === "authenticated");
+        if (worker.state !== "idle" || JSON.stringify(browserIds) !== JSON.stringify(request.browserIds) || !ready
+          || worker.authority !== undefined && sessionWorkerLifetimeKey(worker.authority) !== deadline.lifetimeKey) return;
+      }
       if (worker?.authority !== undefined) {
         const controls = worker.authority.controls;
         if (controls?.basis.state !== "present" || controls.basis.value.controlRevision !== (deadline.controlRevision ?? 0) + request.browserIds.length

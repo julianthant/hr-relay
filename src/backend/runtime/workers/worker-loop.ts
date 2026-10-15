@@ -299,16 +299,20 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   };
   let resetSettlement: Readonly<{ binding: string; operation: Promise<void> }> | undefined;
   const finishReset = async (reset: WorkerResetBinding): Promise<void> => {
-    const bound = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
-    const owned = [...callbacks.entries()].filter(([, identity]) => bound.some(member => member.state === "claimed"
-      && member.runId === identity.runId && member.claimGeneration === identity.claimGeneration && member.attempt === identity.attempt));
-    if (owned.length !== callbacks.size) {
-      while (!deps.stopSignal.aborted) await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
-      return;
-    }
-    await Promise.allSettled(owned.map(([operation]) => operation));
-    if (deps.stopSignal.aborted) return;
     const binding = canonicalJsonStringify(reset);
+    const bound = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
+    while (!deps.stopSignal.aborted) {
+      const owned = [...callbacks.entries()].filter(([, identity]) => bound.some(member => member.state === "claimed"
+        && member.runId === identity.runId && member.claimGeneration === identity.claimGeneration && member.attempt === identity.attempt));
+      if (owned.length === callbacks.size) {
+        await Promise.allSettled(owned.map(([operation]) => operation));
+        break;
+      }
+      await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+    }
+    if (deps.stopSignal.aborted) return;
+    const current = deps.pendingReset?.();
+    if (current === undefined || canonicalJsonStringify(current) !== binding) return;
     if (resetSettlement?.binding !== binding) resetSettlement = { binding, operation: deps.resetControl?.(sessions, reset) ?? Promise.resolve() };
     try { await resetSettlement.operation; }
     catch { await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal); }

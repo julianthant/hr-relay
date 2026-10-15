@@ -1,4 +1,5 @@
 
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
 import {
@@ -79,9 +80,9 @@ export function workerCardOf(input: Readonly<{
         && (value.phase.acknowledgement.kind === "reset-replacement" || value.phase.acknowledgement.processId === lease.processId
           && value.phase.acknowledgement.startedAt === lease.lifecycle.startedAt);
     }
-    return "workerId" in value.request.target && value.request.target.workerId === lease.workerId
-      && "membershipRevision" in value.request.target && value.request.target.membershipRevision === member.membershipRevision
-      && value.request.target.controlBasis?.leaseGeneration === lease.leaseGeneration;
+    return value.control !== undefined && canonicalJsonStringify(value.control.member) === canonicalJsonStringify(workerPoolMember(member))
+      && value.control.lifetime.leaseGeneration === lease.leaseGeneration && value.control.lifetime.processId === lease.processId
+      && value.control.lifetime.startedAt === lease.lifecycle.startedAt;
   }).at(-1);
   const browsers = new Map<string, WorkerBrowserFold>();
   for (const value of observations ?? []) {

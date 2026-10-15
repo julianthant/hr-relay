@@ -1,7 +1,7 @@
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
-import { WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
+import { isLiveWorker, WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
 import { runRecordFromRow } from "./run-record-row.js";
 import { DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { workerPoolMember } from "../../../models/run/worker-slot.js";
@@ -120,7 +120,7 @@ export function createWorkerControlRepository(deps: {
     },
     list: () => database.prepare("SELECT * FROM worker_controls ORDER BY rowid").all().map(workerControlFromRow),
     admit: (input: unknown) => deps.mutate("worker_controls", () => {
-      const record = WorkerControlRecordSchema.parse(input);
+      let record = WorkerControlRecordSchema.parse(input);
       if (record.closure !== undefined || record.readiness !== undefined || record.effect !== undefined) throw new Error("worker-control-derived-milestone-admission-refused");
       if (record.request.type === "stop-worker") {
         LiveWorkerResetRequestSchema.parse(record.request);
@@ -141,7 +141,8 @@ export function createWorkerControlRepository(deps: {
       }
       const prior = get(record.commandId);
       if (prior !== undefined) {
-        if (canonicalJsonStringify(prior.request) !== canonicalJsonStringify(record.request)) throw new CommandIdentityConflictError();
+        if (canonicalJsonStringify(prior.request) !== canonicalJsonStringify(record.request)
+          || record.control !== undefined && canonicalJsonStringify(prior.control ?? null) !== canonicalJsonStringify(record.control)) throw new CommandIdentityConflictError();
         return { result: prior, changes: 0 };
       }
       const target = record.request.target;
@@ -154,6 +155,19 @@ export function createWorkerControlRepository(deps: {
       }
       const command = database.prepare("SELECT * FROM commands WHERE id=?").get(record.commandId);
       if (command === undefined || canonicalJsonStringify(commandFromRow(command)) !== canonicalJsonStringify(record.request)) throw new Error("worker-control-command-binding-mismatch");
+      if (record.request.type === "pause-worker" || record.request.type === "resume-worker" || record.request.type === "refresh-browser" || record.request.type === "reopen-browser") {
+        const slot = memberRow === undefined ? undefined : workerSlotFromRow(memberRow);
+        const leaseRow = database.prepare("SELECT payload_json FROM worker_leases WHERE id=?").get(record.request.target.workerId);
+        const lease = leaseRow === undefined ? undefined : WorkerLeaseRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(leaseRow).payload_json));
+        const basis = record.request.target.controlBasis;
+        if (slot === undefined || slot.retiredAt !== null || lease === undefined || !isLiveWorker(lease)
+          || slot.workerId !== lease.workerId || slot.workflow !== lease.workflow || record.scope !== `worker-pool:${slot.workflow}`) throw new Error("worker-control-member-unavailable");
+        if (basis === undefined || lease.leaseGeneration !== basis.leaseGeneration || lease.controlRevision !== basis.controlRevision + 1
+          || lease.controlCommandId !== record.commandId) throw new Error("worker-control-reservation-conflict");
+        const control = { member: workerPoolMember(slot), lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt } };
+        if (record.control !== undefined && canonicalJsonStringify(record.control) !== canonicalJsonStringify(control)) throw new Error("worker-control-binding-conflict");
+        record = WorkerControlRecordSchema.parse({ ...record, control });
+      }
       if (record.reset !== undefined) {
         if (memberRow === undefined || canonicalJsonStringify(workerPoolMember(workerSlotFromRow(memberRow))) !== canonicalJsonStringify(record.reset.member)
           || record.scope !== `worker-pool:${record.reset.member.workflowId}`) throw new Error("worker-reset-member-conflict");

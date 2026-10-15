@@ -67,7 +67,7 @@ export async function acquireSuiteLock(options: SuiteLockOptions): Promise<HeldS
   let nextMessageAt = start;
   while (true) {
     if (systemClock.nowMs() - start >= waitTimeoutMs) throw new TestSuiteWaitTimeoutError();
-    const holder = spawn("/usr/bin/lockf", ["-s", "-k", "-t", "0", path, "/bin/sh", "-c", "echo held; exec cat"], { stdio: ["pipe", "pipe", "pipe"] });
+    const holder = spawn("/usr/bin/lockf", ["-s", "-k", "-t", "0", path, "/bin/sh", "-c", "echo held; exec cat"], { detached: true, stdio: ["pipe", "pipe", "pipe"] });
     holder.stdin.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "EPIPE") throw error; });
     holder.stderr.resume();
     const closed = new Promise<TestProcessResult>((done) => {

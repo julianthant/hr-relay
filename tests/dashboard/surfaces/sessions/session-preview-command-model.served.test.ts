@@ -1,3 +1,4 @@
+import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
@@ -339,5 +340,136 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
     assert.match(document.body.textContent ?? "", /Session information is unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /SESSION_WORKFLOW_UNREGISTERED|person-lookup/);
     assert.equal(h.sent.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("compares complete immutable intent and authenticates both actors separately from ingress provenance", () => {
+  const day = dayWith();
+  const card = day.workerCards[0];
+  const request = CommandRequestSchema.parse({ commandId: uuidOf(8990), family: "worker-browser", type: "pause-worker", requestedAt: "2020-01-01T00:00:00.000Z", requestedBy: "local-operator", source: "dashboard-sessions",
+    target: { workerId: card.workerId, expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }, reason: "pause for review" });
+  const accepted = CommandRequestSchema.parse({ ...request, source: "dashboard", requestedAt: now });
+  const record = succeeded(day, accepted);
+  const snapshot = DashboardDayWireSchema.parse({ ...day, workerOperations: [record] });
+  assert.deepEqual(sessionCommandApplication(snapshot, request), application(request).result);
+  for (const change of [
+    { commandId: uuidOf(8991) },
+    { type: "resume-worker" },
+    { target: { ...request.target, workerId: "person-lookup-worker-999" } },
+    { target: { ...request.target, expectedVersion: 2 } },
+    { target: { ...request.target, controlBasis: { leaseGeneration: 2, controlRevision: 1 } } },
+    { target: { ...request.target, controlBasis: { leaseGeneration: 1, controlRevision: 2 } } },
+    { reason: "a different reason" },
+    { requestedBy: "foreign-actor" },
+  ]) assert.equal(sessionCommandApplication(snapshot, CommandRequestSchema.parse({ ...request, ...change })), undefined);
+  const foreignRecord = WorkerControlRecordSchema.parse({ ...record, request: { ...accepted, requestedBy: "foreign-actor" } });
+  assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [foreignRecord] }), request), undefined);
+  for (const phase of [{ state: "executing", startedAt: now }, { state: "uncertain", startedAt: now, observedAt: now, message: "outcome unknown" }]) {
+    const unsettled = WorkerControlRecordSchema.parse({ ...record, auditedAt: undefined, phase });
+    assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [unsettled] }), request), undefined);
+  }
+  assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [{ ...record, auditedAt: undefined }] }), request), undefined);
+});
+
+
+it.each(["present", "unavailable"] as const)("renders starting browser requirements from served %s authority with no observations", async requirementState => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness();
+  const requirements = requirementState === "present" ? { state: "present", systems: ["ucpath", "kuali"] }
+    : { state: "unavailable", reason: "Launch-time browser requirements are unavailable" };
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "starting", browsers: [], browserRequirements: requirements }] }));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    const article = host.querySelector("article"); assert(article);
+    if (requirementState === "present") {
+      assert.deepEqual([...article.querySelectorAll("li")].map(item => item.textContent), ["UCPATHOpening", "KUALIOpening"]);
+      const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
+      assert.equal(new Set(view.workers[0].browsers.map(browser => browser.id)).size, 2);
+      assert(view.workers[0].browsers.every(browser => browser.state === "starting"));
+      assert.equal(h.day().workerCards[0].browsers.length, 0, "required slots never mint physical sessions");
+    } else {
+      assert.match(article.textContent ?? "", /Launch-time browser requirements are unavailable/);
+      assert.equal(article.querySelectorAll("li").length, 0);
+    }
+    assert.equal(h.sent.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("refreshes only observed physical sessions through required presentation slots and preserves failed and browserless workers", async () => {
+  const h = harness(); const card = h.day().workerCards[0];
+  const physicalId = uuidOf(9100);
+  const observed = { sessionId: physicalId, system: "crm", openedAt: now, observation: { state: "present", health: "authenticated", observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) } };
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [observed] }] }));
+  const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
+  assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "ready"], ["UCPATH", "unavailable"]]);
+  const requiredId = view.workers[0].browsers[1].id;
+  assert.notEqual(requiredId, physicalId);
+  const schedule = new IdleSessionSchedule(); schedule.sync(view, 0);
+  const partial = schedule.due(IDLE_REFRESH_MS, () => false)[0]; assert(partial?.action === "refresh");
+  assert.deepEqual(partial.browserIds, [physicalId], "only the observed CRM session is refreshed");
+  const emptySchedule = new IdleSessionSchedule();
+  emptySchedule.sync(sessionsFromDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], browsers: [] }] }), catalog, now), 0);
+  assert.deepEqual(emptySchedule.due(IDLE_REFRESH_MS, () => false), [], "required-only slots cannot create a refresh");
+  const refusal = await h.port.send({ id: uuidOf(9101), target: card.workerId, action: "refresh", browserIds: [requiredId], authorityKey: sessionWorkerAuthorityKey(h.day().workerCards[0]) });
+  assert.equal(refusal.state, "refused"); assert.equal(h.sent.length, 0);
+  const acknowledged = DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], controls: { ...card.controls,
+    basis: { state: "present", value: { leaseGeneration: 1, controlRevision: 2 } }, operation: { commandId: partial.nativeCommandIds?.[0], type: "refresh-browser", state: "succeeded", at: now, unresolved: false, browserSessionId: physicalId } } }] });
+  const acknowledgedView = sessionsFromDay(acknowledged, catalog, now);
+  schedule.sync(acknowledgedView, IDLE_REFRESH_MS, { [card.workerId]: { request: partial, state: "uncertain", message: "awaiting readback" } });
+  schedule.confirm(partial, IDLE_REFRESH_MS, acknowledgedView);
+  assert.deepEqual(schedule.view(IDLE_REFRESH_MS)[card.workerId], { remainingMs: IDLE_REFRESH_MS, waiting: false }, "unopened UCPath does not block exact physical CRM rearm");
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], browsers: [observed, { ...observed, sessionId: uuidOf(9102), system: "ucpath" }] }] }));
+  const complete = new IdleSessionSchedule(); complete.sync(sessionsFromDay(h.day(), catalog, now), 0);
+  const request = complete.due(IDLE_REFRESH_MS, () => false)[0]; assert(request?.action === "refresh");
+  assert.deepEqual(request.browserIds, [physicalId, uuidOf(9102)].sort());
+  assert(!request.browserIds.includes(requiredId));
+  for (const state of ["failed", "starting"] as const) {
+    const day = DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state, browsers: [], browserRequirements: { state: "present", systems: state === "failed" ? ["ucpath", "kuali"] : [] },
+      ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] });
+    const view = sessionsFromDay(day, catalog, now); assert(view.state === "ready");
+    assert.deepEqual(view.workers[0].browsers, []);
+    assert.equal(view.workers[0].problem, state === "failed" ? WORKER_STOP_REASON_LABEL.crashed : undefined);
+  }
+});
+
+it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("shows the served current-run timeline refusal for %s on the mounted active worker", async scenario => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); const row = h.day().queueSurfaces.find(row => row.workflowId === h.day().workerCards[0].workflowId); assert(row);
+  const pipeline = scenario === "empty" ? [] : [{ id: "served-step", label: "Served step", state: scenario === "outside-day" ? "active" : scenario }];
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
+    queueSurfaces: scenario === "outside-day" ? [] : [{ ...row, pipeline }] }));
+  const reason = scenario === "outside-day" ? "Run timeline is not served on this day" : scenario === "empty" ? "No steps are served for this run" : "The current timeline contains states unavailable in this view";
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    const article = host.querySelector("article"); assert(article);
+    assert(article.textContent?.includes(reason), "the active worker must visibly explain its exact served timeline refusal");
+    assert.equal(article.querySelector('[role="progressbar"]'), null);
+    assert.equal(h.sent.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("retains valid current-run timelines and ordinary no-run phases without rendering timeline refusal", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); const card = h.day().workerCards[0];
+  const row = h.day().queueSurfaces.find(row => row.workflowId === card.workflowId); assert(row);
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  try {
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
+      queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
+    await act(async () => render()); assert(host.querySelector('[role="progressbar"]'));
+    assert.doesNotMatch(host.textContent ?? "", /Run timeline is not served|No steps are served|states unavailable/);
+    for (const state of ["idle", "starting", "failed", "running", "waiting", "paused"] as const) {
+      h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state, currentRun: { state: "absent", reason: "No current claimed run" },
+        ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] }));
+      await act(async () => render());
+      assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
+      assert.equal(host.querySelector('[role="progressbar"]'), null);
+      if (state === "idle") assert.match(host.textContent ?? "", /Ready for the next run/);
+      if (state === "starting") assert.match(host.textContent ?? "", /Preparing worker/);
+      if (state === "failed") assert(host.textContent?.includes(WORKER_STOP_REASON_LABEL.crashed));
+    }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

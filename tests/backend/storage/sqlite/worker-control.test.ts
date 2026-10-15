@@ -1,3 +1,4 @@
+import { createWorkerLeaseFixtures } from "../../../support/helpers/backend/worker-lease-fixtures.js";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it } from "vitest";
 import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
@@ -26,6 +27,13 @@ function fixture() {
   const record = { commandId: UUID_1, request, scope: "worker-pool:person-lookup", executorId: UUID_2,
     admittedAt: NOW, expiresAt: LATER, basisVersion: 1, phase: { state: "admitted" } };
   return { db, controls, slot, request, record };
+}
+function reservedLease(f: Pick<ReturnType<typeof fixture>, "db" | "slot">, overrides: Record<string, unknown> = {}) {
+  const lease = createWorkerLeaseFixtures(NOW).leaseOf({ workerId: f.slot.workerId, version: 2, controlRevision: 2, controlCommandId: UUID_1,
+    lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW }, ...overrides });
+  f.db.prepare("INSERT OR REPLACE INTO worker_leases(id,worker_id,workflow,lease_generation,control_revision,state,directive,heartbeat_at,version,payload_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run(lease.workerId, lease.workerId, lease.workflow, lease.leaseGeneration, lease.controlRevision, lease.lifecycle.state, lease.control.directive, NOW, lease.version, canonicalJsonStringify(lease), NOW, NOW);
+  return lease;
 }
 describe("native worker control custody", () => {
   it("requires a genuine command before durable effect admission and keeps scalar phase/audit consistent", () => {
@@ -63,6 +71,7 @@ describe("browser application readback authority", () => {
     const request = { ...f.request, type: "refresh-browser", target: { workerId: f.slot.workerId, expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 }, browserSessionId: UUID_3 }, payload: undefined };
     delete request.payload;
     insertNativeCommand(f.db, request);
+    reservedLease(f);
     f.controls.admit({ ...f.record, request });
     f.controls.transition(UUID_1, "admitted", { state: "ready" });
     f.controls.transition(UUID_1, "ready", { state: "executing", startedAt: NOW });

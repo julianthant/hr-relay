@@ -101,7 +101,8 @@ lock.
 
 The lock is the mode-0600 `suite.lock` file under `testRunsDirectory()`, shared across this user's
 worktrees in the private mode-0700 directory. `/usr/bin/lockf -s -k -t 0` holds it while a piped
-`cat` waits for EOF. The runner waits for the holder's `held` marker before starting the suite. The
+`cat` waits for EOF. The holder has its own process group so terminal signals cannot release the
+lock while tests drain. The runner waits for the holder's `held` marker before starting the suite. The
 runner passes the holder's stdin pipe to the detached test group leader as fd 3. The pipe reaches
 EOF only after both the runner and group leader exit, so the kernel releases the lock without
 stale-lock or PID-reuse logic. Normal release occurs only after the child's whole process group is
