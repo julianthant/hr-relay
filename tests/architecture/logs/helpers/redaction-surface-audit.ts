@@ -768,6 +768,12 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
 
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+  { surface: "wire/run-logs-stream", path: "envelope.publication.notification.context.subject", origin: "captured-hr-value" },
+  { surface: "wire/run-logs-stream", path: "envelope.publication.notification.context.workflow", origin: "repository-authored" },
+  { surface: "wire/run-logs-stream", path: "envelope.publication.notification.title", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "publication.notification.context.subject", origin: "captured-hr-value" },
+  { surface: "wire/stream-envelope", path: "publication.notification.context.workflow", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "publication.notification.title", origin: "repository-authored" },
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.workerAuthority.reason", "origin": "external-text"},
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.workerOperations[].phase.application.result.entries", "origin": "repository-authored"},
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.workerOperations[].phase.application.result.message", "origin": "external-text"},

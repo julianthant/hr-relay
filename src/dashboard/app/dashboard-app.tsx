@@ -5,7 +5,7 @@ import { useQueueWiring } from "../state/queue-wiring-adapter.js";
 import { useWorkspaceSearchData } from "../surfaces/shell/search/search-wiring-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { dsLayer } from "../ds/theme/tokens.js";
-import { productWorkflowComposition, workflowSource, type WorkflowComposition } from "./workflow-sources.js";
+import { productWorkflowComposition, workflowSource, type WorkflowComposition, type WorkflowSource } from "./workflow-sources.js";
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
 import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
@@ -288,7 +288,7 @@ function LoadedApp({
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
 
-  const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
+  const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
   const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
   const queueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
@@ -716,16 +716,39 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
-  const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canSelectWorkflowId });
-  notificationContext.current = { day, rows: queueRows, runs: mockRuns, canSelectWorkflowId };
+  const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
+  const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow });
+  notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow };
   const notificationNavigation = useRef(0);
-  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
+  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: WorkflowSource) => {
     const request = ++notificationNavigation.current;
+    if (source === "mock" && destination.kind === "run") {
+      const validate = () => notificationDestinationRefusal(destination, notificationContext.current);
+      const refusal = validate();
+      if (refusal) { refused(refusal); return; }
+      leaveSettings(() => {
+        const refusal = validate();
+        if (refusal) { refused(refusal); return; }
+        const row = notificationContext.current.rows.find(row => row.runId === destination.runId)!;
+        if (!setActiveWorkflowId(row.workflowId)) return;
+        setLaunchOpen(false); exitQueueSelection(); onFilter(["all"]);
+        setRoute({ ...routeWithoutTakeovers(routeRef.current), day: destination.day, start: false, run: destination.runId, section: "logs",
+          view: { ...routeRef.current.view, queueFilter: ["all"], workflow: row.workflowId, preview: null, mockRun: undefined, records: undefined, logFailure: undefined, notifications: false } });
+        opened();
+        requestAnimationFrame(() => {
+          const row = document.querySelector<HTMLElement>(`.dashboard-queue-column [data-demo-row-id="${CSS.escape(destination.runId)}"]`);
+          const pane = row?.closest<HTMLElement>("[data-queue-scroll]");
+          if (row && pane) pane.scrollTo({ top: pane.scrollTop + row.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12, behavior: "instant" });
+          document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus({ preventScroll: true });
+        });
+      });
+      return;
+    }
     if (destination.kind !== "preview-run") {
       const context = notificationContext.current;
       const row = (destination.kind === "run" || destination.kind === "failure") && destination.day === context.day
         ? context.rows.find(item => item.runId === destination.runId) : undefined;
-      if (row !== undefined && !context.canSelectWorkflowId(row.workflowId)) {
+      if (row !== undefined && !context.canOpenRegisteredWorkflow(row.workflowId)) {
         refused(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text);
         return;
       }
@@ -735,15 +758,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const open = (result: Awaited<ReturnType<typeof resolveNotificationNavigation>>) => {
         if (!current()) return;
         if (result.state === "refused") { refused(result.message); return; }
-        if (result.workflowId !== undefined && !setActiveWorkflowId(result.workflowId)) return;
         setLaunchOpen(false);
         exitQueueSelection();
         onFilter(["all"]);
-        setRoute(result.route);
+        setRoute({ ...result.route, view: { ...result.route.view, queueFilter: ["all"] } });
         opened();
         requestAnimationFrame(() => document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus({ preventScroll: true }));
       };
-      const resolve = () => resolveNotificationNavigation(client, destination, origin, notificationContext.current.canSelectWorkflowId);
+      const resolve = () => resolveNotificationNavigation(client, destination, origin, notificationContext.current.canOpenRegisteredWorkflow);
       void resolve().then(result => {
         if (!current()) return;
         if (result.state === "refused") { refused(result.message); return; }
@@ -785,10 +807,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     });
   }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun]);
 
+  const onInboxNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
+    openNotification(destination, opened, refused, workflowComposition.inbox);
+  }, [openNotification, workflowComposition.inbox]);
+
   const onSearch = useCallback((result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => {
     if (!result.destination) { refused("This run is unavailable. Refresh search and try again."); return; }
-    openNotification(result.destination, opened, refused);
-  }, [openNotification]);
+    openNotification(result.destination, opened, refused, workflowComposition.search);
+  }, [openNotification, workflowComposition.search]);
 
 
   const destinationError = railPreview && !previewFlow ? "This workflow is not registered."
@@ -817,7 +843,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={openNotification} searchData={searchData} onSearch={onSearch} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}

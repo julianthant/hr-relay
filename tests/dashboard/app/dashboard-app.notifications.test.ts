@@ -15,7 +15,9 @@ import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { LocalDateSchema } from "../../../src/rules/identity/ids.js";
 import type { NotificationDestination } from "../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
-import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
+import { WorkflowBootstrapPrimitiveSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { QueueSurfaceWireSchema, NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { NotificationCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
@@ -32,23 +34,29 @@ Reflect.set(globalThis, "requestAnimationFrame", (callback: FrameRequestCallback
 Reflect.set(globalThis, "cancelAnimationFrame", clearTimeout);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
-async function mount(missing = false) {
+async function mount(missing = false, mixed = false) {
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   const reads: string[] = [];
+  const dayRows = FIXTURE_DAY_WIRE.queueSurfaces.map(row => mixed && row.runId === FIXTURE_IDS.failedRun ? QueueSurfaceWireSchema.parse({ ...row, workflowId: "separations" }) : row);
+  const target = requested.target; assert(target && (target.kind === "run" || target.kind === "failure"));
+  const notification = NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title: "Run failed", occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: mixed ? "Separations" : "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: target.kind === "failure" ? { kind: "failure", runId: target.runId, failureId: target.failureId } : { kind: "run", runId: target.runId } });
   const client = { ...transport,
-    dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : FIXTURE_DAY_WIRE.queueSurfaces }; },
+    notificationSnapshot: async () => [notification], notificationStatus: async () => ({ state: "ready" as const, pending: 0 }), notificationTarget: async () => target,
+    bootstrap: async () => { const boot = await transport.bootstrap(); return mixed ? { ...boot, workflows: [...boot.workflows, { ...WorkflowBootstrapPrimitiveSchema.parse(boot.workflows[0]), id: "separations", code: "sep", label: "Separations" }] } : boot; },
+    runDetail: async (id: string) => { const detail = await transport.runDetail(id); return mixed && id === FIXTURE_IDS.failedRun ? RunDetailWireSchema.parse({ ...detail, header: { ...detail.header, workflowId: "separations" } }) : detail; },
+    dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : dayRows }; },
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day) }); input.onState({ state: "live" }); return { close() {} };
+      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows }); input.onState({ state: "live" }); return { close() {} };
     },
   };
   window.history.replaceState(null, "", "/?day=2026-08-04");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => ({ ...PRODUCT_WORKFLOW_COMPOSITION, inbox: "mock" as const }) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => ({ ...PRODUCT_WORKFLOW_COMPOSITION, sources: mixed ? { ...PRODUCT_WORKFLOW_COMPOSITION.sources, "person-lookup": "served" as const } : PRODUCT_WORKFLOW_COMPOSITION.sources }) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
   await act(async () => { bell.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
-  const target = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open exact target"); assert(target);
-  await act(async () => { target.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
+  const targetButton = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open log"); assert(targetButton);
+  await act(async () => { targetButton.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   return { host, reads };
 }
@@ -129,4 +137,60 @@ it("mounts served inbox controls and reports only the served search authority to
   });
   assert(queries.includes("local-operator"));
   assert(document.body.textContent?.includes("Exact served subject"));
+});
+
+it("admits a canonical Separations historical target while Person Lookup is served and Separations stays mock", async () => {
+  requested.target = { kind: "run", runId: RunIdSchema.parse(FIXTURE_IDS.failedRun), day: FIXTURE_DAY_WIRE.day };
+  const { host, reads } = await mount(false, true);
+  assert.deepEqual(reads, [FIXTURE_DAY_WIRE.day]);
+  assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.failedRun);
+  assert.equal(parseRoute(location.search).view?.workflow, "separations");
+  assert.equal(parseRoute(location.search).view?.preview, null);
+  assert.equal(host.textContent?.includes(notificationTargetUnavailable()), false);
+});
+it("refreshes the destination inbox after a delayed cross-day mark-read settles", async () => {
+  const { app } = createFixtureBff();
+  const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun), notificationId = "00000000-0000-4000-8000-000000000111";
+  let rows = NotificationWireSchema.array().parse([{ kind: "notification", notificationId, actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title: "Delayed read", occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Historical subject", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId } }]);
+  let commit = () => {};
+  const delayed = new Promise<void>(resolve => { commit = resolve; });
+  let writes = 0, inboxReads = 0;
+  const days: string[] = [];
+  const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+    const path = new URL(url).pathname;
+    if (path === "/api/v1/notifications") { inboxReads++; return Response.json(rows); }
+    if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
+    if (path.endsWith("/target")) return Response.json({ kind: "run", runId, day: FIXTURE_DAY_WIRE.day });
+    if (path === "/api/v1/commands") {
+      const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
+      const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); writes++;
+      await delayed;
+      rows = NotificationWireSchema.array().parse(rows.map(row => ({ ...row, revision: 2, state: "read", readState: "read" })));
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId }] });
+    }
+    return app.request(url, init);
+  } });
+  const client = { ...transport,
+    dashboardDay: async (day: string) => ({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), notifications: rows }),
+    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
+      days.push(input.day); input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); input.onState({ state: "live" }); return { close() {} };
+    },
+  };
+  window.history.replaceState(null, "", "/?day=2026-08-02");
+  const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
+  await act(async () => bell.click());
+  const open = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open log"); assert(open);
+  await act(async () => { open.click(); await new Promise(resolve => setTimeout(resolve, 30)); });
+  assert.equal(new URLSearchParams(location.search).get("day"), FIXTURE_DAY_WIRE.day);
+  assert.equal(writes, 1); assert.deepEqual(days, ["2026-08-02", FIXTURE_DAY_WIRE.day]);
+  assert(host.querySelector('button[aria-label="Notifications, 1 unread"]'));
+  const before = inboxReads;
+  await act(async () => { commit(); await new Promise(resolve => setTimeout(resolve, 30)); });
+  assert(inboxReads > before, "settlement must read current destination authority");
+  assert(host.querySelector('button[aria-label="Notifications, 0 unread"]'));
+  await act(async () => bell.click());
+  assert(host.querySelector('button[aria-label="Mark unread: Delayed read"]'));
+  assert.equal(writes, 1);
 });
