@@ -27,7 +27,7 @@ All source paths in this table are relative to `src/dashboard/`.
 | ChatGPT account | `surfaces/settings/general/chatgpt-account.tsx` | `ChatGptAccountContext` default memory preview port |
 | Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Local library/editor with real worker parsing/export |
 | Intake | `surfaces/intake/intake.tsx` | Typed intake session and command client |
-| Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | `activitySample` |
+| Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | AP1 population and selected browse through `state/activity-wiring-adapter.ts`; explicit fixture composition uses `activitySample` |
 | Explorer | `surfaces/explorer/explorer.tsx`, `explorer-flow.tsx` | Local workflow definitions, choices, and source models |
 | Design-system specimen | `kit/main.tsx`, `kit/kit-page.tsx` | Real `ds/` primitives, no service data |
 
@@ -413,19 +413,23 @@ Successful enqueue closes the takeover to the dashboard; navigation alone is not
 ## Analytics
 
 The displayed label is Analytics; its source folder and route IDs remain `activity`.
-`ActivityReport` resolves a date range against its sample date and feeds `ActivityView` with
-`activitySample`. Invalid ranges say Report unavailable. Loading and unavailable reports preserve
-matching geometry. Export currently reports Export is not connected yet.
+`ActivityReport` uses the served report-calendar date and feeds `ActivityView` from the complete
+AP1 population. Explicit fixture composition retains the sample date, values and local interactions.
+Invalid ranges, loading, empty periods and read/refusal failures remain distinct.
 
 The page provides period/range selection, status/workflow filtering, outcome/duration/volume/transaction/
-coverage/performance sections, and exact-population drilldown to Logs. Unique root-run records determine
-counts. Successful measured runs supply workflow averages, median, longest, and total duration.
-Measured zero remains a value; missing duration remains missing. Count, export population, and
-run drilldown must agree. Filtering/sorting precede 20-row pages. There is no labor-saving metric.
+coverage/performance sections, and snapshot-bound browse. The server filters and sorts before
+20-row paging; the view consumes its authoritative rows and counts once. Pending filter reads retain
+controls and settled rows, mark stale authority, and refuse row navigation/export until settlement.
+Successful root runs supply workflow averages; all terminal runs supply duration tiles. Measured
+zero, empty known zero and unavailable measurements remain distinct. Unknown readback evidence stays
+unavailable; production and test transactions remain separate from run counts.
 
-Backend report and CSV methods remain typed seams under `client/queries/activity-queries.ts`.
-They do not supply the mounted sample producer. Real wiring uses the same run population and
-snapshot selection for display/export/drilldown rather than an independently estimated report.
+Workflow source switches remain unchanged. Served generic identities never receive fictional Logs:
+mock workflow detail is explicitly unavailable; served detail requires exact day-row membership and
+the existing run-detail/log reader. AS1 retains summary/summary CSV/XLSX exports through the same
+nested report authority. AP1 full-population CSV is client/adapter-bound, but the existing view renders
+no export control; that control remains an operator-reviewed UI request.
 
 ## Explorer
 

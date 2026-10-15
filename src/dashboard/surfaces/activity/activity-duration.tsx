@@ -18,7 +18,7 @@ function DurationFrame({ children, ticks }: { children: ReactNode; ticks: readon
 }
 
 export function ActivityDurations({ report, onWorkflow }: { report: ActivitySummary; onWorkflow?: (workflow: string) => void }) {
-  const chart = workflowDurationChart(report.workflows);
+  const chart = workflowDurationChart(report.durationWorkflows ?? report.workflows);
   return <section aria-labelledby="activity-duration-heading" className="activity-durations">
     <h2 id="activity-duration-heading" className="mb-1 mt-0 text-section">Average workflow time</h2>
     <p className="mb-3 mt-0 text-body text-ui-secondary">Elapsed time per completed run in this period.</p>

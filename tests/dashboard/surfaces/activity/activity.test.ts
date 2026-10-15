@@ -34,7 +34,7 @@ afterEach_m0(_afterEachFixture1);
       await act_m0(async () => element.click());
     };
     try {
-      await act_m0(async () => root.render(createElement_m0(ActivityReport_m0, { range: '', onRange: () => {} })));
+      await act_m0(async () => root.render(createElement_m0(ActivityReport_m0, { source: "mock", range: '', onRange: () => {} })));
       assert_m0.equal(host.querySelector('h1')?.textContent, 'Analytics');
       await click('button[aria-label="View completed runs (38)"]');
       assert_m0.equal(host.querySelectorAll('tbody tr').length, 20);
@@ -71,7 +71,7 @@ afterEach_m0(_afterEachFixture1);
       return found;
     };
     try {
-      await act_m0(async () => { root.render(createElement_m0(ActivityReport_m0, { range: applied, onRange: next => { changes.push(next); } })); });
+      await act_m0(async () => { root.render(createElement_m0(ActivityReport_m0, { source: "mock", range: applied, onRange: next => { changes.push(next); } })); });
       const period = () => host.querySelector<HTMLElement>('button[aria-label="Report period"]');
       const periodValue = () => host.querySelector<HTMLElement>('button[aria-label="Report period"] [data-slot="select-value"]')?.textContent?.trim();
       assert_m0.equal(period()?.getAttribute('data-value'), 'this-week');
@@ -101,7 +101,7 @@ afterEach_m0(_afterEachFixture1);
 const noop = () => {};
 describe_m1("frontend presentation producers", () => {
   it_m1("renders canonical surfaces without a client provider or registered-definition fallback", () => {
-    const activity = renderToStaticMarkup_m1(createElement_m1(ActivityReport_m1, { range: "", onRange: noop }));
+    const activity = renderToStaticMarkup_m1(createElement_m1(ActivityReport_m1, { source: "mock", range: "", onRange: noop }));
     assert_m1.match(activity, /Workflow outcomes/);
     assert_m1.match(activity, /34 measured/);
     assert_m1.doesNotMatch(activity, /Sample data/);

@@ -1,3 +1,4 @@
+import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
 import { parse as parseCsvSync } from "csv-parse/sync";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
@@ -26,6 +27,9 @@ import { createActivityQueries } from "../../../../../src/dashboard/client/queri
 import { verifySelectionDownload } from "../../../../../src/dashboard/client/queries/selection-download.js";
 import { createDashboardTransport } from "../../../../../src/dashboard/client/transport.js";
 import { activityPresetRange,type ActivityRangePreset } from "../../../../../src/dashboard/surfaces/activity/activity-model.js";
+import { ActivityPopulationError } from "../../../../../src/backend/runs/queries/activity-population.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
+import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema } from "../../../../../src/models/dashboard/activity-population.js";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import type { ActivityReportWire } from "../../../../../src/models/dashboard/activity.js";
 import { CrossDateSearchResultSchema } from "../../../../../src/models/dashboard/search.js";
@@ -121,9 +125,10 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
     const report=queryActivitySummaries(database,{from,to,generatedAt},{descriptors,ledger,timeZone:"UTC"});
     return shiftVolumeSeries?shiftActivityVolumeSeries(report):report;
   };
+  const { activityPopulation, activity: composedActivity } = composeActivity({database,clock,descriptors,ledger,timeZone:"UTC"});
   const activity=options.dynamicVolumeSeries
     ?createActivitySelectionService({database,clock,read:readSummary})
-    :composeActivity({database,clock,descriptors,ledger,timeZone:"UTC"});
+    :composedActivity;
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
   const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts"))});
@@ -131,7 +136,7 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
     search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));
   app.use("*",(c,next)=>{c.set("requestActorId",ActorIdSchema.parse("synthetic-operator"));return next();});
-  registerActivityRoutes(app,{activity});
+  registerActivityRoutes(app,{activity,activityPopulation});
   const unavailable = (): never => { throw new Error("run-log-subscription-unavailable-in-activity-fixture"); };
   const runLogsHub = new RunLogsStreamHub({
     projection: { onChange: () => () => {}, cursor: unavailable, generation: unavailable,
@@ -141,7 +146,7 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
   });
   cleanup.push(() => runLogsHub.close());
   registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"],runLogsHub});
-  return {database,clock,activity,search,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
+  return {database,clock,activity,activityPopulation,search,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
 }
 
 it("serves and exports the same reviewed Activity summary snapshot and refuses substitution after mutation",async()=>{
@@ -307,7 +312,7 @@ it("rejects report token tampering, mismatched range, foreign signer and expiry 
   const f=fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20");
   assert.throws(()=>f.activity.readSelected(report.from,"2026-09-21",report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" });
   assert.throws(()=>f.activity.readSelected(report.from,report.to,`${report.snapshot.token}x`),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
-  const restarted=composeActivity({database:f.database,clock:f.clock,descriptors:{resolve:()=>undefined},ledger:createTransactionHistory(f.database.authority)});
+  const { activity: restarted }=composeActivity({database:f.database,clock:f.clock,descriptors:{resolve:()=>undefined},ledger:createTransactionHistory(f.database.authority)});
   assert.throws(()=>restarted.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   f.clock.advanceWall(15*60_000);
   assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
@@ -393,4 +398,43 @@ it("retains complete unregistered open results and distinctive absence reasons i
   assert.equal(xlsxValue("Retry"), "distinct retry absence 10800004");
   assert.equal(xlsxValue("Priority"), "bulk");
   assert.equal(xlsxValue("Version"), 23);
+});
+
+it("serves the complete AP1 population and reuses its nested AS1 report for XLSX", async () => {
+  const f = fixture(); await f.artifacts.ready;
+  const range = { from: "2026-09-20", to: "2026-09-20" };
+  const selected = ActivityPopulationSelectionSchema.parse(await (await f.app.request(`http://localhost/api/v1/reports/activity/population?${new URLSearchParams(range)}`)).json());
+  assert.equal(selected.population.length, 3);
+  assert.equal(selected.population.length, selected.report.totalRuns);
+  assert.deepEqual(f.activity.readSelected(range.from, range.to, selected.report.snapshot.token), selected.report);
+  const browse = { metric: "outstanding", page: 0, sort: { column: "name", direction: "descending" } };
+  const response = await f.app.request(`http://localhost/api/v1/reports/activity/population/selected?${new URLSearchParams({ ...range, snapshot: selected.snapshot.token, browse: JSON.stringify(browse) })}`);
+  assert.equal(response.status, 200);
+  const read = ActivityPopulationSelectedReadSchema.parse(await response.json());
+  assert.deepEqual(read.selection, selected);
+  assert.deepEqual(read.browse?.identity.browse, browse);
+  assert.equal(read.browse?.totalMatches, 3);
+  const csv = await f.app.request(`http://localhost/api/v1/reports/activity/population.csv?${new URLSearchParams({ ...range, snapshot: selected.snapshot.token })}`);
+  assert.equal(csv.status, 200);
+  assert.equal(csv.headers.get("x-selection-digest"), sha256Hex(selected.snapshot.token));
+  const rows = parseActivityCsv(await csv.text());
+  assert.deepEqual(rows.filter(row => selected.population.some(run => run.runId === row[0])).map(row => row[0]), selected.population.map(run => run.runId));
+  const xlsx = await f.xlsx.export(ActorIdSchema.parse("synthetic-operator"), { requestVersion: 3, selection: { kind: "activity", ...range, snapshotToken: selected.report.snapshot.token } });
+  const sheets = await readXlsxFile(xlsx.bytes);
+  assert.deepEqual(sheets.find(sheet => sheet.sheet === "Summary")?.data.find(row => row[0] === "Total runs")?.slice(0, 2), ["Total runs", 3]);
+});
+
+it("keeps population failures named and unexpected read diagnostics out of the response", async () => {
+  const f = fixture();
+  for (const [error, status, code] of [
+    [new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH"), 500, "ACTIVITY_POPULATION_SOURCE_MISMATCH"],
+    [new Error("private-read-diagnostic"), 500, "DASHBOARD_READ_FAILED"],
+  ] as const) {
+    const app: DashboardApp = new Hono();
+    app.onError((error, context) => { const failure = failureStatus(error); return context.json(failure.body, failure.status); });
+    registerActivityRoutes(app, { activity: f.activity, activityPopulation: { ...f.activityPopulation, read: () => { throw error; } } });
+    const response = await app.request("http://localhost/api/v1/reports/activity/population?from=2026-09-20&to=2026-09-20");
+    assert.equal(response.status, status);
+    assert.deepEqual(await response.json(), { state: "error", code, message: ERROR_CATALOG[code].text, retryable: false });
+  }
 });

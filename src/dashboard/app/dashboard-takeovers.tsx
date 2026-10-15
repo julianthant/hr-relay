@@ -1,3 +1,4 @@
+import type { WorkflowSource, WorkflowSourcePolicy } from "./workflow-sources.js";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
 import {
@@ -21,8 +22,9 @@ activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
-export function DashboardTakeovers({client,takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
+export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,children}: {
+ activitySource?: WorkflowSource; today: string; workflowSources: WorkflowSourcePolicy;
  client: ComponentProps<typeof WorkflowExplorer>["client"];
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
@@ -35,7 +37,7 @@ export function DashboardTakeovers({client,takeover,route,setRoute,boot,settings
 }) {
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
- const dataContent = dataSection === "activity" ? <ActivityReport range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
+ const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} source={activitySource ?? "served"} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
  : dataSection === "explorer" ? <WorkflowExplorer catalog={workflowCatalog} client={client} /> : undefined;
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
             <SettingsPage

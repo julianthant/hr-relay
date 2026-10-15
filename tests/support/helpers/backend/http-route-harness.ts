@@ -360,7 +360,7 @@ export function harness(options: {
       })),
     },
   });
-  const activity = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
+  const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
@@ -384,6 +384,7 @@ export function harness(options: {
     projection,
     search,
     activity,
+    activityPopulation,
     xlsxExports: createOperatorXlsxExportService({
       clock,
       ids,

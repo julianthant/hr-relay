@@ -4,6 +4,7 @@ import { describe,it } from "vitest";
 import { z } from "zod";
 import {
 LogIdentityRefusedError,
+DashboardReadFailedError,
 DiagnosticBundleBytesMissingError,
 DiagnosticBundleCorruptError,
 ProjectionDegradedError,
@@ -141,4 +142,11 @@ describe("failureStatus", () => {
     assert.equal(body.code, "INTERNAL_FAILURE");
     assert.equal(body.message, "the projection threw a string");
   });
+});
+
+it("returns fixed catalog text for a failed dashboard read while preserving its private cause", () => {
+  const cause = new Error("private-query-detail");
+  const error = new DashboardReadFailedError(cause);
+  assert.equal(error.cause, cause);
+  assert.deepEqual(failureStatus(error), { status: 500, body: { state: "error", code: "DASHBOARD_READ_FAILED", message: "The dashboard could not load this from the local service. Try again.", retryable: false } });
 });

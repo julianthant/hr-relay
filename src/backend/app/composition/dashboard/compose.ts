@@ -619,7 +619,7 @@ async function composeDashboardRuntimeStartup(
 
   const ledger = createTransactionHistory(database.authority);
 
-  const activity = composeActivity({ database, clock, descriptors, ledger, timeZone });
+  const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger, timeZone });
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
   const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), summaries };
   let ownsWorker: (lease: import("../../../../models/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
@@ -819,6 +819,7 @@ async function composeDashboardRuntimeStartup(
     ...composeStorage({ admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
     ...explorerBoundary.routes,
     activity,
+    activityPopulation,
   });
 
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;

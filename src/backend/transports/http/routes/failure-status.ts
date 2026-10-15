@@ -1,11 +1,13 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { ActivityPopulationError } from "../../../runs/queries/activity-population.js";
+import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.js";
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
-import { LogIdentityRefusedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
+import { LogIdentityRefusedError, DashboardReadFailedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 import { errorText } from "../../../runs/lifecycle/support.js";
 
@@ -23,6 +25,9 @@ export function failureStatus(
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
   const message = errorText(error);
+  if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
+  if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
+  if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };
   if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {

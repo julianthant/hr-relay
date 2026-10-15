@@ -55,3 +55,10 @@ export class LogIdentityRefusedError extends Error {
     this.name = "LogIdentityRefusedError";
   }
 }
+
+export class DashboardReadFailedError extends Error {
+  constructor(cause: unknown) {
+    super("dashboard-read-failed", { cause });
+    this.name = "DashboardReadFailedError";
+  }
+}

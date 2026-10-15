@@ -1,12 +1,19 @@
+import type { QueueStatus } from "../shared/status/status-model.js";
 import type { LogStep } from '../run-detail/logs/log-feed-model.js';
 import type { LogTimelineStage } from '../run-detail/logs/log-timeline-model.js';
 
 export type ActivityRunRecord = Readonly<{
   id: string; displayId: string; subject: string; day: string; workflowId: string; workflowLabel: string;
-  status: 'completed' | 'failed' | 'running' | 'waiting'; seconds: number | null; attempt: number;
+  status: 'completed' | 'waiting' | QueueStatus; seconds: number | null; attempt: number;
   readback: boolean | null;
-  steps: readonly LogStep[]; timeline: readonly LogTimelineStage[];
+  steps?: readonly LogStep[]; timeline?: readonly LogTimelineStage[];
 }>;
+
+export type ActivityDrilldownData =
+  | Readonly<{ state: "unavailable"; reason: string }>
+  | Readonly<{ state: "loaded"; total: number; totalMatches: number; rows: readonly ActivityRunRecord[];
+      run?: ActivityRunRecord; start: number; workflowLabel?: string }>;
+
 export type ActivitySort = Readonly<{ column: 'name' | 'duration'; direction: 'ascending' | 'descending' }>;
 export type ActivityBrowse = Readonly<{ metric: 'completed' | 'outstanding' | 'failed' | 'timed'; workflow?: string; page: number; run?: string; sort?: ActivitySort; query?: string }>;
 export type ActivitySelectionHandler = (next: ActivityBrowse | null, mode?: 'push' | 'replace') => void;
@@ -68,6 +75,6 @@ export function activityDrilldown(records: readonly ActivityRunRecord[], selecti
   const run = selection.run ? matches.find(row => row.id === selection.run) : undefined;
   if (selection.run && !run) return { state: 'unavailable' as const, reason: 'This run is not part of the selected Analytics result.' };
   const start = selection.page * ACTIVITY_RUN_PAGE_SIZE;
-  return { state: 'loaded' as const, matches, total: population.length, rows: matches.slice(start, start + ACTIVITY_RUN_PAGE_SIZE), run, start,
+  return { state: 'loaded' as const, matches, totalMatches: matches.length, total: population.length, rows: matches.slice(start, start + ACTIVITY_RUN_PAGE_SIZE), run, start,
     workflowLabel: selection.workflow ? records.find(row => row.workflowId === selection.workflow)!.workflowLabel : undefined };
 }
