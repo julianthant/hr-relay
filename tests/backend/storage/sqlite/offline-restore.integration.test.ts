@@ -125,6 +125,8 @@ describe("native worker control recovery", () => {
       db.authority.workerPools.plan({workflow:"person-lookup",expectedVersion:0,desiredWorkers:1,requestedBy:"local-operator",now});
       const slot = db.authority.workerSlots.allocate({workflow:"person-lookup",poolIndex:1,commandId:null,now});
       expect(slot.workerId).toBe(WORKER);
+      db.authority.workerLeases.start({ workerId: WORKER, workflow: "person-lookup", browserSystems: ["crm"], processId: 42, requestedBy: "local-operator", now });
+      db.authority.workerLeases.reserveControl(WORKER, record.request.target.controlBasis, record.commandId, now);
       db.authority.commands.insert(record.request);
       db.authority.workerControls.admit(record);
       db.authority.workerControls.transition(record.commandId,"admitted",{ state: "executing", startedAt: now });
