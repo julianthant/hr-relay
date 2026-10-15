@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { useEffect } from "react";
 import { systemClock } from "../../../../rules/time/clock.js";
 import type { PreflightReadinessWire } from "../../../../models/preflight/preflight-contract.js";
@@ -42,8 +43,8 @@ export function projectPreflight(state: PreflightReadinessState, nowMs: number):
   const report = state.report;
   // Current readiness expires at 60 seconds; an expired report can remain visible as history.
   const age = nowMs - Date.parse(report.checkedAt);
-  if (report.results.length === 0 || age < 0) return { state: "refused", message: "Preflight report is stale or empty. Re-check readiness." };
-  if (age >= 60_000) return { state: "historical", message: "Preflight evidence expired; re-check readiness.", report, checks: checksFrom(report) };
+  if (report.results.length === 0 || age < 0) return { state: "refused", message: ERROR_CATALOG.PREFLIGHT_REPORT_INVALID.text };
+  if (age >= 60_000) return { state: "historical", message: ERROR_CATALOG.PREFLIGHT_EVIDENCE_EXPIRED.text, report, checks: checksFrom(report) };
   return { state: "completed", report, checks: checksFrom(report) };
 }
 export function useSettingsPreflight(editor: EditableSettingsState, input: { actorId: string; descriptorFingerprint: string }) {
@@ -70,12 +71,12 @@ export function useSettingsPreflight(editor: EditableSettingsState, input: { act
   }, [checkedAt, read, nowMs]);
   const projected = projectPreflight(readiness.state, nowMs);
   const preflight: PreflightRerunState = scope.state === "unavailable"
-    ? { state: "refused", message: "Workflow scopes could not be read." }
+    ? { state: "refused", message: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text }
     : scope.state !== "ready" ? { state: "idle" }
     : document?.runtimeStatus.state === "restart-required"
-    ? projected.state === "historical" ? { ...projected, message: "Settings restart required. Restart the runtime before re-checking." }
-      : { state: "refused", message: "Settings restart required. Restart the runtime before re-checking." }
-    : editor.state === "failed" ? { state: "refused", message: "Current settings are unavailable. Reload Settings before re-checking." }
+    ? projected.state === "historical" ? { ...projected, message: ERROR_CATALOG.PREFLIGHT_SETTINGS_RESTART_REQUIRED.text }
+      : { state: "refused", message: ERROR_CATALOG.PREFLIGHT_SETTINGS_RESTART_REQUIRED.text }
+    : editor.state === "failed" ? { state: "refused", message: ERROR_CATALOG.PREFLIGHT_SETTINGS_UNAVAILABLE.text }
     : projected;
   const rerunPreflight = (): void => {
     if (!ready || document === undefined) return;

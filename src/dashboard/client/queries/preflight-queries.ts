@@ -5,7 +5,7 @@ PreflightRerunCommandRequestSchema,
 PreflightReadinessWireSchema, PreflightSelectionSchema, type PreflightSelection, type PreflightReadinessWire,
 PreflightRerunCommandResultWireSchema,
 } from "../../../models/preflight/preflight-contract.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { DashboardClientError } from "../errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "../transport.js";
@@ -34,7 +34,7 @@ export function createPreflightQueries(transport: DashboardTransport): Preflight
         ? await transport.requestJson("/api/v1/preflight")
         : await transport.requestJson(`/api/v1/preflight?selection=${encodeURIComponent(JSON.stringify(PreflightSelectionSchema.parse(selection)))}`);
       return parseOrThrow(PreflightReadinessWireSchema, "GET /api/v1/preflight", response);
-      } catch { throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_READ_UNAVAILABLE", message: "Preflight report could not be read or verified. Re-check readiness." }); }
+      } catch { throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_READ_UNAVAILABLE", message: ERROR_CATALOG.PREFLIGHT_READ_UNAVAILABLE.text }); }
     },
     async readiness() {
       const boot = parseOrThrow(FrontendBootstrapWireSchema, "GET /api/v1/bootstrap", await transport.requestJson("/api/v1/bootstrap"));
@@ -60,6 +60,6 @@ export function createPreflightQueries(transport: DashboardTransport): Preflight
       return result;
       } catch (error) {
         if (error instanceof DashboardClientError && error.code === "COMMAND_RESULT_IDENTITY_MISMATCH") throw error;
-        throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_RERUN_UNAVAILABLE", message: "Preflight re-check could not be completed or verified. Read current readiness before retrying." }); }
+        throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_RERUN_UNAVAILABLE", message: ERROR_CATALOG.PREFLIGHT_RERUN_UNAVAILABLE.text }); }
     }
 }); }

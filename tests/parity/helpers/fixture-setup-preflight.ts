@@ -6,6 +6,7 @@ import { failureStatus } from "../../../src/backend/transports/http/routes/failu
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
 import { registerSettingsPreflightRoutes } from "../../../src/backend/transports/http/routes/settings-preflight.js";
 import { createFixtureBff, startFixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
+import { DEFAULT_DASHBOARD_PROFILE } from "./fixture-profile.js";
 import { PARITY_DIST_DIR, assertParityBundleIsCurrent, readBundleStamp } from "./bundle.js";
 import { servedPreflightRuntime, type SetupScene } from "../../support/fixtures/preflight/served-runtime.js";
 
@@ -21,7 +22,8 @@ export async function startSetupPreflightServer(scene: SetupScene, configureRout
   registerSettingsPreflightRoutes(app,{clock:runtime.clock,preflight:runtime.service});
   app.get("/api/v1/settings/editable",c=>c.json(runtime.document()));
   configureRoutes?.(app, runtime);
-  app.route("/",createFixtureBff().app);
+  app.route("/",createFixtureBff({ profile: { ...DEFAULT_DASHBOARD_PROFILE, bootstrap: { ...DEFAULT_DASHBOARD_PROFILE.bootstrap,
+    serverClock: { ...DEFAULT_DASHBOARD_PROFILE.bootstrap.serverClock, now: runtime.clock.now().toISOString() } } } }).app);
   const requests:{method:string;path:string;status:number}[]=[];
   const server=createServer((req,res)=>{
     const method=req.method??"GET",path=req.url??"/";

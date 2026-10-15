@@ -9,6 +9,86 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  PREFLIGHT_READ_UNAVAILABLE: catalogEntry(
+    "Preflight report could not be read or verified. Re-check readiness.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_RERUN_UNAVAILABLE: catalogEntry(
+    "Preflight re-check could not be completed or verified. Read current readiness before retrying.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_SCOPE_UNAVAILABLE: catalogEntry(
+    "Workflow scopes could not be read.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_REPORT_INVALID: catalogEntry(
+    "Preflight report is stale or empty. Re-check readiness.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_EVIDENCE_EXPIRED: catalogEntry(
+    "Preflight evidence expired; re-check readiness.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_SETTINGS_RESTART_REQUIRED: catalogEntry(
+    "Settings restart required. Restart the runtime before re-checking.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_SETTINGS_UNAVAILABLE: catalogEntry(
+    "Current settings are unavailable. Reload Settings before re-checking.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_IDENTITY_CHANGED: catalogEntry(
+    "Preflight identity changed; refresh settings and re-check readiness.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_RUNTIME_CHANGED: catalogEntry(
+    "Runtime state changed; re-check readiness.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_READ_FAILED: catalogEntry(
+    "Preflight could not be read.",
+    EmptyParametersSchema,
+  ),
+  PREFLIGHT_CREDENTIAL_PRESENCE_UNAVAILABLE: catalogEntry(
+    "Credential presence could not be verified from Settings.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_AUTHORITY_UNAVAILABLE: catalogEntry(
+    "Nothing durable can be read or recorded.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_DATA_UNAVAILABLE: catalogEntry(
+    "Saved run data is unavailable. Review the storage checks below.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_DOCTOR_FAILED: catalogEntry(
+    "Try running the checks again.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_AUTHORITY_READ_FAILED: catalogEntry(
+    "Stored data couldn't be read. Review the technical details.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RECOVERY_UNAVAILABLE: catalogEntry(
+    "Recovery status couldn't be checked.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RECOVERY_INTERRUPTED: catalogEntry(
+    "An interrupted operation needs review before starting work.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RECOVERY_STARTUP_INTERRUPTED: catalogEntry(
+    "An interrupted operation needs review before startup.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_UPDATE_HISTORY_UNAVAILABLE: catalogEntry(
+    "Storage update history couldn't be checked.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_CREDENTIAL_CHECK_INCOMPLETE: catalogEntry(
+    "This setting wasn't included in the last check.",
+    EmptyParametersSchema,
+  ),
   PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS: catalogEntry(
     "Match requires a date of birth or SSN.",
     EmptyParametersSchema,

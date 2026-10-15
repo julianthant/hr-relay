@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act,createElement,useMemo,type ReactNode } from "react";
+import { act,createElement,useEffect,useMemo,useState,type ReactNode } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,it,vi } from "vitest";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
@@ -8,7 +8,7 @@ import { DashboardClientProvider, DashboardCommandBindingProvider, useDashboardC
 import { PreflightActionsProvider } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 import { projectPreflight,useSettingsPreflight } from "../../../../../src/dashboard/surfaces/settings/preflight/settings-preflight-model.js";
 import { PreflightReportContent } from "../../../../../src/dashboard/surfaces/settings/preflight/settings-preflight.js";
-import { useDoctorPreflight } from "../../../../../src/dashboard/surfaces/shell/preflight-popover-model.js";
+import type { EditableSettingsState } from "../../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { preflightVerdict } from "../../../../../src/dashboard/surfaces/shell/preflight-popover-model.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
@@ -195,7 +195,7 @@ it("a delayed doctor subscriber joins Setup's selected resource and shares rerun
   const readback = Promise.withResolvers<unknown>();
   const command = Promise.withResolvers<unknown>();
   let reads = 0, commands = 0;
-  let setup: ReturnType<typeof useSettingsPreflight> | undefined, doctor: ReturnType<typeof useDoctorPreflight> | undefined;
+  let setup: ReturnType<typeof useSettingsPreflight> | undefined, doctor: ReturnType<typeof useSettingsPreflight> | undefined;
   const setupState = () => setup?.preflight;
   const doctorState = () => doctor?.preflight;
   const client = { editableSettings: () => settings.promise,
@@ -203,7 +203,12 @@ it("a delayed doctor subscriber joins Setup's selected resource and shares rerun
     rerunPreflight: () => { commands++; return command.promise; } } as unknown as DashboardClient;
   const actions = { actorId: "local-operator", descriptorFingerprint: served.descriptorFingerprint, showSettings() {}, showSessions() {} };
   function Setup() { setup = useSettingsPreflight({ state: "loaded", document: FIXTURE_EDITABLE_SETTINGS }, actions); return null; }
-  function Doctor() { doctor = useDoctorPreflight(); return null; }
+  function Doctor() {
+    const [editor, setEditor] = useState<EditableSettingsState>({ state: "loading" });
+    useEffect(() => { void settings.promise.then(document => setEditor({ state: "loaded", document })); }, []);
+    doctor = useSettingsPreflight(editor, actions);
+    return null;
+  }
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const render = async (open: boolean) => { await act(async () => root?.render(createElement(DashboardClientProvider, { client,
     children: createElement(Bound, { client, actorId: actions.actorId, nowIso: now.toISOString(), children: createElement(PreflightActionsProvider, { actions,

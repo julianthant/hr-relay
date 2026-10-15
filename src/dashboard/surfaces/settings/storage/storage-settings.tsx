@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
 import { ShieldAlert } from "lucide-react";
 import { type ReactNode } from "react";
@@ -8,7 +9,7 @@ import { fmtClock, fmtInstantDay } from "../../shared/status/format.js";
 import type { StorageHealthSummary } from "./storage-settings-model.js";
 import "../../shared/run-evidence/diagnostic-presentation.css";
 
-const AUTHORITY_HAZARD = "Nothing durable can be read or recorded.";
+const AUTHORITY_HAZARD = ERROR_CATALOG.STORAGE_AUTHORITY_UNAVAILABLE.text;
 
 /** The bootstrap summary is cheap; the checklist only claims results from a doctor report. */
 export function StorageBanner({ storage, onOpenSettings }: {
@@ -76,7 +77,7 @@ const CREDENTIAL_CHECKS = [
 
 function authorityResult(report?: StorageDoctorWire): CheckResult {
   if (report === undefined) return NOT_CHECKED;
-  if (report.authority.state === "degraded") return { tone: "unavailable", value: "Unavailable", summary: "Stored data couldn't be read. Review the technical details.", detail: `${report.authority.cause.code}: ${report.authority.cause.summary}` };
+  if (report.authority.state === "degraded") return { tone: "unavailable", value: "Unavailable", summary: ERROR_CATALOG.STORAGE_AUTHORITY_READ_FAILED.text, detail: `${report.authority.cause.code}: ${report.authority.cause.summary}` };
   return { tone: "pass", value: "Passed", summary: "Stored data is readable." };
 }
 function recoveryResult(report?: StorageDoctorWire): CheckResult {
@@ -86,15 +87,15 @@ function recoveryResult(report?: StorageDoctorWire): CheckResult {
   return {
     tone: recovery.state === "interrupted" ? "attention" : "unavailable",
     value: recovery.state === "interrupted" ? "Interrupted" : "Unavailable",
-    summary: recovery.state === "interrupted" ? "An interrupted operation needs review before starting work." : "Recovery status couldn't be checked.",
-    detail: recovery.state === "unavailable" ? recovery.cause.summary : "An interrupted operation needs review before startup.",
+    summary: recovery.state === "interrupted" ? ERROR_CATALOG.STORAGE_RECOVERY_INTERRUPTED.text : ERROR_CATALOG.STORAGE_RECOVERY_UNAVAILABLE.text,
+    detail: recovery.state === "unavailable" ? recovery.cause.summary : ERROR_CATALOG.STORAGE_RECOVERY_STARTUP_INTERRUPTED.text,
     evidence: recovery.findings.map((finding) => `${finding.marker}: ${finding.state}`).join(" · ") || undefined,
   };
 }
 function upgradeResult(report?: StorageDoctorWire): CheckResult {
   if (report === undefined) return NOT_CHECKED;
   const upgrades = report.authorityUpgrades;
-  if (upgrades.state === "unavailable") return { tone: "unavailable", value: "Unavailable", summary: "Storage update history couldn't be checked.", detail: upgrades.cause.summary };
+  if (upgrades.state === "unavailable") return { tone: "unavailable", value: "Unavailable", summary: ERROR_CATALOG.STORAGE_UPDATE_HISTORY_UNAVAILABLE.text, detail: upgrades.cause.summary };
   if (upgrades.state === "absent") return { tone: "neutral", value: "No history", summary: upgrades.reason === "pre-journal-schema" ? "Update history wasn't recorded for this older data store." : "No storage updates have been recorded." };
   const labels = { baseline: "Starting version recorded", planned: "Update planned", committed: "Update applied", settled: "Update completed" };
   return { tone: "pass", value: "Recorded", summary: "Recorded changes to your saved data.", overview: <Disclosure summary="Update history" className="diagnostic-storage-disclosure">
@@ -113,7 +114,7 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
   if (report === undefined) return NOT_CHECKED;
   if (report.protectedSettings.state === "unavailable") return { tone: "unavailable", value: "Unavailable", detail: report.protectedSettings.cause.summary };
   const entry = report.protectedSettings.entries.find((item) => item.name === key);
-  if (entry === undefined) return { tone: "unavailable", value: "Unknown", summary: "This setting wasn't included in the last check." };
+  if (entry === undefined) return { tone: "unavailable", value: "Unknown", summary: ERROR_CATALOG.STORAGE_CREDENTIAL_CHECK_INCOMPLETE.text };
   return { tone: "neutral", value: entry.present ? "Present" : "Not set" };
 }
 
@@ -142,10 +143,10 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
               {doctor.state === "reading" ? <SkeletonText className="w-40" /> : report === undefined ? <span>Not checked</span> : <span>Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></span>}
             </span>} />
         </FormGroup>
-        : <Banner tone="danger" title="Data store unavailable">Saved run data is unavailable. Review the storage checks below.</Banner>}
+        : <Banner tone="danger" title="Data store unavailable">{ERROR_CATALOG.STORAGE_DATA_UNAVAILABLE.text}</Banner>}
     </BodySection>
       {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">
-        Try running the checks again.
+        {ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text}
         <DiagnosticFindings name="Check error" result={{ tone: "unavailable", value: "Unavailable", detail: doctor.message }} />
       </Banner>}
       <BodySection title="Data store and recovery">

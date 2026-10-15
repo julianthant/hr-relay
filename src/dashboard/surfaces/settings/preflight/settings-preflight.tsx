@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { ReactNode } from "react";
 import { CapabilitiesSection } from "./settings-capabilities.js";
 import { Badge, Banner, BodySection, Button, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsText, Field } from "../../../ds/ui.js";
@@ -37,7 +38,7 @@ function checkCopy(id: string): { name: string; description: string } {
 
 export function PreflightScopeSelect() {
   const scope = usePreflightScope();
-  return <Field label="Check readiness for" error={scope.state === "unavailable" ? "Workflow scopes could not be read." : undefined}>
+  return <Field label="Check readiness for" error={scope.state === "unavailable" ? ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text : undefined}>
     <Select value={scope.selected} onChange={event => { scope.select(event.target.value); }}>
       <option value="dashboard">Dashboard</option>
       {scope.workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.label}</option>)}
@@ -62,7 +63,7 @@ const BLOCK_LABELS: Readonly<Record<string, string>> = {
 function missingCredentialCopy(check: PreflightCheckWire, protectedSettings: EditableSettingsWire["protectedSettings"] | undefined): string | undefined {
   const fields = SECRET_FIELDS[check.id as keyof typeof SECRET_FIELDS];
   if (fields === undefined || check.verdict === "pass") return undefined;
-  if (protectedSettings?.state !== "available") return "Credential presence could not be verified from Settings.";
+  if (protectedSettings?.state !== "available") return ERROR_CATALOG.PREFLIGHT_CREDENTIAL_PRESENCE_UNAVAILABLE.text;
   const missing = fields.filter(field => !protectedSettings.readback.entries[field.name].present).map(field => field.label);
   if (missing.length === 0) return "Credentials are present in Settings, but this check still needs attention.";
   if (check.id === "secrets.ucpath-sso") return `UCPath ${missing.map(label => label.replace(/^UCPath /u, "")).join(" and ")} ${missing.length === 1 ? "is" : "are"} missing.`;

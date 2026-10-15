@@ -1,4 +1,4 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { PreflightRerunCommandRequestSchema, type PreflightReadinessWire, type PreflightSelection } from "../../../models/preflight/preflight-contract.js";
 import type { PreflightQueries } from "./preflight-queries.js";
@@ -27,19 +27,19 @@ export function createPreflightReadinessResource(client: PreflightQueries, ident
       const result = await read(() => started === epoch);
       if (started !== epoch) return;
       if (result.state === "present" && (result.report.configFingerprint !== identity.configFingerprint || result.report.descriptorFingerprint !== identity.descriptorFingerprint)) {
-        publish({ state: "unavailable", reason: "Preflight identity changed; refresh settings and re-check readiness.", ...(lastCompleted === undefined ? {} : { lastCompleted }) });
+        publish({ state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_IDENTITY_CHANGED.text, ...(lastCompleted === undefined ? {} : { lastCompleted }) });
       } else {
         lastCompleted = result.state === "present" ? result.report : result.lastCompleted ?? lastCompleted;
         publish(result.state === "unavailable" ? { ...result, ...(lastCompleted === undefined ? {} : { lastCompleted }) } : result);
       }
     } catch (error) {
-      if (started === epoch) publish({ state: "unavailable", reason: error instanceof Error ? error.message : "Preflight could not be read.", ...(lastCompleted === undefined ? {} : { lastCompleted }) });
+      if (started === epoch) publish({ state: "unavailable", reason: error instanceof Error ? error.message : ERROR_CATALOG.PREFLIGHT_READ_FAILED.text, ...(lastCompleted === undefined ? {} : { lastCompleted }) });
     }
   };
   return Object.freeze({
     snapshot: (): PreflightReadinessState => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    invalidate() { epoch += 1; publish({ state: "unavailable", reason: "Runtime state changed; re-check readiness.", ...(lastCompleted === undefined ? {} : { lastCompleted }) }); },
+    invalidate() { epoch += 1; publish({ state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_RUNTIME_CHANGED.text, ...(lastCompleted === undefined ? {} : { lastCompleted }) }); },
     read: () => observe(() => client.readPreflight(identity.selection)),
     rerun: (request: unknown) => observe(async isCurrent => {
       const command = PreflightRerunCommandRequestSchema.parse(request);
@@ -48,7 +48,7 @@ export function createPreflightReadinessResource(client: PreflightQueries, ident
         || canonicalJsonStringify(command.target.selection ?? null) !== canonicalJsonStringify(identity.selection ?? null)
         || identity.actorId !== undefined && command.requestedBy !== identity.actorId) throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_RESULT_IDENTITY_MISMATCH", {})).text);
       await client.rerunPreflight(command);
-      if (!isCurrent()) return { state: "unavailable", reason: "Runtime state changed; re-check readiness." };
+      if (!isCurrent()) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_RUNTIME_CHANGED.text };
       // Replay preserves the historical command result; only readback certifies current freshness.
       return client.readPreflight(identity.selection);
     }),
