@@ -1,3 +1,4 @@
+import { type ChatGptAccountState, type ChatGptSignInRequest, type ChatGptSignedOut } from "../../models/dashboard/chatgpt-account.js";
 import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { z } from "zod";
@@ -15,14 +16,6 @@ export class ChatGptAccountError extends Error {
   constructor(readonly code: ChatGptAccountCode) { super(ERROR_CATALOG[code].text); this.name = "ChatGptAccountError"; }
 }
 const fault = (code: ChatGptAccountCode) => new ChatGptAccountError(code);
-export const ChatGptAccountStateSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("signed-out") }),
-  z.strictObject({ state: z.literal("expired") }),
-  z.strictObject({ state: z.literal("unavailable"), code: z.string(), message: z.string() }),
-  z.strictObject({ state: z.literal("connected"), name: z.string(), email: z.email(), expiresAt: IsoInstantSchema,
-    planUsage: z.enum(["enabled", "disabled", "limit-reached"]) }),
-]);
-export type ChatGptAccountState = z.infer<typeof ChatGptAccountStateSchema>;
 export interface ChatGptAuthorization {
   readonly authorizationUrl: string;
   readonly expiresAt: string;
@@ -173,7 +166,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       throw error;
     }
   }
-  async function signIn(input: { readonly usePlan: boolean }): Promise<ChatGptAuthorization> {
+  async function signIn(input: ChatGptSignInRequest): Promise<ChatGptAuthorization> {
     active(); if (pending !== undefined) throw fault("CHATGPT_AUTH_BUSY");
     if (typeof input.usePlan !== "boolean") throw fault("CHATGPT_AUTH_INVALID");
     const attemptGeneration = ++generation;
@@ -271,7 +264,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       finishStartup();
     }
   }
-  async function signOut(): Promise<{ readonly state: "signed-out"; readonly remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" }> {
+  async function signOut(): Promise<ChatGptSignedOut> {
     active(); const attempt = pending; ++generation; await attempt?.cancel(); if (pending === attempt) pending = undefined;
     for (const controller of requests) controller.abort();
     await Promise.allSettled([...accesses]);

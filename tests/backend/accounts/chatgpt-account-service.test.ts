@@ -1,6 +1,7 @@
+import { ChatGptAccountStateSchema } from "../../../src/models/dashboard/chatgpt-account.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { ChatGptAccountStateSchema, ChatGptOcrRequestSchema, ChatGptAccountError } from "../../../src/backend/accounts/chatgpt-account-service.js";
+import { ChatGptOcrRequestSchema, ChatGptAccountError } from "../../../src/backend/accounts/chatgpt-account-service.js";
 
 it("public account states reject token properties", () => {
   assert.equal(ChatGptAccountStateSchema.safeParse({ state: "signed-out", accessToken: "synthetic" }).success, false);
