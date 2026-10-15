@@ -10,7 +10,7 @@ import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-b
 import { useIntakeCommands, verifyIntakeCommand, type IntakeRequest, type IntakeCommand } from "../../../../src/dashboard/surfaces/intake/intake-command-model.js";
 import { IntakeCommandRequestSchema, CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
-import { IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { deriveMappingSnapshotHash } from "../../../../src/models/intake/mapping.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_VALIDATED, FIXTURE_INTAKE_MANIFEST } from "../../../support/fixtures/dashboard/fixture-intake.js";
@@ -32,13 +32,13 @@ function request(before: IntakeSessionWire, command: object): IntakeRequest {
 function applied(sent: IntakeRequest, runIds: readonly string[] = []): CommandResult {
   return CommandResultSchema.parse({ state: "applied", commandId: sent.commandId, affectedTargets: [{ family: "intake", intakeSessionId: sent.target.intakeSessionId }, ...runIds.map(runId => ({ family: "run", runId }))] });
 }
-function clientFor(read: () => unknown, post?: (sent: IntakeRequest) => unknown, queue = FIXTURE_DAY_WIRE) {
+function clientFor(read: (url: string) => unknown, post?: (sent: IntakeRequest) => unknown, queue = FIXTURE_DAY_WIRE) {
   return createDashboardClient({ baseUrl: "http://intake.test", fetchImpl: async (url, init) => {
     let body: unknown;
     if (init?.method === "POST") {
       assert.ok(typeof init.body === "string");
       body = await post?.(IntakeCommandRequestSchema.parse(JSON.parse(init.body)));
-    } else body = url.includes("/dashboard?") ? queue : await read();
+    } else body = url.includes("/dashboard?") ? queue : await read(url);
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   } });
 }
@@ -61,13 +61,13 @@ describe("Intake effect readback through the typed transport", () => {
     const sent = request(before, { type: "validate-intake" });
     for (const [next, expected] of [
       [validated(before), "matched"],
-      [{ ...validated(before), intakeSessionId: FIXTURE_INTAKE_VALIDATED.intakeSessionId }, "mismatch"],
       [{ ...validated(before), expectedVersion: before.expectedVersion }, "mismatch"],
       [{ ...validated(before), expectedVersion: before.expectedVersion + 2 }, "conflict"],
       [{ ...before, expectedVersion: before.expectedVersion + 1 }, "mismatch"],
     ] as const) {
       assert.equal((await verifyIntakeCommand(clientFor(() => next), before, sent, applied(sent), FIXTURE_BOOTSTRAP.serverClock.zone)).state, expected);
     }
+    await assert.rejects(verifyIntakeCommand(clientFor(() => ({ ...validated(before), intakeSessionId: FIXTURE_INTAKE_VALIDATED.intakeSessionId })), before, sent, applied(sent), FIXTURE_BOOTSTRAP.serverClock.zone), /intake session identity mismatch/);
     const foreign = { ...applied(sent), affectedTargets: [{ family: "intake" as const, intakeSessionId: FIXTURE_INTAKE_VALIDATED.intakeSessionId }] };
     assert.equal((await verifyIntakeCommand(clientFor(() => validated(before)), before, sent, foreign, FIXTURE_BOOTSTRAP.serverClock.zone)).state, "mismatch");
   });
@@ -214,10 +214,10 @@ describe("mounted Intake shares retained executor attempts", () => {
     assert.equal(adopted.at(-1)?.state, "validated");
   });
 
-  it("retains a lost reply across unmount and only explicitly replays the original envelope", async () => {
+  it("retains a lost reply across unmount and reads its exact receipt without dispatch", async () => {
     const sent: IntakeRequest[] = [];
     const before = FIXTURE_INTAKE_MAPPING;
-    const client = clientFor(() => validated(before), command => {
+    const client = clientFor(url => url.includes("/commands/") ? { state: "recorded", request: { ...sent[0], requestedAt: "2026-08-03T17:15:00.000Z" }, result: applied(sent[0]) } : validated(before), command => {
       sent.push(command);
       if (sent.length === 1) throw new Error("private transport cause");
       return applied(command);
@@ -236,13 +236,41 @@ describe("mounted Intake shares retained executor attempts", () => {
     await act(async () => { model.issue(before, { type: "inspect-intake", payload: {} }, "inspect"); });
     assert.equal(sent.length, 1);
     await act(async () => { model.recovery?.retry(); });
-    assert.equal(sent.length, 2);
-    assert.deepEqual(sent[1], sent[0]);
+    assert.equal(sent.length, 1);
     assert.equal(adopted.length, 1);
     assert.equal(model.recovery, null);
   });
 
-  it("clears local pending after scope replacement, suppresses late adoption and refuses another actor replay", async () => {
+  it.each(["unavailable", "wrong-source", "altered-payload", "wrong-target", "wrong-version", "wrong-actor", "wrong-command"] as const)("keeps recovery uncertain and locked for %s receipts without another POST", async kind => {
+    const sent: IntakeRequest[] = [];
+    const reads: string[] = [];
+    const before = FIXTURE_INTAKE_MAPPING;
+    const client = clientFor(url => {
+      reads.push(url);
+      if (!url.includes("/commands/")) return validated(before);
+      if (kind === "unavailable") return { state: "unavailable" };
+      const original = sent[0];
+      const request = kind === "wrong-source" ? { ...original, source: "intake-workspace" }
+        : kind === "wrong-target" ? { ...original, target: { ...original.target, intakeSessionId: FIXTURE_INTAKE_VALIDATED.intakeSessionId } }
+        : kind === "wrong-version" ? { ...original, target: { ...original.target, expectedVersion: original.target.expectedVersion + 1 } }
+        : kind === "wrong-actor" ? { ...original, requestedBy: "other-operator" }
+        : kind === "wrong-command" ? { ...original, commandId: COMMAND_ID }
+        : { ...original, type: "inspect-intake", payload: {} };
+      return { state: "recorded", request, result: applied(original) };
+    }, command => { sent.push(command); throw new Error("lost delivery"); });
+    let model!: ReturnType<typeof useIntakeCommands>;
+    const adopted: IntakeSessionWire[] = [];
+    await mount(client, value => { model = value; }, value => { adopted.push(value); });
+    await act(async () => model.issue(before, { type: "validate-intake" }, "validate"));
+    await act(async () => model.recovery?.retry());
+    assert.equal(sent.length, 1); assert.equal(sent[0].source, "dashboard");
+    assert.deepEqual(reads, [`http://intake.test/api/v1/intake/${before.intakeSessionId}/commands/${sent[0].commandId}`]);
+    assert.equal(adopted.length, 0); assert.ok(model.recovery); assert.equal(model.busy, true);
+    await act(async () => model.issue(before, { type: "inspect-intake", payload: {} }, "inspect"));
+    assert.equal(sent.length, 1);
+  });
+
+  it("clears local pending after scope replacement, suppresses late adoption and refuses another actor recovery", async () => {
     let release!: (reply: CommandResult) => void;
     const sent: IntakeRequest[] = [];
     const client = clientFor(() => validated(), command => { sent.push(command); return new Promise<CommandResult>(resolve => { release = resolve; }); });
@@ -263,12 +291,12 @@ describe("mounted Intake shares retained executor attempts", () => {
     assert.equal(adopted.length, 0);
   });
 
-  it.each(["ack-lost", "not-applied"] as const)("exact enqueue recovery reads the actual manifest partition after midnight: %s", async (firstDelivery) => {
+  it.each(["ack-lost", "not-applied"] as const)("exact enqueue recovery reads only recorded receipts after midnight: %s", async (firstDelivery) => {
     const fixture = FIXTURE_INTAKE_MANIFEST;
     assert.ok(fixture.manifest && fixture.headerRowIndex !== null && fixture.headerFingerprint !== null);
     const before = IntakeSessionWireSchema.parse({ ...FIXTURE_INTAKE_VALIDATED, intakeSessionId: FIXTURE_INTAKE_MAPPING.intakeSessionId,
       reservedManifestId: fixture.intakeManifestId, reviewBinding: "a".repeat(64), validation: fixture.validation });
-    let terminal = { ...fixture, intakeSessionId: before.intakeSessionId, manifest: { ...fixture.manifest,
+    const terminal = { ...fixture, intakeSessionId: before.intakeSessionId, manifest: { ...fixture.manifest,
       mappingSnapshotHash: deriveMappingSnapshotHash({ workflow: before.workflow, sheet: before.sheet,
         headerRowIndex: fixture.headerRowIndex, headerFingerprint: fixture.headerFingerprint, bindings: before.bindings, constants: before.constants }) } };
     const template = FIXTURE_DAY_WIRE.queueSurfaces[0];
@@ -289,12 +317,9 @@ describe("mounted Intake shares retained executor attempts", () => {
         assert.ok(typeof init.body === "string");
         const command = IntakeCommandRequestSchema.parse(JSON.parse(init.body));
         sent.push(command);
-        if (sent.length === 1) throw new Error(firstDelivery === "ack-lost" ? "lost enqueue reply" : "delivery did not apply");
-        if (firstDelivery === "not-applied") {
-          const acceptedAt = IsoInstantSchema.parse(`${tomorrow.toISOString().slice(0, 10)}T17:10:00.000Z`);
-          terminal = { ...terminal, updatedAt: acceptedAt, manifest: { ...terminal.manifest, createdAt: acceptedAt } };
-        }
-        body = applied(command, rows.map(row => row.runId));
+        throw new Error(firstDelivery === "ack-lost" ? "lost enqueue reply" : "delivery did not apply");
+      } else if (url.includes("/commands/")) {
+        body = firstDelivery === "ack-lost" ? { state: "recorded", request: sent[0], result: applied(sent[0], rows.map(row => row.runId)) } : { state: "unavailable" };
       } else if (url.includes("/dashboard?")) {
         const day = new URL(url).searchParams.get("day");
         assert.ok(day); dayReads.push(day);
@@ -311,10 +336,11 @@ describe("mounted Intake shares retained executor attempts", () => {
     assert.ok(model.recovery);
     await mount(client, capture, adopt, ACTOR, 1, true, true, tomorrow.toISOString().slice(0, 10));
     await act(async () => { model.recovery?.retry(); });
-    assert.deepEqual(sent[1], sent[0]);
-    assert.deepEqual(dayReads, [firstDelivery === "ack-lost" ? originalDay : tomorrow.toISOString().slice(0, 10)]);
-    assert.equal(adopted.length, 1);
-    assert.equal(model.recovery, null);
+    assert.equal(sent.length, 1);
+    assert.deepEqual(dayReads, firstDelivery === "ack-lost" ? [originalDay] : []);
+    assert.equal(adopted.length, firstDelivery === "ack-lost" ? 1 : 0);
+    if (firstDelivery === "ack-lost") assert.equal(model.recovery, null);
+    else { assert.ok(model.recovery); assert.equal(model.busy, true); }
   });
 
   it("captured issue callbacks cannot dispatch after unmount or view replacement", async () => {
@@ -340,7 +366,7 @@ describe("mounted Intake shares retained executor attempts", () => {
     assert.equal(executor.retainedAttempts().length, count);
   });
 
-  it("captured recovery callbacks cannot replay after unmount or view replacement", async () => {
+  it("captured recovery callbacks cannot read receipts after unmount or view replacement", async () => {
     const sent: IntakeRequest[] = [];
     const client = clientFor(() => validated(), command => { sent.push(command); throw new Error("lost delivery"); });
     let model!: ReturnType<typeof useIntakeCommands>;

@@ -84,7 +84,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/dashboard/client/` | Shared backend client, queries, commands, and subscriptions. |
 | `src/dashboard/ds/` and `src/dashboard/kit/` | Design system and shared UI components. |
 | `src/dashboard/state/` and `src/dashboard/lib/` | Renderer state and utilities. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. |
-| `src/dashboard/surfaces/` | Product screens and their view models. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake command verification lives in `intake/intake-command-model.ts`. |
+| `src/dashboard/surfaces/` | Product screens and their view models. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
 | `src/dashboard/assets/` and `src/dashboard/public/` | Bundled assets and static public files. The Logs preview lives under `public/logs-preview/`. |
 | `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. |
