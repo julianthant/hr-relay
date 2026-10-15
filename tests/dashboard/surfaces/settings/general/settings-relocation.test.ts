@@ -261,6 +261,9 @@ describe("storage relocation Paths controls", () => {
     await act(async () => surface.controller().update("artifactRoot", SOURCE.artifactRoot)); await idle();
     assert.equal(commands.length, 0);
     assert.match(surface.host.textContent ?? "", /draft matches the current plan/u);
+    const save = surface.controller().save; assert.equal(save.state, "refused");
+    if (save.state !== "refused") throw new Error("expected refusal");
+    assert.equal(save.code, "STORAGE_RELOCATION_DRAFT_UNCHANGED");
     await act(async () => surface.controller().reset("artifactRoot"));
     assert.equal(surface.controller().dirtyCount, 0);
   });

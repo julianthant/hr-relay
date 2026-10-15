@@ -1,7 +1,7 @@
 import { createOperationDisplayFixtures } from "../../support/helpers/operation-display-fixtures.js";
 import { describe, expect, it } from "vitest";
 import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
-import { freezeWorkflowOperationDisplaySnapshot, requireWorkflowOperationDisplaySnapshot, WorkflowOperationDisplaySnapshotSchema } from "../../../src/models/workflow/operation-display-snapshot.js";
+import { freezeWorkflowOperationDisplaySnapshot, requireWorkflowOperationDisplaySnapshot, WorkflowOperationDisplaySnapshotError, WorkflowOperationDisplaySnapshotSchema } from "../../../src/models/workflow/operation-display-snapshot.js";
 import { OPERATION_DISPLAY_FORMAT_VERSION } from "../../../src/models/workflow/operation-display.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
@@ -94,6 +94,10 @@ describe("workflow operation display declarations", () => {
     };
     expect(WorkflowOperationDisplaySnapshotSchema.safeParse(protectedComparison).success).toBe(false);
 
+    const identity = { workflowId: compiled.descriptor.id, definitionFingerprint: compiled.descriptor.contractFingerprint };
+    for (const stored of [undefined, {}, { ...snapshot, workflowId: `${snapshot.workflowId}-other` }, { ...snapshot, contentDigest: "0".repeat(64) }]) {
+      expect(() => requireWorkflowOperationDisplaySnapshot(stored, identity)).toThrow(WorkflowOperationDisplaySnapshotError);
+    }
     expect(() => requireWorkflowOperationDisplaySnapshot(undefined, {
       workflowId: compiled.descriptor.id,
       definitionFingerprint: compiled.descriptor.contractFingerprint,

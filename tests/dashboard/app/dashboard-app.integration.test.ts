@@ -1,3 +1,8 @@
+import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
+import { servedFixtureSources } from "../../parity/helpers/workflow-composition.js";
+import { workflowComposition as servedWorkflowComposition } from "../../../src/dashboard/app/workflow-sources.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m0 } from "../../parity/helpers/workflow-composition.js";
@@ -206,6 +211,7 @@ async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}
   const host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
   await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { workflowComposition })})));
   await settle();
+  return client;
 }
 async function historyMove(direction: "back" | "forward") { window.history[direction](); await settle(); await settle(); }
 
@@ -384,6 +390,71 @@ try {
 } finally {
 await _afterEachFixture0();
 }
+});
+it_m1("keeps served Logs failures while explicit parity composition selects mock Logs for the same run", async () => {
+  try {
+    const { DashboardClientError } = await import("../../../src/dashboard/client/index.js");
+    let reads = 0;
+    const search = `?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.openGateRun}&section=logs`;
+    const client = await mount(search, {
+      runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", message: "private transport detail" }); },
+    }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
+    assert_m1.ok(reads > 0);
+    assert_m1.ok(document.body.textContent?.includes("The dashboard could not load this from the local service. Try again."));
+    assert_m1.match(document.body.textContent ?? "", /Could not load logs|Logs unavailable/);
+    assert_m1.doesNotMatch(document.body.textContent ?? "", /Confirm the employee match|private transport detail/);
+    const failedReads = reads;
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
+      children: createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }) })));
+    await settle();
+    assert_m1.equal(reads, failedReads);
+    assert_m1.match(document.body.textContent ?? "", /Confirm the employee match/);
+    assert_m1.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
+    const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows))[0];
+    assert_m1.ok(workflow);
+    const composition = PARITY_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
+    assert_m1.equal(composition.sources["person-lookup"], "mock");
+    assert_m1.equal(composition.logsSources?.["person-lookup"], "mock");
+    assert_m1.equal(composition.logsSources?.["generic-served-workflow"], "served");
+  } finally { await _afterEachFixture0(); }
+});
+it_m1("passes the app client to a served Explorer read while parity explicitly retains mock Explorer", async () => {
+  try {
+    let calls = 0;
+    await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22person-lookup%22%7D", {
+      workflowExplorer: async () => { calls++; return { ...FIXTURE_EXPLORER_WIRE, workflows: FIXTURE_EXPLORER_WIRE.workflows.map(workflow => workflow.id === "person-lookup" ? { ...workflow, version: parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows).find(entry => entry.id === workflow.id)!.start.version } : workflow) }; },
+    }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
+    assert_m1.equal(calls, 1);
+    assert_m1.ok(document.body.textContent?.includes(FIXTURE_EXPLORER_WIRE.workflows.find(workflow => workflow.id === "person-lookup")!.nodes[0].label), document.body.textContent ?? "");
+    assert_m1.ok(document.body.textContent?.includes("No run values are available."));
+    assert_m1.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
+    await _afterEachFixture0();
+    calls = 0;
+    const client = await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22fixture-person-lookup%22%7D", {
+      workflowExplorer: async () => { calls++; throw new Error("mock Explorer must not read served definitions"); },
+    });
+    assert_m1.equal(calls, 0);
+    assert_m1.ok(document.body.textContent?.includes("Fictional preview data."));
+    assert_m1.equal(document.body.textContent?.includes("No run values are available."), false);
+    const select = document.querySelector('[aria-label="Explorer workflow"]');
+    assert_m1.ok(select instanceof HTMLButtonElement);
+    await click(select);
+    const separation = document.querySelector('[role="option"][data-value="fixture-separations"]');
+    assert_m1.ok(separation instanceof HTMLElement);
+    await click(separation);
+    const identity = document.querySelector('[aria-label="Identity check preview"]');
+    assert_m1.ok(identity instanceof HTMLButtonElement);
+    await click(identity);
+    const rejected = document.querySelector('[role="option"][data-value="rejected"]');
+    assert_m1.ok(rejected instanceof HTMLElement);
+    await click(rejected);
+    assert_m1.ok((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden);
+    const replacement = { ...client };
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client: replacement, children: createElement_m1(DashboardApp_m1, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }) })));
+    await settle();
+    assert_m1.equal((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden, false);
+    assert_m1.equal(calls, 0);
+  } finally { await _afterEachFixture0(); }
 });
 it_m1("failed and delayed day snapshots never render an empty or stale queue",async()=>{
 try {

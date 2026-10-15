@@ -25,6 +25,30 @@ export const ERROR_CATALOG = Object.freeze({
     "The failure could not be formatted safely. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
+  DASHBOARD_READ_FAILED: catalogEntry(
+    "The dashboard could not load this from the local service. Try again.",
+    EmptyParametersSchema,
+  ),
+  LOGS_READ_FAILED_TITLE: catalogEntry(
+    "Could not load logs",
+    EmptyParametersSchema,
+  ),
+  LOGS_UNAVAILABLE_TITLE: catalogEntry(
+    "Logs unavailable",
+    EmptyParametersSchema,
+  ),
+  LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE: catalogEntry(
+    "Confirmed actions unavailable",
+    EmptyParametersSchema,
+  ),
+  LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE: catalogEntry(
+    "The response did not supply complete confirmed-action evidence.",
+    EmptyParametersSchema,
+  ),
+  EXPLORER_TASK_BINDING_UNAVAILABLE: catalogEntry(
+    "This workflow definition is unavailable because a task implementation is not registered.",
+    EmptyParametersSchema,
+  ),
   DASHBOARD_DAY_INVALID: catalogEntry(
     "The selected work date is invalid. Choose a valid date.",
     EmptyParametersSchema,
@@ -43,6 +67,50 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   STORAGE_RELOCATION_OUTCOME_UNCERTAIN: catalogEntry(
     "The plan write could not be confirmed. It may already be recorded. Retry the exact attempt; your draft is retained.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_INITIAL_READ_UNAVAILABLE: catalogEntry(
+    "Settings could not be read. Try again.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_REFRESH_UNAVAILABLE: catalogEntry(
+    "Current settings could not be read. Your drafts are retained.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_DRAFT_INVALID: catalogEntry(
+    "Check the draft values. No request was sent.",
+    EmptyParametersSchema,
+  ),
+  PROTECTED_SETTINGS_DRAFT_INVALID: catalogEntry(
+    "Check the credential draft. No request was sent.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RELOCATION_DRAFT_INVALID: catalogEntry(
+    "Check the folder paths. No plan was sent.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RELOCATION_DRAFT_UNCHANGED: catalogEntry(
+    "The draft matches the current plan. Undo the edit or choose another folder.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_RELOCATION_CANCEL_REQUIRED: catalogEntry(
+    "Cancel the current plan to keep the active locations, or choose another folder.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_PATH_PICKER_BUSY: catalogEntry(
+    "Another path picker is already open.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_PATH_PICKER_TIMEOUT: catalogEntry(
+    "The path picker timed out. Try again.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_PATH_PICKER_UNSUPPORTED: catalogEntry(
+    "The path picker is unavailable on this host.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_PATH_PICKER_FAILED: catalogEntry(
+    "The path picker could not be opened. Try again.",
     EmptyParametersSchema,
   ),
   COMMAND_RESULT_IDENTITY_MISMATCH: catalogEntry(

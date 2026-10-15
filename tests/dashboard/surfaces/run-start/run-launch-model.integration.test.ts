@@ -5,6 +5,7 @@ import { afterEach, describe, it } from "vitest";
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from "../../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../../src/dashboard/app/dashboard-app-model.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { createRunLaunchService } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
@@ -25,7 +26,30 @@ function setup(enqueue: Parameters<typeof launchHarness>[0] = "reject-active", o
 const OTHER_PLAN = "b0000000-0000-4000-8000-000000009999";
 const OTHER_RUN = "c0000000-0000-4000-8000-000000009999";
 
+const planIdentityError = (error: unknown) => {
+  assert.ok(error instanceof Error);
+  assert.equal(error.name, "RUN_LAUNCH_PLAN_IDENTITY_MISMATCH");
+  assert.equal(error.message, "The supplied data does not match the expected contract.");
+  return true;
+};
+
 describe("Start enqueue verification through the actual command and day transports", () => {
+  it("binds plan previews to the current actor and submitted options without losing partial refusals", async () => {
+    const w = setup();
+    const request = { workflowId: w.h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: true,
+      browserMode: "headless", captureBrowserScreenshots: false, priority: "interactive" };
+    const plan = await w.launch.preview(request);
+    assert.equal(plan.planned.length, 1);
+    for (const change of [{ plannedBy: "another-operator" }, { workflowId: "another-workflow" }, { dryRun: false }, { browserMode: "headed" }]) {
+      w.client.submitStartPlan = async () => StartPlanWireSchema.parse({ ...plan, ...change });
+      await assert.rejects(() => w.launch.preview(request), planIdentityError);
+    }
+    const refusal = { entry: 2, code: "input-invalid" as const, message: "Second input refused" };
+    w.client.submitStartPlan = async () => ({ ...plan, refused: [refusal] });
+    const partial = await w.launch.preview({ ...request, submissions: [{ eid: "10812345" }, {}] });
+    assert.equal(partial.planned.length, 1); assert.deepEqual(partial.refused, [refusal]);
+    assert.throws(() => w.launch.prepareFinal({ ...plan, plannedBy: "another-operator" }), planIdentityError);
+  });
   for (const [name, change] of [
     ["missing session origin", (row: QueueSurfaceWire) => ({ ...row, session: { state: "present", sessionId: row.session.state === "present" ? row.session.sessionId : OTHER_RUN } })],
     ["another start plan", (row: QueueSurfaceWire) => ({ ...row, session: { state: "present", sessionId: OTHER_RUN, origin: { kind: "start-plan", startPlanId: OTHER_PLAN, actorId: "local-operator" } } })],

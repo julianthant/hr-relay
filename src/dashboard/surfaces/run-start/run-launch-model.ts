@@ -5,10 +5,12 @@ import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandReadbackVerification } from "../../app/commands/command-executor.js";
 import { canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { RerunValuesSnapshotSchema, type RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
-import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest, type StartPlanWire } from "../../../models/dashboard/start-plan.js";
+import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
 import { ITEM_ATTEMPT_HISTORY_MAX_LIMIT, type ItemAttemptHistoryRun } from "../../../models/dashboard/item-attempt-history.js";
 import type { QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import type { DashboardClient } from "../../client/index.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import type { LaunchVerificationPlan } from "./run-launch-recovery.js";
 import { START_DOOR_ABSENCE } from "./run-start-model.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import type { WorkflowBootstrapPrimitive } from "../shell/shell-model.js";
@@ -100,10 +102,27 @@ export function prefillRerun(input: RerunValuesSnapshot, options: Readonly<{
     ...(Object.keys(omissionFacts).length === 0 ? {} : { stepOmissions: Object.entries(omissionFacts).map(([step, facts]) => ({ step, facts })) }) });
 }
 
+function launchPlanIdentityMismatch(): Error {
+  const failure = formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }));
+  return Object.assign(new Error(failure.text), failure, { name: "RUN_LAUNCH_PLAN_IDENTITY_MISMATCH" });
+}
+
 /** Shared launch door; confirmation/replay send the same immutable envelope. */
 export function createRunLaunchService(client: Pick<DashboardClient, "rerunValues" | "previewRerunWarnings" | "submitStartPlan" | "dashboardDay" | "itemAttemptHistory">, actorId: string,
   identity?: { uuid(): string; now(): string }) {
-  const preview = (input: unknown) => client.submitStartPlan(StartPlanRequestSchema.parse(input));
+  const preview = async (input: unknown) => {
+    const request = StartPlanRequestSchema.parse(input);
+    const plan = StartPlanWireSchema.parse(await client.submitStartPlan(request));
+    if (plan.workflowId !== request.workflowId || plan.plannedBy !== actorId || plan.dryRun !== request.dryRun
+      || (plan.browserMode !== undefined && plan.browserMode !== request.browserMode)
+      || (plan.captureBrowserScreenshots !== undefined && plan.captureBrowserScreenshots !== request.captureBrowserScreenshots)
+      || plan.priority !== (request.priority ?? "interactive")
+      || canonicalJsonStringify(plan.rerun?.source ?? null) !== canonicalJsonStringify(request.rerunSource ?? null)
+      || (request.warningAcknowledgment !== undefined && plan.rerun?.acknowledgment !== request.warningAcknowledgment)) {
+      throw launchPlanIdentityMismatch();
+    }
+    return plan;
+  };
   return Object.freeze({
     openRerun: (input: unknown) => client.rerunValues(input), prefill: prefillRerun, preview,
     previewWarnings: (input: unknown) => client.previewRerunWarnings(input),
@@ -117,11 +136,12 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
     prepareFinal(input: unknown) {
       if (identity === undefined) throw new Error("RUN_LAUNCH_AUTHORITY_UNAVAILABLE");
       const plan = StartPlanWireSchema.parse(input);
+      if (plan.plannedBy !== actorId) throw launchPlanIdentityMismatch();
       return StartCommandRequestSchema.parse({ commandId: identity.uuid(), requestedAt: identity.now(), requestedBy: actorId,
         source: "run-start", family: "start", type: "start-run", target: { workflowId: plan.workflowId,
           startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
     },
-    submit(input: unknown, binding: DashboardCommandBinding, plan?: StartPlanWire, publish?: (outcome: CommandOutcome) => void) {
+    submit(input: unknown, binding: DashboardCommandBinding, plan?: LaunchVerificationPlan, publish?: (outcome: CommandOutcome) => void) {
       const command = StartCommandRequestSchema.parse(input);
       const options = { scope: binding.scope, readback: async (request: CommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
         if (request.family !== "start" || !("state" in reply)) return { state: "mismatch" as const, evidence: reply };
@@ -135,7 +155,7 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
 }
 
 async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardDay" | "itemAttemptHistory">,
-  command: z.infer<typeof StartCommandRequestSchema>, reply: CommandResult, plan?: StartPlanWire): Promise<CommandReadbackVerification> {
+  command: z.infer<typeof StartCommandRequestSchema>, reply: CommandResult, plan?: LaunchVerificationPlan): Promise<CommandReadbackVerification> {
   if (reply.state !== "applied" && reply.state !== "already-applied") return { state: "mismatch", evidence: reply };
   const targets = reply.affectedTargets;
   const starts = targets.filter(target => target.family === "start");

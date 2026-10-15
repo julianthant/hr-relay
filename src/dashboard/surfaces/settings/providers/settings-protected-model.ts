@@ -34,14 +34,14 @@ export function useProtectedSettings(input: {
   if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
   const available = input.document?.protectedSettings;
   const update = (name: ProtectedSettingsName, raw: string): void => {
-    if (busy.current || pending.current !== undefined || available?.state !== "available" || !available.rows.some(row => row.name === name)) return;
+    if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available" || !available.rows.some(row => row.name === name)) return;
     let error: string | undefined;
     try { protectedValue(name, raw); } catch { error = name === "activityPersonPseudonym" ? "Enter JSON with keyHex (64 lowercase hex characters) and keyGeneration (activity-person-…)." : "Enter a valid value for this credential."; }
     setDraft(previous => ({ ...previous, [name]: { kind: "set", raw } }));
     setErrors(previous => ({ ...previous, [name]: error })); setSave({ state: "idle" });
   };
   const clear = (name: ProtectedSettingsName): void => {
-    if (busy.current || pending.current !== undefined || available?.state !== "available") return;
+    if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available") return;
     setDraft(previous => ({ ...previous, [name]: { kind: "clear" } }));
     setErrors(previous => ({ ...previous, [name]: undefined })); setSave({ state: "idle" });
   };
@@ -69,6 +69,7 @@ export function useProtectedSettings(input: {
         feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})) };
       busy.current = false; setSave(commandSaveState(recoveryFailure.current)); return;
     }
+    if (parsed.data.requestedBy !== binding.scope.actorId) { busy.current = false; setSave(settingsScopeRecoveryState()); return; }
     let document: EditableSettingsWire | undefined;
     let entryNames: readonly string[] = [];
     const options: CommandExecutionOptions = {
@@ -112,7 +113,7 @@ export function useProtectedSettings(input: {
       const command = deepFreeze(ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "settings-surface",
         target: { expectedRevision: available.readback.revision }, payload: { protectedSchemaHash: available.protectedSchemaHash, writeId: crypto.randomUUID(), entries } }));
       void perform(command);
-    } catch { setSave({ state: "refused", message: "Check the credential draft. No request was sent." }); }
+    } catch { setSave({ state: "refused", code: "PROTECTED_SETTINGS_DRAFT_INVALID", message: formatErrorCatalogFailure(createErrorCatalogFailure("PROTECTED_SETTINGS_DRAFT_INVALID", {})).text }); }
   };
   const autosave = useEffectEvent(submit);
   useEffect(() => {
@@ -122,6 +123,6 @@ export function useProtectedSettings(input: {
     return () => window.clearTimeout(timer);
   }, [available, draft, errors, input.readReady, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
-  return { draft, errors, save: pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save, dirtyCount: Object.keys(draft).length, locked: save.state === "saving" || pending.current !== undefined,
+  return { draft, errors, save: pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save, dirtyCount: Object.keys(draft).length, locked: !input.readReady || save.state === "saving" || pending.current !== undefined,
     update, clear, reset, discard, submit, retry };
 }

@@ -9,6 +9,42 @@ import {
 } from "../../../src/models/failures/error-catalog.js";
 
 describe("error catalog", () => {
+  it("registers the exact Settings integration codes and fixed messages", () => {
+    const expected = {
+      SETTINGS_INITIAL_READ_UNAVAILABLE: "Settings could not be read. Try again.",
+      SETTINGS_REFRESH_UNAVAILABLE: "Current settings could not be read. Your drafts are retained.",
+      SETTINGS_DRAFT_INVALID: "Check the draft values. No request was sent.",
+      PROTECTED_SETTINGS_DRAFT_INVALID: "Check the credential draft. No request was sent.",
+      STORAGE_RELOCATION_DRAFT_INVALID: "Check the folder paths. No plan was sent.",
+      STORAGE_RELOCATION_DRAFT_UNCHANGED: "The draft matches the current plan. Undo the edit or choose another folder.",
+      STORAGE_RELOCATION_CANCEL_REQUIRED: "Cancel the current plan to keep the active locations, or choose another folder.",
+      SETTINGS_PATH_PICKER_BUSY: "Another path picker is already open.",
+      SETTINGS_PATH_PICKER_TIMEOUT: "The path picker timed out. Try again.",
+      SETTINGS_PATH_PICKER_UNSUPPORTED: "The path picker is unavailable on this host.",
+      SETTINGS_PATH_PICKER_FAILED: "The path picker could not be opened. Try again.",
+    } as const;
+    for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
+      const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+      assert.equal(message.code, code);
+      assert.equal(message.text, expected[code]);
+    }
+  });
+
+  it("registers the exact Logs integration messages through the catalog types", () => {
+    const expected = {
+      DASHBOARD_READ_FAILED: "The dashboard could not load this from the local service. Try again.",
+      LOGS_READ_FAILED_TITLE: "Could not load logs",
+      LOGS_UNAVAILABLE_TITLE: "Logs unavailable",
+      LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE: "Confirmed actions unavailable",
+      LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE: "The response did not supply complete confirmed-action evidence.",
+    } as const;
+    for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
+      const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+      assert.equal(message.code, code);
+      assert.equal(message.text, expected[code]);
+    }
+  });
+
   it("derives a closed code schema from the frozen catalog and keeps parameters strict", () => {
     const codes = Object.keys(ERROR_CATALOG);
     assert.equal(Object.isFrozen(ERROR_CATALOG), true);

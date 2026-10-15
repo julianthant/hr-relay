@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { formatErrorCatalogFailure, createErrorCatalogFailure } from '../../../../../src/models/failures/error-catalog.js';
 import { afterEach,describe,it,vi } from 'vitest';
 import { mountSettingsHarness,syntheticSettingsAuthority } from '../../../../support/helpers/dashboard/settings-harness.js';
 
@@ -18,6 +19,22 @@ function inputNamed(host: HTMLElement, name: string): HTMLInputElement {
   return input;
 }
 describe('confirmed Settings feedback through the current editor', () => {
+  for (const family of ["ordinary", "protected"] as const) it(`uses the catalog refusal when ${family} envelope composition fails before dispatch`, async () => {
+    const h = await setup();
+    const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
+    await act(async () => {
+      if (family === "ordinary") h.controller().update("actor.label", "Synthetic operator");
+      else h.controller().protectedEditor.update("ucpathUserId", "Synthetic operator");
+    });
+    const uuid = vi.spyOn(crypto, "randomUUID").mockReturnValue("invalid-envelope" as ReturnType<typeof crypto.randomUUID>);
+    try { await act(async () => control().submit()); } finally { uuid.mockRestore(); }
+    const save = control().save; assert.equal(save.state, "refused");
+    if (save.state !== "refused") throw new Error("expected refusal");
+    const code = family === "ordinary" ? "SETTINGS_DRAFT_INVALID" : "PROTECTED_SETTINGS_DRAFT_INVALID";
+    assert.equal(save.code, code);
+    assert.equal(save.message, formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text);
+    assert.equal(h.commands.length, 0); assert.equal(control().dirtyCount, 1);
+  });
   it('waits until ordinary typing stops and saves the final value once', async () => {
     const { controller, commands, notices } = await setup();
     await act(async () => controller().update('actor.label', 'First'));

@@ -6,18 +6,30 @@ import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js'
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { FIXTURE_DAY } from './helpers/fixture-identity.js';
 import { FIXTURE_DAY_WIRE } from './helpers/fixture-queue.js';
+import { startRunRerunServer } from './helpers/run-rerun-server.js';
+import { gotoAppState } from './helpers/app-driver.js';
+import { absentProbeEvidence } from '../support/fixtures/write-sequencer-fixtures.js';
+import { CommandRequestSchema } from '../../src/rules/commands/commands.js';
 
 const failed = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === 'single' && row.status === 'failed');
-if (failed === undefined) throw new Error('Focus verification requires a failed fixture with preview footer actions');
+if (failed === undefined) throw new Error('Focus verification requires a failed fixture for admitted footer actions');
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidence = `queue-focus-${theme.attribute}-${width}.a11y.yml`;
   test(`approved Focus queue and Run input @ ${theme.attribute} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
     ensureParityBundle();
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, dayWire: { ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === failed.runId ? { ...row, actions: [] } : row) } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, dayWire: { ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === failed.runId ? { ...row, actions: [
+      { key: 'rerun', kind: 'navigation', label: 'Retry', navigate: { kind: 'rerun', expectedVersion: row.rowRevision }, intent: 'neutral', icon: 'retry', placement: ['footer'] },
+      { key: 'delete', kind: 'command', command: 'delete', label: 'Delete', expectedVersion: row.rowRevision, intent: 'destructive', icon: 'delete', placement: ['footer'], confirm: { title: 'Delete this run?', body: 'Remove this run and its child rows.', confirmLabel: 'Delete run', tone: 'destructive' } },
+    ] } : row) } });
     try {
       const writes: string[] = [], errors: string[] = [];
-      page.on('request', request => { if (request.method() !== 'GET') writes.push(`${request.method()} ${new URL(request.url()).pathname}`); });
+      const commands: unknown[] = [];
+      page.on('request', request => {
+        const path = new URL(request.url()).pathname;
+        if (request.method() !== 'GET') writes.push(`${request.method()} ${path}`);
+        if (request.method() === 'POST' && path === '/api/v1/commands') commands.push(request.postDataJSON());
+      });
       page.on('pageerror', error => errors.push(error.message));
       await page.setViewportSize({ width, height: 900 });
       await installTheme(page, theme);
@@ -48,7 +60,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       info.annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash('sha256').update(snapshot).digest('hex') });
       await info.attach(evidence, { body: snapshot, contentType: 'text/yaml' });
 
-
       await status.click();
       const statuses = page.getByRole('menu', { name: 'Filter queue by status', exact: true });
       await expect(statuses.locator('[data-slot="dropdown-menu-checkbox-item"]')).toHaveCount(11);
@@ -63,20 +74,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole('menu')).toHaveCount(0);
       await source.click({ button: 'right' });
       await expect(page.getByRole('menu')).toHaveCount(0);
-      await source.getByRole('button', { name: 'Retry', exact: true }).click();
-      await expect(page.getByText('1 run queued', { exact: true })).toBeVisible();
-      await expect(page.getByRole('dialog', { name: /run/i })).toHaveCount(0); await expect(source).toHaveCount(0);
-      await status.click(); await statuses.getByRole('menuitemcheckbox', { name: /^All / }).click(); await page.keyboard.press('Escape');
-      const retried = rows.filter({ hasText: 'Mock retry queued with original settings' });
-      await expect(retried).toHaveCount(1); await expect(retried).toContainText(`#${failed.attempt + 1}`);
-      await retried.getByRole('button', { name: /^Attempts for/ }).click(); await expect(page.getByRole('menu', { name: /^Attempts for/ })).toContainText(`#${failed.attempt}`); await page.keyboard.press('Escape');
-      await retried.focus(); await page.keyboard.press('m');
-      await expect(page.getByRole('menu')).toHaveCount(0);
-      await retried.getByRole('button', { name: 'Delete', exact: true }).click();
-      const confirmation = page.getByRole('dialog', { name: 'Delete this run?', exact: true }); await expect(confirmation).toBeVisible(); await expect(retried).toBeVisible();
-      await confirmation.getByRole('button', { name: 'Keep run', exact: true }).click(); await expect(retried).toBeVisible();
-      await retried.getByRole('button', { name: 'Delete', exact: true }).click(); await confirmation.getByRole('button', { name: 'Delete run', exact: true }).click(); await expect(retried).toHaveCount(0);
-      await page.reload(); await expect(source).toBeVisible(); await expect(page.getByRole('button', { name: 'Delete selected runs' })).toHaveCount(0);
+      await expect(source.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+      await expect(source.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
+      expect(writes).toEqual([]);
 
       await start.click();
       const run = page.getByRole('dialog', { name: 'Start a run', exact: true });
@@ -115,6 +115,79 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(writes).toEqual([]);
       expect(errors).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+      const authority = await startRunRerunServer();
+      try {
+        await gotoAppState(page, authority.baseUrl, { day: authority.day });
+        const original = page.locator(`[data-demo-row-id="${authority.source.envelope.runId}"]`);
+        await expect(original).toBeVisible();
+        const originalBytes = JSON.stringify(authority.h.fresh(authority.source));
+        await original.getByRole('button', { name: 'Rerun', exact: true }).click();
+        const rerun = page.getByRole('dialog', { name: 'Rerun', exact: true });
+        await expect(rerun).toBeVisible();
+        expect(authority.commands).toEqual([]); expect(writes).toEqual([]);
+        await rerun.getByRole('button', { name: 'Continue', exact: true }).click();
+        await rerun.getByRole('button', { name: 'Confirm', exact: true }).click();
+        await expect(rerun.getByRole('textbox', { name: 'Employee ID', exact: true })).toHaveValue('10812345');
+        await rerun.getByRole('button', { name: 'Continue', exact: true }).click();
+        await rerun.getByRole('checkbox', { name: 'Dry run', exact: true }).check();
+        await rerun.getByRole('button', { name: 'Preview plan', exact: true }).click();
+        const submit = rerun.getByRole('button', { name: 'Start dry run', exact: true });
+        await expect(submit).toBeVisible();
+        expect(authority.commands).toEqual([]); expect(authority.h.queueRoots).toHaveLength(1);
+        const planningWrites = [...writes];
+        expect(planningWrites.length).toBeGreaterThan(0);
+        expect(planningWrites.every(write => write === 'POST /api/v1/start-plans' || write === 'POST /api/v1/rerun-warnings')).toBe(true);
+        await submit.click();
+        await expect(rerun).toHaveCount(0);
+        await expect(page.getByRole('status', { name: 'Rerun started', exact: true })).toBeVisible();
+        expect(authority.commands).toHaveLength(1);
+        const launched = CommandRequestSchema.parse(authority.commands[0]);
+        expect(launched.family).toBe('start'); expect(launched.type).toBe('start-run');
+        if (launched.family !== 'start') throw new Error('Expected a Start command');
+        expect(launched.target.workflowId).toBe(authority.source.envelope.workflow);
+        const accepted = authority.h.queueRoots.at(-1); if (!accepted) throw new Error('Rerun fixture accepted no run');
+        const retriedRun = authority.h.database.authority.runs.get(accepted.runId); if (!retriedRun) throw new Error('Rerun fixture lost accepted run');
+        expect(retriedRun.envelope.attempt).toBe(authority.source.envelope.attempt + 1);
+        expect(retriedRun.envelope.itemId).toBe(authority.source.envelope.itemId);
+        expect(retriedRun.envelope.retryOf).toBe(authority.source.envelope.runId);
+        expect(JSON.stringify(authority.h.fresh(authority.source))).toBe(originalBytes);
+        const retried = page.locator(`[data-demo-row-id="${accepted.runId}"]`);
+        await expect(retried).toBeVisible(); await expect(retried).toContainText(`#${retriedRun.envelope.attempt}`);
+        await expect(original).toHaveCount(0);
+        await retried.getByRole('button', { name: /^Attempts for/ }).click();
+        await expect(page.getByRole('menu', { name: /^Attempts for/ })).toContainText(`#${authority.source.envelope.attempt}`);
+        await page.keyboard.press('Escape'); await retried.focus(); await page.keyboard.press('m');
+        await expect(page.getByRole('menu')).toHaveCount(0);
+        authority.h.world.probeResults.push(absentProbeEvidence(authority.h.clock.now().toISOString()));
+        const executed = await authority.h.execute(retriedRun);
+        expect(executed.state, JSON.stringify(executed.state === 'failed' ? authority.h.database.authority.failures.get(executed.failureId) : executed)).toBe('done');
+        authority.publish();
+        const deleteVersion = authority.h.database.authority.runs.get(accepted.runId)?.version;
+        expect(deleteVersion).toBeDefined();
+        const remove = retried.getByRole('button', { name: 'Delete run', exact: true });
+        await remove.click();
+        const confirmation = page.getByRole('dialog', { name: 'Delete this run', exact: true });
+        await expect(confirmation).toBeVisible(); await expect(retried).toBeVisible();
+        await page.keyboard.press('Escape'); await expect(remove).toBeFocused();
+        expect(authority.commands).toHaveLength(1);
+        await remove.click(); await confirmation.getByRole('button', { name: 'Delete', exact: true }).click();
+        await expect(retried).toHaveCount(0);
+        await expect(page.getByText('Command confirmed.', { exact: true })).toBeVisible();
+        expect(authority.commands).toHaveLength(2);
+        expect(commands).toEqual(authority.commands);
+        const deleted = CommandRequestSchema.parse(authority.commands[1]);
+        expect(deleted.commandId).not.toBe(launched.commandId);
+        expect(deleted).toMatchObject({ family: 'run', type: 'delete', target: { runId: accepted.runId, expectedVersion: deleteVersion } });
+        await expect(page).not.toHaveURL(new RegExp(`run=${accepted.runId}`, 'u'));
+        expect(authority.h.database.authority.deletedRuns.get(accepted.runId)).toBeDefined();
+        await page.reload(); await expect(retried).toHaveCount(0); await expect(original).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Delete selected runs' })).toHaveCount(0);
+        expect(writes).toEqual([...planningWrites, 'POST /api/v1/commands', 'POST /api/v1/commands']);
+        expect(errors).toEqual([]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      } finally { await authority.close(); }
+
     } finally { await server.close(); }
   });
 }
