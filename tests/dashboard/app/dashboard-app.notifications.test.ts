@@ -15,6 +15,10 @@ import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { LocalDateSchema } from "../../../src/rules/identity/ids.js";
 import type { NotificationDestination } from "../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
+import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
+import { NotificationCommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
+import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
 import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/notification-navigation.js";
 
 const requested = vi.hoisted(() => ({ target: undefined as NotificationDestination | undefined }));
@@ -40,7 +44,7 @@ async function mount(missing = false) {
   };
   window.history.replaceState(null, "", "/?day=2026-08-04");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => ({ ...PRODUCT_WORKFLOW_COMPOSITION, inbox: "mock" as const }) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
   await act(async () => { bell.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
   const target = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open exact target"); assert(target);
@@ -82,4 +86,47 @@ it("keeps a missing canonical target in the inbox and shows its catalog refusal"
   const { host } = await mount(true);
   assert.equal(new URLSearchParams(location.search).get("run"), null);
   assert(host.textContent?.includes(notificationTargetUnavailable()));
+});
+it("mounts served inbox controls and reports only the served search authority total", async () => {
+  const { app } = createFixtureBff();
+  let rows = NotificationWireSchema.array().parse([{ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage degraded", occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" }, link: { kind: "storage" } }]);
+  const writes: unknown[] = [], queries: string[] = [];
+  const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+    const path = new URL(url).pathname;
+    if (path === "/api/v1/notifications") return Response.json(rows);
+    if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
+    if (path === "/api/v1/commands") {
+      const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
+      const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); writes.push(command);
+      rows = NotificationWireSchema.array().parse(rows.map(row => ({ ...row, revision: 2, state: "read", readState: "read" })));
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: command.target.notificationId }] });
+    }
+    return app.request(url, init);
+  } });
+  const client = { ...transport,
+    searchRuns: async (query: CrossDateSearchQueryInput) => { queries.push(query.q); return CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: 1, results: [{ runId: FIXTURE_IDS.failedRun, traceId: "pl-120000-0099", workflowId: "person-lookup", partitionDay: FIXTURE_DAY_WIRE.day, registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" }, state: "done", shape: "single", dryRun: true, priority: "bulk", systems: [], runNumber: { state: "absent", reason: "not recorded" }, retryOf: { state: "absent", reason: "first" }, enqueuedAt: "2026-08-03T12:00:00Z", endedAt: { state: "absent", reason: "not recorded" }, match: { field: "actor", strength: "exact" }, metadata: { subject: { state: "available", value: "Exact served subject" }, actor: { state: "available", value: "local-operator" }, version: 1, failureCode: null, evidence: { receipt: false, failure: false, diagnostic: false } } }] }); },
+    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day) }); input.onState({ state: "live" }); return { close() {} }; },
+  };
+  window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
+  const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
+  await act(async () => bell.click());
+  assert(host.textContent?.includes("Storage degraded")); assert.equal(host.textContent?.includes("Canonical history"), false);
+  const read = host.querySelector<HTMLButtonElement>('button[aria-label="Mark read: Storage degraded"]'); assert(read);
+  await act(async () => { read.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
+  assert.equal(writes.length, 1); assert(host.querySelector('button[aria-label="Notifications, 0 unread"]'));
+  assert.equal(queries.length, 0);
+  const search = host.querySelector<HTMLButtonElement>('button[aria-label="Search runs"]'); assert(search);
+  await act(async () => { search.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
+  assert.equal(queries.length, 1); assert(document.body.textContent?.includes("Exact served subject"));
+  assert([...document.querySelectorAll('[role="status"]')].some(node => node.textContent === "1 run"));
+  const query = document.querySelector<HTMLInputElement>('input[aria-label="Search runs"]'); assert(query);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(query, "local-operator");
+    query.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 20));
+  });
+  assert(queries.includes("local-operator"));
+  assert(document.body.textContent?.includes("Exact served subject"));
 });

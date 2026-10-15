@@ -1,3 +1,4 @@
+import type { InboxWiring } from "../../state/inbox-wiring-adapter.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { ToggleButton } from "@heroui/react/toggle-button";
 import { Bell } from "lucide-react";
@@ -12,11 +13,12 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { WorkflowRail } from "./workflow-rail.js";
 
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, onOpenNotification, searchData, onSearch }: {
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, inbox, onOpenNotification, searchData, onSearch }: {
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
   onSelect: (id: string) => void; onPreview: (id: string) => void;
   settingsOpen: boolean;
   notifications: NotificationsState;
+  inbox?: InboxWiring;
   searchData: NavbarData;
   onSearch: (result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => void;
   onOpenNotification: (destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => void;
@@ -25,7 +27,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   const [category, setCategory] = useViewState("notificationCategory", "all");
   const [open, setOpen] = useViewState("notifications", false);
   const [notice, setNotice] = useState("");
-  const notificationRail = useNotificationRailModel({ notifications, filter, setOpen, setNotice, onOpenNotification });
+  const notificationRail = useNotificationRailModel({ notifications, filter, setOpen, setNotice, onOpenNotification, served: inbox });
   const bell = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open || settingsOpen) return;
@@ -51,7 +53,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
     </header>
     <div className="workspace-rail-body" id={open ? "workspace-notifications" : undefined}>
       {open ? <NotificationsView state={notificationRail.state} filter={filter} onFilter={setFilter} category={category} onCategory={setCategory}
-          onControl={notificationRail.onControl} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} notice={notice} />
+          onControl={notificationRail.onControl} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} notice={notice || inbox?.notice || ""} />
         : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} />}
     </div>
     {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} onClose={notificationRail.onClosePing} onOpen={notificationRail.onOpenPing} />}

@@ -1,7 +1,7 @@
 # Frontend and backend integration
 
 The dashboard uses one typed client facade. The mounted product currently combines served shell
-configuration and Settings with local workflow and feature producers. A client method or backend
+configuration, Settings, inbox and cross-date search with local workflow producers. A client method or backend
 route can exist without being mounted by the product. The tables below describe both the present
 producer and the requirements for replacing it.
 
@@ -33,8 +33,10 @@ for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product pol
 `DashboardApp` receives `productWorkflowComposition` by default. All configured workflows currently
 use `mock`. There is no runtime served-to-mock fallback.
 
-`WorkflowComposition.sources` controls presentation; `dataSources`, `catalogIncludesMocks`, and
-`servedDay` allow the explicit test composition to select its data. `sourceForRoute` chooses the
+`WorkflowComposition.sources` controls workflow presentation; `explorerSources`, `logsSources`,
+`dataSources`, `catalogIncludesMocks`, and `servedDay` allow explicit fixture composition.
+The independent `inbox` and `search` sources are served in the product and mock in parity.
+`sessions` selects its existing served or fixture producer. `sourceForRoute` chooses the
 route's producer. `buildWorkflowCatalog` combines served registration with the preview catalog,
 keeping availability, executable registration, and preview capability separate. Only a workflow's
 own wiring task changes its source policy after its accepted behavior is implemented across
@@ -56,7 +58,7 @@ Preflight, storage, and intake already have typed clients; local previews are ex
 | ChatGPT account in General | `ChatGptAccountContext` supplies `ChatGptAccountPort`; default is a session-memory preview | Continue with ChatGPT calls sign-in directly with plan use requested; no intermediate dashboard dialog. The adapter owns verified identity, real consent/eligibility, loading/expired/unavailable/usage-limit state and acknowledged sign-in/sign-out. Use the existing typed client and canonical model schemas when replacing the port. OAuth and secure token persistence belong to the backend; no browser tokens or invented endpoint. Identity alone does not enable plan use. Provider budget/model and API-key controls are absent; ChatGPT account integration replaces the preview port. |
 | Preflight and storage | Typed Preflight/doctor query and rerun clients | Served checks, scope/fingerprints, checked time and explicit unavailable/history state. Rerun retains the completed report's nodes and geometry. Shared remedy mapping navigates to Credentials, Routes, Storage, Sessions or Settings; rendering performs no repair. Storage excludes run history. |
 | Sessions and workers | `sessionsFromDay` and `createSessionPreviewPort` consume the shared Day/client; explicit parity composition uses `sessionsSample` and `createFixtureSessionPort` | Six actual phases, exact member/lifetime and physical sessions come from `workerAuthority`/`workerCards`. Native `workerOperations` supplies immutable command, application and audit readback. Check reads the original operation without dispatch. Authority failure shows unavailable. Workflow source switches remain independent of Sessions. |
-| Notifications and shell search | `notificationPreviewState` derives local inbox destinations from current queue/mock runs; shell results use loaded records | Exact run/day/workflow destination, subject, status, event time and read state. Read does not resolve urgency. Missing targets refuse; never route merely to a workflow type. Durable notification delivery/read state and cross-day search remain wiring work. |
+| Notifications and shell search | `inbox-wiring-adapter.ts` reads the canonical inbox/status and consumes committed publications; `search-wiring-adapter.ts` materializes signed cross-date search pages. Explicit parity composition retains local previews. | Canonical target resolution precedes shared navigation. Historical run/failure targets validate fresh exact identity and open generic served Logs, independently of the workflow preview source; storage opens Settings, while missing, archive and refused targets show catalog notices. Commands confirm exact actor/notification/version readback. Search preserves query, facets and snapshot identity and displays only authority `totalMatches`. Workflow-specific wiring remains separate. |
 | Historical reports (unmounted) | Archive page, navigation, queue snapshot composition and notification shortcut are absent; historical readers and archive model and backend archival authority are retained | Stored reports remain unchanged. A unified run-history query/read model needs exact identity, date/status/workflow filtering, cross-version data migration and historical evidence access before backend wiring. Current day filters are not a complete historical index. Legacy Archive URLs show a removal notice and return to the dashboard without queries or version commands. Backend archival and upgrade authority remain independent of this UI. |
 | Analytics | `activitySample` feeds `ActivityView` and its exact-population drilldown | Unique root-run records, status, workflow, start/end and explicit missing duration. Successful measured runs alone enter workflow averages and the median, longest and total duration tiles; measured zero is retained. Matched counts, populations and paging agree. Export currently reports that it is unconnected. |
 | Explorer | `WorkflowExplorer` uses local workflow fixtures and choice/source models | Stable workflow/node/operation/field IDs, source metadata and ordered timeline. Public display conditions compare string, boolean and null values exactly; withheld/missing values are not guessed. Definition/runtime compiler wiring remains separate. |
@@ -81,7 +83,7 @@ resolved at its owning contract before workflow execution.
 | Connect ChatGPT | Continue invokes the account port directly; show verified account state and acknowledged sign-out. | OAuth, consent, eligibility and secure token persistence are backend responsibilities. A logged-in identity alone does not establish subscription-based OCR eligibility. Keep expired, unavailable and usage-limit states distinct. | `chatgpt-account.test.ts` and the ChatGPT account browser specs. Check official eligibility before replacing the preview adapter. |
 | Manage a worker and keep an idle browser alive | Resource state → add/pause/resume/stop/remove command. A white five-minute ring requests refresh only while idle and every resource is ready. | Refresh the owned physical browser session, not the dashboard page. Backend checks session identity, ownership/generation and busy/replaced refusal. Rearm only after matching acknowledgment; use/unavailability/unmount cancels the timer. No uncertain/refused automatic resubmission. | `session-preview-command-model.served.test.ts`, `session-idle-model.test.ts` and the Sessions parity controls. Pending controls hydrate from native operations after remount; use, another control, replacement, unavailable authority or unmount cancels the ring. Only all exact physical acknowledgments rearm it. |
 | Inspect readiness | Served Preflight/storage checks with scope/fingerprint/time → rerun → remedy navigation. | Retain completed geometry during rerun; acknowledge the checked identity/time. A remedy navigates, never repairs merely by rendering. Missing checks remain explicit. | `settings-status-sections.test.ts`, `settings-storage-doctor.test.ts`; Preflight browser spec. |
-| Find a run or open a notice | Complete search result / inbox event → exact day/workflow/run/decision destination. Mark read separately from resolution. | A backend cross-day index must search authoritative history, not just the loaded day. Preserve old runs through the owning migration contract; no end-user Archive/version-bump UI is restored. | `shell-navigation.test.ts`, `notifications-preview.test.ts`, `notification-inbox-model.test.ts`; navigation browser specs. Cross-day indexing and durable read state remain unwired. |
+| Find a run or open a notice | Complete authoritative search / canonical inbox event → validated exact destination. Mark read separately from resolution. | Signed `sc1` pages retain one query, facet set and snapshot through completion. Refused or expired cursors fail visibly. Read/unread/read-all and canonical snooze use the shared command executor and matching readback; uncertainty retains the original attempt without automatic retry. | `search-wiring-adapter.test.ts`, `inbox-wiring-adapter.test.ts`, `notification-navigation.test.ts`, `dashboard-app.notifications.test.ts`; parity retains the existing local fixtures and controls. |
 | Undo an edit or discarded review | Settings text fields retain native typing undo without inline Undo buttons; unsaved date/folder selections revert within their field. A discarded OCR review restores with Ctrl+Z/Cmd+Z while focus remains in Records; approval cannot be reversed this way. | Preserve exact run identity and draft records through discard/restore. Do not turn text undo into a global run action or retry an uncertain write. | `settings-save-toasts.test.ts`; `ocr-direct.test.ts`; `workflow-components.test.ts`. |
 | Review OCR document fields | Roster and document-type choices share one row. Supported direct choices exclude Verify. Every current OCR shape omits Notes; valid manually entered Employee IDs show no provenance warning. | Preserve manual identity provenance separately from verified lookup evidence. Employee IDs must match `^10\d{6}$`; invalid IDs, unknown records and other required approval fields still refuse release. Parent document type controls predefined fields. | `workflow-components.test.ts`, `workflow-catalog.test.ts`, `workflow-manual-input.test.ts`; `ocr-direct.test.ts` and `ocr-card-layout.test.ts`. |
 | Enter a date | Shared segmented date controls display MM/DD/YYYY, preserve month/day during year entry and retain partial segments during unrelated rerenders. | Keep ISO transport values separate from display formatting; the US-format parser and emitted four-digit year must round-trip. Invalid/incomplete edits remain editor state. | `date-format.test.ts`; `date-typing.test.ts` reproduces the General Job end date bug and checks every year digit, calendar selection and Escape. |
@@ -185,19 +187,29 @@ reduce layout work without bounding memory. Backend cursor pages must preserve c
 search/copy/jump behavior and distinguish loaded rows from authoritative total counts. Analytics
 filters and sorts its population before slicing 20-row pages. Spreadsheet rendering is bounded to
 50 rows and 20 columns, with full-sheet search and physical import projection. Archive is unmounted.
-Unified historical search requires a complete backend index across days and versions rather than
-only the loaded day or page. Historical evidence and stored reports keep their identity and
-migration authority.
+Served shell search reads the backend cross-date index through every signed `sc1` page before
+publishing results. Pages must share query, facets, snapshot and authority total; the footer uses
+`totalMatches`. Stale responses cannot replace a newer query. Historical evidence and stored
+reports keep their identity and migration authority.
 
 `useDashboardDay` opens one day subscription only when its composition needs served data. The
 subscription states are `connecting`, `live`, `reconnecting`, `degraded`, and `stopped`.
-`DashboardStreamEnvelopeSchema` names `hello`, `snapshot`, `patch`, `reset-required`, and `health`.
+`DashboardStreamEnvelopeSchema` names `hello`, `snapshot`, `patch`, `reset-required`, `health`,
+and `notification-publication`.
 The client holds projection generation and `pc:<number>` cursor. A generation change resets both
 snapshot and cursor. A snapshot behind the held cursor is stale; a same-cursor snapshot replaces
 the day. A patch at or below the cursor is ignored. Missing baseline, cursor gaps, and invalid
 patch application trigger a resnapshot. Malformed envelopes or non-network stream failures stop
 with visible error. Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
+
+Notification publications originate after the authority transaction commits. They are live-only,
+nonretained events with explicit source identity; baseline reads, replay, reconnect and resnapshot
+never synthesize publications. The stream/client validate actor, day, descriptor and generation,
+and the mounted subscriber retains its request/client scope. Only eligible committed source events
+can toast, once per source; snoozed rows and control revisions do not toast. The adapter applies the
+eight source-event policies and shows catalog notices for missing source evidence or backfill gaps.
+Snapshot/status reads remain the inbox authority. Read state does not resolve urgency.
 
 Keep loaded rows during reconnect and show connection authority separately. A new day/request
 cannot paint the previous request's result. Detail refresh follows the selected run's revision,

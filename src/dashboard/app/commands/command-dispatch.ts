@@ -223,6 +223,19 @@ export async function verifyShellCommandEffect(
   reply: CommandResult | BulkRunCommandOutcome,
 ): Promise<CommandReadbackVerification> {
   const mismatch = (evidence: unknown) => ({ state: "mismatch" as const, evidence });
+  if (request.family === "notification") {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "notification"
+      || reply.affectedTargets[0].notificationId !== request.target.notificationId) return mismatch(reply);
+    const rows = await client.notificationSnapshot();
+    const row = rows.find(row => row.notificationId === request.target.notificationId);
+    if (request.target.actorId !== request.requestedBy || row?.actorId !== request.target.actorId || row.kind !== "notification"
+      || row.revision !== request.target.expectedVersion + 1) return mismatch(rows);
+    const matches = request.type === "notification-read" ? row.readState === "read"
+      : request.type === "notification-unread" ? row.readState === "unread"
+      : request.type === "notification-unsnooze" ? row.state !== "snoozed"
+      : row.state === "snoozed" && row.snoozedUntil !== undefined && Date.parse(row.snoozedUntil) > Date.parse(request.requestedAt);
+    return matches ? { state: "matched", evidence: row } : mismatch(row);
+  }
   if (request.family === "gate") {
     const detail = await client.runDetail(request.target.runId);
     const value = request.payload.result.value;

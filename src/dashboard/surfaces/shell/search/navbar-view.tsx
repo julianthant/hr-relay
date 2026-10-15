@@ -19,7 +19,8 @@ export function RailSearch({ data, onResult }: { data: NavbarData; onResult: (re
   const trigger = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const optionPrefix = useId();
-  const results = data.unavailable ? [] : navbarSearch(data.results, query);
+  const results = data.unavailable ? [] : data.totalMatches === undefined ? navbarSearch(data.results, query) : data.results;
+  const total = data.totalMatches ?? results.length;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target;
@@ -46,7 +47,7 @@ export function RailSearch({ data, onResult }: { data: NavbarData; onResult: (re
               </CommandItem>)}
             </CommandGroup>
           </CommandList>
-          <p role="status" className="m-0 border-t border-ui-stroke px-4 py-3 text-caption text-ui-muted">{notice || data.unavailable || `${results.length} ${results.length === 1 ? "run" : "runs"}`}</p>
+          <p role="status" className="m-0 border-t border-ui-stroke px-4 py-3 text-caption text-ui-muted">{notice || data.unavailable || `${total} ${total === 1 ? "run" : "runs"}`}</p>
         </Command>
       </DialogContent>
     </Dialog>

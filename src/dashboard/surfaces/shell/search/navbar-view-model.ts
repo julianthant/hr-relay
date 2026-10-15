@@ -7,7 +7,7 @@ export const NAVBAR_VIEWS: readonly { id: ShellView; label: string }[] = [
   { id: "explorer", label: "Explorer" }, { id: "activity", label: "Analytics" },
 ];
 export type NavbarSearchResult = Readonly<{ id: string; subject: string; workflow: string; day: string; state: string; publicId?: string; destination?: NotificationDestination }>;
-export type NavbarData = Readonly<{ today: string; counts: Readonly<Record<string, number>>; results: readonly NavbarSearchResult[]; unavailable?: string }>;
+export type NavbarData = Readonly<{ today: string; counts: Readonly<Record<string, number>>; results: readonly NavbarSearchResult[]; totalMatches?: number; unavailable?: string }>;
 
 function dateValue(day: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(day)) throw new Error("navbar-day-invalid");
