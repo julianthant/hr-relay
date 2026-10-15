@@ -1,4 +1,4 @@
-import { acquireSuiteLock, hasTestFilter, runTestProcess, testRunsDirectory, type HeldSuiteLock } from "./test/runner.js";
+import { acquireSuiteLock, runTestProcess, testRunsDirectory, type HeldSuiteLock } from "./test/runner.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -726,12 +726,57 @@ function childEnvironment(mode: ParityMode, env: NodeJS.ProcessEnv): NodeJS.Proc
   return childEnv;
 }
 
+const PARITY_REQUIRED_VALUE_OPTIONS = new Set([
+  "--browser", "-c", "--config", "--global-timeout", "-g", "--grep", "-G", "--grep-invert",
+  "--last-failed-file", "--max-failures", "--output", "--project", "--repeat-each", "--reporter",
+  "--retries", "--run-agents", "--shard", "--test-list", "--test-list-invert", "--timeout",
+  "--trace", "--tsconfig", "--ui-host", "--ui-port", "--update-source-method", "-j", "--workers",
+]);
+const PARITY_OPTIONAL_VALUE_OPTIONS = new Set(["--debug", "--only-changed", "-u", "--update-snapshots"]);
+const PARITY_BOOLEAN_OPTIONS = new Set([
+  "--fail-on-flaky-tests", "--forbid-only", "--fully-parallel", "--headed", "--ignore-snapshots",
+  "--last-failed", "--list", "--no-deps", "--pass-with-no-tests", "--quiet", "--ui", "-x",
+  "-h", "--help", "-V", "--version",
+]);
+
+export function hasParitySpecFilter(args: readonly string[]): boolean {
+  const remaining = [...args];
+  const isOption = (argument: string): boolean => argument.length > 1 && argument.startsWith("-");
+  let filtered = false;
+  while (remaining.length > 0) {
+    const argument = remaining.shift();
+    if (argument === undefined || argument === "--") break;
+    if (!isOption(argument)) { filtered = true; continue; }
+    let flag = argument;
+    let attachedValue = false;
+    if (argument.startsWith("--") && argument.includes("=")) {
+      flag = argument.slice(0, argument.indexOf("="));
+      attachedValue = true;
+    } else if (!argument.startsWith("--") && argument.length > 2) {
+      flag = argument.slice(0, 2);
+      if (PARITY_REQUIRED_VALUE_OPTIONS.has(flag) || PARITY_OPTIONAL_VALUE_OPTIONS.has(flag)) attachedValue = true;
+      else remaining.unshift(`-${argument.slice(2)}`);
+    }
+    if (PARITY_REQUIRED_VALUE_OPTIONS.has(flag)) {
+      if (!attachedValue) {
+        if (remaining.shift() === undefined) throw new Error(`Parity option requires a value: ${flag}`);
+        if (flag === "--project") while (remaining[0] !== undefined && !isOption(remaining[0])) remaining.shift();
+      }
+    } else if (PARITY_OPTIONAL_VALUE_OPTIONS.has(flag)) {
+      if (!attachedValue && remaining[0] !== undefined && !isOption(remaining[0])) remaining.shift();
+    } else if (!PARITY_BOOLEAN_OPTIONS.has(flag) || attachedValue) {
+      throw new Error(`Unknown parity option: ${argument}`);
+    }
+  }
+  return filtered;
+}
+
 export async function runParityAndVerify(
   options: RunParityOptions,
   dependencies: RunParityDependencies = {},
 ): Promise<number> {
   assertParityJsonOutputIsFixed(options.mode, options.env, options.args);
-  const suiteLease = hasTestFilter(options.args) ? undefined : await acquireSuiteLock({
+  const suiteLease = hasParitySpecFilter(options.args) ? undefined : await acquireSuiteLock({
     directory: options.suiteLockDirectory ?? testRunsDirectory(),
     retryIntervalMs: options.suiteLockRetryIntervalMs,
     waitTimeoutMs: options.suiteLockWaitTimeoutMs,

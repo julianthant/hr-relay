@@ -5,6 +5,7 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
+import { parseCLI } from "vitest/node";
 import { systemClock } from "../../src/rules/time/clock.js";
 
 export interface TestProcessResult { readonly code: number; readonly detail: string }
@@ -45,15 +46,7 @@ export class TestSuiteWaitTimeoutError extends Error {
 }
 
 export function hasTestFilter(args: readonly string[]): boolean {
-  const valueOptions = new Set(["--project", "--config", "-c", "--reporter", "--pool", "--maxWorkers", "--testNamePattern", "-t", "--workers", "--grep", "-g"]);
-  for (let index = 0; index < args.length; index++) {
-    const argument = args[index];
-    if (argument === "--") return index + 1 < args.length;
-    if (valueOptions.has(argument)) { index++; continue; }
-    if (argument.startsWith("-")) continue;
-    return true;
-  }
-  return false;
+  return parseCLI(["vitest", "run", ...args]).filter.length > 0;
 }
 
 export async function acquireSuiteLock(options: SuiteLockOptions): Promise<HeldSuiteLock> {

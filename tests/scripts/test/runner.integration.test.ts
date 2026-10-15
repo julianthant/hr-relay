@@ -260,10 +260,10 @@ function suiteProcess(root: string, script: string, suiteLock = true, waitTimeou
 }
 
 it("classifies whole suites after option values while retaining actual positional filters", () => {
-  for (const args of [[], ["--coverage", "--project", "unit", "--project", "integration", "--project", "architecture"], ["--project=perf", "--passWithNoTests=false"], ["--config", "custom.ts"], ["--workers", "1", "--grep", "heading"]]) {
+  for (const args of [[], ["--coverage", "--project", "unit", "--project", "integration", "--project", "architecture"], ["--project=perf", "--passWithNoTests=false"], ["--config", "custom.ts"], ["--testTimeout", "60000", "--bail", "1", "--project", "unit"], ["--testTimeout=60000", "--bail=1"], ["--", "proof.test.ts"]]) {
     assert.equal(hasTestFilter(args), false, JSON.stringify(args));
   }
-  for (const args of [["run"], ["--project", "unit", "proof.test.ts"], ["--config", "custom.ts", "proof.test.ts"], ["--", "proof.spec.ts"], ["--project=chromium", "proof.spec.ts"]]) {
+  for (const args of [["run"], ["--project", "unit", "proof.test.ts"], ["--config", "custom.ts", "proof.test.ts"], ["--project=unit", "proof.test.ts"], ["--testTimeout", "60000", "--bail", "1", "--project", "unit", "proof.test.ts"], ["-t", "heading", "proof.test.ts"]]) {
     assert.equal(hasTestFilter(args), true, JSON.stringify(args));
   }
 });
