@@ -47,4 +47,3 @@ export type ActivityPopulationBrowseResult = z.infer<typeof ActivityPopulationBr
 export type ActivityPopulationSelectedRead = z.infer<typeof ActivityPopulationSelectedReadSchema>;
 export type ActivityPopulationExport = z.infer<typeof ActivityPopulationExportSchema>;
 export type ActivitySuccessfulTiming = z.infer<typeof ActivitySuccessfulTimingSchema>;
-

@@ -153,6 +153,12 @@ describe("redaction surface scan — the declaration audit", () => {
 
   it("holds exact membership for current operation, action, display and notification leaves", () => {
     const currentLeaves = [
+      "wire/activity-population|population[].title",
+      "wire/activity-population-selected|browse.identity.browse.query",
+      "wire/activity-population-selected|browse.rows[].title",
+      "wire/activity-population-selected|browse.run.title",
+      "wire/activity-population-export|selection.population[].title",
+      "wire/activity-population-export|csv",
       "durable/failure-record|debug.stack",
       "durable/failure-record|debug.causes[]",
       "wire/operation-source|structure.definition.invocations[].label",
