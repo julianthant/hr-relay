@@ -112,6 +112,8 @@ export interface RunDetailQueryDeps {
       nodeId: string,
     ): RunCheckpointRecord | undefined;
 
+    listCheckpoints(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
+
     getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
 
     listGateResults(runId: string): readonly GateResultRecord[];

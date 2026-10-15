@@ -255,6 +255,7 @@ export function harness(options: {
       getRun: (runId: string) => database.authority.runs.get(runId),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+      listCheckpoints: (workflowId: string, itemId: string) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       getWriteIntent: (writeIntentId: string) => database.authority.writeIntents.get(writeIntentId),
       listGateResults: (runId: string) => database.authority.gateResults.listByRun(runId),
     },

@@ -34,6 +34,7 @@ export function trustWorld() {
   const receipts = createReceiptService({ database, runReader: reader, descriptors: [personLookupDescriptor] });
   const deps: RunDetailQueryDeps = { timeline: database.authority.timelineEvents, stateRoot: world.stateRoot, projection: world.projection, runReader: reader,
     authority: { getRun: () => { throw new Error("RAW_RUN_READ_FORBIDDEN"); },
+      listCheckpoints: (workflow, item) => database.authority.runCheckpoints.listByItem(workflow, item),
       latestCheckpoint: (workflow, item, node) => database.authority.runCheckpoints.latest(workflow, item, node),
       getWriteIntent: id => database.authority.writeIntents.get(id),
       listGateResults: id => database.authority.gateResults.listByRun(id) },

@@ -35,6 +35,7 @@ afterEach(cleanup);
         runReader: createTrustRunReader(h.database, h.clock), timeline: h.database.authority.timelineEvents,
         authority: { getRun: () => { throw new Error("raw lifecycle forbidden"); },
           latestCheckpoint: () => undefined,
+          listCheckpoints: (workflow: string, item: string) => h.database.authority.runCheckpoints.listByItem(workflow, item),
           getWriteIntent: (id: string) => h.database.authority.writeIntents.get(id),
           listGateResults: (id: string) => h.database.authority.gateResults.listByRun(id) },
         descriptors: { resolve: () => undefined } };
