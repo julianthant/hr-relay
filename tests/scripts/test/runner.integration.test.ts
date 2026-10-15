@@ -243,14 +243,14 @@ describe("architecture project empty collection", () => {
   });
 });
 
-function suiteProcess(root: string, script: string, suiteLock = true, waitTimeoutMs = 5_000) {
+function suiteProcess(root: string, script: string, suiteLock: boolean | "borrowed" = true, waitTimeoutMs = 5_000) {
   const module = fileURLToPath(new URL("../../../scripts/test/runner.ts", import.meta.url));
   const options = {
     command: process.execPath, args: ["-e", script], cwd: root, env: {},
-    rootDirectory: join(root, "runs"), suiteLock, suiteLockRetryIntervalMs: 20,
+    rootDirectory: join(root, "runs"), suiteLock: suiteLock === "borrowed" ? undefined : suiteLock, suiteLockRetryIntervalMs: 20,
     suiteLockWaitTimeoutMs: waitTimeoutMs, idleTimeoutMs: 500,
   };
-  const source = `import {runTestProcess} from ${JSON.stringify(module)};try{process.exitCode=(await runTestProcess(${JSON.stringify(options)})).code}catch(e){console.error(e.name+': '+e.message);process.exitCode=1}`;
+  const source = `import {acquireSuiteLock,runTestProcess} from ${JSON.stringify(module)};const options=${JSON.stringify(options)};${suiteLock === "borrowed" ? "options.suiteLock=await acquireSuiteLock({directory:options.rootDirectory});" : ""}try{process.exitCode=(await runTestProcess(options)).code}catch(e){console.error(e.name+': '+e.message);process.exitCode=1}finally{${suiteLock === "borrowed" ? "await options.suiteLock.release();" : ""}}`;
   const child = spawn(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), "--input-type=module", "-e", source], { stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   child.stdout.on("data", (data: Buffer) => { output += data.toString(); });
@@ -358,3 +358,37 @@ it("shuts down a whole-suite descendant before releasing the suite lease", async
     await lease.release();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const ownership of [true, "borrowed"] as const) {
+  it(`keeps the ${ownership === true ? "owned" : "borrowed"} suite lease until the detached child exits after runner SIGKILL`, async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
+    const ready = join(root, "ready"), marker = join(root, "waiter-started");
+    const holder = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(ready)},String(process.pid));setInterval(()=>{},1000)`, ownership);
+    let waiter: ReturnType<typeof suiteProcess> | undefined;
+    let group: number | undefined;
+    try {
+      await until(() => existsSync(ready));
+      group = Number(readFileSync(ready, "utf8"));
+      assert.ok(Number.isSafeInteger(group) && group > 1);
+      waiter = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(marker)},'started')`);
+      await until(() => waiter!.output().includes("waiting for another"));
+      holder.child.kill("SIGKILL"); await holder.closed;
+      await sleep(200);
+      assert.equal(alive(group), true, "detached leader must outlive the runner");
+      assert.equal(existsSync(marker), false, "waiter started while the detached leader still held its lease");
+      process.kill(-group, "SIGTERM");
+      await until(() => !alive(group!));
+      assert.equal(await waiter.closed, 0);
+      assert.equal(existsSync(marker), true);
+    } finally {
+      holder.child.kill("SIGKILL");
+      if (group !== undefined && alive(group)) {
+        process.kill(-group, "SIGKILL");
+        await until(() => !alive(group!));
+      }
+      waiter?.child.kill("SIGTERM");
+      await holder.closed; await waiter?.closed;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}

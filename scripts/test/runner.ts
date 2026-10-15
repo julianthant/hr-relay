@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { constants, closeSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Writable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { parseCLI } from "vitest/node";
@@ -32,7 +33,7 @@ export function selectedTestArguments(
   }
   return ["run", "--project", project, "--passWithNoTests=false", ...filters];
 }
-export interface HeldSuiteLock { readonly release: () => Promise<void> }
+export interface HeldSuiteLock { readonly stdin: Writable; readonly release: () => Promise<void> }
 export interface SuiteLockOptions {
   readonly directory: string;
   readonly retryIntervalMs?: number;
@@ -84,7 +85,7 @@ export async function acquireSuiteLock(options: SuiteLockOptions): Promise<HeldS
     const first = await Promise.race([ready.then(() => undefined), closed]);
     if (first === undefined) {
       let released = false;
-      return { release: async () => {
+      return { stdin: holder.stdin, release: async () => {
         if (released) throw new Error("Test-suite lock was released twice");
         released = true;
         holder.stdin.end();
@@ -194,11 +195,11 @@ export function reapTestRuns(directory: string): { removed: string[]; retained: 
 
 export async function runTestProcess(options: TestProcessOptions): Promise<TestProcessResult> {
   const lease = options.suiteLock === true ? await acquireSuiteLock({ directory: options.rootDirectory, retryIntervalMs: options.suiteLockRetryIntervalMs, waitTimeoutMs: options.suiteLockWaitTimeoutMs }) : undefined;
-  try { return await runOwnedTestProcess(options); }
+  try { return await runOwnedTestProcess(options, lease ?? (typeof options.suiteLock === "object" ? options.suiteLock : undefined)); }
   finally { await lease?.release(); }
 }
 
-async function runOwnedTestProcess(options: TestProcessOptions): Promise<TestProcessResult> {
+async function runOwnedTestProcess(options: TestProcessOptions, lease?: HeldSuiteLock): Promise<TestProcessResult> {
   if (process.platform === "win32") throw new Error("Owned test runs require POSIX process groups");
   if (options.idleTimeoutMs !== undefined && (!Number.isSafeInteger(options.idleTimeoutMs) || options.idleTimeoutMs <= 0)) throw new Error("Invalid test-run inactivity budget");
   const base = prepareDirectory(options.rootDirectory);
@@ -220,7 +221,7 @@ async function runOwnedTestProcess(options: TestProcessOptions): Promise<TestPro
     try {
       return spawn(options.command, [...options.args], {
         cwd: options.cwd, env: { ...options.env, TMPDIR: scratch, TMP: scratch, TEMP: scratch },
-        detached: true, stdio: ["ignore", "pipe", "pipe"],
+        detached: true, stdio: ["ignore", "pipe", "pipe", lease?.stdin ?? "ignore"],
       });
     } finally { process.umask(previousUmask); }
   })();
@@ -251,6 +252,7 @@ async function runOwnedTestProcess(options: TestProcessOptions): Promise<TestPro
   const capture = (data: Buffer, stream: NodeJS.WriteStream): void => {
     tail = (tail + data.toString("utf8")).slice(-16384); stream.write(data); progress();
   };
+  if (child.stdout === null || child.stderr === null) throw new Error("Test-run output pipes unavailable");
   child.stdout.on("data", (data: Buffer) => capture(data, process.stdout));
   child.stderr.on("data", (data: Buffer) => capture(data, process.stderr));
   process.once("SIGINT", interrupt); process.once("SIGTERM", interrupt); progress();
