@@ -224,7 +224,9 @@ export function buildRunDetail(
     || descriptorView.timeline.some(category => category.key === undefined))) {
     throw new LogIdentityRefusedError("run timeline descriptor identity does not match its frozen authority");
   }
-  const nativeRecords = readTimelineRecords(deps.timeline, 0, runId).records;
+  const nativeRecords = row !== undefined && row.taskSpans.length === 0 && row.openGates.length === 0 && row.resolvedGates.length === 0
+    ? []
+    : readTimelineRecords(deps.timeline, 0, runId).records;
   const nativeOf = (record: (typeof nativeRecords)[number], nodeId?: string): NativeRunEventWire => {
     if (record.payload.kind !== "span" || !("runId" in record.payload.event)) throw new LogIdentityRefusedError("timeline event has no run identity");
     const event = record.payload.event;
