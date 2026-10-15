@@ -105,10 +105,23 @@ it("fails queued and in-flight callers on owner death without replay, then waits
 it("keeps Nominatim no-match and remote failures explicit without provider-body excerpts", async () => {
   const responses = [Response.json([]), new Response("private body", { status: 429 }), new Response("private body", { status: 503 }), new Response("private body"), Response.json({ unexpected: true })];
   const owner = createNominatimGeocodeAdapter({ processLockRoot: root(), clock: systemClock, fetchFn: async () => { const response = responses.shift(); if (response === undefined) throw new Error("synthetic response exhausted"); return response; } }); cleanups.push(() => owner.stop());
-  for (const state of ["produced", "unavailable", "unavailable", "invalid-response", "unavailable"]) {
-    const result = await owner.invoke(request, options()); assert.equal(result.response.state, state);
-    assert.equal(JSON.stringify(result).includes("private body"), false);
-    if (result.response.state === "produced") assert.deepEqual(GeocodeOutcomeSchema.parse(result.response.value.value), { state: "no-match" });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance", "hrtime"] });
+  try {
+    for (const state of ["produced", "unavailable", "unavailable", "invalid-response", "unavailable"]) {
+      let settled = false;
+      const pending = owner.invoke(request, options()).finally(() => { settled = true; });
+      for (let tick = 0; tick < 100 && !settled; tick++) {
+        await new Promise<void>(done => setImmediate(done));
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      assert.equal(settled, true);
+      const result = await pending; assert.equal(result.response.state, state);
+      assert.equal(JSON.stringify(result).includes("private body"), false);
+      if (result.response.state === "produced") assert.deepEqual(GeocodeOutcomeSchema.parse(result.response.value.value), { state: "no-match" });
+    }
+    assert.equal(responses.length, 0);
+  } finally {
+    try { await owner.stop(); } finally { vi.useRealTimers(); }
   }
 }, 10_000);
 it("refuses a mismatched live channel without replacing it or falling back to fetch", async () => {

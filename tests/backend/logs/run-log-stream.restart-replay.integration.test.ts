@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { it } from "vitest";
+import { afterAll, afterEach, beforeAll, it } from "vitest";
 import { createRunLogStreamStore } from "../../../src/backend/logs/run-log-stream.js";
 import { createTimelineRepository } from "../../../src/backend/storage/sqlite/timeline-repository.js";
 import { SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
@@ -37,11 +37,26 @@ function source(path: string, initialize: boolean) {
   const catchUp = () => { for (let count = 0; count < 30; count++) { hub.poll(); if (!hub.stats().recovering) return; } throw new Error("catch-up-bound"); };
   return { database, repository, hub, append, catchUp, close: () => { hub.close(); database.close(); } };
 }
+let seedRoot: string, seedPath: string, seedDigest: string;
+beforeAll(() => {
+  seedRoot = mkdtempSync(join(realpathSync(tmpdir()), "run-log-prefix-"));
+  seedPath = join(seedRoot, "timeline.db");
+  const seed = source(seedPath, true);
+  try { for (let stream = 0; stream < 4200; stream++) seed.append(`stream-${stream}`, 1); }
+  finally { seed.close(); }
+  seedDigest = createHash("sha256").update(readFileSync(seedPath)).digest("hex");
+});
+afterEach(() => { assert.equal(createHash("sha256").update(readFileSync(seedPath)).digest("hex"), seedDigest); });
+afterAll(() => { rmSync(seedRoot, { recursive: true, force: true }); });
+function retainedPrefix(path: string) {
+  copyFileSync(seedPath, path);
+  assert.equal(createHash("sha256").update(readFileSync(seedPath)).digest("hex"), seedDigest);
+  return source(path, false);
+}
 it.each(["gap", "regression"] as const)("replays more than 4096 real retained streams after restart and authenticates a retired head before a %s", kind => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "run-log-heads-")), path = join(root, "timeline.db");
-  let active = source(path, true);
+  let active = retainedPrefix(path);
   try {
-    for (let stream = 0; stream < 4200; stream++) active.append(`stream-${stream}`, 1);
     active.catchUp();
     assert.equal(active.hub.stats().degraded, false); assert.equal(active.hub.stats().ordinal, 4200);
     active.close(); active = source(path, false); active.catchUp();
@@ -61,9 +76,8 @@ it.each(["gap", "regression"] as const)("replays more than 4096 real retained st
 
 it("authenticates mirrored predecessor columns when resynchronizing a retired stream", () => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "run-log-head-corrupt-")), path = join(root, "timeline.db");
-  const f = source(path, true);
+  const f = retainedPrefix(path);
   try {
-    for (let stream = 0; stream < 4200; stream++) f.append(`stream-${stream}`, 1);
     f.catchUp();
     const triggers = f.database.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='timeline_events'").all();
     for (const trigger of triggers) {

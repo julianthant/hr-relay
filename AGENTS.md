@@ -99,8 +99,8 @@ The repository holds only the current version. No compatibility readers, old mig
 - During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
   generated checks. Update tests when behavior changes, and say when none exist.
 - Before work is proposed for `master`: `npm run typecheck`, `npm run lint`, `npm run web:build`,
-  `npm run test:parity`, then `npm run test:coverage` alone. Coverage runs the unit, integration and
-  architecture suites, so don't run them separately.
+  `npm run test:parity`, then `npm run test:coverage` alone, then `npm run test:perf`. Coverage selects
+  the unit, integration and architecture suites without perf, so don't run those three separately.
 - A lint failure is a task failure. Keep assertions, test membership, isolation, coverage floors and
   timeouts. Never report an unrun check as passed.
 - Generate derived files at their source. Never hand-edit them.

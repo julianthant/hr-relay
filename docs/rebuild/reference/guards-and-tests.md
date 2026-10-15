@@ -25,12 +25,12 @@ helpers that hide test registrations behind a helper-style name.
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
 | Parity | `tests/parity/`; `npm run test:parity` | Desktop pixels, accessibility, focus, keyboard, loading, and interaction behavior with mock values. |
-| Performance | `tests/perf/dashboard-benchmark.ts`; `npm run perf:dashboard` | Deterministic structural counters and separately reported host-dependent timings. |
+| Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
 
 A test that opens a database, including `:memory:`, starts a process or socket, drives a browser,
 or executes a composed workflow belongs in integration unless it is a repository-wide architecture
-guard. A DOM test opts into `@vitest-environment jsdom` per file. DOM wiring assertions do not
-establish visual parity.
+guard or a performance test under `tests/perf/**` in the dedicated `perf` project. A DOM test opts
+into `@vitest-environment jsdom` per file. DOM wiring assertions do not establish visual parity.
 
 Shared reusable fixtures, helpers, and executable child entrypoints live under
 `tests/support/{fixtures,helpers,processes}/`. Architecture fixtures and helpers may sit beside
@@ -48,14 +48,15 @@ readers cannot observe temporary corruption or silently repaired inputs.
 
 ## 2. Vitest selection and commands
 
-`vitest.config.ts` defines three named projects. `guard-manifest.test.ts` audits exact includes,
+`vitest.config.ts` defines four named projects. `guard-manifest.test.ts` audits exact includes,
 excludes, reporters, and single ownership of the offline test corpus. Empty projects fail.
 
 | Project | Include | Exclude |
 | --- | --- | --- |
 | `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/architecture/**`, `tests/parity/**`, `tests/perf/**` |
-| `integration` | `tests/**/*.integration.test.ts` | None. |
+| `integration` | `tests/**/*.integration.test.ts` | `tests/perf/**` |
 | `architecture` | `tests/architecture/**/*.test.ts` | None. |
+| `perf` | `tests/perf/**/*.test.ts` | None. |
 
 `tests/parity/` is outside Vitest. There is no scenario project or current `tests/scenario/`
 corpus. Scenario declarations retained in workflow/contracts are graph metadata, not execution
@@ -67,7 +68,8 @@ results. Role-derived scenario paths do not prove that a file exists.
 | `npm run test:unit -- <paths>` | `tsx scripts/test/runner.ts unit`; selects only `unit`. |
 | `npm run test:integration -- <paths>` | `tsx scripts/test/runner.ts integration`; selects only `integration`. |
 | `npm run test:architecture -- <paths>` | `tsx scripts/test/runner.ts run --project architecture --passWithNoTests=false`. |
-| `npm run test:coverage` | `tsx scripts/test/runner.ts run --coverage && tsx scripts/test/suite-size.ts`. |
+| `npm run test:coverage` | `tsx scripts/test/runner.ts run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts`. |
+| `npm run test:perf` | `tsx scripts/test/runner.ts run --project perf --passWithNoTests=false`. |
 | `npm run test:watch` | Direct interactive `vitest`; outside batch scratch containment. |
 | `npm run test:reap` | `tsx scripts/test/runner.ts --reap`; explicitly reclaims eligible runner scratch. |
 | `npm run perf:dashboard` | `TZ=UTC tsx tests/perf/dashboard-benchmark.ts`. |
@@ -90,19 +92,47 @@ per-assertion progress messages. Multi-stage harnesses may emit stable phase mar
 `runTestProcess` contains Vitest and parity children in a detached POSIX process group.
 It refuses Windows because this ownership model requires POSIX groups.
 
-Every invocation creates `run-*` under canonical `/tmp/hrt-<uid>` with directory mode `0700`.
+Unfiltered `run`, `unit`, and `integration` invocations take a shared suite lock before starting a
+child or inactivity watchdog. Vitest's `parseCLI` identifies positional test-file and spec filters
+as focused runs. Those filters bypass the suite lock. Parity `assert` and `update` take the same
+lock only when no argument follows the mode. Any argument skips the suite lock. Wrapper-owned
+parity policy validation still applies. The interactive `test:watch` command remains outside this
+lock.
+
+The lock is the mode-0600 `suite.lock` file under `testRunsDirectory()`, shared across this user's
+worktrees in the private mode-0700 directory. `/usr/bin/lockf -s -k -t 0` holds it while a piped
+`cat` waits for EOF. The runner waits for the holder's `held` marker before starting the suite. The
+runner passes the holder's stdin pipe to the detached test group leader as fd 3. The pipe reaches
+EOF only after both the runner and group leader exit, so the kernel releases the lock without
+stale-lock or PID-reuse logic. Normal release occurs only after the child's whole process group is
+absent.
+The lock carries no worktree, branch, session, or result data.
+
+Contention retries every **5 seconds**, with one line when waiting starts and once per minute:
+
+```text
+[test-run] waiting for another Relay test suite (since HH:MM)
+```
+
+After **45 minutes**, `TestSuiteWaitTimeoutError` produces exit 1 without starting a child:
+"Another Relay test suite is still running; this run waited 45 minutes and did not start."
+Tests can supply shorter retry and wait budgets. Package commands use the defaults.
+
+Every child invocation creates `run-*` under canonical `/tmp/hrt-<uid>` with directory mode `0700`.
 `owner.json` has mode `0600`, a UUID, and the child group ID. The child inherits a private `tmp/`
 through `TMPDIR`, `TMP`, and `TEMP`, with file-creation mask `077`. The short root protects macOS
 UNIX socket path lengths.
 
 The runner streams child stdout/stderr while retaining the last **16,384 characters**. Successful
-scratch is removed only after the whole child group is absent. Failure retains `failure.txt`, the
-exit/signal or interruption detail, the tail, and the scratch path. A leader exiting while a
-descendant remains makes the result fail. SIGINT/SIGTERM sends TERM to the owned group, then KILL
-after **3,000 ms** if needed. A parent SIGKILL leaves the recorded group protected until it exits.
+scratch is removed only after the whole child group is absent. Failure writes `failure.txt` with the
+exit/signal or interruption detail and output tail. When the whole group is gone, it then removes
+`tmp/`; a live group keeps both for `npm run test:reap`. A leader exiting while a descendant remains
+makes the result fail. A suite-locked run stops that remaining group and waits for its absence
+before releasing the lock. SIGINT/SIGTERM sends TERM to the owned group, then KILL after **3,000 ms** if
+needed. A parent SIGKILL leaves the recorded group protected until it exits.
 
-`reapTestRuns` validates the canonical base, direct owned private directories, run names, and
-strict ownership records. It refuses symlinks, wrong owners/modes, malformed records, unknown
+`reapTestRuns` leaves `suite.lock` in place and validates the canonical base, direct owned private
+directories, run names, and strict ownership records. It refuses symlinks, wrong owners/modes, malformed records, unknown
 entries, or uncertain liveness. An owner with `groupId: null` or a live group remains retained.
 A dead group is removed only after rereading the same owner UUID. On Darwin, an EPERM signal probe
 requires an independently validated complete `ps` group listing before absence can be concluded.
@@ -113,7 +143,8 @@ and retains a directory that becomes nonempty. A fresh startup remains protected
 does not reclaim nonempty ownerless directories or other historical scratch paths.
 
 `tests/scripts/test/runner.integration.test.ts` owns real child success/failure, interruption,
-parent/child death, silent stalls, descendant preservation, and reclamation refusal proofs.
+parent/child death, silent stalls, descendant preservation, suite-lock waiting and bypass, and
+reclamation refusal proofs. Parity's entry tests cover filtered bypass and unfiltered acquisition.
 `scripts/test/artifact-policy.ts` and its architecture owner keep generated coverage/test output
 untracked and ignored. Accepted task evidence belongs in the main checkout's ignored `.work/`
 folder; the artifact policy's external-evidence-root check covers its injected listing, not that
@@ -162,15 +193,18 @@ npm run lint
 npm run web:build
 npm run test:parity
 npm run test:coverage
+npm run test:perf
 ```
 
-Coverage runs alone because it includes unit, integration, and architecture. Separate full test
-and architecture reruns add no acceptance evidence for unchanged inputs. The brief may additionally
+Coverage runs alone and selects unit, integration, and architecture without perf. The perf project
+runs afterward without coverage instrumentation. Separate full unit, integration, and architecture
+reruns add no acceptance evidence for unchanged inputs. The brief may additionally
 require `npm run build:manifest:check`, `npm run stores:catalog:check`, or other affected freshness
 checks. Derived output is regenerated at its source before its freshness check.
 
-Before coverage, the operator gate requires free memory, no swap pressure, no other coverage run,
-and no listener on port 3938:
+The suite lock enforces no overlapping whole-suite run among the batch entry points above.
+Before coverage, the operator gate still requires free memory, no swap pressure, and no listener
+on port 3938:
 
 ```sh
 lsof -nP -iTCP:3938 -sTCP:LISTEN
@@ -238,8 +272,9 @@ count-only waiver.
 
 ### 5.2 Gate and scope guards
 
-`tests/architecture/runtime/gate-coverage.test.ts` pins exact `typecheck`, `lint`, `test`, and
-`test:coverage` scripts, the single TypeScript program, all authored `src`, `tests`, and `scripts` roots,
+`tests/architecture/runtime/gate-coverage.test.ts` pins the exact `typecheck`, `lint`, `test`,
+`test:coverage`, and `test:perf` scripts, the single TypeScript program, all authored `src`, `tests`,
+and `scripts` roots,
 and the three root configs `vitest.config.ts`, `vite.dashboard.config.ts`, and
 `vite.parity.config.ts`. Both lint CLI targets and typed ESLint blocks must cover those inputs.
 Warnings and unmatched patterns fail. An inert wrapper containing the expected words fails.

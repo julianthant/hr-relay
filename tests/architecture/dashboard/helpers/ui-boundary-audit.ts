@@ -1,3 +1,4 @@
+import { createGuardProgram } from "../../../support/helpers/caching-compiler-host.js";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
@@ -267,7 +268,7 @@ export function auditTaskDriverBoundary(root: string): readonly string[] {
   const options = existsSync(configPath)
     ? ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, path => ts.sys.readFile(path)).config, ts.sys, root).options
     : { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve };
-  const program = ts.createProgram(semanticFiles, options);
+  const program = createGuardProgram(semanticFiles, options);
   const checker = program.getTypeChecker();
   const sources = new Map(absoluteFiles.map(absolute => {
     const path = relative(root, absolute).replaceAll("\\", "/");

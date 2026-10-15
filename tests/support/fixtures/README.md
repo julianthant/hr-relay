@@ -81,6 +81,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/workflow-definition-fixtures.ts` | workflow definition fixtures |
 | `fixtures/write-sequencer-fixtures.ts` | write sequencer fixtures |
 | `helpers/admission-fixture.ts` | admission fixture |
+| `helpers/caching-compiler-host.ts` | content-checked shared parsed compiler sources and fresh Programs |
 | `helpers/backend/cross-date-search-harness.ts` | cross date search harness |
 | `helpers/backend/dashboard-harness.ts` | dashboard harness |
 | `helpers/backend/failure-resolution-peer.ts` | failure resolution peer |
@@ -168,6 +169,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/settings-storage-doctor-fixtures.ts` | settings storage reports and resize observer fixture |
 | `helpers/storage/native-authority/retained-database-fixture.ts` | retained database fixture |
 | `helpers/storage/storage-relocation-fixture.ts` | storage relocation fixture |
+| `helpers/storage/synchronous-mutex-deadline.ts` | scoped 5,000 ms manual-clock mutex polling |
 | `helpers/storage/transaction-history-fixture.ts` | transaction history fixture |
 | `helpers/synthetic-database-admission.ts` | synthetic database admission |
 | `helpers/synthetic-storage-admission.ts` | synthetic storage admission |

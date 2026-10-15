@@ -1,3 +1,4 @@
+import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -88,10 +89,7 @@ function commandContext() {
   if (commandAudit !== undefined) return commandAudit;
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.ReactJSX, strict: true, skipLibCheck: true };
   const virtual = new Map(Object.entries(COMMAND_PROOFS).map(([name, text]) => [resolve(REPO_ROOT, `src/dashboard/guard-proofs/${name}.tsx`), text]));
-  const host = ts.createCompilerHost(options);
-  const read = host.readFile.bind(host);
-  host.readFile = (file) => virtual.get(file) ?? read(file);
-  const program = ts.createProgram([...sourceFiles(SCAN_ROOT), ...virtual.keys()], options, host);
+  const program = createGuardProgram([...sourceFiles(SCAN_ROOT), ...virtual.keys()], options, virtual);
   const checker = program.getTypeChecker();
   const declaration = program.getSourceFile(resolve(REPO_ROOT, "src/rules/commands/commands.ts"))?.statements.find((node) => ts.isTypeAliasDeclaration(node) && node.name.text === "CommandResult");
   expect(declaration).toBeDefined();

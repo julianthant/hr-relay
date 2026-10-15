@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { constants, closeSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Writable } from "node:stream";
+import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
+import { parseCLI } from "vitest/node";
 import { systemClock } from "../../src/rules/time/clock.js";
 
 export interface TestProcessResult { readonly code: number; readonly detail: string }
@@ -14,6 +17,10 @@ export interface TestProcessOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly rootDirectory: string;
   readonly idleTimeoutMs?: number;
+  /** A supplied lease remains caller-owned. */
+  readonly suiteLock?: boolean | HeldSuiteLock;
+  readonly suiteLockRetryIntervalMs?: number;
+  readonly suiteLockWaitTimeoutMs?: number;
 }
 export function selectedTestArguments(
   project: "unit" | "integration",
@@ -26,6 +33,77 @@ export function selectedTestArguments(
   }
   return ["run", "--project", project, "--passWithNoTests=false", ...filters];
 }
+export interface HeldSuiteLock { readonly stdin: Writable; readonly release: () => Promise<void> }
+export interface SuiteLockOptions {
+  readonly directory: string;
+  readonly retryIntervalMs?: number;
+  readonly waitTimeoutMs?: number;
+}
+export class TestSuiteWaitTimeoutError extends Error {
+  constructor() {
+    super("Another Relay test suite is still running; this run waited 45 minutes and did not start.");
+    this.name = "TestSuiteWaitTimeoutError";
+  }
+}
+
+export function hasTestFilter(args: readonly string[]): boolean {
+  return parseCLI(["vitest", "run", ...args]).filter.length > 0;
+}
+
+export async function acquireSuiteLock(options: SuiteLockOptions): Promise<HeldSuiteLock> {
+  const retryIntervalMs = options.retryIntervalMs ?? 5_000;
+  const waitTimeoutMs = options.waitTimeoutMs ?? 45 * 60_000;
+  for (const budget of [retryIntervalMs, waitTimeoutMs]) {
+    if (!Number.isSafeInteger(budget) || budget <= 0) throw new Error("Invalid test-suite wait budget");
+  }
+  const path = join(prepareDirectory(options.directory), "suite.lock");
+  const descriptor = openSync(path, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+  try {
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o600) throw new Error("Unsafe test-suite lock file");
+  } finally { closeSync(descriptor); }
+  const start = systemClock.nowMs();
+  const since = new Date(start).toTimeString().slice(0, 5);
+  let nextMessageAt = start;
+  while (true) {
+    if (systemClock.nowMs() - start >= waitTimeoutMs) throw new TestSuiteWaitTimeoutError();
+    const holder = spawn("/usr/bin/lockf", ["-s", "-k", "-t", "0", path, "/bin/sh", "-c", "echo held; exec cat"], { stdio: ["pipe", "pipe", "pipe"] });
+    holder.stdin.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "EPIPE") throw error; });
+    holder.stderr.resume();
+    const closed = new Promise<TestProcessResult>((done) => {
+      let spawnError: Error | undefined;
+      holder.once("error", (error) => { spawnError = error; });
+      holder.once("close", (code, signal) => done({ code: code ?? 1, detail: spawnError?.message ?? (signal === null ? `exit ${code}` : `signal ${signal}`) }));
+    });
+    const ready = new Promise<void>((done) => {
+      let output = "";
+      holder.stdout.on("data", (data: Buffer) => {
+        output += data.toString("utf8");
+        if (output === "held\n") done();
+      });
+    });
+    const first = await Promise.race([ready.then(() => undefined), closed]);
+    if (first === undefined) {
+      let released = false;
+      return { stdin: holder.stdin, release: async () => {
+        if (released) throw new Error("Test-suite lock was released twice");
+        released = true;
+        holder.stdin.end();
+        const result = await closed;
+        if (result.code !== 0) throw new Error(`Test-suite lock holder failed (${result.detail})`);
+      } };
+    }
+    if (first.code !== 75) throw new Error(`Test-suite lock unavailable (${first.detail})`);
+    const now = systemClock.nowMs();
+    if (now >= nextMessageAt) {
+      process.stderr.write(`[test-run] waiting for another Relay test suite (since ${since})\n`);
+      nextMessageAt = now + 60_000;
+    }
+    if (now - start >= waitTimeoutMs) throw new TestSuiteWaitTimeoutError();
+    await sleep(Math.min(retryIntervalMs, waitTimeoutMs - (now - start)));
+  }
+}
+
 const Owner = z.object({ version: z.literal(1), id: z.string().uuid(), groupId: z.number().int().min(2).max(2147483647).nullable() }).strict();
 const FILE = "owner.json";
 
@@ -88,6 +166,7 @@ export function reapTestRuns(directory: string): { removed: string[]; retained: 
   const base = prepareDirectory(directory);
   const removed: string[] = [], retained: string[] = [];
   for (const name of readdirSync(base)) {
+    if (name === "suite.lock") continue;
     if (!/^run-[A-Za-z0-9]+$/.test(name)) throw new Error(`Unknown entry in test-run directory: ${name}`);
     const root = join(base, name);
     let owner: z.infer<typeof Owner>;
@@ -115,6 +194,12 @@ export function reapTestRuns(directory: string): { removed: string[]; retained: 
 }
 
 export async function runTestProcess(options: TestProcessOptions): Promise<TestProcessResult> {
+  const lease = options.suiteLock === true ? await acquireSuiteLock({ directory: options.rootDirectory, retryIntervalMs: options.suiteLockRetryIntervalMs, waitTimeoutMs: options.suiteLockWaitTimeoutMs }) : undefined;
+  try { return await runOwnedTestProcess(options, lease ?? (typeof options.suiteLock === "object" ? options.suiteLock : undefined)); }
+  finally { await lease?.release(); }
+}
+
+async function runOwnedTestProcess(options: TestProcessOptions, lease?: HeldSuiteLock): Promise<TestProcessResult> {
   if (process.platform === "win32") throw new Error("Owned test runs require POSIX process groups");
   if (options.idleTimeoutMs !== undefined && (!Number.isSafeInteger(options.idleTimeoutMs) || options.idleTimeoutMs <= 0)) throw new Error("Invalid test-run inactivity budget");
   const base = prepareDirectory(options.rootDirectory);
@@ -136,7 +221,7 @@ export async function runTestProcess(options: TestProcessOptions): Promise<TestP
     try {
       return spawn(options.command, [...options.args], {
         cwd: options.cwd, env: { ...options.env, TMPDIR: scratch, TMP: scratch, TEMP: scratch },
-        detached: true, stdio: ["ignore", "pipe", "pipe"],
+        detached: true, stdio: ["ignore", "pipe", "pipe", lease?.stdin ?? "ignore"],
       });
     } finally { process.umask(previousUmask); }
   })();
@@ -167,6 +252,7 @@ export async function runTestProcess(options: TestProcessOptions): Promise<TestP
   const capture = (data: Buffer, stream: NodeJS.WriteStream): void => {
     tail = (tail + data.toString("utf8")).slice(-16384); stream.write(data); progress();
   };
+  if (child.stdout === null || child.stderr === null) throw new Error("Test-run output pipes unavailable");
   child.stdout.on("data", (data: Buffer) => capture(data, process.stdout));
   child.stderr.on("data", (data: Buffer) => capture(data, process.stderr));
   process.once("SIGINT", interrupt); process.once("SIGTERM", interrupt); progress();
@@ -181,9 +267,17 @@ export async function runTestProcess(options: TestProcessOptions): Promise<TestP
   if (escalation !== undefined) clearTimeout(escalation);
   process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
   const live = owner.groupId !== null && groupAlive(owner.groupId);
+  if (options.suiteLock && live) {
+    stop();
+    await shutdown;
+    while (owner.groupId !== null && groupAlive(owner.groupId)) await sleep(10);
+  }
   const final = live ? { code: 1, detail: `${result.detail}; child process group remains active` } : result;
   if (final.code === 0) rmSync(root, { recursive: true });
-  else writeFileSync(join(root, "failure.txt"), `${final.detail}\n${tail}`, { flag: "wx", mode: 0o600 });
+  else {
+    writeFileSync(join(root, "failure.txt"), `${final.detail}\n${tail}`, { flag: "wx", mode: 0o600 });
+    if (!live || options.suiteLock) rmSync(scratch, { recursive: true });
+  }
   process.stderr.write(`[test-run] ${basename(root)} ${final.detail}; ${systemClock.nowMs() - start}ms${final.code === 0 ? "; scratch removed" : `; retained ${root}`}\n`);
   return final;
 }
@@ -194,7 +288,7 @@ async function main(): Promise<void> {
   const commandArgs = args[0] === "unit" || args[0] === "integration"
     ? selectedTestArguments(args[0], args.slice(1))
     : args;
-  const result = await runTestProcess({ command: process.execPath, args: [fileURLToPath(new URL("./vitest.mjs", import.meta.resolve("vitest/package.json"))), ...commandArgs], cwd: process.cwd(), env: process.env, rootDirectory: testRunsDirectory() });
+  const result = await runTestProcess({ command: process.execPath, args: [fileURLToPath(new URL("./vitest.mjs", import.meta.resolve("vitest/package.json"))), ...commandArgs], cwd: process.cwd(), env: process.env, rootDirectory: testRunsDirectory(), suiteLock: ["run", "unit", "integration"].includes(args[0]) && !hasTestFilter(commandArgs.slice(1)) });
   process.exitCode = result.code;
 }
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -17,6 +17,8 @@ import vitestConfig, {
   REBUILD_UNIT_TEST_INCLUDE,
   REBUILD_INTEGRATION_TEST_INCLUDE,
   REBUILD_INTEGRATION_TEST_EXCLUDE,
+  REBUILD_PERF_TEST_INCLUDE,
+  REBUILD_PERF_TEST_EXCLUDE,
 } from "../../../vitest.config.js";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 import { projectOwnershipViolations } from "../../../scripts/test/project-policy.js";
@@ -56,6 +58,8 @@ interface ArchitectureProjectInputs {
   readonly integrationExclude: readonly string[];
   readonly architectureInclude: readonly string[];
   readonly architectureExclude: readonly string[];
+  readonly perfInclude: readonly string[];
+  readonly perfExclude: readonly string[];
   readonly reporters: readonly string[];
 }
 
@@ -111,6 +115,8 @@ export function architectureProjectViolations({
   integrationExclude,
   architectureInclude,
   architectureExclude,
+  perfInclude,
+  perfExclude,
   reporters,
 }: ArchitectureProjectInputs): string[] {
   const violations: string[] = [];
@@ -131,7 +137,9 @@ export function architectureProjectViolations({
   if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
     violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
   }
-  if (integrationExclude.length !== 0) violations.push("integration project exclude must remain empty");
+  if (JSON.stringify(integrationExclude) !== JSON.stringify(["tests/perf/**"])) {
+    violations.push("integration project must exclude tests/perf/**");
+  }
   if (
     JSON.stringify(architectureInclude) !==
       JSON.stringify(["tests/architecture/**/*.test.ts"])
@@ -145,6 +153,10 @@ export function architectureProjectViolations({
       `architecture project exclude must remain empty; received ${JSON.stringify(architectureExclude)}`,
     );
   }
+  if (JSON.stringify(perfInclude) !== JSON.stringify(["tests/perf/**/*.test.ts"])) {
+    violations.push("perf project must include every tests/perf/**/*.test.ts file");
+  }
+  if (perfExclude.length !== 0) violations.push("perf project exclude must remain empty");
   if (JSON.stringify(reporters) !== JSON.stringify(["verbose"])) {
     violations.push("every Vitest entry point must use the single verbose streaming reporter from config");
   }
@@ -236,7 +248,7 @@ describe("reviewed architecture guard manifest", () => {
     }
   });
 
-  it("keeps architecture recursively complete and out of the unit project", () => {
+  it("keeps four exact projects with complete architecture and single test ownership", () => {
     const actual = {
       command: packageJson.scripts[inventory.testScript] ?? "",
       unitInclude: REBUILD_UNIT_TEST_INCLUDE,
@@ -245,9 +257,12 @@ describe("reviewed architecture guard manifest", () => {
       integrationExclude: REBUILD_INTEGRATION_TEST_EXCLUDE,
       architectureInclude: REBUILD_ARCHITECTURE_TEST_INCLUDE,
       architectureExclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
+      perfInclude: REBUILD_PERF_TEST_INCLUDE,
+      perfExclude: REBUILD_PERF_TEST_EXCLUDE,
       reporters: REBUILD_TEST_REPORTERS,
     };
     assert.deepEqual(architectureProjectViolations(actual), []);
+    assert.deepEqual(REBUILD_TEST_PROJECTS.map(({ name }) => name), ["unit", "integration", "architecture", "perf"]);
     assert.deepEqual(configuredTestProjects(vitestConfig), REBUILD_TEST_PROJECTS);
     assert.deepEqual(configuredTestReporters(vitestConfig), REBUILD_TEST_REPORTERS);
     assert.deepEqual(testProjectTopologyViolations(REPO_ROOT), []);
@@ -262,9 +277,12 @@ describe("reviewed architecture guard manifest", () => {
       { ...actual, integrationInclude: [] },
       { ...actual, integrationExclude: ["tests/integration/**"] },
       { ...actual, unitExclude: ["tests/architecture/tooling/guard-manifest.test.ts"] },
+      { ...actual, integrationExclude: [] },
       { ...actual, architectureInclude: ["tests/architecture/tooling/guard-manifest.test.ts"] },
       { ...actual, architectureInclude: ["tests/architecture/*.test.ts"] },
       { ...actual, architectureExclude: ["tests/architecture/runtime-isolation.test.ts"] },
+      { ...actual, perfInclude: ["tests/perf/**/*.integration.test.ts"] },
+      { ...actual, perfExclude: ["tests/perf/**"] },
       { ...actual, reporters: ["dot"] },
     ]) {
       assert.ok(architectureProjectViolations(bypass).length > 0, JSON.stringify(bypass));
@@ -275,15 +293,23 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root, "tests/models/owned.test.ts", "export {};\n");
       writeFixture(root, "tests/architecture/guard.test.ts", "export {};\n");
       writeFixture(root, "tests/models/real.integration.test.ts", "export {};\n");
+      writeFixture(root, "tests/perf/shape.integration.test.ts", "export {};\n");
       writeFixture(root, "tests/parity/scene.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);
+      const missingPerf = REBUILD_TEST_PROJECTS.filter(({ name }) => name !== "perf");
+      assert.match(testProjectTopologyViolations(root, missingPerf).join("\n"),
+        /tests\/perf\/shape\.integration\.test\.ts: expected exactly one Vitest project, found none/u);
+      const integrationPerfLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "integration"
+        ? { ...project, exclude: [] }
+        : project);
+      assert.match(testProjectTopologyViolations(root, integrationPerfLeak).join("\n"),
+        /tests\/perf\/shape\.integration\.test\.ts: expected exactly one Vitest project, found integration, perf/u);
       const parityLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
         ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/parity/**") }
         : project);
       assert.deepEqual(testProjectTopologyViolations(root, parityLeak), [
         "tests/parity/scene.test.ts: expected no Vitest projects, found unit",
       ]);
-      writeFixture(root, "tests/perf/shape.integration.test.ts", "export {};\n");
       writeFixture(root, "tests/support/helpers/helper.test.ts", "export {};\n");
       writeFixture(root, "tests/types/input.integration.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);

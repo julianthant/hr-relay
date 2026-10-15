@@ -1,3 +1,4 @@
+import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -36,11 +37,9 @@ function audit(extraSource?: string): readonly string[] {
   const fixture = resolve(REPO_ROOT, "src/backend/runtime/worker-mutator-proof.ts");
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext, strict: true, skipLibCheck: true };
-  const host = ts.createCompilerHost(options);
-  const originalRead = host.readFile.bind(host);
-  host.readFile = (file) => file === fixture && extraSource !== undefined ? extraSource : originalRead(file);
-  const program = ts.createProgram([...roots.map((file) => resolve(REPO_ROOT, file)),
-    ...(extraSource === undefined ? [] : [fixture])], options, host);
+  const program = createGuardProgram([...roots.map((file) => resolve(REPO_ROOT, file)),
+    ...(extraSource === undefined ? [] : [fixture])], options,
+    extraSource === undefined ? undefined : new Map([[fixture, extraSource]]));
   const checker = program.getTypeChecker();
   const violations: string[] = [];
   let visited = 0;

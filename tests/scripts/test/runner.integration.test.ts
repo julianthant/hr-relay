@@ -6,7 +6,7 @@ import { dirname,join,resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { describe,it } from "vitest";
-import { reapTestRuns,runTestProcess } from "../../../scripts/test/runner.js";
+import { acquireSuiteLock,hasTestFilter,reapTestRuns,runTestProcess } from "../../../scripts/test/runner.js";
 
 
 it("contains inherited temporary files and removes them after a successful run", async () => {
@@ -30,10 +30,11 @@ it("contains inherited temporary files and removes them after a successful run",
 it("preserves a failing exit and diagnostics until explicit reclamation", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
   try {
-    const result = await runTestProcess({ command: process.execPath, args: ["-e", "console.error('sentinel-failure'); process.exit(23)"], cwd: root, env: process.env, rootDirectory: join(root, "runs") });
+    const result = await runTestProcess({ command: process.execPath, args: ["-e", "require('node:fs').writeFileSync(require('node:path').join(require('node:os').tmpdir(),'scratch-payload'),'sentinel');console.error('sentinel-failure');process.exitCode=23"], cwd: root, env: process.env, rootDirectory: join(root, "runs") });
     assert.equal(result.code, 23);
     const run = join(root, "runs", readdirSync(join(root, "runs"))[0]);
     assert.match(readFileSync(join(run, "failure.txt"), "utf8"), /sentinel-failure/);
+    assert.equal(existsSync(join(run, "tmp")), false);
     assert.deepEqual(reapTestRuns(join(root, "runs")), { removed: [run], retained: [] });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -50,12 +51,34 @@ it("fails and retains diagnostics for a silent stalled process", async () => {
 
 it("retains a killed worker's scratch for verified reclamation", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
+  const ready = join(root, "ready");
+  const descendant = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setInterval(()=>{},1000)`;
+  const worker = `const {spawn}=require('node:child_process'),fs=require('node:fs');spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'});const check=setInterval(()=>{if(fs.existsSync(${JSON.stringify(ready)})){clearInterval(check);process.kill(process.pid,'SIGKILL')}},10)`;
+  let group: number | undefined;
   try {
-    const result = await runTestProcess({ command: process.execPath, args: ["-e", "process.kill(process.pid,'SIGKILL')"], cwd: root, env: process.env, rootDirectory: join(root, "runs") });
+    const result = await runTestProcess({ command: process.execPath, args: ["-e", worker], cwd: root, env: process.env, rootDirectory: join(root, "runs") });
+    const run = join(root, "runs", readdirSync(join(root, "runs"))[0]);
+    const claimed = (JSON.parse(readFileSync(join(run, "owner.json"), "utf8")) as { groupId: unknown }).groupId;
+    assert.ok(typeof claimed === "number" && Number.isSafeInteger(claimed) && claimed > 1);
+    group = claimed;
+    const ownedGroup = claimed;
     assert.equal(result.code, 1);
     assert.match(result.detail, /SIGKILL/);
+    assert.equal(readFileSync(ready, "utf8"), "ready");
+    assert.equal(existsSync(join(run, "tmp")), true);
+    assert.equal(existsSync(join(run, "failure.txt")), true);
+    assert.deepEqual(reapTestRuns(join(root, "runs")), { removed: [], retained: [run] });
+    process.kill(-ownedGroup, "SIGKILL");
+    await until(() => !alive(ownedGroup));
     assert.equal(reapTestRuns(join(root, "runs")).removed.length, 1);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally {
+    const groupToClean = group;
+    if (groupToClean !== undefined && alive(groupToClean)) {
+      process.kill(-groupToClean, "SIGKILL");
+      await until(() => !alive(groupToClean));
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 it("refuses symlinked run directories and leaves the target intact", () => {
@@ -137,7 +160,7 @@ it("executes the actual Vitest CLI with unchanged selection and a failing exit",
     symlinkSync(fileURLToPath(new URL("../../../node_modules", import.meta.url)), join(root, "node_modules"));
     writeFileSync(join(root, "vitest.config.ts"), 'export default {test:{include:["proof.test.ts"],maxWorkers:1}};');
     writeFileSync(join(root, "proof.test.ts"), 'import {it} from "vitest";it("real CLI proof",()=>{throw new Error("intentional-cli-red")});');
-    const result = spawnSync(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), fileURLToPath(new URL("../../../scripts/test/runner.ts", import.meta.url)), "run", "--config", join(root, "vitest.config.ts")], { cwd: root, env: process.env, encoding: "utf8", timeout: 15000 });
+    const result = spawnSync(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), fileURLToPath(new URL("../../../scripts/test/runner.ts", import.meta.url)), "run", "--config", join(root, "vitest.config.ts"), "proof.test.ts"], { cwd: root, env: process.env, encoding: "utf8", timeout: 15000 });
     assert.equal(result.error, undefined);
     assert.equal(result.status, 1);
     assert.match(result.stdout + result.stderr, /intentional-cli-red/);
@@ -219,3 +242,153 @@ describe("architecture project empty collection", () => {
     assert.match(output, /filter: tests\/architecture\/fixtures\/does-not-exist\.test\.ts/);
   });
 });
+
+function suiteProcess(root: string, script: string, suiteLock: boolean | "borrowed" = true, waitTimeoutMs = 5_000) {
+  const module = fileURLToPath(new URL("../../../scripts/test/runner.ts", import.meta.url));
+  const options = {
+    command: process.execPath, args: ["-e", script], cwd: root, env: {},
+    rootDirectory: join(root, "runs"), suiteLock: suiteLock === "borrowed" ? undefined : suiteLock, suiteLockRetryIntervalMs: 20,
+    suiteLockWaitTimeoutMs: waitTimeoutMs, idleTimeoutMs: 500,
+  };
+  const source = `import {acquireSuiteLock,runTestProcess} from ${JSON.stringify(module)};const options=${JSON.stringify(options)};${suiteLock === "borrowed" ? "options.suiteLock=await acquireSuiteLock({directory:options.rootDirectory});" : ""}try{process.exitCode=(await runTestProcess(options)).code}catch(e){console.error(e.name+': '+e.message);process.exitCode=1}finally{${suiteLock === "borrowed" ? "await options.suiteLock.release();" : ""}}`;
+  const child = spawn(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), "--input-type=module", "-e", source], { stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  child.stdout.on("data", (data: Buffer) => { output += data.toString(); });
+  child.stderr.on("data", (data: Buffer) => { output += data.toString(); });
+  const closed = new Promise<number | null>((done) => child.once("close", done));
+  return { child, closed, output: () => output };
+}
+
+it("classifies whole suites after option values while retaining actual positional filters", () => {
+  for (const args of [[], ["--coverage", "--project", "unit", "--project", "integration", "--project", "architecture"], ["--project=perf", "--passWithNoTests=false"], ["--config", "custom.ts"], ["--testTimeout", "60000", "--bail", "1", "--project", "unit"], ["--testTimeout=60000", "--bail=1"], ["--", "proof.test.ts"]]) {
+    assert.equal(hasTestFilter(args), false, JSON.stringify(args));
+  }
+  for (const args of [["run"], ["--project", "unit", "proof.test.ts"], ["--config", "custom.ts", "proof.test.ts"], ["--project=unit", "proof.test.ts"], ["--testTimeout", "60000", "--bail", "1", "--project", "unit", "proof.test.ts"], ["-t", "heading", "proof.test.ts"]]) {
+    assert.equal(hasTestFilter(args), true, JSON.stringify(args));
+  }
+});
+
+it("serializes whole-suite children, lets a focused child pass, and reports only the anonymous wait", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
+  const ready = join(root, "ready"), release = join(root, "release"), secondReady = join(root, "second"), focusedReady = join(root, "focused");
+  const first = suiteProcess(root, `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(ready)},'ready');setInterval(()=>{console.log('progress');if(fs.existsSync(${JSON.stringify(release)}))process.exit(0)},50)`);
+  let second: ReturnType<typeof suiteProcess> | undefined;
+  try {
+    await until(() => existsSync(ready));
+    second = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(secondReady)},'started')`);
+    await until(() => second!.output().includes("waiting for another"));
+    assert.equal(existsSync(secondReady), false);
+    const focused = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(focusedReady)},'started')`, false);
+    assert.equal(await focused.closed, 0);
+    assert.equal(existsSync(focusedReady), true);
+    await sleep(600);
+    const waitLines = second.output().split("\n").filter((line) => line.includes("waiting for another"));
+    assert.equal(waitLines.length, 1);
+    assert.match(waitLines[0], /^\[test-run\] waiting for another Relay test suite \(since \d{2}:\d{2}\)$/);
+    assert.equal(waitLines[0].includes(root), false);
+    assert.equal(waitLines[0].includes(String(first.child.pid)), false);
+    assert.equal(waitLines[0].includes("test-lock"), false);
+    writeFileSync(release, "go");
+    assert.equal(await first.closed, 0);
+    assert.equal(await second.closed, 0);
+    assert.equal(existsSync(secondReady), true);
+    assert.deepEqual(readdirSync(join(root, "runs")), ["suite.lock"]);
+    assert.deepEqual(reapTestRuns(join(root, "runs")), { removed: [], retained: [] });
+    assert.equal(existsSync(join(root, "runs", "suite.lock")), true);
+  } finally {
+    first.child.kill("SIGTERM"); second?.child.kill("SIGTERM");
+    await first.closed; await second?.closed;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("refuses an expired suite wait with the named error, exit 1, and no child", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
+  const lease = await acquireSuiteLock({ directory: join(root, "runs") });
+  try {
+    const marker = join(root, "forbidden-child");
+    const waiter = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(marker)},'started')`, true, 100);
+    assert.equal(await waiter.closed, 1);
+    assert.match(waiter.output(), /TestSuiteWaitTimeoutError: Another Relay test suite is still running; this run waited 45 minutes and did not start\./);
+    assert.equal(existsSync(marker), false);
+    assert.deepEqual(readdirSync(join(root, "runs")), ["suite.lock"]);
+  } finally { await lease.release(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it("releases the kernel suite lock after the holding runner is killed with SIGKILL", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
+  const module = fileURLToPath(new URL("../../../scripts/test/runner.ts", import.meta.url));
+  const source = `import {acquireSuiteLock} from ${JSON.stringify(module)};await acquireSuiteLock({directory:${JSON.stringify(join(root, "runs"))}});console.log('ready');setInterval(()=>{},1000)`;
+  const holder = spawn(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), "--input-type=module", "-e", source], { stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  holder.stdout.on("data", (data: Buffer) => { output += data.toString(); });
+  const closed = new Promise<void>((done) => holder.once("close", () => done()));
+  let waiter: ReturnType<typeof suiteProcess> | undefined;
+  try {
+    await until(() => output.includes("ready"));
+    const marker = join(root, "waiter-started");
+    waiter = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(marker)},'started')`);
+    await until(() => waiter!.output().includes("waiting for another"));
+    assert.equal(existsSync(marker), false);
+    holder.kill("SIGKILL"); await closed;
+    assert.equal(await waiter.closed, 0);
+    assert.equal(existsSync(marker), true);
+  } finally {
+    holder.kill("SIGKILL"); waiter?.child.kill("SIGTERM");
+    await closed; await waiter?.closed;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("shuts down a whole-suite descendant before releasing the suite lease", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
+  const ready = join(root, "ready");
+  const descendant = `process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(${JSON.stringify(ready)},String(process.pid));setInterval(()=>{},1000)`;
+  const leader = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'});const check=setInterval(()=>{if(require('node:fs').existsSync(${JSON.stringify(ready)}))process.exit(0)},10)`;
+  try {
+    const result = await runTestProcess({ command: process.execPath, args: ["-e", leader], cwd: root, env: {}, rootDirectory: join(root, "runs"), suiteLock: true });
+    assert.equal(result.code, 1);
+    assert.match(result.detail, /child process group remains active/);
+    const run = readdirSync(join(root, "runs")).find((name) => name.startsWith("run-"));
+    assert.ok(run);
+    const owner = JSON.parse(readFileSync(join(root, "runs", run, "owner.json"), "utf8")) as { groupId: number };
+    assert.equal(alive(owner.groupId), false);
+    assert.equal(existsSync(join(root, "runs", run, "tmp")), false);
+    const lease = await acquireSuiteLock({ directory: join(root, "runs"), waitTimeoutMs: 100 });
+    await lease.release();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const ownership of [true, "borrowed"] as const) {
+  it(`keeps the ${ownership === true ? "owned" : "borrowed"} suite lease until the detached child exits after runner SIGKILL`, async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
+    const ready = join(root, "ready"), marker = join(root, "waiter-started");
+    const holder = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(ready)},String(process.pid));setInterval(()=>{},1000)`, ownership);
+    let waiter: ReturnType<typeof suiteProcess> | undefined;
+    let group: number | undefined;
+    try {
+      await until(() => existsSync(ready));
+      group = Number(readFileSync(ready, "utf8"));
+      assert.ok(Number.isSafeInteger(group) && group > 1);
+      waiter = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(marker)},'started')`);
+      await until(() => waiter!.output().includes("waiting for another"));
+      holder.child.kill("SIGKILL"); await holder.closed;
+      await sleep(200);
+      assert.equal(alive(group), true, "detached leader must outlive the runner");
+      assert.equal(existsSync(marker), false, "waiter started while the detached leader still held its lease");
+      process.kill(-group, "SIGTERM");
+      await until(() => !alive(group!));
+      assert.equal(await waiter.closed, 0);
+      assert.equal(existsSync(marker), true);
+    } finally {
+      holder.child.kill("SIGKILL");
+      if (group !== undefined && alive(group)) {
+        process.kill(-group, "SIGKILL");
+        await until(() => !alive(group!));
+      }
+      waiter?.child.kill("SIGTERM");
+      await holder.closed; await waiter?.closed;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}

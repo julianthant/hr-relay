@@ -1,4 +1,4 @@
-import { runTestProcess, testRunsDirectory } from "./test/runner.js";
+import { acquireSuiteLock, runTestProcess, testRunsDirectory, type HeldSuiteLock } from "./test/runner.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -163,6 +163,9 @@ interface RunParityOptions {
   readonly lockCommand?: string;
   readonly expectedUid?: number;
   readonly inactivityTimeoutMs?: number;
+  readonly suiteLockDirectory?: string;
+  readonly suiteLockRetryIntervalMs?: number;
+  readonly suiteLockWaitTimeoutMs?: number;
   readonly writeError?: (message: string) => void;
   readonly afterReportRead?: (path: string) => void;
 }
@@ -610,8 +613,8 @@ function prepareParityReportLifecycle(cwd: string, expectedUid?: number): Parity
   return readParityReportOnce(cwd, uid).identity;
 }
 
-async function runChild(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, idleTimeoutMs = 180_000): Promise<ChildResult> {
-  return await runTestProcess({ command, args, cwd, env, rootDirectory: testRunsDirectory(), idleTimeoutMs });
+async function runChild(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, idleTimeoutMs = 180_000, suiteLease?: HeldSuiteLock): Promise<ChildResult> {
+  return await runTestProcess({ command, args, cwd, env, rootDirectory: testRunsDirectory(), idleTimeoutMs, suiteLock: suiteLease });
 }
 
 function prepareCommandLockFile(cwd: string): string {
@@ -723,59 +726,66 @@ function childEnvironment(mode: ParityMode, env: NodeJS.ProcessEnv): NodeJS.Proc
   return childEnv;
 }
 
-async function runParityAndVerify(
+export async function runParityAndVerify(
   options: RunParityOptions,
   dependencies: RunParityDependencies = {},
 ): Promise<number> {
   assertParityJsonOutputIsFixed(options.mode, options.env, options.args);
-  const lock = await acquireCommandLock(options.cwd, options.lockCommand ?? "/usr/bin/lockf");
-  let child: ChildResult | undefined;
-  let verifierError: unknown;
-  let operationError: unknown;
+  const suiteLease = options.args.length === 0 ? await acquireSuiteLock({
+    directory: options.suiteLockDirectory ?? testRunsDirectory(),
+    retryIntervalMs: options.suiteLockRetryIntervalMs,
+    waitTimeoutMs: options.suiteLockWaitTimeoutMs,
+  }) : undefined;
   try {
-    const before = prepareParityReportLifecycle(options.cwd, options.expectedUid);
-    const runStartedAtMs = systemClock.nowMs();
-    child = await (dependencies.runChild ?? ((command, args, cwd, env) => runChild(command, args, cwd, env, options.inactivityTimeoutMs)))(
-      options.command ?? PARITY_PLAYWRIGHT_COMMAND,
-      [...(options.commandArgs ?? PARITY_PLAYWRIGHT_ARGS), ...options.args],
-      options.cwd,
-      childEnvironment(options.mode, options.env),
-    );
+    const lock = await acquireCommandLock(options.cwd, options.lockCommand ?? "/usr/bin/lockf");
+    let child: ChildResult | undefined;
+    let verifierError: unknown;
+    let operationError: unknown;
     try {
-      verifyParityJsonReport({
-        cwd: options.cwd,
-        runStartedAtMs,
-        before,
-        expectedUid: options.expectedUid,
-        afterReportRead: options.afterReportRead,
-      });
+      const before = prepareParityReportLifecycle(options.cwd, options.expectedUid);
+      const runStartedAtMs = systemClock.nowMs();
+      child = await (dependencies.runChild ?? ((command, args, cwd, env) => runChild(command, args, cwd, env, options.inactivityTimeoutMs, suiteLease)))(
+        options.command ?? PARITY_PLAYWRIGHT_COMMAND,
+        [...(options.commandArgs ?? PARITY_PLAYWRIGHT_ARGS), ...options.args],
+        options.cwd,
+        childEnvironment(options.mode, options.env),
+      );
+      try {
+        verifyParityJsonReport({
+          cwd: options.cwd,
+          runStartedAtMs,
+          before,
+          expectedUid: options.expectedUid,
+          afterReportRead: options.afterReportRead,
+        });
+      } catch (error) {
+        verifierError = error;
+      }
     } catch (error) {
-      verifierError = error;
+      operationError = error;
     }
-  } catch (error) {
-    operationError = error;
-  }
-  try {
-    await lock.release();
-  } catch (error) {
-    if (operationError !== undefined) operationError = new AggregateError([operationError, error], "parity command and lock release both failed");
-    else if (verifierError !== undefined) verifierError = new AggregateError([verifierError, error], "parity verification and lock release both failed");
-    else verifierError = error;
-  }
-  if (operationError !== undefined) throw errorObject(operationError);
-  if (child === undefined) throw new Error("parity command completed without a child result");
+    try {
+      await lock.release();
+    } catch (error) {
+      if (operationError !== undefined) operationError = new AggregateError([operationError, error], "parity command and lock release both failed");
+      else if (verifierError !== undefined) verifierError = new AggregateError([verifierError, error], "parity verification and lock release both failed");
+      else verifierError = error;
+    }
+    if (operationError !== undefined) throw errorObject(operationError);
+    if (child === undefined) throw new Error("parity command completed without a child result");
 
-  const writeError = options.writeError ?? ((message: string) => process.stderr.write(message));
-  if (child.code !== 0) {
-    writeError(`Playwright parity command failed first (${child.detail}).\n`);
-    if (verifierError !== undefined) writeError(`Parity JSON evidence verification also failed: ${errorMessage(verifierError)}\n`);
-    return child.code;
-  }
-  if (verifierError !== undefined) {
-    writeError(`Parity JSON evidence verification failed: ${errorMessage(verifierError)}\n`);
-    return 1;
-  }
-  return 0;
+    const writeError = options.writeError ?? ((message: string) => process.stderr.write(message));
+    if (child.code !== 0) {
+      writeError(`Playwright parity command failed first (${child.detail}).\n`);
+      if (verifierError !== undefined) writeError(`Parity JSON evidence verification also failed: ${errorMessage(verifierError)}\n`);
+      return child.code;
+    }
+    if (verifierError !== undefined) {
+      writeError(`Parity JSON evidence verification failed: ${errorMessage(verifierError)}\n`);
+      return 1;
+    }
+    return 0;
+  } finally { await suiteLease?.release(); }
 }
 
 function assertParityJsonOutputIsFixed(

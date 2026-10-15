@@ -1,3 +1,4 @@
+import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -123,7 +124,7 @@ function contractAstIssues(path: string, source: ts.SourceFile): readonly string
 function auditTaskContractSources(root: string, census?: string[]): readonly string[] {
   const issues: string[] = [];
   const files = walkFiles(resolve(root, "src"), { missing: "planned-empty" });
-  const program = ts.createProgram(files, { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true });
+  const program = createGuardProgram(files, { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true });
   const checker = program.getTypeChecker();
   const sources = new Map(files.map((file) => {
     const path = relative(root, file).replaceAll("\\", "/");
