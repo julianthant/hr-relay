@@ -34,6 +34,7 @@ export interface ActivitySummary {
   readonly failures: readonly { readonly label: string; readonly runs: number }[] | null;
   readonly evidence: { readonly verified: number | null; readonly unread: number | null };
   readonly workflows: readonly ActivityWorkflow[];
+  readonly durationWorkflows?: readonly ActivityWorkflow[];
   readonly transactions: readonly { readonly id: string; readonly label: string; readonly count: number; readonly environment: "production" | "test" }[];
   readonly volume?: ActivityVolume;
 }
