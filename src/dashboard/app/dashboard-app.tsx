@@ -288,7 +288,7 @@ function LoadedApp({
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
 
-  const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
+  const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
   const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
   const queueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
@@ -717,13 +717,19 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
-  const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow });
-  notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow };
+  const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
+  notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: WorkflowSource) => {
     const request = ++notificationNavigation.current;
     if (source === "mock" && destination.kind === "run") {
-      const validate = () => notificationDestinationRefusal(destination, notificationContext.current);
+      const validate = () => {
+        const context = notificationContext.current;
+        const refusal = notificationDestinationRefusal(destination, context);
+        if (refusal) return refusal;
+        const row = context.rows.find(row => row.runId === destination.runId)!;
+        return context.canSelectWorkflowId(row.workflowId) ? undefined : formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text;
+      };
       const refusal = validate();
       if (refusal) { refused(refusal); return; }
       leaveSettings(() => {
