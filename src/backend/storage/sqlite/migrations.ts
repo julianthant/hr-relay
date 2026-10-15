@@ -1,8 +1,9 @@
+import { WORKBOOK_LIBRARY_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { AUTHORITY_TABLE_REGISTRY, type TableName, type TableSpec } from "../../../models/config/authority.js";
+import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 3;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 4;
 
 export function isCurrentAuthoritySchemaVersion(version: number): boolean {
   return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
@@ -679,10 +680,17 @@ ALTER TABLE worker_pools_unbounded RENAME TO worker_pools;
 CREATE TRIGGER worker_pools_retained BEFORE DELETE ON worker_pools
 BEGIN SELECT RAISE(ABORT,'worker-pools-retained'); END;
 PRAGMA defer_foreign_keys=OFF;`] },
+  { version: 4, statements: WORKBOOK_LIBRARY_MIGRATION.statements },
 ]);
 
+export function migrationTableNames(version: number): readonly AuthorityTableName[] {
+  return AuthorityTableNameSchema.options.filter(name => version >= 4
+    || (name !== "workbook_library" && name !== "workbook_library_history"));
+}
+
 export function auditMigrationTableCoverage(): readonly string[] {
-  const names = [...SQLITE_MIGRATIONS[0].statements[0].matchAll(/CREATE TABLE ([a-z_]+)/gu)].map(match => match[1]);
+  const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements];
+  const names = statements.flatMap(statement => [...statement.matchAll(/CREATE TABLE ([a-z_]+)/gu)].map(match => match[1]));
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
   return [
     ...registered.filter(name => !names.includes(name)).map(name => `registered table ${name} has no DDL`),

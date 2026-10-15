@@ -92,3 +92,9 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     })),
   });
 }
+
+export function validateWorkbookLibrary(database: DatabaseSync): number {
+  const repository = createWorkbookLibraryRepository({ database, read: work => work(),
+    mutate: () => { throw new Error("workbook-validation-read-only"); } });
+  return repository.list().reduce((count, record) => count + 1 + repository.history(record.libraryId).length, 0);
+}
