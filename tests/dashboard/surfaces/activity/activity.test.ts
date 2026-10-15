@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
 import { default as assert_m0,default as assert_m1 } from 'node:assert/strict';
@@ -105,7 +106,7 @@ describe_m1("frontend presentation producers", () => {
     assert_m1.match(activity, /Workflow outcomes/);
     assert_m1.match(activity, /34 measured/);
     assert_m1.doesNotMatch(activity, /Sample data/);
-    const explorer = renderToStaticMarkup_m1(createElement_m1(WorkflowExplorer_m1, { catalog: buildWorkflowCatalog_m1([]) }));
+    const explorer = renderToStaticMarkup_m1(createElement_m1(WorkflowExplorer_m1, { catalog: buildWorkflowCatalog_m1([], true, previewFixtureSources([])) }));
     assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
     assert_m1.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
     const logs = renderToStaticMarkup_m1(createElement_m1(LogSample_m1));

@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
 import { launchWorkflows as launchWorkflows_m1 } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
@@ -10,7 +11,7 @@ import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } f
 
 {
 
-const catalog = buildWorkflowCatalog_m0([]);
+const catalog = buildWorkflowCatalog_m0([], true, previewFixtureSources([]));
 
 describe_m0("frontend timeline and sessions", () => {
   it_m0("local worker controls preserve peers and input fixtures; invalid transitions fail loud", () => {

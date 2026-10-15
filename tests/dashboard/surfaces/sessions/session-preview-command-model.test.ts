@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
@@ -110,7 +111,7 @@ async function mount(element: ReturnType<typeof createElement_m1>) { const host 
 const button = (name: string) => { const found = [...document.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === name); assert_m1(found, name); return found; };
 const press = async (name: string) => act_m1(async () => button(name).click());
 function SessionsHarness({ port }: { port: SessionPreviewCommandPort_m1 }) {
-  const catalog = buildWorkflowCatalog_m1([]);
+  const catalog = buildWorkflowCatalog_m1([], true, previewFixtureSources([]));
   const commands = useSessionPreviewCommands_m1(sessionsSample_m1('active'), catalog, port);
   return createElement_m1(SessionsView_m1, { data: commands.data, open: true, onOpenChange: () => undefined, workflows: catalog.map(flow => ({ id: flow.id, label: flow.label })), onControl: commands.control, onAdd: commands.add, operations: commands.operations, onCheck: commands.check });
 }
@@ -144,7 +145,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(refused.textContent ?? '', /Busy elsewhere/); assert_m1.equal(refused.querySelectorAll('button[aria-label="Resume"]').length, 0);
   });
   it_m1('the fictional port separates uncertain response from original command readback', async () => {
-    vi.useFakeTimers(); const port = createFixtureSessionPort(sessionsSample_m1('active'), buildWorkflowCatalog_m1([]), 'uncertain');
+    vi.useFakeTimers(); const port = createFixtureSessionPort(sessionsSample_m1('active'), buildWorkflowCatalog_m1([], true, previewFixtureSources([])), 'uncertain');
     const request: SessionPreviewRequest_m1 = { id: 'exact-one', target: 'sample-worker-1', action: 'pause' };
     const sent = port.send(request); await vi.advanceTimersByTimeAsync(600); assert_m1.equal((await sent).state, 'uncertain');
     const read = port.check(request); await vi.advanceTimersByTimeAsync(600); assert_m1.equal((await read).state, 'confirmed');
@@ -197,7 +198,7 @@ _afterEachFixture0();
 it_m2('maps malformed and replaced-context responses to fixed catalog text while retaining originals', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const initial = sessionsSample_m2('active'); assert_m2(initial.state === 'ready');
-  const target = initial.workers[0].id; const catalog = buildWorkflowCatalog_m1([]);
+  const target = initial.workers[0].id; const catalog = buildWorkflowCatalog_m1([], true, previewFixtureSources([]));
   let scope = {}; let resolve!: (result: SessionPreviewResult_m1) => void; let reject!: (cause: Error) => void;
   let raw: SessionPreviewResult_m1 | undefined;
   let commands: ReturnType<typeof useSessionPreviewCommands_m2> | undefined;

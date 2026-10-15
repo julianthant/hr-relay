@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { describe as describe_m0,describe as describe_m1,expect as expect_m0,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
 import { allFields as allFields_m0,allFields as allFields_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
 import { buildWorkflowMock as buildWorkflowMock_m0,buildWorkflowMock as buildWorkflowMock_m1,initialWorkflowChoices as initialWorkflowChoices_m0,initialWorkflowChoices as initialWorkflowChoices_m1,updateWorkflowChoice as updateWorkflowChoice_m0,updateWorkflowChoice as updateWorkflowChoice_m1,workflowChoices as workflowChoices_m0,workflowContractSource as workflowContractSource_m0,workflowContractSource as workflowContractSource_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
@@ -9,7 +10,7 @@ import { buildWorkflowCatalog as buildWorkflowCatalog_m0 } from "../../../../src
 
 describe_m0("complete workflow presentation mocks", () => {
   it_m0("covers every rail workflow and renders every declared variant without missing contract values", () => {
-    expect_m0(new Set(buildWorkflowCatalog_m0([]).map(item => item.id))).toEqual(new Set(MOCK_WORKFLOWS_m0.map(item => item.id)));
+    expect_m0(new Set(buildWorkflowCatalog_m0([], true, previewFixtureSources([])).map(item => item.id))).toEqual(new Set(MOCK_WORKFLOWS_m0.map(item => item.id)));
     for (const flow of MOCK_WORKFLOWS_m0) {
       const values = initialWorkflowChoices_m0(flow.id);
       for (const scenario of [values, ...workflowChoices_m0(flow.id).flatMap(choice => choice.options.map(([value]) => updateWorkflowChoice_m0(flow.id, values, choice.key, value)))]) {
