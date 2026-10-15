@@ -11,11 +11,13 @@ export const REBUILD_UNIT_TEST_EXCLUDE = [
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
-export const REBUILD_INTEGRATION_TEST_EXCLUDE = [] as const;
+export const REBUILD_INTEGRATION_TEST_EXCLUDE = ["tests/perf/**"] as const;
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/architecture/**/*.test.ts",
 ] as const;
 export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
+export const REBUILD_PERF_TEST_INCLUDE = ["tests/perf/**/*.test.ts"] as const;
+export const REBUILD_PERF_TEST_EXCLUDE = [] as const;
 export const REBUILD_TEST_PROJECTS = [
   { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
   { name: "integration", include: REBUILD_INTEGRATION_TEST_INCLUDE, exclude: REBUILD_INTEGRATION_TEST_EXCLUDE },
@@ -24,6 +26,7 @@ export const REBUILD_TEST_PROJECTS = [
     include: REBUILD_ARCHITECTURE_TEST_INCLUDE,
     exclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   },
+  { name: "perf", include: REBUILD_PERF_TEST_INCLUDE, exclude: REBUILD_PERF_TEST_EXCLUDE },
 ] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
