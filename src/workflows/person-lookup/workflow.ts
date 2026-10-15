@@ -24,14 +24,14 @@ export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup", version: 2, code: "pl", label: "Person Lookup", summary: "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
   icon: "Search", category: "search", canonicalInput: PersonLookupCanonicalInput,
   inputSubject: (input) => input.mode === "match" ? "name" : "emplId" in input ? "eid" : "name",
-  subjectProjection: { nodeId: "searching", fieldPath: "selection.selected.name" },
+  subtitleProjection: { fieldPath: "activeStatus.details.eid", display: "eid" },
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   capabilities: { review: false, editData: { fields: [
     { nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" },
     { nodeId: "crm-dates", fieldPath: "oathDate", label: "Oath date" },
   ] } },
   verdicts: [{ key: "not-found", label: "Not found", tone: "warning" }, { key: "inactive", label: "Inactive", tone: "warning", tag: true }, { key: "multiple-matches", label: "Multiple matches", tone: "warning" }],
-  surfaces: { inputRun: { placeholder: "Enter employee IDs or names separated by semicolons or new lines", parser: {
+  surfaces: { inputRun: { typedInput: "person-lookup", placeholder: "Enter employee IDs or names separated by semicolons or new lines", parser: {
     split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }],
     constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
   }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }] } },

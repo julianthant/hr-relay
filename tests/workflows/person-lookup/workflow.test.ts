@@ -26,6 +26,7 @@ describe("workflow definition public equivalence characterization", () => {
         surfaces: personLookupDescriptor.surfaces,
         details: personLookupDescriptor.details,
         subjectProjection: personLookupDescriptor.subjectProjection,
+        subtitleProjection: personLookupDescriptor.subtitleProjection,
         timelineDeclared: personLookupDescriptor.timelineDeclared,
         timeline: personLookupDescriptor.timeline.map((group) => ({
           key: group.key,
@@ -54,7 +55,8 @@ describe("workflow definition public equivalence characterization", () => {
     "summary": "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
     "icon": "Search",
     "category": "search",
-    "subjectProjection": { "nodeId": "searching", "fieldPath": "selection.selected.name" },
+    "subjectProjection": undefined,
+    "subtitleProjection": { "fieldPath": "activeStatus.details.eid", "display": "eid" },
     "surface": {
       "shape": "single"
     },
@@ -106,6 +108,7 @@ describe("workflow definition public equivalence characterization", () => {
     ],
     "surfaces": {
       "inputRun": {
+        "typedInput": "person-lookup",
         "placeholder": "Enter employee IDs or names separated by semicolons or new lines",
         "parser": {
           "split": {

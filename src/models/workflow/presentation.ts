@@ -132,6 +132,12 @@ export const SubjectProjectionSpecRuntimeSchema = z.strictObject({
 });
 export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecRuntimeSchema>;
 
+export const ResultSubtitleProjectionSchema = z.strictObject({
+  fieldPath: ContractFieldPathSchema,
+  display: z.literal("eid"),
+});
+export type ResultSubtitleProjection = z.input<typeof ResultSubtitleProjectionSchema>;
+
 // Timeline categories must cover every node exactly once.
 /** A timeline category's STABLE ANCHOR, distinct from its display label: a key is an identifier a folder name and a role declaration both have to spell the same way, which is why it is kebab-case. */
 export const TimelineCategoryKeySchema = slugSchema("timeline category key must be a kebab-case slug");

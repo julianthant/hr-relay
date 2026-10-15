@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { claimEventOf, cleanReceiptOf, DAY, instantOffsetOf, receiptWithOutputOf, runEndedEventOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { deriveEvidenceEntryId } from "../../../../src/models/trust/evidence-identity.js";
+import { RunIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 
 const {world, runRecordOf, queuedEventOf, appendOther, cleanup } = createRunQueueProjectionTestWorld();
 
@@ -12,6 +14,45 @@ afterEach(cleanup);
 
 
 describe("the queue row's ordinal, class, links and outcome", () => {
+  it("keeps the Person Lookup input title and binds its EID subtitle to the exact receipt output", () => {
+    const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+    for (const seed of [50, 51, 52, 54, 55]) {
+      terminalDone(w, seed, { title: "Example, Person" });
+      const receipt = receiptWithOutputOf({ seed, outputs: [{ field: "eid", value: seed === 51 ? null : "10000001", ...(seed === 54 ? { redact: "drop" as const } : {}) }] });
+      receipt.configFingerprint = runRecordOf({ seed }).envelope.configFingerprint;
+      receipt.output[0].id = deriveEvidenceEntryId(receipt.receiptId, "output", seed === 52 ? "activeStatus.details.matchedEid" : "activeStatus.details.eid");
+      if (seed === 50) {
+        const fact = receipt.output[0]; assert.ok(fact.state === "satisfied");
+        fact.value = { key: "activeStatus.details.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "0001", rawValue: "10000001" };
+      }
+      if (seed === 55) {
+        const fact = receipt.output[0]; assert.ok(fact.state === "satisfied");
+        fact.value = { key: "activeStatus.details.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "0001" };
+      }
+      w.authority.receipts.set(uuidOf(seed), receipt);
+    }
+    const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
+    assert.equal(rows.find(row => row.runId === uuidOf(50))?.title, "Example, Person");
+    assert.deepEqual(rows.find(row => row.runId === uuidOf(50))?.subtitle, { state: "present", value: "10000001" });
+    for (const seed of [51, 52, 54, 55]) assert.equal(rows.find(row => row.runId === uuidOf(seed))?.subtitle.state, "absent");
+    const source = w.authority.receipts.get(uuidOf(50)); assert.ok(source);
+    w.authority.receipts.set(uuidOf(50), { ...source, runId: RunIdSchema.parse(uuidOf(51)) });
+    assert.throws(() => w.projection.buildDashboardDayWire(DAY), /result-subtitle-receipt-identity-mismatch/u);
+  });
+  it("projects a declared result subtitle for an arbitrary workflow identity and result field", () => {
+    const workflow = "fixture-result-subtitle";
+    const fieldPath = "activeStatus.details.matchedEid";
+    const descriptor = { ...personLookupDescriptor, id: WorkflowIdSchema.parse(workflow), subtitleProjection: { fieldPath, display: "eid" as const } };
+    const w = world({ descriptors: { resolve: () => descriptor } });
+    const seed = 53;
+    queuedEventOf(w, { seed, workflow }); claimEventOf(w, seed); runEndedEventOf(w, seed, "done", { workflow });
+    w.authority.put(runRecordOf({ seed, workflow, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 60_000) }, claimGeneration: 1, version: 3 }));
+    const receipt = receiptWithOutputOf({ seed, workflow, outputs: [{ field: "matchedEid", value: "10000002" }] });
+    receipt.configFingerprint = runRecordOf({ seed, workflow }).envelope.configFingerprint;
+    receipt.output[0].id = deriveEvidenceEntryId(receipt.receiptId, "output", fieldPath);
+    w.authority.receipts.set(uuidOf(seed), receipt);
+    assert.deepEqual(w.projection.buildDashboardDayWire(DAY).queueSurfaces.find(row => row.runId === uuidOf(seed))?.subtitle, { state: "present", value: "10000002" });
+  });
   const ORDINAL_CLAIM = {
     workerId: "person-lookup-worker-1",
     claimedAt: "2026-08-03T17:00:05.000Z",

@@ -4,6 +4,7 @@ import { FIXTURE_DAY_WIRE } from "../../fixtures/dashboard/fixture-queue.js";
 import { uuidOf } from "../../fixtures/dashboard/fixture-identity.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import type { RerunLaunchSource } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 
@@ -268,7 +269,7 @@ export function createRunStartDialogHarness() {
 
   async function openDialog(
     client: DashboardClient,
-    catalogue: Readonly<{ workflows: readonly RunStartWorkflow[]; panelWorkflowId: string }> = {
+    catalogue: Readonly<{ workflows: readonly RunStartWorkflow[]; panelWorkflowId: string; rerunSource?: RerunLaunchSource }> = {
       workflows: WORKFLOWS,
       panelWorkflowId: WORKFLOW_ID,
     },
@@ -283,6 +284,7 @@ export function createRunStartDialogHarness() {
         catalog: buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows)),
         panelWorkflowId: catalogue.panelWorkflowId,
         actorId: ACTOR_ID,
+        rerunSource: catalogue.rerunSource,
         onApplied,
         onOpenIntake: (workflowId: string, intakeSessionId: string) => {
           intakeHandoffs.push({ workflowId, intakeSessionId });

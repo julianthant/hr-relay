@@ -353,6 +353,7 @@ export type InputRunExample = z.infer<typeof InputRunExampleSchema>;
 export const InputRunSurfaceSchema = z.strictObject({
   placeholder: z.string().min(1),
   parser: InputParserSpecSchema,
+  typedInput: z.literal("person-lookup").optional(),
     /* Declared, and proved typeable by `defineWorkflowDescriptor`: every example's text must parse under this surface's own parser and satisfy the workflow's input schema. */
   examples: z.array(InputRunExampleSchema).min(1).optional(),
     /* DERIVED, never authored: stamped from the graph's `dryRun: "stop-after-prepare"` transaction nodes, because previewability is a property of what a workflow writes. */

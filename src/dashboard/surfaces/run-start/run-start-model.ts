@@ -1,12 +1,36 @@
-/** The Run Modal's pure half — its vocabularies and its
- * one fold (ref frontend-backend-integration ). */
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import {
   stepOmissionFactsSchema,
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
-import { inputRunValueNoun, type InputParserSpec } from "../../../models/workflow/ingress.js";
+import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface } from "../../../models/workflow/ingress.js";
+import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
+import { PersonLookupInput, parsePersonLookupRequest, personLookupSearchText } from "../../../models/workflows/person-lookup/input.js";
+
+export interface RunInputPreview {
+  readonly entries: readonly Readonly<{ index: number; sourceText: string }>[];
+  readonly submissions: readonly JsonValue[];
+  readonly problem: string | null;
+}
+export function previewRunInput(surface: InputRunSurface, text: string,
+  lookup: { mode: "search" | "match"; crmCheck: boolean; includeCrmDates: boolean; keepNonHdh?: boolean }, sourceInput?: JsonValue): RunInputPreview {
+  if (text.trim().length === 0) return { entries: [], submissions: [], problem: null };
+  try {
+    if (surface.typedInput !== undefined) {
+      const source = sourceInput === undefined ? undefined : PersonLookupInput.parse(sourceInput);
+      const people = source !== undefined && source.mode === lookup.mode && text === personLookupSearchText(source)
+        ? [PersonLookupInput.parse({ ...source, crmCheck: lookup.crmCheck, includeCrmDates: lookup.includeCrmDates })]
+        : parsePersonLookupRequest(text, lookup);
+      return { entries: people.map((person, index) => ({ index, sourceText: personLookupSearchText(person) })),
+        submissions: people.map(person => JsonValueSchema.parse(person.mode === "search" && lookup.keepNonHdh !== undefined ? { ...person, keepNonHdh: lookup.keepNonHdh } : person)), problem: null };
+    }
+    const entries = parseInputRunText(surface.parser, text);
+    return { entries, submissions: entries.map(entry => JsonValueSchema.parse(toRawSubmission(entry))), problem: null };
+  } catch (caught) {
+    return { entries: [], submissions: [], problem: caught instanceof Error ? caught.message : String(caught) };
+  }
+}
 
 export function inputRunFieldLabel(parser: InputParserSpec): string {
   const noun = inputRunValueNoun(parser);

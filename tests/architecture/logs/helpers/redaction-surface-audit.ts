@@ -1196,6 +1196,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "queueSurfaces[].subtitle.value", origin: "captured-hr-value" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].title", origin: "captured-hr-value" },
   { surface: "wire/rerun-values", path: "snapshot.steps[].key", origin: "repository-authored" },
+  { surface: "wire/rerun-values", path: "snapshot.sourceInput.value", origin: "captured-hr-value" },
   { surface: "wire/rerun-values", path: "snapshot.values[].label", origin: "repository-authored" },
   { surface: "wire/rerun-values", path: "snapshot.values[].targetStepKey", origin: "repository-authored" },
   { surface: "wire/rerun-values", path: "snapshot.values[].sourceStepKey", origin: "repository-authored" },

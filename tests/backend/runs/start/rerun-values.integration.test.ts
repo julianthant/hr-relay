@@ -45,6 +45,7 @@ describe("source-bound Rerun value read", () => {
     const cp = firstCheckpoint(h, run);
     assert.equal(result.snapshot.source.runId, run.envelope.runId);
     assert.equal(result.snapshot.source.version, run.version);
+    assert.deepEqual(result.snapshot.sourceInput, { state: "available", value: run.input.parsed.value });
     assert.equal(result.snapshot.values[0]?.state, "available");
     const value = result.snapshot.values[0]; assert.ok(value?.state === "available");
     assert.equal(value.value, "10812345");
@@ -160,6 +161,7 @@ describe("source-bound Rerun value read", () => {
     assert.deepEqual(result.snapshot.values.map((value) => value.state === "available" ? "available" : value.reason),
       ["available", "protected", "protected", "not-recorded", "target-invalid"]);
     assert.equal(JSON.stringify(result).includes("PRIVATE987"), false);
+    assert.deepEqual(result.snapshot.sourceInput, { state: "unavailable", reason: "protected" });
     assert.equal(result.snapshot.source.outcome, "interrupted");
     assert.deepEqual(result.snapshot.steps.map(({ state }) => state), ["completed", "unfinished"]);
   });

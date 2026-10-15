@@ -14,12 +14,40 @@ omittedStepViews,
 runControlGroups,
 startRequestFingerprint,
 toggleStepSelection,
+previewRunInput,
 type StartRequestShape,
 type StepOmissionStepView,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { EnqueuePolicySchema } from "../../../../src/models/workflow/presentation.js";
 import { StepOmissionFormSchema,type StepOmissionForm } from "../../../../src/models/workflow/step-omission.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+
+describe("canonical Person Lookup launch input", () => {
+  const surface = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun;
+  assert.ok(surface);
+  it("merges duplicate Search people and retains selected CRM options", () => {
+    const preview = previewRunInput(surface, "10000001; 10000001\nExample, Person", { mode: "search", crmCheck: true, includeCrmDates: true });
+    assert.equal(preview.problem, null);
+    assert.equal(preview.entries.length, 2);
+    assert.deepEqual(preview.submissions, [
+      { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: true },
+      { mode: "search", name: "Example, Person", crmCheck: true, keepNonHdh: false, includeCrmDates: true },
+    ]);
+  });
+  it("parses Match tuples, keeps SSN out of display identity and refuses missing identifiers", () => {
+    const preview = previewRunInput(surface, "Example, Person, x, 123456789; Example, Person, x, 123456789", { mode: "match", crmCheck: false, includeCrmDates: false });
+    assert.equal(preview.problem, null);
+    assert.deepEqual(preview.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789", crmCheck: false, includeCrmDates: false }]);
+    assert.deepEqual(preview.entries, [{ index: 0, sourceText: "Example, Person, x, [masked]" }]);
+    const rejected = previewRunInput(surface, "Example, Person, x, x", { mode: "match", crmCheck: false, includeCrmDates: false });
+    assert.match(rejected.problem ?? "", /Match requires/u);
+    assert.deepEqual(rejected.submissions, []);
+  });
+  it("refuses dates in Match mode or without a CRM check", () => {
+    assert.ok(previewRunInput(surface, "Example, Person, 01/15/2000, x", { mode: "match", crmCheck: true, includeCrmDates: true }).problem);
+    assert.ok(previewRunInput(surface, "10000001", { mode: "search", crmCheck: false, includeCrmDates: true }).problem);
+  });
+});
 
 describe("compact input guidance follows the declared parser", () => {
   it("capitalizes Employee IDs and uses Kuali ID without changing parsing", () => {

@@ -35,6 +35,12 @@ const { lookupInput, fixtureWorkflow } = createSearchWorkflowDefinitionFixtures(
 type Author = WorkflowAuthor<typeof PersonLookupInput>;
 
 describe("workflow definition compiler", () => {
+  it("validates declared result subtitle paths against the terminal result schema", () => {
+    const projection = { fieldPath: "activeStatus.details.eid", display: "eid" as const };
+    expect(compileWorkflow({ ...personLookupWorkflow, subtitleProjection: projection }).descriptor.subtitleProjection).toEqual(projection);
+    expect(() => compileWorkflow({ ...personLookupWorkflow, subtitleProjection: { ...projection, fieldPath: "activeStatus.details.missing" } })).toThrow(/result subtitle projection/u);
+    expect(() => compileWorkflow({ ...personLookupWorkflow, subtitleProjection: { ...projection, fieldPath: "activeStatus..eid" } })).toThrow();
+  });
   it("exports the compiled ordered tuple product and refuses an uncompiled definition", () => {
     const declaration = workflowExplorerDeclaration(personLookupWorkflow);
     expect(declaration.map((group) => [group.key, group.label, group.entries.map((entry) => ({

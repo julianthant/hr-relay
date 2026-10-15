@@ -65,6 +65,8 @@ import {
   InputSubjectSchema,
   StepProjectionSchema,
   SubjectProjectionSpecRuntimeSchema,
+  ResultSubtitleProjectionSchema,
+  type ResultSubtitleProjection,
   SurfaceShapeSchema,
   NodePurposeSpecSchema,
   TimelineCategoryProjectionSchema,
@@ -210,6 +212,7 @@ export interface WorkflowDescriptor<
   readonly details: readonly DetailProjectionSpec<S>[];
   /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
+  readonly subtitleProjection?: ResultSubtitleProjection;
    /** The run-detail timeline's categorical shape, DERIVED by the factory: the declared
     * categories with member labels, or the one-per-node default. Always exhaustive. */
   readonly timeline: readonly TimelineCategoryProjection[];
@@ -265,6 +268,7 @@ export interface AnyWorkflowDescriptor {
    /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
     * functions of the exact input type). The run/queue projection reads it. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  readonly subtitleProjection?: ResultSubtitleProjection;
   /** Plain data like `subjectProjection`, so it rides the broad view. */
   readonly timeline: readonly Readonly<{
     /** The category's stable anchor: the step folder's name, and what a `chunk-harness.step` names. */
@@ -907,6 +911,11 @@ export function defineWorkflowDescriptor<
     assertNodeFieldPath(id, nodes, detail.source.nodeId, detail.source.fieldPath, `detail "${detail.key}"`);
   }
   assertUnique(id, "detail keys", spec.details.map((detail) => detail.key));
+
+  if (spec.subtitleProjection !== undefined) {
+    ResultSubtitleProjectionSchema.parse(spec.subtitleProjection);
+    assertSchemaOwnsPath(spec.flow.result.schema, spec.subtitleProjection.fieldPath, `${id}: result subtitle projection`);
+  }
 
     // Absent subject arm keeps the start title.
   if (spec.subjectProjection !== undefined) {
