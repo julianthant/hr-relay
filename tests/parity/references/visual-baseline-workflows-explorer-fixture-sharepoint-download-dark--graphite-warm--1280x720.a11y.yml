@@ -44,7 +44,7 @@
         - /url: "?settings=keyboard"
     - region "Workflow explorer preview":
       - heading "Explorer" [level=1]
-      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - paragraph: Browse workflows, their steps and field sources.
       - combobox "Explorer workflow": SharePoint Download
       - list "Workflow steps":
         - listitem:
@@ -73,7 +73,6 @@
           - group:
             - strong: Downloaded workbook
             - text: Read Spreadsheet Onboarding Roster Filename onboarding-roster.xlsx Saved to Roster folder File validation Workbook readable
-      - paragraph: Fictional workflow path complete. No external system contacted.
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"

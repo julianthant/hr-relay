@@ -44,7 +44,7 @@
         - /url: "?settings=keyboard"
     - region "Workflow explorer preview":
       - heading "Explorer" [level=1]
-      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - paragraph: Browse workflows, their steps and field sources.
       - combobox "Explorer workflow": Separations
       - list "Workflow steps":
         - listitem:

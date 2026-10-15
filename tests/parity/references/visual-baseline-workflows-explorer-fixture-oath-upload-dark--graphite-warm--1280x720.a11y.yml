@@ -44,7 +44,7 @@
         - /url: "?settings=keyboard"
     - region "Workflow explorer preview":
       - heading "Explorer" [level=1]
-      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - paragraph: Browse workflows, their steps and field sources.
       - combobox "Explorer workflow": Oath Upload
       - list "Workflow steps":
         - listitem:
@@ -95,7 +95,6 @@
             - strong: Ticket confirmation
             - text: Read HR ticket number DEMO-HR-001 Filed Yes PDF oaths.pdf
           - text: Ticket number re-read from the submitted request.
-      - paragraph: Fictional workflow path complete. No external system contacted.
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"

@@ -353,7 +353,7 @@
         - figure "Document search":
           - text: Kuali Filled fields
           - button "Enlarge screenshot captured at 09:31:02":
-            - img "Fictional Kuali Document search for Alex Morgan · sample data"
+            - img "Kuali Document search for Alex Morgan"
           - text: Document search
         - time: 09:31:03
         - text: Go
@@ -412,7 +412,7 @@
         - figure "Separation request":
           - text: Kuali Browser
           - button "Enlarge screenshot captured at 09:31:10":
-            - img "Fictional Kuali Separation request for Alex Morgan · sample data"
+            - img "Kuali Separation request for Alex Morgan"
           - text: Separation request
       - region "Search employee name":
         - time: 09:31:14
@@ -425,7 +425,7 @@
         - figure "Employee search":
           - text: UCPath Filled fields
           - button "Enlarge screenshot captured at 09:31:14":
-            - img "Fictional UCPath Employee search for Alex Morgan · sample data"
+            - img "UCPath Employee search for Alex Morgan"
           - text: Employee search
         - time: 09:31:15
         - text: Search
@@ -441,7 +441,7 @@
         - figure "Matching employee":
           - text: UCPath Person record
           - button "Enlarge screenshot captured at 09:31:17":
-            - img "Fictional UCPath Matching employee for Alex Morgan · sample data"
+            - img "UCPath Matching employee for Alex Morgan"
           - text: Matching employee
       - region "Read Workforce Job Summary":
         - time: 09:31:19
@@ -477,7 +477,7 @@
         - figure "Job summary":
           - text: UCPath Browser
           - button "Enlarge screenshot captured at 09:31:23":
-            - img "Fictional UCPath Job summary for Alex Morgan · sample data"
+            - img "UCPath Job summary for Alex Morgan"
           - text: Job summary
       - region "Find and read the timecard":
         - time: 09:31:25
@@ -490,7 +490,7 @@
         - figure "Employee search":
           - text: Kronos Filled fields
           - button "Enlarge screenshot captured at 09:31:25":
-            - img "Fictional Kronos Employee search for Alex Morgan · sample data"
+            - img "Kronos Employee search for Alex Morgan"
           - text: Employee search
         - time: 09:31:27
         - text: Select matching employee
@@ -517,7 +517,7 @@
         - figure "Timecard":
           - text: Kronos Filled fields
           - button "Enlarge screenshot captured at 09:31:37":
-            - img "Fictional Kronos Timecard for Alex Morgan · sample data"
+            - img "Kronos Timecard for Alex Morgan"
           - text: Timecard
       - region "Run decision":
         - time: 09:32:39
@@ -530,7 +530,7 @@
             - figure "Source request":
               - text: Kuali Browser
               - button "Enlarge screenshot captured at 09:31:10":
-                - img "Fictional Source request · sample data"
+                - img "Source request"
               - text: Source request
             - text: Kuali · source request
             - button "Enter date"

@@ -44,7 +44,7 @@
         - /url: "?settings=keyboard"
     - region "Workflow explorer preview":
       - heading "Explorer" [level=1]
-      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - paragraph: Browse workflows, their steps and field sources.
       - combobox "Explorer workflow": CRM Doc Download
       - list "Workflow steps":
         - listitem:
@@ -102,7 +102,6 @@
           - group:
             - strong: Archive output
             - text: Read PDFs 2 Folder Jordan Lee Archive ZIP Jordan-Lee-documents.zip
-      - paragraph: Fictional workflow path complete. No external system contacted.
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"

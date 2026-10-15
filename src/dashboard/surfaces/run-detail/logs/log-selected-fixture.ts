@@ -36,7 +36,7 @@ function capture(system: string, label: string, time: string, kind: NonNullable<
   }).join("");
   const formEnd = kind === "form" ? `<rect x="38" y="${height - 100}" width="754" height="1" fill="#cbd0d7"/><rect x="640" y="${height - 75}" width="152" height="34" rx="4" fill="#263d63"/><text x="662" y="${height - 53}" font-size="13" fill="white">Save and Submit</text>` : "";
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="850" height="${height}" viewBox="0 0 850 ${height}"><rect width="850" height="${height}" fill="#f3f5f7"/><rect width="850" height="34" fill="#263d63"/><g font-family="Arial"><text x="20" y="23" fill="white" font-size="13">FICTIONAL SAMPLE · ${escapeXml(system)}</text><rect x="20" y="50" width="810" height="${height - 70}" rx="4" fill="white" stroke="#cbd0d7"/><text x="38" y="81" fill="#253348" font-size="19">${escapeXml(label)}</text>${content}${formEnd}</g></svg>`;
-  return { src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, width: 850, height, system, label, time, kind, alt: `Fictional ${system} ${label} · sample data` };
+  return { src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, width: 850, height, system, label, time, kind, alt: `${system} ${label}` };
 }
 export { capture as logSampleCapture };
 const at = (seconds: number) => `09:${String(40 + Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;

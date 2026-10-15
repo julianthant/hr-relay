@@ -18,7 +18,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-form.svg",
-            "alt": "Fictional Form after Submit · sample data",
+            "alt": "Form after Submit",
             "time": "09:32:38",
             "width": 850,
             "height": 1050,
@@ -167,7 +167,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-job.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -177,7 +177,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-form.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1150,
@@ -187,7 +187,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -235,7 +235,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-failure.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1050,
@@ -245,7 +245,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-request.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -255,7 +255,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -302,7 +302,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-failure.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1050,
@@ -312,7 +312,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-request.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -322,7 +322,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -368,7 +368,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-failure.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1050,
@@ -378,7 +378,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-request.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -388,7 +388,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -431,7 +431,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-job.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -441,7 +441,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-form.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1150,
@@ -451,7 +451,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -493,7 +493,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-failure.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1050,
@@ -503,7 +503,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-request.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -513,7 +513,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -559,7 +559,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-failure.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1050,
@@ -569,7 +569,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-request.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -579,7 +579,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -661,7 +661,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-failure.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1050,
@@ -671,7 +671,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-request.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -681,7 +681,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -769,7 +769,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-person.svg",
-            "alt": "Fictional Matching employee · sample data",
+            "alt": "Matching employee",
             "time": "09:31:17",
             "width": 850,
             "height": 340,
@@ -821,7 +821,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-person.svg",
-            "alt": "Fictional Possible employee · sample data",
+            "alt": "Possible employee",
             "time": "09:31:17",
             "width": 850,
             "height": 340,
@@ -899,7 +899,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-job.svg",
-            "alt": "Fictional Employment record · sample data",
+            "alt": "Employment record",
             "time": "09:31:23",
             "width": 850,
             "height": 300,
@@ -951,7 +951,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/kuali-request.svg",
-            "alt": "Fictional Source request · sample data",
+            "alt": "Source request",
             "time": "09:31:10",
             "width": 850,
             "height": 300,
@@ -1171,7 +1171,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-employment.svg",
-            "alt": "Fictional All filled fields · sample data",
+            "alt": "All filled fields",
             "time": "09:32:32",
             "width": 850,
             "height": 390,
@@ -1197,7 +1197,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-form.svg",
-            "alt": "Fictional Complete transaction form · sample data",
+            "alt": "Complete transaction form",
             "time": "09:32:38",
             "width": 850,
             "height": 1050,
@@ -1223,7 +1223,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-form.svg",
-            "alt": "Fictional Termination form · sample data",
+            "alt": "Termination form",
             "time": "09:32:38",
             "width": 850,
             "height": 1050,
@@ -1233,7 +1233,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-form.svg",
-            "alt": "Fictional Separation request · sample data",
+            "alt": "Separation request",
             "time": "09:33:29",
             "width": 850,
             "height": 1150,
@@ -1260,7 +1260,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-failure.svg",
-            "alt": "Fictional Failed action · sample data",
+            "alt": "Failed action",
             "time": "09:32:39",
             "width": 850,
             "height": 1050,
@@ -1270,7 +1270,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kuali-request.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -1280,7 +1280,7 @@ export const logDecisionExamples = [
           },
           {
             "src": "/logs-preview/kronos-timecard.svg",
-            "alt": "Fictional Last browser view · sample data",
+            "alt": "Last browser view",
             "time": "09:32:39",
             "width": 850,
             "height": 300,
@@ -1306,7 +1306,7 @@ export const logDecisionExamples = [
         "screenshots": [
           {
             "src": "/logs-preview/ucpath-person.svg",
-            "alt": "Fictional Possible employee · sample data",
+            "alt": "Possible employee",
             "time": "09:31:17",
             "width": 850,
             "height": 340,

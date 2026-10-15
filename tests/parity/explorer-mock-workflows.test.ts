@@ -30,7 +30,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(workflows).toBeFocused();
       await expect(workflows).toHaveAttribute("data-value", "fixture-onboarding");
       await expect(surface.getByRole("heading", { name: "Onboarding", exact: true })).toHaveCount(0);
-      await expect(surface).toContainText("Fictional preview data.");
+      await expect(surface).toContainText("Browse workflows, their steps and field sources.");
+      await expect(surface).not.toContainText("Fictional preview data");
       await expect(surface.locator("li[data-step-number]")).toHaveCount(11);
       await expect(surface.locator("#explorer-step-1")).toContainText("Open browser sessions");
       await expect(surface.locator("#explorer-step-1")).toContainText("CRM");
