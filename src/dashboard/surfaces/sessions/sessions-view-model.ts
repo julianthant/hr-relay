@@ -75,7 +75,8 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
       authority: card, state: card.state,
       ...(row === undefined ? {} : { subject: row.title }),
-      action: row?.liveMessage.state === "present" ? row.liveMessage.value : row?.pipeline.find(step => step.state === "active" || step.state === "blocked")?.label
+      action: currentRun.state === "present" && ["running", "waiting", "paused"].includes(card.state) && timelineUnavailable !== undefined ? timelineUnavailable
+        : row?.liveMessage.state === "present" ? row.liveMessage.value : row?.pipeline.find(step => step.state === "active" || step.state === "blocked")?.label
         ?? (card.state === "idle" ? "Ready for the next run" : card.state === "starting" ? "Preparing worker" : SESSION_STATE_LABELS[card.state]),
       ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s` }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),

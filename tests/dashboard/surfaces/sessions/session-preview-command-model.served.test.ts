@@ -432,3 +432,44 @@ it("refreshes only observed physical sessions through required presentation slot
     assert.equal(view.workers[0].problem, state === "failed" ? WORKER_STOP_REASON_LABEL.crashed : undefined);
   }
 });
+
+it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("shows the served current-run timeline refusal for %s on the mounted active worker", async scenario => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); const row = h.day().queueSurfaces.find(row => row.workflowId === h.day().workerCards[0].workflowId); assert(row);
+  const pipeline = scenario === "empty" ? [] : [{ id: "served-step", label: "Served step", state: scenario === "outside-day" ? "active" : scenario }];
+  h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
+    queueSurfaces: scenario === "outside-day" ? [] : [{ ...row, pipeline }] }));
+  const reason = scenario === "outside-day" ? "Run timeline is not served on this day" : scenario === "empty" ? "No steps are served for this run" : "The current timeline contains states unavailable in this view";
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    const article = host.querySelector("article"); assert(article);
+    assert(article.textContent?.includes(reason), "the active worker must visibly explain its exact served timeline refusal");
+    assert.equal(article.querySelector('[role="progressbar"]'), null);
+    assert.equal(h.sent.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("retains valid current-run timelines and ordinary no-run phases without rendering timeline refusal", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(); const card = h.day().workerCards[0];
+  const row = h.day().queueSurfaces.find(row => row.workflowId === card.workflowId); assert(row);
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const render = () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  try {
+    h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
+      queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
+    await act(async () => render()); assert(host.querySelector('[role="progressbar"]'));
+    assert.doesNotMatch(host.textContent ?? "", /Run timeline is not served|No steps are served|states unavailable/);
+    for (const state of ["idle", "starting", "failed", "running", "waiting", "paused"] as const) {
+      h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state, currentRun: { state: "absent", reason: "No current claimed run" },
+        ...(state === "failed" ? { endedAt: now, stopReason: "crashed" } : {}) }] }));
+      await act(async () => render());
+      assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
+      assert.equal(host.querySelector('[role="progressbar"]'), null);
+      if (state === "idle") assert.match(host.textContent ?? "", /Ready for the next run/);
+      if (state === "starting") assert.match(host.textContent ?? "", /Preparing worker/);
+      if (state === "failed") assert(host.textContent?.includes(WORKER_STOP_REASON_LABEL.crashed));
+    }
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
