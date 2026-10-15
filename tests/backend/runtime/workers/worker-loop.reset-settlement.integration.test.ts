@@ -21,6 +21,81 @@ const tick = () => new Promise<void>(resolve => { setImmediate(resolve); });
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
 describe("same-lifetime durable reset settlement", () => {
+  for (const outcome of ["resolved", "rejected"] as const) {
+    it(`settles Stop after a timed-out read callback is actually ${outcome}`, async () => {
+      let release!: () => void, started!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const starting = new Promise<void>(resolve => { started = resolve; });
+      const driver = healthyUcpathDriver();
+      const sessions = sessionFactoryHarness({ ucpath: () => ({ ...driver,
+        searchPersonOrg: async (...args: Parameters<typeof driver.searchPersonOrg>) => {
+          started(); await held;
+          if (outcome === "rejected") throw new Error("late read rejection");
+          return driver.searchPersonOrg(...args);
+        },
+      }), crm: () => healthyCrmDriver() });
+      const h = world.loopHarness({ sessions, exitWhenIdle: false });
+      const database = h.authority.database, workerId = h.deps.workerId;
+      const slot = database.authority.workerSlots.get(workerId), lease = database.authority.workerLeases.get(workerId);
+      if (slot === undefined || lease === undefined) throw new Error("missing owner");
+      const lifecycle = new RunRecordService({ database, clock: h.authority.clock, ids: sequentialIdFactory("e"), publishQueued: () => undefined });
+      const observer = createWorkerResetObserver({ database, workerId, leaseGeneration: lease.leaseGeneration,
+        clock: h.authority.clock, scheduler: h.scheduler, onFailure: error => { h.stop.abort(error); } });
+      const run = RunRecordSchema.parse(personLookupQueuedRun());
+      database.authority.runs.enqueue(run);
+      let resetCommandId: string | undefined;
+      let claimedAfterReset = false;
+      const loop = runWorkerLoop({ ...h.deps, taskDeadlineMs: 5000,
+        resetOwner: { member: workerPoolMember(slot), lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt } },
+        pendingReset: observer, activeWorkReset: () => observer() !== undefined,
+        browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration: lease.leaseGeneration }); },
+        resetControl: createWorkerResetControl({ database, workerId, leaseGeneration: lease.leaseGeneration, clock: h.authority.clock, lifecycle }),
+        claimNext: request => {
+          if (resetCommandId !== undefined) {
+            expect(database.authority.workerControls.get(resetCommandId)?.phase.state).toBe("succeeded");
+            expect(database.authority.workerLeases.get(workerId)?.lifecycle.state).toBe("idle");
+            expect(h.stop.signal.aborted).toBe(false);
+            claimedAfterReset = true;
+          }
+          return h.deps.claimNext(request);
+        },
+      });
+      try {
+        await starting;
+        const deadline = h.scheduler.pending().find(timer => timer.deadlineMonotonicMs === h.authority.clock.monotonicMs() + 5000);
+        expect(deadline).toBeDefined(); deadline?.fire();
+        await tick();
+        expect(database.authority.runs.get(run.envelope.runId)?.lifecycle.state).toBe("terminal");
+        const currentLease = database.authority.workerLeases.get(workerId);
+        if (currentLease === undefined) throw new Error("missing current owner");
+        const record = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
+          commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator",
+          requestedAt: h.authority.clock.now().toISOString(), target: { workerId, membershipRevision: slot.membershipRevision,
+            controlBasis: { leaseGeneration: currentLease.leaseGeneration, controlRevision: currentLease.controlRevision } },
+        }, randomUUID(), h.authority.clock.now().toISOString()));
+        resetCommandId = record.commandId;
+        expect(record.reset?.work.kind).toBe("absent");
+        for (const timer of h.scheduler.pending().filter(timer => timer.deadlineMonotonicMs === h.authority.clock.monotonicMs() + h.deps.idleRepollMs)) timer.fire();
+        await tick();
+        expect(database.authority.workerControls.get(record.commandId)?.phase.state).toBe("executing");
+        expect(database.authority.workerControls.pending(record.scope)).toHaveLength(1);
+        expect(database.authority.commandAudits.findByCommand(record.commandId)).toBeUndefined();
+        expect(database.authority.workerLeases.get(workerId)?.lifecycle.state).not.toBe("idle");
+        expect(claimedAfterReset).toBe(false);
+        release(); await tick();
+        for (const timer of h.scheduler.pending().filter(timer => timer.deadlineMonotonicMs === h.authority.clock.monotonicMs() + h.deps.idleRepollMs)) timer.fire();
+        await tick();
+        expect(database.authority.workerControls.get(record.commandId)?.phase.state).toBe("succeeded");
+        expect(database.authority.commandAudits.findByCommand(record.commandId)?.result.state).toBe("applied");
+        expect(database.authority.workerControls.pending(record.scope)).toEqual([]);
+        expect(database.authority.workerLeases.get(workerId)).toMatchObject({ leaseGeneration: lease.leaseGeneration, lifecycle: { state: "idle" } });
+        expect(claimedAfterReset).toBe(true);
+        expect(h.stop.signal.aborted).toBe(false);
+      } finally {
+        release(); h.stop.abort(new Error("owned test cleanup")); await loop; observer.stop();
+      }
+    });
+  }
   for (const mode of ["idle", "current", "paused"] as const) {
     it(`settles ${mode} without a client and records idle before next claim`, async () => {
       const h = world.loopHarness();
@@ -86,6 +161,26 @@ describe("authenticated reset closure", () => {
       clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony, resetOwner: owner,
     });
     return { h, database, record, reset, manager };
+  }
+  for (const change of ["absent", "replaced"] as const) {
+    it(`does not dispatch the original reset when its pending binding is ${change} after settlement`, async () => {
+      const f = fixture();
+      const replacement = change === "absent" ? undefined : WorkerResetBindingSchema.parse({ ...f.reset, commandId: randomUUID() });
+      let reads = 0, calls = 0;
+      await runWorkerLoop({ ...f.h.deps,
+        pendingReset: () => {
+          reads += 1;
+          if (reads === 1) return f.reset;
+          if (reads === 2) return replacement;
+          f.h.stop.abort(new Error("owned test shutdown after revalidation"));
+          return undefined;
+        },
+        resetControl: async () => { calls += 1; },
+      });
+      expect(calls).toBe(0);
+      expect(f.database.authority.workerControls.pending(f.record.scope)).toHaveLength(1);
+      expect(f.database.authority.commandAudits.findByCommand(f.record.commandId)).toBeUndefined();
+    });
   }
   it("rejects forged, wrong-command and stale-lifetime proofs without releasing the reservation", async () => {
     const f = fixture(), manager = f.manager();
