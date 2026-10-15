@@ -3,7 +3,6 @@ import { personLookupModule } from "../../registered-workflows.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../../../src/models/dashboard/settings.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import { projectStartSteps, startStepWireControl } from "../../../../../src/backend/runs/start/step-selection.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 
 
@@ -36,21 +35,104 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
       role: { kind: "standalone" },
 
       start: {
-        ...(personLookupDescriptor.summary === undefined
-          ? {}
-          : { summary: personLookupDescriptor.summary }),
-        enqueue: personLookupDescriptor.enqueue,
-        // Use a non-default version so the corpus detects a client that hardcodes version 1.
+        summary: "Resolves ONE person across UCPath and the CRM: searches Person Org by EID or name, cross-verifies the match against the CRM onboarding record, folds the two into an active / inactive verdict, and reads the CRM onboarding dates when the run asks for them.",
+        enqueue: "reject-active",
         version: 7,
-        steps: projectStartSteps(personLookupDescriptor).map((step) => ({
-          key: step.key,
-          label: step.label,
-          includedByDefault: step.includedByDefault,
-          control: startStepWireControl(step.control),
-        })),
-        ...(personLookupDescriptor.surfaces.inputRun === undefined
-          ? {}
-          : { inputRun: personLookupDescriptor.surfaces.inputRun }),
+        steps: [
+          {
+            key: "searching",
+            label: "Searching",
+            includedByDefault: true,
+            control: {
+              state: "required",
+              reason: "This workflow requires every node in this step."
+            }
+          },
+          {
+            key: "cross-verify",
+            label: "Cross Verification",
+            includedByDefault: true,
+            control: {
+              state: "required",
+              reason: "This workflow requires every node in this step."
+            }
+          },
+          {
+            key: "active-status",
+            label: "Active Status",
+            includedByDefault: true,
+            control: {
+              state: "required",
+              reason: "This workflow requires every node in this step."
+            }
+          },
+          {
+            key: "crm-dates",
+            label: "CRM Dates",
+            includedByDefault: false,
+            control: {
+              state: "selectable",
+              inputField: "includeCrmDates"
+            }
+          }
+        ],
+        inputRun: {
+          placeholder: "Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)",
+          parser: {
+            split: {
+              kind: "delimited",
+              delimiters: [
+                ";",
+                "\n"
+              ]
+            },
+            rules: [
+              {
+                when: {
+                  kind: "pattern",
+                  pattern: "eid"
+                },
+                emit: "emplId"
+              },
+              {
+                when: {
+                  kind: "otherwise"
+                },
+                emit: "name"
+              }
+            ],
+            constants: [
+              {
+                field: "keepNonHdh",
+                value: {
+                  kind: "boolean",
+                  value: false
+                }
+              },
+              {
+                field: "includeCrmDates",
+                value: {
+                  kind: "boolean",
+                  value: false
+                }
+              }
+            ]
+          },
+          examples: [
+            {
+              key: "one-eid",
+              label: "One EID",
+              text: "10873698",
+              note: "the ordinary case — one run for one employee id"
+            },
+            {
+              key: "eid-and-name",
+              label: "An EID and a name",
+              text: "10873698; Battistessa, Johnnie",
+              note: "two runs from one box: the parser reads the first as an employee id and the second as a name, and the comma inside the name is not a separator"
+            }
+          ]
+        },
 
         spreadsheetIntake: personLookupModule.intake !== undefined,
       },

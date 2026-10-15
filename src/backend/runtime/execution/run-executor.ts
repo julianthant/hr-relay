@@ -14,6 +14,7 @@ import { z } from "zod";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
+import { browserLoginFailure } from "../../systems/browser-shared/login-contract.js";
 import { TaskError, wrapUnhandledTaskError } from "../../../workflow-kit/errors.js";
 import type { ProviderClient } from "../../../workflow-kit/providers.js";
 import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
@@ -808,6 +809,8 @@ export async function executeClaimedRun(
         }
         const stored = deps.authority.authority.gateResults.get(`${runId}:${node.id}`);
         if (stored !== undefined) {
+          if (stored.runId !== runId || String(stored.gateId) !== String(node.id) || stored.result.schemaHash !== deriveSchemaHash(node.result, "output")) throw new Error(`gate "${node.id}" stored result binding changed`);
+          outputs[String(node.id)] = JsonValueSchema.parse(node.result.parse(stored.result.value));
           plan.set(String(node.id), { mode: "replay-gate" });
           continue;
         }
@@ -982,6 +985,15 @@ export async function executeClaimedRun(
           ...(initial.sessionId === undefined ? {} : { runSessionId: initial.sessionId }),
         });
       const declaredActionBinder = confirmedInvocation?.binder;
+      const conditionIds = new Set<string>();
+      const gatherCondition = (id: string): void => {
+        const skipped = nodes.find(candidate => String(candidate.id) === id);
+        if ((skipped?.kind !== "task" && !(skipped?.kind === "gate" && skipped.resolvedBy === "operator")) || skipped.when === undefined || skipped.when.of.from !== "node") return;
+        const source = String(skipped.when.of.nodeId);
+        if (!node.dependsOn.some(dependency => String(dependency) === source)) conditionIds.add(source);
+        if (skippedReasons.get(source) === "condition-false") gatherCondition(source);
+      };
+      for (const dependency of node.dependsOn) if (skippedReasons.get(String(dependency)) === "condition-false") gatherCondition(String(dependency));
       const collector = createTaskProvenanceCollector({
         descriptor,
         canonicalInput,
@@ -995,19 +1007,28 @@ export async function executeClaimedRun(
         },
 
         upstreamEvidence: {
+          conditionEvidence: {
+            checkpoints: [...conditionIds].flatMap(id => { const checkpoint = checkpointRecords.get(id); return checkpoint === undefined ? [] : [checkpoint]; }),
+            gateResults: [...conditionIds].flatMap(id => { const gate = gateResultFor(id); return gate === undefined ? [] : [gate]; }),
+            skippedTasks: [...conditionIds].filter(id => skippedReasons.get(id) === "condition-false" && nodes.some(node => String(node.id) === id && node.kind === "task")),
+            skippedGates: [...conditionIds].filter(id => skippedReasons.get(id) === "condition-false" && nodes.some(node => String(node.id) === id && node.kind === "gate")),
+          },
           children: node.dependsOn.flatMap((dependency) => { const child = childUpstreamEvidenceFor(dependency); return child === undefined ? [] : [child]; }),
           checkpoints: node.dependsOn.flatMap((dependency) => {
             if (childResultEvidence.has(String(dependency))) return [];
             const record = checkpointRecords.get(String(dependency));
             if (record !== undefined) return [record];
             if (skippedReasons.get(String(dependency)) === "condition-false"
-              && nodes.some((candidate) => candidate.id === dependency && candidate.kind === "gate")) return [];
+              && nodes.some((candidate) => candidate.id === dependency && (candidate.kind === "gate" || candidate.kind === "task"))) return [];
             if (gateResultFor(String(dependency)) !== undefined) return [];
             throw new Error(
               `task ${contract.id} declared dependency "${dependency}" has no checkpoint record to hand `
               + "to the provenance collector",
             );
           }),
+          skippedTasks: node.dependsOn.filter((dependency) =>
+            skippedReasons.get(String(dependency)) === "condition-false"
+            && nodes.some((candidate) => candidate.id === dependency && candidate.kind === "task")),
           skippedGates: node.dependsOn.filter((dependency) =>
             skippedReasons.get(String(dependency)) === "condition-false"
             && nodes.some((candidate) => candidate.id === dependency && candidate.kind === "gate")),
@@ -1355,7 +1376,10 @@ export async function executeClaimedRun(
             throw abortReason(`run ${runId} was aborted during ${contract.id}`);
           }
           if (error instanceof RunAbandonedError) throw error;
-          const taskError = error instanceof TaskError ? error : wrapUnhandledTaskError(contract.id, error);
+          const loginFailure = browserLoginFailure(error);
+          const taskError = error instanceof TaskError ? error : loginFailure !== undefined
+            ? new TaskError(contract.id, loginFailure.code, loginFailure.fixedText, { cause: error })
+            : wrapUnhandledTaskError(contract.id, error);
           emit({
             t: "span.ended", kind: "task",
             ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,

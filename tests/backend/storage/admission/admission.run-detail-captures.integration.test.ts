@@ -97,7 +97,7 @@ function harness() {
   assert.ok(run);
   database.authority.runs.enqueue({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
     schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output") } }, envelope: {
-    ...run.envelope, contractFingerprint: personLookupDescriptor.contractFingerprint,
+    ...run.envelope, descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
   } });
   testWorkerPorts(database, world.clock, { path: join(world.stateRoot, "capture-authority.db"), descriptor: personLookupDescriptor, poolIndex: 1 });
   writeArtifactEnvelope(world.stateRoot, refOf(ATTACHMENT), BYTES);

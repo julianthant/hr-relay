@@ -1,3 +1,4 @@
+import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -129,6 +130,17 @@ describe("the queue row's ordinal, class, links and outcome", () => {
       state: "absent",
       reason: "this group has fanned out to no members yet",
     });
+  });
+
+  it("renders a satisfied empty-string receipt fact without rejecting the feed", () => {
+    const w = world();
+    terminalDone(w, 6);
+    w.authority.receipts.set(uuidOf(6), receiptWithOutputOf({ seed: 6,
+      outputs: [{ field: "reason", value: "" }],
+    }));
+    const feed = DashboardDayWireSchema.parse(w.projection.buildDashboardDayWire(DAY));
+    assert.deepEqual(feed.queueSurfaces.find(row => row.runId === uuidOf(6))?.facts,
+      { state: "present", value: [{ label: "reason", value: "(empty)" }] });
   });
 
   it("chips the receipt's own printable outputs, and keeps four absences apart", () => {

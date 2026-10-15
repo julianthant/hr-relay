@@ -6,6 +6,8 @@ describe("CRM onboarding selector-backed driver", () => {
   it("keeps the task-facing driver boundary strict and operation-shaped", () => {
     const valid = {
       system: "crm",
+      searchOnboardingRecords: async () => [],
+      verifyOnboardingRecord: async () => ({ state: "unused" }),
       readOnboardingRecord: async () => ({ state: "unused" }),
       readOnboardingDates: async () => ({ state: "unused" }),
     };

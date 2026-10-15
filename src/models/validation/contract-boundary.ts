@@ -139,6 +139,38 @@ export function assertSchemaOffersPath(schema: z.core.$ZodType, path: string, ow
   }
 }
 
+export function assertBooleanSelectionField(schema: z.core.$ZodType, field: string, owner: string): void {
+  const seen = new Set<z.core.$ZodType>();
+  function visit(current: z.core.$ZodType, atField: boolean): boolean | undefined {
+    if (seen.has(current)) return false;
+    seen.add(current);
+    try {
+      const definition = schemaDefinition(current);
+      const type = String(definition.type);
+      if (type === "union") {
+        const offered = (definition.options as z.core.$ZodType[]).map(option => visit(option, atField))
+          .filter(value => value !== undefined);
+        return offered.length === 0 ? undefined : offered.every(Boolean);
+      }
+      if (type === "lazy") return visit((definition.getter as () => z.core.$ZodType)(), atField);
+      if (["optional", "default", "readonly", "nonoptional", "catch"].includes(type)) {
+        return visit(definition.innerType as z.core.$ZodType, atField);
+      }
+      if (!atField && type === "object") {
+        const shape = definition.shape as Readonly<Record<string, z.core.$ZodType>>;
+        return Object.hasOwn(shape, field) ? visit(shape[field], true) : undefined;
+      }
+      if (atField && type === "boolean") return true;
+      if (atField && type === "literal") {
+        const values = definition.values as unknown[];
+        return values.length > 0 && values.every(value => typeof value === "boolean");
+      }
+      return false;
+    } finally { seen.delete(current); }
+  }
+  if (visit(schema, false) !== true) throw new Error(`${owner} selection field must be boolean`);
+}
+
 /** Copies/freezes declarations while preserving the mutable runtime identity of schemas/functions. */
 export function sealDeclarativeMetadata<Value>(
   value: Value,

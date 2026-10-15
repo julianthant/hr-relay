@@ -1,4 +1,4 @@
-import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
+import { registryWithCrmSearch, createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
@@ -6,8 +6,8 @@ import { taskSpanPath } from "../../../src/backend/logs/span-emitter.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { crmDriver } from "../../../src/backend/systems/crm/driver-declaration.js";
 import { crmSession } from "../../../src/backend/systems/crm/session-provider.js";
-import { readOnboardingDatesTask } from "../../../src/backend/systems/crm/tasks/read-onboarding-dates.js";
-import { CrmReadOnboardingRecord } from "../../../src/models/systems/crm/read-onboarding-record.js";
+import { crmStore } from "../../../src/backend/systems/crm/task-registry.js";
+import { CrmSearchOnboardingRecords } from "../../../src/models/systems/crm/search-onboarding-records.js";
 import { NodeIdSchema, TraceIdSchema } from "../../../src/rules/identity/ids.js";
 import { TaskError } from "../../../src/workflow-kit/errors.js";
 import { defineBrowserStore, defineTaskStoreRegistry } from "../../../src/workflow-kit/task-registry.js";
@@ -22,7 +22,7 @@ afterEach(cleanup);
 
 describe("person-lookup full walk", () => {
 
-  it("walks all four nodes to sealed terminal success, skipping crm-dates by condition", async () => {
+  it("walks every declared node to sealed terminal success, skipping crm-dates by condition", async () => {
     const harness = executorHarness();
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
@@ -40,7 +40,7 @@ describe("person-lookup full walk", () => {
     assert.ok(result);
     assert.deepEqual(
       result.dependencies.map((dependency) => [dependency.nodeId, dependency.state]),
-      [["active-status", "resolved"], ["crm-dates", "not-run"]],
+      [["search-identity", "resolved"], ["crm-identity", "resolved"], ["matching", "not-run"], ["crm-selected-record", "resolved"], ["active-status", "resolved"], ["crm-dates", "not-run"]],
     );
     const crmDates = result.dependencies.find((dependency) => dependency.nodeId === "crm-dates");
     assert.ok(crmDates?.state === "not-run" && crmDates.reason === "condition-false");
@@ -49,7 +49,7 @@ describe("person-lookup full walk", () => {
 
     // Checkpoints: three executed nodes have rows; the skipped node has none.
     const itemId = run.envelope.itemId;
-    for (const nodeId of ["searching", "cross-verify", "active-status"]) {
+    for (const nodeId of ["searching", "search-identity", "cross-verify", "crm-identity", "crm-selected-record", "active-status"]) {
       assert.ok(database.authority.runCheckpoints.latest(WORKFLOW_ID, itemId, nodeId), nodeId);
     }
     assert.equal(database.authority.runCheckpoints.latest(WORKFLOW_ID, itemId, "crm-dates"), undefined);
@@ -73,9 +73,22 @@ describe("person-lookup full walk", () => {
       ["span.started", taskSpanPath(trace, node("searching"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("searching"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("searching"), 1, 1), "done"],
+      ["span.started", taskSpanPath(trace, node("matching"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("matching"), 1, 1), "skipped"],
+      ["span.started", taskSpanPath(trace, node("search-identity"), 1, 1), ""],
+      ["data.observed", taskSpanPath(trace, node("search-identity"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("search-identity"), 1, 1), "done"],
       ["span.started", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("cross-verify"), 1, 1), "done"],
+      ["span.started", taskSpanPath(trace, node("crm-identity"), 1, 1), ""],
+      ["data.observed", taskSpanPath(trace, node("crm-identity"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("crm-identity"), 1, 1), "done"],
+      ["span.started", taskSpanPath(trace, node("crm-selected-record"), 1, 1), ""],
+      ["data.observed", taskSpanPath(trace, node("crm-selected-record"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("crm-selected-record"), 1, 1), "done"],
+      ["span.started", taskSpanPath(trace, node("crm-only-recovery"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("crm-only-recovery"), 1, 1), "skipped"],
       ["span.started", taskSpanPath(trace, node("active-status"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("active-status"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("active-status"), 1, 1), "done"],
@@ -105,11 +118,11 @@ describe("failure, retry, and resume", () => {
         if (openIndex === 1) {
           return Object.freeze({
             system: "crm" as const,
-            readOnboardingRecord: (): Promise<never> => {
+            searchOnboardingRecords: (): Promise<never> => {
               crmCalls += 1;
               return Promise.reject(new TaskError(
-                CrmReadOnboardingRecord.id,
-                "crm-unavailable",
+                CrmSearchOnboardingRecords.id,
+                "person-lookup-crm-check-failed",
                 "CRM 502",
                 { transient: true },
               ));
@@ -121,7 +134,16 @@ describe("failure, retry, and resume", () => {
       },
     });
     // Auto-fire the 2s retry backoff; the 60s task deadline stays pending.
-    const harness = executorHarness({ sessions, autoFireAtOrBelowMs: 2_500 });
+    const retryingSearch = defineTask(crmDriver, CrmSearchOnboardingRecords, {
+      retry: { attempts: 2, backoffMs: 2000, retryOn: "transient" },
+      sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
+      async run({ input, ctx }) {
+        const output = { state: "checked" as const, records: await ctx.driver.searchOnboardingRecords(input) };
+        ctx.recordData(Object.entries(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
+        return output;
+      },
+    });
+    const harness = executorHarness({ sessions, stores: registryWithCrmSearch(retryingSearch), autoFireAtOrBelowMs: 2_500 });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
 
@@ -198,17 +220,17 @@ describe("failure, retry, and resume", () => {
 
   it("fails the task by name on an UNDECLARED leaf, emitting nothing for that batch", async () => {
 
-    const undeclaredCrossVerify = defineTask(crmDriver, CrmReadOnboardingRecord, {
+    const undeclaredCrossVerify = defineTask(crmDriver, CrmSearchOnboardingRecords, {
       sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
       async run({ input, ctx }) {
-        const read = await ctx.driver.readOnboardingRecord(input);
+        const records = await ctx.driver.searchOnboardingRecords(input);
         ctx.recordData([{ direction: "read", field: "undeclaredLeaf", value: "x" }]);
-        return read.output;
+        return { state: "checked" as const, records };
       },
     });
     const brokenCrmStore = defineBrowserStore("crm", crmDriver, crmSession, {
-      readOnboardingRecord: undeclaredCrossVerify,
-      readOnboardingDates: readOnboardingDatesTask,
+      ...crmStore.tasks,
+      searchOnboardingRecords: undeclaredCrossVerify,
     });
     const stores: (typeof taskStoreRegistry.stores)[number][] = taskStoreRegistry.stores.map((store) =>
       store.namespace === "crm" ? brokenCrmStore : store);
@@ -230,7 +252,7 @@ describe("failure, retry, and resume", () => {
     const failure = database.authority.failures.get(failureId);
     assert.ok(failure);
     // The refusal names the task AND the field — the two things an author needs.
-    assert.match(failure.summary, /crm\/read-onboarding-record/);
+    assert.match(failure.summary, /crm\/search-onboarding-records/);
     assert.match(failure.summary, /undeclaredLeaf/);
     assert.match(failure.summary, /no declared evidence classification/);
 

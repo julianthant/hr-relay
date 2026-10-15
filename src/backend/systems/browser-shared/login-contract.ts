@@ -18,6 +18,8 @@ export type BrowserLoginStep =
 
 
 export class BrowserLoginError extends Error {
+  readonly code: string;
+  get fixedText(): string { return `${this.system === "ucpath" ? "UCPath" : this.system === "crm" ? "CRM" : this.system} sign-in failed.`; }
   readonly system: BrowserSystemId;
   readonly step: BrowserLoginStep;
   readonly observedUrl: string;
@@ -32,9 +34,21 @@ export class BrowserLoginError extends Error {
     super(`${system} login failed at ${step}: ${detail} (observed URL ${observedUrl})`, options);
     this.name = "BrowserLoginError";
     this.system = system;
+    this.code = `${system}-sign-in-failed`;
     this.step = step;
     this.observedUrl = observedUrl;
   }
+}
+
+export function browserLoginFailure(error: unknown): BrowserLoginError | undefined {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current instanceof Error && !seen.has(current)) {
+    if (current instanceof BrowserLoginError) return current;
+    seen.add(current);
+    current = current.cause;
+  }
+  return undefined;
 }
 
 export const DUO_TERMINAL_REFUSAL_TEXT =
@@ -48,7 +62,8 @@ export const DUO_TERMINAL_REFUSAL_TEXT =
 
 // A refused Duo assertion burns the profile; only this failure permits one fresh-profile retry under the same lease.
 export class DuoTerminalRefusalError extends BrowserLoginError {
-  readonly code = "duo-terminal-refusal" as const;
+  override readonly code = "duo-terminal-refusal" as const;
+  override get fixedText(): string { return DUO_TERMINAL_REFUSAL_TEXT; }
   readonly refusal = "duo-terminal-refusal" as const;
   readonly host: string;
   readonly path: string;
@@ -77,7 +92,8 @@ export const BROWSER_LANDING_STALL_TEXT = {
 export type BrowserLandingStallCode = keyof typeof BROWSER_LANDING_STALL_TEXT;
 
 export class BrowserLandingStallError extends BrowserLoginError {
-  readonly code: BrowserLandingStallCode;
+  override readonly code: BrowserLandingStallCode;
+  override get fixedText(): string { return BROWSER_LANDING_STALL_TEXT[this.code]; }
   readonly host: string;
   readonly path: string;
   readonly title: string;

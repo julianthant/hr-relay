@@ -557,9 +557,7 @@ const CRM_DATES_READ = CrmOnboardingDatesReadSchema.parse({
   binding: CRM_SUBJECT_BINDING,
   output: {
     emplId: "10873698",
-    invitedOn: { state: "present", value: "2026-06-01" },
-    startsOn: { state: "present", value: "2026-07-15" },
-    completedOn: { state: "absent", reason: "history has no Completed transition" },
+    state: "read", employmentDate: "2026-07-15", oathDate: null, reason: "",
   },
 });
 

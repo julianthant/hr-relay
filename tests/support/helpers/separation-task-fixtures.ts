@@ -86,7 +86,8 @@ export function createSeparationTaskFixtures() {
       department: "Housing Dining Hospitality",
       jobTitle: "STDT 2",
       employeeStatus: "active",
-      hdh: true,
+      hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true,
     },
     candidateEids: [EID],
   };

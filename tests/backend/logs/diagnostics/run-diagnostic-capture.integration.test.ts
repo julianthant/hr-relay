@@ -1,4 +1,5 @@
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { z } from "zod";
 import { testRunLifecycle,testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -15,6 +16,7 @@ type DiagnosticCaptureService,
 } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createDiagnosticRetentionSweep } from "../../../../src/backend/logs/diagnostics/diagnostic-retention.js";
 import {
+createRunBrowserScreenshotCapture,
 classifiedFailureFields,
 createRunDiagnosticCapture,
 operatorRequestedCapture,
@@ -22,6 +24,7 @@ operatorRequestedCapture,
 import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { CrmReadOnboardingRecord } from "../../../../src/models/systems/crm/read-onboarding-record.js";
+import { BrowserSessionIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { DiagnosticArtifactWriter } from "../../../../src/workflow-kit/artifacts.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
@@ -186,10 +189,10 @@ describe("the failure and its bundle land together", () => {
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const sessions = sessionFactoryHarness({
-      ucpath: () => healthyUcpathDriver(),
+      ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: () => Promise.reject(new TaskError(CrmReadOnboardingRecord.id, "crm-unavailable", "CRM returned an unexpected page SSN 951571700", { cause: new Error("nested SSN 951-57-1700", { cause: new Error("deep SSN 123 45 6789") }) })) }),
       crm: () => Object.freeze({
         system: "crm" as const,
-        readOnboardingRecord: () => Promise.reject(new TaskError(
+        verifyOnboardingRecord: () => Promise.reject(new TaskError(
           CrmReadOnboardingRecord.id,
           "crm-unavailable",
           "CRM returned an unexpected page",
@@ -296,8 +299,11 @@ describe("the failure and its bundle land together", () => {
       database.authority.diagnosticBundles.findByArtifact(indexed[0]?.attachment.artifactId ?? "").length,
       1,
     );
-    assert.ok(JSON.stringify(bundle).includes("CRM returned an unexpected page"));
+    assert.ok(JSON.stringify(bundle).includes("UCPath search failed."));
     assert.ok(classifiedFailureFields(failure).length > 0);
+    const persisted = JSON.stringify({ failure, bundle });
+    for (const value of ["951571700", "951-57-1700", "123 45 6789", "6789"]) assert.equal(persisted.includes(value), false);
+    assert.ok(failure.debug?.causes.some(cause => cause.includes("[SSN masked]")));
   });
 
   it("fails loud when a capture port is injected without an authority transaction", async () => {
@@ -396,5 +402,30 @@ describe("retention and the pin sweep", () => {
       () => database.authority.diagnosticBundles.purge(pinned.bundleId, later.toISOString()),
       /is pinned for knowledge and is never purged by retention/,
     );
+  });
+});
+
+describe("selected lease screenshot actions", () => {
+  it("persists once and records only the real returned screenshot attachment", async () => {
+    const authority = openAuthorityHarness();
+    disposers.push(authority.dispose);
+    const { database } = authority;
+    database.authority.runs.enqueue(personLookupQueuedRun());
+    const { service } = captureService(database);
+    const clock = manualClock(new Date(NOW));
+    const actions: unknown[] = [];
+    const capture = createRunBrowserScreenshotCapture({ service });
+    const screenshotIdentity = { pageVersion: 1, sessionId: BrowserSessionIdSchema.parse("10000000-0000-4000-8000-000000000001"), observedAt: NOW };
+    const context = { runId: RUN_ID, configFingerprint: HASH_A, descriptorFingerprint: HASH_B, system: "ucpath", leaseOutcome: "succeeded" as const, screenshot: { ...screenshotIdentity, state: "available" as const, bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 } };
+    await withBrowserActionNotes(clock, () => capture.capture(context), notes => { actions.push(...notes); });
+    const bundles = database.authority.diagnosticBundles.listByRun(RUN_ID);
+    assert.equal(bundles.length, 1);
+    const attachment = bundles[0]?.attachments.find(value => value.kind === "screenshot"); assert.ok(attachment);
+    assert.ok(JSON.stringify(actions).includes(`${bundles[0]?.bundleId}:${attachment.artifactId}`));
+    const unavailableActions: unknown[] = [];
+    await withBrowserActionNotes(clock, () => capture.capture({ ...context, screenshot: { ...screenshotIdentity, state: "unavailable", reason: "verification-failed" } }), notes => { unavailableActions.push(...notes); });
+    assert.deepEqual(unavailableActions, []);
+    const missing = createRunBrowserScreenshotCapture({ service: { ...service, capture: async input => ({ ...await service.capture(input), attachments: [] }) } });
+    await assert.rejects(missing.capture(context), /without its screenshot artifact/);
   });
 });

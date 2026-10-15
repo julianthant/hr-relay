@@ -1,3 +1,4 @@
+import { NodeIdSchema, FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { createPersonLookupProvenanceCheckpoint } from "../../../support/helpers/backend/person-lookup-provenance-checkpoint.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
@@ -23,7 +24,11 @@ FactProvenanceSchema,
 RunCheckpointRecordSchema,
 } from "../../../../src/models/workflow/checkpoint.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import { ReadActiveStatus } from "../../../../src/models/workflows/person-lookup/read-active-status.js";
+import { ReadResolvedIdentity } from "../../../../src/models/workflows/person-lookup/read-resolved-identity.js";
+import { resolvePersonLookupIdentity } from "../../../../src/rules/matching/person-lookup.js";
+import { CrmSearchOnboardingRecords } from "../../../../src/models/systems/crm/search-onboarding-records.js";
+import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
 import { SeparationsVerifyIdentityApproval } from "../../../../src/models/workflows/separations/verify-identity-approval.js";
 import {
@@ -35,7 +40,7 @@ import type { Clock } from "../../../../src/rules/time/clock.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
-import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import {
 FixtureStage,
 fixtureDescriptor,
@@ -55,7 +60,8 @@ const candidate = UcpathCandidateSchema.parse({
   department: "Housing Dining Hospitality",
   jobTitle: "Dining Assistant",
   employeeStatus: "active",
-  hdh: true,
+  hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true,
 });
 const person = SearchPersonOrgOutputSchema.parse({
   results: [candidate],
@@ -71,7 +77,6 @@ const crmRecord = ReadOnboardingRecordOutputSchema.parse({
   },
 });
 if (crmRecord.state !== "found") throw new Error("CRM provenance fixture did not parse as found");
-const crmFoundRecord = crmRecord.record;
 
 function execution(nodeId: string, taskId: string) {
   return {
@@ -199,6 +204,8 @@ function identityComparisonCheckpoint(): RunCheckpointRecord {
       EARLIER,
     ),
     workflowId: separationsIdentityCheckDescriptor.id,
+    descriptorVersion: separationsIdentityCheckDescriptor.version,
+    contractFingerprint: separationsIdentityCheckDescriptor.contractFingerprint,
   });
 }
 
@@ -215,7 +222,8 @@ function collector(
   return createTaskProvenanceCollector({
     descriptor: personLookupDescriptor,
     execution: execution(nodeId, taskId),
-    upstreamEvidence: { checkpoints: [...checkpoints] },
+    canonicalInput: PersonLookupInput.parse({ emplId: candidate.emplId }),
+    upstreamEvidence: { checkpoints: [...checkpoints], skippedTasks: nodeId === "searching" ? [] : ["matching"] },
     clock: manualClock(new Date(now)),
     onRecord: recordBatch,
   });
@@ -224,7 +232,8 @@ function collector(
 const { checkpointFrom } = createPersonLookupProvenanceCheckpoint({
   itemId: ITEM_ID,
   runId: RUN_ID,
-  contractFingerprint: HASH_A,
+  contractFingerprint: personLookupDescriptor.contractFingerprint,
+  descriptorVersion: personLookupDescriptor.version,
   implFingerprint: HASH_B,
   now: NOW,
 });
@@ -232,6 +241,7 @@ const { checkpointFrom } = createPersonLookupProvenanceCheckpoint({
 function dependencyCheckpoints(): Readonly<{
   search: RunCheckpointRecord;
   crm: RunCheckpointRecord;
+  initial: RunCheckpointRecord;
 }> {
   const searchCollector = collector("searching", SearchPersonOrg.id, []);
   searchCollector.recordData([
@@ -241,20 +251,16 @@ function dependencyCheckpoints(): Readonly<{
   const searchEvidence = searchCollector.finalizeRead(person);
   const search = checkpointFrom("searching", SearchPersonOrg.output, person, searchEvidence.provenance);
 
-  const crmCollector = collector("cross-verify", CrmReadOnboardingRecord.id, [search], EARLIER);
-  crmCollector.recordData([
-    { direction: "read", field: "state", value: crmRecord.state },
-    { direction: "read", field: "record", value: crmFoundRecord },
-  ]);
-  const crmEvidence = crmCollector.finalizeRead(crmRecord);
-  const crm = checkpointFrom(
-    "cross-verify",
-    CrmReadOnboardingRecord.output,
-    crmRecord,
-    crmEvidence.provenance,
-    EARLIER,
-  );
-  return Object.freeze({ search, crm });
+  const input = PersonLookupInput.parse({ emplId: candidate.emplId });
+  const identity = resolvePersonLookupIdentity({ input, person });
+  const initialCollector = collector("search-identity", ReadResolvedIdentity.id, [search]);
+  initialCollector.recordData(Object.entries(identity).map(([field,value]) => ({ direction: "read" as const, field, value })));
+  const initial = checkpointFrom("search-identity", ReadResolvedIdentity.output, identity, initialCollector.finalizeRead(identity).provenance);
+  const discovery = { state: "checked" as const, records: [{ recordId: "ONB-40213", recordUrl: "https://example.invalid/record", emplId: candidate.emplId, name: candidate.name, department: candidate.department, firstDayOfService: "", dateSigned: "" }] };
+  const crmCollector = collector("cross-verify", CrmSearchOnboardingRecords.id, [initial, search], EARLIER);
+  crmCollector.recordData(Object.entries(discovery).map(([field,value]) => ({ direction: "read" as const, field, value })));
+  const crm = checkpointFrom("cross-verify", CrmSearchOnboardingRecords.output, discovery, crmCollector.finalizeRead(discovery).provenance, EARLIER);
+  return Object.freeze({ search, crm, initial });
 }
 
 describe("task provenance collector", () => {
@@ -327,6 +333,8 @@ describe("task provenance collector", () => {
   // Gate evidence lives in gate_results, never in a checkpoint row.
   it("accepts a gate result as a declared dependency's upstream evidence, and only a declared one", () => {
     const gateNow = "2026-08-02T19:00:00.000Z";
+    const identityGate = descriptorRuntimeNodes(separationsIdentityCheckDescriptor).find(node => String(node.id) === "identity-approval");
+    assert.ok(identityGate?.kind === "gate");
     const gateResult = {
       runId: RUN_ID,
       gateId: "identity-approval", nodeId: "approval",
@@ -335,7 +343,7 @@ describe("task provenance collector", () => {
       resolvedBy: "local-operator",
       resolvedAt: gateNow,
       checkpointFingerprint: HASH_B,
-      result: { schemaHash: HASH_A, value: { decision: "rejected", reason: "n/a", evidenceDigest: HASH_A } },
+      result: { schemaHash: deriveSchemaHash(identityGate.result, "output"), value: { decision: "rejected", reason: "n/a", evidenceDigest: HASH_A } },
     };
     const comparison = identityComparisonCheckpoint();
     const gatedExecution = {
@@ -423,6 +431,28 @@ describe("task provenance collector", () => {
       clock: manualClock(new Date(NOW)),
       onRecord: recordBatch,
     });
+    for (const changed of [
+      { ...comparison, output: { ...comparison.output, schemaHash: HASH_A } },
+      { ...comparison, descriptorVersion: comparison.descriptorVersion + 1 },
+      { ...comparison, contractFingerprint: HASH_A },
+      { ...comparison, output: { ...comparison.output, value: { wrong: true } } },
+    ]) {
+      assert.throws(() => createTaskProvenanceCollector({
+        descriptor: separationsIdentityCheckDescriptor, execution: executionIdentity, canonicalInput,
+        upstreamEvidence: { checkpoints: [changed], skippedGates: ["identity-approval"] },
+        clock: manualClock(new Date(NOW)), onRecord: recordBatch,
+      }));
+    }
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: separationsIdentityCheckDescriptor, execution: executionIdentity, canonicalInput,
+      upstreamEvidence: { checkpoints: [comparison], skippedTasks: ["identity-approval"] },
+      clock: manualClock(new Date(NOW)), onRecord: recordBatch,
+    }), /invalid skipped task/);
+    assert.throws(() => createTaskProvenanceCollector({
+      descriptor: separationsIdentityCheckDescriptor, execution: executionIdentity, canonicalInput,
+      upstreamEvidence: { checkpoints: [comparison], skippedGates: ["identity-approval"], conditionEvidence: { checkpoints: [comparison], gateResults: [], skippedTasks: [], skippedGates: [] } },
+      clock: manualClock(new Date(NOW)), onRecord: recordBatch,
+    }), /overlapping condition evidence/);
     const output = SeparationsVerifyIdentityApproval.output.parse({
       documentNumber: "4510",
       approved: {
@@ -525,27 +555,23 @@ describe("task provenance collector", () => {
     assert.throws(() => wrongDirection.finalizeRead(person), /covered by a write point/);
   });
 
-  it("derives dependency authority from active-status and retains the oldest complete union", () => {
+  it("derives dependency authority from resolved identity and retains the oldest complete union", () => {
     const dependencies = dependencyCheckpoints();
     const provenance = collector(
-      "active-status",
-      ReadActiveStatus.id,
-      [dependencies.search, dependencies.crm],
+      "crm-identity",
+      ReadResolvedIdentity.id,
+      [dependencies.search, dependencies.initial, dependencies.crm],
     );
-    const output = { state: "active", reason: "matched both dependencies", hdh: true };
-    provenance.recordData([
-      { direction: "read", field: "state", value: output.state },
-      { direction: "read", field: "reason", value: output.reason },
-      { direction: "read", field: "hdh", value: output.hdh },
-    ]);
+    const output = resolvePersonLookupIdentity({ input: PersonLookupInput.parse({ emplId: candidate.emplId }), person, crm: CrmSearchOnboardingRecords.output.parse(dependencies.crm.output.value) });
+    provenance.recordData(Object.entries(output).map(([field,value]) => ({ direction: "read" as const, field, value })));
     const result = provenance.finalizeRead(output);
     assert.equal(result.provenance.every(({ source }) => source === "derived"), true);
     assert.equal(result.provenance.every(({ originalObservedAt }) => originalObservedAt === EARLIER), true);
 
     assert.throws(() => collector(
-      "active-status",
-      ReadActiveStatus.id,
-      [dependencies.search],
+      "crm-identity",
+      ReadResolvedIdentity.id,
+      [dependencies.search, dependencies.initial],
     ), /declared dependency cross-verify has no upstream provenance/);
 
     assert.throws(() => collector(
@@ -638,9 +664,9 @@ describe("task provenance collector", () => {
       provenance: dependencies.search.provenance.slice(0, -1),
     });
     assert.throws(() => collector(
-      "active-status",
-      ReadActiveStatus.id,
-      [incompleteSearch, dependencies.crm],
+      "crm-identity",
+      ReadResolvedIdentity.id,
+      [incompleteSearch, dependencies.initial, dependencies.crm],
     ), /upstream checkpoint searching has no provenance for output field/);
 
     const extraFact = FactProvenanceSchema.parse({
@@ -654,9 +680,43 @@ describe("task provenance collector", () => {
       provenance: [...dependencies.search.provenance, extraFact],
     });
     assert.throws(() => collector(
-      "active-status",
-      ReadActiveStatus.id,
-      [extraSearch, dependencies.crm],
+      "crm-identity",
+      ReadResolvedIdentity.id,
+      [extraSearch, dependencies.initial, dependencies.crm],
     ), /upstream checkpoint searching has provenance for undeclared output field unrelated/);
+  });
+});
+
+
+describe("transitive skipped condition evidence", () => {
+  const schema = z.strictObject({ emplId: z.string() });
+  const canonical = defineCanonicalInput(schema, schema, [{ emplId: candidate.emplId }]);
+  const descriptor = defineWorkflowDescriptor({
+    id: "transitive-condition-evidence", version: 1, code: "tc", contractFingerprint: HASH_A,
+    label: "Transitive condition evidence", icon: "Search", category: "search", canonicalInput: canonical,
+    surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+    inputSubject: "eid", surfaces: {}, details: [], identity: { matchKey: input => `eid:${input.emplId}` }, presentation: { title: input => input.emplId },
+    scenarios: ["transitive-condition-evidence/happy"],
+    flow: flow(schema)
+      .step("source", SearchPersonOrg, { dependsOn: [], replay: "checkpoint", bind: () => ({ kind: "by-eid" as const, emplId: candidate.emplId }) })
+      .step("skipped", SearchPersonOrg, { dependsOn: ["source"], replay: "checkpoint", when: { kind: "is-absent", of: { from: "node", nodeId: "source", path: "selection.selected" } }, bind: () => ({ kind: "by-eid" as const, emplId: candidate.emplId }) })
+      .step("consumer", SearchPersonOrg, { dependsOn: ["skipped"], replay: "checkpoint", bind: () => ({ kind: "by-eid" as const, emplId: candidate.emplId }) })
+      .build({ schema: SearchPersonOrg.output, dependsOn: ["consumer"], derive: ({ outputs }) => outputs.consumer }),
+  });
+  const source = RunCheckpointRecordSchema.parse({ ...dependencyCheckpoints().search, workflowId: descriptor.id, nodeId: "source", descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint });
+  const make = (conditionEvidence: { checkpoints: readonly RunCheckpointRecord[]; skippedTasks?: readonly string[] } = { checkpoints: [source] }) => createTaskProvenanceCollector({ descriptor,
+    execution: { ...execution("consumer", SearchPersonOrg.id), workflowId: descriptor.id }, canonicalInput: { emplId: candidate.emplId },
+    upstreamEvidence: { checkpoints: [], skippedTasks: ["skipped"], conditionEvidence: { checkpoints: [...conditionEvidence.checkpoints], gateResults: [], skippedTasks: [...conditionEvidence.skippedTasks ?? []], skippedGates: [] } },
+    clock: manualClock(new Date(NOW)), onRecord: recordBatch });
+  it("authenticates the exact transitive source without contributing it as a direct dependency", () => {
+    const collector = make();
+    collector.recordData([{ direction: "read", field: "results", value: person.results }, { direction: "read", field: "selection", value: person.selection }]);
+    assert.ok(collector.finalizeRead(person).provenance.every(row => row.source === "live" && row.originalObservedAt === NOW));
+  });
+  it("refuses missing, duplicate, unknown, corrupt, and true-skip sources", () => {
+    const absent = SearchPersonOrg.output.parse({ results: [], selection: { status: "not-found", selected: null, candidateEids: [], searchName: candidate.name } });
+    for (const checkpoints of [[], [source,source], [{ ...source, nodeId: NodeIdSchema.parse("unknown") }],
+      [{ ...source, output: { ...source.output, schemaHash: FingerprintSchema.parse(HASH_A) } }],
+      [{ ...source, output: { ...source.output, value: absent } }]]) assert.throws(() => make({ checkpoints }));
   });
 });

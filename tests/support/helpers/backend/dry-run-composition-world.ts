@@ -80,7 +80,8 @@ export function createDryRunCompositionTestWorld() {
       department: "Housing Dining Hospitality",
       jobTitle: "STDT 2",
       employeeStatus: "active" as const,
-      hdh: true,
+      hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true,
     };
     const jobRows = [
       deriveJobRowFromCells(

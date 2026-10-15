@@ -426,6 +426,29 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
     );
   });
 
+  it("attests repeated task contracts once while checking every occurrence", () => {
+    const deps = explorerQueryDeps(manualClock(new Date("2026-08-28T12:00:00.000Z")), FingerprintSchema.parse("c".repeat(64)));
+    const workflow = buildWorkflowExplorer(deps).workflows.find(({ id }) => id === "person-lookup");
+    assert.ok(workflow);
+    const occurrences = workflow.nodes.flatMap((node) => node.tasks).filter(({ taskId }) => taskId === "ucpath/search-person-org");
+    assert.equal(occurrences.length, 2);
+    const attestation = buildExplorerCompileAttestation(deps, workflow);
+    assert.equal(attestation.checks.schema.tasks.filter(({ taskId }) => taskId === "ucpath/search-person-org").length, 1);
+    const second = occurrences[1];
+    assert.ok(second);
+    assert.equal(second.implSource.state, "resolved");
+    if (second.implSource.state !== "resolved") throw new Error("second source is unresolved");
+    for (const tampered of [
+      { ...second, inputSchemaHash: FingerprintSchema.parse("0".repeat(64)) },
+      { ...second, implSource: { state: "unresolved" as const, attemptedPath: second.implSource.path, reason: "second occurrence missing" } },
+    ]) {
+      const changed = { ...workflow, nodes: workflow.nodes.map((node) => ({ ...node,
+        tasks: node.tasks.map((task) => task === second ? tampered : task),
+      })) };
+      assert.throws(() => buildExplorerCompileAttestation(deps, changed), /schema hashes differ|implementation source is unresolved/u);
+    }
+  });
+
   it("refuses non-canonical or unclosed TypeScript patch expressions", () => {
     const protocolSource = read("src/models/dashboard/explorer.ts");
     for (const token of [

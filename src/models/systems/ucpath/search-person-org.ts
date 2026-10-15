@@ -18,6 +18,11 @@ export const UcpathCandidateSchema = z.strictObject({
   employeeStatus: z.enum(["active", "inactive", "terminated", "unknown"]),
   /** Housing/Dining/Hospitality affiliation, which the operator can choose to keep. */
   hdh: z.boolean(),
+  hrStatus: z.string(),
+  startDate: z.string(),
+  effectiveDate: z.string(),
+  terminationDate: z.string(),
+  terminationReason: z.string(),
 });
 export type UcpathCandidate = z.infer<typeof UcpathCandidateSchema>;
 
@@ -59,7 +64,7 @@ export const SearchPersonOrg = defineTaskContract({
   effect: "read",
   input: SearchPersonOrgInputSchema,
   output: SearchPersonOrgOutputSchema,
-  errorCodes: ["search-unavailable", "unexpected-page-state"],
+  errorCodes: ["person-lookup-ucpath-search-failed"],
   // Name search resolves identity; it cannot require an already-known EID.
   subject: { kind: "none", reason: "the person search resolves identity rather than confirming it" },
   freshness: {
@@ -136,11 +141,11 @@ export const SearchPersonOrg = defineTaskContract({
     }],
   } satisfies TaskOperationDeclaration,
   scenarios: [
-    "person-lookup/happy-by-eid",
-    "person-lookup/ambiguous-name",
-    "person-lookup/not-found",
+    "person-lookup/s1",
+    "person-lookup/s8",
+    "person-lookup/s12",
     // Reject drill-back details whose EID differs from the selected row.
-    "person-lookup/ucpath-drill-subject-mismatch",
+    "person-lookup/f1",
   ],
   example: {
     results: [{
@@ -150,6 +155,7 @@ export const SearchPersonOrg = defineTaskContract({
       jobTitle: "Dining Assistant",
       employeeStatus: "active",
       hdh: true,
+      hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
     }],
     selection: {
       status: "resolved",
@@ -160,6 +166,7 @@ export const SearchPersonOrg = defineTaskContract({
         jobTitle: "Dining Assistant",
         employeeStatus: "active",
         hdh: true,
+        hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
       },
       candidateEids: ["10873698"],
     },

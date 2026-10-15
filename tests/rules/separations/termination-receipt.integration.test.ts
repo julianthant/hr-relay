@@ -28,7 +28,8 @@ const CANDIDATE = {
   department: "Facilities",
   jobTitle: "Maintenance Worker",
   employeeStatus: "active" as const,
-  hdh: false,
+  hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: false,
 };
 
 function proof(overrides: Partial<UcpathTerminationProof_m0> = {}): UcpathTerminationProof_m0 {

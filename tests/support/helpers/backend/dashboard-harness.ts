@@ -83,6 +83,7 @@ export interface AuthorityFake {
   getRun(runId: string): RunRecord | undefined;
   put(record: RunRecord): void;
   putCheckpoint(record: RunCheckpointRecord): void;
+  listCheckpoints(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
   latestCheckpoint(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
   /** Durable inbox rows keyed by actor. */
   readonly notifications: NotificationRecord[];
@@ -147,6 +148,7 @@ export function authorityFake(): AuthorityFake {
     put: (record) => records.set(record.envelope.runId, record),
     putCheckpoint: (record) =>
       checkpoints.set(checkpointKey(record.workflowId, record.itemId, record.nodeId), record),
+    listCheckpoints: (workflowId, itemId) => [...checkpoints.values()].filter(row => row.workflowId === workflowId && row.itemId === itemId),
     latestCheckpoint: (workflowId, itemId, nodeId) =>
       checkpoints.get(checkpointKey(workflowId, itemId, nodeId)),
     notifications,
@@ -414,7 +416,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       attempt: input.attempt ?? 1,
       enqueuedAt,
     },
-    input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, protectedBindings: [], value: { emplId: "10873698" } }, ingressSchemaHash: HASH_A },
+    input: { raw: { emplId: "10873698" }, parsed: { schemaHash: HASH_B, protectedBindings: [], value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false } }, ingressSchemaHash: HASH_A },
     lifecycle,
     claimGeneration,
     ...(completion === undefined ? {} : {completion}),

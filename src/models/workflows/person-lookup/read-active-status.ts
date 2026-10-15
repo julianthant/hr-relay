@@ -1,47 +1,33 @@
-/** The pure join of the UCPath selection and the CRM record into an active-status verdict, as a closed union with a stated reason on every arm. */
+import { CrmDiscoveryOutputSchema } from "../../systems/crm/search-onboarding-records.js";
 import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
-import { ReadOnboardingRecordOutputSchema } from "../../systems/crm/read-onboarding-record.js";
+import { PersonLookupInput } from "./input.js";
+import { ResolvedIdentitySchema } from "./read-resolved-identity.js";
 import { SearchPersonOrgOutputSchema } from "../../systems/ucpath/search-person-org.js";
+import { SearchPersonMatchOutputSchema } from "../../systems/ucpath/search-person-match.js";
 
-export const ActiveStatusOutcomeSchema = z.discriminatedUnion("state", [
-  z.strictObject({
-    state: z.literal("active"),
-    reason: z.string().min(1),
-    hdh: z.boolean(),
-  }),
-  z.strictObject({
-    state: z.literal("inactive"),
-    reason: z.string().min(1),
-    hdh: z.boolean(),
-  }),
-  z.strictObject({
-    state: z.literal("undetermined"),
-    reason: z.string().min(1),
-  }),
-]);
-export type ActiveStatusOutcome = z.infer<typeof ActiveStatusOutcomeSchema>;
-
+export const PersonLookupDetailSchema = z.strictObject({
+  search: z.string(), name: z.string().nullable(), eid: z.string().nullable(), department: z.string().nullable(),
+  hrStatus: z.string().nullable(), ucpath: z.enum(["Found", "Not found"]), crm: z.enum(["Found", "Not found", "Not checked", "Check failed"]),
+  startDate: z.string().nullable(), endDate: z.string().nullable(), terminationReason: z.string().nullable(),
+  foundInUcpath: z.boolean().nullable(), matchedEid: z.string().nullable(), matchedName: z.string().nullable(),
+});
+export const ActiveStatusOutcomeSchema = z.strictObject({
+  ucpathSelection: z.enum(["resolved", "ambiguous", "not-found"]),
+  datesEid: z.string().nullable(),
+  state: z.enum(["active", "inactive", "crm-only", "multiple-matches", "not-found", "undetermined", "found", "not-found-in-ucpath"]),
+  reason: z.string(), code: z.string().nullable(), hdh: z.boolean().nullable(), candidateEids: z.array(z.string()), details: PersonLookupDetailSchema,
+});
+export type ActiveStatusOutcome = z.output<typeof ActiveStatusOutcomeSchema>;
 export const ReadActiveStatus = defineTaskContract({
-  id: taskId("workflow:person-lookup/read-active-status"),
-  title: "Active Status",
-  effect: "read",
-  input: z.strictObject({
-    person: SearchPersonOrgOutputSchema,
-    crm: ReadOnboardingRecordOutputSchema,
-    keepNonHdh: z.boolean(),
-  }),
-  output: ActiveStatusOutcomeSchema,
-  errorCodes: ["inconsistent-inputs"],
-  subject: { kind: "none", reason: "a pure fold over facts this run already read" },
-  // Age upstream captures; a pure transform cannot refresh them and has no separate budget.
-  freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
-  provenance: { default: "derived" },
-  scenarios: [],
-  example: {
-    state: "active",
-    reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-    hdh: true,
-  },
+  id: taskId("workflow:person-lookup/read-active-status"), title: "Read employment status", effect: "read",
+  input: z.strictObject({ input: PersonLookupInput, identity: ResolvedIdentitySchema, verifiedCrm: CrmDiscoveryOutputSchema.optional(), recovered: SearchPersonOrgOutputSchema.optional(), match: SearchPersonMatchOutputSchema.optional() }),
+  output: ActiveStatusOutcomeSchema, errorCodes: ["person-lookup-employment-status-undetermined", "inconsistent-inputs"],
+  subject: { kind: "none", reason: "pure fold of this run's UCPath and CRM facts" },
+  freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
+  example: { ucpathSelection: "not-found", datesEid: null, state: "not-found", reason: "Person not found.", code: "person-lookup-not-found", hdh: null, candidateEids: [], details: {
+    search: "Example, Person", name: null, eid: null, department: null, hrStatus: null, ucpath: "Not found", crm: "Not found",
+    startDate: null, endDate: null, terminationReason: null, foundInUcpath: null, matchedEid: null, matchedName: null,
+  } },
 });

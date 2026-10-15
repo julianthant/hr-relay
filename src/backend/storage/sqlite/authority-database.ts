@@ -4036,8 +4036,9 @@ export class AuthorityDatabase implements Disposable {
 
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
     const columns = runRecordColumns(record);
-    const keys = Object.keys(columns);
-    const values = Object.values(columns);
+    const entries = Object.entries(columns).filter(([key]) => mode === "insert" || key !== "id");
+    const keys = entries.map(([key]) => key);
+    const values = entries.map(([, value]) => value);
     this.#authorityWrite("runs", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...values)

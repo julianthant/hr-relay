@@ -65,6 +65,22 @@ describe("bounded native debug events", () => {
     assert.throws(() => writer.emit(event, { kind: "client", clientId: "token=CLIENT_SECRET" }), /debug-identity-contains-credential-material/u);
     assert.equal(records.length, 0);
   });
+  it("retains structural UUID correlation while masking mixed SSN text", () => {
+    const { records, repository } = fixture();
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+    const correlationId = "aaaaaaaa-aaaa-4aaa-8aaa-a123456789aa";
+    writer.emit({ category: "http", phase: "failed", correlationId,
+      message: `${correlationId} person 951-57-1700 and 951571700` });
+    assert.equal(records.length, 1);
+    const payload = records[0].payload;
+    assert.equal(payload.kind, "debug");
+    if (payload.kind !== "debug") throw new Error("debug event expected");
+    assert.equal(payload.event.correlationId, correlationId);
+    assert.equal(payload.event.message?.includes("951-57-1700"), false);
+    assert.equal(payload.event.message?.includes("person 951571700"), false);
+    assert.match(payload.event.message ?? "", /person \[SSN masked\] and \[SSN masked\]/u);
+  });
+
   it("rejects body/header fields and oversized events before append", () => {
     const { records, repository } = fixture();
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });

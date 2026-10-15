@@ -34,6 +34,13 @@ async function boot(): Promise<SeededServer> {
   return server;
 }
 
+async function dashboardDay(baseUrl: string, day: string) {
+  const response = await fetch(`${baseUrl}/api/v1/dashboard?day=${day}`);
+  const body: unknown = await response.json();
+  expect(response.ok, JSON.stringify(body)).toBe(true);
+  return body;
+}
+
 describe("seeded parity BFF (adapter #2 — real machinery)", () => {
   it("serves a strict bootstrap document", async () => {
     const server = await boot();
@@ -47,7 +54,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
   it("projects one queue surface per seeded role with the expected status", async () => {
     const server = await boot();
     const day = DashboardDayWireSchema.parse(
-      await (await fetch(`${server.baseUrl}/api/v1/dashboard?day=${server.day}`)).json(),
+      await dashboardDay(server.baseUrl, server.day),
     );
     // Keyed by the plain string: run ids are branded on the wire, and the
     // seed reports them as the raw ids a parity spec would address.
@@ -83,7 +90,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
   it("keeps counts on the one path, excluding member surfaces", async () => {
     const server = await boot();
     const day = DashboardDayWireSchema.parse(
-      await (await fetch(`${server.baseUrl}/api/v1/dashboard?day=${server.day}`)).json(),
+      await dashboardDay(server.baseUrl, server.day),
     );
     const countable = day.queueSurfaces.filter((surface) => surface.surfaceKind !== "member");
 

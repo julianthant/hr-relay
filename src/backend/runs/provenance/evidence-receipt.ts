@@ -837,6 +837,8 @@ export function deriveRunEvidenceReceipt(
     verification.push(evaluateObligation(obligation, {
       obligationId: entryId("verification", obligation.obligation),
       inputValues,
+      resultFacts: outputs,
+      resultValues: result !== undefined && terminalEvidence === undefined && !previewed ? new Map(evidenceLeaves(result.result.value).map(leaf => [leaf.path, leaf.value])) : new Map(),
       byNode,
     }));
   }
@@ -1452,6 +1454,8 @@ function subjectReason(intent: WriteIntentRecord): string {
 interface ObligationContext {
   readonly obligationId: EvidenceEntryId;
   readonly inputValues: ReadonlyMap<string, unknown>;
+  readonly resultValues: ReadonlyMap<string, unknown>;
+  readonly resultFacts: readonly Fact[];
   readonly byNode: ReadonlyMap<string, NodeEvidence>;
 }
 
@@ -1465,16 +1469,34 @@ function resolveSource(
   source: EvidenceObligationSource,
   context: ObligationContext,
 ): ResolvedObligationSource | undefined {
+  if (source.kind === "workflow-result") {
+    if (!context.resultValues.has(source.path)) return undefined;
+    const index = [...context.resultValues.keys()].indexOf(source.path);
+    const fact = context.resultFacts[index];
+    return { source, value: context.resultValues.get(source.path), ...(fact === undefined ? {} : { ref: evidenceEntryRef(fact.id) }) };
+  }
   if (source.kind === "workflow-input") {
     if (!context.inputValues.has(source.path)) return undefined;
     return { source, value: context.inputValues.get(source.path) };
   }
   const node = context.byNode.get(String(source.nodeId));
-  if (node === undefined || !node.values.has(source.path)) return undefined;
-  const factId = node.factIds.get(source.path);
+  if (node === undefined) return undefined;
+  let path = String(source.path);
+  let value = node.values.get(path);
+  if (!node.values.has(path)) {
+    const parts = path.split(".");
+    path = parts.shift() ?? "";
+    value = node.values.get(path);
+    for (const part of parts) {
+      if (value === null || typeof value !== "object") return undefined;
+      value = Array.isArray(value) ? value[Number(part)] : (value as Record<string, unknown>)[part];
+    }
+    if (value === undefined) return undefined;
+  }
+  const factId = node.factIds.get(path);
   return {
     source,
-    value: node.values.get(source.path),
+    value,
     ...(factId === undefined ? {} : { ref: evidenceEntryRef(factId) }),
   };
 }
@@ -1516,7 +1538,7 @@ function evaluateObligation(obligation: EvidenceObligation, context: ObligationC
       evidence: [],
     };
   }
-  if (resolved.length === 1) {
+  if (resolved.length !== obligation.sources.length || resolved.some(entry => entry.value === null)) {
     // ONE side is not agreement. Reporting `verified` here would be exactly the
     // silent-shrink this whole program forbids.
     return {

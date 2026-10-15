@@ -149,9 +149,12 @@ export const WorkflowStepOfSchema = <const Key extends string>(key: Key) =>
   WorkflowStepSchema.extend({ key: TimelineCategoryKeySchema.and(z.literal(key)) });
 export type WorkflowStepOf<Key extends string> = z.infer<ReturnType<typeof WorkflowStepOfSchema<Key>>>;
 
+export const StartStepSelectionSchema = z.strictObject({ inputField: z.string().regex(/^[a-z][A-Za-z0-9]*$/u), selectedWhen: z.boolean() });
+
 export const TimelineCategorySpecSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),
+  selection: StartStepSelectionSchema.optional(),
   nodes: z.array(NodeIdSchema).min(1),
 });
 export type TimelineCategorySpec = z.infer<typeof TimelineCategorySpecSchema>;
@@ -160,6 +163,7 @@ export type TimelineCategorySpec = z.infer<typeof TimelineCategorySpecSchema>;
 export const TimelineCategoryProjectionSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),
+  selection: StartStepSelectionSchema.optional(),
   nodes: z.array(z.strictObject({ id: NodeIdSchema, label: z.string().min(1) })).min(1),
 });
 export type TimelineCategoryProjection = z.infer<typeof TimelineCategoryProjectionSchema>;

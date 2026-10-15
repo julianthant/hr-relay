@@ -11,6 +11,8 @@ describe("Person Lookup task implementations", () => {
       [
         "crm/read-onboarding-dates",
         "crm/read-onboarding-record",
+        "crm/search-onboarding-records",
+        "crm/verify-onboarding-record",
         // The extraction service store lands before any descriptor consumes it.
         "extraction/extract-pdf-pages",
         "extraction/extract-spreadsheet",
@@ -39,6 +41,7 @@ describe("Person Lookup task implementations", () => {
         "ucpath/match-pending-terminations",
         "ucpath/read-job-summary",
         "ucpath/read-pending-termination-set",
+        "ucpath/search-person-match",
         "ucpath/search-person-org",
         "ucpath/stage-pending-termination-sweep",
         "ucpath/stage-termination",
@@ -46,6 +49,7 @@ describe("Person Lookup task implementations", () => {
         "ucpath/verify-termination",
         "ucpath/verify-termination-filing-present",
         "workflow:person-lookup/read-active-status",
+        "workflow:person-lookup/read-resolved-identity",
 
         "workflow:separations/match-active-employment",
         "workflow:separations/match-department-option",

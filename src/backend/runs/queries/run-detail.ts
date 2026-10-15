@@ -8,6 +8,8 @@ import {
   type TimelineDuration,
   type TimelineStepWire,
 } from "../../../models/dashboard/run-detail.js";
+import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import type { SubjectCheckpointSource } from "../projections/run-subject-title.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
@@ -78,13 +80,13 @@ function spanNotRunReason(
 
 
 function replaySourceOf(
-  deps: RunDetailQueryDeps,
+  checkpoints: SubjectCheckpointSource,
   authority: RunRecord,
   nodeId: string,
 ): { attempt: number; claimGeneration?: number } | undefined {
   const { lifecycle } = authority;
   if (lifecycle.state !== "terminal" || lifecycle.outcome !== "done") return undefined;
-  const stored = deps.authority.latestCheckpoint(
+  const stored = checkpoints.latestCheckpoint(
     authority.envelope.workflow,
     authority.envelope.itemId,
     nodeId,
@@ -191,6 +193,22 @@ export function buildRunDetail(
   const { row, authority } = requireCanonicalRun(deps, runId);
   const status = deriveRunStatus(authority);
   const descriptorView = deps.descriptors.resolve(authority.envelope.workflow);
+  let latestByNode: Map<string, RunCheckpointRecord> | undefined;
+  const checkpoints: SubjectCheckpointSource = {
+    latestCheckpoint: (_workflowId, _itemId, nodeId) => {
+      if (latestByNode === undefined) {
+        latestByNode = new Map();
+        for (const checkpoint of deps.authority.listCheckpoints(authority.envelope.workflow, authority.envelope.itemId)) {
+          const latest = latestByNode.get(checkpoint.nodeId);
+          if (latest === undefined || checkpoint.attempt > latest.attempt
+            || checkpoint.attempt === latest.attempt && checkpoint.claimGeneration > latest.claimGeneration) {
+            latestByNode.set(checkpoint.nodeId, checkpoint);
+          }
+        }
+      }
+      return latestByNode.get(nodeId);
+    },
+  };
   const omittedSteps = [...new Set(
     (authority.envelope.stepOmissions ?? []).map((entry) => String(entry.step)),
   )].sort();
@@ -290,7 +308,7 @@ export function buildRunDetail(
         ?? resolveSubjectTitle(
           descriptorView?.subjectProjection,
           { workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId },
-          deps.authority,
+          checkpoints,
         )
         ?? row?.queued.title ?? authority.envelope.runId,
       status,
@@ -306,7 +324,7 @@ export function buildRunDetail(
             descriptorView.timeline,
             row,
             authority.lifecycle.state === "terminal",
-            (nodeId) => replaySourceOf(deps, authority, nodeId),
+            (nodeId) => replaySourceOf(checkpoints, authority, nodeId),
           ),
         }),
     },

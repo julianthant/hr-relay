@@ -1,4 +1,4 @@
-import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
+import { directUcpathSearchFixtureTask, registryWithUcpathSearch, createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
@@ -15,14 +15,10 @@ describe("failure, retry, and resume", () => {
   it("keeps arbitrary task failure detail unstamped in authority and out of the admitted task span", async () => {
     const rawDiagnostic = "ucpath:termination|10812345|2026-08-29";
     const sessions = sessionFactoryHarness({
-      ucpath: () => healthyUcpathDriver(),
-      crm: () => Object.freeze({
-        system: "crm" as const,
-        readOnboardingRecord: (): Promise<never> => Promise.reject(new Error(rawDiagnostic)),
-        readOnboardingDates: (): Promise<never> => Promise.reject(new Error("unused")),
-      }),
+      ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: (): Promise<never> => Promise.reject(new Error(rawDiagnostic)) }),
+      crm: () => healthyCrmDriver(),
     });
-    const harness = executorHarness({ sessions });
+    const harness = executorHarness({ sessions, stores: registryWithUcpathSearch(directUcpathSearchFixtureTask) });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
 
@@ -46,7 +42,7 @@ describe("failure, retry, and resume", () => {
     assert.equal(failedTaskSpan.diagnosticSafetyVersion, 1);
     assert.equal(
       failedTaskSpan.errorSummary,
-      "task crm/read-onboarding-record failed; inspect its structured failure record",
+      "task ucpath/search-person-org failed; inspect its structured failure record",
     );
     assert.equal(JSON.stringify(failedTaskSpan).includes(rawDiagnostic), false);
   });

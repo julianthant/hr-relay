@@ -191,7 +191,7 @@ A derived leaf requires declared upstream dependencies. The collector validates 
 set against authenticated descriptor metadata and rejects missing or extra evidence.
 Checkpoint evidence includes its complete leaf provenance. Gate results contribute a fact at
 `resolvedAt`, with operator or source provenance according to their arm.
-Conditionally skipped gates are re-evaluated against canonical input and available checkpoints.
+Conditionally skipped tasks and operator gates are re-evaluated against canonical input and authenticated condition sources. Transitive condition evidence is separate from direct dependencies and does not contribute output provenance. Each source must match the declared producer schema, descriptor and complete leaf facts.
 Child evidence binds edge, parent, result schema/identity, checkpoints, and descendants.
 Foreign, extra, cyclic, or fact-free evidence fails.
 Derived leaves retain the oldest contributing `originalObservedAt`.

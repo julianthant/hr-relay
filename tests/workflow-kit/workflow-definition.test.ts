@@ -40,10 +40,105 @@ describe("workflow definition compiler", () => {
     expect(declaration.map((group) => [group.key, group.label, group.entries.map((entry) => ({
       id: entry.id, nodeIds: entry.nodeIds.map(String), dependsOn: entry.dependsOn.map(String),
     }))])).toEqual([
-      ["searching", "Searching", [{ id: "searching", nodeIds: ["searching"], dependsOn: [] }]],
-      ["cross-verify", "Cross Verification", [{ id: "cross-verify", nodeIds: ["cross-verify"], dependsOn: ["searching"] }]],
-      ["active-status", "Active Status", [{ id: "active-status", nodeIds: ["active-status"], dependsOn: ["searching", "cross-verify"] }]],
-      ["crm-dates", "CRM Dates", [{ id: "crm-dates", nodeIds: ["crm-dates"], dependsOn: ["searching"] }]],
+      [
+        "searching",
+        "Search for person",
+        [
+          {
+            id: "searching",
+            nodeIds: [
+              "searching"
+            ],
+            dependsOn: []
+          },
+          {
+            id: "matching",
+            nodeIds: [
+              "matching"
+            ],
+            dependsOn: [
+              "searching"
+            ]
+          },
+          {
+            id: "search-identity",
+            nodeIds: [
+              "search-identity"
+            ],
+            dependsOn: [
+              "searching",
+              "matching"
+            ]
+          }
+        ]
+      ],
+      [
+        "cross-verify",
+        "Cross-check identity",
+        [
+          {
+            id: "cross-verify",
+            nodeIds: [
+              "cross-verify"
+            ],
+            dependsOn: [
+              "search-identity",
+              "searching",
+              "matching"
+            ]
+          },
+          {
+            id: "crm-identity",
+            nodeIds: [
+              "crm-identity"
+            ],
+            dependsOn: [
+              "search-identity",
+              "cross-verify",
+              "searching",
+              "matching"
+            ]
+          },
+          {
+            id: "crm-selected-record",
+            nodeIds: [
+              "crm-selected-record"
+            ],
+            dependsOn: [
+              "crm-identity"
+            ]
+          }
+        ]
+      ],
+      [
+        "active-status",
+        "Read employment status",
+        [
+          {
+            id: "crm-only-recovery",
+            nodeIds: [
+              "crm-only-recovery"
+            ],
+            dependsOn: [
+              "crm-identity",
+              "crm-selected-record"
+            ]
+          },
+          {
+            id: "active-status",
+            nodeIds: [
+              "active-status"
+            ],
+            dependsOn: [
+              "search-identity",
+              "crm-identity",
+              "crm-only-recovery",
+              "crm-selected-record"
+            ]
+          }
+        ]
+      ],
+      ["crm-dates", "Read CRM dates", [{id: "crm-dates", nodeIds: ["crm-dates"], dependsOn: ["active-status"]}]],
     ]);
     expect(Object.isFrozen(declaration)).toBe(true);
     expect(Object.isFrozen(declaration[0]?.entries[0]?.nodeIds)).toBe(true);
@@ -58,10 +153,15 @@ describe("workflow definition compiler", () => {
     const graph = descriptorRuntimeNodes(personLookupDescriptor);
 
     expect(graph.map((node) => ({ id: String(node.id), dependsOn: node.dependsOn.map(String) }))).toEqual([
-      { id: "searching", dependsOn: [] },
-      { id: "cross-verify", dependsOn: ["searching"] },
-      { id: "active-status", dependsOn: ["searching", "cross-verify"] },
-      { id: "crm-dates", dependsOn: ["searching"] },
+      {id: "searching", dependsOn: []},
+      {id: "matching", dependsOn: ["searching"]},
+      {id: "search-identity", dependsOn: ["searching", "matching"]},
+      {id: "cross-verify", dependsOn: ["search-identity", "searching", "matching"]},
+      {id: "crm-identity", dependsOn: ["search-identity", "cross-verify", "searching", "matching"]},
+      {id: "crm-selected-record", dependsOn: ["crm-identity"]},
+      {id: "crm-only-recovery", dependsOn: ["crm-identity", "crm-selected-record"]},
+      {id: "active-status", dependsOn: ["search-identity", "crm-identity", "crm-only-recovery", "crm-selected-record"]},
+      {id: "crm-dates", dependsOn: ["active-status"]},
     ]);
     expect(personLookupWorkflow.steps.map(([group]) => group.key)).toEqual([
       "searching",
@@ -138,7 +238,7 @@ describe("workflow definition compiler", () => {
     expect(() => composeWorkflowModule(
       compiled,
       taskStoreRegistry.stores.map((store) => store === crm ? wrongContractCrm : store),
-    )).toThrow(/workflow person-lookup cannot resolve exact contract crm\/read-onboarding-record/u);
+    )).toThrow(/workflow person-lookup cannot resolve exact contract crm\/search-onboarding-records/u);
 
     const module = composeWorkflowModule(compiled, taskStoreRegistry.stores);
     expect(module.stores.map(({ namespace }) => String(namespace))).toEqual(["ucpath", "crm", "workflow:person-lookup"]);

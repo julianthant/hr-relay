@@ -166,7 +166,7 @@ export function buildExplorerCompileAttestation(
         inputSchemaHash: workflow.inputSchemaHash,
         canonicalInputSchemaHash: workflow.canonicalInputSchemaHash,
         resultSchemaHash: workflow.resultSchemaHash,
-        tasks: tasks.map((task) => ({
+        tasks: [...new Map(tasks.map((task) => [task.taskId, task])).values()].map((task) => ({
           taskId: task.taskId,
           inputSchemaHash: task.inputSchemaHash,
           outputSchemaHash: task.outputSchemaHash,

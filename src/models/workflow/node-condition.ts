@@ -90,9 +90,11 @@ function isJsonObject(value: JsonValue): value is JsonObject {
 function readOperand(
   operand: NodeConditionOperand,
   scope: NodeConditionScope,
+  tolerateMissingUpstream = false,
 ): JsonValue | typeof ABSENT {
   const upstream = operand.from === "node" ? scope.outputs[String(operand.nodeId)] : undefined;
   if (operand.from === "node" && upstream === undefined) {
+    if (tolerateMissingUpstream) return ABSENT;
     throw new Error(
       `node condition reads ${describeOperand(operand)}, but that node produced no output in this scope`,
     );
@@ -115,7 +117,7 @@ export function evaluateNodeCondition(
   condition: NodeCondition,
   scope: NodeConditionScope,
 ): boolean {
-  const value = readOperand(condition.of, scope);
+  const value = readOperand(condition.of, scope, condition.kind === "is-present" || condition.kind === "is-absent");
   if (condition.kind === "is-present") return value !== ABSENT && value !== null;
   if (condition.kind === "is-absent") return value === ABSENT || value === null;
   if (value === ABSENT) {

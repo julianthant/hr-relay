@@ -24,6 +24,7 @@ import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import {
   PersonLookupInput,
+  PersonLookupCanonicalInput,
   PersonLookupResultSchema,
 } from "../../../src/workflows/person-lookup/workflow.js";
 
@@ -114,7 +115,7 @@ export const everyEntryKindWorkflow = defineWorkflow({
       contract: CrmReadOnboardingDates,
       label: "CRM Dates",
       replay: "checkpoint",
-    }, [], ({ input }) => ({ eid: input.emplId }));
+    }, [], ({ input }) => ({ eid: input.emplId, name: input.expectedName }));
     const fan = parallel({ id: "fan", label: "CRM reads", join: "all", failure: "fail-fast" }, [
       { id: "record", leaves: [crmRecord] },
       { id: "dates", leaves: [crmDates] },
@@ -195,31 +196,15 @@ export const parallelLeavesWorkflow = defineWorkflow({
   icon: "Search",
   category: "operations",
   input: PersonLookupInput,
-  canonicalInput: defineCanonicalInput(
-    PersonLookupInput,
-    z.union([
-      z.strictObject({
-        name: CANONICAL_FIELDS.fullName.schema,
-        keepNonHdh: z.boolean(),
-        includeCrmDates: z.boolean(),
-      }),
-      z.strictObject({
-        emplId: EidSchema,
-        name: CANONICAL_FIELDS.fullName.schema.optional(),
-        keepNonHdh: z.boolean(),
-        includeCrmDates: z.boolean(),
-      }),
-    ]),
-    [{ emplId: "10800000" }, { name: "Fixture, Person" }],
-  ),
+  canonicalInput: PersonLookupCanonicalInput,
   inputSubject: "eid",
   surface: { shape: "single" },
   enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {},
   details: [],
-  identity: { matchKey: (input) => ("emplId" in input ? `eid:${input.emplId}` : `name:${input.name}`) },
-  presentation: { title: (input) => ("emplId" in input ? `EID ${input.emplId}` : input.name) },
+  identity: { matchKey: (input) => (input.mode === "match" ? "match-fixture" : "emplId" in input ? `eid:${input.emplId}` : `name:${input.name}`) },
+  presentation: { title: (input) => (input.mode === "match" ? "Match fixture" : "emplId" in input ? `EID ${input.emplId}` : input.name) },
   scenarios: ["fixture-parallel-leaves/happy"],
   role: defineWorkflowRole({ kind: "standalone" }),
   steps: ({ task, parallel, result }) => {
@@ -228,7 +213,7 @@ export const parallelLeavesWorkflow = defineWorkflow({
       contract: SearchPersonOrg,
       label: "Search",
       replay: "checkpoint",
-    }, [], ({ input }) => ("emplId" in input
+    }, [], ({ input }) => (input.mode === "match" ? { kind: "by-name" as const, name: `${input.lastName}, ${input.firstName}`, keepNonHdh: false } : "emplId" in input
       ? { kind: "by-eid" as const, emplId: input.emplId }
       : { kind: "by-name" as const, name: input.name, keepNonHdh: input.keepNonHdh }));
     const verify = task({
@@ -238,7 +223,7 @@ export const parallelLeavesWorkflow = defineWorkflow({
       replay: "checkpoint",
     }, [], ({ input }) => ({
       eid: "emplId" in input ? input.emplId : "10800000",
-      name: input.name ?? "Fixture, Person",
+      name: input.mode === "match" ? `${input.lastName}, ${input.firstName}` : input.name ?? "Fixture, Person",
     }));
     const fan = parallel({ id: "fan", label: "Both systems", join: "all", failure: "fail-fast" }, [
       { id: "ucpath", leaves: [search] },

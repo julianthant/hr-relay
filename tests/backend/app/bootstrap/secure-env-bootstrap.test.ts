@@ -12,7 +12,7 @@ describe("absent dry-run scenario manifests", () => {
     let environmentCalls = 0;
     await assert.rejects(
       runSecureEnvironmentBootstrap(
-        ["cli", "dry-run-scenario", "person-lookup", "--subject", "synthetic-subject"],
+        ["cli", "dry-run-scenario", "separations", "--subject", "synthetic-subject"],
         {
           acquireAdmission: () => { admissionCalls++; throw new Error("admission reached"); },
           assertEnvironment: () => { environmentCalls++; },

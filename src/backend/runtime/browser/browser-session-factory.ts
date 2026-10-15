@@ -1,3 +1,4 @@
+import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
@@ -288,7 +289,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             if (!proof.authenticated) return unavailable("authentication-unverified");
             if (await page.locator('input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]').count() > 0) return unavailable("secret-controls-present");
             if (pageVersion !== version) return unavailable("page-changed");
-            const bytes = new Uint8Array(await page.screenshot({ type: "png" }));
+            const bytes = new Uint8Array(await page.screenshot({ type: "png", mask: page.frames().map((frame) => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)) }));
             if (pageVersion !== version) return unavailable("page-changed");
             const after = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
             if (!after.authenticated || pageVersion !== version) return unavailable("page-changed");

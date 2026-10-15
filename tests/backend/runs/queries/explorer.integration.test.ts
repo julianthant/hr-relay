@@ -12,7 +12,7 @@ import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
 const FIRST = "11111111-1111-4111-8111-111111111111";
 const SECOND = "22222222-2222-4222-8222-222222222222";
 const THIRD = "33333333-3333-4333-8333-333333333333";
-const SOURCE_FIELD = { nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" };
+const SOURCE_FIELD = { nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" };
 
 function draft(f: ReturnType<typeof explorerAuthorityFixture>, changes: readonly unknown[] = [{ kind: "workflow-label", value: "People search" }]) {
   return { draftVersion: 1, workflowId: f.descriptor.id, baseDescriptorVersion: f.descriptor.version,

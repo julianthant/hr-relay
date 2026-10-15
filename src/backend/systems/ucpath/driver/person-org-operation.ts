@@ -1,4 +1,6 @@
+import { selectPreferredUcpathCandidate } from "../../../../rules/matching/ucpath-person.js";
 
+import { UCPATH_PENDING_READ_RECIPES } from "./ui-registry.js";
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { z } from "zod";
@@ -89,6 +91,7 @@ const PersonOrgDetailSchema = z.strictObject({
   cells: z.array(z.array(z.string())).min(1),
 
   employmentInstances: z.enum(["already-complete", "expanded"]),
+  startDate: z.string(), terminationDate: z.string(), terminationReason: z.string(),
 });
 export type PersonOrgDetail = z.infer<typeof PersonOrgDetailSchema>;
 
@@ -102,7 +105,7 @@ export interface PersonOrgPagePort {
     | Readonly<{ kind: "by-eid"; eid: Eid }>
     | Readonly<{ kind: "by-name"; lastName: string; givenName: string }>) => Promise<PersonOrgSearchPageOutcome>;
   readonly drill: (rowIndex: number) => Promise<PersonOrgDetail>;
-  readonly returnToResults: () => Promise<void>;
+  readonly returnToResults: () => Promise<readonly PersonOrgResultGridRow[]>;
 }
 
 export interface PersonOrgViewTogglePort {
@@ -375,6 +378,8 @@ function candidateFromDetail(detail: PersonOrgDetail, expectedLastName: string):
     jobTitle: assignment.jobCodeDescription,
     employeeStatus: employeeStatus(assignment.hrStatus),
     hdh: isAcceptedHdhDepartment(assignment.department),
+    hrStatus: assignment.hrStatus, effectiveDate: assignment.effectiveDate,
+    startDate: detail.startDate, terminationDate: detail.terminationDate, terminationReason: detail.terminationReason,
   });
 }
 
@@ -389,14 +394,6 @@ function lastNameFromDisplayedName(displayedName: string): string {
     throw new Error(`Person Org displayed name ${JSON.stringify(displayedName)} has no last-name token`);
   }
   return last;
-}
-
-function comparePreferredCandidate(left: UcpathCandidate, right: UcpathCandidate): number {
-  const leftActive = left.employeeStatus === "active";
-  const rightActive = right.employeeStatus === "active";
-  if (leftActive !== rightActive) return leftActive ? -1 : 1;
-  if (left.hdh !== right.hdh) return left.hdh ? -1 : 1;
-  return 0;
 }
 
 function outputFor(
@@ -418,8 +415,9 @@ function outputFor(
       selection: { status: "ambiguous", selected: null, candidateEids, searchName },
     });
   }
-  const selected = [...parsedResults].sort(comparePreferredCandidate)[0];
-  if (selected === undefined) throw new Error("Person Org resolved selection has no candidate");
+  const selected = selectPreferredUcpathCandidate(parsedResults);
+  if (selected === null) throw new Error("Person Org resolved selection has no candidate");
+  recordBrowserAction("read", "ucpath.person-org.person", JSON.stringify(selected));
   return SearchPersonOrgOutputSchema.parse({
     results: parsedResults,
     selection: { status: "resolved", selected, candidateEids },
@@ -441,10 +439,24 @@ async function candidatesFromGrid(
         `Person Org drill row ${String(row.rowIndex)} expected EID ${directIdentifierDisplay(row.emplId)} but displayed ${directIdentifierDisplay(detail.observedEid)}`,
       );
     }
-    candidates.push(candidateFromDetail(detail, row.lastName));
-    if (index < sdcmpRows.length - 1) await pagePort.returnToResults();
+    const candidate = candidateFromDetail(detail, row.lastName);
+    candidates.push(candidate);
+    recordBrowserAction("read", "ucpath.person-org.candidate", JSON.stringify(candidate));
+    const restored = await pagePort.returnToResults();
+    if (JSON.stringify(restored) !== JSON.stringify(rows)) throw new Error("Person Org results changed while returning from a candidate");
   }
   return candidates;
+}
+
+async function verifySelectedGridDetail(pagePort: PersonOrgPagePort, rows: readonly PersonOrgResultGridRow[], candidates: readonly UcpathCandidate[], selected: UcpathCandidate | null): Promise<void> {
+  if (selected === null) return;
+  const index = candidates.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(selected));
+  const row = rows.filter(({ businessUnit }) => businessUnit === "SDCMP")[index];
+  if (row === undefined) throw new Error("Person Org selected candidate has no verified results row");
+  const detail = await pagePort.drill(row.rowIndex);
+  if (detail.observedEid !== row.emplId || JSON.stringify(candidateFromDetail(detail, row.lastName)) !== JSON.stringify(selected)) {
+    throw new Error("Person Org selected detail changed before capture");
+  }
 }
 
 async function candidatesFromOutcome(
@@ -481,26 +493,34 @@ export async function searchPersonOrgWithPagePort(
         throw new Error(`Person Org EID search expected ${directIdentifierDisplay(input.emplId)} but observed ${directIdentifierDisplay(candidate.emplId)}`);
       }
     }
-    return outputFor(input, candidates);
+    if (candidates.length > 0) recordBrowserAction("read", "ucpath.person-org.employment-instances", JSON.stringify(candidates));
+    const output = outputFor(input, candidates);
+    if (outcome.kind === "grid") await verifySelectedGridDetail(pagePort, outcome.rows, candidates, output.selection.selected);
+    return output;
   }
 
   const searchNames = buildLastFirstSearchNames(input.name);
-  if (searchNames.length === 0) throw new Error("Person Org by-name search received an empty normalized name");
+  const attempts = searchNames.flatMap((searchName) => buildPersonOrgNameSearchAttempts(parseLastFirstName(searchName))).slice(0, 3);
+  if (attempts.length === 0) throw new Error("Person Org by-name search received an empty normalized name");
   let results: readonly UcpathCandidate[] = [];
-  for (const searchName of searchNames) {
-    const parsed = parseLastFirstName(searchName);
-    for (const attempt of buildPersonOrgNameSearchAttempts(parsed)) {
-      const outcome = await pagePort.search({
-        kind: "by-name",
-        lastName: attempt.lastName,
-        givenName: attempt.name,
-      });
-      results = await candidatesFromOutcome(pagePort, outcome, parsed.lastName);
-      if (!input.keepNonHdh) results = results.filter(({ hdh }) => hdh);
-      if (results.length > 0) return outputFor(input, results);
-    }
+  let finalGrid: Readonly<{ rows: readonly PersonOrgResultGridRow[]; candidates: readonly UcpathCandidate[] }> | undefined;
+  for (const [index, attempt] of attempts.entries()) {
+    recordBrowserAction("read", "ucpath.person-org.search-attempt", `Search ${index + 1} of ${attempts.length}: ${attempt.lastName}, ${attempt.name}`);
+    const outcome = await pagePort.search({ kind: "by-name", lastName: attempt.lastName, givenName: attempt.name });
+    const total = outcome.kind === "grid" ? outcome.rows.length : outcome.kind === "detail" ? 1 : 0;
+    const sdcmp = outcome.kind === "grid" ? outcome.rows.filter(({ businessUnit }) => businessUnit === "SDCMP").length : total;
+    recordBrowserAction("read", "ucpath.person-org.search-results", JSON.stringify({ total, sdcmp }));
+    const observed = await candidatesFromOutcome(pagePort, outcome, attempt.lastName);
+    finalGrid = outcome.kind === "grid" ? { rows: outcome.rows, candidates: observed } : undefined;
+    const removed = input.keepNonHdh ? [] : observed.filter(({ hdh }) => !hdh);
+    results = input.keepNonHdh ? observed : observed.filter(({ hdh }) => hdh);
+    recordBrowserAction("read", "ucpath.person-org.department-filter", JSON.stringify(removed.map(({ emplId, name, department }) => ({ emplId, name, department }))));
+    if (observed.length > 0) break;
   }
-  return outputFor(input, results);
+
+  const output = outputFor(input, results);
+  if (finalGrid !== undefined) await verifySelectedGridDetail(pagePort, finalGrid.rows, finalGrid.candidates, output.selection.selected);
+  return output;
 }
 
 export function parsePersonOrgGridRows(
@@ -676,6 +696,14 @@ async function ensureEmploymentInstancesExpanded(
   );
 }
 
+async function readObservedText(page: Page, id: string): Promise<string> {
+  const locator = page.frameLocator(UCPATH_PENDING_READ_RECIPES.frame).locator(id);
+  await locator.waitFor({ state: "attached", timeout: OUTCOME_TIMEOUT_MS });
+  const text = await locator.textContent();
+  if (text === null) throw new Error("Person Org required field rendered without text");
+  return text.trim() === "Active" ? "" : text.trim();
+}
+
 async function extractDetail(page: Page): Promise<PersonOrgDetail> {
   const eid = EidSchema.parse(await readRequiredText(
     resolveUcpathElement(page, UCPATH_PERSON_ORG_EID_DISPLAY),
@@ -696,6 +724,9 @@ async function extractDetail(page: Page): Promise<PersonOrgDetail> {
     displayedName,
     cells: rows,
     employmentInstances,
+    startDate: await readObservedText(page, UCPATH_PENDING_READ_RECIPES.startDate),
+    terminationDate: await readObservedText(page, UCPATH_PENDING_READ_RECIPES.terminationDate),
+    terminationReason: await readObservedText(page, UCPATH_PENDING_READ_RECIPES.terminationReason),
   });
 }
 
@@ -825,6 +856,10 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
         timeout: OUTCOME_TIMEOUT_MS,
       });
       await ensureResultsExpanded(page);
+      const cellsByRow = await resolveUcpathElement(page, UCPATH_PERSON_ORG_RESULTS_GRID).locator("tr").evaluateAll((elements) => elements.map((row) =>
+        Array.from((row as HTMLTableRowElement).cells).map((cell) => cell.textContent?.trim() ?? "")
+      ));
+      return parsePersonOrgGridRows(cellsByRow);
     },
   };
 }

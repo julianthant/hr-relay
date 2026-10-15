@@ -95,6 +95,7 @@ import { deriveGraphCoveragePoints } from "./validation/scenario-coverage.js";
 import type { GraphCoveragePoint } from "./validation/scenario-coverage.js";
 import {
   assertContractBoundarySchema,
+  assertBooleanSelectionField,
   assertSchemaOffersPath,
   assertSchemaOwnsPath,
 } from "../models/validation/contract-boundary.js";
@@ -269,6 +270,7 @@ export interface AnyWorkflowDescriptor {
     /** The category's stable anchor: the step folder's name, and what a `chunk-harness.step` names. */
     key: string;
     label: string;
+    selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
     nodes: readonly Readonly<{ id: string; label: string }>[];
   }>[];
   /** DECLARED or DERIVED; the composition root's role audit is the reader. */
@@ -314,6 +316,7 @@ export interface WorkflowDescriptorSpec<
     key: string;
     label: string;
     nodes: readonly string[];
+    selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
     /** Present iff the step folder declared the step omittable. */
     omission?: StepOmissionDeclaration;
   }>[];
@@ -625,7 +628,7 @@ function deriveStepOmissions(
 function deriveTimeline(
   id: string,
   nodes: readonly RuntimeFlowNode[],
-  declared: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[] | undefined,
+  declared: readonly Readonly<{ key: string; label: string; selection?: Readonly<{ inputField: string; selectedWhen: boolean }>; nodes: readonly string[] }>[] | undefined,
 ): readonly TimelineCategoryProjection[] {
   if (declared === undefined) {
     // The per-node default's key is the NODE ID (the kebab anchor the nodes are already named by);
@@ -643,6 +646,7 @@ function deriveTimeline(
     return TimelineCategoryProjectionSchema.parse({
       key: parsed.key,
       label: parsed.label,
+      ...(parsed.selection === undefined ? {} : { selection: parsed.selection }),
       nodes: parsed.nodes.map((nodeId) => {
         const label = labelByNode.get(String(nodeId));
         if (label === undefined) {
@@ -1019,6 +1023,21 @@ export function defineWorkflowDescriptor<
   }
   // Which nodes an omitted step rebuilds (asserted) and which it leaves unread (omitted); derived
   // once so the terminal-dependency authentication and the retained declaration agree.
+  for (const step of spec.timeline ?? []) {
+    if (step.selection === undefined) continue;
+    const { inputField, selectedWhen } = step.selection;
+    assertSchemaOffersPath(spec.flow.input, inputField, `${id}: start step ${step.key} selection`);
+    const constant = spec.surfaces?.inputRun?.parser.constants?.find(constant => constant.field === inputField);
+    if (constant?.value.kind !== "boolean") throw new Error(`${id}: start step ${step.key} selection requires a boolean default`);
+    assertBooleanSelectionField(spec.flow.input, inputField, `${id}: start step ${step.key} ingress`);
+    assertBooleanSelectionField(spec.canonicalInput, inputField, `${id}: start step ${step.key} canonical`);
+    if (step.omission !== undefined) throw new Error(`${id}: start step ${step.key} has both selection and omission`);
+    for (const member of step.nodes) {
+      const node = nodes.find(node => node.id === member);
+      if (node?.kind === "task" && node.when?.of.from === "input" && String(node.when.of.path) === inputField
+        && (node.when.kind !== (selectedWhen ? "is-true" : "is-false"))) throw new Error(`${id}: start step ${step.key} selection contradicts its condition`);
+    }
+  }
   const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
   const rerunValues = spec.rerunValues === undefined ? undefined : validateRerunValueMappings({
     input: spec.flow.input, nodes, stepOmissions,
@@ -1049,7 +1068,7 @@ export function defineWorkflowDescriptor<
     result: spec.flow.result,
     nodes: spec.flow.nodes,
     scenarios: declaredScenarios,
-    timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, nodes: members }) => ({ key, label, nodes: members }))),
+    timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, selection, nodes: members }) => ({ key, label, ...(selection === undefined ? {} : { selection }), nodes: members }))),
     timelineDeclared: spec.timeline !== undefined,
     stepOmissions,
     ...(rerunValues === undefined ? {} : { rerunValues }),
@@ -1081,6 +1100,7 @@ export function defineWorkflowDescriptor<
   const branchTargets = new Set(nodes.flatMap((node) => node.kind === "branch"
     ? Object.values(node.cases).flat()
     : []));
+  const dependencySchemaHashes = new Map<NodeId, Fingerprint>();
   // Share dependency rules between full and preview results.
   const dependencySpecFor = (
     nodeIds: readonly NodeId[],
@@ -1088,9 +1108,11 @@ export function defineWorkflowDescriptor<
   ): WorkflowTerminalResultExecution["dependencies"] => Object.freeze(
     nodeIds.map((nodeId) => {
       const node = nodeByIdOrThrow(id, nodes, nodeId, purpose);
-      if (terminalEvidenceOf(node) === undefined) {
+      const evidenceBinding = terminalEvidenceOf(node);
+      if (evidenceBinding === undefined) {
         throw new Error(`${id}: ${purpose} dependency ${nodeId} owns no output schema`);
       }
+      dependencySchemaHashes.set(nodeId, deriveSchemaHash(evidenceBinding.checkpointSchema, "output"));
       const isBranchTarget = branchTargets.has(nodeId);
       const hasWhen = (node.kind === "task" || (node.kind === "gate" && node.resolvedBy === "operator")) && node.when !== undefined;
       if (isBranchTarget && hasWhen) {
@@ -1110,6 +1132,8 @@ export function defineWorkflowDescriptor<
     }),
   );
   const terminalDependencies = dependencySpecFor(terminalDependsOn, "terminal result");
+  const canonicalInputSchemaHash = deriveSchemaHash(spec.canonicalInput, "output");
+  const terminalResultSchemaHash = deriveSchemaHash(spec.flow.result.schema, "output");
   /** The RUN identity checks shared by `build` and `buildPreview`, so the two never diverge on what "this run may settle against this descriptor" means. */
   const assertTerminalRunBinding = (currentRun: WorkflowTerminalRun): z.output<typeof spec.canonicalInput> => {
     if (currentRun.lifecycle.state !== "running") {
@@ -1123,7 +1147,6 @@ export function defineWorkflowDescriptor<
       || currentRun.envelope.contractFingerprint !== descriptor.contractFingerprint) {
       throw new Error(`run ${currentRun.envelope.runId} is not bound to descriptor ${descriptor.id}`);
     }
-    const canonicalInputSchemaHash = deriveSchemaHash(spec.canonicalInput, "output");
     if (currentRun.input.parsed.schemaHash !== canonicalInputSchemaHash) {
       throw new Error(
         `run ${currentRun.envelope.runId} canonical input schema ${currentRun.input.parsed.schemaHash} `
@@ -1197,7 +1220,7 @@ export function defineWorkflowDescriptor<
           if (assertedBinding === undefined) {
             throw new Error(`${id}: ${purpose} dependency ${entry.nodeId} owns no output schema`);
           }
-          const assertedSchemaHash = deriveSchemaHash(assertedBinding.checkpointSchema, "output");
+          const assertedSchemaHash = dependencySchemaHashes.get(entry.nodeId);
           if (entry.output.schemaHash !== assertedSchemaHash) {
             throw new Error(
               `${purpose} dependency ${entry.nodeId} asserted output schema `
@@ -1210,7 +1233,7 @@ export function defineWorkflowDescriptor<
             nodeId: entry.nodeId,
             step: entry.step,
             assertedAt: entry.assertedAt,
-            outputSchemaHash: assertedSchemaHash,
+            outputSchemaHash: entry.output.schemaHash,
             outputDigest: deriveCheckpointOutputDigest(entry.output),
           };
         }
@@ -1270,7 +1293,7 @@ export function defineWorkflowDescriptor<
         if (binding === undefined) {
           throw new Error(`${id}: ${purpose} dependency ${entry.nodeId} owns no output schema`);
         }
-        const outputSchemaHash = deriveSchemaHash(binding.checkpointSchema, "output");
+        const outputSchemaHash = dependencySchemaHashes.get(entry.nodeId);
         if (checkpoint.output.schemaHash !== outputSchemaHash) {
           throw new Error(
             `${purpose} dependency ${entry.nodeId} checkpoint output schema `
@@ -1318,7 +1341,7 @@ export function defineWorkflowDescriptor<
 
   TERMINAL_RESULTS.set(descriptor, Object.freeze({
     schema: spec.flow.result.schema,
-    schemaHash: deriveSchemaHash(spec.flow.result.schema, "output"),
+    schemaHash: terminalResultSchemaHash,
     dependsOn: Object.freeze(terminalDependsOn),
     dependencies: terminalDependencies,
     parseResult: (candidate: unknown) => spec.flow.result.schema.parse(candidate),
@@ -1340,7 +1363,7 @@ export function defineWorkflowDescriptor<
       );
       const derived = spec.flow.result.derive(ExactTerminalScopeSchema.parse(scopeCandidate));
       const parsedResult = JsonValueSchema.parse(spec.flow.result.schema.parse(derived));
-      const schemaHash = deriveSchemaHash(spec.flow.result.schema, "output");
+      const schemaHash = terminalResultSchemaHash;
       const resultValue = { schemaHash, value: parsedResult,
         ...(retainedRunProtectedBindings(currentRun).length === 0 ? {} :
           { protectedBindings: retainedRunProtectedBindings(currentRun) }) };

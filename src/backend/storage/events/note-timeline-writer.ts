@@ -3,9 +3,10 @@ import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
-import { ClassifiedDiagnosticValueSchema, sanitizeDebugText } from "../../../rules/redaction/redaction.js";
+import { ClassifiedDiagnosticValueSchema, maskSsnText, sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../../models/events/types.js";
 import type { BrowserAction } from "../../systems/browser-shared/action-notes.js";
+import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import { DeclaredActionOccurrenceSchema } from "../../../rules/workflow/task-provenance.js";
 import { assertNoteWithinRunScope } from "../../../models/run/note-scope.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -82,6 +83,19 @@ function isLocalActionValueEligible(
   return sensitivity === "public" || sensitivity === "hr";
 }
 
+function maskNoteValue(value: JsonValue): JsonValue {
+  if (typeof value === "string") return maskSsnText(value);
+  if (Array.isArray(value)) return value.map(maskNoteValue);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, maskNoteValue(child)]));
+}
+
+function maskOccurrenceValue(action: ConfirmedActionEvent["action"]): ConfirmedActionEvent["action"] {
+  const value = action.value;
+  return value?.consumed.state === "observed" ? { ...action,
+    value: { ...value, consumed: { ...value.consumed, value: maskNoteValue(value.consumed.value) } } } : action;
+}
+
 function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): ConfirmedActionEvent {
   const event = ConfirmedActionEventSchema.parse(input);
   if (event.eventId !== `${event.workerStreamId}/${String(event.sequence)}`) throw new Error("confirmed-action-stream-identity-mismatch");
@@ -89,11 +103,11 @@ function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord):
     || event.action.definitionFingerprint !== authority.envelope.contractFingerprint
     || event.action.attempt > authority.envelope.attempt) throw new Error("confirmed-action-authority-mismatch");
   const safeAction = isLocalActionValueEligible(event.action, authority, event.source) ? event.action : { ...event.action, value: undefined };
-  if (event.kind === "trace") return ConfirmedActionEventSchema.parse({ ...event, action: safeAction });
+  if (event.kind === "trace") return ConfirmedActionEventSchema.parse({ ...event, action: maskOccurrenceValue(safeAction) });
   const verifier = event.proof.verifier;
   const safeVerifier = isLocalActionValueEligible(verifier, authority, event.source) ? verifier : { ...verifier, value: undefined };
-  return ConfirmedActionEventSchema.parse({ ...event, action: safeAction,
-    proof: { ...event.proof, verifier: safeVerifier } });
+  return ConfirmedActionEventSchema.parse({ ...event, action: maskOccurrenceValue(safeAction),
+    proof: { ...event.proof, verifier: maskOccurrenceValue(safeVerifier) } });
 }
 
 const RunNoteAddressSchema = z.strictObject({
@@ -192,8 +206,8 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
       message: sanitizeDebugText(ingress.message),
       ...(confirmedAction === undefined ? {} : { confirmedAction }),
       ...(action === undefined ? {} : { action: { kind: action.kind, targetId: action.targetId,
-        ...(action.value === undefined ? {} : { value: action.value }),
-        ...(action.operation === undefined ? {} : { operation: action.operation }) } }),
+        ...(action.value === undefined ? {} : { value: typeof action.value === "string" && action.kind !== "screenshot" ? maskSsnText(action.value) : action.value }),
+        ...(action.operation === undefined ? {} : { operation: maskOccurrenceValue(action.operation) }) } }),
       ...(fields.length === 0 ? {} : { fields }),
     });
     if (Buffer.byteLength(JSON.stringify(note), "utf8") > 256 * 1024) {
@@ -226,7 +240,7 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
   }, authority, undefined, undefined, input.fields);
   const emitRunAction: NoteTimelineWriter["emitRunAction"] = (input, authority) => {
     const action = z.strictObject({
-      kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session"]),
+      kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session", "screenshot"]),
       targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
       at: z.iso.datetime({ offset: true }),
       value: z.union([z.string(), z.boolean()]).optional(),
@@ -258,8 +272,11 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
       eligible = observed && admitted;
     }
     const { value: rawValue, ...withoutRawValue } = action;
+    const screenshotAssociation = action.kind === "screenshot"
+      ? z.templateLiteral([z.uuid(), ":", z.uuid()]).parse(rawValue) : undefined;
     const durableAction: BrowserAction = {
       ...withoutRawValue,
+      ...(screenshotAssociation === undefined ? {} : { value: screenshotAssociation }),
       ...(eligible && rawValue !== undefined && occurrence?.value?.consumed.state === "observed"
         && rawValue === occurrence.value.consumed.value ? { value: rawValue } : {}),
       ...(observed && !eligible && occurrence.value !== undefined ? { operation: {

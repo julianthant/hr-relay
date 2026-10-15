@@ -4,7 +4,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import type { DeclaredActionOccurrence } from "../../../rules/workflow/task-provenance.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 
-export type BrowserActionKind = "opened" | "clicked" | "typed" | "selected" | "checked" | "set" | "cleared" | "pressed" | "read" | "computed" | "verified" | "branched" | "joined" | "gated" | "delegated" | "session";
+export type BrowserActionKind = "opened" | "clicked" | "typed" | "selected" | "checked" | "set" | "cleared" | "pressed" | "read" | "computed" | "verified" | "branched" | "joined" | "gated" | "delegated" | "session" | "screenshot";
 export interface BrowserAction {
   readonly kind: BrowserActionKind;
   readonly declaredActionId?: string;
@@ -58,6 +58,11 @@ export function recordBrowserAction(kind: BrowserActionKind, targetId: string, v
   const bound = capture.bind === undefined ? action : capture.bind(action);
   capture.actions.push(bound);
   capture.onBoundAction?.(bound);
+}
+
+/** Authentication remains in Sessions while the enclosing task owns its action scope. */
+export async function withoutBrowserActionNotes<T>(operation: () => Promise<T>): Promise<T> {
+  return await scope.exit(operation);
 }
 
 /** Attach the current manager lease identity without opening a second telemetry scope. */

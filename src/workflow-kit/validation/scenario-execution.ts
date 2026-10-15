@@ -15,7 +15,7 @@ export const DASHBOARD_SCENARIO_FILE_PATTERN =
 
 export const ExecutableScenarioSpecSchema = z.strictObject({
   scenarioId: ScenarioIdSchema,
-  file: z.string().regex(GRAPH_SCENARIO_FILE_PATTERN),
+  file: z.union([z.string().regex(GRAPH_SCENARIO_FILE_PATTERN), z.literal("tests/workflows/person-lookup/workflow.scenarios.integration.test.ts")]),
 });
 
 /** Production scenario ids are registered here; contracts and descriptors may reference only these, and a lane separately proves each row is a real `it(...)` in its file. */
@@ -37,6 +37,33 @@ const SEPARATIONS_FILE = workflowStructuralScenarioPath("separations", defineWor
 const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defineWorkflowRole({ kind: "standalone" }));
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
+  { scenarioId: "person-lookup/s1", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s2", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s3", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s4", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s5", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s6", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s7", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s8", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s9", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s10", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s11", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s12", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s13", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s14", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s15", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/s16", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/m1b", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/m1", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/m2", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/m3", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/m4", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/m5", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/f1", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/f2", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/f3", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/f4", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
+  { scenarioId: "person-lookup/f5", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
   { scenarioId: "person-lookup/happy-by-eid", file: PERSON_LOOKUP_FILE },
   { scenarioId: "person-lookup/happy-by-eid-with-dates", file: PERSON_LOOKUP_FILE },
   { scenarioId: "person-lookup/ambiguous-name", file: PERSON_LOOKUP_FILE },
@@ -303,7 +330,7 @@ export function auditScenarioCorpusLayout(
   }
 
   for (const { file, itTitles } of files) {
-    const isGraphScenario = GRAPH_SCENARIO_FILE_PATTERN.test(file);
+    const isGraphScenario = GRAPH_SCENARIO_FILE_PATTERN.test(file) || file === "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts";
     const isWalk = INTEGRATION_WALK_FILE_PATTERN.test(file);
     const isDashboardScenario = DASHBOARD_SCENARIO_FILE_PATTERN.test(file);
     if (!isGraphScenario && !isWalk && !isDashboardScenario) {

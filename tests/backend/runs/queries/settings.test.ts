@@ -154,7 +154,7 @@ describe("settings facts — workflow capabilities", () => {
     const editData = new Map(
       facts().workflowCapabilities.map(({ workflowId, editData: posture }) => [String(workflowId), posture]),
     );
-    assert.deepEqual(editData.get("person-lookup"), { state: "declared", editableFields: 3 });
+    assert.deepEqual(editData.get("person-lookup"), { state: "declared", editableFields: 2 });
     assert.deepEqual(editData.get("separations"), { state: "read-only" });
     // `editData: true` is a DECLARATION that keeps the Data section visible with
     // no correctable path — not the same statement as never declaring one.

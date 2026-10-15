@@ -5,8 +5,8 @@ import { taskStoreRegistry } from "../../src/backend/app/registries/task-registr
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/backend/runtime/execution/run-executor.js";
 import { crmDriver } from "../../src/backend/systems/crm/driver-declaration.js";
 import { crmSession } from "../../src/backend/systems/crm/session-provider.js";
-import { readOnboardingDatesTask } from "../../src/backend/systems/crm/tasks/read-onboarding-dates.js";
-import { CrmReadOnboardingRecord } from "../../src/models/systems/crm/read-onboarding-record.js";
+import { crmStore } from "../../src/backend/systems/crm/task-registry.js";
+import { CrmSearchOnboardingRecords } from "../../src/models/systems/crm/search-onboarding-records.js";
 import { defineBrowserStore, defineTaskStoreRegistry } from "../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../src/workflow-kit/task.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../../src/workflow-kit/validation/scenario-execution.js";
@@ -33,16 +33,16 @@ describe("failure, retry, and resume", () => {
 
   it("fails a task whose provenance does not cover its output, before any checkpoint", async () => {
 
-    const brokenCrossVerify = defineTask(crmDriver, CrmReadOnboardingRecord, {
+    const brokenCrossVerify = defineTask(crmDriver, CrmSearchOnboardingRecords, {
       sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
       async run({ input, ctx }) {
-        const read = await ctx.driver.readOnboardingRecord(input);
-        return read.output;
+        const records = await ctx.driver.searchOnboardingRecords(input);
+        return { state: "checked" as const, records };
       },
     });
     const crmTasks = {
-      readOnboardingRecord: brokenCrossVerify,
-      readOnboardingDates: readOnboardingDatesTask,
+      ...crmStore.tasks,
+      searchOnboardingRecords: brokenCrossVerify,
     };
     const brokenCrmStore = defineBrowserStore("crm", crmDriver, crmSession, crmTasks);
     const stores: (typeof taskStoreRegistry.stores)[number][] = taskStoreRegistry.stores.map((store) =>

@@ -1,3 +1,4 @@
+import { WorkflowBootstrapPrimitiveSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { separationsDescriptor } from "../../registered-workflows.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
@@ -20,6 +21,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
 FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 }) {
   const START_PICKER_MODULES = WORKFLOW_MODULES;
+  const mockLookupStart = WorkflowBootstrapPrimitiveSchema.parse(FIXTURE_BOOTSTRAP.workflows[0]).start;
 
   const FIXTURE_START_PICKER_DESCRIPTOR_HASH = descriptorSetHash(
     START_PICKER_MODULES.map(({ descriptor }) => descriptor.contractFingerprint),
@@ -39,11 +41,11 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
       start: {
         ...(module.descriptor.summary === undefined ? {} : { summary: module.descriptor.summary }),
         enqueue: module.descriptor.enqueue,
-        version: module.descriptor.version,
-        steps: projectFixtureSteps(module),
-        ...(module.descriptor.surfaces.inputRun === undefined
-          ? {}
-          : { inputRun: module.descriptor.surfaces.inputRun }),
+        version: module.descriptor.id === "person-lookup" ? 1 : module.descriptor.version,
+        steps: module.descriptor.id === "person-lookup" ? mockLookupStart.steps : projectFixtureSteps(module),
+        ...(module.descriptor.id === "person-lookup"
+          ? { inputRun: mockLookupStart.inputRun, summary: mockLookupStart.summary }
+          : module.descriptor.surfaces.inputRun === undefined ? {} : { inputRun: module.descriptor.surfaces.inputRun }),
 
         spreadsheetIntake: "intake" in module && module.intake !== undefined,
       },

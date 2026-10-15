@@ -40,6 +40,7 @@ function queuedRun(options: Readonly<{ runId?: string; attempt?: number }> = {})
   envelope.workflow = String(descriptor.id);
   envelope.traceId = `${descriptor.code}-170000-3333`;
   envelope.contractFingerprint = descriptor.contractFingerprint;
+    envelope.descriptorVersion = descriptor.version;
   const input = run.input as { parsed: Record<string, unknown> };
   input.parsed.schemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
   return run;

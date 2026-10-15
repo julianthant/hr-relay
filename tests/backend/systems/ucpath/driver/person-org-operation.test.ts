@@ -1,3 +1,5 @@
+import { withBrowserActionNotes, recordBrowserAction } from "../../../../../src/backend/systems/browser-shared/action-notes.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import type {
@@ -53,6 +55,7 @@ function detail(
     displayedName,
     cells: [[...assignmentDetailsToCells(assignment(overrides))]],
     employmentInstances: "already-complete",
+    startDate: "", terminationDate: "", terminationReason: "",
   };
 }
 
@@ -65,6 +68,7 @@ function pageHarness(input: Readonly<{
 }> {
   const outcomes = [...input.outcomes];
   const calls: string[] = [];
+  let rows: readonly import("../../../../../src/backend/systems/ucpath/driver/person-org-operation.js").PersonOrgResultGridRow[] = [];
   return {
     calls,
     port: {
@@ -74,6 +78,7 @@ function pageHarness(input: Readonly<{
           : `name:${query.lastName},${query.givenName}`);
         const outcome = outcomes.shift();
         if (outcome === undefined) throw new Error("fixture has no queued Person Org outcome");
+        if (outcome.kind === "grid") rows = outcome.rows;
         return outcome;
       },
       async drill(rowIndex) {
@@ -84,6 +89,7 @@ function pageHarness(input: Readonly<{
       },
       async returnToResults() {
         calls.push("return");
+        return rows;
       },
     },
   };
@@ -310,7 +316,32 @@ describe("strict UCPath Person Org operation", () => {
     });
     assert.equal(output.selection.status, "ambiguous");
     assert.deepEqual(output.selection.candidateEids, [EID_A, EID_B]);
-    assert.deepEqual(harness.calls, ["name:Smith,John", "drill:0", "return", "drill:1"]);
+    assert.deepEqual(harness.calls, ["name:Smith,John", "drill:0", "return", "drill:1", "return"]);
+  });
+
+  it("restores the verified grid and reopens only the selected person before capture", async () => {
+    const rows = parsePersonOrgGridRows([
+      [EID_A, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith"],
+      [EID_B, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "Jane Smith"],
+    ]);
+    for (const departments of [["HOUSING/DINING/HOSPITALITY", "CHEMISTRY"], ["CHEMISTRY", "CHEMISTRY"], ["HOUSING/DINING/HOSPITALITY", "HOUSING/DINING/HOSPITALITY"]]) {
+      let surface = "results";
+      const actions: string[] = [];
+      const port: PersonOrgPagePort = {
+        search: async () => { surface = "results"; return { kind: "grid", rows }; },
+        drill: async index => { surface = `detail:${index}`; recordBrowserAction("clicked", "fixture.drill");
+          return detail(index === 0 ? EID_A : EID_B, index === 0 ? "John Smith" : "Jane Smith", { department: departments[index] }); },
+        returnToResults: async () => { surface = "results"; return rows; },
+      };
+      const output = await withBrowserActionNotes(manualClock(new Date("2026-10-12T00:00:00Z")), () => searchPersonOrgWithPagePort(port, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), notes => { actions.push(...notes.map(note => note.targetId)); });
+      assert.equal(surface, output.selection.selected === null ? "results" : "detail:0");
+      assert.equal(output.selection.status, departments[0] === "CHEMISTRY" ? "not-found" : departments[1] === "CHEMISTRY" ? "resolved" : "ambiguous");
+      assert.ok(actions.indexOf("ucpath.person-org.search-results") < actions.indexOf("fixture.drill"));
+    }
+    const base: PersonOrgPagePort = { search: async () => ({ kind: "grid", rows }), drill: async index => detail(index === 0 ? EID_A : EID_B, index === 0 ? "John Smith" : "Jane Smith", { department: index === 0 ? "HOUSING/DINING/HOSPITALITY" : "CHEMISTRY" }), returnToResults: async () => rows };
+    await assert.rejects(searchPersonOrgWithPagePort({ ...base, returnToResults: async () => [rows[0]] }, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), /results changed/);
+    let drills = 0;
+    await assert.rejects(searchPersonOrgWithPagePort({ ...base, drill: async index => { drills++; return { ...await base.drill(index), startDate: drills === 3 ? "10/01/2026" : "" }; } }, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), /selected detail changed/);
   });
 
   it("keeps the reviewed non-HDH option explicit", async () => {

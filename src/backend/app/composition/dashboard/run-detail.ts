@@ -26,6 +26,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
       getRun: (runId) => database.authority.runs.get(runId),
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
+      listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
       // Ref write-safety: read straight off write-safety authority, per request.
       getWriteIntent: (writeIntentId) => database.authority.writeIntents.get(writeIntentId),
 

@@ -1,14 +1,16 @@
+import { registryWithCrmSearch } from "../support/helpers/backend/run-executor-world.js";
+import { crmDriver } from "../../src/backend/systems/crm/driver-declaration.js";
+import { defineTask } from "../../src/workflow-kit/task.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 import { executeClaimedRun, type RunExecutorDependencies, type WriteSequencerContext } from "../../src/backend/runtime/execution/run-executor.js";
 import { withBoundRunConfigFingerprint } from "../../src/backend/runtime/workers/worker-sessions.js";
 import { createWriteSequencer } from "../../src/backend/runtime/writes/write-sequencer.js";
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
-import { CrmReadOnboardingRecord } from "../../src/models/systems/crm/read-onboarding-record.js";
+import { CrmSearchOnboardingRecords } from "../../src/models/systems/crm/search-onboarding-records.js";
 import { manualClock } from "../../src/rules/time/clock.js";
 import { TaskError } from "../../src/workflow-kit/errors.js";
 import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.js";
@@ -56,9 +58,9 @@ describe("failure, retry, and resume", () => {
       ucpath: () => healthyUcpathDriver(),
       crm: () => Object.freeze({
         system: "crm" as const,
-        readOnboardingRecord: () => Promise.reject(new TaskError(
-          CrmReadOnboardingRecord.id,
-          "crm-unavailable",
+        searchOnboardingRecords: () => Promise.reject(new TaskError(
+          CrmSearchOnboardingRecords.id,
+          "person-lookup-crm-check-failed",
           "CRM returned an unexpected page",
         )),
         readOnboardingDates: () => Promise.reject(new Error("unused")),
@@ -70,7 +72,14 @@ describe("failure, retry, and resume", () => {
     const deps: RunExecutorDependencies = {
       lifecycle: testRunLifecycle(database, clock),
       descriptor: personLookupDescriptor,
-      stores: taskStoreRegistry,
+      stores: registryWithCrmSearch(defineTask(crmDriver, CrmSearchOnboardingRecords, {
+        sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
+        async run({ input, ctx }) {
+          const output = { state: "checked" as const, records: await ctx.driver.searchOnboardingRecords(input) };
+          ctx.recordData(Object.entries(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
+          return output;
+        },
+      })),
       authority: database,
       sessions: sessionManagerFor(mismatched, clock),
       emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
@@ -99,8 +108,8 @@ describe("failure, retry, and resume", () => {
     const failure = database.authority.failures.get(failureId);
     assert.ok(failure);
     assert.equal(failure.nodeId, "cross-verify");
-    assert.equal(failure.taskId, "crm/read-onboarding-record");
-    assert.equal(failure.code, "CRM_UNAVAILABLE");
+    assert.equal(failure.taskId, "crm/search-onboarding-records");
+    assert.equal(failure.code, "PERSON_LOOKUP_CRM_CHECK_FAILED");
     const authorization = database.authority.runs.get(RUN_ID)?.completion;
     assert.ok(authorization && authorization.kind === "failed");
     assert.equal(run.version, authorization.expectedVersion + 1);

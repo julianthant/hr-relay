@@ -220,7 +220,8 @@ describe("descriptor coverage", () => {
     assert.match(unknownStep.join("\n"), new RegExp(declaredKeys[0] ?? "unreachable"));
 
 
-    const standalone = WORKFLOW_MODULES.find((module) => module.role.kind === "standalone");
+    const originalStandalone = WORKFLOW_MODULES.find((module) => module.role.kind === "standalone");
+    const standalone = originalStandalone === undefined ? undefined : { ...originalStandalone, descriptor: { ...originalStandalone.descriptor, timelineDeclared: false } };
     if (standalone === undefined) throw new Error("the role fixtures require one standalone workflow");
     const derivedKey = standalone.descriptor.timeline[0]?.key;
     const standaloneNodeIds = standalone.descriptor.nodes.map((node) => String(node.id));
@@ -476,7 +477,7 @@ describe("descriptor coverage", () => {
       stores: module.stores.filter(({ namespace }) => namespace !== "crm"),
     }]);
     assert.match(missing.join("\n"), /missing store crm/);
-    assert.match(missing.join("\n"), /cannot resolve its exact contract crm\/read-onboarding-record/);
+    assert.match(missing.join("\n"), /cannot resolve its exact contract crm\/search-onboarding-records/);
     const extraStore = taskStoreRegistry.stores.find(({ namespace }) => namespace === "onbase");
     if (extraStore === undefined) throw new Error("module fixture requires OnBase store");
     const extra = auditWorkflowModuleBindings([{

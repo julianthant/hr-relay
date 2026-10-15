@@ -59,7 +59,7 @@ function scalarAtPath(output: JsonValue, fieldPath: string): ScalarLookup {
     : { kind: "not-scalar" };
 }
 
-function displayScalar(value: string | number | boolean): string {
+export function displayScalar(value: string | number | boolean): string {
   const text = String(value);
   return text.length === 0 ? "(empty)" : text;
 }

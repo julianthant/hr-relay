@@ -22,6 +22,7 @@ export function createBrowserSessionFactoryFixtures(
     on: () => void;
     off: () => void;
     locator: () => { count: () => Promise<number> };
+    frames: () => readonly { locator: (selector: string) => { selector: string } }[];
     closed: boolean;
     gotoUrls: string[];
     url: () => string;
@@ -37,6 +38,7 @@ export function createBrowserSessionFactoryFixtures(
       on: () => undefined,
       off: () => undefined,
       locator: () => ({ count: async () => 0 }),
+      frames: () => [{ locator: (selector: string) => ({ selector }) }],
       closed: false,
       gotoUrls: [],
       url: () => current,

@@ -25,5 +25,5 @@ type UcpathNavigationDriver = SystemDriver<
 
 export type UcpathStoreDriver =
   & UcpathNavigationDriver
-  & Pick<UcpathPersonOrgDriver, "searchPersonOrg" | "readJobSummary">
+  & Pick<UcpathPersonOrgDriver, "searchPersonOrg" | "searchPersonMatch" | "readJobSummary">
   & UcpathSmartHrTerminationDriver;

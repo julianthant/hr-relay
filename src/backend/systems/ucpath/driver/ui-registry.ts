@@ -1418,3 +1418,20 @@ export function auditUcpathUiEvidenceBindings(input: unknown): readonly string[]
   }
   return issues;
 }
+
+
+export const UCPATH_PENDING_READ_RECIPES = Object.freeze(z.strictObject({
+  status: z.literal("pending-live-verification"),
+  frame: z.string(), searchType: z.string(), parameter: z.string(), load: z.string(),
+  resultCode: z.string(), ssn: z.string(), firstName: z.string(), lastName: z.string(), dob: z.string(),
+  prompt: z.string(), search: z.string(), results: z.string(), dialog: z.string(), dialogMessage: z.string(), nextResult: z.string(), mask: z.string(),
+  startDate: z.string(), terminationDate: z.string(), terminationReason: z.string(),
+}).parse({
+  status: "pending-live-verification", frame: "#main_target_win0",
+  searchType: "#HCR_SM_PARM_VW_SM_TYPE", parameter: "#HCR_SM_PARM_VW_SM_PARM_CD", load: "#PTS_CFG_CL_WRK_PTS_SRCH_BTN",
+  resultCode: '[id="DERIVED_HCR_SM_SM_RSLT_CD"]', ssn: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]',
+  firstName: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$1"]', lastName: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$2"]', dob: '[id="DERIVED_HCR_SM_SM_DATE_INPUT$3"]',
+  prompt: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$prompt$0"]', search: "#DERIVED_HCR_SM_SM_SEARCH_BTN",
+  results: 'table[id^="l0PERSON$"] span[id^="EMPLID$"]', dialog: '[id="#ICOK"]', dialogMessage: "[id^=ptModContainer], [id^=ptMod], [role=dialog], .ps-modal", nextResult: 'a[id*="hnext"], a[id*="PSNEXT"]', mask: "#pt_modalMask, .ps_modalmask",
+  startDate: '[id="PER_INST_EMP_VW_LAST_HIRE_DT$0"]', terminationDate: '[id="PER_INST_EMP_VW_TERMINATION_DT$0"]', terminationReason: '[id="PER_INST_EMP_VW_DESCR$0"]',
+}));

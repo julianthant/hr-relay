@@ -54,7 +54,8 @@ function actionKindsFor(kind: BrowserActionKind): readonly SnapshotTaskAction["k
     case "opened": return ["open-page", "resume-page"];
     // Clearing is a supporting gesture of a declared field fill, not a second
     // logical operation. A complete declaration never needs a fake clear node.
-    case "cleared": return [];
+    case "cleared":
+    case "screenshot": return [];
     case "read": return ["read-field"];
     case "computed": return ["compute"];
     case "verified": return ["verify"];

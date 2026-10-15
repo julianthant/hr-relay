@@ -142,7 +142,8 @@ it("publishes declared subject names, authentic recorded actors and typed failur
       actorId: "synthetic-operator", title: "Ingress must not be indexed", descriptorVersion: e.descriptorVersion,
       contractFingerprint: e.contractFingerprint, resolvedInstance: e.resolvedInstance, configFingerprint: e.configFingerprint, configSnapshotId: e.configSnapshotId,
     });
-    const selected = { emplId: "10000000", name: "Synthetic Resolved Subject 10800001", department: "Synthetic Department", jobTitle: "Synthetic Role", employeeStatus: "active", hdh: true };
+    const selected = { emplId: "10000000", name: "Synthetic Resolved Subject 10800001", department: "Synthetic Department", jobTitle: "Synthetic Role", employeeStatus: "active", hrStatus: 'Active', startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "",
+hdh: true };
     const value = SearchPersonOrgOutputSchema.parse({ results: [selected], selection: { status: "resolved", selected, candidateEids: [selected.emplId] } });
     f.db.authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({ workflowId: e.workflow, itemId: e.itemId, runId: e.runId,
       nodeId: "searching", attempt: e.attempt, claimGeneration: f.run.claimGeneration,

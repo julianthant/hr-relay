@@ -96,6 +96,7 @@ export function personLookupQueuedRun(options: Readonly<{
   attempt?: number;
 }> = {}): Record<string, unknown> {
   const parsedValue = {
+    mode: "search", crmCheck: true,
     emplId: EXECUTOR_EID,
     keepNonHdh: false,
     includeCrmDates: options.includeCrmDates ?? false,
@@ -110,6 +111,7 @@ export function personLookupQueuedRun(options: Readonly<{
       ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       ...(options.attempt === undefined ? {} : { attempt: options.attempt }),
       contractFingerprint: personLookupDescriptor.contractFingerprint,
+      descriptorVersion: personLookupDescriptor.version,
     },
     input: {
       ...QUEUED_RUN.input,
@@ -303,6 +305,7 @@ export function sessionFactoryHarness(
 /** The happy-path CRM driver whose record matches the fixture EID. */
 export function healthyCrmDriver() {
   return createDeterministicCrmOnboardingDriver({
+    discovery: [{ recordId: "ONB-40213", recordUrl: "https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=ONB-40213", emplId: EXECUTOR_EID, name: "Deterministic, Person", department: "Housing Dining Hospitality", firstDayOfService: "07/15/2026", dateSigned: "07/01/2026" }],
     record: ReadOnboardingRecordOutputSchema.parse({
       state: "found",
       record: {
@@ -314,9 +317,7 @@ export function healthyCrmDriver() {
     }),
     dates: ReadOnboardingDatesOutputSchema.parse({
       emplId: EXECUTOR_EID,
-      invitedOn: { state: "present", value: "2026-06-01" },
-      startsOn: { state: "present", value: "2026-07-15" },
-      completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
+      state: "read", employmentDate: "2026-07-15", oathDate: "2026-07-01", reason: "",
     }),
   });
 }

@@ -1,4 +1,5 @@
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../support/helpers/run-integration-world.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -113,11 +114,7 @@ const ARTIFACT_OUTBOX = {
   payload: SCHEMA_BOUND_VALUE,
   createdAt: NOW,
 };
-const ACTIVE_STATUS = {
-  state: "active" as const,
-  reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-  hdh: true,
-};
+const ACTIVE_STATUS = PERSON_LOOKUP_ACTIVE;
 
 function runningTerminalFixture(
   database: AuthorityDatabase,
@@ -153,7 +150,7 @@ function runningTerminalFixture(
       parsed: {
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
         protectedBindings: [],
-        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+        value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
       },
     },
   });
@@ -267,7 +264,12 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
     writtenAt: NOW,
   });
   database.authority.runCheckpoints.insert(checkpoint);
+  const identityEvidence = personLookupTerminalIdentityEvidence(done.run);
+  for (const entry of identityEvidence) {
+    if (entry.state === "resolved") database.authority.runCheckpoints.insert(entry.checkpoint);
+  }
   const built = buildRunResult(personLookupDescriptor, done.run, [
+    ...identityEvidence,
     { state: "resolved", nodeId: "active-status", checkpoint },
     { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
   ], CLOCK);

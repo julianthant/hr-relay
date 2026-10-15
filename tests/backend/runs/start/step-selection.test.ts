@@ -1,3 +1,11 @@
+import { z } from "zod";
+import { flow } from "../../../../src/workflow-kit/flow.js";
+import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { EidSchema } from "../../../../src/rules/identity/ids.js";
+import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
+import { FixtureReadReceipt } from "../../../support/fixtures/descriptor-fixtures.js";
+import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
@@ -22,7 +30,7 @@ describe("start step selection", () => {
       })),
       [
         { key: "searching", includedByDefault: true, state: "required" },
-        { key: "cross-verify", includedByDefault: true, state: "required" },
+        { key: "cross-verify", includedByDefault: true, state: "selectable" },
         { key: "active-status", includedByDefault: true, state: "required" },
         { key: "crm-dates", includedByDefault: false, state: "selectable" },
       ],
@@ -35,7 +43,7 @@ describe("start step selection", () => {
       applyStartStepSelection(personLookupDescriptor, {
         emplId: "10873698", keepNonHdh: false, includeCrmDates: false,
       }, selected),
-      { emplId: "10873698", keepNonHdh: false, includeCrmDates: true },
+      { emplId: "10873698", keepNonHdh: false, includeCrmDates: true, crmCheck: true },
     );
   });
 
@@ -258,5 +266,54 @@ describe("resolveStartStepOmissions", () => {
       ),
       [{ step: "reading", facts: READING_FACTS }, { step: "folding", facts: { folded: "typed" } }],
     );
+  });
+});
+
+function authoredSelection(options: Readonly<{
+  inputField?: string; nonBoolean?: boolean; missingDefault?: boolean; booleanSample?: boolean;
+  contradictory?: boolean; omission?: boolean;
+}> = {}) {
+  const enabled = options.nonBoolean ? z.union([z.boolean(), z.string()]) : z.boolean();
+  const input = z.strictObject({ eid: EidSchema, enabled: enabled.default(true) });
+  const canonical = defineCanonicalInput(input, z.strictObject({ eid: EidSchema, enabled }),
+    [{ eid: "10873698", enabled: options.nonBoolean && !options.booleanSample ? "yes" : true }]);
+  return defineWorkflowDescriptor({
+    id: "authored-start-selection", version: 1, contractFingerprint: HASH_A,
+    code: "ass", label: "Authored selection", icon: "Search", category: "operations",
+    canonicalInput: canonical, inputSubject: "eid", surface: { shape: "single" },
+    enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: { inputRun: { placeholder: "Employee ID", parser: {
+      split: { kind: "delimited", delimiters: [";"] },
+      rules: [{ when: { kind: "otherwise" }, emit: "eid" }],
+      constants: options.missingDefault ? [] : [{ field: "enabled", value: { kind: "boolean", value: true } }],
+    }, examples: [{ key: "one", label: "One", text: "10873698", note: "One person" }] } },
+    details: [], identity: { matchKey: value => value.eid },
+    presentation: { title: value => value.eid }, scenarios: ["ucpath/person-org-happy"],
+    timeline: [{ key: "reading", label: "Read", nodes: ["read"],
+      selection: { inputField: options.inputField ?? "enabled", selectedWhen: true },
+      ...(options.omission ? { omission: { form: READING_FORM, produces: {} } } : {}),
+    }],
+    flow: flow(input).step("read", FixtureReadReceipt, { dependsOn: [], replay: "checkpoint",
+      when: { kind: options.contradictory ? "is-false" : "is-true", of: { from: "input", path: "enabled" } },
+      bind: ({ input: value }) => ({ eid: value.eid }),
+    }).build({ schema: z.strictObject({ eid: EidSchema }), dependsOn: [],
+      derive: ({ input: value }) => ({ eid: value.eid }),
+    }),
+  });
+}
+
+describe("authored start selection admission", () => {
+  it("retains the two real PL controls and refuses invalid declarations", () => {
+    assert.deepEqual(projectStartSteps(personLookupDescriptor).flatMap(step =>
+      step.control.state === "selectable" ? [step.control.inputField] : []), ["crmCheck", "includeCrmDates"]);
+    assert.equal(projectStartSteps(authoredSelection())[0].control.state, "selectable");
+    for (const [options, reason] of [
+      [{ inputField: "unknown" }, /selection/],
+      [{ nonBoolean: true }, /field must be boolean/],
+      [{ nonBoolean: true, booleanSample: true }, /field must be boolean/],
+      [{ missingDefault: true }, /requires a boolean default/],
+      [{ contradictory: true }, /contradicts its condition/],
+      [{ omission: true }, /both selection and omission/],
+    ] as const) assert.throws(() => authoredSelection(options), reason);
   });
 });

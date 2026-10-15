@@ -1,3 +1,4 @@
+import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../run-integration-world.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
@@ -105,11 +106,7 @@ export function createAuthorityAccountingTestWorld() {
     },
   };
 
-  const ACTIVE_STATUS = {
-    state: "active" as const,
-    reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
-    hdh: true,
-  };
+  const ACTIVE_STATUS = PERSON_LOOKUP_ACTIVE;
 
   const FAILURE_RECORD = {
     failureId: UUID_6,
@@ -241,12 +238,13 @@ export function createAuthorityAccountingTestWorld() {
       envelope: {
         ...QUEUED_RUN.envelope,
         contractFingerprint: personLookupDescriptor.contractFingerprint,
+        descriptorVersion: personLookupDescriptor.version,
       },
       input: {
         ...QUEUED_RUN.input,
         parsed: {
           schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-          value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+          value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
           protectedBindings: [],
         },
       },
@@ -330,7 +328,12 @@ export function createAuthorityAccountingTestWorld() {
     ) === undefined) {
       database.authority.runCheckpoints.insert(checkpoint);
     }
+    const identityEvidence = personLookupTerminalIdentityEvidence(run);
+    for (const entry of identityEvidence) {
+      if (entry.state === "resolved") database.authority.runCheckpoints.insert(entry.checkpoint);
+    }
     const built = buildRunResult(personLookupDescriptor, run, [
+      ...identityEvidence,
       { state: "resolved", nodeId: "active-status", checkpoint },
       { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
     ], CLOCK);

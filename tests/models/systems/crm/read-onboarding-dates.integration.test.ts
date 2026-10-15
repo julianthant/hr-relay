@@ -19,9 +19,7 @@ describe("atomic success terminal authority", () => {
     const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     const crmDates = ReadOnboardingDatesOutputSchema.parse({
       emplId: "10873698",
-      invitedOn: { state: "present", value: "2026-06-01" },
-      startsOn: { state: "present", value: "2026-07-15" },
-      completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
+      state: "read", employmentDate: "2026-07-15", oathDate: null, reason: "",
     });
     database.authority.runCheckpoints.insert({
       workflowId: running.envelope.workflow,

@@ -1,3 +1,4 @@
+import type { CrmDiscoveredRecord } from "../../../../models/systems/crm/search-onboarding-records.js";
 import {
   ReadOnboardingDatesOutputSchema,
   type ReadOnboardingDatesOutput,
@@ -15,6 +16,7 @@ import type { CrmOnboardingDriver } from "../../../../models/ui/crm-onboarding.j
 
 export function createDeterministicCrmOnboardingDriver(input: Readonly<{
   record: ReadOnboardingRecordOutput;
+  discovery?: readonly CrmDiscoveredRecord[];
   dates: ReadOnboardingDatesOutput;
   recordObservedEid?: string;
   datesObservedEid?: string;
@@ -30,6 +32,11 @@ export function createDeterministicCrmOnboardingDriver(input: Readonly<{
     : EidSchema.parse(input.datesObservedEid);
   const driver: CrmOnboardingDriver = {
     system: "crm" as const,
+    async searchOnboardingRecords() {
+      if (input.discovery !== undefined) return [...input.discovery];
+      throw new Error("CRM fixture requires explicit discovery records");
+    },
+    async verifyOnboardingRecord(request) { return request; },
     async readOnboardingRecord(request) {
       return {
         binding: CrmSubjectBindingSchema.parse(record.state === "found"
@@ -48,6 +55,7 @@ export function createDeterministicCrmOnboardingDriver(input: Readonly<{
       };
     },
     async readOnboardingDates(request) {
+      if (request.name === undefined) return { binding: { state: "not-read", expectedEid: request.eid }, output: { emplId: request.eid, state: "no-confident-record", employmentDate: null, oathDate: null, reason: "No confident CRM record" } };
       return {
         binding: CrmSubjectBindingSchema.parse(input.datesBindingState === "absent-query"
           ? {

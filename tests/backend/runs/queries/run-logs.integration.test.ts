@@ -144,12 +144,12 @@ describe("person-lookup full walk", () => {
     const outcome = await executeClaimedRun({ ...harness.deps, stores, log: stdout.log, taskNotes: logs }, { ...claimed, signal: SIGNAL });
     assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
     assert.equal(searchCalls, 2, "a transient task failure retries once");
-    assert.equal(stdout.entries().length, 262, "all task log lines still reach stdout");
+    assert.equal(stdout.entries().length, 265, "all task log lines still reach stdout");
     assert.match(stdout.entries()[0] ?? "", /UNCLASSIFIED_MESSAGE_CANARY/u);
     assert.equal(stdout.entries()[0]?.includes("10873698"), true);
 
     const noteLines = readPersistedNotes(database);
-    assert.equal(noteLines.length, 262, "all task messages persist");
+    assert.equal(noteLines.length, 265, "all task messages persist");
     assert.equal(noteLines.some((note) => JSON.stringify(note).includes("UNCLASSIFIED_MESSAGE_CANARY")), true);
     assert.equal(noteLines.some((note) => JSON.stringify(note).includes("10873698")), true);
     assert.equal(noteLines.some((note) => JSON.stringify(note).includes("UNCLASSIFIED_NOTE_CANARY")), true);
@@ -183,7 +183,7 @@ describe("person-lookup full walk", () => {
       { key: "unclassifiedSecret", kind: "text", value: "UNCLASSIFIED_NOTE_CANARY" },
     ]);
     const lastNote = NoteWireSchema.parse(noteLines.at(-1));
-    assert.equal(lastNote.message, "roster match completed");
+    assert.equal(lastNote.message, "Employment status");
 
     const terminal = database.authority.runs.get(RUN_ID);
     assert.ok(terminal);
@@ -207,7 +207,7 @@ describe("person-lookup full walk", () => {
     });
     const oldContinuation = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal, firstPage.payload.nextCursor.value);
     if (oldContinuation.section !== "logs") throw new Error("expected old snapshot continuation");
-    assert.equal(oldContinuation.payload.rows?.length, 62);
+    assert.equal(oldContinuation.payload.rows?.length, 65);
     assert.equal(oldContinuation.payload.rows?.some((row) => row.kind === "note" && row.note.message === "arrived after page one"), false);
 
     const freshFirst = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal);
@@ -217,7 +217,7 @@ describe("person-lookup full walk", () => {
     assert.notEqual(freshFirst.payload.nextCursor.value, firstPage.payload.nextCursor.value);
     const freshContinuation = buildRunLogsSection(queryDeps, RUN_ID, undefined, terminal, freshFirst.payload.nextCursor.value);
     if (freshContinuation.section !== "logs") throw new Error("expected refreshed continuation");
-    assert.equal(freshContinuation.payload.rows?.length, 63);
-    assert.equal(freshContinuation.payload.rows?.at(-1)?.sequence, 262);
+    assert.equal(freshContinuation.payload.rows?.length, 66);
+    assert.equal(freshContinuation.payload.rows?.at(-1)?.sequence, 265);
   });
 });
