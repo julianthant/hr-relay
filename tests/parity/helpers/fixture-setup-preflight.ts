@@ -1,3 +1,4 @@
+import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
 import { Hono } from "hono";
@@ -23,7 +24,7 @@ export async function startSetupPreflightServer(scene: SetupScene, configureRout
   app.get("/api/v1/settings/editable",c=>c.json(runtime.document()));
   configureRoutes?.(app, runtime);
   app.route("/",createFixtureBff({ profile: { ...DEFAULT_DASHBOARD_PROFILE, bootstrap: { ...DEFAULT_DASHBOARD_PROFILE.bootstrap,
-    serverClock: { ...DEFAULT_DASHBOARD_PROFILE.bootstrap.serverClock, now: runtime.clock.now().toISOString() } } } }).app);
+    serverClock: { ...DEFAULT_DASHBOARD_PROFILE.bootstrap.serverClock, now: IsoInstantSchema.parse(runtime.clock.now().toISOString()) } } } }).app);
   const requests:{method:string;path:string;status:number}[]=[];
   const server=createServer((req,res)=>{
     const method=req.method??"GET",path=req.url??"/";
