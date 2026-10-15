@@ -61,11 +61,11 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
     const service = new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID },
       publishQueued: () => { throw new Error("test must not enqueue"); } });
     const validating = service.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId,
-      claim: { workerId, claimGeneration: 1 }, lifecycle: { state: "validating",
+      claim: { workerId, claimGeneration: 1 }, lifecycle: { state: "validating", workerLifetime: queued.lifecycle.workerLifetime,
         workerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString() } });
     assert.equal(validating.state, "applied", JSON.stringify(validating));
     const running = service.workerTransition({ commandId: randomUUID(), runId: queued.envelope.runId,
-      claim: { workerId, claimGeneration: 1 }, lifecycle: { state: "running",
+      claim: { workerId, claimGeneration: 1 }, lifecycle: { state: "running", workerLifetime: queued.lifecycle.workerLifetime,
         workerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString(),
         currentNodeId: checkpoint.nodeId } });
     assert.equal(running.state, "applied");

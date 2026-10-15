@@ -18,6 +18,7 @@ import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safet
 
 interface Harness {
   readonly world: WriteFixtureWorld;
+  readonly admitWorker: (poolIndex: number) => void;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly manager: WorkerSessionManager;
@@ -50,7 +51,10 @@ export function createWriteSequencerTestWorld() {
       rmSync(root, { recursive: true, force: true });
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-    testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
+    const admitWorker = (poolIndex: number): void => {
+      testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: writeFixtureDescriptor, poolIndex });
+    };
+    admitWorker(1);
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
     const sessions = writeFixtureSessions(world);
@@ -109,7 +113,7 @@ export function createWriteSequencerTestWorld() {
         context.run.envelope.configFingerprint,
         () => sequencer.executeDryRun(context),
       );
-    return { world, database, clock, manager, sessions, scheduler, emitter, ids, sequencer, execute, executeDryRun };
+    return { world, admitWorker, database, clock, manager, sessions, scheduler, emitter, ids, sequencer, execute, executeDryRun };
   }
 
   function claimRunning(
@@ -121,14 +125,19 @@ export function createWriteSequencerTestWorld() {
     const now = clock.now().toISOString();
     const enqueued = database.authority.runs.enqueue(runInput);
     assert.equal(enqueued.state, "inserted");
+    const lease = database.authority.workerLeases.get(workerId);
+    const member = database.authority.workerSlots.get(workerId);
+    if (lease === undefined || member === undefined || member.retiredAt !== null) throw new Error("fixture claim authority unavailable");
+    const workerLifetime = { leaseGeneration: lease.leaseGeneration, membershipRevision: member.membershipRevision };
     const claimed = database.authority.runs.claimNext({
+      workerLifetime,
       workflow: WRITE_FIXTURE_WORKFLOW_ID,
       workerId,
       now,
     });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-    const base = { workerId, claimedAt: now, heartbeatAt: now };
+    const base = { workerId, claimedAt: now, heartbeatAt: now, workerLifetime };
     const validating = database.authority.runs.transition({
       runId: claimed.run.envelope.runId,
       expectedVersion: claimed.run.version,

@@ -5,6 +5,8 @@ import {
   WorkerBrowserWireSchema,
   WorkerCardWireSchema,
 } from "../../../models/dashboard/projection.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
@@ -28,57 +30,66 @@ interface WorkerSpanFold {
 
 
 function workerCardState(lease: WorkerLeaseRecord): WorkerCardWire["state"] {
-  if (lease.lifecycle.state === "stopped") {
-    return lease.lifecycle.reason === "crashed" || lease.lifecycle.reason === "lease-expired"
-      ? "failed"
-      : "stopped";
+  switch (lease.lifecycle.state) {
+    case "stopped": return "failed";
+    case "busy": return "running";
+    case "waiting": return "waiting";
+    case "starting": return "starting";
+    case "paused": return "paused";
+    case "idle": return "idle";
+    case "stopping": throw new Error("worker-current-phase-unavailable");
   }
-  if (lease.lifecycle.state === "busy") return "working";
-  if (lease.lifecycle.state === "starting") return "starting";
-  if (lease.lifecycle.state === "paused") return "paused";
-  return "idle";
 }
 
-
-function currentRunOf(
-  lease: WorkerLeaseRecord,
-  fold: WorkerSpanFold | undefined,
-  resolveTrace: (runId: string) => string | undefined,
-): { state: "absent"; reason: string } | { state: "present"; runId: string; traceId: string } {
-  const runId = lease.lifecycle.state === "busy" ? lease.lifecycle.runId : fold?.currentRunId;
-  if (runId === undefined) {
-    return {
-      state: "absent",
-      reason: isLiveWorker(lease) ? "no claimed run" : `worker ${lease.lifecycle.state}`,
-    };
-  }
-  const traceId = resolveTrace(runId);
-  if (traceId === undefined) {
-    return { state: "absent", reason: `worker holds run ${runId}, whose spans this projection has not folded` };
-  }
-  return { state: "present", runId, traceId };
+function currentRunOf(lease: WorkerLeaseRecord, member: WorkerSlotRecord,
+  resolveRun: (runId: string) => RunRecord | undefined): WorkerCardWire["currentRun"] {
+  const runId = "runId" in lease.lifecycle ? lease.lifecycle.runId : undefined;
+  if (runId === undefined) return { state: "absent", reason: "no current claimed run" };
+  const run = resolveRun(runId);
+  if (run === undefined || run.envelope.runId !== runId || !("workerId" in run.lifecycle) || run.lifecycle.workerId !== lease.workerId
+    || run.envelope.workflow !== lease.workflow || run.lifecycle.workerLifetime?.leaseGeneration !== lease.leaseGeneration
+    || run.lifecycle.workerLifetime.membershipRevision !== member.membershipRevision) throw new Error("worker-current-run-authority-unavailable");
+  return { state: "present", runId, traceId: run.envelope.traceId };
 }
-
 
 export function workerCardOf(input: Readonly<{
   lease: WorkerLeaseRecord;
+  member: WorkerSlotRecord;
+  ownerAlive: boolean;
   fold: WorkerSpanFold | undefined;
-  resolveTrace: (runId: string) => string | undefined;
+  resolveRun: (runId: string) => RunRecord | undefined;
   observations?: readonly WorkerBrowserObservation[];
   operations?: readonly WorkerControlRecord[];
   owned?: boolean;
 }>): WorkerCardWire {
-  const { lease, fold } = input;
+  const { lease, fold, member } = input;
+  if (member.retiredAt !== null || member.workerId !== lease.workerId || member.workflow !== lease.workflow) throw new Error("worker-member-authority-unavailable");
+  if (isLiveWorker(lease) && !input.ownerAlive) throw new Error("worker-current-owner-unavailable");
   const state = workerCardState(lease);
-  const terminal = state === "stopped" || state === "failed";
+  const terminal = state === "failed";
   const observations = input.observations?.filter(value => value.leaseGeneration === lease.leaseGeneration);
-  const operation = input.operations?.filter(value => "workerId" in value.request.target && value.request.target.workerId === lease.workerId).at(-1);
-  const browsers = new Map((fold?.browsers ?? []).map(value => [value.sessionId, value]));
+  if (!terminal && observations?.some(value => value.health === "failed")) throw new Error("worker-browser-closure-or-health-unavailable");
+  const operation = input.operations?.filter(value => {
+    const binding = value.reset ?? value.lifecycle;
+    if (binding !== undefined) {
+      if (binding.member.workerId !== lease.workerId || binding.member.membershipRevision !== member.membershipRevision) return false;
+      if (binding.lifetime.leaseGeneration === lease.leaseGeneration) return true;
+      return value.phase.state === "succeeded" && (value.phase.acknowledgement.kind === "retry" || value.phase.acknowledgement.kind === "reset-replacement")
+        && value.phase.acknowledgement.leaseGeneration === lease.leaseGeneration
+        && (value.phase.acknowledgement.kind === "reset-replacement" || value.phase.acknowledgement.processId === lease.processId
+          && value.phase.acknowledgement.startedAt === lease.lifecycle.startedAt);
+    }
+    return "workerId" in value.request.target && value.request.target.workerId === lease.workerId
+      && "membershipRevision" in value.request.target && value.request.target.membershipRevision === member.membershipRevision
+      && value.request.target.controlBasis?.leaseGeneration === lease.leaseGeneration;
+  }).at(-1);
+  const browsers = new Map<string, WorkerBrowserFold>();
   for (const value of observations ?? []) {
     if (value.health === "closed") browsers.delete(value.sessionId);
     else if (value.openedAt !== undefined) browsers.set(value.sessionId, { sessionId: value.sessionId, system: value.system, openedAt: value.openedAt });
   }
   return WorkerCardWireSchema.parse({
+    member: workerPoolMember(member),
     workerId: lease.workerId,
     workflowId: lease.workflow,
     state,
@@ -97,7 +108,7 @@ export function workerCardOf(input: Readonly<{
     ...(lease.lifecycle.state === "stopped"
       ? { endedAt: lease.lifecycle.stoppedAt, stopReason: lease.lifecycle.reason }
       : {}),
-    currentRun: currentRunOf(lease, fold, input.resolveTrace),
+    currentRun: currentRunOf(lease, member, input.resolveRun),
     browserRequirements: lease.browserSystems === undefined
       ? {
         state: "unavailable",

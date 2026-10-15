@@ -22,7 +22,7 @@ function identityMismatch(response: unknown): never {
 
 export function checkedCommandResult(command: CommandRequest, response: unknown): CommandResult {
   const result = parseOrThrow(CommandResultSchema, "POST /api/v1/commands", response);
-  if (result.commandId !== command.commandId) identityMismatch(response);
+  if (result.commandId !== command.commandId || result.state === "pending" && command.family !== "worker-browser") identityMismatch(response);
   if (result.state !== "applied" && result.state !== "already-applied") return result;
   const targets = result.affectedTargets;
   const matches = (target: typeof targets[number]): boolean => {
@@ -36,6 +36,8 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
       case "intake": return (target.family === "intake" && target.intakeSessionId === command.target.intakeSessionId)
         || (command.type === "enqueue-intake-manifest" && target.family === "run");
       case "worker-browser":
+        if (command.type === "remove-worker") return target.family === "worker-browser" && target.workerId === command.target.workerId
+          || target.family === "worker-pool" && target.workflowId === command.target.workflowId;
         if (command.type === "plan-worker-count") return target.family === "worker-browser"
           || (target.family === "worker-pool" && target.workflowId === command.target.workflowId);
         return target.family === "worker-browser" && target.workerId === (command.type === "spawn-worker" ? command.payload.workerId : command.target.workerId);

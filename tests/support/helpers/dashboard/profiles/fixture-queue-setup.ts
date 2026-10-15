@@ -310,11 +310,18 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
     queueSurfaces: rawSurfaces,
 
     workerPools: [],
+    workerOperations: [],
+    workerAuthority: { state: "present", members: ["running", "idle", "starting", "failed", "idle"].map((phase, index) => ({
+      workerId: `person-lookup-worker-${String(index + 1)}`, workflow: WORKFLOW_ID,
+      ordinal: index + 1, poolIndex: index + 1, membershipRevision: 1, phase,
+      retiredAt: null, retirementCommandId: null, reservationCommandId: null, createdAt: at(0), updatedAt: at(0),
+    })) },
     workerCards: [
       {
         workerId: "person-lookup-worker-1",
+        member: { workflowId: WORKFLOW_ID, workerId: "person-lookup-worker-1", ordinal: 1, poolIndex: 1, membershipRevision: 1 },
         workflowId: WORKFLOW_ID,
-        state: "working",
+        state: "running",
         directive: "run",
         startedAt: at(12),
         currentRun: { state: "present", runId: uuidOf(2), traceId: traceOf(2) },
@@ -328,6 +335,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
       },
       {
         workerId: "person-lookup-worker-2",
+        member: { workflowId: WORKFLOW_ID, workerId: "person-lookup-worker-2", ordinal: 2, poolIndex: 2, membershipRevision: 1 },
         workflowId: WORKFLOW_ID,
         state: "idle",
         directive: "run",
@@ -340,6 +348,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
       },
       {
         workerId: "person-lookup-worker-3",
+        member: { workflowId: WORKFLOW_ID, workerId: "person-lookup-worker-3", ordinal: 3, poolIndex: 3, membershipRevision: 1 },
         workflowId: WORKFLOW_ID,
         state: "starting",
         directive: "run",
@@ -352,6 +361,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
       },
       {
         workerId: "person-lookup-worker-4",
+        member: { workflowId: WORKFLOW_ID, workerId: "person-lookup-worker-4", ordinal: 4, poolIndex: 4, membershipRevision: 1 },
         workflowId: WORKFLOW_ID,
         state: "failed",
         directive: "stop",
@@ -366,6 +376,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
       },
       {
         workerId: "person-lookup-worker-5",
+        member: { workflowId: WORKFLOW_ID, workerId: "person-lookup-worker-5", ordinal: 5, poolIndex: 5, membershipRevision: 1 },
         workflowId: WORKFLOW_ID,
         state: "idle",
         directive: "pause",

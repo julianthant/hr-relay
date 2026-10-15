@@ -1,3 +1,4 @@
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -5,7 +6,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID, WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
@@ -46,9 +47,10 @@ describe("failure, retry, and resume", () => {
     retryEnvelope.runId = UUID_5;
     retryEnvelope.retryOf = RUN_ID;
     database.authority.runs.enqueue(retryRun);
+    const { workerId, workerLifetime } = testWorkerLifetime(database, WORKFLOW_ID, 1);
     const reclaimed = database.authority.runs.claimNext({
-      workflow: WORKFLOW_ID,
-      workerId: WORKER_ID,
+      workerLifetime, workflow: WORKFLOW_ID,
+      workerId: workerId,
       now: clock.now().toISOString(),
     });
     assert.equal(reclaimed.state, "claimed");
@@ -79,7 +81,7 @@ describe("failure, retry, and resume", () => {
     };
     const outcome = await executeClaimedRun(secondDeps, {
       run: reclaimed.run,
-      claim: { workerId: WORKER_ID, claimGeneration: reclaimed.run.claimGeneration },
+      claim: { workerId: workerId, claimGeneration: reclaimed.run.claimGeneration },
       signal: SIGNAL,
     });
     assert.equal(outcome.state, "done");

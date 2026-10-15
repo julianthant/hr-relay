@@ -139,6 +139,10 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: errorText(error) });
           break;
         }
+        if (result.state === "pending" || result.state === "confirmation-required") {
+          results.push({ outcome: "errored", runId: target.runId, commandId, detail: "Command has no terminal outcome; retain its original identity." });
+          break;
+        }
         results.push(
           result.state === "conflict"
             ? {

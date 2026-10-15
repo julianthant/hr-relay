@@ -1,9 +1,9 @@
-import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
+import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { deriveTerminalFailureDigest } from "../../../../src/models/run/result.js";
 import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const {fixture, created, runningRun, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();

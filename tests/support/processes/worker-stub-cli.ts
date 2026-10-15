@@ -66,7 +66,7 @@ const bound = bindWorkerProcessAdmission({
 });
 const { value: database, workerId, processLock: lock } = bound;
 
-const started = database.authority.workerLeases.start({
+const started = database.startOwnedWorker({
   workerId,
   workflow: workflowId,
   // This supervision-only stub loads no workflow descriptor and opens no browser.
@@ -74,7 +74,7 @@ const started = database.authority.workerLeases.start({
   processId: process.pid,
   requestedBy: "local-operator",
   now: systemClock.now().toISOString(),
-});
+}, lock);
 if (started.state !== "started") {
   throw new Error(`worker-stub-cli ${workerId} could not start its lease: ${JSON.stringify(started)}`);
 }

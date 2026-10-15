@@ -56,3 +56,51 @@ describe("native worker control custody", () => {
     expect(f.controls.browsers(f.slot.workerId)[0]?.profileRevision).toBe(7);
   });
 });
+
+describe("browser application readback authority", () => {
+  function browserFixture() {
+    const f = fixture();
+    const request = { ...f.request, type: "refresh-browser", target: { workerId: f.slot.workerId, expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 }, browserSessionId: UUID_3 }, payload: undefined };
+    delete request.payload;
+    insertNativeCommand(f.db, request);
+    f.controls.admit({ ...f.record, request });
+    f.controls.transition(UUID_1, "admitted", { state: "ready" });
+    f.controls.transition(UUID_1, "ready", { state: "executing", startedAt: NOW });
+    f.controls.transition(UUID_1, "executing", { state: "succeeded", startedAt: NOW, completedAt: LATER, acknowledgement: { kind: "control", browserSessionId: UUID_3 } });
+    const result = { state: "applied", commandId: UUID_1, affectedTargets: [{ family: "worker-browser", workerId: f.slot.workerId }] };
+    const audit = { auditId: UUID_2, request, result, completedAt: LATER, versionChanges: [], affectedDependencyIds: [] };
+    const insertAudit = (input: typeof audit) => f.db.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES(?,?,NULL,?,?)").run(UUID_2, UUID_1, canonicalJsonStringify(input), LATER);
+    return { ...f, audit, insertAudit };
+  }
+  it("requires actual exact audit before attaching application and rolls back unavailable evidence", () => {
+    const f = browserFixture(); const before = f.controls.get(UUID_1);
+    expect(() => f.controls.audit(UUID_1, LATER)).toThrow(/application-audit-unavailable/);
+    expect(f.controls.get(UUID_1)).toEqual(before);
+    f.insertAudit(f.audit);
+    const record = f.controls.audit(UUID_1, LATER);
+    expect(record.phase.state).toBe("succeeded");
+    if (record.phase.state !== "succeeded") throw new Error("expected success");
+    expect(record.phase.application).toEqual({ result: f.audit.result, versionChanges: [], affectedDependencyIds: [] });
+    expect(record.auditedAt).toBe(LATER);
+  });
+  it("does not backfill missing application into already audited historical browser evidence", () => {
+    const f = browserFixture(); f.insertAudit(f.audit);
+    const current = f.controls.get(UUID_1)!;
+    const historical = { ...current, auditedAt: LATER };
+    f.db.prepare("UPDATE worker_controls SET audited_at=?,payload_json=? WHERE command_id=?").run(LATER, canonicalJsonStringify(historical), UUID_1);
+    expect(f.controls.audit(UUID_1, NOW)).toEqual(historical);
+    expect(f.controls.get(UUID_1)).toEqual(historical);
+    if (historical.phase.state !== "succeeded") throw new Error("expected browser outcome");
+    expect(historical.phase.application).toBeUndefined();
+  });
+  it("does not attach wrong original request or refused result as successful browser evidence", () => {
+    const f = browserFixture();
+    f.insertAudit({ ...f.audit, request: { ...f.audit.request, source: "foreign" } });
+    expect(() => f.controls.audit(UUID_1, LATER)).toThrow(/application-audit-mismatch/);
+    expect(f.controls.get(UUID_1)?.auditedAt).toBeUndefined();
+    const other = browserFixture();
+    other.db.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES(?,?,?,?,?)").run(UUID_2, UUID_1, "invalid-state", canonicalJsonStringify({ ...other.audit, result: { state: "rejected", commandId: UUID_1, code: "invalid-state", message: "refused" } }), LATER);
+    expect(() => other.controls.audit(UUID_1, LATER)).toThrow(/worker-control-success-result-required/);
+    expect(other.controls.get(UUID_1)?.auditedAt).toBeUndefined();
+  });
+});

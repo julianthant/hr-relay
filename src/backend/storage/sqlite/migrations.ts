@@ -2,7 +2,7 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 2;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 3;
 
 export function isCurrentAuthoritySchemaVersion(version: number): boolean {
   return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
@@ -668,6 +668,17 @@ CREATE TRIGGER run_requests_consume_once
           SELECT RAISE(ABORT,'run-requests-consume-once');
         END;`] },
   { version: 2, statements: ["CREATE INDEX timeline_confirmed_action_head_idx ON timeline_events(json_extract(payload_json,'$.payload.note.confirmedAction.workerStreamId'),cursor)"] },
+  { version: 3, statements: [`PRAGMA defer_foreign_keys=ON;
+CREATE TABLE worker_pools_unbounded (
+ workflow TEXT PRIMARY KEY, desired_workers INTEGER NOT NULL CHECK(desired_workers>=0),
+ version INTEGER NOT NULL CHECK(version>0), payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+) STRICT;
+INSERT INTO worker_pools_unbounded SELECT * FROM worker_pools;
+DROP TABLE worker_pools;
+ALTER TABLE worker_pools_unbounded RENAME TO worker_pools;
+CREATE TRIGGER worker_pools_retained BEFORE DELETE ON worker_pools
+BEGIN SELECT RAISE(ABORT,'worker-pools-retained'); END;
+PRAGMA defer_foreign_keys=OFF;`] },
 ]);
 
 export function auditMigrationTableCoverage(): readonly string[] {

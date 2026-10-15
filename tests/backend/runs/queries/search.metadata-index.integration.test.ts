@@ -1,3 +1,4 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -201,11 +202,12 @@ it("selects each reachable lifecycle, shape, retained version and mode without n
       f.db.authority.runs.enqueue(queued);
       const search=()=>f.service().search({q:"",facets:{workflow:queued.envelope.workflow,state:target,version:7,dryRun:queued.envelope.dryRun,shape:queued.envelope.shape,system:"ucpath"}});
       if(target!=="queued") {
-        const claim=f.db.authority.runs.claimNext({workflow:queued.envelope.workflow,workerId:`worker-${target}`,now:queued.createdAt});
+        const {workerId,workerLifetime}=testAdmittedWorker(f.db,f.clock,{path:f.path,workflow:queued.envelope.workflow,poolIndex:1,browserSystems:["ucpath"]});
+        const claim=f.db.authority.runs.claimNext({workflow:queued.envelope.workflow,workerId,workerLifetime,now:queued.createdAt});
         assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("claim failed");
         let run=claim.run;
-        const advance=(lifecycle:unknown)=>{const result=f.db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:run.version,claim:{workerId:`worker-${target}`,claimGeneration:run.claimGeneration},lifecycle,now:queued.createdAt});assert.equal(result.state,"applied");if(result.state!=="applied")throw new Error("transition failed");run=result.run;};
-        const ownership={workerId:`worker-${target}`,claimedAt:queued.createdAt,heartbeatAt:queued.createdAt};
+        const advance=(lifecycle:unknown)=>{const result=f.db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:run.version,claim:{workerId,claimGeneration:run.claimGeneration},lifecycle,now:queued.createdAt});assert.equal(result.state,"applied");if(result.state!=="applied")throw new Error("transition failed");run=result.run;};
+        const ownership={workerId,workerLifetime,claimedAt:queued.createdAt,heartbeatAt:queued.createdAt};
         if(target!=="claimed") {
           advance({state:"validating",...ownership});
           if(target!=="validating") {

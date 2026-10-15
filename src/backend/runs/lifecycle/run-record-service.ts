@@ -1,3 +1,5 @@
+import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
+import { WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
 import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "../settings/run-settings.js";
@@ -22,6 +24,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { deriveItemId, deriveTraceId, lifecycleCommandId, type IdFactory } from "../../../rules/identity/identifiers.js";
 import {
+  IsoInstantSchema,
   CommandIdSchema,
   FingerprintSchema,
   RunIdSchema,
@@ -282,15 +285,32 @@ export class RunRecordService {
     return this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome => {
       const journal = this.inspectJournal(repositories, "claim-next", request, { kind: "none" });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
-      if (journal.state === "replay") return this.replayRun(journal.result);
       if (!this.runtimeMatches(runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(control => control.request.type === "plan-worker-count")) {
         return refused({ reason: "none-eligible" });
       }
+      if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(record => record.request.type === "stop-worker" && record.reset === undefined)) throw new Error("worker-reset-authority-unavailable");
+      const slot = repositories.workerSlots.get(workerId), lease = repositories.workerLeases.get(workerId);
+      if (repositories.workerControls.lifecycleForWorker(workerId) !== undefined
+        || lease !== undefined && repositories.workerControls.initializingForWorker(workerId, lease.leaseGeneration) !== undefined) return refused({ reason: "none-eligible" });
+      if (repositories.workerControls.resetForWorker(workerId) !== undefined) return refused({ reason: "none-eligible" });
+      if (repositories.workerSlots.recovery(workerId) !== undefined || repositories.workerSlots.verification(workerId) !== undefined) return refused({ reason: "none-eligible" });
+      if (slot === undefined || slot.retiredAt !== null || slot.workflow !== workflow
+        || request.workerLifetime !== undefined && (slot.membershipRevision !== request.workerLifetime.membershipRevision
+          || lease?.leaseGeneration !== request.workerLifetime.leaseGeneration || lease.lifecycle.state === "stopped")) return refused({ reason: "none-eligible" });
+      if (journal.state === "replay") {
+        const replayed = this.replayRun(journal.result);
+        if (replayed.state !== "refused" && "run" in replayed && "workerId" in replayed.run.lifecycle) {
+          const owner = replayed.run.lifecycle.workerLifetime;
+          if (owner === undefined || lease === undefined || owner.leaseGeneration !== lease.leaseGeneration
+            || owner.membershipRevision !== slot.membershipRevision || replayed.run.lifecycle.workerId !== workerId) return refused({ reason: "none-eligible" });
+        }
+        return replayed;
+      }
       const held = repositories.runs.listByWorker(workerId).find((run) => runClaim(run) !== undefined);
       if (held !== undefined) return refused({ reason: "worker-busy", runId: held.envelope.runId });
       const outcome = repositories.runs.claimEligible({
-        workflow, workerId, runtimeConfig, configFingerprint: runtimeConfig.configFingerprint,
+        workflow, workerId, ...(request.workerLifetime === undefined ? {} : { workerLifetime: request.workerLifetime }), runtimeConfig, configFingerprint: runtimeConfig.configFingerprint,
         now: this.dependencies.clock.now().toISOString(),
       }, admit);
       if (outcome.state === "refused") return outcome;
@@ -550,6 +570,49 @@ export class RunRecordService {
           { commandId: request.commandId, terminal: request.terminal },
           factoryAuthorization,
         );
+  }
+
+  settleResetWork(input: unknown): void {
+    const reset = WorkerResetBindingSchema.parse(input);
+    this.dependencies.database.withAuthorityTransaction(repositories => {
+      repositories.workerControls.assertResetGraph(reset);
+      const record = repositories.workerControls.get(reset.commandId);
+      if (record?.reset === undefined || canonicalJsonStringify(record.reset) !== canonicalJsonStringify(reset)
+        || !["executing", "uncertain"].includes(record.phase.state)) throw new Error("worker-reset-settlement-owner-unavailable");
+      const members = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
+      for (const member of members) {
+        const run = repositories.runs.get(member.runId);
+        if (run === undefined || run.envelope.attempt !== member.attempt) throw new Error("worker-reset-settlement-run-conflict");
+        if (repositories.writeIntents.listByRun(member.runId).some(intent => intent.status === "attempting")) throw new Error("worker-reset-write-callback-unresolved");
+        if (member.state === "claimed" && run.lifecycle.state !== "terminal" && run.lifecycle.state !== "parked-write") {
+          const claim = runClaim(run);
+          if (claim?.workerId !== member.workerId || claim.claimGeneration !== member.claimGeneration) throw new Error("worker-reset-settlement-claim-conflict");
+        }
+      }
+      for (const member of [...members].reverse()) {
+        const run = repositories.runs.get(member.runId);
+        if (run === undefined) throw new Error("worker-reset-settlement-run-conflict");
+        const writes = repositories.writeIntents.listByRun(member.runId);
+        if (run.lifecycle.state === "terminal") continue;
+        if (run.lifecycle.state === "parked-write") {
+          assertWorkerResetParkedWrite(repositories, run);
+          continue;
+        }
+        if (writes.some(intent => intent.status === "parked")) throw new Error("worker-reset-write-release-unproved");
+        if (member.state === "queued") {
+          if (run.lifecycle.state !== "queued" || run.version !== member.version) throw new Error("worker-reset-cascade-changed");
+          const outcome = this.transition({ commandId: lifecycleCommandId("reset-cascade-cancel", { commandId: reset.commandId, runId: member.runId }),
+            runId: member.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: this.dependencies.clock.now().toISOString() } });
+          if (outcome.state !== "applied") throw new Error("worker-reset-cascade-cancel-refused");
+        } else {
+          const requested = repositories.runs.requestCancellation({ runId: member.runId, expectedVersion: run.version, now: this.dependencies.clock.now().toISOString() });
+          if (requested.state !== "applied") throw new Error("worker-reset-cancel-request-refused");
+          const outcome = this.terminalizeCancellation({ kind: "cancelled", commandId: lifecycleCommandId("reset-current-cancel", { commandId: reset.commandId, runId: member.runId }),
+            runId: member.runId, expectedVersion: requested.run.version, claim: { workerId: member.workerId, claimGeneration: member.claimGeneration }, endedAt: IsoInstantSchema.parse(this.dependencies.clock.now().toISOString()) });
+          if (outcome.state !== "applied") throw new Error("worker-reset-cancel-refused");
+        }
+      }
+    });
   }
 
   private terminalizeCancellation(request: z.infer<typeof CanonicalCancellationTerminalizeRequestSchema>): RunMutationOutcome {

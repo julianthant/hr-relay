@@ -3,7 +3,7 @@ import { CommandIdSchema, IsoInstantSchema, PositiveIntSchema, WorkerIdSchema, W
 
 export const WorkerSlotRecordSchema = z.strictObject({
   workerId: WorkerIdSchema, workflow: WorkflowIdSchema, ordinal: PositiveIntSchema,
-  poolIndex: z.number().int().min(1).max(3), membershipRevision: PositiveIntSchema,
+  poolIndex: z.number().int().min(1), membershipRevision: PositiveIntSchema,
   phase: z.enum(["starting", "running", "idle", "waiting", "paused", "failed"]),
   retiredAt: IsoInstantSchema.nullable(), retirementCommandId: CommandIdSchema.nullable(), reservationCommandId: CommandIdSchema.nullable(),
   createdAt: IsoInstantSchema, updatedAt: IsoInstantSchema,
@@ -13,7 +13,7 @@ export type WorkerSlotRecord = z.infer<typeof WorkerSlotRecordSchema>;
 
 export const WorkerPoolMemberSchema = z.strictObject({
   workflowId: WorkflowIdSchema, workerId: WorkerIdSchema, ordinal: PositiveIntSchema,
-  poolIndex: z.number().int().min(1).max(3), membershipRevision: PositiveIntSchema,
+  poolIndex: z.number().int().min(1), membershipRevision: PositiveIntSchema,
 }).refine(member => member.workerId === `${member.workflowId}-worker-${member.ordinal}`, "worker member identity must bind its global ordinal");
 export type WorkerPoolMember = z.infer<typeof WorkerPoolMemberSchema>;
 export function workerPoolMember(slot: WorkerSlotRecord): WorkerPoolMember {
@@ -22,12 +22,12 @@ export function workerPoolMember(slot: WorkerSlotRecord): WorkerPoolMember {
     ordinal: slot.ordinal, poolIndex: slot.poolIndex, membershipRevision: slot.membershipRevision });
 }
 export const WorkerPoolRosterAdmissionSchema = z.strictObject({
-  selected: z.array(WorkerSlotRecordSchema).max(3), excess: z.array(WorkerSlotRecordSchema).max(3),
+  selected: z.array(WorkerSlotRecordSchema), excess: z.array(WorkerSlotRecordSchema),
   beforeVersion: z.number().int().nonnegative(), admittedVersion: z.number().int().nonnegative(),
   afterVersion: PositiveIntSchema,
 }).superRefine((roster, context) => {
   const all = [...roster.selected, ...roster.excess];
-  if (all.length > 3 || all.some(slot => slot.retiredAt !== null)
+  if (all.some(slot => slot.retiredAt !== null)
     || new Set(all.map(slot => slot.workerId)).size !== all.length
     || new Set(all.map(slot => slot.poolIndex)).size !== all.length
     || new Set(all.map(slot => slot.workflow)).size > 1

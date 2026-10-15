@@ -24,7 +24,7 @@ Separate workers provide parallelism and own separate browser resources.
 | Duo lease | One credential-keyed row in `auth_leases`, exposed through `authority.duoCeremonyLeases`. |
 
 A slot's worker id is `${workflow}-worker-${ordinal}`. The ordinal is globally allocated and
-retained. `poolIndex` is a separate workflow member position from 1 through 3. Neither a caller nor
+retained. `poolIndex` is a separate positive workflow member position. Neither a caller nor
 a projection derives the worker id from the pool index.
 
 ## 2. Declared session needs
@@ -61,7 +61,7 @@ and the aggregate failure names the systems that could not close.
 
 `composeWorkerRuntime` in `src/backend/app/composition/worker-compose.ts` admits the worker slot,
 binds its exact process custody, starts its lease, and runs `runWorkerLoop`. CLI parsing requires
-`worker <workflow-id> --pool-index <positive-int>` with an index from 1 through 3. `--drain` exits
+`worker <workflow-id> --pool-index <positive-int>` with a positive integer index. `--drain` exits
 at the first idle claim result. Supervised launches additionally carry `--worker-id`, `--ordinal`,
 `--membership-revision`, and `--launch-command-id`; `admitSupervisedWorker` verifies those values
 against the executing Spawn reservation before admitting the child.
@@ -322,8 +322,9 @@ instant in `run_batches`. `runs.listBySession` derives membership from runs; ret
 session id. `groupInQueue` and version affect presentation only. [Workflow model](workflow-model.md)
 owns fan-out.
 
-`worker_pools` stores `desiredWorkers` from 0 through `MAX_WORKERS_PER_POOL = 3`, planner, time,
-and version.
+`worker_pools` stores a nonnegative `desiredWorkers` count, planner, time, and version.
+The count equals the nonretired admitted slot roster after each membership transaction. Missing
+or inconsistent roster authority refuses admission; leases never reconstruct membership.
 
 ### 11.1 Process effects and retirement
 
@@ -343,7 +344,7 @@ requires stopped process custody, a non-live lease, closed browser observations,
 and exclusive profile deletion through `composeWorkerProcessControl`. Only then does authority
 retire the slot and update the declaration. A failed closure cannot become a smaller completed pool.
 
-Stop requests the durable directive, waits `WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000`, sends
+Internal pool retirement and lifetime shutdown request the durable stop directive, wait `WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000`, sends
 SIGTERM, waits `WORKER_SIGTERM_TIMEOUT_MS = 30_000`, then sends SIGKILL. Observed escalation stages
 are a timestamped prefix of that policy. An initial acknowledgement records only the graceful
 request, not future signals or exit. Failed delivery and uncertain stop effects remain visible.
@@ -352,20 +353,107 @@ During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_T
 ### 11.2 Durable worker and browser controls
 
 `src/backend/runs/commands/command-kernel.ts` admits `plan-worker-count`, `spawn-worker`,
-`pause-worker`, `resume-worker`, `stop-worker`, `refresh-browser`, and `reopen-browser` into
+`pause-worker`, `resume-worker`, `refresh-browser`, and `reopen-browser` into
 `worker_controls` before asynchronous effects. `src/backend/storage/sqlite/worker-control.ts`
 binds every record to the exact stored command and any admitted roster.
 
-Pause, Resume, and Stop carry `controlBasis` with `leaseGeneration` and `controlRevision`.
+Pause and Resume carry `controlBasis` with `leaseGeneration` and `controlRevision`.
 Refresh and Reopen also name `browserSessionId`. Reservation increments the control revision.
 Heartbeats preserve the basis; another instruction or lifetime invalidates it. Composition and
 child execution recheck the reserved basis before effects.
 
-Controls expire after 180,000 ms. Their phases are `admitted`, `ready`, `executing`, `succeeded`,
+Ordinary controls expire after 180,000 ms. Their phases are `admitted`, `ready`, `executing`, `succeeded`,
 `refused`, and `uncertain`. Replay consults the retained outcome rather than repeating the effect.
 An unresolved control blocks another effect in its scope. An expired unstarted request refuses;
 an expired executing request becomes uncertain. Reused command identity with different bytes
 refuses. Requested directives remain distinct from observed lifecycle.
+
+Public Stop returns a pending command identity after durable admission; the same-process worker
+completes reset independently of the HTTP client. Before new admission, the supervisor must prove
+its exact born, running child and member against the current lease PID/start identity. A stopped
+failed lifetime instead requires original retained birth custody and proven OS death before browserless
+replacement admission. External live, unborn, changed or uncertain ownership refuses without
+reservation. Exact journal replay
+does not depend on current child ownership. New Stop admission requires `membershipRevision` and
+`controlBasis`; optional carried `expectedVersion` is observation evidence and does not gate Stop
+on a heartbeat row version. The internal `admitWorkerReset` boundary binds the existing journal to the exact
+member, process lifetime, reserved control revision, current run/claim/attempt or explicit absence,
+and queued cascade dependencies. A separately claimed child refuses as foreign custody. Admission
+atomically blocks subsequent claims and both write-fence paths. A prior fenced callback remains
+owned by its sequencer and may settle or park UNKNOWN; reset never cancels or retries that write.
+
+The worker observes reset during current execution, acquisition and sign-in using a work abort
+signal separate from lifetime shutdown. Actual read callback promises retain run/claim/attempt
+ownership across deadline races and loop iterations. An admitted reset blocks another claim and
+cannot report idle while callbacks remain unresolved. Ordinary task deadlines remain bounded.
+A scheduled observer remains live through callback and browser-close waits; expiry marks uncertainty
+while retaining ownership and reservation. After actual callbacks settle, the lifecycle service cancels
+safe residual work and queued cascade members atomically. Settled committed receipts remain intact;
+a safely released parked UNKNOWN remains parked and resolvable without delaying browserless idle.
+The session manager closes its actual acquisitions and browsers and proves Duo/exclusivity release.
+It mints a one-use closure capability bound to its immutable member and lifetime; any new driver,
+authentication or reopen invalidates that proof. Only the dedicated authority settlement transaction
+can persist exact closed-session identities, same-generation idle, reset acknowledgement, application
+and audit before releasing the claim barrier. It rechecks the entire graph and parked write identity.
+Missing callback, custody or closure proof retains uncertainty; generic journal setters and ordinary
+audit cannot release a reset. Historical success survives later work in the same worker lifetime.
+Historical Stop journal bytes remain immutable evidence. Missing historical reset authority remains
+unavailable and reserved when unresolved, and cannot authorize replay or a reset success.
+
+Remove and Retry use the same native worker-control journal and pool exclusion. They bind the
+selected member revision, old process lifetime, control basis and pool version. Remove admits
+only an actually owned idle child without current work. The session manager closes its warm and
+late resources and releases Duo before recording the exact closure milestone. The supervisor
+then sends the authenticated internal shutdown, observes OS exit and proves process/profile
+custody release. Its one-use effect capability binds that original operation to actual retirement.
+A dedicated transaction rechecks release, tombstones only the selected slot, decrements the pool
+once and persists application/audit together. Surviving identities and ordinals remain unchanged;
+the last member leaves a zero-size pool. Missing closure or exit proof retains the member and
+reservation, and replay never repeats an uncertain effect.
+
+Retry admits only a stopped failed lifetime with proven owned-child OS death or authenticated
+retained birth custody, and released process, browser, Duo and write custody. A stopped lease alone cannot prove death. Replacement retains the
+logical slot and advances its lease generation, using the admitted current descriptor and effective
+settings. Actual supervised birth produces the starting acknowledgement and application/audit;
+a separate same-generation initialization barrier prevents claims until required browser systems
+are physically authenticated. Initialization uses registered session needs without creating a run,
+releases its config binding on success or failure and retains warm resource provenance. Authentication
+failure remains a worker lifetime failure, independent of the starting acknowledgement. Stop can
+abort initialization work and, after actual closure, atomically cancel its readiness barrier while
+recording reusable browserless idle. Browserless replacement mode opens no session. Public Stop
+recovery for a dead failed lifetime retains its original reset binding and adds an exact browserless
+replacement binding. The supervisor records actual replacement birth before the fresh new owner
+can finalize original-to-replacement idle, application and audit. Missing effect evidence retains the
+barrier across generations; an ordinary Retry acknowledgement cannot prove that reset. For a stopped
+owner with safe pre-fence work, strict reset binding and canonical residual cancellation occur in the
+same synchronous admission transaction before the full owner-death/release check. Failed proof
+rolls back the original claim, cancellation journal, command and reservation together. No external
+shutdown, cleanup or spawn occurs before that transaction commits.
+
+The Day resource serves exactly `running`, `starting`, `idle`, `waiting`, `paused` and `failed`.
+Every card names its standing member revision. A live phase requires current owner custody;
+current-run joins require the active claim's exact membership and lease generation. Browser spans
+and parked historical runs cannot supply current activity. Actual acquisition, authentication and
+closure report `waiting`; failed closure remains unavailable until actual closure is proved.
+`workerAuthority` retains member references when evidence is unavailable. `workerOperations`
+retains exact native command outcomes, including retired members and confirmations preceding later
+work, without exposing native lock custody snapshots.
+
+Production lease birth atomically records a native `worker-lifetime-birth` journal reference from the
+actual bound process-lock handle. It binds authority path, lock root, acquisition, OS process-start
+identity, member and generation. Generic lease start cannot supply this proof. Missing, changed or
+reused identity never proves death; an exact recorded release still requires the old OS owner to be
+dead. Historical leases without proof remain unavailable for restart recovery.
+
+Native `worker-standing-recovery` reserves an existing idle or paused member after exact old-owner,
+browser, Duo, write and profile release. The lease retains its last observed healthy phase and pause
+intent through internal shutdown. A fresh replacement completes the original grant before any
+acquisition, authentication or claim, atomically recording browserless idle or paused and the audit.
+Starting, running and waiting hard losses do not automatically respawn; explicit Retry or eligible
+Stop remains available after definitive release. Failed members remain explicit, and retired or
+zero-size pools never recover. Pending grants and controls retain their original reservation after
+crash; durable authenticated effect milestones may finish settlement, while missing evidence never
+causes a second spawn or replays an uncertain write.
 
 `worker-browser-channel.ts` uses SQLite as the cross-process channel and polls at 50 ms within
 the request's expiry. `worker-browser-control.ts` consumes only ready requests for its exact
@@ -385,7 +473,7 @@ excludes run binding during controls and retains failed or uncertain health.
 start queues runs. A `run`-directed lease in `starting`, `idle`, or `busy` supplies capacity,
 including an external worker. Preview and a zero-run confirmation create no worker effects.
 
-Absent capacity, the service reuses a stopped slot or adds one within the cap through journaled
+Absent capacity, the service reuses a stopped slot or adds one through journaled
 Plan and Spawn. It preserves directives and refuses a Plan covering a pending stop. It starts one
 member, retaining command identity, actor, timestamp, and CAS basis for replay.
 
@@ -394,6 +482,16 @@ it does not call the queued runs rejected. Exact replay does not restart a settl
 another crash. Replay without retained startup evidence or a usable worker reports unknown startup
 and requires reconciliation. `src/backend/runs/commands/command-service.ts` serializes
 enqueue and startup per workflow.
+
+### 11.4 Browser-login verification
+
+The browser-login verifier reserves its temporary member through the native lifecycle journal's
+`worker-verification-admission` and `worker-verification-retirement` intents. Admission binds the
+actual live-smoke process acquisition. Its reservation excludes membership controls, claims and
+worker lease birth until browser closure, profile removal and Duo release are proved. An uncertain
+cleanup retains the member and reservation. Explicit recovery requires the original immutable
+process acquisition and release, a gone owner, and exact slot custody and closure evidence; it
+cannot adopt a PID or infer a member from a historical process-only claim.
 
 ## Not built yet
 

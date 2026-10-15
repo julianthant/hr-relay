@@ -33,6 +33,7 @@ export type CommandSettlement =
   };
 
 export function settleCommandResult(result: CommandResult): CommandSettlement {
+  if (result.state === "pending") throw new Error("command-result-pending: retain the original attempt until served readback");
   switch (result.state) {
     case "applied":
       return { kind: "applied", replayed: false };

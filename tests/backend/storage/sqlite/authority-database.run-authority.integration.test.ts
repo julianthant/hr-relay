@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createRunClaimFixtures } from "../../../support/helpers/backend/run-claim-fixtures.js";
 
 
@@ -156,8 +158,13 @@ describe("run claim store", () => {
   it("does not claim another workflow's rows", () => {
     const database = openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
+    const root = roots[databases.indexOf(database)];
+    assert.ok(root);
+    const { workerId, workerLifetime } = testAdmittedWorker(database, CLOCK, { path: join(root, "state.sqlite"),
+      workflow: "separation", poolIndex: 1, browserSystems: ["ucpath"],
+    });
     assert.deepEqual(
-      database.authority.runs.claimNext({ workflow: "separation", workerId: WORKER_ID, now: NOW }),
+      database.authority.runs.claimNext({ workflow: "separation", workerId, workerLifetime, now: NOW }),
       { state: "idle" },
     );
   });

@@ -1,4 +1,6 @@
-import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,7 +14,7 @@ import { RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandOperationSchem
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { COMMAND_FIXTURES, GATE_RESULT, HASH_A, NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_SESSION, RUN_SESSION_ID, WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_SESSION, RUN_SESSION_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -424,12 +426,13 @@ describe("canonical run-record service", () => {
   });
 
   it("requests cancellation on both a claimed anchor and claimed member without settling either", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+    const { service, request, runtimeConfig, database, clock } = fixture();
     const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
     const member = created(service, { ...request, commandId: "99000000-0000-4000-8000-000000000001", matchKey: "claimed-member",
       shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "member" } });
+    testWorkerPorts(database, clock, { path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex: 2 });
     const claimed = service.claimNext({ commandId: "99000000-0000-4000-8000-000000000002", workflow: WORKFLOW_ID,
-      workerId: "member-worker", runtimeConfig });
+      workerId: "person-lookup-worker-2", runtimeConfig });
     assert.equal(claimed.state, "applied");
     const cancelled = service.transition({ commandId: "99000000-0000-4000-8000-000000000003", runId: anchor.envelope.runId,
       expectedVersion: anchor.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
@@ -498,8 +501,11 @@ describe("canonical run-record service", () => {
 
   for (const kind of ["create", "claim"] as const) {
     it(`${kind === "create" ? "#1" : "#4"} ${kind} serializes independent connections across a held reservation`, async () => {
-      const { root, request, service, runtimeConfig } = fixture();
-      if (kind === "claim") created(service, request);
+      const { root, request, service, runtimeConfig, database, clock } = fixture();
+      if (kind === "claim") {
+        testWorkerPorts(database, clock, { path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex: 2 });
+        created(service, request);
+      }
       const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
       const connections = releases.map((release, index) => raceConnection({
         path: join(root, "state.db"), now: NOW, release,
@@ -507,7 +513,7 @@ describe("canonical run-record service", () => {
         operation: kind === "create" ? { kind, request: { ...request,
           commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
         } } : { kind, request: { runtimeConfig, workflow: WORKFLOW_ID,
-          workerId: `race-worker-${String(index)}`,
+          workerId: `person-lookup-worker-${String(index + 1)}`,
           commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
         } },
       }));

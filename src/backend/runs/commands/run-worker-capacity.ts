@@ -1,5 +1,4 @@
 import type { CommandKernel } from "./command-kernel.js";
-import { MAX_WORKERS_PER_POOL } from "../../runtime/workers/worker-loop.js";
 import { WorkerBrowserCommandRequestSchema, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 import { isLiveWorker } from "../../../models/run/worker.js";
@@ -35,7 +34,7 @@ export function createRunWorkerCapacity(deps: { kernel: CommandKernel; authority
         return slot.workerId;
       };
       const retained: { index: number; plan?: WorkerRequest; spawn?: WorkerRequest }[] = [];
-      for (let index = 1; index <= MAX_WORKERS_PER_POOL; index++) {
+      for (const index of new Set(deps.authority.workerSlots.list(workflowId).map(slot => slot.poolIndex))) {
         const read = (type: "plan-worker-count" | "spawn-worker") => {
           const id = runCapacityCommandId(request.commandId, type, index);
           const value = deps.authority.workerControls.get(id)?.request ?? deps.authority.commands.get(id);
@@ -44,8 +43,7 @@ export function createRunWorkerCapacity(deps: { kernel: CommandKernel; authority
             || value.target.workflowId !== workflowId || value.requestedAt !== request.requestedAt
             || value.requestedBy !== request.requestedBy || value.source !== request.source
             || (value.type === "spawn-worker" && (deps.authority.workerSlots.get(value.payload.workerId)?.workflow !== workflowId
-              || deps.authority.workerSlots.get(value.payload.workerId)?.poolIndex !== index))
-            || (value.type === "plan-worker-count" && (value.payload.desiredWorkers > MAX_WORKERS_PER_POOL))) {
+              || deps.authority.workerSlots.get(value.payload.workerId)?.poolIndex !== index))) {
             fail("identity differs from its retained capacity command");
           }
           return WorkerBrowserCommandRequestSchema.parse(value);
@@ -63,17 +61,17 @@ export function createRunWorkerCapacity(deps: { kernel: CommandKernel; authority
         if (result.state === "already-applied") fail("status unknown: no retained startup command or usable worker; reconcile before a new launch");
         const pool = deps.authority.workerPools.get(workflowId);
         const count = pool?.desiredWorkers ?? 0;
-        if (count > MAX_WORKERS_PER_POOL) fail("unavailable: pool declaration exceeds the three-worker limit");
         const slots = activeSlots();
-        if (slots.length > MAX_WORKERS_PER_POOL) fail("unavailable: admitted roster exceeds the three-worker limit");
+        if (count !== slots.length) fail("unavailable: worker pool roster authority is inconsistent");
+        if (deps.authority.workerSlots.verifications(workflowId).length !== 0) fail("unavailable: worker verification owns the pool reservation");
         const reusable = slots.find(slot => {
           const lease = deps.authority.workerLeases.get(slot.workerId);
           return lease === undefined || !isLiveWorker(lease);
         });
         let index = reusable?.poolIndex;
         if (index === undefined) {
-          index = [1, 2, 3].find(candidate => !slots.some(slot => slot.poolIndex === candidate));
-          if (index === undefined) return fail("unavailable: all three admitted members are paused or stopping");
+          index = 1;
+          while (slots.some(slot => slot.poolIndex === index)) index += 1;
         }
         const envelope = { requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source, family: "worker-browser" as const };
         const desiredWorkers = Math.max(count, slots.length + (reusable === undefined ? 1 : 0));

@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
+import { bindWorkerProcessAdmission, type RuntimeProcessLockHandle } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
+import type { Clock } from "../../../../../src/rules/time/clock.js";
+import { testWorkerLifetime } from "../../../fixtures/run-lifecycle-fixtures.js";
 import { fenceWriteFixture } from "../../write-fence-fixture.js";
 import { browserSessionSpanPath,workerSpanPath } from "../../../../../src/backend/logs/span-emitter.js";
 import { buildRunResult } from "../../../../../src/backend/runs/lifecycle/run-result.js";
@@ -54,6 +60,9 @@ interface SeedSpec {
 
 interface SeedWorld {
   readonly database: AuthorityDatabase;
+  readonly authorityPath: string;
+  readonly clock: Clock;
+  readonly retainWorker: (handle: RuntimeProcessLockHandle) => void;
   readonly spans: ReturnType<typeof createTimelineEmitter>;
   readonly notes: ReturnType<typeof createNoteTimelineWriter>;
 }
@@ -131,11 +140,27 @@ function enqueueRun(world: SeedWorld, spec: SeedSpec): RunRecord {
 
 
 /** Enqueue → claim → validating → running, through production transitions only. */
-function startRunning(world: SeedWorld, spec: SeedSpec, workerId: string, nodeId: string): RunRecord {
+function startRunning(world: SeedWorld, spec: SeedSpec, poolIndex: number, nodeId: string): RunRecord {
+  if (!world.database.authority.workerSlots.list(WORKFLOW_ID).some(member => member.poolIndex === poolIndex && member.retiredAt === null)) {
+    const processLockRoot = join(dirname(world.authorityPath), "locks");
+    const bound = bindWorkerProcessAdmission({ processLockRoot, authorityPath: world.authorityPath,
+      pid: process.pid, clock: world.clock, open: () => world.database, close: () => {},
+      admit: (database, processAcquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+        commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
+        expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
+        processId: process.pid, processAcquisitionId, authorityPath: world.authorityPath, processLockRoot, now: SEEDED_NOW,
+      }, randomUUID()).workerId),
+    });
+    world.retainWorker(bound.processLock);
+    const started = world.database.startOwnedWorker({ workerId: bound.workerId, workflow: WORKFLOW_ID,
+      browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: SEEDED_NOW }, bound.processLock);
+    if (started.state !== "started") throw new Error("seeded worker lifetime did not start");
+  }
+  const { workerId, workerLifetime } = testWorkerLifetime(world.database, WORKFLOW_ID, poolIndex);
   enqueueRun(world, spec);
   const claimed = world.database.authority.runs.claimNext({
     workflow: WORKFLOW_ID,
-    workerId,
+    workerId, workerLifetime,
     now: SEEDED_NOW,
   });
   if (claimed.state !== "claimed") {
@@ -146,7 +171,7 @@ function startRunning(world: SeedWorld, spec: SeedSpec, workerId: string, nodeId
     throw new Error(`claimNext took ${runId}, not the just-enqueued ${uuidOf(spec.seed)}`);
   }
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  const claimFields = { workerId, claimedAt: SEEDED_NOW, heartbeatAt: SEEDED_NOW };
+  const claimFields = { workerId, workerLifetime, claimedAt: SEEDED_NOW, heartbeatAt: SEEDED_NOW };
 
   world.spans.emit({
     t: "run.claimed",
@@ -176,7 +201,16 @@ function startRunning(world: SeedWorld, spec: SeedSpec, workerId: string, nodeId
     now: SEEDED_NOW,
   });
   if (running.state !== "applied") throw new Error(`run ${runId} did not enter running`);
+  reportWorker(world, workerId, running.run.envelope.runId);
   return running.run;
+}
+
+function reportWorker(world: SeedWorld, workerId: string, runId?: string): void {
+  const lease = world.database.authority.workerLeases.get(workerId);
+  if (lease === undefined) throw new Error("seeded worker lifetime is absent");
+  world.database.authority.workerLeases.reportLifecycle({ workerId, leaseGeneration: lease.leaseGeneration, now: SEEDED_NOW,
+    lifecycle: { ...(runId === undefined ? { state: "idle" } : { state: "busy", runId }),
+      startedAt: lease.lifecycle.startedAt, heartbeatAt: SEEDED_NOW } });
 }
 
 
@@ -434,7 +468,7 @@ export function seed(world: SeedWorld): Record<string, string> {
   });
 
   // failed — real atomic failure terminalization off a running node.
-  const failed = startRunning(world, { seed: 4, title: "EID 10873698" }, "person-lookup-worker-1", "crm-dates");
+  const failed = startRunning(world, { seed: 4, title: "EID 10873698" }, 1, "crm-dates");
   taskSpan(world, failed, "searching", "done");
   taskSpan(world, failed, "cross-verify", "done");
   taskSpan(world, failed, "crm-dates", "failed");
@@ -443,22 +477,24 @@ export function seed(world: SeedWorld): Record<string, string> {
   note(world, failed, "error", "CRM returned an unavailable response");
   const failureId = uuidOf(904);
   terminalizeFailed(world, failed, failureId);
+  reportWorker(world, claimOf(failed).workerId);
 
   // done — real atomic success terminalization with a factory-sealed result.
-  const done = startRunning(world, { seed: 3, title: "Battistessa, Johnnie" }, "person-lookup-worker-2", "active-status");
+  const done = startRunning(world, { seed: 3, title: "Battistessa, Johnnie" }, 2, "active-status");
   taskSpan(world, done, "searching", "done");
   taskSpan(world, done, "cross-verify", "done");
   taskSpan(world, done, "active-status", "done");
   terminalizeDone(world, done, uuidOf(903));
+  reportWorker(world, claimOf(done).workerId);
 
   // running — claimed, executing, one task span still open.
-  const running = startRunning(world, { seed: 2, title: "Morrow, Bea" }, "person-lookup-worker-1", "searching");
+  const running = startRunning(world, { seed: 2, title: "Morrow, Bea" }, 1, "searching");
   taskSpan(world, running, "searching");
   note(world, running, "step", "opened UCPath person search");
   note(world, running, "warn", "two candidates matched; narrowing by department");
 
   // awaiting-approval — canonical parking plus the matching gate evidence.
-  const gated = startRunning(world, { seed: 5, title: "EID 10101010" }, "person-lookup-worker-3", "cross-verify");
+  const gated = startRunning(world, { seed: 5, title: "EID 10101010" }, 3, "cross-verify");
   taskSpan(world, gated, "searching", "done");
   world.spans.emit({
     t: "gate.opened",
@@ -476,9 +512,10 @@ export function seed(world: SeedWorld): Record<string, string> {
     now: SEEDED_NOW,
   });
   if (gatedTransition.state !== "applied") throw new Error("fixture gate transition failed");
+  reportWorker(world, claimOf(gated).workerId);
 
 
-  const parked = startRunning(world, { seed: 6, title: "EID 10555121" }, "person-lookup-worker-4", "cross-verify");
+  const parked = startRunning(world, { seed: 6, title: "EID 10555121" }, 4, "cross-verify");
   taskSpan(world, parked, "searching", "done");
   fenceAndParkWrite(world, parked);
   const parkedTransition = world.database.authority.runs.transition({
@@ -496,9 +533,10 @@ export function seed(world: SeedWorld): Record<string, string> {
     now: SEEDED_NOW,
   });
   if (parkedTransition.state !== "applied") throw new Error("parked-write transition was refused");
+  reportWorker(world, claimOf(parked).workerId);
 
   // cancelled — a real terminal transition (the arm `transition` still owns).
-  const cancelled = startRunning(world, { seed: 7, title: "EID 10222333" }, "person-lookup-worker-5", "searching");
+  const cancelled = startRunning(world, { seed: 7, title: "EID 10222333" }, 5, "searching");
   const cancelTransition = world.database.authority.runs.transition({
     runId: cancelled.envelope.runId,
     expectedVersion: cancelled.version,
@@ -507,6 +545,7 @@ export function seed(world: SeedWorld): Record<string, string> {
     now: SEEDED_NOW,
   });
   if (cancelTransition.state !== "applied") throw new Error("cancel transition was refused");
+  reportWorker(world, claimOf(cancelled).workerId);
 
   // The group and its members, then the row that must stay queued — enqueued
   // last so no claimNext above could have taken them.

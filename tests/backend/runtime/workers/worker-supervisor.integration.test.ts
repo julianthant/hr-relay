@@ -382,3 +382,42 @@ describe("close", () => {
   });
 });
 }
+
+describe("reset owner preflight has no effects", () => {
+  const world = createWorkerSupervisionTestWorld();
+  for (const state of ["external", "awaiting-birth", "running", "changed-member", "changed-lifetime", "dead", "uncertain"] as const) {
+    it(`authenticates ${state} custody before reset admission`, async () => {
+      const h = world.openHarness({ publishLeaseOnSpawn: state !== "awaiting-birth" });
+      const target = world.member(1);
+      let spawning: Promise<unknown> | undefined;
+      if (state !== "external") {
+        spawning = h.supervisor.execute({ command: "spawn-worker", commandId: randomUUID(), member: target });
+        if (state !== "awaiting-birth") await spawning;
+      }
+      if (state === "dead") h.children[0]?.emitExit(1, null);
+      if (state === "uncertain") {
+        h.nextGracefulStop = () => { throw new Error("possibly landed stop"); };
+        await expect(h.supervisor.execute(world.stopRequest(h, target))).rejects.toThrow();
+      }
+      const original = h.leases.get(target.workerId);
+      const lifetime = { leaseGeneration: 1, processId: original?.processId ?? 4001, startedAt: original?.startedAt ?? world.NOW };
+      if (state === "changed-lifetime") h.leases.set(target.workerId, { processId: lifetime.processId + 1, startedAt: lifetime.startedAt });
+      const member = state === "changed-member" ? WorkerPoolMemberSchema.parse({ ...target, membershipRevision: 2 }) : target;
+      const before = { evidence: h.supervisor.memberEvidence(target), stops: h.gracefulRequests.length,
+        signals: h.children.flatMap(child => child.signalsSent), timers: h.scheduler.pending().length };
+      if (state === "running") {
+        expect(() => h.supervisor.assertResetOwner?.(member, lifetime)).not.toThrow();
+        expect(() => h.supervisor.assertResetOwner?.(member, { ...lifetime, processId: lifetime.processId + 1 })).toThrow();
+        expect(() => h.supervisor.assertResetOwner?.(member, { ...lifetime, startedAt: "2026-08-26T09:01:00.000Z" })).toThrow();
+      } else expect(() => h.supervisor.assertResetOwner?.(member, lifetime)).toThrow();
+      expect({ evidence: h.supervisor.memberEvidence(target), stops: h.gracefulRequests.length,
+        signals: h.children.flatMap(child => child.signalsSent), timers: h.scheduler.pending().length }).toEqual(before);
+      if (state === "awaiting-birth") {
+        const rejected = expect(spawning).rejects.toThrow();
+        h.children[0]?.emitExit(1, null);
+        await rejected;
+      }
+      h.supervisor.close();
+    });
+  }
+});

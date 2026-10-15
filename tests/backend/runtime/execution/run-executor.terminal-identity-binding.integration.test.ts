@@ -1,9 +1,10 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { WORKER_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const {executorHarness, SIGNAL, cleanup } = createRunExecutorTestWorld();
@@ -18,9 +19,10 @@ describe("terminal identity binding", () => {
     const envelope = run.envelope as Record<string, unknown>;
     envelope.contractFingerprint = UUID_6.replaceAll("-", "").padEnd(64, "0");
     database.authority.runs.enqueue(run);
+    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: harness.authority.path, workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
     const claimed = database.authority.runs.claimNext({
-      workflow: WORKFLOW_ID,
-      workerId: WORKER_ID,
+      workerLifetime, workflow: WORKFLOW_ID,
+      workerId: workerId,
       now: clock.now().toISOString(),
     });
     assert.equal(claimed.state, "claimed");
@@ -28,7 +30,7 @@ describe("terminal identity binding", () => {
     await assert.rejects(
       executeClaimedRun(harness.deps, {
         run: claimed.run,
-        claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+        claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration },
         signal: SIGNAL,
       }),
       /the worker is miswired/,

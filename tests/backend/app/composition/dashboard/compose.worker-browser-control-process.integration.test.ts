@@ -142,18 +142,51 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     runtime=await boot();
     db=AuthorityDatabase.open({path:join(stateRoot,"state.db"),busyTimeoutMs:5000,migrationOwner:"control-process-proof-restarted"},systemClock); database=db;
     assert.equal((await reopen.send()).state,"already-applied");
-    assert.equal((await post("pause-worker",target(1))).result.state,"rejected");
-    assert.equal((await post("spawn-worker",{workflowId:"person-lookup",expectedVersion:1},{workerId:worker(1)})).result.state,"applied");
+    await waitFor(() => [1,2].every(index => {
+      const lease = db.authority.workerLeases.get(worker(index));
+      return lease?.leaseGeneration === 2 && lease.lifecycle.state === "idle";
+    }) && db.authority.workerSlots.recoveries("person-lookup").length === 0,
+    "standing recovery did not finalize exact browserless idle owners", diagnostics);
     assert.equal(target(1).controlBasis.leaseGeneration,2);
     assert.equal((await post("pause-worker",oldGeneration)).result.state,"conflict");
-    assert.equal((await post("stop-worker",target(1))).result.state,"applied");
-    await waitFor(() => db.authority.workerLeases.get(worker(1))?.lifecycle.state === "stopped",
-      "replacement worker did not observe its stop directive", diagnostics);
-    await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
-      "stopped replacement process did not finish admission cleanup", diagnostics);
-    const resize = (await post("plan-worker-count",{workflowId:"person-lookup",expectedVersion:1},{desiredWorkers:1})).result;
+    const member = db.authority.workerSlots.get(worker(1)); assert.ok(member);
+    const stop = await post("stop-worker",{...target(1),membershipRevision:member.membershipRevision});
+    assert.equal(stop.result.state,"pending");
+    await waitFor(() => db.authority.workerControls.get(stop.request.commandId)?.phase.state === "succeeded",
+      "replacement worker did not settle its exact reset", diagnostics);
+    const reset = db.authority.workerControls.get(stop.request.commandId); assert.ok(reset?.phase.state === "succeeded");
+    assert.equal(reset.phase.acknowledgement.kind,"reset");
+    assert.equal(db.authority.commandAudits.findByCommand(stop.request.commandId)?.result.state,"applied");
+    assert.equal((await stop.send()).state,"already-applied");
+    const resetLease = db.authority.workerLeases.get(worker(1)); assert.ok(resetLease);
+    assert.equal(resetLease.lifecycle.state,"idle"); assert.equal(resetLease.leaseGeneration,2);
+    assert.equal(db.authority.workerControls.browsers(worker(1)).filter(value => value.leaseGeneration === 2 && value.health !== "closed").length,0);
+    const replacementChild = children.find(child => child.pid === resetLease.processId); assert.ok(replacementChild);
+    assert.equal(replacementChild.exitCode,null); assert.equal(replacementChild.signalCode,null);
+    assert.equal(existsSync(join(root,`browser-${String(replacementChild.pid)}.jsonl`)),false,"browserless recovery and Stop must not acquire or authenticate");
+    const removal = await post("remove-worker",{...target(1),workflowId:"person-lookup",membershipRevision:member.membershipRevision,
+      expectedVersion:db.authority.workerPools.get("person-lookup")?.version});
+    assert.equal(removal.result.state,"pending");
+    await waitFor(() => db.authority.workerControls.get(removal.request.commandId)?.phase.state === "succeeded",
+      "selected replacement did not prove retirement", diagnostics);
+    assert.notEqual(db.authority.workerSlots.get(worker(1))?.retiredAt,null);
+    assert.equal(db.authority.commandAudits.findByCommand(removal.request.commandId)?.result.state,"applied");
+    await waitFor(() => replacementChild.exitCode !== null || replacementChild.signalCode !== null,
+      "removed replacement process did not finish admission cleanup", diagnostics);
+    assert.deepEqual(JSON.parse(readFileSync(join(root,`cleanup-${String(replacementChild.pid)}.json`),"utf8")),{openContexts:0,failures:0});
+    assert.equal(groupPids(resetLease.processId).length,0);
+    const resize = (await post("plan-worker-count",{workflowId:"person-lookup",expectedVersion:db.authority.workerPools.get("person-lookup")?.version},{desiredWorkers:1})).result;
     assert.equal(resize.state,"applied");
     assert.equal(db.authority.workerPools.get("person-lookup")?.desiredWorkers, 1);
+    db.close(); database=undefined;
+    await runtime.stop(); runtime=undefined;
+    await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
+      "final dashboard drain did not finish every owned child", diagnostics);
+    for (const child of children) {
+      assert.ok(child.pid);
+      assert.deepEqual(JSON.parse(readFileSync(join(root,`cleanup-${String(child.pid)}.json`),"utf8")),{openContexts:0,failures:0});
+      assert.equal(groupPids(child.pid).length,0);
+    }
   } catch(error) { failures.push(error); } finally {
     writeFileSync(join(root,"release-drivers"),"cleanup release\n");
     for(const child of children) if(child.exitCode===null&&child.signalCode===null) {child.kill("SIGCONT");child.kill("SIGTERM");}

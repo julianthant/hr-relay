@@ -101,7 +101,7 @@ const APP_DAY = DashboardDayWireSchema_m1.parse({
   workflowCounts: [{ workflowId: "fixture-workflow", count: 0, statusCounts: [] }],
   statusCounts: [],
   queueSurfaces: [],
-  workerCards: [],
+  workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [],
   workerPools: [],
   notifications: [],
 });
@@ -743,10 +743,10 @@ afterEach_m2(_afterEachFixture0);
     assert_m2.ok([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.textContent?.includes("Recover previous Delete run")));
     assert_m2.equal(commands.length, 1, "reviewing recovery must not dispatch a second command");
   });
-  it_m2('uses only mock workflow data in the product even when bootstrap registers served workflows', async () => {
+  it_m2('keeps product workflows mocked while Sessions subscribes to served authority', async () => {
     const h = await mount({ product: true });
-    assert_m2.equal(h.streams.length, 0);
-    assert_m2.equal(h.requests.some(request => request.url.includes('/events/v1?')), false);
+    assert_m2.equal(h.streams.length, 1);
+    assert_m2.equal(h.requests.some(request => request.url.includes(`/events/v1?topics=dashboard-day:${FIXTURE_DAY_WIRE_m2.day}`)), true);
     assert_m2.match(h.host.textContent ?? '', /Person Lookup/u);
     assert_m2(h.host.querySelector('[data-parity-ready="true"]'));
   });
@@ -755,7 +755,7 @@ afterEach_m2(_afterEachFixture0);
     const h = await mount({ product: true, search: `start=1&view=${view}` });
     assert_m2.match(h.host.textContent ?? '', /Destination unavailable/u);
     assert_m2.match(h.host.textContent ?? '', /This launch workflow is not registered/u);
-    assert_m2.equal(h.streams.length, 0);
+    assert_m2.equal(h.streams.length, 1);
   });
   it_m2('keeps slow bootstrap in loading geometry until a parsed response arrives', async () => {
     let resolve!: (response: Response) => void;

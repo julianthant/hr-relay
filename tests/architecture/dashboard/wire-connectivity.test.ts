@@ -237,6 +237,8 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "plan-worker-count": "worker-browser commands target the worker pool, not a run row",
   "spawn-worker": "worker-browser commands target the worker pool, not a run row",
   "stop-worker": "worker-browser commands target the worker pool, not a run row",
+  "remove-worker": "worker-browser commands target the worker pool, not a run row",
+  "retry-worker": "worker-browser commands target the worker pool, not a run row",
   "pause-worker": "worker-browser commands target the worker pool, not a run row",
   "resume-worker": "worker-browser commands target the worker pool, not a run row",
   "refresh-browser": "worker-browser commands target the worker pool, not a run row",

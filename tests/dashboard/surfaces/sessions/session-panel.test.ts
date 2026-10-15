@@ -8,7 +8,7 @@ const catalog = buildWorkflowCatalog([]);
 
 describe("frontend timeline and sessions", () => {
   it("renders the canonical Sessions host without any dashboard client provider", () => {
-    const markup = renderToStaticMarkup(createElement(SessionPanel, { catalog, open: true, onOpenChange: () => {} }));
+    const markup = renderToStaticMarkup(createElement(SessionPanel, { catalog, source: "mock", open: true, onOpenChange: () => {} }));
     assert.equal((markup.match(/<article /gu) ?? []).length, 4);
     assert.doesNotMatch(markup, /Sample data|Add to preview/);
     assert.match(markup, /Ready for the next run/);

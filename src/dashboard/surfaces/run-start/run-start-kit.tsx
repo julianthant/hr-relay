@@ -187,7 +187,7 @@ export function EnqueueResultBanner({
   onReload,
   onDismiss,
 }: {
-  result: CommandResult;
+  result: Exclude<CommandResult, { state: "pending" }>;
   /** conflict only — the ONE cure for a plan built against a version that moved */
   onReload?: () => void;
   onDismiss?: () => void;

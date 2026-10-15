@@ -1,3 +1,4 @@
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,8 +34,10 @@ describe("start-specific supersede review is atomic", () => {
         source: "dashboard", family: "run", type: "rename", target: { runId: source.envelope.runId, expectedVersion: source.version }, payload: { displayName: "Changed" } });
       else if (source !== undefined) {
         const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
-        h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId: "proof-worker", runtimeConfig: {
+        const { workerId, workerLifetime } = testWorkerLifetime(h.database, h.descriptor.id, 1);
+        const claimed = h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId, workerLifetime, runtimeConfig: {
           generation: active.generation, settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } });
+        assert.ok(claimed.state === "applied" || claimed.state === "applied-already");
       }
       const roots = h.queueRoots; const generation = h.database.getMeta().authorityGeneration;
       const result = h.kernel.execute(h.command(plan)); assert.ok(result.state === "rejected"); assert.equal(result.code, "replan-required");

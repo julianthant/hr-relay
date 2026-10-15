@@ -74,6 +74,73 @@ afterEach(_afterEachFixture0);
     expect((await f.kernel().executeWorkerPool(request)).state).toBe("already-applied");
     expect(f.effects()).toBe(1); expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
+  it("admits four members and retires all to zero without changing retained identities", async () => {
+    const f = fixture();
+    expect((await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 4))).state).toBe("applied");
+    const members = f.db.authority.workerSlots.list();
+    expect(members.map(slot => slot.poolIndex)).toEqual([1, 2, 3, 4]);
+    expect(f.db.authority.workerPools.get(fixtureDescriptor.id)?.desiredWorkers).toBe(4);
+    expect((await f.kernel().executeWorkerPool(f.request(UUID_6, 1, 0))).state).toBe("applied");
+    expect(f.db.authority.workerPools.get(fixtureDescriptor.id)?.desiredWorkers).toBe(0);
+    expect(f.db.authority.workerSlots.list().map(slot => slot.workerId)).toEqual(members.map(slot => slot.workerId));
+    expect(f.db.authority.workerSlots.list().every(slot => slot.retirementCommandId === UUID_6)).toBe(true);
+    f.restart();
+    expect(f.db.authority.workerSlots.list()).toHaveLength(4);
+  });
+  it("refuses inconsistent historical declarations before allocating or invoking effects", async () => {
+    const f = fixture();
+    f.db.authority.workerPools.plan({ workflow: fixtureDescriptor.id, expectedVersion: 0, desiredWorkers: 2,
+      requestedBy: "local-operator", now: NOW });
+    await expect(f.kernel().executeWorkerPool(f.request(UUID_5, 1, 4))).rejects.toThrow(/roster-authority-unavailable/u);
+    expect(f.effects()).toBe(0);
+    expect(f.db.authority.workerSlots.list()).toEqual([]);
+    expect(f.db.authority.workerControls.get(UUID_5)).toBeUndefined();
+    expect(() => f.db.authority.workerSlots.allocate({ workflow: fixtureDescriptor.id, poolIndex: 1, commandId: null, now: NOW })).toThrow(/roster-authority-unavailable/u);
+    expect(f.db.authority.workerSlots.list()).toEqual([]);
+    const slot = f.db.withAuthorityTransaction(repositories => {
+      repositories.workerPools.plan({ workflow: fixtureDescriptor.id, expectedVersion: 1, desiredWorkers: 1,
+        requestedBy: "local-operator", now: NOW });
+      return repositories.workerSlots.allocate({ workflow: fixtureDescriptor.id, poolIndex: 1, commandId: null, now: NOW });
+    });
+    f.db.authority.workerPools.plan({ workflow: fixtureDescriptor.id, expectedVersion: 2, desiredWorkers: 2,
+      requestedBy: "local-operator", now: NOW });
+    await expect(f.kernel().executeWorkerPool({ ...f.request(UUID_6, 3, 4), type: "spawn-worker",
+      payload: { workerId: slot.workerId } })).rejects.toThrow(/roster-authority-unavailable/u);
+    expect(f.db.authority.workerControls.get(UUID_6)).toBeUndefined();
+  });
+  it("rolls back primitive retirement until the same transaction updates its declaration", async () => {
+    const f = fixture();
+    await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 1));
+    const slot = f.db.authority.workerSlots.list()[0];
+    if (slot === undefined) throw new Error("missing admitted slot");
+    f.db.authority.commands.insert(f.request(UUID_6, 1, 0));
+    expect(() => f.db.authority.workerSlots.retire({ workerId: slot.workerId, commandId: UUID_6,
+      expectedRevision: 1, now: NOW })).toThrow(/roster-authority-unavailable/u);
+    expect(f.db.authority.workerSlots.get(slot.workerId)).toEqual(slot);
+    f.db.withAuthorityTransaction(repositories => {
+      repositories.workerSlots.retire({ workerId: slot.workerId, commandId: UUID_6, expectedRevision: 1, now: NOW });
+      repositories.workerPools.plan({ workflow: fixtureDescriptor.id, expectedVersion: 1, desiredWorkers: 0,
+        requestedBy: "local-operator", now: NOW });
+    });
+    expect(f.db.authority.workerSlots.get(slot.workerId)?.retirementCommandId).toBe(UUID_6);
+    expect(f.db.authority.workerPools.get(fixtureDescriptor.id)?.desiredWorkers).toBe(0);
+  });
+  it("restores changed membership tracking when a nested allocation rolls back", () => {
+    const f = fixture();
+    f.db.authority.workerPools.plan({ workflow: "fixture-child", expectedVersion: 0, desiredWorkers: 2,
+      requestedBy: "local-operator", now: NOW });
+    f.db.withAuthorityTransaction(repositories => {
+      expect(() => f.db.withAuthorityTransaction(nested => {
+        nested.workerSlots.allocate({ workflow: "fixture-child", poolIndex: 1, commandId: null, now: NOW });
+        throw new Error("nested-allocation-abort");
+      })).toThrow("nested-allocation-abort");
+      repositories.workerPools.plan({ workflow: fixtureDescriptor.id, expectedVersion: 0, desiredWorkers: 1,
+        requestedBy: "local-operator", now: NOW });
+      repositories.workerSlots.allocate({ workflow: fixtureDescriptor.id, poolIndex: 1, commandId: null, now: NOW });
+    });
+    expect(f.db.authority.workerSlots.list("fixture-child")).toEqual([]);
+    expect(f.db.authority.workerSlots.list(fixtureDescriptor.id)).toHaveLength(1);
+  });
   it("persists genuine direct CLI admission and its original global slot without authorizing a process effect", () => {
     const f = fixture();
     const request = { commandId: UUID_5, workflow: fixtureDescriptor.id, poolIndex: 2,
@@ -207,6 +274,7 @@ function fixture() {
   const db = new DatabaseSync(":memory:"); databases.push(db);
   for (const migration of SQLITE_MIGRATIONS) for (const sql of migration.statements) db.exec(sql);
   const slots = createWorkerSlotRepository({ database: db, mutate(work) {
+    if (db.isTransaction) return work().result;
     db.exec("BEGIN IMMEDIATE"); try { const result = work(); db.exec("COMMIT"); return result.result; }
     catch (error) { db.exec("ROLLBACK"); throw error; }
   } });
@@ -221,7 +289,7 @@ describe("native stable worker slots", () => {
 afterEach(_afterEachFixture0);
 
   it("allocates global ordinals, preserves survivors and never reuses retired identity", () => {
-    const f = fixture(); f.pool("person-lookup"); f.pool("separations");
+    const f = fixture(); f.db.exec("BEGIN"); f.pool("person-lookup",2); f.pool("separations",1);
     const first = f.allocate("person-lookup",1), survivor = f.allocate("person-lookup",2), other = f.allocate("separations",1);
     expect([first.ordinal,survivor.ordinal,other.ordinal]).toEqual([1,2,3]);
     insertNativeCommand(f.db,{ commandId:UUID_2,family:"worker-browser",type:"plan-worker-count",requestedAt:NOW,requestedBy:"local-operator",source:"dashboard",target:{workflowId:"person-lookup",expectedVersion:1},payload:{desiredWorkers:1} });
@@ -231,14 +299,18 @@ afterEach(_afterEachFixture0);
     expect(replacement.workerId).not.toBe(first.workerId);
     expect(f.allocate("person-lookup",2)).toEqual(survivor);
     expect(f.slots.list()).toHaveLength(4);
+    f.db.exec("COMMIT");
     expect(f.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
-  it("admits zero desired workers and refuses more than three active slots per workflow", () => {
-    const f = fixture(); f.pool("person-lookup",0);
+  it("validates zero and admits more than three active slots per workflow", () => {
+    const f = fixture(); f.db.exec("BEGIN"); f.pool("person-lookup",4);
+    expect(WorkerPoolRecordSchema.safeParse({ workflow:"person-lookup",desiredWorkers:0,plannedBy:"local-operator",plannedAt:NOW,version:1,createdAt:NOW,updatedAt:NOW }).success).toBe(true);
     for (const poolIndex of [1,2,3]) f.allocate("person-lookup",poolIndex);
     expect(f.slots.list().filter(slot=>slot.retiredAt===null)).toHaveLength(3);
-    expect(()=>f.allocate("person-lookup",4)).toThrow();
-    expect(WorkerPoolRecordSchema.safeParse({ workflow:"person-lookup",desiredWorkers:4,plannedBy:"local-operator",plannedAt:NOW,version:1,createdAt:NOW,updatedAt:NOW }).success).toBe(false);
+    expect(f.allocate("person-lookup",4).poolIndex).toBe(4);
+    expect(()=>f.allocate("person-lookup",0)).toThrow();
+    expect(WorkerPoolRecordSchema.safeParse({ workflow:"person-lookup",desiredWorkers:4,plannedBy:"local-operator",plannedAt:NOW,version:1,createdAt:NOW,updatedAt:NOW }).success).toBe(true);
+    f.db.exec("COMMIT");
   });
   it("requires pool admission and rolls back failed slot writes", () => {
     const f = fixture(); expect(()=>f.allocate("person-lookup",1)).toThrow(/not-admitted/u);

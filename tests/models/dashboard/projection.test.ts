@@ -2,7 +2,7 @@ import { createDashboardModelFixtures } from "../../support/helpers/dashboard-mo
 import { default as assert } from "node:assert/strict";
 import { describe } from "vitest";
 import { it } from "vitest";
-import { QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
+import { WorkerPoolWireSchema, QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
 import { isTerminalQueueStatus } from "../../../src/models/dashboard/projection.js";
 
 {
@@ -10,6 +10,12 @@ import { isTerminalQueueStatus } from "../../../src/models/dashboard/projection.
 const { RUN_1, RUN_2, QUEUE, DAY } = createDashboardModelFixtures();
 
 describe("dashboard wire primitives", () => {
+
+  it("represents zero and uncapped worker declarations while rejecting invalid counts", () => {
+    const pool = { workflowId: "person-lookup", version: 1, plannedBy: "local-operator", plannedAt: "2026-10-01T12:00:00.000Z" };
+    for (const desiredWorkers of [0, 4, 21]) assert.equal(WorkerPoolWireSchema.parse({ ...pool, desiredWorkers }).desiredWorkers, desiredWorkers);
+    for (const desiredWorkers of [-1, 1.5]) assert.equal(WorkerPoolWireSchema.safeParse({ ...pool, desiredWorkers }).success, false);
+  });
 
   it("accepts session origins while retaining frozen originless sessions", () => {
     const sessionId = RUN_2;

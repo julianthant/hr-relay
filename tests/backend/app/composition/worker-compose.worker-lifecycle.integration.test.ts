@@ -185,8 +185,10 @@ describe("composed worker runtime", () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = recovery === "startup" ? admittedWorkerId(stateRoot, clock) : "orphan-other-worker";
+    const workerId = admittedWorkerId(stateRoot, clock, recovery === "startup" ? 1 : 2);
     const database = reopen(stateRoot, clock);
+    if (recovery === "global" && database.authority.workerLeases.get(workerId) === undefined) assert.equal(database.authority.workerLeases.start({ workerId, workflow: WORKFLOW_ID,
+      browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
     const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
     assert.ok(claimed.state === "claimed");
     const service = testRunService(database, clock);

@@ -1,13 +1,12 @@
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { MAX_WORKERS_PER_POOL } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import {
 composePlanWorkerCountCommand,
 composeSpawnWorkerCommand
 } from "../../../../src/dashboard/app/commands/command-dispatch.js";
 import {
-SESSION_POOL_MAX_WORKERS,
+
 buildSessionPoolGroups,
 planPoolIntent,
 poolIndexOfWorkerId,
@@ -16,28 +15,26 @@ poolSlotIsUnmet,
 type SessionPoolGroup,
 type WorkerCardWire,
 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { DashboardDayWireSchema,type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
+import { WorkerCardWireSchema, DashboardDayWireSchema,type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 import { WorkerSlotRecordSchema,workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { FIXTURE_DAY_WIRE } from "../../../support/fixtures/dashboard/fixture-day.js";
 
 const ACTOR = { actorId: "local-operator", source: "session-panel" } as const;
 
 /** Every fixture card is what the STRICT day schema produced, never a hand-built object. */
 function parsedCard(source: WorkerCardWire, overrides: Readonly<Record<string, unknown>>): WorkerCardWire {
-  const parsed = DashboardDayWireSchema.parse({
-    ...FIXTURE_DAY_WIRE,
-    workerCards: [{ ...source, ...overrides }],
-    workerPools: [],
-  }).workerCards[0];
-  if (parsed === undefined) throw new Error("the parsed day wire dropped its only worker card");
-  return parsed;
+  const workflowId = WorkflowIdSchema.parse(overrides.workflowId ?? source.workflowId), workerId = WorkerIdSchema.parse(overrides.workerId ?? source.workerId);
+  const ordinal = poolIndexOfWorkerId(workflowId, workerId);
+  if (ordinal === undefined) throw new Error("worker card requires an exact canonical member");
+  return WorkerCardWireSchema.parse({ ...source, ...overrides,
+    member: { ...source.member, workflowId, workerId, ordinal, poolIndex: ordinal } });
 }
 
 /** One live card, cloned off the real wire fixture so no case can express a card authority refuses. */
 function cardOf(overrides: Readonly<Record<string, unknown>>): WorkerCardWire {
-  const live = FIXTURE_DAY_WIRE.workerCards.find((card) => card.state !== "stopped" && card.state !== "failed");
+  const live = FIXTURE_DAY_WIRE.workerCards.find((card) => card.state !== "failed");
   if (live === undefined) throw new Error("the wire fixture needs one non-terminal worker card");
   return parsedCard(live, overrides);
 }
@@ -58,7 +55,11 @@ function dayOf(
   workerCards: readonly WorkerCardWire[],
   workerPools: DashboardDayWire["workerPools"],
 ): DashboardDayWire {
-  return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards, workerPools });
+  const template = FIXTURE_DAY_WIRE.workerAuthority.members[0];
+  if (template === undefined) throw new Error("missing exact member fixture template");
+  const members = workerCards.map(card => ({ ...template, workerId: card.member.workerId, workflow: card.member.workflowId,
+    ordinal: card.member.ordinal, poolIndex: card.member.poolIndex, membershipRevision: card.member.membershipRevision }));
+  return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards, workerPools, workerAuthority: { state: "present", members } });
 }
 
 function poolRow(workflowId: string, desiredWorkers: number, version: number): DashboardDayWire["workerPools"][number] {
@@ -82,13 +83,14 @@ function groupFor(day: DashboardDayWire, workflowId: string): SessionPoolGroup {
 }
 
 describe("the panel's copy of the pool contract is pinned to the kernel's", () => {
-  it("restates the worker cap as the kernel number", () => {
-    assert.equal(SESSION_POOL_MAX_WORKERS, MAX_WORKERS_PER_POOL);
+  it("accepts declarations beyond the former cap and zero", () => {
+    assert.equal(planPoolIntent(groupFor(dayOf([], [poolRow("person-lookup", 0, 1)]), "person-lookup"), 4).kind, "ready");
+    assert.equal(planPoolIntent(groupFor(dayOf([], [poolRow("person-lookup", 4, 1)]), "person-lookup"), 0).kind, "ready");
   });
 
   it("derives the same canonical identity the supervisor requires", () => {
     const workflowId = WorkflowIdSchema.parse("person-lookup");
-    for (let index = 1; index <= MAX_WORKERS_PER_POOL; index += 1) {
+    for (let index = 1; index <= 4; index += 1) {
       assert.equal(
         poolMemberWorkerId(String(workflowId), index),
         String(workerPoolMember(WorkerSlotRecordSchema.parse({ workflow: workflowId, workerId: `person-lookup-worker-${String(index)}`, ordinal: index, poolIndex: index, membershipRevision: 1, phase: "idle", retiredAt: null, retirementCommandId: null, reservationCommandId: null, createdAt: "2026-08-03T16:00:00.000Z", updatedAt: "2026-08-03T16:00:00.000Z" })).workerId),
@@ -97,16 +99,16 @@ describe("the panel's copy of the pool contract is pinned to the kernel's", () =
   });
 
   it("refuses to mint an identity outside the pool's index range", () => {
-    assert.throws(() => poolMemberWorkerId("person-lookup", 0), /outside 1\.\.3/u);
-    assert.throws(() => poolMemberWorkerId("person-lookup", MAX_WORKERS_PER_POOL + 1), /outside 1\.\.3/u);
-    assert.throws(() => poolMemberWorkerId("person-lookup", 1.5), /outside 1\.\.3/u);
+    assert.throws(() => poolMemberWorkerId("person-lookup", 0), /positive integer/u);
+    assert.throws(() => poolMemberWorkerId("person-lookup", Number.MAX_SAFE_INTEGER + 1), /positive integer/u);
+    assert.throws(() => poolMemberWorkerId("person-lookup", 1.5), /positive integer/u);
   });
 
   it("reads an index back only from a canonical, unpadded identity", () => {
     assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-2"), 2);
     assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-01"), undefined);
     assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-0"), undefined);
-    assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-9"), undefined);
+    assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-worker-9"), 9);
     assert.equal(poolIndexOfWorkerId("person-lookup", "separations-worker-1"), undefined);
     assert.equal(poolIndexOfWorkerId("person-lookup", "person-lookup-daemon"), undefined);
   });
@@ -153,15 +155,11 @@ describe("the pool roster is folded from served facts only", () => {
     assert.equal(slotAt(group, 2).declared, false);
   });
 
-  it("keeps a worker id the pool contract cannot address out of the indexed roster", () => {
-    const day = dayOf(
-      [cardOf({ workerId: "person-lookup-daemon", workflowId: "person-lookup" })],
-      [poolRow("person-lookup", 1, 1)],
-    );
-    const group = groupFor(day, "person-lookup");
-
-    assert.deepEqual(group.unindexedCards.map((card) => String(card.workerId)), ["person-lookup-daemon"]);
-    assert.deepEqual(group.slots.map((slot) => slot.membership.state), ["not-served"]);
+  it("refuses a served worker card without exact canonical membership", () => {
+    const source = FIXTURE_DAY_WIRE.workerCards[0];
+    if (source === undefined) throw new Error("missing strict worker card fixture");
+    assert.throws(() => WorkerCardWireSchema.parse({ ...source, workerId: "person-lookup-daemon",
+      member: { ...source.member, workerId: "person-lookup-daemon" } }));
   });
 });
 
@@ -178,10 +176,10 @@ describe("a plan names the exact members it will stop", () => {
   );
 
   it("refuses a count outside the worker range without composing anything", () => {
-    for (const count of [0, -1, MAX_WORKERS_PER_POOL + 1, 2.5]) {
+    for (const count of [-1, Number.MAX_SAFE_INTEGER + 1, 2.5]) {
       const intent = planPoolIntent(plannedTwo(), count);
       assert.equal(intent.kind, "refused");
-      if (intent.kind === "refused") assert.match(intent.reason, /1 to 3 workers \(D271\)/u);
+      if (intent.kind === "refused") assert.match(intent.reason, /nonnegative integer/u);
     }
   });
 
@@ -191,7 +189,7 @@ describe("a plan names the exact members it will stop", () => {
     if (intent.kind === "refused") assert.match(intent.reason, /already declares 2 workers at pool version 4/u);
   });
 
-  it("names indices N+1..MAX as the excess set, exactly as the kernel reconciles them", () => {
+  it("names only served excess members", () => {
     const intent = planPoolIntent(plannedTwo(), 1);
     assert.equal(intent.kind, "ready");
     if (intent.kind !== "ready") return;
@@ -199,11 +197,9 @@ describe("a plan names the exact members it will stop", () => {
     assert.equal(intent.expectedVersion, 4);
     assert.deepEqual(intent.excess.map((member) => member.workerId), [
       "person-lookup-worker-2",
-      "person-lookup-worker-3",
     ]);
-    // The running flag is a SERVED fact per member, not a guess: index 2 holds
-    // a live lease and index 3 holds nothing, and the confirmation says so.
-    assert.deepEqual(intent.excess.map((member) => member.running), [true, false]);
+    // The running flag comes from the served member.
+    assert.deepEqual(intent.excess.map((member) => member.running), [true]);
   });
 
   it("calls a first plan over a running CLI worker a scale-down, because it stops one", () => {

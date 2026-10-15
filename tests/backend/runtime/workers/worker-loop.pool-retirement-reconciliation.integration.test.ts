@@ -639,7 +639,7 @@ describe("pool-capable worker runtime executor seam", () => {
     );
   });
 
-  it("refuses a plan above the proved three-member cap before calling the supervisor", async () => {
+  it("refuses an invalid negative count before calling the supervisor", async () => {
     let calls = 0;
     const native = admittedAdapterRoster();
     const executor = createWorkerPoolRuntimeExecutor({
@@ -653,8 +653,8 @@ describe("pool-capable worker runtime executor seam", () => {
       family: "worker-browser",
       type: "plan-worker-count",
       target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
-      payload: { desiredWorkers: 4 },
-    }), /Too big: expected number to be <=3/u);
+      payload: { desiredWorkers: -1 },
+    }), /Too small: expected number to be >=0/u);
     assert.equal(calls, 0);
     assert.ok(executor);
   });

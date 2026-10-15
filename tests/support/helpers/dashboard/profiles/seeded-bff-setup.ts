@@ -1,3 +1,4 @@
+import type { RuntimeProcessLockHandle } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { sqliteRunReader } from "../../canonical-run-reader.js";
 import { personLookupDescriptor } from "../../registered-workflows.js";
 import { AuthorityDatabase } from "../../synthetic-storage-admission.js";
@@ -107,6 +108,17 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       clock,
     );
 
+    const workerHandles: RuntimeProcessLockHandle[] = [];
+    const cleanupAuthority = (): void => {
+      const failures: unknown[] = [];
+      for (const handle of workerHandles.splice(0).reverse()) {
+        try { handle.release(); } catch (error) { failures.push(error); }
+      }
+      try { database.close(); } catch (error) { failures.push(error); }
+      try { rmSync(root, { recursive: true, force: true }); } catch (error) { failures.push(error); }
+      if (failures.length > 0) throw new AggregateError(failures, "seeded authority cleanup failed");
+    };
+    try {
     seedRuntimeConfig(database, clock);
     const descriptors = {
       resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
@@ -122,6 +134,11 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       authority: {
         listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
         listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
+        listWorkerSlots: () => database.authority.workerSlots.list(),
+        listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
+        workerOwnerAlive: lease => database.workerLifetimeCustody(lease.workerId).state === "alive",
+        workerControls: () => database.authority.workerControls.list(),
+        workerBrowsers: workerId => database.authority.workerControls.browsers(workerId),
         listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
         getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
         listWorkerPools: () => database.authority.workerPools.list(),
@@ -149,16 +166,15 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     });
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
 
-    const runIds = seed({ database, spans, notes });
+    const runIds = seed({ database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
+      retainWorker: handle => workerHandles.push(handle) });
     if (input.dateNavigation === true) {
       const source = runIds.runningRun;
       if (source === undefined) throw new Error("date-proof-source-run-missing");
       seedDateNavigation(database, source);
     }
 
-    let selectionServices:Awaited<ReturnType<NonNullable<typeof input.prepareSelection>>>|undefined;
-    try {selectionServices=await input.prepareSelection?.({database,clock,root});}
-    catch(error) {database.close();rmSync(root,{recursive:true,force:true});throw error;}
+    const selectionServices = await input.prepareSelection?.({database,clock,root});
     const { app, hub, closeRunLogs } = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
 
     const server: Server = createServer((req, res) => {
@@ -198,16 +214,22 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       day: SEEDED_DAY,
       runIds: Object.freeze(runIds),
       close: async (): Promise<void> => {
-        server.closeAllConnections();
-        await new Promise<void>((resolvePromise, rejectPromise) => {
-          server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
-        });
-        hub.close();
-        closeRunLogs();
-        database.close();
-        rmSync(root, { recursive: true, force: true });
+        try {
+          server.closeAllConnections();
+          await new Promise<void>((resolvePromise, rejectPromise) => {
+            server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
+          });
+          hub.close();
+          closeRunLogs();
+        } finally { cleanupAuthority(); }
       },
     });
+    } catch (error) {
+      const failures = [error];
+      try { cleanupAuthority(); } catch (cleanupError) { failures.push(cleanupError); }
+      if (failures.length > 1) throw new AggregateError(failures, "seeded setup and cleanup failed", { cause: error });
+      throw error;
+    }
   }
 
   return { SEEDED_COVERAGE_GAPS, startSeededServer };

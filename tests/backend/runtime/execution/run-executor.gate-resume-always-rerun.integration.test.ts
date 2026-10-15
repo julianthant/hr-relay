@@ -1,3 +1,4 @@
+import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -19,7 +20,7 @@ import type { TestClock } from "../../../../src/rules/time/clock.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { HASH_A,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN,RUN_ID,WORKER_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN,RUN_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 EXECUTOR_EID,
 ManualScheduler,
@@ -130,6 +131,7 @@ function harness(): Readonly<{
   deps: RunExecutorDependencies;
 }> {
   const authority = openAuthorityHarness();
+  testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: gateResumeDescriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const emitter = recordingEmitter();
   const deps: RunExecutorDependencies = {
@@ -177,11 +179,12 @@ function queuedRun() {
 }
 
 function claim(database: AuthorityDatabase, now: string) {
-  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now });
+  const { workerId, workerLifetime } = testWorkerLifetime(database, WORKFLOW_ID, 1);
+  const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: WORKFLOW_ID, workerId, now });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   return {
     run: claimed.run,
-    claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+    claim: { workerId, claimGeneration: claimed.run.claimGeneration },
   };
 }
 

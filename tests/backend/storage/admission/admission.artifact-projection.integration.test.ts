@@ -1,3 +1,4 @@
+import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { generatedUpdateId,pendingGeneratedUpdateIds } from "../../../../src/backend/logs/generated-artifact-projection.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -35,7 +36,7 @@ import { defineServiceStore,defineTaskStoreRegistry } from "../../../../src/work
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { defineWorkflowDescriptor,type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN,RUN_ID,WORKER_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN,RUN_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 ManualScheduler,
 happySessionHarness,
@@ -345,17 +346,19 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
   run: RunRecord;
   claim: { workerId: string; claimGeneration: number };
 } {
+  const { workerId, workerLifetime } = testWorkerLifetime(database, descriptor.id, 1);
   const claimed = database.authority.runs.claimNext({
-    workflow: descriptor.id,
-    workerId: WORKER_ID,
+    workerLifetime, workflow: descriptor.id,
+    workerId,
     now: new Date("2026-08-03T09:00:00.000Z").toISOString(),
   });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
-  return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration } };
+  return { run: claimed.run, claim: { workerId, claimGeneration: claimed.run.claimGeneration } };
 }
 
 function executorHarness(descriptor: AnyWorkflowDescriptor, root: string | undefined) {
   const authority = openAuthorityHarness();
+  testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = happySessionHarness();
   const emitter = recordingEmitter();

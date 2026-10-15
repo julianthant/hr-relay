@@ -1,6 +1,8 @@
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
-import { testWorkerPorts } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { randomUUID } from "node:crypto";
+import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
 import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
@@ -203,7 +205,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
       repoRoot,
     });
-    cleanups.push(() => runtime.stop());
+    let releaseWorker: (() => void) | undefined;
+    cleanups.push(async () => { await runtime.stop(); releaseWorker?.(); });
 
     const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
     const day = "2026-08-28";
@@ -240,7 +243,19 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       migrationOwner: "unit-test",
     });
     try {
-      testWorkerPorts(database, manualClock(new Date("2026-08-28T12:00:00.000Z")), { path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), descriptor: personLookupDescriptor, poolIndex: 1 });
+      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+      const authorityPath = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
+      const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
+      const bound = bindWorkerProcessAdmission({ authorityPath, processLockRoot, clock, pid: process.pid,
+        open: () => database, close: () => undefined,
+        admit: (authority, acquisitionId) => authority.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
+          { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1, expectedPoolVersion: 0,
+            processId: process.pid, processAcquisitionId: acquisitionId, authorityPath, processLockRoot,
+            now: clock.now().toISOString() }, randomUUID()).workerId) });
+      releaseWorker = () => { bound.processLock.release(); };
+      assert.equal(database.startOwnedWorker({ workerId: bound.workerId, workflow: personLookupDescriptor.id,
+        browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: clock.now().toISOString() },
+      bound.processLock).state, "started");
       const started = database.authority.workerLeases.get("person-lookup-worker-1");
       assert.ok(started);
       assert.equal(started.processId, process.pid);

@@ -15,7 +15,7 @@ import { WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-const {stubLaunch, servedControlBasis, PL, plMember, required, roots, cleanups, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
+const {stubLaunch, PL, plMember, required, roots, cleanups, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 const SEP = WorkflowIdSchema.parse("separations");
 const _PL_1 = plMember(1);
@@ -24,7 +24,7 @@ afterEach(cleanup, 30_000);
 
 describe("real runtime: dashboard shutdown releases the locks, reports close evidence, and leaves no orphans", () => {
   it(
-    "two real children over the real ingress; graceful stop, shutdown with one live child, then PID-proved teardown",
+    "two real children over the real ingress; internal child shutdown, dashboard shutdown with one live child, then PID-proved teardown",
     async () => {
       reportW5Phase("runtime-shutdown", "startup", "begin");
       const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-runtime-"));
@@ -109,30 +109,9 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       assert.equal(pidAlive(plPid) && pidAlive(sepPid), true, childOutput());
       reportW5Phase("runtime-shutdown", "spawn-and-birth", "complete");
 
-      // Graceful stop of PL-1 through the same ingress: the real child
-      // observes the durable directive, releases its lock, and dies.
+      // Internal shutdown of one child leaves its peer for dashboard drain.
       reportW5Phase("runtime-shutdown", "graceful-stop", "begin");
-      const sideDoor = AuthorityDatabase.open(
-        { path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "unit-test" },
-        systemClock,
-      );
-      let plLeaseVersion: number;
-      let plControlBasis: ReturnType<typeof servedControlBasis>;
-      try {
-        plLeaseVersion = required(sideDoor.authority.workerLeases.get(PL_1.workerId), "PL lease").version;
-        plControlBasis = servedControlBasis(sideDoor, PL_1.workerId);
-      } finally {
-        sideDoor.close();
-      }
-      assert.deepEqual(
-        await post({
-          ...envelope(systemClock),
-          type: "stop-worker",
-          target: { workerId: PL_1.workerId, expectedVersion: plLeaseVersion, controlBasis: plControlBasis },
-          reason: "w5 runtime stop",
-        }),
-        { status: 200, state: "applied" },
-      );
+      assert.equal(plRecord.child.kill("SIGTERM"), true);
       await waitFor(() => !pidAlive(plPid), "the stopped child's pid to die", childOutput);
       assert.notEqual(
         required(workerLockRecords(lockRoot).get(PL_1.workerId), "PL-1 worker lock").releasedAt,

@@ -235,7 +235,7 @@ describe("the composed worker process control through the kernel pool door", () 
 
 
 
-  it("refuses an externally started worker end-to-end with a retained refusal and no directive", async () => {
+  it("refuses an externally started worker Stop before reservation or shutdown effects", async () => {
     const harness = openControlHarness();
     assert.equal(admitExternalSlot(harness), WORKER_1);
     // An operator started this worker by hand: the lease is live under a pid
@@ -261,11 +261,12 @@ describe("the composed worker process control through the kernel pool door", () 
 
     const stopId = nextCommandId();
     const stopResult = await harness.kernel.executeWorkerPool({ ...envelope(harness, stopId), type: "stop-worker",
-      target: { workerId: WORKER_1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) } });
+      target: { workerId: WORKER_1, membershipRevision: 1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) } });
     assert.equal(stopResult.state, "rejected");
-    if (stopResult.state === "rejected") assert.match(stopResult.message, /never spawned person-lookup-worker-1/);
+    if (stopResult.state === "rejected") assert.match(stopResult.message, /externally started.*never adopted/u);
+    assert.equal(harness.database.authority.workerControls.get(stopId), undefined);
     assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.control.directive, "run");
-    assert.equal(harness.database.authority.commandAudits.findByCommand(stopId)?.result.state, "rejected");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(stopId), undefined);
 
   });
 
@@ -415,12 +416,12 @@ describe("dashboard launch creates bounded worker capacity", () => {
       controls: h.database.authority.workerControls.list(), children: h.children.length }, before);
   });
 
-  it("reports queued capacity unavailable at cap without resuming paused or stopping members", async () => {
+  it("refuses growth across a pending stop without resuming paused or stopping members", async () => {
     const h = openControlHarness(); const { request } = dashboardLaunch(h);
     await admitPoolSlot(h, 3);
     for (let index = 1; index <= 3; index++) occupyMember(h, index, index === 2 ? "stop" : "pause");
     const before = JSON.stringify(h.database.authority.workerLeases.listLive());
-    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: all three/);
+    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: the admitted roster contains a pending stop/);
     assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).length, 1); assert.equal(h.children.length, 0);
     assert.equal(JSON.stringify(h.database.authority.workerLeases.listLive()), before);
   });
@@ -633,7 +634,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
         body: JSON.stringify({ commandId: nextId, requestedAt: NOW, requestedBy: "local-operator", source: "run-start", family: "start", type: "start-run",
           target: { workflowId: WORKFLOW, startPlanId: nextPlan.startPlanId, expectedVersion: nextPlan.expectedVersion }, payload: nextPlan.fingerprints }) });
       assert.equal(failure.status, 500);
-      assert.match(JSON.stringify(await failure.json()), /Runs queued .*worker startup unavailable: all three/);
+      assert.match(JSON.stringify(await failure.json()), /Runs queued .*worker startup did not complete at plan-worker-count .*externally owned; no worker was adopted/);
       const committed = AdmittedAuthorityDatabase.open(admission,
         { path: join(stateRoot, "state.db"), busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, clock);
       try {
@@ -689,7 +690,7 @@ describe("every control retains a crash after effect admission", () => {
         }
         throw new Error("injected-owner-loss-after-admission");
       };
-      return { planPoolWorkerCount: wrap(c => pool.planPoolWorkerCount(c)), spawnPoolWorker: wrap(c => pool.spawnPoolWorker(c)),
+      return { assertResetOwner: pool.assertResetOwner?.bind(pool), planPoolWorkerCount: wrap(c => pool.planPoolWorkerCount(c)), spawnPoolWorker: wrap(c => pool.spawnPoolWorker(c)),
         pausePoolWorker: wrap(c => pool.pausePoolWorker(c)), resumePoolWorker: wrap(c => pool.resumePoolWorker(c)),
         stopPoolWorker: wrap(c => pool.stopPoolWorker(c)), refreshPoolBrowser: wrap(c => pool.refreshPoolBrowser(c)), reopenPoolBrowser: wrap(c => pool.reopenPoolBrowser(c)) };
     } });
@@ -705,6 +706,23 @@ describe("every control retains a crash after effect admission", () => {
       : { target: { workerId: WORKER_1, expectedVersion: 2, controlBasis: servedControlBasis(harness.database, WORKER_1),
         ...(type === "refresh-browser" || type === "reopen-browser" ? { browserSessionId: sessionId } : {}) } }) };
     fault = true;
+    if (type === "stop-worker") {
+      const strict = { ...command, target: { ...command.target, membershipRevision: 1 } };
+      const before = harness.database.authority.workerLeases.get(WORKER_1);
+      const first = await harness.kernel.executeWorkerPool(strict);
+      assert.equal(first.state, "pending");
+      const replay = await harness.kernel.executeWorkerPool(strict);
+      assert.deepEqual(replay, first);
+      assert.equal(calls, 0);
+      assert.ok(before !== undefined);
+      assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1), { ...before, version: before.version + 1,
+        controlRevision: before.controlRevision + 1, controlCommandId: command.commandId, updatedAt: harness.clock.now().toISOString() });
+      assert.equal(harness.database.authority.workerControls.get(command.commandId)?.phase.state, "admitted");
+      const divergent = await harness.kernel.executeWorkerPool({ ...strict, requestedBy: "another-actor" });
+      assert.equal(divergent.state, "rejected"); if (divergent.state === "rejected") assert.equal(divergent.code, "command-divergent");
+      assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+      return;
+    }
     await assert.rejects(harness.kernel.executeWorkerPool(command), /injected-owner-loss/);
     assert.equal(harness.database.authority.workerControls.get(command.commandId)?.phase.state, "uncertain");
     const replay = await harness.kernel.executeWorkerPool(command); assert.equal(replay.state, "rejected");

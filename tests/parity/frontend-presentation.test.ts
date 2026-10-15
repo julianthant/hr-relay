@@ -537,9 +537,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(workerCount).toHaveValue("7");
       expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(320);
       expect(await dialog.locator(".grid").evaluate(node => getComputedStyle(node).rowGap)).toBe("12px");
-      await expect(workerCount).toHaveAttribute("max", "20");
+      await expect(workerCount).not.toHaveAttribute("max");
       await workerCount.fill("20");
-      await expect(increase).toBeDisabled();
+      await expect(increase).toBeEnabled();
+      await increase.click();
+      await expect(workerCount).toHaveValue("21");
       await workerCount.fill("7");
       await expect(dialog).not.toContainText("Up to 6");
       await page.keyboard.press("Escape");

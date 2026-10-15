@@ -1,3 +1,5 @@
+import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { createWorkerLoopHarness as workerHarness } from "../../support/helpers/backend/worker-loop-world.js";
 // Use distinct worker ids over shared authority; composed single-workflow workers share a lease identity.
 import assert from "node:assert/strict";
@@ -44,6 +46,21 @@ function queuedRun(index: number): Record<string, unknown> {
     ...run,
     envelope: { ...envelope, traceId: `pl-170000-${index.toString(16).padStart(4, "0")}` },
   };
+}
+
+function claimForWorker(authority: AuthorityHarness, poolIndex: number) {
+  const { database, clock } = authority;
+  testWorkerPorts(database, clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex });
+  const member = database.authority.workerSlots.list().find((slot) => slot.poolIndex === poolIndex);
+  assert.ok(member);
+  const lease = database.authority.workerLeases.get(member.workerId);
+  assert.ok(lease);
+  return database.authority.runs.claimNext({
+    workflow: WORKFLOW_ID,
+    workerId: member.workerId,
+    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
+    now: clock.now().toISOString(),
+  });
 }
 
 function runIdOf(record: RunRecord): string {
@@ -197,22 +214,14 @@ describe("a live loop's row is invisible to every other claimer", () => {
     const heldRunId = heldRunIds[0];
 
     // A sibling worker asking for work gets the OTHER row, never this one.
-    const sibling = database.authority.runs.claimNext({
-      workflow: WORKFLOW_ID,
-      workerId: "person-lookup-worker-2",
-      now: authority.clock.now().toISOString(),
-    });
+    const sibling = claimForWorker(authority, 2);
     assert.equal(sibling.state, "claimed");
     assert.ok(sibling.state === "claimed" && runIdOf(sibling.run) !== heldRunId);
 
     // The holder asking for a second row is a bug in the caller, and the store
     // says so rather than serving two browser-session sets to one owner.
     assert.throws(
-      () => database.authority.runs.claimNext({
-        workflow: WORKFLOW_ID,
-        workerId: "person-lookup-worker-1",
-        now: authority.clock.now().toISOString(),
-      }),
+      () => claimForWorker(authority, 1),
       new RegExp(`worker person-lookup-worker-1 already holds active run ${heldRunId ?? ""}`),
     );
 
@@ -247,11 +256,7 @@ describe("claim sweep overlaps a live heartbeat", () => {
     assert.ok(liveRunId !== undefined);
 
     // A second worker takes the sibling row and then dies: it never renews.
-    const abandoned = database.authority.runs.claimNext({
-      workflow: WORKFLOW_ID,
-      workerId: "person-lookup-worker-dead",
-      now: clock.now().toISOString(),
-    });
+    const abandoned = claimForWorker(authority, 2);
     assert.equal(abandoned.state, "claimed");
     const staleRunId = abandoned.state === "claimed" ? runIdOf(abandoned.run) : "";
 
@@ -341,11 +346,7 @@ describe("a heartbeat that lost its row never renews it", () => {
       now: clock.now().toISOString(),
     });
     assert.deepEqual(swept.map(({ state }) => state), ["requeued"]);
-    const reclaimed = database.authority.runs.claimNext({
-      workflow: WORKFLOW_ID,
-      workerId: "person-lookup-worker-2",
-      now: clock.now().toISOString(),
-    });
+    const reclaimed = claimForWorker(authority, 2);
     assert.equal(reclaimed.state, "claimed");
     assert.ok(generationBefore !== undefined
       && reclaimed.state === "claimed"

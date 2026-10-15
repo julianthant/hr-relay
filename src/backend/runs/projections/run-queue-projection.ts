@@ -1,3 +1,4 @@
+import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
@@ -45,7 +46,7 @@ import {
 } from "../../../models/trust/failure.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../models/events/types.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import type { WorkerLeaseRecord } from "../../../models/run/worker.js";
+import { isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import type { RunSessionRecord } from "../../../models/run/session.js";
 import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
@@ -137,6 +138,9 @@ export interface RunQueueProjectionDeps {
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
 
+    listWorkerSlots?(): readonly WorkerSlotRecord[];
+    listWorkerRuns?(workerId: string): readonly RunRecord[];
+    workerOwnerAlive?(lease: WorkerLeaseRecord): boolean;
     listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
     workerBrowsers?(workerId: string): readonly WorkerBrowserObservation[];
@@ -301,6 +305,8 @@ function lifecycleCardFactsOf(lifecycle: WorkerLeaseRecord["lifecycle"]): Record
     case "idle":
     case "stopping":
       return { state: lifecycle.state, startedAt: lifecycle.startedAt };
+    case "waiting":
+      return { state: lifecycle.state, startedAt: lifecycle.startedAt, activity: lifecycle.activity, ...(lifecycle.runId === undefined ? {} : { runId: lifecycle.runId }) };
     case "busy":
       return { state: lifecycle.state, startedAt: lifecycle.startedAt, runId: lifecycle.runId };
     case "paused":
@@ -759,6 +765,16 @@ export class RunQueueProjection {
   }
 
 
+  #ownerFact(lease: WorkerLeaseRecord) {
+    if (!isLiveWorker(lease)) return { state: "stopped" } as const;
+    try {
+      return this.#deps.authority.workerOwnerAlive?.(lease) === true ? { state: "alive" } as const
+        : { state: "unavailable", reason: "Worker process custody is unavailable." } as const;
+    } catch (error) {
+      return { state: "unavailable", reason: error instanceof Error ? error.message : "Worker process custody could not be verified." } as const;
+    }
+  }
+
   #cardLeases(): ReadonlyMap<string, WorkerLeaseRecord> {
     const leases = new Map<string, WorkerLeaseRecord>();
     for (const lease of this.#deps.authority.listLiveWorkerLeases()) leases.set(lease.workerId, lease);
@@ -788,8 +804,8 @@ export class RunQueueProjection {
       cancelRequested: run.cancelRequested,
     }));
     const leases = this.#cardLeases();
-    const controlFacts = [...leases.values()].map(lease => ({ workerId: lease.workerId, owned: this.#deps.authority.ownsWorker?.(lease), browsers: this.#deps.authority.workerBrowsers?.(lease.workerId) }));
-    const fingerprint = JSON.stringify({ leases: workerLeaseFingerprintOf(leases), pools, batches, runs, controlFacts, controls: this.#deps.authority.workerControls?.() });
+    const controlFacts = [...leases.values()].map(lease => ({ workerId: lease.workerId, owned: this.#deps.authority.ownsWorker?.(lease), custody: this.#ownerFact(lease), browsers: this.#deps.authority.workerBrowsers?.(lease.workerId) }));
+    const fingerprint = JSON.stringify({ members: this.#deps.authority.listWorkerSlots?.(), leases: workerLeaseFingerprintOf(leases), pools, batches, runs, controlFacts, controls: this.#deps.authority.workerControls?.() });
     this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
   }
@@ -1244,28 +1260,61 @@ export class RunQueueProjection {
     }
 
 
-    const workerCards = [...this.#cardLeases().values()]
-      .sort((a, b) => a.workerId.localeCompare(b.workerId))
-      .map((lease) => {
+    let members: readonly WorkerSlotRecord[] | undefined;
+    let workerOperations: readonly WorkerControlRecord[] | undefined;
+    let workerAuthority: DashboardDayWire["workerAuthority"];
+    const workerCards: DashboardDayWire["workerCards"] = [];
+    try {
+      members = this.#deps.authority.listWorkerSlots?.().filter(member => member.retiredAt === null);
+      workerOperations = this.#deps.authority.workerControls?.();
+      workerAuthority = members !== undefined && workerOperations !== undefined ? { state: "present", members: [...members] }
+        : { state: "unavailable", members: [...(members ?? [])], reason: "Worker membership or operation authority is unavailable." };
+    } catch (error) {
+      workerAuthority = { state: "unavailable", members: [...(members ?? [])],
+        reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
+    }
+    for (const member of members ?? []) {
+      try {
+        const lease = this.#deps.authority.getWorkerLease(member.workerId);
+        if (lease === undefined) throw new Error("worker-lifetime-unavailable");
+        if (this.#deps.authority.listWorkerRuns === undefined) throw new Error("worker-run-authority-unavailable");
+        const active = this.#deps.authority.listWorkerRuns(member.workerId);
+        const heldRunId = "runId" in lease.lifecycle ? lease.lifecycle.runId : undefined;
+        const runIds = new Set<string>();
+        for (const run of active) {
+          const read = this.#deps.reader.read(run.envelope.runId);
+          if (runIds.has(run.envelope.runId) || !("workerId" in run.lifecycle) || run.lifecycle.workerId !== member.workerId
+            || run.envelope.workflow !== member.workflow || run.lifecycle.workerLifetime?.membershipRevision !== member.membershipRevision
+            || run.lifecycle.workerLifetime.leaseGeneration !== lease.leaseGeneration
+            || read.state !== "present" || read.disposition !== "live" || read.run.envelope.runId !== run.envelope.runId
+            || read.run.envelope.workflow !== run.envelope.workflow || read.run.envelope.attempt !== run.envelope.attempt
+            || read.run.claimGeneration !== run.claimGeneration || !("workerId" in read.run.lifecycle)
+            || read.run.lifecycle.workerId !== member.workerId || read.run.lifecycle.state !== run.lifecycle.state
+            || read.run.lifecycle.claimedAt !== run.lifecycle.claimedAt
+            || read.run.lifecycle.workerLifetime?.membershipRevision !== member.membershipRevision
+            || read.run.lifecycle.workerLifetime.leaseGeneration !== lease.leaseGeneration) {
+            throw new Error("worker-current-run-authority-unavailable");
+          }
+          runIds.add(run.envelope.runId);
+        }
+        if (active.length !== (heldRunId === undefined ? 0 : 1) || active.some(run => run.envelope.runId !== heldRunId)) {
+          throw new Error("worker-current-run-authority-unavailable");
+        }
         const fold = this.#workers.get(lease.workerId);
-        return workerCardOf({
-          lease,
-          observations: this.#deps.authority.workerBrowsers?.(lease.workerId),
-          operations: this.#deps.authority.workerControls?.(),
+        workerCards.push(workerCardOf({ lease, member, ownerAlive: this.#ownerFact(lease).state === "alive",
+          observations: this.#deps.authority.workerBrowsers?.(lease.workerId), operations: workerOperations,
           owned: this.#deps.authority.ownsWorker?.(lease),
-          fold: fold === undefined
-            ? undefined
-            : {
-              revision: fold.eventCount,
-              ...(fold.currentRunId === undefined ? {} : { currentRunId: fold.currentRunId }),
-              browsers: [...fold.browsers.values()],
-            },
-          resolveTrace: (runId) => {
+          fold: fold === undefined ? undefined : { revision: fold.eventCount, browsers: [...fold.browsers.values()] },
+          resolveRun: runId => {
             const read = this.#deps.reader.read(runId);
-            return read.state === "present" && read.disposition === "live" ? read.run.envelope.traceId : undefined;
+            return read.state === "present" && read.disposition === "live" ? read.run : undefined;
           },
-        });
-      });
+        }));
+      } catch (error) {
+        workerAuthority = { state: "unavailable", members: [...(members ?? [])],
+          reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
+      }
+    }
 
     return DashboardDayWireSchema.parse({
       day: parsedDay,
@@ -1289,6 +1338,8 @@ export class RunQueueProjection {
         .map(([statusKey, count]) => ({ status: statusKey, count })),
       queueSurfaces: surfaces,
       workerCards,
+      workerAuthority,
+      workerOperations: workerOperations ?? [],
 
       workerPools: this.#deps.authority.listWorkerPools().map((pool) => ({
         workflowId: pool.workflow,

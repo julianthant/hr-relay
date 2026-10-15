@@ -67,7 +67,10 @@ export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown
     }
     return admitted;
   });
-  const claim = database.authority.runs.claimNext({ workflow: ledger.workflowId, workerId: slot.workerId, now: ledger.fencedAt });
+  const lease = database.authority.workerLeases.get(slot.workerId);
+  if (lease === undefined) throw new Error("fixture claim lifetime unavailable");
+  const claim = database.authority.runs.claimNext({ workflow: ledger.workflowId, workerId: slot.workerId,
+    workerLifetime: { leaseGeneration: lease.leaseGeneration, membershipRevision: slot.membershipRevision }, now: ledger.fencedAt });
   assert.equal(claim.state, "claimed");
   if (claim.state !== "claimed") throw new Error("fixture owner could not claim");
   assert.equal(claim.run.envelope.runId, ledger.runId);

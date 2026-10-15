@@ -122,6 +122,34 @@ export class CommandExecutor {
     return this.dispatch(attempt, options);
   }
 
+  async check(commandId: string, options: CommandExecutionOptions & {
+    readonly observe: (request: CommandRequest) => Promise<CommandResult | undefined>;
+  }): Promise<CommandOutcome> {
+    const attempt = this.attempts.get(commandId);
+    if (attempt === undefined || "targets" in attempt.request) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
+    if (!sameScope(this.currentScope(), options.scope) || attempt.scope.actorId !== options.scope.actorId || attempt.scope.client !== options.scope.client
+      || attempt.scope.authority !== options.scope.authority) return this.publish(this.refuse(commandId, "scope-replaced"), options);
+    if (attempt.state !== "settled" || attempt.outcome?.kind !== "uncertain") return this.publish(this.refuse(commandId, "locked"), options);
+    const request = attempt.request;
+    const key = lockKey(request);
+    const held = this.reservations.get(key);
+    if (held?.attempt !== attempt) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
+    attempt.state = "pending";
+    let outcome: CommandOutcome;
+    try {
+      const observed = await options.observe(request);
+      if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
+      else outcome = observed === undefined ? uncertain(commandId, "readback-unavailable")
+        : await this.settle(request, checkedCommandResult(request, observed), options);
+    } catch (cause) { outcome = uncertain(commandId, cause); }
+    if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
+    if (outcome.kind !== "confirmed") outcome = uncertain(commandId, outcome, outcome.reply);
+    attempt.state = "settled";
+    attempt.outcome = Object.freeze(outcome);
+    if (outcome.kind === "confirmed" && this.reservations.get(key) === held) this.reservations.delete(key);
+    return this.publish(outcome, options);
+  }
+
   async replay(commandId: string, options: CommandExecutionOptions): Promise<CommandOutcome> {
     const attempt = this.attempts.get(commandId);
     if (attempt === undefined) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
@@ -147,6 +175,7 @@ export class CommandExecutor {
       }
     } else {
       switch (reply.state) {
+        case "pending": return uncertain(commandId, reply, reply);
         case "conflict": return { kind: "conflict", commandId, reply, feedback: feedback("COMMAND_CONFLICT") };
         case "confirmation-required": return { kind: "confirmation-required", commandId, reply, warningDigest: reply.warningDigest, feedback: feedback("COMMAND_CONFIRMATION_REQUIRED") };
         case "rejected": return reply.code === "authority-unjournaled" || reply.code === "authority-uncertain"

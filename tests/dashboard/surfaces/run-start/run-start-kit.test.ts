@@ -168,7 +168,7 @@ describe("the plan draws one card per proposed row", () => {
 });
 
 describe("result banner uses its own words", () => {
-  const applied: CommandResult = CommandResultSchema.parse({
+  const applied: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
     state: "applied",
     commandId: "3a000000-0000-4000-8000-000000000001",
     affectedTargets: [{
@@ -179,14 +179,14 @@ describe("result banner uses its own words", () => {
     }],
   });
 
-  const rejected: CommandResult = CommandResultSchema.parse({
+  const rejected: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
     state: "rejected",
     commandId: "3a000000-0000-4000-8000-000000000002",
     code: "policy-refused",
     message: "A run for this subject is already unfinished.",
   });
 
-  const conflict: CommandResult = CommandResultSchema.parse({
+  const conflict: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
     state: "conflict",
     commandId: "3a000000-0000-4000-8000-000000000003",
     currentVersion: 7,
@@ -227,3 +227,9 @@ describe("result banner uses its own words", () => {
     assert.ok(!text.includes("Reload the form"), "an unwired control was offered anyway");
   });
 });
+
+function nonPendingResult(input: unknown): Exclude<CommandResult, { state: "pending" }> {
+  const result = CommandResultSchema.parse(input);
+  if (result.state === "pending") throw new Error("Start fixture cannot be pending");
+  return result;
+}

@@ -43,6 +43,7 @@ export const WorkerLifecycleSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("starting"), startedAt: IsoInstantSchema }),
   z.strictObject({ state: z.literal("idle"), ...LiveFields }),
   z.strictObject({ state: z.literal("busy"), ...LiveFields, runId: RunIdSchema }),
+  z.strictObject({ state: z.literal("waiting"), ...LiveFields, activity: z.enum(["acquiring", "authenticating", "closing"]), runId: RunIdSchema.optional() }),
   z.strictObject({ state: z.literal("paused"), ...LiveFields, pausedAt: IsoInstantSchema }),
   z.strictObject({ state: z.literal("stopping"), ...LiveFields }),
   z.strictObject({
@@ -54,7 +55,9 @@ export const WorkerLifecycleSchema = z.discriminatedUnion("state", [
 ]);
 export type WorkerLifecycle = z.infer<typeof WorkerLifecycleSchema>;
 
-export const LIVE_WORKER_STATES = Object.freeze(["starting", "idle", "busy", "paused", "stopping"] as const);
+export const LIVE_WORKER_STATES = Object.freeze(["starting", "idle", "busy", "waiting", "paused", "stopping"] as const);
+
+export const WorkerClaimLifetimeSchema = z.strictObject({ membershipRevision: PositiveIntSchema, leaseGeneration: PositiveIntSchema });
 
 export const WorkerControlBasisSchema = z.strictObject({
   leaseGeneration: PositiveIntSchema,
@@ -72,6 +75,9 @@ export const WorkerLeaseRecordSchema = z.strictObject({
   leaseGeneration: PositiveIntSchema,
   controlRevision: PositiveIntSchema,
   controlCommandId: CommandIdSchema.optional(),
+  birthCommandId: CommandIdSchema.optional(),
+  recoveryBasis: z.strictObject({ state: z.enum(["starting", "idle", "busy", "waiting", "paused"]),
+    directive: z.enum(["run", "pause"]), observedAt: IsoInstantSchema }).optional(),
   lifecycle: WorkerLifecycleSchema,
   control: WorkerControlSchema,
   version: PositiveIntSchema,

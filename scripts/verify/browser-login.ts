@@ -1,3 +1,5 @@
+import { WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema } from "../../src/backend/storage/sqlite/run-store-contracts.js";
+import { admitWorkerVerification, retireWorkerVerification } from "../../src/backend/storage/sqlite/worker-slots.js";
 import { z } from "zod";
 import { createCredentialStore } from "../../src/backend/storage/configuration/credential-store.js";
 import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
@@ -18,7 +20,7 @@ import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment } from 
 import {
   BrowserSystemIdSchema,
   FingerprintSchema,
-  WorkflowIdSchema, WorkerIdSchema, PositiveIntSchema, IsoInstantSchema,
+  WorkflowIdSchema, PositiveIntSchema, IsoInstantSchema,
 } from "../../src/rules/identity/ids.js";
 import {
   BrowserProfileAdmissionSchema,
@@ -33,7 +35,6 @@ import { DUO_TERMINAL_REFUSAL_TEXT, BROWSER_LANDING_STALL_TEXT, BrowserLandingSt
 import type { AuthenticatedApplicationEvidence } from "../../src/backend/systems/browser-shared/login-contract.js";
 import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock, readRuntimeProcessLock, RuntimeProcessLockFileSchema, observeProcessIdentity, readLiveSmokeRuntimeFile, writeLiveSmokeRuntimeFileExclusive, removeOwnedLiveSmokeRuntimeFile } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { WorkerSlotRecordSchema } from "../../src/models/run/worker-slot.js";
 import type { BrowserSystemId, Fingerprint } from "../../src/rules/identity/ids.js";
 import type { WorkerSlotRecord } from "../../src/models/run/worker-slot.js";
 import type { DuoCeremonyGateHandle } from "../../src/backend/runtime/gates/duo-ceremony-gate.js";
@@ -158,21 +159,15 @@ export async function withSmokeWorker(
   database: AuthorityDatabase,
   operation: (slot: WorkerSlotRecord, gates: Set<DuoCeremonyGateHandle>) => Promise<void>,
   clock: Clock = systemClock,
-  onRetired?: () => void,
+  onRetired: (() => void) | undefined,
+  custody: Readonly<{ processLockRoot: string; stateRoot: string }>,
 ): Promise<void> {
-  const slot = database.withAuthorityTransaction(repositories => {
-    const workflow = WorkflowIdSchema.parse("person-lookup");
-    const active = repositories.workerSlots.list(workflow).filter(candidate => candidate.retiredAt === null);
-    const poolIndex = [1, 2, 3].find(index => !active.some(candidate => candidate.poolIndex === index));
-    if (poolIndex === undefined) throw new Error("live-smoke-worker-pool-capacity-exceeded");
-    const now = clock.now().toISOString();
-    if (repositories.workerPools.get(workflow) === undefined) {
-      const planned = repositories.workerPools.plan({ workflow, expectedVersion: 0,
-        desiredWorkers: 0, requestedBy: "local-operator", now });
-      if (planned.state !== "applied") throw new Error("live-smoke-worker-pool-admission-conflict");
-    }
-    return repositories.workerSlots.allocate({ workflow, poolIndex, commandId: null, now });
-  });
+  const owner = readRuntimeProcessLock(custody.processLockRoot, "live-smoke");
+  if (owner === undefined) throw new SmokeSlotOwnershipUnavailableError();
+  const slot = database.withAuthorityTransaction(repositories => admitWorkerVerification(repositories, {
+    commandId: randomUUID(), workflow: "person-lookup", expectedPoolVersion: repositories.workerPools.get("person-lookup")?.version ?? 0,
+    ...custody, owner, now: clock.now().toISOString(),
+  }, randomUUID()));
   const gates = new Set<DuoCeremonyGateHandle>();
   const errors: unknown[] = [];
   try {
@@ -194,33 +189,20 @@ export async function withSmokeWorker(
   if (errors.length > 1) throw new AggregateError(errors, "live-smoke-operation-or-cleanup-failed");
 }
 
-function retireSmokeSlot(database: AuthorityDatabase, slot: WorkerSlotRecord, clock: Clock): void {
+function retireSmokeSlot(database: AuthorityDatabase, original: WorkerSlotRecord, clock: Clock, mode: "live" | "recovery" = "live"): void {
   database.withAuthorityTransaction(repositories => {
-    const request = { workerId: slot.workerId, commandId: randomUUID(),
-      expectedRevision: slot.membershipRevision, now: clock.now().toISOString() };
-    const command = { commandId: request.commandId, family: "worker-browser", type: "stop-worker",
-      requestedAt: request.now, requestedBy: "local-operator", source: "live-smoke",
-      reason: "Retire the worker slot owned by this browser login check",
-      target: { workerId: slot.workerId, expectedVersion: slot.membershipRevision } };
-    repositories.commands.insert(command);
-    const retired = repositories.workerSlots.retire(request);
-    const target = { family: "worker-browser", workerId: slot.workerId };
-    repositories.commandAudits.insert({ auditId: randomUUID(), request: command,
-      result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
-      versionChanges: [{ target, before: slot.membershipRevision, after: retired.membershipRevision }],
-      affectedDependencyIds: [], completedAt: request.now });
+    const hold = repositories.workerSlots.verification(original.workerId);
+    if (hold === undefined) throw new SmokeSlotOwnershipUnavailableError();
+    retireWorkerVerification(repositories, { commandId: randomUUID(), grantCommandId: hold.command.commandId,
+      workerId: hold.slot.workerId, expectedRevision: hold.slot.membershipRevision,
+      expectedPoolVersion: repositories.workerPools.get(hold.slot.workflow)?.version, now: clock.now().toISOString(),
+      cleanup: { acquisitionId: hold.request.owner.acquisitionId, browsersClosed: true, profilesReleased: true, duoReleased: true,
+        mode, evidence: hold.slot.phase === "starting" ? "browserless" : "closed" } }, randomUUID());
   });
 }
 
-const SmokeSlotClaimSchema = z.strictObject({
-  source: z.literal("live-smoke"), slot: WorkerSlotRecordSchema,
-  process: RuntimeProcessLockFileSchema, profileRunId: z.uuid(),
-  system: BrowserSystemIdSchema, credentialKey: FingerprintSchema,
-}).refine(claim => claim.process.name === "live-smoke" && claim.process.releasedAt === null
-  && claim.slot.workflow === "person-lookup" && claim.slot.retiredAt === null
-  && claim.slot.reservationCommandId === null, "live-smoke-slot-claim-invalid");
-const SmokeClosureProofSchema = z.strictObject({ acquisitionId: z.uuid(), workerId: WorkerIdSchema,
-  membershipRevision: PositiveIntSchema, browsersClosed: z.literal(true), checkedAt: IsoInstantSchema });
+const SmokeSlotClaimSchema = WorkerVerificationClaimSchema;
+const SmokeClosureProofSchema = WorkerVerificationClosureProofSchema;
 const SmokeProcessReleaseSchema = z.strictObject({ generation: PositiveIntSchema, acquisitionId: z.uuid(), releasedAt: IsoInstantSchema });
 export const SMOKE_SLOT_OWNERSHIP_UNAVAILABLE_TEXT = "Smoke slot retirement requires this check's explicit slot ownership record and proved browser closure. Historical process-only claims cannot identify a slot.";
 export class SmokeSlotOwnershipUnavailableError extends Error {
@@ -230,11 +212,16 @@ export class SmokeSlotOwnershipUnavailableError extends Error {
 
 function smokeSlotClaimRoot(processLockRoot: string): string { return join(processLockRoot, "live-smoke-slots"); }
 
-export function recordSmokeSlot(input: Readonly<{ processLockRoot: string; slot: WorkerSlotRecord;
+export function recordSmokeSlot(input: Readonly<{ database: AuthorityDatabase; processLockRoot: string; slot: WorkerSlotRecord;
   profileRunId: string; system: BrowserSystemId; credentialKey: Fingerprint }>) {
   const processClaim = readRuntimeProcessLock(input.processLockRoot, "live-smoke");
   if (processClaim?.pid !== process.pid || processClaim.releasedAt !== null) throw new SmokeSlotOwnershipUnavailableError();
-  const claim = SmokeSlotClaimSchema.parse({ source: "live-smoke", slot: input.slot, process: processClaim,
+  const hold = input.database.authority.workerSlots.verification(input.slot.workerId);
+  if (hold === undefined || canonicalJsonStringify(hold.request.owner) !== canonicalJsonStringify(processClaim)
+    || hold.request.processLockRoot !== input.processLockRoot) throw new SmokeSlotOwnershipUnavailableError();
+  const slot = input.database.authority.workerSlots.observeVerificationAcquisition({ workerId: input.slot.workerId,
+    grantCommandId: hold.command.commandId, now: hold.request.now });
+  const claim = SmokeSlotClaimSchema.parse({ source: "live-smoke", slot, process: processClaim,
     profileRunId: input.profileRunId, system: input.system, credentialKey: input.credentialKey });
   const root = smokeSlotClaimRoot(input.processLockRoot);
   const name = `${processClaim.acquisitionId}.slot.json`;
@@ -285,17 +272,21 @@ export function retireOwnedSmokeSlots(input: Readonly<{ database: AuthorityDatab
     if (proof.acquisitionId !== claim.process.acquisitionId || proof.workerId !== claim.slot.workerId
       || proof.membershipRevision !== claim.slot.membershipRevision) throw new SmokeSlotOwnershipUnavailableError();
     const slot = input.database.authority.workerSlots.get(claim.slot.workerId);
+    const hold = input.database.authority.workerSlots.verification(claim.slot.workerId);
+    if (hold === undefined || hold.request.stateRoot !== input.stateRoot || hold.request.processLockRoot !== input.processLockRoot
+      || canonicalJsonStringify(hold.request.owner) !== canonicalJsonStringify(claim.process)) throw new SmokeSlotOwnershipUnavailableError();
     if (slot === undefined || canonicalJsonStringify(slot) !== canonicalJsonStringify(claim.slot)
       || input.database.authority.duoCeremonyLeases.get(claim.credentialKey)?.state === "held") throw new SmokeSlotOwnershipUnavailableError();
     const profileRoot = join(input.stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers");
     deleteOwnedBrowserProfile(profileRoot, join(profileRoot, `w${slot.ordinal}`));
-    retireSmokeSlot(input.database, slot, clock);
+    retireSmokeSlot(input.database, slot, clock, "recovery");
     removeOwnedLiveSmokeRuntimeFile(root, `${claim.process.acquisitionId}.closed.json`, proofRecord.custody);
     removeOwnedLiveSmokeRuntimeFile(root, name, record.custody);
   }
 }
 
 export function createSmokeProfileAdmission(input: Readonly<{
+  database: AuthorityDatabase;
   processLockRoot: string;
   acquisitionId: string;
   workerId: WorkerSlotRecord["workerId"];
@@ -307,6 +298,14 @@ export function createSmokeProfileAdmission(input: Readonly<{
   let readmitted = false;
   return profile => {
     const lock = readRuntimeProcessLock(input.processLockRoot, "live-smoke");
+    const hold = input.database.authority.workerSlots.verification(input.workerId);
+    const claim = SmokeSlotClaimSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(smokeSlotClaimRoot(input.processLockRoot), `${input.acquisitionId}.slot.json`).text));
+    if (hold === undefined || hold.slot.phase !== "waiting" || hold.slot.ordinal !== input.ordinal
+      || hold.request.processLockRoot !== input.processLockRoot
+      || canonicalJsonStringify(hold.request.owner) !== canonicalJsonStringify(lock)
+      || canonicalJsonStringify(claim.slot) !== canonicalJsonStringify(hold.slot)
+      || canonicalJsonStringify(claim.process) !== canonicalJsonStringify(lock)
+      || claim.system !== input.system || input.profileRoot !== join(hold.request.stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers")) throw new Error("live-smoke-profile-custody-unavailable");
     const directory = workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: input.ordinal, system: input.system });
     const admission = BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false });
     const identity = canonicalJsonStringify(admission);
@@ -372,7 +371,7 @@ async function main(): Promise<void> {
   const config = resolveConfigWithProvenance(record.settings, hostFacts, systemClock).config;
   const profileRunId = randomUUID();
   const smokeProfileRoot = join(stateRoot, "scratch", "live-smoke", profileRunId, "browsers");
-  ownedRecord = recordSmokeSlot({ processLockRoot, slot, profileRunId, system, credentialKey: duoCeremonyCredentialKey(config) });
+  ownedRecord = recordSmokeSlot({ database, processLockRoot, slot, profileRunId, system, credentialKey: duoCeremonyCredentialKey(config) });
   const smokeConfig = { ...config, paths: { ...config.paths, browserProfileRoot: smokeProfileRoot } };
   const workflowId = WorkflowIdSchema.parse("person-lookup");
   const instance = RuntimeInstanceSchema.parse("prod");
@@ -399,7 +398,7 @@ async function main(): Promise<void> {
     scheduler: realScheduler,
     newSessionId: () => randomUUID(),
     slotOrdinal: requestedWorker => { if (requestedWorker !== workerId) throw new Error("live-smoke-profile-owner-mismatch"); return ordinal; },
-    admitProfile: createSmokeProfileAdmission({ processLockRoot, acquisitionId: z.uuid().parse(processLock.acquisitionId),
+    admitProfile: createSmokeProfileAdmission({ database, processLockRoot, acquisitionId: z.uuid().parse(processLock.acquisitionId),
       workerId, ordinal, system, profileRoot: smokeProfileRoot }),
     onAuthenticationEvidence: (observed) => {
       evidence.push(observed);
@@ -467,7 +466,7 @@ async function main(): Promise<void> {
   await closeSmokeSessions(sessions,
     () => { deleteOwnedBrowserProfile(smokeProfileRoot, join(smokeProfileRoot, `w${ordinal}`)); }, sessionErrors, () => { ownedRecord?.proveClosure(); });
   write("[smoke] every session closed with proof");
-  }, systemClock, () => { ownedRecord?.remove(); });
+  }, systemClock, () => { ownedRecord?.remove(); }, { processLockRoot, stateRoot });
   } finally {
     database.close();
     processLock.release();

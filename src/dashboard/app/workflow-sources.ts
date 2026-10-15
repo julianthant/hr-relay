@@ -19,11 +19,12 @@ export interface WorkflowComposition {
   readonly dataSources?: WorkflowSourcePolicy;
   readonly catalogIncludesMocks?: boolean;
   readonly servedDay?: boolean;
+  readonly sessions?: WorkflowSource;
   readonly sourceForRoute: (id: string, requestedPreview: boolean) => WorkflowSource;
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {
-  return Object.freeze({ sources, sourceForRoute: (id: string) => workflowSource(id, sources) });
+  return Object.freeze({ sources, sessions: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
 }
 
 export const PRODUCT_WORKFLOW_COMPOSITION = workflowComposition(WORKFLOW_SOURCES);

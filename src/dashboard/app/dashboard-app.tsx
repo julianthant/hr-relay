@@ -274,7 +274,7 @@ function LoadedApp({
   const explorerCatalog = useMemo(() => workflowComposition.explorerSources ? buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.explorerSources) : workflowCatalog, [workflows, workflowComposition, workflowCatalog]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
-  const dayState = useDashboardDay(hasServedWorkflows && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch);
+  const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessions !== "mock") && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch);
   const dayResource = dayState.day;
   const dayFailureText = useMemo(() => {
     if (dayResource.state !== "failed") return undefined;
@@ -914,6 +914,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </div>
 
       <SessionPanel
+        source={workflowComposition.sessions ?? "served"}
+        binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
         catalog={workflowCatalog}
         open={sessionsOpen}
         onOpenChange={setSessionsOpen}

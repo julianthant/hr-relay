@@ -63,7 +63,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/workers/worker-supervisor.ts",
-    "sha256": "7ab8d7fc0e7011711d23910f3361deaf6a1e8eadffb82a095957534bf46f9bf4",
+    "sha256": "14218910fac62ae2758e13e576075716a1f4e6c662efa1ffd543570fb0d24231",
     "reason": "The rejection observer does not replace the original drain promise; shutdown races that promise and throws aggregate failure."
   },
   {
@@ -88,8 +88,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "d2e7991107255c461305d522684ea568e56958b592a8cb668e0df37c7241ddd9",
-    "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states."
+    "sha256": "31014539513313783f62dbb5483d1523648b0dd0d350a1aaf98ece1557c0ac8e",
+    "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
@@ -98,7 +98,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "9ded678f889511af9fa073a7fa73c11b990030ade77cc9550651caabef5515c5",
+    "sha256": "54d8b454da8c214b8cdfa69415080141497eb8853b97484c365204cd39002a64",
     "reason": "Failed admission releases custody only after the opened resource closes successfully; close and release failures remain aggregate errors, uncertain resources keep their custody, and the original admission error always rejects."
   },
   {

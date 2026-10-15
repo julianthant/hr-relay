@@ -68,7 +68,7 @@ describe("native SQLite authority schema", () => {
     const newer = new DatabaseSync(newerPath);
     newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
     newer.close();
-    assert.throws(() => openDatabase(newerPath), /authority schema 3 does not match supported 2/);
+    assert.throws(() => openDatabase(newerPath), new RegExp(`authority schema ${CURRENT_AUTHORITY_SCHEMA_VERSION + 1} does not match supported ${CURRENT_AUTHORITY_SCHEMA_VERSION}`));
 
     const malformedPath = databasePath("malformed.sqlite");
     openDatabase(malformedPath).close();
@@ -93,9 +93,10 @@ describe("authority generation accounting", () => {
   const cases: readonly MutationCase[] = authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT });
 
   it("#16 enumerates every current deletion guard and each aborts without an admitted owner deletion", () => {
-    const expected = SQLITE_MIGRATIONS.flatMap(({ statements }) => statements.flatMap(statement =>
+    const declarations = SQLITE_MIGRATIONS.flatMap(({ statements }) => statements.flatMap(statement =>
       [...statement.matchAll(/CREATE TRIGGER\s+([a-z0-9_]+)\s+BEFORE DELETE ON "?([a-z0-9_]+)"?[\s\S]*?BEGIN SELECT RAISE\(ABORT,'([^']+)'\); END;/gu)]
         .map(match => ({ name: match[1], tableName: match[2], message: match[3] }))));
+    const expected = [...new Map(declarations.map(trigger => [trigger.name, trigger])).values()];
     assert.ok(expected.length > 0, "deletion guard census must not be empty");
     const inventory = openDatabase();
     const inventoryPath = databasePaths.get(inventory); assert.ok(inventoryPath);

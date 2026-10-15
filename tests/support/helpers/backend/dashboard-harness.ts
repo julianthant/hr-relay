@@ -1,3 +1,5 @@
+import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../src/models/run/worker-slot.js";
+import type { WorkerControlRecord } from "../../../../src/models/run/worker-control.js";
 import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { DatabaseSync } from "node:sqlite";
 import type { TimelineRepository } from "../../../../src/models/events/timeline.js";
@@ -104,6 +106,13 @@ export interface AuthorityFake {
   listGateResults(runId: string): readonly GateResultRecord[];
   putGateResult(record: unknown): void;
 
+  readonly workerSlots: Map<string, WorkerSlotRecord>;
+  listWorkerSlots(): readonly WorkerSlotRecord[];
+  listWorkerRuns(workerId: string): readonly RunRecord[];
+  putWorkerSlot(record: unknown): void;
+  readonly workerOwners: Set<string>;
+  workerOwnerAlive(lease: WorkerLeaseRecord): boolean;
+  workerControls(): readonly WorkerControlRecord[];
   readonly workerLeases: Map<string, WorkerLeaseRecord>;
   listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
   getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
@@ -125,6 +134,7 @@ export function authorityFake(): AuthorityFake {
   const activityPersonPseudonyms: ActivityPersonPseudonymEvidence[] = [];
   const writeIntents = new Map<string, WriteIntentRecord>();
   const gateResults: GateResultRecord[] = [];
+  const workerSlots = new Map<string, WorkerSlotRecord>(), workerOwners = new Set<string>();
   const workerLeases = new Map<string, WorkerLeaseRecord>();
   const workerPools = new Map<string, WorkerPoolRecord>();
   const notifications: NotificationRecord[] = [];
@@ -155,6 +165,12 @@ export function authorityFake(): AuthorityFake {
     writeIntents,
     getWriteIntent: (writeIntentId) => writeIntents.get(writeIntentId),
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),
+    workerSlots, workerOwners,
+    listWorkerSlots: () => [...workerSlots.values()].sort((a, b) => a.workerId.localeCompare(b.workerId)),
+    listWorkerRuns: workerId => [...records.values()].filter(run => "workerId" in run.lifecycle && run.lifecycle.workerId === workerId),
+    putWorkerSlot: record => { const member = WorkerSlotRecordSchema.parse(record); workerSlots.set(member.workerId, member); },
+    workerOwnerAlive: lease => workerOwners.has(`${lease.workerId}:${String(lease.leaseGeneration)}:${String(lease.processId)}:${lease.lifecycle.startedAt}`),
+    workerControls: () => [],
     workerLeases,
     listLiveWorkerLeases: () => [...workerLeases.values()].filter((lease) => isLiveWorker(lease)),
     getWorkerLease: (workerId) => workerLeases.get(workerId),
@@ -624,4 +640,12 @@ export function claimEventOf(world: DashboardWorld, seed: number, workerId = "pe
     spanPath: run.envelope.traceId,
     workerId,
   });
+}
+
+
+export function declareProjectionWorker(authority: AuthorityFake, workerId: string, ordinal: number): void {
+  authority.putWorkerSlot({ workerId, workflow: "person-lookup", ordinal, poolIndex: ordinal, membershipRevision: 1,
+    phase: "idle", retiredAt: null, retirementCommandId: null, reservationCommandId: null,
+    createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0) });
+  authority.workerOwners.add(`${workerId}:1:4242:${instantOffsetOf(0)}`);
 }

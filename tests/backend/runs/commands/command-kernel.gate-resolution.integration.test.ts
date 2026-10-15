@@ -1,3 +1,4 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { buildRunDetail, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../../src/dashboard/app/commands/command-executor.js";
@@ -75,10 +76,13 @@ describe("gate resolution", () => {
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
-    const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId: "worker-1", now: NOW });
+    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
+      path: join(harness.stateRoot, "kernel.sqlite"), workflow: identityCheckDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
+    });
+    const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId, workerLifetime, now: NOW });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("unreachable");
-    const claim = { workerId: "worker-1", claimGeneration: claimed.run.claimGeneration };
+    const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
     const task = descriptorRuntimeNodes(identityCheckDescriptor)
       .find((node) => node.kind === "task" && String(node.id) === "comparison");
     assert.ok(task !== undefined && task.kind === "task");
@@ -129,7 +133,7 @@ describe("gate resolution", () => {
     assert.equal(checkpointEvent.payload.workflow, identityCheckDescriptor.id);
     assert.equal(checkpointEvent.payload.attempt, claimed.run.envelope.attempt);
     assert.equal(Number(checkpointEvent.payload.claimGeneration), Number(claimed.run.claimGeneration));
-    const lifecycleBase = { workerId: "worker-1", claimedAt: NOW, heartbeatAt: NOW };
+    const lifecycleBase = { workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW };
     let version: number = claimed.run.version;
     for (const state of ["validating", "running"] as const) {
       const outcome = harness.database.authority.runs.transition({

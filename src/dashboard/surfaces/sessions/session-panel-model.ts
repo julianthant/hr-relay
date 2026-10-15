@@ -1,3 +1,4 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { z } from "zod";
 import type {
 WorkerCardWireSchema,
@@ -42,7 +43,7 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   slots: readonly WorkerBrowserSlot[];
   unavailableReason?: string;
 }> {
-  if (card.state === "stopped" || card.state === "failed") return { slots: [] };
+  if (card.state === "failed") return { slots: [] };
   const open = [...card.browsers];
   const requirements = card.browserRequirements;
   if (requirements === undefined) {
@@ -145,7 +146,7 @@ export function poolFactsForWorkflow(
   workerPools: readonly WorkerPoolWire[],
 ): WorkerPoolFacts {
   const activeWorkers = workerCards.filter(
-    (card) => String(card.workflowId) === workflowId && card.state !== "stopped" && card.state !== "failed",
+    (card) => String(card.workflowId) === workflowId && card.state !== "failed",
   ).length;
   const pool = workerPools.find((entry) => String(entry.workflowId) === workflowId);
   return pool === undefined
@@ -159,15 +160,13 @@ export function poolFactsForWorkflow(
 }
 
 
-/** Pin the bundle cap to the kernel; increasing it requires the agreed concurrency proof. */
-export const SESSION_POOL_MAX_WORKERS = 3;
 
 
 /** Pin canonical worker IDs to kernel derivation; out-of-range indices cannot mint pool identities. */
 export function poolMemberWorkerId(workflowId: string, poolIndex: number): string {
-  if (!Number.isInteger(poolIndex) || poolIndex < 1 || poolIndex > SESSION_POOL_MAX_WORKERS) {
+  if (!Number.isSafeInteger(poolIndex) || poolIndex < 1) {
     throw new Error(
-      `pool index ${String(poolIndex)} for ${workflowId} is outside 1..${String(SESSION_POOL_MAX_WORKERS)}`,
+      `pool index ${String(poolIndex)} for ${workflowId} must be a positive integer`,
     );
   }
   return `${workflowId}-worker-${String(poolIndex)}`;
@@ -183,7 +182,7 @@ export function poolIndexOfWorkerId(workflowId: string, workerId: string): numbe
   // `-worker-01` and `-worker-0` are not this workflow's canonical member 1.
   if (!/^[1-9][0-9]*$/u.test(suffix)) return undefined;
   const index = Number(suffix);
-  return index > SESSION_POOL_MAX_WORKERS ? undefined : index;
+  return Number.isSafeInteger(index) ? index : undefined;
 }
 
 
@@ -258,17 +257,15 @@ export function sessionPoolGroupFor(
   }
 
   const declaredCount = facts.state === "declared" ? facts.desiredWorkers : 0;
-  const indices: number[] = [];
-  for (let index = 1; index <= SESSION_POOL_MAX_WORKERS; index += 1) {
-    if (index <= declaredCount || cardsByIndex.has(index)) indices.push(index);
-  }
+  const indices = new Set(cardsByIndex.keys());
+  for (let index = 1; index <= declaredCount; index += 1) indices.add(index);
 
   return {
     workflowId,
     facts,
     declaration: workerPools.find((entry) => String(entry.workflowId) === workflowId),
     expectedVersion: facts.state === "declared" ? facts.version : 0,
-    slots: indices.map((poolIndex) => {
+    slots: [...indices].sort((a, b) => a - b).map((poolIndex) => {
       const card = cardsByIndex.get(poolIndex);
       return {
         poolIndex,
@@ -276,7 +273,7 @@ export function sessionPoolGroupFor(
         declared: poolIndex <= declaredCount,
         membership: card === undefined
           ? { state: "not-served" as const }
-          : card.state === "stopped" || card.state === "failed"
+          : card.state === "failed"
             ? { state: "retained" as const, card }
             : { state: "live" as const, card },
       };
@@ -300,11 +297,10 @@ export type PoolPlanIntent =
 
 
 export function planPoolIntent(group: SessionPoolGroup, desiredWorkers: number): PoolPlanIntent {
-  if (!Number.isInteger(desiredWorkers) || desiredWorkers < 1 || desiredWorkers > SESSION_POOL_MAX_WORKERS) {
+  if (!Number.isSafeInteger(desiredWorkers) || desiredWorkers < 0) {
     return {
       kind: "refused",
-      reason: `a worker pool is planned at 1 to ${String(SESSION_POOL_MAX_WORKERS)} workers (D271); `
-        + `${String(desiredWorkers)} is outside that range`,
+      reason: `a worker pool requires a nonnegative integer count; received ${String(desiredWorkers)}`,
     };
   }
   if (group.facts.state === "declared" && group.facts.desiredWorkers === desiredWorkers) {
@@ -316,12 +312,12 @@ export function planPoolIntent(group: SessionPoolGroup, desiredWorkers: number):
   }
 
   const excess: { poolIndex: number; workerId: string; running: boolean }[] = [];
-  for (let poolIndex = desiredWorkers + 1; poolIndex <= SESSION_POOL_MAX_WORKERS; poolIndex += 1) {
-    const slot = group.slots.find((entry) => entry.poolIndex === poolIndex);
+  for (const slot of group.slots.filter(slot => slot.poolIndex > desiredWorkers)) {
+    const { poolIndex } = slot;
     excess.push({
       poolIndex,
-      workerId: poolMemberWorkerId(group.workflowId, poolIndex),
-      running: slot !== undefined && slot.membership.state === "live",
+      workerId: slot.workerId,
+      running: slot.membership.state === "live",
     });
   }
 
@@ -341,7 +337,7 @@ export type WorkerState = WorkerCardWire["state"];
 /** Render served worker state, not inferred activity; pending pause intent cannot claim a mid-write worker is paused. */
 export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text: string }> = {
   // Use the shared Running word so worker and run activity do not appear to be different facts.
-  working: { dot: "bg-[var(--ds-success-fg)]", label: "Running", text: "text-[color:var(--ds-success-fg)]" },
+  running: { dot: "bg-[var(--ds-success-fg)]", label: "Running", text: "text-[color:var(--ds-success-fg)]" },
   starting: {
     dot: "bg-[var(--ds-status-waiting-fg)] animate-pulse motion-reduce:animate-none",
     label: "Starting",
@@ -349,26 +345,26 @@ export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text
   },
   paused: { dot: "bg-[var(--ds-fg-faint)]", label: "Paused", text: "text-[color:var(--ds-fg-muted)]" },
   idle: { dot: "bg-[var(--ds-fg-faint)]", label: "Idle", text: "text-[color:var(--ds-fg-muted)]" },
-  stopped: { dot: "bg-[var(--ds-fg-faint)] opacity-60", label: "Stopped", text: "text-[color:var(--ds-fg-muted)]" },
+  waiting: { dot: "bg-[var(--ds-status-waiting-fg)]", label: "Waiting", text: "text-[color:var(--ds-status-waiting-fg)]" },
   failed: { dot: "bg-[var(--ds-danger)]", label: "Failed", text: "text-[color:var(--ds-danger)]" },
 };
 
 
-export const WORKER_STATE_ORDER: WorkerState[] = ["working", "starting", "idle", "paused", "failed", "stopped"];
+export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle", "waiting", "paused", "failed"];
 
 
 /** How a settled lease ended, in the operator's words rather than the enum's. */
 export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopReason"]>, string> = {
   operator: "stopped by you",
   shutdown: "shut down",
-  crashed: "crashed",
-  "lease-expired": "lease expired — its process stopped reporting",
+  crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
+  "lease-expired": formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_LEASE_EXPIRED", {})).text,
 };
 
 
 /** Directives describe intent, not state; pause waits for the current item to finish. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
-  if (card.state === "stopped" || card.state === "failed") return undefined;
+  if (card.state === "failed") return undefined;
   if (card.directive === "pause" && card.state !== "paused") return "Pausing after this item";
   if (card.directive === "run" && card.state === "paused") return "Resume requested";
   if (card.directive === "stop") return "Stopping after this item";
@@ -378,7 +374,7 @@ export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
 
 /** Settled leases take no directives; stopping twice must not offer another command. */
 export function canStopWorker(card: WorkerCardWire): boolean {
-  return card.state !== "stopped" && card.state !== "failed" && card.directive !== "stop";
+  return card.state !== "failed" && card.directive !== "stop";
 }
 
 
@@ -403,7 +399,7 @@ export const capacityChip = (full: boolean): string =>
 
 
 /** Keep zero tallies visible; starting daemons are capacity awaiting a phase, never idle workers. */
-export const ALWAYS_TALLIED: WorkerState[] = ["working", "starting", "idle"];
+export const ALWAYS_TALLIED: WorkerState[] = ["running", "starting", "idle"];
 
 
 /** Expose interrupted patch delivery; stale snapshots must not keep a quiet Live connection state. */

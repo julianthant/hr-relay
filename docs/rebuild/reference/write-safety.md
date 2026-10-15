@@ -171,6 +171,13 @@ The recovery service rebuilds the exact commit input and binds the retained run 
 
 `wait` returns a scheduling instant rather than sleeping a worker. Inline same-owner recovery accepts valid positive proof but parks negative uncertainty; stabilized settlement belongs to the standalone recovery service.
 
+Worker Remove and Retry do not reconcile a write. Before profile release or replacement, native
+authority refuses held Duo, a current owned claim or an unattributable attempting write. Another
+worker's legitimately claimed write does not prevent an unrelated idle member's retirement. An
+exact safely released parked UNKNOWN may coexist with worker retirement or replacement; its
+intent, generation, attempt, run and resolution remain untouched. Final lifecycle settlement
+rechecks this authority and requires the actual supervisor's one-use exit or birth capability.
+
 An UNKNOWN submission never authorizes generic retry, another occurrence, cancellation, or automatic success. It retains its fence until typed positive or permitted negative evidence settles that exact generation.
 
 ## 4.1 Parked-write resolution
@@ -258,3 +265,38 @@ The corresponding runtime tests exercise preview, parked resolution, proof verif
 - Onboarding has no hire commit/probe contract; its workflow needs a stable pre-hire business identity and evidence-qualified duplicate probe.
 - Separation workflow cutover still requires operator-approved controlled-write evidence for each write, safe target disposition, and measured probe-to-fence budgets.
 - Kuali finalization's configured stabilized policy still needs its own controlled-write propagation confirmation before production reliance.
+
+## Worker reset admission
+
+The native worker-control journal binds an admitted reset to the exact member and process lifetime,
+reserved revision, current run/claim/attempt and queued cascade. The SQLite claim boundary and common
+`#writeFenceRefusal` used by `fenceAttempt` and `refenceRetryable` respect this reservation. An unsafe
+or foreign-owned cascade refuses before reservation. An unresolved historical Stop without reset
+identity remains authority-unavailable and blocks admission through its unknown effect.
+
+A reset admitted after a fence leaves the existing write intent, claim, callback and sequencer
+ownership intact. Its current-work signal cannot detach the fenced transaction callback, repeat
+the external submit, terminally cancel an attempting write, or overwrite UNKNOWN/parked evidence.
+Actual read-task callbacks are also tracked by run/claim/attempt across ordinary deadline races;
+reset retains the operation until owned settlement, including callbacks that reject or outlive their
+task deadline. After actual settlement, known committed evidence permits lawful residual-work
+cancellation without repeating the write. A released parked UNKNOWN may coexist with browserless
+idle; reset preserves its exact run, intent, attempt and resolution authority. Both lifecycle and final
+reset settlement authenticate parked run/intent generation, attempt, workflow, item and original
+parked attempt before releasing the barrier. Attempting writes or inconsistent parked identity retain
+the reservation. The dedicated authority transaction records idle, closure, exact success and audit
+atomically; no client acknowledgement or generic journal setter can supply those facts.
+
+
+Active claims retain the membership revision and lease generation supplied at genuine admission.
+Active transitions cannot rewrite or drop this identity. Historical absent or conflicting lifetime
+proof cannot become a current-run join or reset target by attaching a newer lease. Native standing
+recovery and failed Stop replacement hold claim and fence exclusion across the old and new
+lifetimes until their exact original audit is committed. Replacement never resolves, resumes,
+retries or cancels UNKNOWN to manufacture worker readiness.
+
+Failed-lifetime Stop can canonically cancel its exact safe pre-fence graph inside admission, before
+the full stopped-owner release check, in one synchronous authority transaction. Missing death,
+Duo, browser, graph or write proof rolls back the command, reservation and all provisional run and
+journal mutations. Attempting or foreign-owned work cannot use this ordering to become cancelled.
+Actual replacement is dispatched only after that transaction commits and rechecks release.

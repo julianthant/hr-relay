@@ -1,6 +1,11 @@
+import { randomUUID } from "node:crypto";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { WorkerPoolMemberSchema, WorkerRetirementProofSchema, workerPoolMember, type WorkerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 export { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import type { WorkerBrowserObservation } from "../../../models/run/worker-control.js";
+import type { WorkerSupervisorEffect } from "../../storage/sqlite/worker-control.js";
+import type { WorkerLifecycleBinding, WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { RunRecord } from "../../../models/run/record.js";
 
 import { z } from "zod";
@@ -34,7 +39,7 @@ import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writ
 import { createConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
 import type { ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
-import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
+import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import {
   executeClaimedRun,
   RunExecutionOutcomeSchema,
@@ -126,8 +131,14 @@ export interface WorkerLoopDependencies {
   /** Ref data-intake-and-edit-data's blocking sink projector; absent, a declaring node fails loud. */
   readonly artifactProjector?: RunArtifactProjector;
 
+  readonly initialize?: (sessions: WorkerSessionManager, signal: AbortSignal) => Promise<void>;
+  readonly resetOwner?: Pick<WorkerResetBinding, "member" | "lifetime">;
+  readonly resetControl?: (sessions: WorkerSessionManager, reset: WorkerResetBinding) => Promise<void>;
+  readonly pendingReset?: () => WorkerResetBinding | undefined;
+  readonly activeWorkReset?: (run: RunRecord, claim: Readonly<{ workerId: string; claimGeneration: number }>) => boolean;
   readonly controlPoll?: () => WorkerDirective;
   readonly browserControl?: (sessions: WorkerSessionManager) => Promise<void>;
+  readonly browserActivity?: (activity: "acquiring" | "authenticating" | "closing") => () => void;
   readonly browserObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
 
   readonly configFingerprint?: string;
@@ -228,6 +239,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   };
 
   const sessions = new WorkerSessionManager({
+    ...(deps.resetOwner === undefined ? {} : { resetOwner: deps.resetOwner }),
     workerId,
     workflowId,
     stores: deps.stores,
@@ -240,6 +252,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     ...(deps.browserScreenshotCapture === undefined
       ? {}
       : { browserScreenshotCapture: deps.browserScreenshotCapture }),
+    ...(deps.browserActivity === undefined ? {} : { onActivity: deps.browserActivity }),
     ...(deps.browserObservation === undefined ? {} : { onObservation: deps.browserObservation }),
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
@@ -279,11 +292,60 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 
   emit({ t: "span.started", kind: "worker", workerId, spanPath: workerPath, name: workflowId });
 
+  const callbacks = new Map<Promise<unknown>, Readonly<{ runId: string; claimGeneration: number; attempt: number }>>();
+  const retainCallback = (identity: Readonly<{ runId: string; claimGeneration: number; attempt: number }>, operation: Promise<unknown>) => {
+    callbacks.set(operation, identity);
+    void operation.then(() => { callbacks.delete(operation); }, () => { callbacks.delete(operation); });
+  };
+  let resetSettlement: Readonly<{ binding: string; operation: Promise<void> }> | undefined;
+  const finishReset = async (reset: WorkerResetBinding): Promise<void> => {
+    const bound = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
+    const owned = [...callbacks.entries()].filter(([, identity]) => bound.some(member => member.state === "claimed"
+      && member.runId === identity.runId && member.claimGeneration === identity.claimGeneration && member.attempt === identity.attempt));
+    if (owned.length !== callbacks.size) {
+      while (!deps.stopSignal.aborted) await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+      return;
+    }
+    await Promise.allSettled(owned.map(([operation]) => operation));
+    if (deps.stopSignal.aborted) return;
+    const binding = canonicalJsonStringify(reset);
+    if (resetSettlement?.binding !== binding) resetSettlement = { binding, operation: deps.resetControl?.(sessions, reset) ?? Promise.resolve() };
+    try { await resetSettlement.operation; }
+    catch { await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal); }
+  };
   const outcomes: RunExecutionOutcome[] = [];
   let closure: WorkerLoopReport["closure"] = "proved";
   let stopped: "idle" | "stop-signal" | "stop-directive" = "stop-signal";
   try {
+    if (deps.initialize !== undefined) {
+      const controller = new AbortController();
+      const onShutdown = () => { controller.abort(deps.stopSignal.reason); };
+      deps.stopSignal.addEventListener("abort", onShutdown, { once: true });
+      if (deps.stopSignal.aborted) onShutdown();
+      let observing = true;
+      let timer: MonotonicDeadlineHandle = { cancel: () => undefined };
+      const poll = () => {
+        if (!observing || controller.signal.aborted) return;
+        try { if (deps.pendingReset?.() !== undefined) { controller.abort(new Error("worker-initialization-reset")); return; } }
+        catch (error) { controller.abort(error); return; }
+        timer = deps.scheduler.schedule(clock.monotonicMs() + deps.idleRepollMs, poll);
+      };
+      poll();
+      try { await deps.initialize(sessions, controller.signal); }
+      catch (error) {
+        const reset = deps.pendingReset?.();
+        if (reset === undefined) throw error;
+        await finishReset(reset);
+      } finally { observing = false; timer.cancel(); deps.stopSignal.removeEventListener("abort", onShutdown); }
+    }
     while (!deps.stopSignal.aborted) {
+      const pendingReset = deps.pendingReset?.();
+      if (pendingReset !== undefined) {
+        await finishReset(pendingReset);
+        if (deps.pendingReset?.() === undefined) continue;
+        await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+        continue;
+      }
       await deps.browserControl?.(sessions);
       // Between items only: the active run always settles before the next poll.
       const directive = deps.controlPoll === undefined
@@ -334,6 +396,19 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         runController.abort(new Error(`worker ${workerId} received its stop signal mid-run`));
       };
       deps.stopSignal.addEventListener("abort", onStop, { once: true });
+      let resetPoll = { cancel: (): void => undefined };
+      let resetPolling = true;
+      const observeReset = (): void => {
+        if (!resetPolling) return;
+        try {
+          if (deps.activeWorkReset?.(run, claim) === true) {
+            runController.abort(new Error("worker-reset-current-work"));
+            return;
+          }
+        } catch (error) { runController.abort(error); return; }
+        resetPoll = deps.scheduler.schedule(clock.monotonicMs() + deps.idleRepollMs, observeReset);
+      };
+      if (deps.activeWorkReset !== undefined) observeReset();
       const heartbeat = startHeartbeat({
         lifecycle: deps.lifecycle,
         ids: deps.ids,
@@ -369,6 +444,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             taskDeadlineMs,
             log: deps.log,
             confirmedActionPublisher,
+            retainCallback,
             ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
@@ -388,7 +464,13 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           },
         );
         outcomes.push(outcome);
+      } catch (error) {
+        if (deps.pendingReset?.() === undefined) throw error;
       } finally {
+        const reset = deps.pendingReset?.();
+        if (reset !== undefined) await finishReset(reset);
+        resetPolling = false;
+        resetPoll.cancel();
         heartbeat.stop();
         deps.stopSignal.removeEventListener("abort", onStop);
       }
@@ -417,7 +499,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 /* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions ) ──── */
 
 
-export const MAX_WORKERS_PER_POOL = 3;
+
 export const WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000;
 export const WORKER_SIGTERM_TIMEOUT_MS = 30_000;
 
@@ -507,8 +589,8 @@ export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("st
 export const WorkerPoolReconciliationAcknowledgementSchema = z.strictObject({
   command: z.literal("plan-worker-count"),
   state: z.literal("acknowledged"),
-  desiredWorkers: z.number().int().min(0).max(MAX_WORKERS_PER_POOL),
-  members: z.array(WorkerPoolMemberReconciliationFactSchema).max(MAX_WORKERS_PER_POOL),
+  desiredWorkers: z.number().int().min(0),
+  members: z.array(WorkerPoolMemberReconciliationFactSchema),
 });
 
 const WorkerSpawnAcknowledgementSchema = z.strictObject({
@@ -665,11 +747,19 @@ export type WorkerSupervisorRequest =
 
 
 export interface WorkerPoolProcessSupervisor {
+  assertLifecycleOwner?(operation: "remove" | "retry", member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
+  ownWorkerControl?(commandId: string, work: () => Promise<void>): void;
+  removeWorker?(binding: WorkerLifecycleBinding, directive: WorkerStopDirectiveContext): Promise<WorkerSupervisorEffect>;
+  retryWorker?(binding: WorkerLifecycleBinding): Promise<WorkerSupervisorEffect>;
+  assertResetOwner?(member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
   execute(request: WorkerSupervisorRequest): unknown;
 }
 
 
 export interface WorkerPoolRuntimeExecutor {
+  beginLifecycle?(context: WorkerRuntimeContext): void;
+  assertLifecycleOwner?(operation: "remove" | "retry", workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
+  assertResetOwner?(workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
   planPoolWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
   spawnPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
   refreshPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
@@ -782,6 +872,7 @@ function requireObservedNotAfterNow(
 export function createWorkerPoolRuntimeExecutor(
   supervisor: WorkerPoolProcessSupervisor,
   slots: Readonly<{ get(workerId: string): WorkerSlotRecord | undefined }>,
+  lifecycle?: Readonly<{ database: AuthorityDatabase; clock: Clock }>,
 ): WorkerPoolRuntimeExecutor {
   const poolMemberFromIdentity = (workerId: WorkerId): WorkerPoolMember => {
     const slot = slots.get(workerId);
@@ -794,6 +885,45 @@ export function createWorkerPoolRuntimeExecutor(
     return member;
   };
   return Object.freeze({
+    assertLifecycleOwner(operation: "remove" | "retry", workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
+      const member = poolMemberFromIdentity(WorkerIdSchema.parse(workerId));
+      if (member.membershipRevision !== membershipRevision || supervisor.assertLifecycleOwner === undefined || supervisor.ownWorkerControl === undefined
+        || lifecycle === undefined) throw new Error("worker-lifecycle-owner-unavailable");
+      lifecycle.database.assertWorkerLifecycleRelease(workerId);
+      if (operation === "retry" && lifecycle.database.authority.workerControls.browsers(workerId).some(browser => browser.health !== "closed")) throw new Error("worker-retry-browser-release-unproved");
+      supervisor.assertLifecycleOwner(operation, member, lifetime);
+    },
+    beginLifecycle(context: WorkerRuntimeContext): void {
+      const command = context.command;
+      if ((command.type !== "remove-worker" && command.type !== "retry-worker" && command.type !== "stop-worker") || lifecycle === undefined || supervisor.ownWorkerControl === undefined) throw new Error("worker-lifecycle-owner-unavailable");
+      const binding = lifecycle.database.authority.workerControls.get(command.commandId)?.lifecycle;
+      if (binding === undefined) throw new Error("worker-lifecycle-binding-unavailable");
+      supervisor.ownWorkerControl(command.commandId, async () => {
+        try {
+          if (command.type === "remove-worker") {
+            if (supervisor.removeWorker === undefined) throw new Error("worker-removal-owner-unavailable");
+            const proof = await supervisor.removeWorker(binding, stopDirectiveContext(context));
+            lifecycle.database.settleWorkerRemoval(command.commandId, proof, lifecycle.clock.now().toISOString(), randomUUID());
+          } else {
+            if (supervisor.retryWorker === undefined) throw new Error("worker-retry-owner-unavailable");
+            const proof = await supervisor.retryWorker(binding);
+            if (command.type === "stop-worker") lifecycle.database.observeWorkerLifecycleEffect(command.commandId, proof, lifecycle.clock.now().toISOString());
+            else lifecycle.database.settleWorkerRetry(command.commandId, proof, lifecycle.clock.now().toISOString(), randomUUID());
+          }
+        } catch (error) {
+          const current = lifecycle.database.authority.workerControls.get(command.commandId);
+          if (current?.phase.state === "executing") lifecycle.database.authority.workerControls.transition(command.commandId, "executing", {
+            state: "uncertain", startedAt: current.phase.startedAt, observedAt: lifecycle.clock.now().toISOString(), message: "worker-lifecycle-effect-or-settlement-unproved" });
+          throw error;
+        }
+      });
+    },
+    assertResetOwner(workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
+      const member = poolMemberFromIdentity(WorkerIdSchema.parse(workerId));
+      if (member.membershipRevision !== membershipRevision) throw new Error("worker-reset-owned-member-changed");
+      if (supervisor.assertResetOwner === undefined) throw new Error("worker-reset-owner-unavailable");
+      supervisor.assertResetOwner(member, lifetime);
+    },
     async planPoolWorkerCount(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerPlanAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "plan-worker-count") {

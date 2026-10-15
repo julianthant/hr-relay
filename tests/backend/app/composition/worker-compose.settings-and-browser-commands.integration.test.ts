@@ -240,13 +240,23 @@ describe("dashboard-composed worker-browser command arms", () => {
       requestedBy: "local-operator", now: NOW }).state, "started");
     const lease = harness.database.authority.workerLeases.get(slot.workerId); assert.ok(lease);
     const commandId = nextCommandId();
-    await assert.rejects(harness.kernel.executeWorkerPool({ ...envelope(commandId), type,
+    const command = { ...envelope(commandId), type,
       target: { workerId: slot.workerId, expectedVersion: lease.version,
-        controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } }),
-      /mutating control requires durable supervisor ownership/u);
+        ...(type === "stop-worker" ? { membershipRevision: slot.membershipRevision } : {}),
+        controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } } };
+    if (type === "stop-worker") {
+      const result = await harness.kernel.executeWorkerPool(command);
+      assert.equal(result.state, "rejected");
+      assert.ok(result.state === "rejected");
+      assert.match(result.message, /worker-reset-owner-unavailable/u);
+      assert.equal(harness.database.authority.commands.get(commandId), undefined);
+      assert.equal(harness.database.authority.workerControls.get(commandId), undefined);
+    } else {
+      await assert.rejects(harness.kernel.executeWorkerPool(command), /mutating control requires durable supervisor ownership/u);
+      assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
+    }
     assert.deepEqual(harness.database.authority.workerLeases.get(slot.workerId)?.control, lease.control);
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
-    assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
   });
   it("admits three native members without asserting they have started", async () => {
     const harness = kernelHarness();
