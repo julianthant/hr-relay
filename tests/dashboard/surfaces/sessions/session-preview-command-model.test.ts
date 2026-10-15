@@ -13,8 +13,8 @@ import assert_m1 from 'node:assert/strict';
 import { act as act_m1,createElement as createElement_m1 } from 'react';
 import { createRoot as createRoot_m1,type Root as Root_m1 } from 'react-dom/client';
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from 'vitest';
-import { createSessionPreviewPort as createSessionPreviewPort_m1,useSessionPreviewCommands as useSessionPreviewCommands_m1,type SessionPreviewCommandPort as SessionPreviewCommandPort_m1,type SessionPreviewRequest as SessionPreviewRequest_m1,type SessionPreviewResult as SessionPreviewResult_m1 } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
-import { sessionsSample as sessionsSample_m1 } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
+import { useSessionPreviewCommands as useSessionPreviewCommands_m1,type SessionPreviewCommandPort as SessionPreviewCommandPort_m1,type SessionPreviewRequest as SessionPreviewRequest_m1,type SessionPreviewResult as SessionPreviewResult_m1 } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
+import { createFixtureSessionPort, previewSessionControl, sessionsSample as sessionsSample_m1 } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
 import { SessionsView as SessionsView_m1 } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
 import { buildWorkflowCatalog as buildWorkflowCatalog_m1 } from '../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js';
 // @vitest-environment jsdom
@@ -61,7 +61,7 @@ describe_m0("Session Panel Stop's rejection arm", () => {
     const sent: SessionPreviewRequest_m0[] = [], checked: SessionPreviewRequest_m0[] = [];
     const port: SessionPreviewCommandPort_m0 = {
       send: async request => { sent.push(request); throw new Error("Stop response unavailable"); },
-      check: async request => { checked.push(request); return { id: request.id, state: "confirmed" }; },
+      check: async request => { checked.push(request); return { id: request.id, state: "confirmed", data: previewSessionControl(sessionsSample_m0("active"), request.target, "stop") }; },
     };
     const initial = sessionsSample_m0("active"), catalog: never[] = [];
     assert_m0.equal(initial.state, "ready");
@@ -123,12 +123,12 @@ afterEach_m1(_afterEachFixture0);
     await act_m1(async () => { first.click(); first.click(); });
     assert_m1.equal(requests.length, 1); assert_m1(first.disabled);
     assert_m1.match(host.textContent ?? '', /Pause requested/); assert_m1.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 0);
-    await act_m1(async () => resolve({ id: requests[0].id, state: 'confirmed' }));
+    await act_m1(async () => resolve({ id: requests[0].id, state: 'confirmed', data: previewSessionControl(sessionsSample_m1('active'), requests[0].target, 'pause') }));
     assert_m1.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 1); assert_m1.equal(host.querySelectorAll('button[aria-label="Pause"]').length, 1);
   });
   it_m1('keeps refused state unchanged and checks an uncertain exact command without resubmitting', async () => {
     const sent: SessionPreviewRequest_m1[] = [], checked: SessionPreviewRequest_m1[] = [];
-    const port: SessionPreviewCommandPort_m1 = { send: async request => { sent.push(request); return { id: request.id, state: 'uncertain', message: 'Lost response' }; }, check: async request => { checked.push(request); return { id: request.id, state: 'confirmed' }; } };
+    const port: SessionPreviewCommandPort_m1 = { send: async request => { sent.push(request); return { id: request.id, state: 'uncertain', message: 'Lost response' }; }, check: async request => { checked.push(request); return { id: request.id, state: 'confirmed', data: previewSessionControl(sessionsSample_m1('active'), request.target, 'pause') }; } };
     const host = await mount(createElement_m1(SessionsHarness, { port }));
     await act_m1(async () => (host.querySelector('button[aria-label="Pause"]') as HTMLButtonElement).click());
     assert_m1.match(host.textContent ?? '', /Lost response/);
@@ -141,14 +141,14 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(refused.textContent ?? '', /Busy elsewhere/); assert_m1.equal(refused.querySelectorAll('button[aria-label="Resume"]').length, 0);
   });
   it_m1('the fictional port separates uncertain response from original command readback', async () => {
-    vi.useFakeTimers(); const port = createSessionPreviewPort_m1('uncertain');
-    const request: SessionPreviewRequest_m1 = { id: 'exact-one', target: 'worker-one', action: 'pause' };
+    vi.useFakeTimers(); const port = createFixtureSessionPort(sessionsSample_m1('active'), buildWorkflowCatalog_m1([]), 'uncertain');
+    const request: SessionPreviewRequest_m1 = { id: 'exact-one', target: 'sample-worker-1', action: 'pause' };
     const sent = port.send(request); await vi.advanceTimersByTimeAsync(600); assert_m1.equal((await sent).state, 'uncertain');
     const read = port.check(request); await vi.advanceTimersByTimeAsync(600); assert_m1.equal((await read).state, 'confirmed');
   });
   it_m1('refuses foreign worker acknowledgment and retains the original recovery identity', async () => {
     const sent: SessionPreviewRequest_m1[] = [], checked: SessionPreviewRequest_m1[] = [];
-    const port: SessionPreviewCommandPort_m1 = { send: async request => { sent.push(request); return { id: 'foreign', state: 'confirmed' }; }, check: async request => { checked.push(request); return { id: request.id, state: 'confirmed' }; } };
+    const port: SessionPreviewCommandPort_m1 = { send: async request => { sent.push(request); return { id: 'foreign', state: 'confirmed' }; }, check: async request => { checked.push(request); return { id: request.id, state: 'confirmed', data: previewSessionControl(sessionsSample_m1('active'), request.target, 'pause') }; } };
     const host = await mount(createElement_m1(SessionsHarness, { port }));
     await act_m1(async () => (host.querySelector('button[aria-label="Pause"]') as HTMLButtonElement).click());
     assert_m1.match(host.textContent ?? '', /response belongs to another command/);

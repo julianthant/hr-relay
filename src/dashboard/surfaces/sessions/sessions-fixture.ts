@@ -1,3 +1,4 @@
+import type { SessionPreviewCommandPort, SessionPreviewResult } from "./session-preview-command-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import type { SessionControl, SessionNode, SessionWorker, SessionsViewState } from "./sessions-view-model.js";
 import { buildExplorerPreview } from "../explorer/explorer-fixture.js";
@@ -61,4 +62,26 @@ export function previewSessionAdd(data: SessionsViewState, catalog: readonly Wor
     id: `sample-added-${firstOrdinal + index}`, label: `Worker ${firstOrdinal + index}`, workflowId: workflow.id, workflow: workflow.label, state: "starting", action: "Preparing worker",
     browsers: systems.map(label => ({ id: label, label, state: "starting" })),
   }))] };
+}
+
+/** Explicit parity fixture acknowledgment and readback. */
+export function createFixtureSessionPort(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], scenario: 'normal' | 'refused' | 'uncertain' = 'normal'): SessionPreviewCommandPort {
+  let data = initial;
+  const outcomes = new Map<string, SessionPreviewResult>();
+  const wait = () => new Promise<void>(resolve => setTimeout(resolve, 600));
+  return {
+    async send(request) {
+      await wait();
+      if (outcomes.has(request.id)) throw new Error('SESSION_COMMAND_ALREADY_SUBMITTED');
+      const result: SessionPreviewResult = scenario === 'refused' ? { id: request.id, state: 'refused', message: 'Worker control was refused. No change was applied.' } : { id: request.id, state: 'confirmed' };
+      if (result.state === 'confirmed') {
+        data = request.action === 'add' ? previewSessionAdd(data, catalog, request.workflow, request.count, request.ordinal)
+          : request.action === 'refresh' ? data : previewSessionControl(data, request.target, request.action);
+      }
+      const readback = { ...result, data };
+      outcomes.set(request.id, readback);
+      return scenario === 'uncertain' ? { id: request.id, state: 'uncertain', message: 'Response unavailable. Check this command before another action.' } : readback;
+    },
+    async check(request) { await wait(); return outcomes.get(request.id) ?? { id: request.id, state: 'uncertain', message: 'This command has no confirmed outcome yet.' }; },
+  };
 }

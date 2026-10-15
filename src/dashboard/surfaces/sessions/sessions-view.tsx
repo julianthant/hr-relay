@@ -59,7 +59,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const [addOpen, setAddOpen] = useViewState("addWorkers", false);
   const [workflow, setWorkflow] = useViewState("workerWorkflow", workflows[0]?.id ?? "");
   const [count, setCount] = useState("1");
-  const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1 && Number(count) <= 20;
+  const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
   const addLocked = operations.add !== undefined && ["pending", "checking", "uncertain"].includes(operations.add.state);
   const selectedWorkflow = workflows.find(item => item.id === workflow) ?? workflows[0];
   const selectedWorkflowId = selectedWorkflow?.id ?? "";
@@ -86,8 +86,8 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
               <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
               <Field label="Workers"><div className="flex items-center gap-2">
                 <Button variant="secondary" aria-label="Remove one worker" icon={<Minus aria-hidden className="size-3.5" />} disabled={!validCount || Number(count) <= 1} onClick={() => setCount(String(Number(count) - 1))} />
-                <Input aria-label="Workers" className="min-w-0 flex-1 text-center tabular-nums" type="number" min={1} max={20} step={1} value={count} onChange={event => setCount(event.target.value)} />
-                <Button variant="secondary" aria-label="Add one worker" icon={<Plus aria-hidden className="size-3.5" />} disabled={!validCount || Number(count) >= 20} onClick={() => setCount(String(Number(count) + 1))} />
+                <Input aria-label="Workers" className="min-w-0 flex-1 text-center tabular-nums" type="number" min={1} step={1} value={count} onChange={event => setCount(event.target.value)} />
+                <Button variant="secondary" aria-label="Add one worker" icon={<Plus aria-hidden className="size-3.5" />} disabled={!validCount || Number(count) >= Number.MAX_SAFE_INTEGER} onClick={() => setCount(String(Number(count) + 1))} />
               </div></Field>
             </div></DialogBody>
             <DialogFooter><Button variant="muted" onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="outline" disabled={!validCount || !validWorkflow || data.state !== "ready" || addLocked} onClick={event => { addFocusOrigin.current = event.currentTarget.closest('[role="dialog"]'); onAdd(selectedWorkflowId, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>

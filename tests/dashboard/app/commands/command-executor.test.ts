@@ -3,7 +3,7 @@ import { it } from "vitest";
 import { CommandExecutor, type CommandExecutionOptions, type CommandExecutionScope, type CommandOutcome } from "../../../../src/dashboard/app/commands/command-executor.js";
 import { createSharedCommands } from "../../../../src/dashboard/client/commands/shared-commands.js";
 import { createDashboardTransport } from "../../../../src/dashboard/client/transport.js";
-import { CommandRequestSchema, BulkRunCommandRequestSchema, type CommandRequest, type BulkRunCommandRequest } from "../../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, BulkRunCommandRequestSchema, type CommandRequest, type BulkRunCommandRequest, CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import { deriveBulkChildCommandId } from "../../../../src/rules/commands/command-groups.js";
 
 const id = (n: number) => `${String(n).padStart(8, "0")}-1111-4111-8111-111111111111`;
@@ -396,4 +396,45 @@ it("treats unexpected pending Start as protocol uncertainty and retains the orig
   const outcome = await h.executor.execute(request, h.options());
   assert.equal(outcome.kind, "uncertain");
   assert.equal(h.executor.retainedAttempts()[0]?.request.commandId, request.commandId);
+});
+
+it("checks an uncertain original without POST and releases only exact confirmed readback", async () => {
+  const h = harness(); const request = command();
+  h.setReply(() => ({ state: "pending", commandId: request.commandId }));
+  assert.equal((await h.executor.execute(request, h.options())).kind, "uncertain");
+  const options = { ...h.options(), observe: async () => CommandResultSchema.parse({ state: "conflict", commandId: request.commandId, currentVersion: 3, message: "diagnostic" }) };
+  assert.equal((await h.executor.check(request.commandId, options)).kind, "uncertain");
+  assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
+  h.state.set(RUN, { version: 2, cancelled: true });
+  assert.equal((await h.executor.check(request.commandId, { ...h.options(), observe: async () => CommandResultSchema.parse(landing(request)) })).kind, "confirmed");
+  assert.equal(h.sent.length, 1);
+  assert.equal((await h.executor.execute(command(12), h.options())).kind, "uncertain");
+  assert.equal(h.sent.length, 2);
+});
+
+it("keeps mismatch checkable and rejects concurrent checks and A to B to A late publication", async () => {
+  const h = harness(); const request = command();
+  h.setReply(() => ({ state: "pending", commandId: request.commandId }));
+  await h.executor.execute(request, h.options());
+  assert.equal((await h.executor.check(request.commandId, { ...h.options(), observe: async () => CommandResultSchema.parse(landing(request)) })).kind, "uncertain");
+  let release!: (value: CommandResult) => void;
+  const original = h.scope()!; const options = h.options(); const before = h.published.length;
+  const pending = h.executor.check(request.commandId, { ...options, observe: () => new Promise(resolve => { release = resolve; }) });
+  assert.equal((await h.executor.check(request.commandId, { ...options, observe: async () => CommandResultSchema.parse(landing(request)) })).kind, "refused");
+  h.replaceScope({ ...original, dayRequest: {} }); h.replaceScope({ ...original, dayRequest: {} });
+  h.state.set(RUN, { version: 2, cancelled: true }); release(CommandResultSchema.parse(landing(request)));
+  assert.equal((await pending).kind, "uncertain");
+  assert.equal(h.published.length, before + 1, "only synchronous overlap refusal published");
+  assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
+  assert.equal((await h.executor.check(request.commandId, { ...h.options(), observe: async () => CommandResultSchema.parse(landing(request)) })).kind, "confirmed");
+  assert.equal(h.sent.length, 1);
+});
+
+it.each(["actor", "client", "authority"])("cannot check/release original under changed %s", async field => {
+  const h = harness(); const request = command(); h.setReply(() => ({ state: "pending", commandId: request.commandId }));
+  await h.executor.execute(request, h.options()); const prior = h.scope()!;
+  h.replaceScope({ ...prior, ...(field === "actor" ? { actorId: "different" } : field === "client" ? { client: harness().client } : { authority: {} }) });
+  let reads = 0;
+  assert.equal((await h.executor.check(request.commandId, { ...h.options(), observe: async () => { reads++; return CommandResultSchema.parse(landing(request)); } })).kind, "refused");
+  assert.equal(reads, 0); assert.equal(h.sent.length, 1);
 });

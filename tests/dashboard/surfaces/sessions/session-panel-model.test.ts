@@ -13,7 +13,7 @@ let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); });
 function card(): WorkerCardWire {
   const idle = FIXTURE_DAY_WIRE.workerCards.find((entry) => entry.state === "idle" && entry.browsers.length > 0); assert.ok(idle);
-  return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards: [{ ...idle,
+  return DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerAuthority: { state: "present", members: FIXTURE_DAY_WIRE.workerAuthority.members.filter(member => member.workerId === idle.workerId) }, workerCards: [{ ...idle,
     controls: { basis: { state: "present", value: { leaseGeneration: 3, controlRevision: 7 } }, ownership: { state: "owned" } } }] }).workerCards[0];
 }
 

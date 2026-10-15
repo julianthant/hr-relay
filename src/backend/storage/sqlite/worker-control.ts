@@ -1,3 +1,4 @@
+import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
 import { WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
@@ -11,7 +12,7 @@ import { workerSlotFromRow, recoveryFromSlot, verificationFromSlot } from "./wor
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { CommandIdentityConflictError, LiveWorkerResetRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../rules/commands/commands.js";
+import { CommandAuditRecordSchema, CommandIdentityConflictError, LiveWorkerResetRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../rules/commands/commands.js";
 import { WorkerSupervisorEffectObservationSchema, WorkerLifecycleBindingSchema, WorkerResetBindingSchema, WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase, type WorkerResetBinding, type WorkerLifecycleBinding, type WorkerSupervisorEffectObservation } from "../../../models/run/worker-control.js";
 import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 
@@ -239,7 +240,18 @@ export function createWorkerControlRepository(deps: {
       const current = get(id);
       if (current === undefined) throw new Error("worker-control-not-found");
       if (current.request.type === "stop-worker" || current.lifecycle !== undefined) throw new Error("worker-reset-settlement-unavailable");
-      const record = WorkerControlRecordSchema.parse({ ...current, auditedAt: IsoInstantSchema.parse(now) });
+      if (current.auditedAt !== undefined) return { result: current, changes: 0 };
+      let phase = current.phase;
+      if (phase.state === "succeeded" && (current.request.type === "refresh-browser" || current.request.type === "reopen-browser")) {
+        const rows = database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(id);
+        if (rows.length !== 1) throw new Error("worker-browser-application-audit-unavailable");
+        const audit = CommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits", rows[0]));
+        if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(current.request)) throw new Error("worker-browser-application-audit-mismatch");
+        const application = { result: audit.result, versionChanges: audit.versionChanges, affectedDependencyIds: audit.affectedDependencyIds };
+        if (phase.application !== undefined && canonicalJsonStringify(phase.application) !== canonicalJsonStringify(application)) throw new Error("worker-browser-application-audit-mismatch");
+        phase = { ...phase, application };
+      }
+      const record = WorkerControlRecordSchema.parse({ ...current, phase, auditedAt: IsoInstantSchema.parse(now) });
       if (database.prepare("UPDATE worker_controls SET phase=?,audited_at=?,payload_json=? WHERE command_id=? AND payload_json=?")
         .run(record.phase.state,record.auditedAt ?? null,canonicalJsonStringify(record),id,canonicalJsonStringify(current)).changes !== 1) throw new Error("worker-control-phase-conflict");
       return { result: record, changes: 1 };

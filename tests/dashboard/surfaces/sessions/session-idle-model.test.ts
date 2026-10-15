@@ -66,3 +66,45 @@ it('uses injected wall time for countdown and confirmed refresh without advancin
     assert.equal(requests.length, 2);
   } finally { await act(async () => root.unmount()); }
 });
+
+it('retains the original held refresh across own admission, cancels Remove immediately, and rearms from exact ack time only', async () => {
+  const { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } = await import('../../../parity/helpers/fixture-day.js');
+  const { DashboardDayWireSchema } = await import('../../../../src/models/dashboard/projection.js');
+  const { sessionsFromDay } = await import('../../../../src/dashboard/surfaces/sessions/sessions-view-model.js');
+  const { buildWorkflowCatalog } = await import('../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js');
+  const base = FIXTURE_DAY_WIRE.workerCards[1];
+  const card = { ...base, controls: { basis: { state: 'present' as const, value: { leaseGeneration: 1, controlRevision: 1 } }, ownership: { state: 'owned' as const } },
+    browsers: base.browsers.map(browser => ({ ...browser, observation: { state: 'present' as const, health: 'authenticated' as const, observedAt: FIXTURE_NOW, browserMode: 'headed' as const, configFingerprint: 'a'.repeat(64) } })) };
+  const view = (next = card) => sessionsFromDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards: FIXTURE_DAY_WIRE.workerCards.map(old => old.workerId === card.workerId ? next : old) }), buildWorkflowCatalog([]), FIXTURE_NOW);
+  const schedule = new IdleSessionSchedule(); schedule.sync(view(), 0);
+  const request = schedule.due(IDLE_REFRESH_MS, () => false)[0]; assert(request?.action === 'refresh');
+  const operations = { [card.workerId]: { request, state: 'uncertain' as const, message: 'No response' } };
+  const admitted = { ...card, controls: { ...card.controls, basis: { state: 'present' as const, value: { leaseGeneration: 1, controlRevision: 2 } }, operation: { commandId: request.id, type: 'refresh-browser' as const, state: 'executing' as const, at: FIXTURE_NOW, unresolved: true } } };
+  schedule.sync(view(admitted), IDLE_REFRESH_MS + 10, operations);
+  assert.equal(schedule.view(IDLE_REFRESH_MS + 10)[card.workerId].waiting, true);
+  assert.deepEqual(schedule.due(IDLE_REFRESH_MS * 4, () => false), []);
+  schedule.confirm({ ...request, id: uuidOf(1) }, IDLE_REFRESH_MS * 4, view(admitted));
+  assert.equal(schedule.view(IDLE_REFRESH_MS * 4)[card.workerId].waiting, true);
+  const acknowledged = { ...admitted, controls: { ...admitted.controls, operation: { ...admitted.controls.operation, state: 'succeeded' as const, unresolved: false } } };
+  schedule.confirm(request, IDLE_REFRESH_MS * 4, view(acknowledged));
+  assert.equal(schedule.view(IDLE_REFRESH_MS * 4)[card.workerId].remainingMs, IDLE_REFRESH_MS);
+  assert.deepEqual(schedule.due(IDLE_REFRESH_MS * 5 - 1, () => false), []);
+  const second = schedule.due(IDLE_REFRESH_MS * 5, () => false)[0]; assert(second?.action === 'refresh');
+  const secondAck = { ...acknowledged, controls: { ...acknowledged.controls, basis: { state: 'present' as const, value: { leaseGeneration: 1, controlRevision: 3 } }, operation: { ...acknowledged.controls.operation, commandId: second.id } } };
+  schedule.sync(view(secondAck), IDLE_REFRESH_MS * 5 + 1, { [card.workerId]: { request: second, state: 'uncertain', message: 'No response' } });
+  assert.equal(schedule.view(IDLE_REFRESH_MS * 5 + 1)[card.workerId].waiting, true);
+  schedule.confirm(second, IDLE_REFRESH_MS * 6, view(secondAck));
+  assert.equal(schedule.view(IDLE_REFRESH_MS * 6)[card.workerId].remainingMs, IDLE_REFRESH_MS, 'second genuine cycle uses acknowledged control baseline');
+  schedule.sync(view(acknowledged), IDLE_REFRESH_MS * 4 + 1, { [card.workerId]: { request: { id: uuidOf(2), target: card.workerId, action: 'remove' }, state: 'pending', message: 'Remove requested' } });
+  assert.equal(schedule.view(IDLE_REFRESH_MS * 4 + 1)[card.workerId], undefined);
+
+  const foreign = new IdleSessionSchedule(); foreign.sync(view(), 0);
+  const original = foreign.due(IDLE_REFRESH_MS, () => false)[0]; assert(original.action === 'refresh');
+  const foreignCard = { ...acknowledged, controls: { ...acknowledged.controls, basis: { state: 'present' as const, value: { leaseGeneration: 1, controlRevision: 3 } }, operation: { ...acknowledged.controls.operation, commandId: uuidOf(3) } } };
+  foreign.sync(view(foreignCard), IDLE_REFRESH_MS + 20, { [card.workerId]: { request: original, state: 'uncertain', message: 'No response' } });
+  foreign.confirm(original, IDLE_REFRESH_MS + 30, view(foreignCard));
+  assert.equal(foreign.view(IDLE_REFRESH_MS + 30)[card.workerId], undefined, 'foreign same-phase control prevents stale acknowledgment rearming');
+  foreign.sync(view(foreignCard), IDLE_REFRESH_MS * 8, { [card.workerId]: { request: original, state: 'confirmed', message: 'Original refresh confirmed' } });
+  assert.equal(foreign.view(IDLE_REFRESH_MS * 8)[card.workerId], undefined, 'later sync cannot revive the canceled original timer');
+  assert.deepEqual(foreign.due(IDLE_REFRESH_MS * 9, () => false), []);
+});

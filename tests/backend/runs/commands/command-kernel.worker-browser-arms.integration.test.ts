@@ -103,6 +103,11 @@ describe("worker-browser arms", () => {
       { workerId, controlBasis: { leaseGeneration: 1, controlRevision: 1 }, browserSessionId: UUID_4, expectedVersion: lease.version },
     ));
     assert.equal(refreshed.state, "applied");
+    const refreshedRecord = harness.database.authority.workerControls.get(refreshed.commandId);
+    assert.equal(refreshedRecord?.phase.state, "succeeded");
+    assert.ok(refreshedRecord?.auditedAt);
+    if (refreshedRecord?.phase.state !== "succeeded") throw new Error("expected browser outcome");
+    assert.deepEqual(refreshedRecord.phase.application?.result, refreshed, "native read-only operation carries exact audited application");
     const unknownWorkflow = await harness.kernel.executeWorkerPool(workerCommand(
       "plan-worker-count",
       { workflowId: "kernel-unknown", expectedVersion: 1 },
