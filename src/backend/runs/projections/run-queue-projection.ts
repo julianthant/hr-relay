@@ -139,6 +139,7 @@ export interface RunQueueProjectionDeps {
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
 
     listWorkerSlots?(): readonly WorkerSlotRecord[];
+    listWorkerRuns?(workerId: string): readonly RunRecord[];
     workerOwnerAlive?(lease: WorkerLeaseRecord): boolean;
     listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
@@ -1272,14 +1273,33 @@ export class RunQueueProjection {
       workerAuthority = { state: "unavailable", members: [...(members ?? [])],
         reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
     }
-    const activeWorkerRuns = listCanonicalRuns(this.#deps.reader, "live").filter(run => "workerId" in run.lifecycle);
     for (const member of members ?? []) {
       try {
         const lease = this.#deps.authority.getWorkerLease(member.workerId);
         if (lease === undefined) throw new Error("worker-lifetime-unavailable");
-        const active = activeWorkerRuns.filter(run => "workerId" in run.lifecycle && run.lifecycle.workerId === member.workerId);
+        if (this.#deps.authority.listWorkerRuns === undefined) throw new Error("worker-run-authority-unavailable");
+        const active = this.#deps.authority.listWorkerRuns(member.workerId);
         const heldRunId = "runId" in lease.lifecycle ? lease.lifecycle.runId : undefined;
-        if (active.length > 1 || active.some(run => run.envelope.runId !== heldRunId)) throw new Error("worker-current-run-authority-unavailable");
+        const runIds = new Set<string>();
+        for (const run of active) {
+          const read = this.#deps.reader.read(run.envelope.runId);
+          if (runIds.has(run.envelope.runId) || !("workerId" in run.lifecycle) || run.lifecycle.workerId !== member.workerId
+            || run.envelope.workflow !== member.workflow || run.lifecycle.workerLifetime?.membershipRevision !== member.membershipRevision
+            || run.lifecycle.workerLifetime.leaseGeneration !== lease.leaseGeneration
+            || read.state !== "present" || read.disposition !== "live" || read.run.envelope.runId !== run.envelope.runId
+            || read.run.envelope.workflow !== run.envelope.workflow || read.run.envelope.attempt !== run.envelope.attempt
+            || read.run.claimGeneration !== run.claimGeneration || !("workerId" in read.run.lifecycle)
+            || read.run.lifecycle.workerId !== member.workerId || read.run.lifecycle.state !== run.lifecycle.state
+            || read.run.lifecycle.claimedAt !== run.lifecycle.claimedAt
+            || read.run.lifecycle.workerLifetime?.membershipRevision !== member.membershipRevision
+            || read.run.lifecycle.workerLifetime.leaseGeneration !== lease.leaseGeneration) {
+            throw new Error("worker-current-run-authority-unavailable");
+          }
+          runIds.add(run.envelope.runId);
+        }
+        if (active.length !== (heldRunId === undefined ? 0 : 1) || active.some(run => run.envelope.runId !== heldRunId)) {
+          throw new Error("worker-current-run-authority-unavailable");
+        }
         const fold = this.#workers.get(lease.workerId);
         workerCards.push(workerCardOf({ lease, member, ownerAlive: this.#ownerFact(lease).state === "alive",
           observations: this.#deps.authority.workerBrowsers?.(lease.workerId), operations: workerOperations,

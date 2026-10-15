@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { DAY, instantOffsetOf, workerLeaseOf, declareProjectionWorker } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const {world, cleanup, queuedEventOf } = createRunQueueProjectionTestWorld();
+const {world, cleanup, queuedEventOf, runRecordOf } = createRunQueueProjectionTestWorld();
 
 
 afterEach(cleanup);
@@ -57,6 +57,89 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     day = w.projection.buildDashboardDayWire(DAY);
     assert.equal(day.workerAuthority.state, "unavailable");
     assert.equal(day.workerAuthority.members.length, 1);
+    assert.deepEqual(day.workerCards, []);
+  });
+
+  function busyWorld() {
+    const w = world();
+    declareProjectionWorker(w.authority, workerId, 1);
+    const event = queuedEventOf(w, { seed: 53, lifecycle: { state: "running", workerId, claimedAt: startedAt,
+      heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1, version: 2 });
+    w.authority.putWorkerLease(workerLeaseOf({ workerId,
+      lifecycle: { state: "busy", startedAt, heartbeatAt: startedAt, runId: event.runId } }));
+    Object.assign(w.runReader, { summaries: {
+      withSnapshot: <T>(read: () => T): T => read(),
+      queue: () => ({ items: [], next: null }),
+      activity: () => { throw new Error("unrequested activity"); },
+    } });
+    w.runReader.list = () => { throw new Error("whole history forbidden"); };
+    const run = w.authority.records.get(event.runId);
+    assert.ok(run);
+    return { w, run };
+  }
+
+  function assertWorkerUnavailable(w: ReturnType<typeof world>): void {
+    const day = w.projection.buildDashboardDayWire(DAY);
+    assert.equal(day.workerAuthority.state, "unavailable");
+    assert.equal(day.workerAuthority.members.length, 1);
+    assert.deepEqual(day.workerCards, []);
+  }
+
+  it("serves a busy member with worker-indexed reads and never lists whole history", () => {
+    const { w, run } = busyWorld();
+    const queried: string[] = [];
+    const listWorkerRuns = w.authority.listWorkerRuns.bind(w.authority);
+    w.authority.listWorkerRuns = id => { queried.push(id); return listWorkerRuns(id); };
+    const day = w.projection.buildDashboardDayWire(DAY);
+    assert.equal(day.workerAuthority.state, "present");
+    assert.deepEqual(day.workerCards[0]?.currentRun, { state: "present", runId: run.envelope.runId, traceId: run.envelope.traceId });
+    assert.deepEqual(queried, [workerId]);
+  });
+
+  it("rejects two active claims even when one is absent from summary rows", () => {
+    const { w } = busyWorld();
+    w.authority.put(runRecordOf({ seed: 54, lifecycle: { state: "running", workerId, claimedAt: startedAt,
+      heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1, version: 2 }));
+    assertWorkerUnavailable(w);
+  });
+
+  it("rejects a duplicate run ID from the worker index", () => {
+    const { w, run } = busyWorld();
+    w.authority.listWorkerRuns = () => [run, run];
+    assertWorkerUnavailable(w);
+  });
+
+  it("rejects a foreign worker row from the worker index", () => {
+    const { w } = busyWorld();
+    w.authority.listWorkerRuns = () => [runRecordOf({ seed: 54, lifecycle: { state: "running", workerId: "person-lookup-worker-2",
+      claimedAt: startedAt, heartbeatAt: startedAt, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1, version: 2 })];
+    assertWorkerUnavailable(w);
+  });
+
+  it("retains an indexed claim as unavailable when canonical read cannot find it", () => {
+    const { w, run } = busyWorld();
+    w.runReader.read = () => ({ state: "absent", runId: run.envelope.runId });
+    assertWorkerUnavailable(w);
+  });
+
+  it("rejects canonical readback with a different identity or lifetime", () => {
+    for (const mismatch of ["identity", "lifetime"] as const) {
+      const { w, run } = busyWorld();
+      w.runReader.read = () => ({ state: "present", disposition: "live", run: runRecordOf({ seed: mismatch === "identity" ? 54 : 53,
+        lifecycle: { state: "running", workerId, claimedAt: startedAt, heartbeatAt: startedAt,
+          workerLifetime: { membershipRevision: 1, leaseGeneration: mismatch === "lifetime" ? 2 : 1 } }, claimGeneration: 1, version: 2 }) });
+      assert.equal(w.authority.records.has(run.envelope.runId), true);
+      assertWorkerUnavailable(w);
+    }
+  });
+
+  it("requires worker-run authority only when a standing member exists", () => {
+    const { w } = busyWorld();
+    Reflect.deleteProperty(w.authority, "listWorkerRuns");
+    assertWorkerUnavailable(w);
+    w.authority.workerSlots.clear();
+    const day = w.projection.buildDashboardDayWire(DAY);
+    assert.equal(day.workerAuthority.state, "present");
     assert.deepEqual(day.workerCards, []);
   });
 

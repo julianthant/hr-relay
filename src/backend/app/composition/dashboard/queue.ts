@@ -22,6 +22,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listWorkerSlots: () => database.authority.workerSlots.list(),
+      listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
       workerOwnerAlive: lease => database.workerLifetimeCustody(lease.workerId).state === "alive",
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),

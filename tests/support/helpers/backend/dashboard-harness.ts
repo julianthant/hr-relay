@@ -108,6 +108,7 @@ export interface AuthorityFake {
 
   readonly workerSlots: Map<string, WorkerSlotRecord>;
   listWorkerSlots(): readonly WorkerSlotRecord[];
+  listWorkerRuns(workerId: string): readonly RunRecord[];
   putWorkerSlot(record: unknown): void;
   readonly workerOwners: Set<string>;
   workerOwnerAlive(lease: WorkerLeaseRecord): boolean;
@@ -166,6 +167,7 @@ export function authorityFake(): AuthorityFake {
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),
     workerSlots, workerOwners,
     listWorkerSlots: () => [...workerSlots.values()].sort((a, b) => a.workerId.localeCompare(b.workerId)),
+    listWorkerRuns: workerId => [...records.values()].filter(run => "workerId" in run.lifecycle && run.lifecycle.workerId === workerId),
     putWorkerSlot: record => { const member = WorkerSlotRecordSchema.parse(record); workerSlots.set(member.workerId, member); },
     workerOwnerAlive: lease => workerOwners.has(`${lease.workerId}:${String(lease.leaseGeneration)}:${String(lease.processId)}:${lease.lifecycle.startedAt}`),
     workerControls: () => [],
