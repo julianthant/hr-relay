@@ -22,6 +22,10 @@ export function registerIntakeRoutes(app: DashboardApp, deps: IntakeRouteDeps): 
     return c.json(outcome.session, outcome.state === "created" ? 201 : 200);
   });
 
+  app.get("/api/v1/intake/:sessionId/commands/:commandId", c => {
+    if (deps.intakeCommandResult === undefined) throw new Error("intake-command-result-unavailable");
+    return c.json(deps.intakeCommandResult(c.req.param("sessionId"), c.req.param("commandId")));
+  });
   app.get("/api/v1/intake/:sessionId", async (c) => c.json(await deps.intake.read(c.req.param("sessionId"))));
 
 }

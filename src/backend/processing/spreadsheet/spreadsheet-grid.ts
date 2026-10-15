@@ -1,7 +1,9 @@
+import JSZip from "jszip";
+import { SaxesParser } from "saxes";
 
 import { Buffer } from "node:buffer";
 import { parse as parseCsvSync } from "csv-parse/sync";
-import readXlsxFile from "read-excel-file/node";
+import readXlsxFile, { InvalidSpreadsheetError } from "read-excel-file/node";
 
 export const CSV_SHEET_NAME = "default";
 
@@ -70,6 +72,22 @@ export async function parseSpreadsheetGrid(input: Readonly<{
   if (isXlsx) {
     // v9 returns every worksheet from one parse, so choosing a sheet costs no
     // second read of the same immutable bytes.
+    let archive: JSZip;
+    try { archive = await JSZip.loadAsync(bytes, { checkCRC32: true }); }
+    catch (cause) {
+      if (!(cause instanceof Error)) throw cause;
+      const invalid = new InvalidSpreadsheetError("The XLSX archive is malformed.");
+      invalid.cause = cause;
+      throw invalid;
+    }
+    for (const file of Object.values(archive.files)) {
+      if (file.dir || (!file.name.endsWith(".xml") && !file.name.endsWith(".rels"))) continue;
+      let malformed = false;
+      const parser = new SaxesParser({ xmlns: true });
+      parser.on("error", () => { malformed = true; });
+      parser.write(await file.async("string")).close();
+      if (malformed) throw new InvalidSpreadsheetError("The XLSX contains malformed XML.");
+    }
     const workbook = await readXlsxFile(bytes);
     sheets = workbook.map((entry) => entry.sheet);
     if (sheets.length === 0) {

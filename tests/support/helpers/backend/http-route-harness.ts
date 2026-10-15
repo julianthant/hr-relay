@@ -1,3 +1,6 @@
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
+import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
 import { createRunLogStreamStore } from "../../../../src/backend/logs/run-log-stream.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
@@ -361,6 +364,7 @@ export function harness(options: {
     },
   });
   const activity = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
+  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
@@ -368,6 +372,8 @@ export function harness(options: {
       label: "Local operator",
     }),
     intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
+    intakeCommandResult: createIntakeCommandResultQuery(database),
+    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE) },
     bootstrap: {
       appVersion: "0.1.0",
       clock,

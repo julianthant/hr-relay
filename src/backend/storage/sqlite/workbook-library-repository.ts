@@ -1,6 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { deserializeSavedWorkbook, serializeSavedWorkbook, SavedWorkbookSchema, WorkbookLibraryError, type SavedWorkbook, type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError, type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
+import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type SavedWorkbook } from "../../../models/dashboard/workbooks.js";
+const serializeSavedWorkbook = (record: SavedWorkbook) => JSON.stringify(encodeSavedWorkbook(record));
 
 export const WORKBOOK_LIBRARY_MIGRATION = Object.freeze({
   id: "workbook-library",
@@ -23,7 +25,7 @@ export const WORKBOOK_LIBRARY_MIGRATION = Object.freeze({
 const RowSchema = z.strictObject({ id: z.string(), version: z.number().int().positive(), created_at: z.string(), saved_at: z.string(), payload_json: z.string() });
 function fromRow(value: unknown): SavedWorkbook {
   try {
-    const row = RowSchema.parse(value), record = deserializeSavedWorkbook(row.payload_json);
+    const row = RowSchema.parse(value), record = decodeSavedWorkbook(JSON.parse(row.payload_json));
     if (record.libraryId !== row.id || record.version !== row.version || record.createdAt !== row.created_at || record.savedAt !== row.saved_at) throw new Error("workbook-column-conflict");
     return record;
   } catch (cause) { throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT", { cause }); }

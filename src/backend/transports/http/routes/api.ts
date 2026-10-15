@@ -1,3 +1,4 @@
+import { registerWorkbookRoutes } from "./workbooks.js";
 import { registerNotificationRoutes } from "./notifications.js";
 import { registerShellRoutes } from "./shell.js";
 import { registerSettingsPreflightRoutes } from "./settings-preflight.js";
@@ -56,6 +57,9 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/explorer/validate", operatorMutationIngressGuard);
   // Intake bytes use the file media type; Host/Origin admission still applies.
   app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
+  app.use("/api/v1/workbooks", operatorMutationIngressGuard);
+  app.use("/api/v1/workbooks/:libraryId/save", operatorMutationIngressGuard);
+  app.use("/api/v1/workbooks/:libraryId/intake", operatorMutationIngressGuard);
 
   app.post("/api/v1/debug/errors", async c => {
     const now = deps.bootstrap.clock.nowMs();
@@ -98,6 +102,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerActivityRoutes(app, { activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
   registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: day => deps.projection.buildDashboardDayWire(day) } });
   registerIntakeRoutes(app, deps);
+  registerWorkbookRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
     intake: deps.intake });

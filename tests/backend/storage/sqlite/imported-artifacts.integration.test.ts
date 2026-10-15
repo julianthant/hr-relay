@@ -13,6 +13,7 @@ import { HASH_A,LATER,NOW,UUID_2,UUID_3,UUID_7 } from "../../../support/fixtures
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const disposers: (() => void)[] = [];
+const databasePaths = new WeakMap<AuthorityDatabase, string>();
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
@@ -26,6 +27,7 @@ function database(legacySession?: IntakeSession): AuthorityDatabase {
     { path, busyTimeoutMs: 250, migrationOwner: "intake-session-test" },
     clock,
   );
+  databasePaths.set(opened, path);
   if (legacySession !== undefined) {
     const legacy = new DatabaseSync(path);
     try {
@@ -220,4 +222,25 @@ describe("intake session repository", () => {
     }));
     assert.deepEqual(db.authority.intakeSessions.findActiveBySource(HASH_A), []);
   });
+});
+
+it("keeps a workbook source link immutable through repository and native import updates", () => {
+  const db = database();
+  const original = session({ workbookSource: { libraryId: "library", version: 1 } });
+  db.authority.intakeSessions.create(original);
+  const generation = db.getMeta().authorityGeneration;
+  for (const workbookSource of [undefined, { libraryId: "other", version: 1 }, { libraryId: "library", version: 2 }]) {
+    assert.throws(() => db.authority.intakeSessions.update({ ...original, workbookSource, version: 2, updatedAt: LATER }), /imported-artifact-workbook-source-immutable/u);
+    assert.equal(db.getMeta().authorityGeneration, generation);
+    assert.deepEqual(db.authority.intakeSessions.get(original.intakeSessionId), original);
+  }
+  db.authority.intakeSessions.update({ ...original, version: 2, updatedAt: LATER });
+  const retained = db.authority.intakeSessions.get(original.intakeSessionId); assert.ok(retained);
+  const path = databasePaths.get(db); assert.ok(path);
+  const raw = new DatabaseSync(path);
+  try {
+    const record = importedArtifact(JSON.stringify({ ...retained, workbookSource: { libraryId: "forged", version: 1 }, version: 3 }), null);
+    assert.throws(() => raw.prepare("UPDATE artifacts SET payload_json=?,version=3 WHERE session_id=?").run(JSON.stringify(record), original.intakeSessionId), /imported-artifact-workbook-source-immutable/u);
+  } finally { raw.close(); }
+  assert.deepEqual(db.authority.intakeSessions.get(original.intakeSessionId), retained);
 });

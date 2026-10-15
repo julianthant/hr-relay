@@ -59,6 +59,7 @@ export function createImportedArtifactRepositories(ports: ImportedArtifactPorts)
           if (previous.reservedManifestId !== session.reservedManifestId) throw new Error(`intake session ${session.intakeSessionId} cannot change reserved manifest id from ${previous.reservedManifestId ?? "absent"} to ${session.reservedManifestId ?? "absent"}`);
           if (previous.version !== session.version - 1) throw new Error("intake session update raced past its expected predecessor");
           if (previous.state === "enqueued") throw new Error("imported-artifact-submission-immutable");
+          if (previous.workbookSource?.libraryId !== session.workbookSource?.libraryId || previous.workbookSource?.version !== session.workbookSource?.version) throw new Error("imported-artifact-workbook-source-immutable");
           if (previous.workflow !== session.workflow || canonicalJsonStringify(previous.artifact) !== canonicalJsonStringify(session.artifact)) throw new Error("imported-artifact-source-immutable");
           save(old, importedArtifact(canonicalJsonStringify(session), old.submittedJson));
           return { result: session, changes: 1 };

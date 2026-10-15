@@ -1,4 +1,4 @@
-import { SavedWorkbookSchema } from "../../workbooks/workbook-library-service.js";
+import { SavedWorkbookSchema } from "../../../models/dashboard/workbooks.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { NativeCommandRequestSchema, NativeCommandAuditSchema } from "./command-record-row.js";
 import { WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";

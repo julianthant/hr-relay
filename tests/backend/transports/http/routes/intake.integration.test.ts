@@ -3,6 +3,13 @@ import { foreignOriginCases } from "../../../../support/helpers/backend/http-rou
 import assert from "node:assert/strict";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
+import Excel from "exceljs";
+import JSZip from "jszip";
+import { composeIntake } from "../../../../../src/backend/app/composition/dashboard/intake.js";
+import { createIntakeParser } from "../../../../../src/backend/processing/spreadsheet/intake-parser.js";
+import { INTAKE_FIXTURE_WORKFLOW_ID, intakeFixtureDescriptor, intakeFixtureProjection } from "../../../../support/fixtures/intake-workflow-fixture.js";
+import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
+import { createHash } from "node:crypto";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
@@ -60,6 +67,30 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(response.status, 422);
     assert.equal((await json(response)).code, "INTAKE_UNREADABLE_FILE");
     assert.deepEqual(seen, ["fixture-graph|roster.csv|text/csv|13"]);
+  });
+  it.each(["archive", "truncated-pk", "directory", "xml", "rels"])("refuses malformed XLSX %s through the real upload/parser without creating a session", async corruption => {
+    const h = harness({ intake: { ...UNWIRED_INTAKE_SERVICE, upload: input => actual.upload(input) } });
+    const actual = composeIntake({ database: h.database, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
+      projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
+      descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("c") });
+    const workbook = new Excel.Workbook(); workbook.addWorksheet("Roster").addRow(["Employee ID#"]);
+    const archive = await JSZip.loadAsync(await workbook.xlsx.writeBuffer());
+    if (corruption === "xml" || corruption === "rels") archive.file(corruption === "rels" ? "xl/_rels/workbook.xml.rels" : "xl/worksheets/sheet1.xml", "<worksheet><sheetData><row>");
+    const bytes = corruption === "archive" ? new Uint8Array([1, 2, 3]) : corruption === "truncated-pk" ? new Uint8Array([0x50, 0x4b, 3, 4]) : await archive.generateAsync({ type: "uint8array" });
+    if (corruption === "directory") {
+      const directory = Buffer.from(bytes).indexOf(Buffer.from([0x50, 0x4b, 1, 2]));
+      assert.ok(directory >= 0 && directory < bytes.length - 22);
+      const footer = bytes.slice(-22);
+      bytes[directory] = 0;
+      assert.deepEqual(bytes.slice(-22), footer);
+    }
+    const generation = h.database.getMeta().authorityGeneration;
+    const response = await h.app.request(`http://localhost/api/v1/intake/files?workflow=${INTAKE_FIXTURE_WORKFLOW_ID}&filename=broken.xlsx`, {
+      method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, body: new Uint8Array(bytes).buffer,
+    });
+    assert.equal(response.status, 422); assert.equal((await json(response)).code, "INTAKE_UNREADABLE_FILE");
+    assert.deepEqual(h.database.authority.intakeSessions.findActiveBySource(createHash("sha256").update(bytes).digest("hex")), []);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
   });
 });
 

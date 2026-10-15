@@ -1,3 +1,4 @@
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
@@ -22,6 +23,7 @@ export function failureStatus(
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
   const message = errorText(error);
+  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" ? 409 : 500, body: wireError(error.code, message, false) };
   if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {

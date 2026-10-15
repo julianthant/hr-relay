@@ -13,6 +13,8 @@ import {
 } from "../../rules/identity/ids.js";
 import { ColumnBindingSchema } from "./mapping.js";
 
+export const WorkbookIntakeSourceSchema = z.strictObject({ libraryId: z.string().min(1), version: PositiveIntSchema });
+
 export const IntakeSessionStateSchema = z.enum([
   "mapping",
   "validated",
@@ -60,6 +62,7 @@ export const IntakeSessionSchema = z.strictObject({
   artifact: ArtifactRefSchema,
     /* Enqueue requires the uploaded name; optional stored absence never invents one. */
   sourceName: z.string().min(1).optional(),
+  workbookSource: WorkbookIntakeSourceSchema.optional(),
   sheet: z.string().min(1),
   /** Null while discovery could not preselect and the operator has not chosen. */
   headerRowIndex: z.number().int().nonnegative().nullable(),

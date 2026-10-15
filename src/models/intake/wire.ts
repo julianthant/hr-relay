@@ -23,6 +23,7 @@ import {
   IntakeRowCorrectionSchema,
   IntakeRowExclusionSchema,
   IntakeSessionStateSchema,
+  WorkbookIntakeSourceSchema,
 } from "./session.js";
 import { SuggestionSchema } from "./suggestions.js";
 
@@ -62,6 +63,7 @@ export const IntakeSessionWireSchema = z.strictObject({
   artifact: ArtifactRefSchema,
     /** The name the file was uploaded under; absent on a session predating the leaf. */
   sourceName: z.string().min(1).optional(),
+  workbookSource: WorkbookIntakeSourceSchema.optional(),
   state: IntakeSessionStateSchema,
   /** The CAS token every intake command target carries. */
   expectedVersion: PositiveIntSchema,

@@ -680,7 +680,10 @@ ALTER TABLE worker_pools_unbounded RENAME TO worker_pools;
 CREATE TRIGGER worker_pools_retained BEFORE DELETE ON worker_pools
 BEGIN SELECT RAISE(ABORT,'worker-pools-retained'); END;
 PRAGMA defer_foreign_keys=OFF;`] },
-  { version: 4, statements: WORKBOOK_LIBRARY_MIGRATION.statements },
+  { version: 4, statements: [...WORKBOOK_LIBRARY_MIGRATION.statements, `CREATE TRIGGER artifacts_import_workbook_source BEFORE UPDATE ON artifacts
+WHEN OLD.kind='imported' AND json_type(OLD.payload_json,'$.preparationJson')='text'
+ AND json_extract(json_extract(NEW.payload_json,'$.preparationJson'),'$.workbookSource') IS NOT json_extract(json_extract(OLD.payload_json,'$.preparationJson'),'$.workbookSource')
+BEGIN SELECT RAISE(ABORT,'imported-artifact-workbook-source-immutable'); END;`] },
 ]);
 
 export function migrationTableNames(version: number): readonly AuthorityTableName[] {
