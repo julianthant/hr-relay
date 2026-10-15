@@ -341,3 +341,31 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
     assert.equal(h.sent.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
+
+it("compares complete immutable intent and authenticates both actors separately from ingress provenance", () => {
+  const day = dayWith();
+  const card = day.workerCards[0];
+  const request = CommandRequestSchema.parse({ commandId: uuidOf(8990), family: "worker-browser", type: "pause-worker", requestedAt: "2020-01-01T00:00:00.000Z", requestedBy: "local-operator", source: "dashboard-sessions",
+    target: { workerId: card.workerId, expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } }, reason: "pause for review" });
+  const accepted = CommandRequestSchema.parse({ ...request, source: "dashboard", requestedAt: now });
+  const record = succeeded(day, accepted);
+  const snapshot = DashboardDayWireSchema.parse({ ...day, workerOperations: [record] });
+  assert.deepEqual(sessionCommandApplication(snapshot, request), application(request).result);
+  for (const change of [
+    { commandId: uuidOf(8991) },
+    { type: "resume-worker" },
+    { target: { ...request.target, workerId: "person-lookup-worker-999" } },
+    { target: { ...request.target, expectedVersion: 2 } },
+    { target: { ...request.target, controlBasis: { leaseGeneration: 2, controlRevision: 1 } } },
+    { target: { ...request.target, controlBasis: { leaseGeneration: 1, controlRevision: 2 } } },
+    { reason: "a different reason" },
+    { requestedBy: "foreign-actor" },
+  ]) assert.equal(sessionCommandApplication(snapshot, CommandRequestSchema.parse({ ...request, ...change })), undefined);
+  const foreignRecord = WorkerControlRecordSchema.parse({ ...record, request: { ...accepted, requestedBy: "foreign-actor" } });
+  assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [foreignRecord] }), request), undefined);
+  for (const phase of [{ state: "executing", startedAt: now }, { state: "uncertain", startedAt: now, observedAt: now, message: "outcome unknown" }]) {
+    const unsettled = WorkerControlRecordSchema.parse({ ...record, auditedAt: undefined, phase });
+    assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [unsettled] }), request), undefined);
+  }
+  assert.equal(sessionCommandApplication(DashboardDayWireSchema.parse({ ...snapshot, workerOperations: [{ ...record, auditedAt: undefined }] }), request), undefined);
+});

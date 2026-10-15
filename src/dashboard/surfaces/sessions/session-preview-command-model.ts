@@ -1,3 +1,5 @@
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { checkedCommandResult } from "../../client/commands/shared-commands.js";
 import { workerPoolMember } from "../../../models/run/worker-slot.js";
 import type { DashboardClient } from '../../client/index.js';
@@ -33,10 +35,16 @@ type NativeAttempt = { readonly body: string; readonly actor: string; readonly c
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 const commandFeedback = (code: "COMMAND_REFUSED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_READBACK_MISMATCH" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "DASHBOARD_AUTHORITY_REPLACED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
+function commandIntent(request: CommandRequest) {
+  const { requestedAt: _requestedAt, requestedBy: _requestedBy, source: _source, ...intent } = request;
+  return canonicalJsonStringify(intent);
+}
+
 /** Native readback is immutable operation evidence, independent of the worker's newest phase. */
 export function sessionCommandApplication(day: DashboardDayWire, request: CommandRequest): CommandResult | undefined {
   const record = day.workerOperations.find(operation => operation.commandId === request.commandId);
-  if (record === undefined || !same(record.request, request) || record.auditedAt === undefined || record.phase.state !== "succeeded") return undefined;
+  if (record === undefined || request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || record.request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID
+    || commandIntent(record.request) !== commandIntent(request) || record.auditedAt === undefined || record.phase.state !== "succeeded") return undefined;
   const ack = record.phase.acknowledgement;
   if (request.type === "stop-worker" && (record.reset === undefined || ack.kind !== "reset" && ack.kind !== "reset-replacement")) return undefined;
   if (request.type === "remove-worker" && (record.lifecycle?.operation.kind !== "remove" || ack.kind !== "remove")) return undefined;
