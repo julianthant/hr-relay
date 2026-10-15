@@ -3,7 +3,7 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migration
 import { RunRecordService } from "../../runs/lifecycle/run-record-service.js";
 
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
-import { createCredentialStore } from "../../storage/configuration/credential-store.js";
+import { ChatGptCredentialError, createChatGptCredentialRepository, createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { protectedSettingsReadback } from "../../../models/config/protected-settings.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -89,6 +89,7 @@ const STORAGE_USAGE = [
   "       storage recover-restore --operation <id> --from <manifest.json> --outcome <unchanged|replaced> [--json]",
   "       storage relocate --plan <command-id> | --resume <operation-id> | --status [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
+  "       storage recover-chatgpt-lock",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces); exit 0 only when",
   "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated",
   "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
@@ -537,6 +538,21 @@ async function backupCommand(
 
 }
 
+/** Clears a ChatGPT credential lock whose recorded owner process is gone; a live owner is refused. */
+async function recoverChatGptLockCommand(rest: readonly string[], admission: RuntimeAdmission): Promise<StorageCommandOutcome> {
+  if (rest.length !== 0) return { output: `unsupported storage recover-chatgpt-lock argument: ${rest[0] ?? ""}\n${STORAGE_USAGE}`, exitCode: 2 };
+  if (!existsSync(join(admission.stateRoot, "credentials", ".chatgpt-account.lock"))) {
+    return { output: "storage recover-chatgpt-lock: no ChatGPT credential lock", exitCode: 0 };
+  }
+  try {
+    await createChatGptCredentialRepository({ admission, stateRoot: admission.stateRoot }).withLock(async () => undefined);
+  } catch (error) {
+    if (error instanceof ChatGptCredentialError) return { output: `storage recover-chatgpt-lock: ${error.code}: ${error.message}`, exitCode: 1 };
+    throw error;
+  }
+  return { output: "storage recover-chatgpt-lock: cleared an abandoned ChatGPT credential lock", exitCode: 0 };
+}
+
 export async function composeStorageCommand(
   isolation: RuntimeIsolation,
   args: readonly string[],
@@ -576,6 +592,7 @@ export async function composeStorageCommand(
   if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot, admission);
   if (subcommand === "backup") return backupCommand(isolation, rest, clock, repoRoot, admission);
   if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot, admission);
+  if (subcommand === "recover-chatgpt-lock") return recoverChatGptLockCommand(rest, admission);
   if (subcommand !== "doctor") {
     return { output: STORAGE_USAGE, exitCode: subcommand === undefined ? 1 : 2 };
   }

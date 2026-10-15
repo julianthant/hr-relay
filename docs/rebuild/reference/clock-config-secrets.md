@@ -324,7 +324,8 @@ schema-1 record with registration metadata and the current session, without toke
 `createChatGptCredentialRepository` exposes `read()` and asynchronous `withLock()` transactions
 through `credential-store.ts`. Replacement checks the expected revision and advances it by one.
 The record has a 64,000-byte limit and uses `.chatgpt-account.lock`; stale-lock cleanup requires
-exclusive `RuntimeAdmission`. Unconfirmed completion after replacement reports
+exclusive `RuntimeAdmission`. With the dashboard stopped, `npm run cli -- storage recover-chatgpt-lock`
+clears a lock whose recorded owner process is gone and refuses one whose owner still runs. Unconfirmed completion after replacement reports
 `CHATGPT_CREDENTIAL_UNCERTAIN`. The account service in `accounts/` imports this credential-store API. Dashboard composition creates it with the admitted state root and clock, closes it before releasing admission, and exposes only the token-free account and sign-in lifecycle schemas from `models/dashboard/chatgpt-account.ts`. The HTTP account boundary retains the latest independent attempt ID and reads its original completion once; the OAuth loopback callback remains inside the service.
 Storage relocation carries all three files under `credentials/`, and `paths.duoCredential`
 follows the admitted state root.
