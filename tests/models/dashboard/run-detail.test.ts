@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema,QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
-import { GateDecisionWireSchema,CaptureListSchema,RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { NativeRunEventWireSchema, ConfirmedActionBindingWireSchema, GateDecisionWireSchema,CaptureListSchema,RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { failureDetailWireFixture,receiptWireFixture } from "../../support/helpers/trust/trust-wire-fixtures.js";
 
 const { BOOTSTRAP, RUN_1, RUN_2, NOTE_1, RECORD_1, HASH_A, HASH_B, NOW, QUEUE, DAY, DETAIL, NOTE_PAGE, REVIEW_PAGE, PEOPLE_PAGE, ARTIFACT } = createDashboardModelFixtures();
@@ -53,6 +53,17 @@ function assertRecursivelyStrict(schema: { safeParse(input: unknown): { success:
 }
 
 describe("dashboard wire primitives", () => {
+  it("keeps native occurrence and exact confirmed-row bindings strict with node or span ownership", () => {
+    const native = { eventId: NOTE_1, order: 3, runId: RUN_1, attempt: 1, traceId: DETAIL.header.traceId, nodeId: "search" };
+    assertRecursivelyStrict(NativeRunEventWireSchema, native);
+    assertRecursivelyStrict(ConfirmedActionBindingWireSchema, { eventId: "stream/1", logId: NOTE_1, native });
+    assert.equal(NativeRunEventWireSchema.safeParse({ ...native, nodeId: undefined, spanPath: "run/search#1" }).success, true);
+    for (const changed of [{ nodeId: undefined }, { order: 0 }, { eventId: "label" }]) {
+      assert.equal(NativeRunEventWireSchema.safeParse({ ...native, ...changed }).success, false);
+    }
+    assert.equal(ConfirmedActionBindingWireSchema.safeParse({ eventId: "stream/1", native }).success, false);
+  });
+
   it("parses recursively strict bootstrap, day, and detail resources", () => {
     assertRecursivelyStrict(FrontendBootstrapWireSchema, BOOTSTRAP);
     assertRecursivelyStrict(DashboardDayWireSchema, DAY);

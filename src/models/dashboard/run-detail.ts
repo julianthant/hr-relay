@@ -1,3 +1,4 @@
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
@@ -85,7 +86,29 @@ export function timelineEventDuration(
   };
 }
 
+export const NativeRunEventWireSchema = z.strictObject({
+  eventId: z.uuid(),
+  order: PositiveIntSchema,
+  runId: RunIdSchema,
+  attempt: PositiveIntSchema,
+  traceId: TraceIdSchema,
+  spanPath: z.string().min(1).optional(),
+  nodeId: NodeIdSchema.optional(),
+}).refine(identity => identity.spanPath !== undefined || identity.nodeId !== undefined, {
+  message: "a native event must name its node or span",
+});
+export type NativeRunEventWire = z.infer<typeof NativeRunEventWireSchema>;
+
+export const ConfirmedActionBindingWireSchema = z.strictObject({
+  eventId: z.string().min(1),
+  logId: NoteIdSchema,
+  native: NativeRunEventWireSchema,
+});
+export type ConfirmedActionBindingWire = z.infer<typeof ConfirmedActionBindingWireSchema>;
+
 export const TimelineEventWireSchema = z.strictObject({
+  native: NativeRunEventWireSchema.optional(),
+  categoryKey: TimelineCategoryKeySchema.optional(),
   noteId: NoteIdSchema,
   sequence: z.number().int().nonnegative(),
   at: IsoInstantSchema,
@@ -119,6 +142,8 @@ export const TimelineReplaySourceSchema = z.strictObject({
 
 /** ONE member node's contribution to a categorical step, served so the step's hover detail can name what folded into it without the client re-deriving the graph. */
 export const TimelineStepMemberWireSchema = z.strictObject({
+  nodeId: NodeIdSchema.optional(),
+  categoryKey: TimelineCategoryKeySchema.optional(),
   label: z.string().min(1),
   state: TimelineStepStateSchema,
   /** Sum of this node's measured execution durations; absent when none measured. */
@@ -154,6 +179,7 @@ export const TimelineStepMemberWireSchema = z.strictObject({
 
 /** The CATEGORICAL timeline step: one segment per descriptor-declared category (or per node for a workflow that declares nothing), never one per raw execution. */
 export const TimelineStepWireSchema = z.strictObject({
+  key: TimelineCategoryKeySchema.optional(),
   label: z.string().min(1),
   state: TimelineStepStateSchema,
   /** Sum of measured member durations; absent when nothing was measured. */
@@ -271,6 +297,7 @@ export const RunDetailWireSchema = z.strictObject({
 });
 
 export const NoteWireSchema = z.strictObject({
+  native: NativeRunEventWireSchema.optional(),
   noteId: NoteIdSchema,
   runId: RunIdSchema,
   sequence: z.number().int().nonnegative(),
@@ -282,6 +309,7 @@ export const NoteWireSchema = z.strictObject({
 
 /** Notes and spans share one sequenced log; notes retain their own wire arm. */
 const LogRowBase = {
+  native: NativeRunEventWireSchema.optional(),
   logId: NoteIdSchema,
   sequence: z.number().int().nonnegative(),
 } as const;
@@ -340,6 +368,7 @@ export const LogPageCursorSchema = z.string()
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
   confirmedActions: z.array(ConfirmedActionEventSchema).optional(),
+  confirmedActionBindings: z.array(ConfirmedActionBindingWireSchema).optional(),
   /** Live Logs always send this; older frozen archive pages predate it. */
   operationStructure: RunOperationStructureWireSchema.optional(),
     /* The one combined page; optional only so a frozen archive written before observed-log rows existed remains readable, and `notes` stays as an exact compatibility mirror. */
@@ -367,6 +396,8 @@ export const NotePageSchema = z.strictObject({
         && note.sequence === mirrored.sequence
         && note.at === mirrored.at
         && note.level === mirrored.level
+        && (note.native === undefined ? mirrored.native === undefined : mirrored.native !== undefined
+          && canonicalJsonStringify(note.native) === canonicalJsonStringify(mirrored.native))
         && note.message === mirrored.message;
     });
     if (!sameNotes) {
@@ -526,6 +557,7 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 
 /** The failure section serves CONTENT, not a pointer; every field below is one the schema itself made display-safe. */
 export const FailureDetailWireSchema = z.strictObject({
+  native: NativeRunEventWireSchema.optional(),
   display: FailureDisplaySchema.optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
   runId: RunIdSchema,
@@ -727,6 +759,7 @@ export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
 
 /** The parked-write section: a `parked-write` run is the one lifecycle whose ordinary controls are REFUSED BY NAME, because a fenced write may already exist in a real HR system. */
 export const ParkedWriteDetailWireSchema = z.strictObject({
+  native: NativeRunEventWireSchema.optional(),
   runId: RunIdSchema,
   writeIntentId: WriteIntentIdSchema,
   /** The exact intent generation a resolution must name to be accepted. */
@@ -780,6 +813,7 @@ export const IdentityGateOptionWireSchema = z.strictObject({
 });
 
 export const IdentityGateDetailWireSchema = z.strictObject({
+  native: NativeRunEventWireSchema.optional(),
   runId: RunIdSchema,
   gateId: NodeIdSchema,
   label: z.string().min(1),

@@ -6,7 +6,7 @@ import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_5, UUID_
 import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const {fixture, created, runningRun, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
+const {fixture, created, runningRun, parkedWriteIntent, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
 afterEach(cleanup);
 
@@ -356,14 +356,17 @@ describe("canonical run-record service", () => {
   it("refuses to re-enqueue a parked write without a resolution continuation", () => {
     const { service, request, runtimeConfig, database } = fixture();
     const running = runningRun(service, request, runtimeConfig);
+    const intent = parkedWriteIntent(database, running, {
+      writeIntentId: "83000000-0000-4000-8000-000000000097", code: "operator-required", message: "check whether the external write landed",
+    });
     const parked = service.workerTransition({
       commandId: "83000000-0000-4000-8000-000000000013",
       runId: running.envelope.runId,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
       lifecycle: {
         state: "parked-write",
-        writeIntentId: "83000000-0000-4000-8000-000000000097",
-        intentGeneration: 1,
+        writeIntentId: intent.writeIntentId,
+        intentGeneration: intent.generation,
         parkedAt: NOW,
         code: "operator-required",
         message: "check whether the external write landed",

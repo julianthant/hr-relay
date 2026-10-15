@@ -114,6 +114,20 @@ function parkedSection(w: DashboardWorld, writeContracts?: RunDetailWriteContrac
 }
 
 describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
+  it("serves the exact recorded parked event identity and leaves absent native evidence absent", () => {
+    const w = world();
+    const run = runRecordOf({ seed: 1 });
+    const proof = { ...SUBJECT_PROOF, runId: RUN_ID, afterPrepareSpanPath: `${run.envelope.traceId}/termination/prepare` };
+    seed(w, { intent: parkedIntentOf({ proof }) });
+    assert.equal(parkedSection(w).native, undefined);
+    const appended = w.timeline.append({ schemaVersion: 1, eventId: uuidOf(9801), workflow: "person-lookup",
+      scope: { kind: "run", runId: RUN_ID }, occurredAt: NOW, recordedAt: NOW, retentionDate: "2026-07-31",
+      source: { kind: "native" }, payload: { kind: "write-parked", workflow: "person-lookup", runId: RUN_ID,
+        attempt: 1, traceId: run.envelope.traceId, nodeId: "termination", writeIntentId: INTENT_ID, generation: 1 } });
+    assert.deepEqual(parkedSection(w).native, { eventId: appended.record.eventId, order: appended.record.cursor,
+      runId: RUN_ID, attempt: 1, traceId: run.envelope.traceId, nodeId: "termination" });
+  });
+
   it("advertises and serves the section with the durable intent's exact facts", () => {
     const w = world();
     seed(w);

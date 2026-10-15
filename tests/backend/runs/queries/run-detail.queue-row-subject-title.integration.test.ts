@@ -1,3 +1,7 @@
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -132,8 +136,14 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
 
   it("gives the run-detail header the same title the queue row shows", () => {
     const w = world();
-    seedRun(w, 10);
-    w.authority.putCheckpoint(searchingCheckpoint(10, RESOLVED) as never);
+    const generic = runRecordOf({ seed: 10, version: 2 });
+    const run = RunRecordSchema.parse({ ...generic, envelope: { ...generic.envelope,
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint } });
+    w.authority.put(run);
+    w.writer.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "EID 10873698" }));
+    const checkpoint = RunCheckpointRecordSchema.parse(searchingCheckpoint(10, RESOLVED));
+    w.authority.putCheckpoint({ ...checkpoint, descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint });
 
     const detail = buildRunDetail({ runReader: w.runReader, timeline: w.timeline,
       stateRoot: w.stateRoot,

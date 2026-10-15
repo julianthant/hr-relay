@@ -1,3 +1,5 @@
+import type { LogRowWire } from "../../../../src/models/dashboard/run-detail.js";
+import { createConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
@@ -22,11 +24,61 @@ import { UUID_4, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtu
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, recordingLogger, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, cleanup } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup } = createRunExecutorTestWorld();
 
 afterEach(cleanup);
 
 describe("complete operation display action binding", () => {
+
+  it("binds real early confirmation publications to their later buffered action rows by exact identity", async () => {
+    const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor, sessions: actionBindingSessions({ lifecycle: true }) });
+    const { database, clock } = harness.authority;
+    const claimed = enqueueAndClaim(database, actionBindingQueuedRun(clock.now().toISOString(), { protectedValue: false }),
+      clock.now().toISOString(), ACTION_BINDING_WORKFLOW_ID);
+    const logs = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+    const publisher = createConfirmedActionPublisher({ workerId: claimed.claim.workerId, streamId: "logs-native-fixture", clock, capacity: 100,
+      append: event => {
+        const run = database.authority.runs.get(event.action.runId); assert.ok(run);
+        logs.emitConfirmedAction(event, run);
+      } });
+    const result = await executeClaimedRun({ ...harness.deps, taskNotes: logs, confirmedActionPublisher: publisher }, { ...claimed, signal: SIGNAL });
+    assert.equal(result.state, "done");
+    const authority = database.authority.runs.get(claimed.run.envelope.runId); assert.ok(authority);
+    const deps = { timeline: database.authority.timelineEvents,
+      projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined },
+    } as unknown as RunDetailQueryDeps;
+    const section = buildRunLogsSection(deps, authority.envelope.runId, undefined, authority);
+    assert.equal(section.section, "logs");
+    if (section.section !== "logs") throw new Error("expected logs");
+    assert.ok((section.payload.confirmedActions?.length ?? 0) > 0);
+    assert.equal(section.payload.confirmedActionBindings?.length, section.payload.confirmedActions?.length);
+    let early = 0;
+    for (const binding of section.payload.confirmedActionBindings ?? []) {
+      const target: LogRowWire | undefined = section.payload.rows?.find(row => row.logId === binding.logId); assert.ok(target?.native);
+      const stored = database.authority.timelineEvents.get(binding.native.eventId); assert.ok(stored);
+      assert.equal(binding.native.order, stored.cursor);
+      assert.equal(binding.native.runId, authority.envelope.runId);
+      assert.equal(binding.native.traceId, authority.envelope.traceId);
+      assert.equal(binding.native.attempt, authority.envelope.attempt);
+      assert.equal(binding.native.nodeId, "search");
+      if (binding.native.order < target.native.order) early++;
+    }
+    assert.ok(early > 0, "confirmation publication precedes the buffered target in native delivery order");
+    const row = section.payload.rows?.find(row => row.kind === "note" && row.native !== undefined);
+    assert.ok(row?.native);
+    assert.equal(database.authority.timelineEvents.get(row.native.eventId)?.cursor, row.native.order);
+    const missingTargets = { ...deps, timeline: { ...deps.timeline,
+      page: (input: Parameters<typeof deps.timeline.page>[0]) => deps.timeline.page(input).filter(record =>
+        record.payload.kind !== "note" || record.payload.note.action?.operation === undefined),
+    } };
+    assert.throws(() => buildRunLogsSection(missingTargets, authority.envelope.runId, undefined, authority), /ACTION_TARGET_IDENTITY_MISMATCH/);
+    const actionNote = database.authority.timelineEvents.page({ runId: authority.envelope.runId }).find(record =>
+      record.payload.kind === "note" && record.payload.note.action?.operation !== undefined);
+    assert.ok(actionNote);
+    const { cursor: _cursor, ...duplicate } = actionNote;
+    database.authority.timelineEvents.append({ ...duplicate, eventId: UUID_4 });
+    assert.throws(() => buildRunLogsSection(deps, authority.envelope.runId, undefined, authority), /ACTION_TARGET_IDENTITY_MISMATCH/);
+  });
 
   it("refuses missing complete snapshots at record admission and corrupt snapshots before a driver opens", async () => {
     const missingHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });

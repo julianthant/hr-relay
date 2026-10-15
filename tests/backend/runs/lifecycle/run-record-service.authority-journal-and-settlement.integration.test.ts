@@ -19,7 +19,7 @@ import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const {fixture, created, runningRun, raceConnection, cleanup } = createRunRecordServiceTestWorld();
+const {fixture, created, runningRun, parkedWriteIntent, raceConnection, cleanup } = createRunRecordServiceTestWorld();
 
 afterEach(cleanup);
 
@@ -300,14 +300,17 @@ describe("canonical run-record service", () => {
 
     const parkedWorld = fixture();
     const running = runningRun(parkedWorld.service, parkedWorld.request, parkedWorld.runtimeConfig);
+    const intent = parkedWriteIntent(parkedWorld.database, running, {
+      writeIntentId: "86000000-0000-4000-8000-000000000099", code: "unknown", message: "external outcome is unknown",
+    });
     const parked = parkedWorld.service.workerTransition({
       commandId: "86000000-0000-4000-8000-000000000004",
       runId: running.envelope.runId,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
       lifecycle: {
         state: "parked-write",
-        writeIntentId: "86000000-0000-4000-8000-000000000099",
-        intentGeneration: 1,
+        writeIntentId: intent.writeIntentId,
+        intentGeneration: intent.generation,
         parkedAt: NOW,
         code: "unknown",
         message: "external outcome is unknown",

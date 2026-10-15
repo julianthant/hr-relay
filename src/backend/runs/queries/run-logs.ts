@@ -1,3 +1,4 @@
+import { LogIdentityRefusedError } from "../commands/refusals.js";
 import { readTimelineRecords, timelineNoteLocation } from "../../storage/events/timeline-reader.js";
 import { RedactedFieldSchema } from "../../../rules/redaction/redaction.js";
 import { z } from "zod";
@@ -22,6 +23,8 @@ import {
 } from "../../../models/events/types.js";
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
 import { deterministicUuid } from "../lifecycle/support.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { DeclaredActionIdentitySchema } from "../../../models/workflow/operation-action-identity.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 
@@ -32,6 +35,9 @@ const LEVEL_MAP = { error: "error", warn: "warning", waiting: "warning", step: "
 /** One parseable line that the selected run owns, before the query assigns page sequence. */
 type RunAtRestNote = Readonly<{
   runId: string;
+  attempt: number;
+  traceId: string;
+  spanPath: string;
   ts: string;
   level: "error" | "warn" | "waiting" | "step" | "success" | "debug";
   message: string;
@@ -227,6 +233,9 @@ function logLinesForRun(
           line,
           note: {
             runId: projected.runId,
+            attempt: projected.attempt,
+            traceId: projected.traceId,
+            spanPath: projected.spanPath,
             ts: projected.ts,
             level: projected.level,
             message: projected.message,
@@ -244,8 +253,7 @@ function logLinesForRun(
       assertRunLogIdentity("span", event, line, runId, row, authority);
       matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line) });
     }
-    return matches.sort((left, right) => logInstantOf(left).localeCompare(logInstantOf(right))
-      || left.line.lineNumber - right.line.lineNumber);
+    return matches.sort((left, right) => left.line.lineNumber - right.line.lineNumber);
   };
   return scan();
 }
@@ -288,12 +296,18 @@ function logRowOf(
   sequence: number,
 ): unknown {
   const logId = logIdOf(entry);
+  const identity = entry.kind === "note" ? entry.note : entry.event;
+  const native = { eventId: entry.line.file.path.replace(/^timeline:/u, ""), order: entry.line.lineNumber,
+    runId: identity.runId, attempt: identity.attempt, traceId: identity.traceId, spanPath: identity.spanPath,
+    ...(entry.kind === "note" ? (entry.note.action?.operation === undefined && entry.note.confirmedAction === undefined ? {} : { nodeId: entry.note.action?.operation?.nodeId ?? entry.note.confirmedAction?.action.nodeId }) : { nodeId: entry.producer.nodeId }) };
   if (entry.kind === "note") {
     return {
       kind: "note",
+      native,
       logId,
       sequence,
       note: {
+        native,
         noteId: logId,
         runId: entry.note.runId,
         sequence,
@@ -307,6 +321,7 @@ function logRowOf(
   if (entry.kind === "observed") {
     return {
       kind: "observed",
+      native,
       logId,
       sequence,
       at: entry.event.observedAt,
@@ -319,6 +334,7 @@ function logRowOf(
   }
   return {
     kind: "transaction-fenced",
+    native,
     logId,
     sequence,
     at: entry.event.ts,
@@ -422,6 +438,28 @@ export function buildRunLogsSection(
   }
   const all = snapshot.entries;
   const page = all.slice(offset, offset + LOGS_PAGE_SIZE);
+  const actionIdentity = (action: NonNullable<RunAtRestNote["action"]>["operation"] | NonNullable<RunAtRestNote["confirmedAction"]>["action"]) => {
+    if (action === undefined) throw new LogIdentityRefusedError("RUN_LOG_ACTION_IDENTITY_MISSING");
+    const { value: _value, ...identity } = action;
+    return canonicalJsonStringify(DeclaredActionIdentitySchema.parse(identity));
+  };
+  const bindings = page.flatMap((entry) => {
+    if (entry.kind !== "note" || entry.note.confirmedAction === undefined) return [];
+    const event = entry.note.confirmedAction;
+    const identity = actionIdentity(event.action);
+    const matches = all.filter((candidate) => candidate.kind === "note" && candidate.note.action?.operation !== undefined
+      && actionIdentity(candidate.note.action.operation) === identity);
+    if (matches.length !== 1) throw new LogIdentityRefusedError("RUN_LOG_ACTION_TARGET_IDENTITY_MISMATCH");
+    const target = matches[0];
+    if (target === undefined) throw new LogIdentityRefusedError("RUN_LOG_ACTION_TARGET_IDENTITY_MISMATCH");
+    if (target.kind !== "note" || target.note.runId !== entry.note.runId || target.note.attempt !== entry.note.attempt
+      || target.note.traceId !== entry.note.traceId) throw new LogIdentityRefusedError("RUN_LOG_ACTION_TARGET_OWNER_MISMATCH");
+    return [{ eventId: event.eventId, logId: logIdOf(target), native: {
+      eventId: entry.line.file.path.replace(/^timeline:/u, ""), order: entry.line.lineNumber,
+      runId: entry.note.runId, attempt: entry.note.attempt, traceId: entry.note.traceId,
+      spanPath: entry.note.spanPath, nodeId: event.action.nodeId,
+    } }];
+  });
   const rows = page.map((entry, index) => LogRowWireSchema.parse(logRowOf(
     entry,
     offset + index,
@@ -432,6 +470,7 @@ export function buildRunLogsSection(
       runId,
       operationStructure: operationStructureForRun(authority, runId, page),
       rows,
+      confirmedActionBindings: bindings,
       notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
       confirmedActions: page.flatMap((entry) => entry.kind === "note" && entry.note.confirmedAction !== undefined
         ? [entry.note.confirmedAction] : []),

@@ -201,9 +201,9 @@ afterEach(cleanup);
 /* ── 2. the served fold ──────────────────────────────────────────────────── */
 
 const CATEGORIES: NonNullable<RunDetailDescriptorView["timeline"]> = [
-  { label: "Kuali extraction", nodes: [{ id: "document", label: "Separation Document" }, { id: "plan", label: "Separation Plan" }] },
-  { label: "Identity check", nodes: [{ id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" }] },
-  { label: "Kronos timecard", nodes: [{ id: "timecard", label: "Timecard" }] },
+  { key: "extraction", label: "Kuali extraction", nodes: [{ id: "document", label: "Separation Document" }, { id: "plan", label: "Separation Plan" }] },
+  { key: "identity", label: "Identity check", nodes: [{ id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" }] },
+  { key: "timecard", label: "Kronos timecard", nodes: [{ id: "timecard", label: "Timecard" }] },
 ];
 
 function detailOf(w: DashboardWorld, timeline?: NonNullable<RunDetailDescriptorView["timeline"]>, seed = 1) {
@@ -212,7 +212,7 @@ function detailOf(w: DashboardWorld, timeline?: NonNullable<RunDetailDescriptorV
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
-      descriptors: { resolve: () => (timeline === undefined ? { details: [] } : { details: [], timeline }) },
+      descriptors: { resolve: () => (timeline === undefined ? { details: [] } : { details: [], version: 1, contractFingerprint: HASH_A, timeline }) },
     },
     uuidOf(seed),
   );
@@ -257,6 +257,16 @@ afterEach(cleanup);
     // The five raw events are still served beside them — the categorical strip
     // is a presentation of the timeline, never a replacement for its history.
     assert.equal(detailOf(w, CATEGORIES).timeline.events.length, 2);
+    assert.deepEqual(steps?.map(step => step.key), ["extraction", "identity", "timecard"]);
+    assert.deepEqual(steps?.[0].members.map(member => [member.nodeId, member.categoryKey]), [
+      ["document", "extraction"], ["plan", "extraction"],
+    ]);
+    for (const event of detailOf(w, CATEGORIES).timeline.events) {
+      assert.ok(event.native);
+      const stored = w.timeline.get(event.native.eventId); assert.ok(stored);
+      assert.equal(event.native.order, stored.cursor);
+      assert.equal(event.categoryKey, "extraction");
+    }
   });
 
   it("sums the measured member durations into the category's own number", () => {
@@ -269,8 +279,8 @@ afterEach(cleanup);
     assert.equal(extraction?.durationSec, 8);
     assert.equal(extraction?.state, "done");
     assert.deepEqual(extraction?.members, [
-      { label: "Separation Document", state: "done", durationSec: 6 },
-      { label: "Separation Plan", state: "done", durationSec: 2 },
+      { nodeId: "document", categoryKey: "extraction", label: "Separation Document", state: "done", durationSec: 6 },
+      { nodeId: "plan", categoryKey: "extraction", label: "Separation Plan", state: "done", durationSec: 2 },
     ]);
   });
 
@@ -403,7 +413,7 @@ afterEach(cleanup);
     // NEVER `took 0s`: a replay emits no span, so nothing measured it.
     assert.equal(kronos?.durationSec, undefined);
     assert.deepEqual(kronos?.members, [{
-      label: "Timecard",
+      nodeId: "timecard", categoryKey: "timecard", label: "Timecard",
       state: "replayed",
       replayedFrom: { attempt: 8, claimGeneration: 2 },
     }]);
@@ -567,6 +577,10 @@ afterEach(cleanup);
     const { events } = buildRunDetail(deps(w), uuidOf(SEED)).timeline;
     assert.equal(events.length, 2);
     assert.deepEqual(events.map((event) => event.label), [NODE, NODE]);
+    assert.ok(events[0].native && events[1].native);
+    assert.notEqual(events[0].native.eventId, events[1].native.eventId);
+    w.projection.rebuildFromTimeline();
+    assert.deepEqual(buildRunDetail(deps(w), uuidOf(SEED)).timeline.events.map(event => event.native), events.map(event => event.native));
 
     assert.deepEqual(
       events.map((event) => event.durationMs),

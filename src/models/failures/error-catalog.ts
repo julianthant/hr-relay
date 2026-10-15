@@ -29,6 +29,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The dashboard could not load this from the local service. Try again.",
     EmptyParametersSchema,
   ),
+  LOGS_IDENTITY_REFUSED: catalogEntry(
+    "Logs cannot be ordered because their recorded identities are missing or inconsistent.",
+    EmptyParametersSchema,
+  ),
   LOGS_READ_FAILED_TITLE: catalogEntry(
     "Could not load logs",
     EmptyParametersSchema,

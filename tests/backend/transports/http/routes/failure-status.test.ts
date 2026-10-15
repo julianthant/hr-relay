@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
 import {
+LogIdentityRefusedError,
 DiagnosticBundleBytesMissingError,
 DiagnosticBundleCorruptError,
 ProjectionDegradedError,
@@ -23,6 +24,14 @@ const RETIRED_MARKERS = [
 ] as const;
 
 describe("failureStatus", () => {
+  it("refuses Logs identity contradictions with the shared catalog code and text", () => {
+    const refusal = failureStatus(new LogIdentityRefusedError("private native mismatch"));
+    assert.equal(refusal.status, 409);
+    assert.equal(refusal.body.code, "LOGS_IDENTITY_REFUSED");
+    assert.equal(refusal.body.retryable, false);
+    assert.equal(refusal.body.message, "Logs cannot be ordered because their recorded identities are missing or inconsistent.");
+  });
+
   it("answers 404 for a not-found refusal whose wording carries no retired marker", () => {
     const { status, body } = failureStatus(
       new TargetNotFoundError("nothing here answers to run 0f2c; try the archive"),

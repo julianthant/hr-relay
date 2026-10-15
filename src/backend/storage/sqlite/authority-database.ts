@@ -909,6 +909,12 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
         throw new Error("timeline-checkpoint-reference-mismatch");
       }
     }
+    if (record.payload.kind === "write-parked") {
+      const event = record.payload;
+      if (event.traceId !== run.envelope.traceId || event.attempt > run.envelope.attempt) {
+        throw new Error("timeline-parked-write-owner-mismatch");
+      }
+    }
     if (record.payload.kind === "note") {
       const note = record.payload.note;
       if (!("runId" in note) || note.traceId !== run.envelope.traceId || note.attempt > run.envelope.attempt) {

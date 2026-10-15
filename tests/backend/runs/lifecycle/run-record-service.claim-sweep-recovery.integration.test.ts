@@ -1,3 +1,5 @@
+import { buildGateParkSection } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { fenceWriteFixture, seedCorruptWriteFenceFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { sweepWorkerClaims } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle,testRunService,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -10,7 +12,8 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it,vi } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
+import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
+import { deriveWriteBindingProofDigest, deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import {
 HASH_A,
 LATER,
@@ -68,34 +71,38 @@ function openDatabase(): AuthorityDatabase {
 }
 
 /** The attempting intent, rebound to the person-lookup run fixture's item. */
+const PERSON_LOOKUP_PROOF = { ...WRITE_INTENT_ATTEMPTING.bindingProof,
+  afterPrepareSpanPath: `${QUEUED_RUN.envelope.traceId}/termination/prepare` };
 const PERSON_LOOKUP_ATTEMPTING_INTENT = {
   ...WRITE_INTENT_ATTEMPTING,
   workflowId: WORKFLOW_ID,
   itemId: ITEM_ID,
+  bindingProof: PERSON_LOOKUP_PROOF, bindingProofDigest: deriveWriteBindingProofDigest(PERSON_LOOKUP_PROOF),
 };
-const PERSON_LOOKUP_WRITE_ATTEMPT = { ...WRITE_ATTEMPT };
+const PERSON_LOOKUP_WRITE_ATTEMPT = { ...WRITE_ATTEMPT,
+  bindingProof: PERSON_LOOKUP_PROOF, bindingProofDigest: deriveWriteBindingProofDigest(PERSON_LOOKUP_PROOF) };
 
-function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running"): void {
-  database.authority.runs.enqueue(QUEUED_RUN);
-  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW });
+function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running", queued = QUEUED_RUN, workerId = WORKER_ID): void {
+  database.authority.runs.enqueue(queued);
+  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed" || target === "claimed") return;
   const validating = database.authority.runs.transition({
-    runId: RUN_ID,
+    runId: queued.envelope.runId,
     expectedVersion: claimed.run.version,
-    claim: { workerId: WORKER_ID, claimGeneration: 1 },
-    lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+    claim: { workerId, claimGeneration: 1 },
+    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
     now: NOW,
   });
   assert.equal(validating.state, "applied");
   if (validating.state !== "applied") return;
   const running = database.authority.runs.transition({
-    runId: RUN_ID,
+    runId: queued.envelope.runId,
     expectedVersion: validating.run.version,
-    claim: { workerId: WORKER_ID, claimGeneration: 1 },
+    claim: { workerId, claimGeneration: 1 },
     lifecycle: {
       state: "running",
-      workerId: WORKER_ID,
+      workerId,
       claimedAt: NOW,
       heartbeatAt: NOW,
       currentNodeId: "searching",
@@ -106,6 +113,101 @@ function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running")
 }
 
 describe("expired-claim sweep write-intent gate", () => {
+  it("records exactly one parked event with its journal and rolls it back with the park", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    fenceWriteFixture(database, { intent: PERSON_LOOKUP_ATTEMPTING_INTENT, attempt: PERSON_LOOKUP_WRITE_ATTEMPT });
+    const service = testRunService(database, manualClock(new Date(MUCH_LATER)));
+    const before = database.authority.runs.get(RUN_ID); assert.ok(before);
+    const request = { commandId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", runId: RUN_ID,
+      expectedVersion: before.version, staleBefore: MUCH_LATER, cause: "recovery" };
+    const events = () => database.authority.timelineEvents.page({ runId: RUN_ID }).filter(record => record.payload.kind === "write-parked");
+    assert.throws(() => database.withAuthorityTransaction(() => {
+      assert.equal(service.requeue(request).state, "recovery-required");
+      assert.equal(events().length, 1);
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "parked-write");
+      throw new Error("rollback parked event");
+    }), /rollback parked event/);
+    assert.deepEqual(database.authority.runs.get(RUN_ID), before);
+    assert.equal(database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
+    assert.deepEqual(events(), []);
+    assert.equal(service.requeue(request).state, "recovery-required");
+    const event = events()[0]; assert.ok(event);
+    assert.deepEqual(event.payload, { kind: "write-parked", runId: RUN_ID, workflow: WORKFLOW_ID,
+      attempt: before.envelope.attempt, traceId: before.envelope.traceId, nodeId: "termination",
+      writeIntentId: PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId, generation: 1 });
+    assert.ok(event.cursor > 0);
+    assert.equal(service.requeue(request).state, "applied-already");
+    assert.equal(events().length, 1);
+    assert.equal(database.authority.writeIntents.get(PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId)?.status, "attempting");
+  });
+
+  it("records the normal intent park, run park and event atomically without retry authority", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    fenceWriteFixture(database, { intent: PERSON_LOOKUP_ATTEMPTING_INTENT, attempt: PERSON_LOOKUP_WRITE_ATTEMPT });
+    const service = testRunService(database, manualClock(new Date(MUCH_LATER)));
+    const before = database.authority.runs.get(RUN_ID); assert.ok(before);
+    const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", runId: RUN_ID, expectedVersion: before.version,
+      claim: { workerId: WORKER_ID, claimGeneration: before.claimGeneration }, lifecycle: { state: "parked-write",
+        writeIntentId: PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId, intentGeneration: 1,
+        parkedAt: MUCH_LATER, code: "unknown", message: "post-fence unknown" } };
+    const park = () => database.withAuthorityTransaction(repositories => {
+      repositories.writeIntents.parkAttempt({ writeIntentId: PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId,
+        generation: 1, expectedVersion: 1, code: "unknown", message: "post-fence unknown",
+        authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", "post-fence unknown"), now: MUCH_LATER });
+      assert.equal(service.workerTransition(request).state, "applied");
+    });
+    const intentBefore = database.authority.writeIntents.get(PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId);
+    assert.throws(() => database.withAuthorityTransaction(() => { park(); throw new Error("rollback normal park"); }), /rollback normal park/);
+    assert.deepEqual(database.authority.runs.get(RUN_ID), before);
+    assert.deepEqual(database.authority.writeIntents.get(PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId), intentBefore);
+    assert.equal(database.authority.timelineEvents.page({ runId: RUN_ID }).filter(record => record.payload.kind === "write-parked").length, 0);
+    park();
+    assert.equal(database.authority.writeIntents.get(PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId)?.status, "parked");
+    assert.equal(service.workerTransition(request).state, "applied-already");
+    assert.equal(database.authority.timelineEvents.page({ runId: RUN_ID }).filter(record => record.payload.kind === "write-parked").length, 1);
+  });
+
+  it("records a recovery park on its actual run without adopting the earlier write owner's span or serving its decision", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    const runId = "33333333-3333-4333-8333-333333333333";
+    const later = { ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId, traceId: "pl-170000-3333", attempt: 2, retryOf: RUN_ID } };
+    claimAndRun(database, "running", later, SIBLING_WORKER_ID);
+    fenceWriteFixture(database, { intent: PERSON_LOOKUP_ATTEMPTING_INTENT, attempt: PERSON_LOOKUP_WRITE_ATTEMPT });
+    const current = database.authority.runs.get(runId); assert.ok(current);
+    const service = testRunService(database, manualClock(new Date(MUCH_LATER)));
+    const result = service.requeue({ commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", runId,
+      expectedVersion: current.version, staleBefore: MUCH_LATER, cause: "recovery" });
+    assert.equal(result.state, "recovery-required");
+    const events = database.authority.timelineEvents.page({ runId }).filter(record => record.payload.kind === "write-parked");
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0].payload, { kind: "write-parked", runId, workflow: WORKFLOW_ID,
+      attempt: current.envelope.attempt, traceId: later.envelope.traceId, nodeId: "termination",
+      writeIntentId: PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId, generation: 1 });
+    assert.equal(database.authority.runs.get(runId)?.lifecycle.state, "parked-write");
+    assert.equal(database.authority.writeIntents.get(PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId)?.status, "attempting");
+    assert.throws(() => buildGateParkSection({ runReader: service,
+      authority: { getWriteIntent: (id: string) => database.authority.writeIntents.get(id) },
+    } as unknown as RunDetailQueryDeps, runId, "parked-write"), /which is attempting/);
+  });
+
+  it("refuses a malformed recorded prepare owner without parking or recording a guessed node", () => {
+    const database = openDatabase();
+    claimAndRun(database, "running");
+    const proof = { ...PERSON_LOOKUP_PROOF, afterPrepareSpanPath: "foreign/termination/prepare" };
+    const bindingProofDigest = deriveWriteBindingProofDigest(proof);
+    fenceWriteFixture(database, { intent: { ...PERSON_LOOKUP_ATTEMPTING_INTENT, bindingProof: proof, bindingProofDigest },
+      attempt: { ...PERSON_LOOKUP_WRITE_ATTEMPT, bindingProof: proof, bindingProofDigest } });
+    const current = database.authority.runs.get(RUN_ID); assert.ok(current);
+    const service = testRunService(database, manualClock(new Date(MUCH_LATER)));
+    assert.throws(() => service.requeue({ commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", runId: RUN_ID,
+      expectedVersion: current.version, staleBefore: MUCH_LATER, cause: "recovery" }), /timeline-parked-write-node-mismatch/);
+    assert.deepEqual(database.authority.runs.get(RUN_ID), current);
+    assert.equal(database.authority.timelineEvents.page({ runId: RUN_ID }).filter(record => record.payload.kind === "write-parked").length, 0);
+  });
+
   it("parks a running run with an attempting intent as parked-write instead of requeueing", () => {
     const database = openDatabase();
     claimAndRun(database, "running");

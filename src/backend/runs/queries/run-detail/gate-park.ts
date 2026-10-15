@@ -1,3 +1,5 @@
+import { LogIdentityRefusedError } from "../../commands/refusals.js";
+import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { protectIdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
 import {
   retainedRunProtectedBindings,
@@ -361,9 +363,21 @@ function buildIdentityGatePayload(
         ? `a UCPath search on the document's name "${packet.documentName}" resolved this person`
         : `a UCPath search on the document's name "${packet.documentName}" listed this EID among its candidates`,
   }));
+  const nativeEvents = readTimelineRecords(deps.timeline, 0, runId).records.filter(record =>
+    record.payload.kind === "span" && record.payload.event.t === "gate.opened"
+    && record.payload.event.gate === gate.nodeId && record.payload.event.attempt === authority.envelope.attempt);
+  if (nativeEvents.length > 1) throw new LogIdentityRefusedError("RUN_LOG_GATE_NATIVE_IDENTITY_DUPLICATE");
+  const nativeEvent = nativeEvents[0];
+  const native = nativeEvent?.payload.kind === "span" && nativeEvent.payload.event.t === "gate.opened"
+    ? nativeEvent.payload.event : undefined;
+  if (native !== undefined && native.traceId !== authority.envelope.traceId) throw new LogIdentityRefusedError("RUN_LOG_GATE_NATIVE_IDENTITY_MISMATCH");
   return {
     state: "available",
     value: IdentityGateDetailWireSchema.parse({
+      ...(native === undefined || nativeEvent === undefined ? {} : { native: {
+        eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId,
+        attempt: native.attempt, traceId: native.traceId, spanPath: native.spanPath, nodeId: gate.nodeId,
+      } }),
       runId,
       gateId: gate.nodeId,
       label: gate.label,
@@ -468,7 +482,20 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
       + `${lifecycle.writeIntentId}, which is at generation ${String(intent.generation)}`,
     );
   }
+  const nativeEvents = readTimelineRecords(deps.timeline, 0, runId).records.filter(record =>
+    record.payload.kind === "write-parked" && record.payload.writeIntentId === intent.writeIntentId
+    && record.payload.generation === intent.generation);
+  if (nativeEvents.length > 1) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_DUPLICATE");
+  const nativeEvent = nativeEvents[0];
+  const native = nativeEvent?.payload.kind === "write-parked" ? nativeEvent.payload : undefined;
+  if (native !== undefined && (native.runId !== runId || native.attempt !== intent.runAttempt
+    || native.traceId !== authority.envelope.traceId || native.workflow !== authority.envelope.workflow
+    || intent.bindingProof.afterPrepareSpanPath !== `${native.traceId}/${native.nodeId}/prepare`)) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_MISMATCH");
   return ParkedWriteDetailWireSchema.parse({
+    ...(native === undefined || nativeEvent === undefined ? {} : { native: {
+      eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId: native.runId,
+      attempt: native.attempt, traceId: native.traceId, nodeId: native.nodeId,
+    } }),
     runId,
     writeIntentId: intent.writeIntentId,
     generation: intent.generation,
