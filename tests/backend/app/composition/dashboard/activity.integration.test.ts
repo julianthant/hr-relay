@@ -157,7 +157,7 @@ it("serves and exports the same reviewed Activity summary snapshot and refuses s
   assert.equal(file.evidence.workbookVersion,3);assert.equal("requestedBy" in file.evidence&&file.evidence.requestedBy,"synthetic-operator");
   assert.deepEqual(f.database.authority.operatorXlsxExports.get(file.evidence.exportId),file.evidence);
 
-  assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),/stale/u);
+  assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" });
   assert.equal((await f.app.request(`http://localhost/api/v1/reports/activity.csv?from=${report.from}&to=${report.to}`)).status,409);
 });
 
@@ -266,12 +266,12 @@ it("binds Activity volume series into the snapshot digest for CSV and XLSX downl
   const {reportDigest:originalDigest,token:originalToken,...originalIdentity}=originalSnapshot;
   assert.notEqual(changedDigest,originalDigest);assert.notEqual(changedToken,originalToken);
   assert.deepEqual(changedIdentity,originalIdentity);
-  assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),/content-mismatch/u);
+  assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_CONTENT_MISMATCH" });
 
   const csv=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`);
   assert.equal(csv.status,409);
   const xlsxRequest={requestVersion:3,selection:{kind:"activity" as const,from:report.from,to:report.to,snapshotToken:report.snapshot.token}};
-  await assert.rejects(f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),xlsxRequest),/content-mismatch/u);
+  await assert.rejects(f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),xlsxRequest),{ code: "ACTIVITY_SNAPSHOT_CONTENT_MISMATCH" });
   const xlsx=await f.app.request("http://localhost/api/v1/exports/xlsx",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(xlsxRequest)});
   assert.equal(xlsx.status,409);
   assert.equal(f.database.getMeta().authorityGeneration,generation);
@@ -305,16 +305,16 @@ it("exports the complete ordered collected search values with coverage and exact
 
 it("rejects report token tampering, mismatched range, foreign signer and expiry without returning a replacement report",async()=>{
   const f=fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20");
-  assert.throws(()=>f.activity.readSelected(report.from,"2026-09-21",report.snapshot.token),/mismatch/u);
-  assert.throws(()=>f.activity.readSelected(report.from,report.to,`${report.snapshot.token}x`),/invalid/u);
+  assert.throws(()=>f.activity.readSelected(report.from,"2026-09-21",report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" });
+  assert.throws(()=>f.activity.readSelected(report.from,report.to,`${report.snapshot.token}x`),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   const restarted=composeActivity({database:f.database,clock:f.clock,descriptors:{resolve:()=>undefined},ledger:createTransactionHistory(f.database.authority)});
-  assert.throws(()=>restarted.readSelected(report.from,report.to,report.snapshot.token),/invalid/u);
+  assert.throws(()=>restarted.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   f.clock.advanceWall(15*60_000);
-  assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),/expired/u);
+  assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   const expiredCsv=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`);
   assert.equal(expiredCsv.status,409);
   const expiredRequest={requestVersion:3 as const,selection:{kind:"activity" as const,from:report.from,to:report.to,snapshotToken:report.snapshot.token}};
-  await assert.rejects(f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),expiredRequest),/expired/u);
+  await assert.rejects(f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),expiredRequest),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   const expiredXlsx=await f.app.request("http://localhost/api/v1/exports/xlsx",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(expiredRequest)});
   assert.equal(expiredXlsx.status,409);
 });

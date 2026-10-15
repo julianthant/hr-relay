@@ -102,7 +102,7 @@ afterEach(_afterEachFixture0);
       runtimeStoragePair: pair, active: activeSettingsRuntimeIdentity });
     assert.deepEqual(reader.read().runtimeStatus, { state: "current", identity: settingsRuntimeIdentity(f.initial, resolved.fingerprint) });
     assert.equal(readSettings(f.database.authority).revision, f.initial.revision);
-    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join_m0(pair.stateRoot, "browsers") });
+    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join_m0(pair.stateRoot, "browsers"), duoCredential: join_m0(pair.stateRoot, "credentials", "duo-webauthn.json") });
     assert.notDeepEqual(prior.paths, pair);
   });
   it("builds a current editor with exactly one authoritative read and no file authority", () => {

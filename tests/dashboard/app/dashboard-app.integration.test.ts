@@ -434,7 +434,8 @@ it_m1("passes the app client to a served Explorer read while parity explicitly r
       workflowExplorer: async () => { calls++; throw new Error("mock Explorer must not read served definitions"); },
     });
     assert_m1.equal(calls, 0);
-    assert_m1.ok(document.body.textContent?.includes("Fictional preview data."));
+    assert_m1.ok(document.body.textContent?.includes("Browse workflows, their steps and field sources."));
+    assert_m1.equal(document.body.textContent?.includes("Fictional preview data"), false);
     assert_m1.equal(document.body.textContent?.includes("No run values are available."), false);
     const select = document.querySelector('[aria-label="Explorer workflow"]');
     assert_m1.ok(select instanceof HTMLButtonElement);
