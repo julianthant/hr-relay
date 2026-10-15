@@ -152,7 +152,8 @@ export const ERROR_CATALOG = Object.freeze({
   COMMAND_DISPATCH_FAILED: catalogEntry(
     "The command could not be dispatched. Review local diagnostic evidence.",
     EmptyParametersSchema,
-  ),  CHATGPT_AUTH_BUSY: catalogEntry(
+  ),
+  CHATGPT_AUTH_BUSY: catalogEntry(
     "A ChatGPT sign-in is already in progress.",
     EmptyParametersSchema,
   ),

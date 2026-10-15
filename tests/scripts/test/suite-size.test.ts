@@ -26,8 +26,9 @@ describe("suite size by configured project", () => {
       }
       assert.deepEqual(measureSuiteSize(root), [
         { family: "unit", files: 2, lines: 4, state: "active" },
-        { family: "integration", files: 3, lines: 6, state: "active" },
+        { family: "integration", files: 2, lines: 4, state: "active" },
         { family: "architecture", files: 1, lines: 2, state: "active" },
+        { family: "perf", files: 1, lines: 2, state: "active" },
       ]);
       rmSync(join(root, "tests/architecture"), { recursive: true });
       assert.throws(() => measureSuiteSize(root), /architecture: project collects no tests/u);
