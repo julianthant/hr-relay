@@ -129,7 +129,7 @@ describe("workflow definition registry conformance", () => {
         })));
 
         const seed = 501 + index;
-        queuedEventOf(world, { seed, workflow: id });
+        queuedEventOf(world, { seed, workflow: id, descriptor });
         for (const nodeId of expectedTaskIds) taskEventsOf(world, seed, nodeId, "done");
         const detail = buildRunDetail({ runReader: world.runReader,
           stateRoot: world.stateRoot, timeline:world.timeline,

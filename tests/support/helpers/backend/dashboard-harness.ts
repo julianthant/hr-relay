@@ -326,6 +326,7 @@ export function makeWorld(input?: Readonly<{
 /* ── seeded rows ─────────────────────────────────────────────────────────── */
 
 export interface SeedRunInput {
+  readonly descriptor?: Pick<AnyWorkflowDescriptor, "version" | "contractFingerprint">;
   readonly seed: number;
   readonly attempt?: number;
   readonly workflow?: string;
@@ -397,8 +398,8 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       workflow: input.workflow ?? "person-lookup",
       itemId: uuidOf(input.seed + 5000),
       traceId: traceOf(input.seed),
-      descriptorVersion: 1,
-      contractFingerprint: HASH_A,
+      descriptorVersion: input.descriptor?.version ?? 1,
+      contractFingerprint: input.descriptor?.contractFingerprint ?? HASH_A,
       resolvedInstance: { ucpath: "prod" },
       configFingerprint: CONFIG_SNAPSHOT.fingerprint,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
@@ -448,8 +449,8 @@ export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQu
     dryRun: record.envelope.dryRun,
     actorId: "local-operator",
     title: input.title ?? `EID 10873698 #${String(input.seed)}`,
-    descriptorVersion: 1,
-    contractFingerprint: HASH_A,
+    descriptorVersion: record.envelope.descriptorVersion,
+    contractFingerprint: record.envelope.contractFingerprint,
     resolvedInstance: { ucpath: "prod" },
     configFingerprint: record.envelope.configFingerprint,
     configSnapshotId: record.envelope.configSnapshotId,
