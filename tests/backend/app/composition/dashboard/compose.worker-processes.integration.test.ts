@@ -1,3 +1,4 @@
+import { WorkerStopDirectiveContextSchema } from "../../../../../src/backend/runtime/workers/worker-loop.js";
 import { instrumentPool, kernelOver, type PoolEffectEvent } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import { createDashboardChildTestWorld, type RealChildRecord } from "../../../../support/helpers/backend/dashboard-child-world.js";
 
@@ -17,7 +18,7 @@ import { systemClock } from "../../../../../src/rules/time/clock.js";
 
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-const {stubLaunch, servedControlBasis, PL, plMember, STUB_CLI_PATH, required, roots, openDatabases, cleanups, nextCommandId, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
+const {stubLaunch, PL, plMember, STUB_CLI_PATH, required, roots, openDatabases, cleanups, nextCommandId, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 const PL_1 = plMember(1);
 const PL_2 = plMember(2);
@@ -105,7 +106,7 @@ describe("real processes: two children supervised concurrently through the compo
   }
 
   it(
-    "spawns worker 1 and worker 2 as real children, proves both births via durable leases, and stops both — exact identities, no cross-talk",
+    "spawns worker 1 and worker 2 as real children, proves both births via durable leases, and internally drains both — exact identities, no cross-talk",
     async () => {
       reportW5Phase("two-child-door", "startup", "begin");
       const harness = openRealHarness();
@@ -194,29 +195,17 @@ describe("real processes: two children supervised concurrently through the compo
       const birth2Ms = eventOf(harness.events, spawn2Id, "exit").atMonotonicMs - spawn2Enter.atMonotonicMs;
       reportW5Phase("two-child-door", "spawn-and-birth", "complete");
 
-      // Concurrent stops: both settle applied; the durable directive instant
-      // IS the observed graceful stage instant for each member.
       reportW5Phase("two-child-door", "graceful-stop", "begin");
-      const stop1Id = nextCommandId();
-      const stop2Id = nextCommandId();
+      const stop1Id = nextCommandId(), stop2Id = nextCommandId();
       const stopSubmitMs = systemClock.monotonicMs();
-      const [stop1Result, stop2Result] = await Promise.all([
-        harness.kernel.executeWorkerPool({
-          ...envelope(systemClock, stop1Id),
-          type: "stop-worker",
-          target: { workerId: PL_1.workerId, expectedVersion: lease1.version, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
-          reason: "w5 stop",
-        }),
-        harness.kernel.executeWorkerPool({
-          ...envelope(systemClock, stop2Id),
-          type: "stop-worker",
-          target: { workerId: PL_2.workerId, expectedVersion: lease2.version, controlBasis: servedControlBasis(harness.database, PL_2.workerId) },
-          reason: "w5 stop",
-        }),
-      ]);
+      const requestedAt = systemClock.now().toISOString();
+      const drained = harness.control.supervisor.drainOwnedChildren(WorkerStopDirectiveContextSchema.parse({ requestedAt, requestedBy: "local-operator", reason: "w5 stop" }));
+      await drained;
+      assert.equal(harness.database.authority.commands.get(stop1Id), undefined);
+      assert.equal(harness.database.authority.commands.get(stop2Id), undefined);
       const stopsAckMs = systemClock.monotonicMs() - stopSubmitMs;
-      assert.equal(stop1Result.state, "applied");
-      assert.equal(stop2Result.state, "applied");
+      assert.equal(harness.control.supervisor.memberEvidence(PL_1)?.state, "exited", "drain must await child 1 OS exit");
+      assert.equal(harness.control.supervisor.memberEvidence(PL_2)?.state, "exited", "drain must await child 2 OS exit");
       await waitFor(
         () => harness.control.supervisor.memberEvidence(PL_1)?.state === "exited"
           && harness.control.supervisor.memberEvidence(PL_2)?.state === "exited",
@@ -232,6 +221,7 @@ describe("real processes: two children supervised concurrently through the compo
         assert.equal(evidence.reportedBy, "os");
         assert.equal(evidence.exitCode, 0);
         const graceful = required(evidence.observedStop[0], `${member.workerId} graceful stage`);
+        assert.equal(graceful.at, requestedAt);
         const lease = required(harness.database.authority.workerLeases.get(member.workerId), "stopped lease");
         assert.deepEqual(lease.control, {
           directive: "stop",
@@ -251,9 +241,11 @@ describe("real processes: two children supervised concurrently through the compo
       reportW5Phase("two-child-door", "teardown", "begin");
       assert.deepEqual(harness.control.supervisor.close(), []);
       assert.deepEqual(harness.faults, []);
-      for (const commandId of [planId, spawn1Id, spawn2Id, stop1Id, stop2Id]) {
+      for (const commandId of [planId, spawn1Id, spawn2Id]) {
         assertJournaled(harness.database, commandId);
       }
+      assert.equal(harness.database.authority.commandAudits.findByCommand(stop1Id), undefined);
+      assert.equal(harness.database.authority.commandAudits.findByCommand(stop2Id), undefined);
       reportW5Phase("two-child-door", "teardown", "complete");
 
       process.stdout.write(`Measured two-child kernel door: ${JSON.stringify({

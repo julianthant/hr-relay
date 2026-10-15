@@ -1,3 +1,4 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { z } from "zod";
 import { testRunLifecycle,testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -25,7 +26,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { DiagnosticArtifactWriter } from "../../../../src/workflow-kit/artifacts.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { HASH_A,HASH_B,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID,sequentialIdFactory,WORKER_ID,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 happySessionHarness,
 healthyUcpathDriver,
@@ -227,9 +228,11 @@ describe("the failure and its bundle land together", () => {
     };
 
     database.authority.runs.enqueue(personLookupQueuedRun());
+    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: authority.path,
+      workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
     const claimed = database.authority.runs.claimNext({
-      workflow: WORKFLOW_ID,
-      workerId: WORKER_ID,
+      workerLifetime, workflow: WORKFLOW_ID,
+      workerId: workerId,
       now: clock.now().toISOString(),
     });
     assert.equal(claimed.state, "claimed");
@@ -252,7 +255,7 @@ describe("the failure and its bundle land together", () => {
           assert.ok(database.authority.diagnosticBundles.get(prepared.bundleId));
           throw new Error("after diagnostic persistence");
         } },
-      }, { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+      }, { run: claimed.run, claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration },
         signal: new AbortController().signal }), /after diagnostic persistence/);
       assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
       assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);
@@ -265,7 +268,7 @@ describe("the failure and its bundle land together", () => {
     }
     const outcome = await executeClaimedRun(deps, {
       run: claimed.run,
-      claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+      claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration },
       signal: new AbortController().signal,
     });
     assert.equal(outcome.state, "failed");
@@ -323,9 +326,11 @@ describe("the failure and its bundle land together", () => {
       diagnostics: createRunDiagnosticCapture({ service }),
     };
     database.authority.runs.enqueue(personLookupQueuedRun({ startAt: "not-a-node" }));
+    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: authority.path,
+      workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
     const claimed = database.authority.runs.claimNext({
-      workflow: WORKFLOW_ID,
-      workerId: WORKER_ID,
+      workerLifetime, workflow: WORKFLOW_ID,
+      workerId: workerId,
       now: clock.now().toISOString(),
     });
     assert.equal(claimed.state, "claimed");
@@ -333,7 +338,7 @@ describe("the failure and its bundle land together", () => {
     await assert.rejects(
       executeClaimedRun(deps, {
         run: claimed.run,
-        claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+        claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration },
         signal: new AbortController().signal,
       }),
       /no authority transaction to settle its bundle with the failure/,

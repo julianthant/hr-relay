@@ -1,5 +1,5 @@
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -141,6 +141,7 @@ describe("static subject declarations", () => {
 interface OrderingHarness {
   readonly world: WriteFixtureWorld;
   readonly database: AuthorityDatabase;
+  readonly path: string;
   readonly clock: ReturnType<typeof manualClock>;
   readonly sessions: ReturnType<typeof writeFixtureSessions>;
   readonly sequencer: ReturnType<typeof createWriteSequencer>;
@@ -182,7 +183,7 @@ function orderingHarness(): OrderingHarness {
       () => sequencer.executeTransaction(context),
     );
   return {
-    world, database, clock, sessions, sequencer, execute,
+    world, database, path: join(root, "authority.sqlite"), clock, sessions, sequencer, execute,
     dispose: () => {
       database.close();
       rmSync(root, { recursive: true, force: true });
@@ -198,12 +199,20 @@ function runningContext(
 ): WriteSequencerContext {
   const now = h.clock.now().toISOString();
   assert.equal(h.database.authority.runs.enqueue(runInput).state, "inserted");
+  const poolIndex = workerId === WRITE_FIXTURE_WORKER_ID ? 1 : 2;
+  testWorkerPorts(h.database, h.clock, { path: h.path, descriptor: writeFixtureDescriptor, poolIndex });
+  const member = h.database.authority.workerSlots.get(workerId);
+  const lease = h.database.authority.workerLeases.get(workerId);
+  assert.ok(member);
+  assert.ok(lease);
   const claimed = h.database.authority.runs.claimNext({
     workflow: WRITE_FIXTURE_WORKFLOW_ID, workerId, now,
+    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
   });
   if (claimed.state !== "claimed") throw new Error("guard claim failed");
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  const base = { workerId, claimedAt: now, heartbeatAt: now };
+  assert.ok("workerLifetime" in claimed.run.lifecycle && claimed.run.lifecycle.workerLifetime !== undefined);
+  const base = { workerId, workerLifetime: claimed.run.lifecycle.workerLifetime, claimedAt: now, heartbeatAt: now };
   const runId = claimed.run.envelope.runId;
   assert.equal(h.database.authority.runs.transition({
     runId, expectedVersion: claimed.run.version, claim,

@@ -1,3 +1,4 @@
+import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -26,7 +27,7 @@ UNSTORED_CONFIG_IDENTITY,
 UNWIRED_INTAKE_PARSER,
 } from "../../../support/fixtures/intake-kernel-seams.js";
 import { HASH_A,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN,RUN_ID,WORKER_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN,RUN_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 EXECUTOR_EID,
 ManualScheduler,
@@ -127,6 +128,7 @@ function harness(): Readonly<{
   kernel: ReturnType<typeof createCommandKernel>;
 }> {
   const authority = openAuthorityHarness();
+  testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: retryDescriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = sessionFactoryHarness({
     ucpath: () => healthyUcpathDriver(),
@@ -207,11 +209,12 @@ function queuedRun() {
 }
 
 function claim(database: AuthorityDatabase, now: string) {
-  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now });
+  const { workerId, workerLifetime } = testWorkerLifetime(database, WORKFLOW_ID, 1);
+  const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: WORKFLOW_ID, workerId, now });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   return {
     run: claimed.run,
-    claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+    claim: { workerId, claimGeneration: claimed.run.claimGeneration },
   };
 }
 

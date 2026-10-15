@@ -239,6 +239,7 @@ describe("beat ① — durable same-key dedupe", () => {
     assert.equal(confirmationsAfterCommit.length, 1);
     h.world.events.length = 0;
 
+    h.admitWorker(2);
     const second = claimRunning(
       h.database, h.clock,
       writeFixtureQueuedRun({ runId: UUID_5, itemId: UUID_6 }),

@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -18,7 +18,7 @@ import {
   sessionFactoryHarness,
   sessionManagerFor,
 } from "../../support/helpers/phase1f-executor-harness.js";
-import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { sequentialIdFactory, RUN_ID, WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];
@@ -29,16 +29,47 @@ afterEach(() => {
 function deadlineInvocationIssues(content: string): readonly string[] {
   const source = ts.createSourceFile("run-executor.ts", content, ts.ScriptTarget.Latest, true);
   const issues: string[] = [];
-  let service = 0, browser = 0;
+  let service = 0, browser = 0, retention = 0, retainedRace = 0;
   function calls(node: ts.Node, name: string): ts.CallExpression[] {
     const found: ts.CallExpression[] = [];
     function visit(child: ts.Node): void { if (ts.isCallExpression(child) && child.expression.getText(source) === name) found.push(child); ts.forEachChild(child, visit); }
     visit(node); return found;
   }
   function checkRace(call: ts.CallExpression): boolean {
-    return call.arguments.length === 3 && call.arguments[1].getText(source) === "controller.signal" && call.arguments[2].getText(source) === "contract.id";
+    return call.arguments.length === 4
+      && call.arguments[1].getText(source) === "controller.signal"
+      && call.arguments[2].getText(source) === "contract.id"
+      && call.arguments[3].getText(source) === "retain";
   }
   function inspect(node: ts.Node): void {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "retain") {
+      retention += 1;
+      const initializer = node.initializer;
+      const hook = initializer === undefined ? [] : calls(initializer, "deps.retainCallback");
+      const identity = hook[0]?.arguments[0];
+      const expectedIdentity = new Map([
+        ["runId", "runId"], ["claimGeneration", "claim.claimGeneration"], ["attempt", "envelope.attempt"],
+      ]);
+      const boundIdentity = identity !== undefined && ts.isObjectLiteralExpression(identity)
+        && identity.properties.length === expectedIdentity.size && identity.properties.every((property) => {
+          if (ts.isShorthandPropertyAssignment(property)) return expectedIdentity.get(property.name.text) === property.name.text;
+          return ts.isPropertyAssignment(property)
+            && expectedIdentity.get(property.name.getText(source)) === property.initializer.getText(source);
+        });
+      if (initializer === undefined || !ts.isConditionalExpression(initializer)
+        || initializer.condition.getText(source) !== "deps.retainCallback === undefined"
+        || initializer.whenTrue.getText(source) !== "undefined"
+        || !ts.isArrowFunction(initializer.whenFalse)
+        || hook.length !== 1 || !boundIdentity || hook[0]?.arguments[1]?.getText(source) !== "operation") {
+        issues.push("retention must bind the pending operation to its run, claim and attempt");
+      }
+    }
+    if (ts.isFunctionDeclaration(node) && node.name?.text === "raceAbortable") {
+      retainedRace += 1;
+      const hooks = calls(node, "retain");
+      if (hooks.length !== 1 || hooks[0].arguments.length !== 1
+        || hooks[0].arguments[0].getText(source) !== "operation") issues.push("abort races must retain their operation");
+    }
     if (ts.isIfStatement(node) && node.expression.getText(source) === "need === undefined" && node.elseStatement !== undefined) {
       service += 1; browser += 1;
       const pure = calls(node.thenStatement, "raceAbortable"), leased = calls(node.elseStatement, "raceAbortable");
@@ -54,6 +85,7 @@ function deadlineInvocationIssues(content: string): readonly string[] {
   }
   inspect(source);
   if (service !== 1 || browser !== 1) issues.push("exact service/browser invocation topology is absent or duplicated");
+  if (retention !== 1 || retainedRace !== 1) issues.push("exact callback retention topology is absent or duplicated");
   return issues;
 }
 
@@ -82,7 +114,15 @@ describe("bounded task deadline", () => {
       source.replace("deps.sessions.withDriver(need, instanceSelection, controller.signal", "deps.sessions.withDriver(need, instanceSelection, unrelated.signal"),
       source.replace("controller.signal, contract.id,", "unrelated.signal, contract.id,"),
       source.replace("confirmedInvocation?.withNotes", "confirmedInvocation?.other"),
-    ]) assert.ok(deadlineInvocationIssues(bad).length > 0);
+      source.replace("controller.signal, contract.id, retain,", "controller.signal, contract.id,"),
+      source.replace("controller.signal, contract.id, retain,", "controller.signal, contract.id, unrelated,"),
+      source.replace("deps.retainCallback?.({ runId,", "deps.otherCallback?.({ runId,"),
+      source.replace("claimGeneration: claim.claimGeneration, attempt: envelope.attempt }, operation", "claimGeneration: 1, attempt: envelope.attempt }, operation"),
+      source.replace("retain?.(operation)", "retain?.(Promise.resolve())"),
+    ]) {
+      assert.notEqual(bad, source, "the violating mutation must change executable source");
+      assert.ok(deadlineInvocationIssues(bad).length > 0);
+    }
   });
 
   it("bounds a task that never settles and ignores its abort signal", async () => {
@@ -105,9 +145,16 @@ describe("bounded task deadline", () => {
     const scheduler = new ManualScheduler(authority.clock, 0);
     const { database, clock } = authority;
     database.authority.runs.enqueue(personLookupQueuedRun());
+    testWorkerPorts(database, clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex: 1 });
+    const member = database.authority.workerSlots.list(WORKFLOW_ID).find((slot) => slot.poolIndex === 1);
+    assert.ok(member);
+    const workerId = member.workerId;
+    const lease = database.authority.workerLeases.get(workerId);
+    assert.ok(lease);
     const claimed = database.authority.runs.claimNext({
       workflow: WORKFLOW_ID,
-      workerId: WORKER_ID,
+      workerId,
+      workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
       now: clock.now().toISOString(),
     });
     assert.equal(claimed.state, "claimed");
@@ -127,7 +174,7 @@ describe("bounded task deadline", () => {
       log: recordingLogger().log,
     }, {
       run: claimed.run,
-      claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+      claim: { workerId, claimGeneration: claimed.run.claimGeneration },
       signal: new AbortController().signal,
     });
     await started;

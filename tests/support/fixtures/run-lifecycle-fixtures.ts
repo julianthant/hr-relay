@@ -1,3 +1,4 @@
+import { isLiveWorker } from "../../../src/models/run/worker.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
@@ -24,24 +25,41 @@ export function testRunContinuation(database: AuthorityDatabase, clock: Clock) {
   return runContinuationPort(testRunService(database, clock));
 }
 
-export function testWorkerPorts(database: AuthorityDatabase, clock: Clock, input: Readonly<{
-  path: string; descriptor: AnyWorkflowDescriptor; poolIndex: number;
+export function testWorkerLifetime(database: AuthorityDatabase, workflow: string, poolIndex: number) {
+  const member = database.authority.workerSlots.list(workflow).find(slot => slot.poolIndex === poolIndex && slot.retiredAt === null);
+  assert.ok(member, "claim fixture requires its actual admitted member");
+  const lease = database.authority.workerLeases.get(member.workerId);
+  assert.ok(lease && lease.workflow === member.workflow && isLiveWorker(lease), "claim fixture requires its actual current lifetime");
+  return { member, lease, workerId: member.workerId,
+    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration } };
+}
+
+export function testAdmittedWorker(database: AuthorityDatabase, clock: Clock, input: Readonly<{
+  path: string; workflow: string; poolIndex: number; browserSystems: readonly string[];
 }>) {
-  const runtimeConfig = database.authority.runtimeConfig.get() ?? database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  const slot = database.withAuthorityTransaction(repositories => {
-    const current = repositories.workerPools.get(input.descriptor.id);
-    const admitted = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: input.descriptor.id,
+  if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  database.withAuthorityTransaction(repositories => {
+    const current = repositories.workerPools.get(input.workflow);
+    const admitted = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: input.workflow,
       poolIndex: input.poolIndex, expectedPoolVersion: current?.version ?? 0, processId: process.pid,
       processAcquisitionId: randomUUID(), authorityPath: realpathSync(input.path),
       processLockRoot: join(dirname(realpathSync(input.path)), "locks"), now: clock.now().toISOString() }, randomUUID());
     if (repositories.workerLeases.get(admitted.workerId) === undefined) {
-      const lease = repositories.workerLeases.start({ workerId: admitted.workerId, workflow: input.descriptor.id,
-        browserSystems: workflowProjections(input.descriptor).systems, processId: process.pid,
+      const lease = repositories.workerLeases.start({ workerId: admitted.workerId, workflow: input.workflow,
+        browserSystems: input.browserSystems, processId: process.pid,
         requestedBy: "local-operator", now: clock.now().toISOString() });
       assert.equal(lease.state, "started");
     }
-    return admitted;
   });
+  return testWorkerLifetime(database, input.workflow, input.poolIndex);
+}
+
+export function testWorkerPorts(database: AuthorityDatabase, clock: Clock, input: Readonly<{
+  path: string; descriptor: AnyWorkflowDescriptor; poolIndex: number;
+}>) {
+  const runtimeConfig = database.authority.runtimeConfig.get() ?? database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  const { member: slot } = testAdmittedWorker(database, clock, { path: input.path, workflow: input.descriptor.id,
+    poolIndex: input.poolIndex, browserSystems: workflowProjections(input.descriptor).systems });
   const lifecycle = testRunLifecycle(database, clock);
   return { lifecycle, claimNext: (request: { commandId: string; workflow: string; workerId: string }) => {
     assert.equal(request.workflow, slot.workflow);

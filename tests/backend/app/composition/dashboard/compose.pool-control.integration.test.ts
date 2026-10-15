@@ -1,4 +1,12 @@
-import { createDashboardPoolTestWorld } from "../../../../support/helpers/backend/dashboard-pool-world.js";
+import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
+import { WorkerSessionManager } from "../../../../../src/backend/runtime/workers/worker-sessions.js";
+import { createWorkerResetControl } from "../../../../../src/backend/runtime/workers/worker-browser-control.js";
+import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
+import { fixtureDuoCeremonyGates } from "../../../../support/helpers/duo-ceremony-fixtures.js";
+import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
+import { createDashboardPoolTestWorld, type ControlHarness } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import assert from "node:assert/strict";
 
 import { afterEach, describe, it } from "vitest";
@@ -11,45 +19,47 @@ const MEMBER_2 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_2, ordinal: POOL_
 
 afterEach(cleanup);
 
+async function settleOwnedReset(harness: ControlHarness, commandId: string) {
+  const reset = harness.database.authority.workerControls.get(commandId)?.reset;
+  assert.ok(reset, "the command must retain its exact reset binding");
+  const sessions = new WorkerSessionManager({ workerId: reset.member.workerId, workflowId: reset.member.workflowId,
+    resetOwner: { member: reset.member, lifetime: reset.lifetime }, stores: taskStoreRegistry, factory: { open: async () => { throw new Error("browserless reset must not acquire"); } },
+    clock: harness.clock, scheduler: harness.scheduler, acquireDeadlineMs: 1000, duoCeremony: fixtureDuoCeremonyGates(harness.clock) });
+  const lifecycle = new RunRecordService({ database: harness.database, clock: harness.clock,
+    ids: sequentialIdFactory("e"), publishQueued: () => { throw new Error("reset must not queue work"); } });
+  await createWorkerResetControl({ database: harness.database, workerId: reset.member.workerId,
+    leaseGeneration: reset.lifetime.leaseGeneration, clock: harness.clock, lifecycle })(sessions, reset);
+}
+
 /* ── the composed seam, end to end ───────────────────────────────────────── */
 
 describe("the composed worker process control through the kernel pool door", () => {
 
-  it("writes the durable stop directive at exactly the command's now (the requestedAt==command-now pin)", async () => {
-    const harness = openControlHarness();
-    await spawnPoolWorker(harness);
+  it("binds Stop to the command instant and confirms only the exact owner's durable idle reset", async () => {
+    const harness = openControlHarness(); await spawnPoolWorker(harness);
     harness.clock.advanceWall(5_000);
-    const stopAt = harness.clock.now().toISOString();
-
-    const commandId = nextCommandId();
-    const result = await harness.kernel.executeWorkerPool({
-      ...envelope(harness, commandId),
-      type: "stop-worker",
-      target: { workerId: WORKER_1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) },
-      reason: "shift over",
-    });
-    assert.deepEqual(result, {
-      state: "applied",
-      commandId,
-      affectedTargets: [{ family: "worker-browser", workerId: WORKER_1 }],
-    });
-
-    // The durable directive IS the command: its instant is the command's own
-    // `now` (never the channel's clock), its actor and reason the command's.
-    assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1)?.control, {
-      directive: "stop",
-      requestedAt: stopAt,
-      requestedBy: "local-operator",
-      reason: "shift over",
-    });
-    // And the supervisor's observed graceful stage carries the SAME instant —
-    // the kernel's requireObservedNotAfterNow bound holds by construction.
-    assert.deepEqual(harness.control.supervisor.memberEvidence(MEMBER_1), {
-      state: "stopping",
-      pid: harness.children[0]?.pid,
-      bornAt: NOW,
-      observedStop: [{ stage: "graceful-stop-requested", at: stopAt }],
-    });
+    const stopAt = harness.clock.now().toISOString(), commandId = nextCommandId();
+    const command = { ...envelope(harness, commandId), type: "stop-worker" as const,
+      target: { workerId: WORKER_1, membershipRevision: MEMBER_1.membershipRevision, expectedVersion: 1,
+        controlBasis: servedControlBasis(harness.database, WORKER_1) }, reason: "shift over" };
+    assert.deepEqual(await harness.kernel.executeWorkerPool(command), { state: "pending", commandId });
+    const admitted = harness.database.authority.workerControls.get(commandId);
+    assert.equal(admitted?.admittedAt, stopAt);
+    assert.deepEqual(admitted?.request, command);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
+    assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.control.directive, "run");
+    await settleOwnedReset(harness, commandId);
+    assert.equal((await harness.kernel.executeWorkerPool(command)).state, "already-applied");
+    assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1)?.control,
+      { directive: "run", requestedAt: stopAt, requestedBy: "local-operator" });
+    const settled = harness.database.authority.workerControls.get(commandId);
+    assert.equal(settled?.phase.state, "succeeded");
+    if (settled?.phase.state !== "succeeded") throw new Error("missing reset milestone");
+    assert.deepEqual(settled.phase.acknowledgement, { kind: "reset", commandId, leaseGeneration: 1,
+      controlRevision: admitted?.reset?.reservedControlRevision, membershipRevision: 1, idleAt: stopAt,
+      closedSessionIds: [], browsersClosed: true, duoReleased: true });
+    assert.deepEqual(harness.control.supervisor.memberEvidence(MEMBER_1),
+      { state: "running", pid: harness.children[0]?.pid, bornAt: NOW, leaseStartedAt: NOW });
   });
 
   it("plans only after validation, and writes the desired count from the command — never from the ack path", async () => {
@@ -192,33 +202,37 @@ describe("the composed worker process control through the kernel pool door", () 
     if (next.state === "rejected") assert.match(next.message, state === "executing" ? /unresolved-effect/ : /closed/);
   });
 
-  it("journals the exact retained stop after audit loss without consulting a closed supervisor", async () => {
-    const harness = openControlHarness();
-    await spawnPoolWorker(harness);
-    const commandId = nextCommandId();
-    const command = { ...envelope(harness, commandId), type: "stop-worker" as const,
-      target: { workerId: WORKER_1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) }, reason: "shift over" };
-    harness.auditFault.enabled = true;
-    await assert.rejects(harness.kernel.executeWorkerPool(command), /injected-command-audit-failure/);
-    const retained = harness.database.authority.workerControls.get(commandId);
-    assert.equal(retained?.phase.state, "succeeded");
-    assert.equal(retained?.auditedAt, undefined);
+  it("rolls reset settlement back on audit loss and replays the exact completed reset without a supervisor", async () => {
+    const harness = openControlHarness(); await spawnPoolWorker(harness);
+    const commandId = nextCommandId(), command = { ...envelope(harness, commandId), type: "stop-worker" as const,
+      target: { workerId: WORKER_1, membershipRevision: MEMBER_1.membershipRevision, expectedVersion: 1,
+        controlBasis: servedControlBasis(harness.database, WORKER_1) }, reason: "shift over" };
+    assert.equal((await harness.kernel.executeWorkerPool(command)).state, "pending");
+    const lease = harness.database.authority.workerLeases.get(WORKER_1);
+    const raw = new DatabaseSync(join(harness.root, "state.db"));
+    try {
+      raw.exec(`CREATE TRIGGER fail_reset_audit BEFORE INSERT ON command_audits WHEN NEW.command_id = '${commandId}' BEGIN SELECT RAISE(ABORT, 'injected-command-audit-failure'); END`);
+      await assert.rejects(settleOwnedReset(harness, commandId), /injected-command-audit-failure/);
+    } finally { raw.exec("DROP TRIGGER IF EXISTS fail_reset_audit"); raw.close(); }
+    assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
+    assert.equal(harness.database.authority.workerControls.get(commandId)?.auditedAt, undefined);
     assert.notEqual(harness.database.authority.commands.get(commandId), undefined);
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
-    const lease = harness.database.authority.workerLeases.get(WORKER_1);
-    assert.equal(lease?.control.directive, "stop");
-    harness.auditFault.enabled = false;
+    assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1), lease);
+    assert.equal((await harness.kernel.executeWorkerPool(command)).state, "pending");
     const blocked = await harness.kernel.executeWorkerPool({ ...envelope(harness), type: "pause-worker",
-      target: { workerId: WORKER_1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) } });
+      target: { workerId: WORKER_1, expectedVersion: lease?.version, controlBasis: servedControlBasis(harness.database, WORKER_1) } });
     assert.equal(blocked.state, "rejected");
     if (blocked.state === "rejected") assert.match(blocked.message, /unresolved-effect/);
+    await settleOwnedReset(harness, commandId);
+    const completedLease = harness.database.authority.workerLeases.get(WORKER_1);
     harness.control.supervisor.close();
-    assert.equal((await harness.kernel.executeWorkerPool(command)).state, "applied");
     assert.equal((await harness.kernel.executeWorkerPool(command)).state, "already-applied");
-    assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1), lease);
+    assert.equal((await harness.kernel.executeWorkerPool(command)).state, "already-applied");
+    assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1), completedLease);
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId)?.result.state, "applied");
     assert.deepEqual(harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges,
-      [{ target: { family: "worker-browser", workerId: WORKER_1 }, before: 2, after: 3 }]);
+      [{ target: { family: "worker-browser", workerId: WORKER_1 }, before: lease?.version, after: completedLease?.version }]);
   });
 
   it("does not identify an unjournaled historical stop by matching actor and reason", async () => {
@@ -230,10 +244,11 @@ describe("the composed worker process control through the kernel pool door", () 
       control: { directive: "stop", requestedAt: NOW, requestedBy: "local-operator", reason: "shift over" }, now: NOW });
     const commandId = nextCommandId();
     const result = await harness.kernel.executeWorkerPool({ ...envelope(harness, commandId), type: "stop-worker",
-      target: { workerId: WORKER_1, expectedVersion: 2, controlBasis: servedControlBasis(harness.database, WORKER_1) }, reason: "shift over" });
+      target: { workerId: WORKER_1, membershipRevision: MEMBER_1.membershipRevision, expectedVersion: 2, controlBasis: servedControlBasis(harness.database, WORKER_1) }, reason: "shift over" });
     assert.equal(result.state, "rejected");
     if (result.state === "rejected") assert.match(result.message, /never spawned/);
-    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId)?.result.state, "rejected");
+    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
     assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.control.requestedAt, NOW);
   });
 
@@ -265,13 +280,13 @@ describe("the composed worker process control through the kernel pool door", () 
     const result = await harness.kernel.executeWorkerPool({
       ...envelope(harness, commandId),
       type: "stop-worker",
-      target: { workerId: WORKER_1, expectedVersion: 3, controlBasis: servedControlBasis(harness.database, WORKER_1) },
+      target: { workerId: WORKER_1, membershipRevision: MEMBER_1.membershipRevision, expectedVersion: 3, controlBasis: servedControlBasis(harness.database, WORKER_1) },
       reason: "shift over",
     });
     assert.equal(result.state, "rejected");
     if (result.state !== "rejected") throw new Error("unreachable");
     assert.equal(result.code, "invalid-state");
-    assert.match(result.message, /stopped worker starts a new lease generation/);
+    assert.match(result.message, /worker-reset-replacement-authority-unavailable/);
     assert.equal(harness.database.authority.commands.get(commandId), undefined);
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
   });
@@ -298,37 +313,23 @@ describe("the composed worker process control through the kernel pool door", () 
     assert.equal((await harness.kernel.executeWorkerPool(command)).state, "already-applied");
   });
 
-  it("audits a stop with the directive write's own lease versions, not later unrelated bumps", async () => {
-    const harness = openControlHarness({
-      interceptPool: (pool, edges) => ({
-        ...pool,
-        stopPoolWorker: async (context) => {
-          const acknowledgement = await pool.stopPoolWorker(context);
-
-          const bumpNow = edges.clock.now().toISOString();
-          assert.equal(edges.database.authority.workerLeases.reportLifecycle({
-            workerId: WORKER_1,
-            leaseGeneration: 1,
-            lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: bumpNow },
-            now: bumpNow,
-          }).state, "applied");
-          return acknowledgement;
-        },
-      }),
-    });
-    await spawnPoolWorker(harness, MEMBER_1);
-    const commandId = nextCommandId();
-    const result = await harness.kernel.executeWorkerPool({
-      ...envelope(harness, commandId),
-      type: "stop-worker",
-      target: { workerId: WORKER_1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) },
-    });
-    assert.equal(result.state, "applied");
-    // Lease: v1 at birth, v2 at the directive write, v3 at the unrelated bump.
-    assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.version, 4);
-    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges, [
-      { target: { family: "worker-browser", workerId: WORKER_1 }, before: 2, after: 3 },
-    ]);
+  it("audits reset settlement's own lease versions, not later unrelated heartbeats", async () => {
+    const harness = openControlHarness(); await spawnPoolWorker(harness, MEMBER_1);
+    const commandId = nextCommandId(), command = { ...envelope(harness, commandId), type: "stop-worker" as const,
+      target: { workerId: WORKER_1, membershipRevision: MEMBER_1.membershipRevision, expectedVersion: 1,
+        controlBasis: servedControlBasis(harness.database, WORKER_1) } };
+    assert.equal((await harness.kernel.executeWorkerPool(command)).state, "pending");
+    const before = harness.database.authority.workerLeases.get(WORKER_1); assert.ok(before);
+    await settleOwnedReset(harness, commandId);
+    const settled = harness.database.authority.workerLeases.get(WORKER_1); assert.ok(settled);
+    const bumpNow = harness.clock.now().toISOString();
+    assert.equal(harness.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1,
+      leaseGeneration: settled.leaseGeneration, lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: bumpNow }, now: bumpNow }).state, "applied");
+    assert.equal((await harness.kernel.executeWorkerPool(command)).state, "already-applied");
+    assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.version, settled.version + 1);
+    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges,
+      [{ target: { family: "worker-browser", workerId: WORKER_1 }, before: before.version, after: settled.version }]);
+    assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "succeeded");
   });
 
   it("drives the composed pause→resume round-trip: durable directives at the command's now, versioned and audited", async () => {

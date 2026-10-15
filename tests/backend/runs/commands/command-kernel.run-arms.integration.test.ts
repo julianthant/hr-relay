@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createKernelStubCommandFixtures } from "../../../support/helpers/backend/kernel-stub-command-fixtures.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
 import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
@@ -173,7 +175,10 @@ describe("run arms", () => {
     const again = harness.kernel.execute(runCommand("bump", runId, version()));
     assert.equal(again.state, "applied");
 
-    const claimed = harness.database.authority.runs.claimNext({ workflow: "kernel-reject", workerId: "worker-1", now: NOW });
+    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
+      path: join(harness.stateRoot, "kernel.sqlite"), workflow: rejectActiveDescriptor.id, poolIndex: 1, browserSystems: [],
+    });
+    const claimed = harness.database.authority.runs.claimNext({ workflow: rejectActiveDescriptor.id, workerId, workerLifetime, now: NOW });
     assert.equal(claimed.state, "claimed");
     const busy = harness.kernel.execute(runCommand("bump", runId, version()));
     assert.equal(busy.state, "rejected");

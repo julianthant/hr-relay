@@ -1,3 +1,4 @@
+import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { testRunLifecycle,testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -29,7 +30,7 @@ WorkflowIdSchema,
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor,type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { HASH_A,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN,RUN_ID,sequentialIdFactory,WORKER_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN,RUN_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 happySessionHarness,
 ManualScheduler,
@@ -189,6 +190,7 @@ function controlHarness(descriptor: AnyWorkflowDescriptor, childRuns?: ChildRunE
   deps: RunExecutorDependencies;
 }> {
   const authority = openAuthorityHarness();
+  testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: descriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = happySessionHarness();
   const emitter = recordingTimelineEmitter(authority.database, authority.clock);
@@ -213,13 +215,14 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
   run: RunRecord;
   claim: { workerId: string; claimGeneration: number };
 } {
+  const { workerId, workerLifetime } = testWorkerLifetime(database, descriptor.id, 1);
   const claimed = database.authority.runs.claimNext({
-    workflow: descriptor.id,
-    workerId: WORKER_ID,
+    workerLifetime, workflow: descriptor.id,
+    workerId,
     now: new Date("2026-08-03T09:00:00.000Z").toISOString(),
   });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
-  return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration } };
+  return { run: claimed.run, claim: { workerId, claimGeneration: claimed.run.claimGeneration } };
 }
 
 const SIGNAL = new AbortController().signal;

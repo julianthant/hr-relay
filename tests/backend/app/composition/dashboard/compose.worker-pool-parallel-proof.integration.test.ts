@@ -1,3 +1,4 @@
+import { WorkerStopDirectiveContextSchema } from "../../../../../src/backend/runtime/workers/worker-loop.js";
 import { createDashboardChildTestWorld } from "../../../../support/helpers/backend/dashboard-child-world.js";
 import { instrumentPool,kernelOver,type PoolEffectEvent } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 
@@ -349,23 +350,23 @@ describe("soak: overlapping command sequences over the composed pool door (deter
       })).state, "applied");
       assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.control.directive, "run");
 
-      // ── scale PL down to 1 while SEP still works, then stop SEP — driven
+      // ── scale PL down to 1 while SEP still works, then pause SEP — driven
       //    concurrently across the two workflows ────────────────────────────
       harness.clock.advanceWall(1_000);
       const scaleDownAt = harness.clock.now().toISOString();
       const shrinkPlId = nextCommandId();
-      const stopSepId = nextCommandId();
+      const pauseSepId = nextCommandId();
       const shrinkPl = harness.kernel.executeWorkerPool({
         ...envelope(harness.clock, shrinkPlId),
         type: "plan-worker-count",
         target: { workflowId: PL, expectedVersion: 1 },
         payload: { desiredWorkers: 1 },
       });
-      const stopSep = harness.kernel.executeWorkerPool({
-        ...envelope(harness.clock, stopSepId),
-        type: "stop-worker",
+      const pauseSep = harness.kernel.executeWorkerPool({
+        ...envelope(harness.clock, pauseSepId),
+        type: "pause-worker",
         target: { workerId: SEP_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, SEP_1.workerId) },
-        reason: "sep teardown",
+        reason: "sep pause",
       });
       await settleMicrotasks();
       const retiring = required(harness.database.authority.workerLeases.get(PL_2.workerId), "retiring PL-2 lease");
@@ -375,9 +376,9 @@ describe("soak: overlapping command sequences over the composed pool door (deter
           stoppedAt: scaleDownAt, reason: "operator" }, now: scaleDownAt }).state, "applied");
       required(harness.children[2], "PL-2 child").emitExit(0, null);
       await settleMicrotasks();
-      const [shrinkResult, stopSepResult] = await Promise.all([shrinkPl, stopSep]);
+      const [shrinkResult, pauseSepResult] = await Promise.all([shrinkPl, pauseSep]);
       assert.equal(shrinkResult.state, "applied");
-      assert.equal(stopSepResult.state, "applied");
+      assert.equal(pauseSepResult.state, "applied");
 
       assert.deepEqual(harness.database.authority.workerLeases.get(PL_2.workerId)?.control, {
         directive: "stop", requestedAt: scaleDownAt, requestedBy: "local-operator",
@@ -388,17 +389,16 @@ describe("soak: overlapping command sequences over the composed pool door (deter
       assert.equal(harness.control.supervisor.memberEvidence(PL_2)?.state, "exited");
       assert.notEqual(harness.database.authority.workerSlots.get(PL_2.workerId)?.retiredAt, null);
       assert.deepEqual(harness.database.authority.workerLeases.get(SEP_1.workerId)?.control, {
-        directive: "stop", requestedAt: scaleDownAt, requestedBy: "local-operator", reason: "sep teardown",
+        directive: "pause", requestedAt: scaleDownAt, requestedBy: "local-operator", reason: "sep pause",
       });
 
-      // ── stop the last member, then the children die and close() is empty ─
+      // Internal drain owns process shutdown after the command interleaving proof.
       const stopPl1Id = nextCommandId();
-      assert.equal((await harness.kernel.executeWorkerPool({
-        ...envelope(harness.clock, stopPl1Id),
-        type: "stop-worker",
-        target: { workerId: PL_1.workerId, expectedVersion: 3, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
-        reason: "pl teardown",
-      })).state, "applied");
+      const drain = harness.control.supervisor.drainOwnedChildren(WorkerStopDirectiveContextSchema.parse({ requestedAt: harness.clock.now().toISOString(),
+        requestedBy: "local-operator", reason: "pl teardown" }));
+      await settleMicrotasks();
+      assert.equal(harness.database.authority.commands.get(stopPl1Id), undefined);
+      assert.equal(harness.database.authority.commandAudits.findByCommand(stopPl1Id), undefined);
       for (const member of [PL_1, SEP_1]) {
         const lease = required(harness.database.authority.workerLeases.get(member.workerId), "stopping lease");
         assert.equal(lease.control.directive, "stop");
@@ -408,6 +408,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
       }
       required(harness.children[0], "PL-1 child").emitExit(0, null);
       required(harness.children[1], "SEP-1 child").emitExit(0, null);
+      await drain;
       for (const member of [PL_1, PL_2, SEP_1]) {
         const evidence = harness.control.supervisor.memberEvidence(member);
         assert.equal(evidence?.state, "exited", member.workerId);
@@ -427,7 +428,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
       // ── truthfulness sweep: every applied command journaled + audited ────
       for (const commandId of [
         planPlId, planSepId, spawnPl1Id, spawnSep1Id, spawnPl2Id,
-        pausePl1Id, resumePl1Id, shrinkPlId, stopSepId, stopPl1Id,
+        pausePl1Id, resumePl1Id, shrinkPlId, pauseSepId,
       ]) {
         assertJournaled(harness.database, commandId);
       }
@@ -486,17 +487,21 @@ describe("soak: overlapping command sequences over the composed pool door (deter
     await settleMicrotasks();
     proveBirth(harness, PL_1);
     assert.equal((await spawn).state, "applied");
-    const stopAt = harness.clock.now().toISOString();
-    const stopId = nextCommandId();
-    assert.equal((await harness.kernel.executeWorkerPool({
-      ...envelope(harness.clock, stopId),
-      type: "stop-worker",
-      target: { workerId: PL_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, PL_1.workerId) },
-      reason: "w5 wedge",
-    })).state, "applied");
+    const stopAt = harness.clock.now().toISOString(), stopId = nextCommandId();
+    const drain = assert.rejects(harness.control.supervisor.drainOwnedChildren(WorkerStopDirectiveContextSchema.parse({ requestedAt: stopAt,
+      requestedBy: "local-operator", reason: "w5 wedge" })), error => {
+      assert.ok(error instanceof AggregateError);
+      assert.match(error.message, /dashboard could not observe every owned worker exit/);
+      assert.equal(error.errors.length, 1);
+      assert.match(String(error.errors[0]), /escalation SIGTERM was not delivered/);
+      return true;
+    });
+    await settleMicrotasks();
+    assert.equal(harness.database.authority.workerLeases.get(PL_1.workerId)?.control.directive, "stop");
 
     harness.clock.advanceMonotonic(120_000);
     for (const entry of harness.scheduler.pending()) entry.fire();
+    await drain;
     assert.equal(harness.faults.length, 1);
     assert.match(
       required(harness.faults[0], "the wedged-stop fault").message,
@@ -509,14 +514,15 @@ describe("soak: overlapping command sequences over the composed pool door (deter
     assert.deepEqual(evidence.observedStop, [{ stage: "graceful-stop-requested", at: stopAt }]);
 
     assert.equal(harness.scheduler.pending().length, 0);
-    assertJournaled(harness.database, stopId);
+    assert.equal(harness.database.authority.commands.get(stopId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(stopId), undefined);
   });
 
-  it("a worker that dies before supervisor admission is durably refused without a stop effect", async () => {
+  it("a worker that dies before supervisor admission is durably refused without a pause effect", async () => {
     const harness = openSoakHarness({
       interceptPool: (pool, edges) => ({
         ...pool,
-        stopPoolWorker: async (context) => {
+        pausePoolWorker: async (context) => {
 
           const lease = required(
             edges.database.authority.workerLeases.get(PL_1.workerId),
@@ -529,7 +535,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
             lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: now, reason: "crashed" },
             now,
           }).state, "applied");
-          return pool.stopPoolWorker(context);
+          return pool.pausePoolWorker(context);
         },
       }),
     });
@@ -547,7 +553,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
 
     const stopId = nextCommandId();
     const result = await harness.kernel.executeWorkerPool({
-      ...envelope(harness.clock, stopId), type: "stop-worker",
+      ...envelope(harness.clock, stopId), type: "pause-worker",
       target: { workerId: PL_1.workerId, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, PL_1.workerId) }, reason: "w5 refused",
     });
     assert.equal(result.state, "rejected");

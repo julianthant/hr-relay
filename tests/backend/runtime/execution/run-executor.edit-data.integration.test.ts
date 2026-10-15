@@ -1,3 +1,4 @@
+import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -27,7 +28,6 @@ import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
 QUEUED_RUN,
 RUN_ID,
-WORKER_ID,
 sequentialIdFactory,
 } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
@@ -164,6 +164,7 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt
 
 function executorHarness(descriptor: AnyWorkflowDescriptor) {
   const authority = openAuthorityHarness();
+  testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: descriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = happySessionHarness();
   const emitter = recordingEmitter();
@@ -192,13 +193,14 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
   run: RunRecord;
   claim: { workerId: string; claimGeneration: number };
 } {
+  const { workerId, workerLifetime } = testWorkerLifetime(database, descriptor.id, 1);
   const claimed = database.authority.runs.claimNext({
-    workflow: descriptor.id,
-    workerId: WORKER_ID,
+    workerLifetime, workflow: descriptor.id,
+    workerId,
     now: new Date("2026-08-03T09:00:00.000Z").toISOString(),
   });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
-  return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration } };
+  return { run: claimed.run, claim: { workerId, claimGeneration: claimed.run.claimGeneration } };
 }
 
 describe("executor consume — injected corrections at replay", () => {

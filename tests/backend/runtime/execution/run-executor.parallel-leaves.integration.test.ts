@@ -1,3 +1,4 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -6,7 +7,7 @@ import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-r
 import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID,WORKER_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 compileFixtureWorkflow,
 parallelLeavesWorkflow,
@@ -72,6 +73,9 @@ describe("parallel leaves retry independently", () => {
     const authority = openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
+    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, {
+      path: authority.path, workflow: descriptor.id, poolIndex: 1, browserSystems: ["ucpath", "crm"],
+    });
 
     let ucpathSearches = 0;
     const failingCrm = sessionFactoryHarness({
@@ -93,8 +97,8 @@ describe("parallel leaves retry independently", () => {
     });
     database.authority.runs.enqueue(queuedRun());
     const claimed = database.authority.runs.claimNext({
-      workflow: descriptor.id,
-      workerId: WORKER_ID,
+      workerLifetime, workflow: descriptor.id,
+      workerId: workerId,
       now: clock.now().toISOString(),
     });
     assert.equal(claimed.state, "claimed");
@@ -102,7 +106,7 @@ describe("parallel leaves retry independently", () => {
     const first = depsFor(authority, failingCrm);
     const failed = await executeClaimedRun(first.deps, {
       run: claimed.run,
-      claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+      claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration },
       signal: SIGNAL,
     });
     assert.equal(failed.state, "failed");
@@ -119,8 +123,8 @@ describe("parallel leaves retry independently", () => {
     retryEnvelope.retryOf = RUN_ID;
     database.authority.runs.enqueue(retry);
     const reclaimed = database.authority.runs.claimNext({
-      workflow: descriptor.id,
-      workerId: WORKER_ID,
+      workerLifetime, workflow: descriptor.id,
+      workerId: workerId,
       now: clock.now().toISOString(),
     });
     assert.equal(reclaimed.state, "claimed");
@@ -142,7 +146,7 @@ describe("parallel leaves retry independently", () => {
     const second = depsFor(authority, healthy);
     const outcome = await executeClaimedRun(second.deps, {
       run: reclaimed.run,
-      claim: { workerId: WORKER_ID, claimGeneration: reclaimed.run.claimGeneration },
+      claim: { workerId: workerId, claimGeneration: reclaimed.run.claimGeneration },
       signal: SIGNAL,
     });
     assert.equal(outcome.state, "done");

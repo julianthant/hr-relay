@@ -1,3 +1,4 @@
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -133,12 +134,13 @@ describe("source-bound Rerun value read", () => {
     const queued = h.start(h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345", documentNumber: "PRIVATE987" }],
       dryRun: false, selectedStepKeys: h.descriptor.timeline.map(({ key }) => key) }));
     const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
+    const { workerId, workerLifetime } = testWorkerLifetime(h.database, h.descriptor.id, 1);
     const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id,
-      workerId: "source-fixture", runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+      workerId, workerLifetime, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
     assert.equal(claimed.envelope.runId, queued.envelope.runId);
     const ended = h.database.authority.runs.transition({ ...request(claimed), now: h.clock.now().toISOString(),
-      claim: { workerId: "source-fixture", claimGeneration: claimed.claimGeneration }, lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() } });
+      claim: { workerId, claimGeneration: claimed.claimGeneration }, lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() } });
     assert.equal(ended.state, "applied"); const run = h.fresh(claimed);
     const node = descriptorRuntimeNodes(h.descriptor).find(({ id }) => id === "read"); assert.ok(node?.kind === "task");
     const value = { eid: "10812345", documentNumber: "PRIVATE987", embedded: "record PRIVATE987", invalidEid: "invalid" };

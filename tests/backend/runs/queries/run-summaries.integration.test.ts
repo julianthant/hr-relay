@@ -1,3 +1,4 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { default as assert } from 'node:assert/strict';
 import { join as join_m0 } from "node:path";
@@ -401,7 +402,8 @@ it("bins the enqueue instant and refuses a timezone mismatch before an indexed d
       lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:enqueuedAt,updatedAt:enqueuedAt});
     f.db.authority.runs.enqueue(queued);
     const claimTime="2026-09-09T08:20:00.000Z";
-    const claim=f.db.authority.runs.claimNext({workflow:"person-lookup",workerId:"activity-volume-worker",now:claimTime});
+    const {workerId,workerLifetime}=testAdmittedWorker(f.db,f.clock,{path:f.path,workflow:"person-lookup",poolIndex:2,browserSystems:["ucpath","crm"]});
+    const claim=f.db.authority.runs.claimNext({workflow:"person-lookup",workerId,workerLifetime,now:claimTime});
     assert.equal(claim.state,"claimed");
 
     const timeZone=runtimeTimeZone(),day=activityDatePartAtInstant(enqueuedAt,timeZone);

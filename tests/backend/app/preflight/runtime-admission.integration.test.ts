@@ -1,3 +1,4 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -184,7 +185,9 @@ try {
   assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
   const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
   h.clock.advanceWall(60_000); h.clock.advanceMonotonic(60_000); h.faults.add("endpoint.ucpath.prod");
-  const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId: "preflight-worker", runtimeConfig: selectRunRuntime(h.database.authority) };
+  const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
+    workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+  const request = { commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
   const generation = h.database.getMeta().authorityGeneration;
   await assert.rejects(claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }), PreflightAdmissionRefusal);
   assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original); assert.equal(h.database.getMeta().authorityGeneration, generation);
@@ -192,7 +195,7 @@ try {
   const claimed = await claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext(request, admit) }); assert.equal(claimed.state, "applied");
   let opens = 0;
   const factory = preflightSessionFactory({ open: async () => { opens += 1; throw new Error("counted browser effect"); } }, h.preflight, h.preflight.runScope(original.envelope));
-  const open = { workerId: "preflight-worker" as Parameters<typeof factory.open>[0]["workerId"], workflowId: personLookupDescriptor.id,
+  const open = { workerId, workflowId: personLookupDescriptor.id,
     system: "ucpath" as const, instance: "prod", configFingerprint: original.envelope.configFingerprint, acceptDownloads: false, exclusive: false, signal: signal(),
     duoCeremony: {} as Parameters<typeof factory.open>[0]["duoCeremony"] };
   await assert.rejects(factory.open(open), /counted browser effect/); assert.equal(opens, 1);

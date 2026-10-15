@@ -189,7 +189,7 @@
       "file": "tests/architecture/runs/control-command-single-path.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/dashboard-surfaces.md; docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Runtime journal and audit mutation stays in the command kernel. Typed family dispatch, authorization, CAS, exact replay and authority-generation checks remain active. Native readback authenticates complete command and audit identity without mutation; read-only snapshots preserve source bytes and refuse unowned or changed evidence.",
+      "invariant": "Runtime journal and audit mutation stays in the canonical command kernel and native authority. Only schema-bound admitWorkerReset and admitWorkerLifecycle may insert original worker commands from the kernel authority transaction; foreign callers, counterfeit schema/repository symbols and rogue same-file inserts remain forbidden. Typed family dispatch, authorization, CAS, exact replay and authority-generation checks remain active. Native readback authenticates complete command and audit identity without mutation; read-only snapshots preserve source bytes and refuse unowned or changed evidence.",
       "replacementRequired": true
     },
     {
@@ -213,7 +213,7 @@
       "file": "tests/architecture/runtime/driver-lease-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
-      "invariant": "Drivers exist only inside WorkerSessionManager.withDriver's callback lease: withDriver is consumed only by the graph interpreter, the browser-session factory's open() is invoked only inside worker-sessions, and only the worker loop constructs a WorkerSessionManager ownership scope. Only a canonical factory with canonical preflight and scope types may delegate through the closed four-statement method: scope refusal, prepare, assertReady, then one factory.open. Extra, early, forged and shadowed delegation remains forbidden.",
+      "invariant": "Drivers exist only inside WorkerSessionManager.withDriver's callback lease. Its owners are the graph interpreter, write sequencer and exact initializeRetryWorker current native initialization: Retry uses canonical manager/database/descriptor authority, a bound configuration, read access and one no-op callback before native readiness completion. Arbitrary same-module, counterfeit-owner and transaction callbacks remain forbidden. The browser-session factory's open() is invoked only inside worker-sessions, and only the worker loop constructs a WorkerSessionManager ownership scope. Only a canonical factory with canonical preflight and scope types may delegate through the closed four-statement method: scope refusal, prepare, assertReady, then one factory.open. Extra, early, forged and shadowed delegation remains forbidden.",
       "replacementRequired": true
     },
     {

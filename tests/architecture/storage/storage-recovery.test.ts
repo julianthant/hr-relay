@@ -1,3 +1,4 @@
+import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -125,7 +126,17 @@ function runningTerminalFixture(
   traceId: string,
   nodeId: "active-status" | "crm-dates",
 ) {
-  const workerId = `worker-${runId.slice(0, 4)}`;
+  const path = [...timelineFixtureOwners].find(([, owner]) => owner === database)?.[0];
+  assert.ok(path, "terminal fixture requires its owned authority path");
+  const authorityPath = timelineFixturePaths.get(path);
+  assert.ok(authorityPath);
+  const poolIndex = database.authority.workerSlots.list().length + 1;
+  testWorkerPorts(database, CLOCK, { path: authorityPath, descriptor: personLookupDescriptor, poolIndex });
+  const member = database.authority.workerSlots.list().find((slot) => slot.poolIndex === poolIndex);
+  assert.ok(member);
+  const workerId = member.workerId;
+  const lease = database.authority.workerLeases.get(workerId);
+  assert.ok(lease);
   database.authority.runs.enqueue({
     ...QUEUED_RUN,
     envelope: {
@@ -149,17 +160,20 @@ function runningTerminalFixture(
   const claimed = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
+    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
     now: NOW,
   });
   if (claimed.state !== "claimed" || claimed.run.envelope.runId !== runId) {
     throw new Error(`terminal recovery fixture did not claim ${runId}`);
   }
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
+  assert.ok("workerLifetime" in claimed.run.lifecycle && claimed.run.lifecycle.workerLifetime !== undefined);
+  const workerLifetime = claimed.run.lifecycle.workerLifetime;
   const validating = database.authority.runs.transition({
     runId,
     expectedVersion: claimed.run.version,
     claim,
-    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
+    lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
     now: NOW,
   });
   if (validating.state !== "applied") throw new Error(`terminal recovery fixture did not validate ${runId}`);
@@ -170,6 +184,7 @@ function runningTerminalFixture(
     lifecycle: {
       state: "running",
       workerId,
+      workerLifetime,
       claimedAt: NOW,
       heartbeatAt: NOW,
       currentNodeId: nodeId,

@@ -1,3 +1,4 @@
+import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createOmissionDefinitionFixtures } from "../../../support/helpers/workflow/omission-definition-fixtures.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -17,7 +18,7 @@ import { type StepOmissionDeclaration } from "../../../../src/models/workflow/st
 
 
 
-import { WORKER_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { compileFixtureWorkflow } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import {
 ManualScheduler,
@@ -141,6 +142,7 @@ describe("the executor runs no entry of an omitted step and never asks for value
 
   function harness() {
     const authority = openAuthorityHarness();
+    testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: descriptor, poolIndex: 1 });
     disposers.push(authority.dispose);
     const sessions = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver(), crm: () => healthyCrmDriver() });
     const emitter = recordingTimelineEmitter(authority.database, authority.clock);
@@ -161,13 +163,14 @@ describe("the executor runs no entry of an omitted step and never asks for value
   }
 
   function claim(harnessed: ReturnType<typeof harness>) {
+    const { workerId, workerLifetime } = testWorkerLifetime(harnessed.authority.database, descriptor.id, 1);
     const claimed = harnessed.authority.database.authority.runs.claimNext({
-      workflow: descriptor.id,
-      workerId: WORKER_ID,
+      workerLifetime, workflow: descriptor.id,
+      workerId: workerId,
       now: harnessed.authority.clock.now().toISOString(),
     });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
-    return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration }, signal: SIGNAL };
+    return { run: claimed.run, claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration }, signal: SIGNAL };
   }
 
   it("omits the gate with its step: no gate.opened span, no gate_results row, no park, the read is asserted with operator provenance", async () => {

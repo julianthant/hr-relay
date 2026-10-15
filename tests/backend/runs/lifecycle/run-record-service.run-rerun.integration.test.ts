@@ -1,3 +1,4 @@
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { servedFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
@@ -55,11 +56,12 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       assert.equal((await h.execute(source)).state, "failed"); delete h.world.onPrepare;
     } else {
       const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
-      const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId: "source-fixture",
+      const { workerId, workerLifetime } = testWorkerLifetime(h.database, h.descriptor.id, 1);
+      const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId, workerLifetime,
         runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
           settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
       const ended = h.database.authority.runs.transition({ now: h.clock.now().toISOString(), runId: claimed.envelope.runId, expectedVersion: claimed.version,
-        claim: { workerId: "source-fixture", claimGeneration: claimed.claimGeneration },
+        claim: { workerId, claimGeneration: claimed.claimGeneration },
         lifecycle: { state: "terminal", outcome, endedAt: h.clock.now().toISOString() } }); assert.equal(ended.state, "applied");
     }
     if (outcome === "failed") {

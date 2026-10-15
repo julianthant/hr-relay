@@ -1,3 +1,4 @@
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -5,7 +6,7 @@ import { afterEach,describe,it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { UUID_5,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID,WORKER_ID,WORKFLOW_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_ID,WORKFLOW_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import {
 ManualScheduler,
 healthyCrmDriver,
@@ -67,17 +68,20 @@ async function runAttempt(
   authority: AuthorityHarness,
   run: Record<string, unknown>,
 ): Promise<{ state: string; runId: string }> {
+  const { workerId, workerLifetime } = testAdmittedWorker(authority.database, authority.clock, {
+    path: authority.path, workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"],
+  });
   authority.database.authority.runs.enqueue(run);
   const claimed = authority.database.authority.runs.claimNext({
-    workflow: WORKFLOW_ID,
-    workerId: WORKER_ID,
+    workerLifetime, workflow: WORKFLOW_ID,
+    workerId: workerId,
     now: authority.clock.now().toISOString(),
   });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   const counting = countingSessions();
   const outcome = await executeClaimedRun(depsFor(authority, counting.sessions), {
     run: claimed.run,
-    claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration },
+    claim: { workerId: workerId, claimGeneration: claimed.run.claimGeneration },
     signal: SIGNAL,
   });
   assert.equal(outcome.state, "done");
