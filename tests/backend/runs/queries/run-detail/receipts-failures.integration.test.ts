@@ -79,6 +79,21 @@ function availableFailure(response: ReturnType<typeof buildReceiptFailureSection
 }
 
 describe("run-detail failure diagnostic-bundle linkage", () => {
+  it("serves the failed terminal event's native identity with the exact failure node", () => {
+    const h = fixture();
+    const runId = h.run.envelope.runId;
+    const record = h.f.database.authority.timelineEvents.append({ schemaVersion: 1,
+      eventId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", workflow: h.run.envelope.workflow,
+      scope: { kind: "run", runId }, occurredAt: NOW, recordedAt: NOW, retentionDate: "2026-07-31",
+      source: { kind: "native" }, payload: { kind: "span", event: { t: "span.ended", kind: "run", outcome: "failed",
+        failureId: h.failure.failureId, runId, attempt: h.failure.attempt, traceId: h.failure.traceId,
+        spanPath: h.failure.traceId, workflow: h.run.envelope.workflow, pid: 4242, ts: NOW } } }).record;
+    const value = availableFailure(h.read());
+    assert.deepEqual(value.native, { eventId: record.eventId, order: record.cursor, runId,
+      attempt: h.failure.attempt, traceId: h.failure.traceId, spanPath: h.failure.traceId,
+      ...(h.failure.nodeId === undefined ? {} : { nodeId: h.failure.nodeId }) });
+  });
+
   it("keeps an unlinked failure's capture absent", () => {
     const h = fixture();
     const value = availableFailure(buildReceiptFailureSection(h.f.deps, h.run.envelope.runId, "failure"));

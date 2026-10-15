@@ -19,6 +19,13 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(parked);
 
+    const parks = harness.database.authority.timelineEvents.page({ runId: WRITE_FIXTURE_RUN_ID })
+      .filter(record => record.payload.kind === "write-parked");
+    assert.equal(parks.length, 1);
+    assert.deepEqual(parks[0].payload, { kind: "write-parked", runId: WRITE_FIXTURE_RUN_ID,
+      workflow: WRITE_FIXTURE_WORKFLOW_ID, attempt: parked.envelope.attempt, traceId: parked.envelope.traceId,
+      nodeId: WRITE_FIXTURE_NODE_ID, writeIntentId: intent.writeIntentId, generation: intent.generation });
+
     const command = resolutionCommand("resolve-write-present", {
       runId: WRITE_FIXTURE_RUN_ID,
       expectedVersion: parked.version,

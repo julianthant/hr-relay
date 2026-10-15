@@ -1,3 +1,4 @@
+import { traceOf } from "../../../../fixtures/dashboard/fixture-identity.js";
 import { sectionResponse } from "../../../../fixtures/dashboard/run-detail/section-wire.js";
 import { SubjectProofSchema, WriteIntentRecordSchema, WriteAttemptRecordSchema, deriveWriteBindingProofDigest, deriveIdempotencyKeyDigest } from "../../../../../../src/rules/write-safety/write-safety.js";
 import { deriveWriteAuthorityReason } from "../../../../../../src/rules/write-safety/write-authority-reason.js";
@@ -15,7 +16,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
 }) {
   const GATE_NODE_ID = "identity-approval";
 
-  const FIXTURE_IDENTITY_GATE = buildFixtureIdentityGate({
+  const FIXTURE_IDENTITY_GATE = { ...buildFixtureIdentityGate({
     runId: FIXTURE_IDS.openGateRun,
     gateId: GATE_NODE_ID,
     label: "Identity Approval",
@@ -24,9 +25,10 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     expectedVersion: 5,
     observedAt: at(48),
     documentName: "Morrow, Bea",
-  });
+  }), native: { eventId: uuidOf(9501), order: 4, runId: FIXTURE_IDS.openGateRun, attempt: 1,
+    traceId: traceOf(5), spanPath: `${traceOf(5)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
 
-  const FIXTURE_IDENTITY_GATE_TYPED_EID = buildFixtureIdentityGate({
+  const FIXTURE_IDENTITY_GATE_TYPED_EID = { ...buildFixtureIdentityGate({
     runId: FIXTURE_IDS.gateTypedEidRun,
     gateId: GATE_NODE_ID,
     label: "Identity Approval",
@@ -35,7 +37,8 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     expectedVersion: 44,
     observedAt: at(23),
     documentName: "Okonkwo, Adaeze",
-  });
+  }), native: { eventId: uuidOf(13401), order: 4, runId: FIXTURE_IDS.gateTypedEidRun, attempt: 1,
+    traceId: traceOf(44), spanPath: `${traceOf(44)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
 
   const PARKED_WRITE_INTENT_ID = uuidOf(906);
 
@@ -82,6 +85,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
 
   const FIXTURE_PARKED_WRITE = {
     runId: FIXTURE_IDS.parkedRun,
+    native: { eventId: uuidOf(9960), order: 50, runId: FIXTURE_IDS.parkedRun, attempt: 1, traceId: traceOf(6), nodeId: "terminate" },
     writeIntentId: PARKED_WRITE_INTENT_ID,
     generation: 1,
     runAttempt: 1,

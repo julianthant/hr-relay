@@ -1,3 +1,5 @@
+import { LogIdentityRefusedError } from "../../commands/refusals.js";
+import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { projectFailureDisplay } from "../../../../models/dashboard/failure-display.js";
 import { projectFailureResolution } from "../failure-resolution.js";
 import { retainedRunProtectedBindings } from "../../../../models/write-safety/protected-input.js";
@@ -74,15 +76,29 @@ export function buildReceiptFailureSection(
   }
   assertTrustEvidenceIdentity(authority, failure, "failure");
   if (failure.failureId !== failureId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: failure ${failureId}`);
+  const events = readTimelineRecords(deps.timeline, 0, runId).records.filter(record =>
+    record.payload.kind === "span" && record.payload.event.t === "span.ended"
+    && record.payload.event.kind === "run" && record.payload.event.failureId === failureId);
+  if (events.length > 1) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_DUPLICATE");
+  const event = events[0];
+  const source = event?.payload.kind === "span" && "runId" in event.payload.event ? event.payload.event : undefined;
+  if (source !== undefined && (source.traceId !== failure.traceId || source.attempt !== failure.attempt)) {
+    throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
+  }
+  const native = source === undefined || event === undefined ? {} : { native: {
+    eventId: event.eventId, order: event.cursor, runId, attempt: failure.attempt,
+    traceId: failure.traceId, spanPath: source.spanPath,
+    ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
+  } };
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
-    payload: { state: "available", value: failureDetailWire(
+    payload: { state: "available", value: { ...native, ...failureDetailWire(
       runId,
       failure,
       trust,
       retainedRunProtectedBindings(authority).length > 0,
       deps.captures,
-    ) },
+    ) } },
   });
 }
 

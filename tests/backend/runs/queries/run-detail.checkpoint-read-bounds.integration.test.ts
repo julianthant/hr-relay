@@ -29,7 +29,7 @@ it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions gro
       listCheckpoints: (workflow, item) => checkpoints.listByItem(workflow, item),
       latestCheckpoint: (workflow, item, node) => checkpoints.latest(workflow, item, node),
     },
-    descriptors: { resolve: () => ({ subjectProjection: { nodeId: "subject", fieldPath: "name" }, timeline: [{ label: "Read", nodes }] }) },
+    descriptors: { resolve: () => ({ version: 1, contractFingerprint: HASH_A, subjectProjection: { nodeId: "subject", fieldPath: "name" }, timeline: [{ key: "read", label: "Read", nodes }] }) },
   };
   function store(nodeId: string, attempt: number, claimGeneration: number, runSeed = attempt + 1): void {
     checkpoints.insert(RunCheckpointRecordSchema.parse({

@@ -1,3 +1,4 @@
+import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -12,8 +13,8 @@ const {world, cleanup } = createRunDetailTestWorld();
 afterEach(cleanup);
 
 const CATEGORIES: NonNullable<RunDetailDescriptorView["timeline"]> = [
-  { label: "Kuali extraction", nodes: [{ id: "document", label: "Separation Document" }] },
-  { label: "Kronos timecard", nodes: [{ id: "timecard", label: "Timecard" }, { id: "reconcile", label: "Reconcile" }] },
+  { key: "extraction", label: "Kuali extraction", nodes: [{ id: "document", label: "Separation Document" }] },
+  { key: "kronos-timecard", label: "Kronos timecard", nodes: [{ id: "timecard", label: "Timecard" }, { id: "reconcile", label: "Reconcile" }] },
 ];
 
 const TERMINAL_DONE = { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 5_000) } as const;
@@ -44,7 +45,7 @@ function detailOf(w: DashboardWorld) {
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
-      descriptors: { resolve: () => ({ details: [], timeline: CATEGORIES }) },
+      descriptors: { resolve: () => ({ details: [], version: 1, contractFingerprint: HASH_A, timeline: CATEGORIES }) },
     },
     uuidOf(1),
   );

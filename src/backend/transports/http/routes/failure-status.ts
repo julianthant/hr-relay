@@ -1,10 +1,11 @@
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
-import { DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
+import { LogIdentityRefusedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 import { errorText } from "../../../runs/lifecycle/support.js";
 
@@ -34,6 +35,10 @@ export function failureStatus(
   if (error instanceof StartStepOmissionRefusedError) {
 
     return { status: 400, body: wireError("START_STEP_OMISSION_REFUSED", message, false) };
+  }
+  if (error instanceof LogIdentityRefusedError) {
+    return { status: 409, body: wireError(error.code,
+      formatErrorCatalogFailure(createErrorCatalogFailure(error.code, {})).text, false) };
   }
   if (error instanceof SectionUnavailableError) {
     return { status: 409, body: wireError("SECTION_UNAVAILABLE", message, false) };

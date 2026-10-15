@@ -11,7 +11,7 @@ import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-rec
 import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
-import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
+import { deriveWriteBindingProofDigest, WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { atomicWriteCheckpoint, currentAtomicWriteFixture, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
@@ -31,7 +31,15 @@ afterEach(cleanup);
 
 describe("restore-loss warning after real worker recovery", () => {
   const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
-  const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_COMMIT);
+  const proof = { ...WRITE_INTENT_ATTEMPTING.bindingProof,
+    afterPrepareSpanPath: `${HISTORICAL_COMMIT.transaction.traceId}/write-${WRITE_INTENT_ATTEMPTING.writeIntentId}/prepare` };
+  const bindingProofDigest = deriveWriteBindingProofDigest(proof);
+  const intent = { ...WRITE_INTENT_ATTEMPTING, bindingProof: proof, bindingProofDigest };
+  const attempt = { ...WRITE_ATTEMPT, bindingProof: proof, bindingProofDigest };
+  const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture({ ...HISTORICAL_COMMIT,
+    transaction: { ...HISTORICAL_COMMIT.transaction, bindingProofDigest },
+    committedSpan: { ...HISTORICAL_COMMIT.committedSpan, bindingProofDigest },
+  });
   function paths(){return drillPaths();}
   function createAuthority(p:DrillPaths){const db=open(p);db.close();}
 it.each([false, true])("restore confirmation evidence survives recovery accounting (backup after commit: %s)", async (backupAfterCommit) => {
@@ -69,7 +77,7 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
         workerId, claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString(),
         currentNodeId: checkpoint.nodeId } });
     assert.equal(running.state, "applied");
-    fenceWriteFixture(initial, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
+    fenceWriteFixture(initial, { intent, attempt });
   } finally { initial.close(); }
   const before = inspect(p.authorityPath);
   assert.equal(before.lifecycle, "running"); assert.equal(before.outcome, "attempting");

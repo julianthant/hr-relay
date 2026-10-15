@@ -61,10 +61,13 @@ export interface RunDetailDataOriginView {
 
 // Context data comes from declared origins, not a second descriptor details contract.
 export interface RunDetailDescriptorView {
+  readonly version?: number;
+  readonly contractFingerprint?: string;
   /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
 
   readonly timeline?: readonly Readonly<{
+    key?: string;
     label: string;
     nodes: readonly Readonly<{ id: string; label: string }>[];
   }>[];

@@ -9,7 +9,7 @@ buildRunSection,
 type RunDetailQueryDeps,
 } from "../../../../src/backend/runs/queries/run-detail.js";
 import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
-import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
+import { TimelineEventRecordSchema, timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import {
@@ -235,6 +235,26 @@ function gateSection(w: DashboardWorld, deps = depsOf(w)) {
 }
 
 describe("the identity-gate run-detail section (ref write-safety §14.4)", () => {
+  it("serves the opened gate's native event identity without deriving it from the park time", () => {
+    const w = world(); seed(w);
+    const run = w.authority.getRun(RUN_ID); assert.ok(run);
+    putCheckpoint(w, checkpointOf(packetOf()));
+    const record = TimelineEventRecordSchema.parse({ schemaVersion: 1,
+      eventId: uuidOf(9801), cursor: w.timeline.highWaterMark() + 1, workflow: IDENTITY_DESCRIPTOR.id,
+      scope: { kind: "run", runId: RUN_ID }, occurredAt: NOW, recordedAt: NOW, retentionDate: "2026-08-12",
+      source: { kind: "native" }, payload: { kind: "span", event: { t: "gate.opened", ts: NOW, pid: 4242,
+        workflow: IDENTITY_DESCRIPTOR.id, runId: RUN_ID, attempt: 1, traceId: run.envelope.traceId,
+        spanPath: run.envelope.traceId, gate: "identity-approval" } } });
+    const deps = depsOf(w);
+    const section = gateSection(w, { ...deps, timeline: { ...w.timeline, highWaterMark: () => record.cursor,
+      page: request => [...w.timeline.page(request), ...(Number(request.after ?? 0) < record.cursor ? [record] : [])],
+    } });
+    assert.equal(section.state, "available");
+    if (section.state !== "available") throw new Error("gate unavailable");
+    assert.deepEqual(section.value.native, { eventId: record.eventId, order: record.cursor, runId: RUN_ID,
+      attempt: 1, traceId: run.envelope.traceId, spanPath: run.envelope.traceId, nodeId: "identity-approval" });
+  });
+
   it("advertises the section for a parked-gate run and for no other lifecycle", () => {
     const w = world();
     seed(w);

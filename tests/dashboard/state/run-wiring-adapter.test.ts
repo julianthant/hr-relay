@@ -10,7 +10,7 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../s
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { RunDetailWireSchema, NotePageSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
+import { RunDetailWireSchema, NativeRunEventWireSchema, ConfirmedActionBindingWireSchema, IdentityGateDetailWireSchema, NotePageSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
 import { ConfirmedActionEventSchema } from "../../../src/models/events/confirmed-action.js";
 import { appendLogPage } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../src/models/workflow/operation-display-snapshot.js";
@@ -41,14 +41,36 @@ function detail(selected = selection()) {
   const row = selected.row;
   return RunDetailWireSchema.parse({ runId: row.runId, rowRevision: row.rowRevision, panelKind: "run",
     header: { runId: row.runId, workflowId: row.workflowId, traceId: row.traceId, title: row.title, status: row.status, attempt: row.attempt },
-    timeline: { steps: [], events: [] }, gate: { state: "absent", reason: "No gate" }, outcome: { state: "absent", reason: "Not complete" },
+    timeline: { steps: ["first", "identity-approval", "second-gate", "cross-verify"].map(nodeId => ({
+      key: nodeId, label: nodeId, state: "done", members: [{ nodeId, categoryKey: nodeId, label: nodeId, state: "done" }],
+    })), events: [] }, gate: { state: "absent", reason: "No gate" }, outcome: { state: "absent", reason: "Not complete" },
     context: { dataFacts: 0, evidenceFacts: 0, attempts: 1 }, captures: { state: "absent", reason: "not-captured" }, availableSections: ["logs"] });
 }
 function page(runId = RUN, sequence = 0, cursor?: string) {
   const noteId = sequence === 0 ? NOTE : OTHER;
-  const note = { noteId, runId, sequence, at: AT, level: "info", message: `Authoritative note ${sequence}` };
-  return NotePageSchema.parse({ runId, rows: [{ kind: "note", logId: noteId, sequence, note }], notes: [note], confirmedActions: [],
+  const native = nativeOf(runId, sequence + 1);
+  const note = { native, noteId, runId, sequence, at: AT, level: "info", message: `Authoritative note ${sequence}` };
+  return NotePageSchema.parse({ runId, rows: [{ kind: "note", native, logId: noteId, sequence, note }], notes: [note], confirmedActions: [], confirmedActionBindings: [],
+    operationStructure: { state: "observed", runId, definition, observations: sequence === 0 ? [{
+      logId: noteId, at: AT, action: "read", targetId: "consume-text", occurrence: { ...action(runId).action, value: { slot: "text", fieldPath: "text", producer: { kind: "run-input", path: "text" }, state: "observed", classification: "local-operator", value: "same" } },
+    }] : [] },
     nextCursor: cursor === undefined ? { state: "absent", reason: "end-of-page" } : { state: "present", value: cursor } });
+}
+function nativeOf(runId = RUN, order = 1, nodeId = "first") {
+  return NativeRunEventWireSchema.parse({ eventId: `10000000-0000-4000-8000-${String(order).padStart(12, "0")}`,
+    order, runId: RunIdSchema.parse(runId), attempt: 1, traceId: selection(runId).row.traceId,
+    nodeId, spanPath: "first/span" });
+}
+function confirmationEvidence(owner: ReturnType<typeof page>, events: readonly ReturnType<typeof action>[]) {
+  return { confirmedActions: [...events], confirmedActionBindings: events.map(event => ConfirmedActionBindingWireSchema.parse({ eventId: event.eventId,
+    logId: NOTE, native: owner.rows?.[0].native })) };
+}
+function identityFixtures(...args: Parameters<typeof createIdentityCeremonyFixtures>) {
+  const fixture = createIdentityCeremonyFixtures(...args);
+  return { ...fixture, gateDetail: (...input: Parameters<typeof fixture.gateDetail>) => {
+    const gate = fixture.gateDetail(...input);
+    return IdentityGateDetailWireSchema.parse({ ...gate, native: nativeOf(gate.runId, 50, gate.gateId) });
+  } };
 }
 function clientFor(read: (path: string, signal?: AbortSignal | null) => unknown) {
   return createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (input, init) => Response.json(await read(new URL(String(input)).pathname, init?.signal)) });
@@ -73,16 +95,17 @@ describe("served Logs wiring", () => {
     const seen: string[] = [];
     const client = { runDetail: async () => detail(), artifactUrl: (id: string) => `/artifacts/${id}`, runSection: async (_run: string, section: string, token?: string) => {
       seen.push(`${section}:${token ?? "initial"}`);
-      const payload = token === undefined ? page(RUN, 0, cursor) : { ...page(RUN, 1), confirmedActions: [action()] };
+      const payload = token === undefined ? page(RUN, 0, cursor) : { ...page(RUN, 1), ...confirmationEvidence(page(RUN, 1), [action()]) };
       return RunDetailSectionResponseSchema.parse({ section: "logs", payload });
     } };
     const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
     assert.deepEqual(seen, ["logs:initial", `logs:${cursor}`]);
     assert.deepEqual(snapshot.logs.confirmedActions, [action()]);
     const projection = projectRunLogs(snapshot, client);
-    assert.equal(projection.steps.filter(step => step.id === "stream/1").length, 1);
-    assert.equal(projection.timeline.find(stage => stage.id === "stream/1")?.stepId, "stream/1");
-    assert.deepEqual(projection.steps.slice(0, 2).map(step => step.entries[0].id), [NOTE, OTHER]);
+    assert.equal(projection.steps.filter(step => step.id === "stream/1").length, 0);
+    assert.equal(projection.timeline.find(stage => stage.id === "first")?.stepId, NOTE);
+    assert.deepEqual(projection.steps.map(step => step.entries[0].id), [NOTE]);
+    assert.equal(projection.steps[0].entries[1].id, "stream/1");
   });
   it("refuses wrong run/revision/attempt and foreign action evidence", async () => {
     for (const changed of [detail(selection(OTHER)), { ...detail(), rowRevision: selection().row.rowRevision + 1 }, { ...detail(), header: { ...detail().header, attempt: 2 } }]) {
@@ -104,8 +127,8 @@ describe("served Logs wiring", () => {
   it("retains known events across mixed pages while keeping aggregate action evidence unavailable", async () => {
     const cursor = `lc:${"b".repeat(64)}:1`;
     for (const missingFirst of [true, false]) {
-      const initial = { ...page(RUN, 0, cursor), confirmedActions: missingFirst ? undefined : [action()] };
-      const next = { ...page(RUN, 1), confirmedActions: missingFirst ? [action()] : undefined };
+      const initial = { ...page(RUN, 0, cursor), ...confirmationEvidence(page(RUN, 0, cursor), missingFirst ? [] : [action()]), confirmedActions: missingFirst ? undefined : [action()] };
+      const next = { ...page(RUN, 1), ...confirmationEvidence(page(RUN, 1), missingFirst ? [action()] : []), confirmedActions: missingFirst ? [action()] : undefined };
       const client = { runDetail: async () => detail(), runSection: async (_run: string, _section: string, token?: string) =>
         RunDetailSectionResponseSchema.parse({ section: "logs", payload: token === undefined ? initial : next }) };
       const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
@@ -113,10 +136,10 @@ describe("served Logs wiring", () => {
       assert.deepEqual(snapshot.actionEvidence?.events, [action()]);
       assert.deepEqual(snapshot.actionEvidence?.missingPages, [missingFirst ? "initial" : cursor]);
       assert.equal(snapshot.logs.confirmedActions, undefined);
-      assert.equal(projectRunLogs(snapshot, { artifactUrl: () => "unused" }).steps.filter(step => step.id === action().eventId).length, 1);
+      assert.equal(projectRunLogs(snapshot, { artifactUrl: () => "unused" }).steps.flatMap(step => step.entries).filter(entry => entry.id === action().eventId).length, 1);
     }
-    const initial = { ...page(RUN, 0, cursor), confirmedActions: [action()] };
-    const repeated = { ...page(RUN, 1), confirmedActions: [action()] };
+    const initial = { ...page(RUN, 0, cursor), ...confirmationEvidence(page(RUN, 0, cursor), [action()]) };
+    const repeated = { ...page(RUN, 1), ...confirmationEvidence(page(RUN, 1), [action()]) };
     const client = { runDetail: async () => detail(), runSection: async (_run: string, _section: string, token?: string) =>
       RunDetailSectionResponseSchema.parse({ section: "logs", payload: token === undefined ? initial : repeated }) };
     await assert.rejects(() => readRunLogs(client, selection(), new AbortController().signal), /duplicate/);
@@ -125,7 +148,7 @@ describe("served Logs wiring", () => {
     const selected = { ...selection(), row: { ...selection().row, attempt: 2 } };
     const historical = action();
     const observation = OperationActionObservationWireSchema.parse({ logId: NOTE, at: AT, action: "read", targetId: "consume-text", occurrence: { ...historical.action, value: { slot: "text", fieldPath: "text", producer: { kind: "run-input", path: "text" }, state: "observed", classification: "local-operator", value: "same" } } });
-    const payload = { ...page(), confirmedActions: [historical], operationStructure: { state: "observed", runId: RUN, definition, observations: [observation] } };
+    const payload = { ...page(), ...confirmationEvidence(page(), [historical]), operationStructure: { state: "observed", runId: RUN, definition, observations: [observation] } };
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload } : detail(selected));
     const snapshot = await readRunLogs(client, selected, new AbortController().signal);
     assert.equal(snapshot.actionEvidence?.events[0].action.attempt, 1);
@@ -144,7 +167,7 @@ describe("served Logs wiring", () => {
   it("preserves admitted historical span rows while rejecting future attempts and foreign traces", async () => {
     const selected = { ...selection(), row: { ...selection().row, attempt: 2 } };
     const fence = { kind: "transaction-fenced", logId: OTHER, sequence: 1, at: AT, traceId: selected.row.traceId, attempt: 1,
-      spanPath: "first/fence", producer: { nodeId: "first", step: "First", taskId: "ocr/extract-form-page" } };
+      spanPath: "first/fence", native: { ...nativeOf(RUN, 2), spanPath: "first/fence" }, producer: { nodeId: "first", step: "First", taskId: "ocr/extract-form-page" } };
     const payload = NotePageSchema.parse({ ...page(), rows: [...(page().rows ?? []), fence] });
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload } : detail(selected));
     assert.equal((await readRunLogs(client, selected, new AbortController().signal)).logs.rows?.length, 2);
@@ -163,13 +186,14 @@ describe("served Logs wiring", () => {
     assert.match(document.body.textContent ?? "", /Searching UCPath directory for Morrow, Bea/);
     assert.match(document.body.textContent ?? "", /Confirmed actions unavailable/);
     assert.match(document.body.textContent ?? "", /Capture availability not supplied/);
-    assert.match(document.body.textContent ?? "", /Identity decision join not supplied/);
+    assert.match(document.body.textContent ?? "", /Identity Approval/);
+    assert.doesNotMatch(document.body.textContent ?? "", /Identity decision join not supplied/);
     assert.doesNotMatch(document.body.textContent ?? "", /Logs unavailable|Reading the employment record/);
     assert.ok(document.querySelectorAll('section[aria-labelledby]').length > 1);
   });
   it("does not discard or duplicate confirmed actions across cursor pages", () => {
     const cursor = `lc:${"a".repeat(64)}:1`;
-    assert.throws(() => appendLogPage({ ...page(RUN, 0, cursor), confirmedActions: [action()] }, cursor, { ...page(RUN, 1), confirmedActions: [action()] }), /duplicate/);
+    assert.throws(() => appendLogPage({ ...page(RUN, 0, cursor), ...confirmationEvidence(page(RUN, 0, cursor), [action()]) }, cursor, { ...page(RUN, 1), ...confirmationEvidence(page(RUN, 1), [action()]) }), /duplicate/);
     assert.throws(() => appendLogPage(page(RUN, 0, cursor), cursor, page(OTHER, 1)), /cannot append logs/);
   });
   it("attaches captures only to their exact action occurrence and resource", () => {
@@ -191,7 +215,7 @@ describe("served Logs wiring", () => {
     assert.equal(projectRunLogs(mismatch, client).steps[0].entries.length, 1);
   });
   it("exposes supported gate approvals and refuses typed IDs, rejection text and confirmation-copy downgrades", () => {
-    const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
     for (const packet of [fixtures.ONE_CLICK, fixtures.CHOOSE, fixtures.TYPE_EID]) {
       const gate = fixtures.gateDetail(packet);
       const approval = identityApprovalAction("Approve");
@@ -205,7 +229,7 @@ describe("served Logs wiring", () => {
   });
   it("retains exact parked UNKNOWN identity with no submission control", async () => {
     let writes = 0;
-    const parked = RunDetailSectionResponseSchema.parse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN } });
+    const parked = RunDetailSectionResponseSchema.parse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, native: nativeOf(RUN, 40), runId: RUN } });
     const servedDetail = RunDetailWireSchema.parse({ ...detail(), availableSections: ["logs", "parked-write"] });
     const client: DashboardClient = { ...clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : path.endsWith("/parked-write") ? parked : servedDetail),
       executeCommand: () => { writes++; throw new Error("unknown submit must not be retried"); } };
@@ -228,7 +252,7 @@ describe("served Logs wiring", () => {
     if (original.section !== "failure" || original.payload.state !== "available") throw new Error("failure fixture unavailable");
     const source = original.payload.value;
     const failure = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: { ...source,
-      runId: RUN, traceId: selection().row.traceId, writeState: "unknown" } } });
+      runId: RUN, native: nativeOf(RUN, 40, source.nodeId), traceId: selection().row.traceId, writeState: "unknown" } } });
     const servedDetail = RunDetailWireSchema.parse({ ...detail(), availableSections: ["logs", "failure"] });
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : path.endsWith("/failure") ? failure : servedDetail);
     const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
@@ -251,7 +275,7 @@ describe("served Logs wiring", () => {
   it("settles supported candidate approval only after matching readback and replays the same command", async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -290,7 +314,7 @@ describe("served Logs wiring", () => {
   it("shows exact one-click target and served basis before approval, then requires matched readback", async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3), title: "Generic run title" } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -332,7 +356,7 @@ describe("served Logs wiring", () => {
   for (const transition of ["identical", "command-revision", "run-roundtrip", "keyed-run-roundtrip", "unmounted", "foreign-scope"] as const) it(`isolates pending command ownership and feedback through ${transition} replacement`, async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -393,7 +417,7 @@ describe("served Logs wiring", () => {
     try {
       const selected = [RUN, OTHER].map(runId => ({ ...selection(runId), row: { ...selection(runId).row, rowRevision: RowRevisionSchema.parse(3) } }));
       const gates = [RUN, OTHER].map(runId => {
-        const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => runId);
+        const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => runId);
         return fixtures.gateDetail(fixtures.ONE_CLICK);
       });
       const resolved = new Set<string>(), releases = new Map<string, () => void>();
@@ -432,7 +456,7 @@ describe("served Logs wiring", () => {
   it("retains uncertain feedback and the exact replay envelope through identical row replacement", async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -460,7 +484,7 @@ describe("served Logs wiring", () => {
   for (const outcome of ["uncertain", "refused"] as const) it(`stabilizes restored ${outcome} command and replay inputs until state or scope changes`, async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -510,7 +534,7 @@ describe("served Logs wiring", () => {
   it("retains supplied notes and locks decision controls when gate/capture authority is omitted", async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       for (const omitted of ["node", "capture"] as const) {
@@ -537,7 +561,7 @@ describe("served Logs wiring", () => {
   it("keeps refusal feedback and permits only an explicit corrected approval in the mounted Logs panel", async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -575,7 +599,7 @@ describe("served Logs wiring", () => {
   it("releases a confirmed gate lock when the same run reaches its next authoritative gate", async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const firstGate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const secondGate = fixtures.gateDetail(fixtures.ONE_CLICK, { gateId: "second-gate", expectedVersion: 5,
         actions: firstGate.actions.map(action => ({ ...action, expectedVersion: 5 })) });
@@ -613,7 +637,7 @@ describe("served Logs wiring", () => {
   for (const authority of ["current", "new-revision", "new-gate", "foreign-actor", "foreign-authority"] as const) it(`projects keyed pending-to-refused recovery only for ${authority} gate authority`, async () => {
     const h = launchHarness();
     try {
-      const fixtures = createIdentityCeremonyFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -676,7 +700,20 @@ describe("served Logs wiring", () => {
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
     assert.match(document.body.textContent ?? "", /Authoritative note 0/);
     assert.doesNotMatch(document.body.textContent ?? "", /Reading the employment record|Termination confirmed|Approve match/);
-    assert.match(document.body.textContent ?? "", /cross-source chronology unavailable/);
+    assert.doesNotMatch(document.body.textContent ?? "", /cross-source chronology unavailable/);
+  });
+  for (const source of ["client", "backend"] as const) it(`shows the catalog refusal for ${source} Logs identity failures`, async () => {
+    const malformed = { ...page(), rows: page().rows?.map(row => row.kind === "note"
+      ? { ...row, native: undefined, note: { ...row.note, native: undefined } } : row),
+      notes: page().notes.map(note => ({ ...note, native: undefined })) };
+    const client = source === "client" ? clientFor(path => path.endsWith("/logs")
+      ? { section: "logs", payload: malformed } : detail()) : createDashboardClient({ baseUrl: "http://fixture.test",
+        fetchImpl: async input => new URL(String(input)).pathname.endsWith("/logs")
+          ? Response.json({ state: "error", code: "LOGS_IDENTITY_REFUSED", message: "private native mismatch", retryable: false }, { status: 409 })
+          : Response.json(detail()) });
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
+    assert.match(document.body.textContent ?? "", /Logs cannot be ordered because their recorded identities are missing or inconsistent/);
+    assert.doesNotMatch(document.body.textContent ?? "", /private native mismatch|Authoritative note/);
   });
   it("does not turn a failed served read into a mock or a verified empty result", async () => {
     const client = clientFor(() => { throw new Error("offline"); });

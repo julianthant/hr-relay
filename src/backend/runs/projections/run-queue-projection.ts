@@ -63,6 +63,7 @@ import { ProjectionDegradedError } from "../commands/refusals.js";
 /* ── the in-memory evidence fold shape ─ */
 
 const TaskSpanFoldSchema = z.strictObject({
+  nativeEventId: z.uuid().optional(),
   // Include the attempt in span identity; retries share node IDs but not executions.
   attempt: z.number().int().positive(),
   spanPath: z.string().min(1),
@@ -410,7 +411,7 @@ export class RunQueueProjection {
         .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }));
       const snapshot = this.#canonicalSnapshot();
       for (const { event, line } of events) {
-        const affected = this.#fold(event);
+        const affected = this.#fold(event, line);
         this.#cursorValue += 1;
         this.#recordRunLog(event, line);
         this.#notify(affected, snapshot);
@@ -462,7 +463,7 @@ export class RunQueueProjection {
       this.#notifiedStatus.clear();
       this.#cursorValue = 0;
       for (const { event, line } of events) {
-        this.#fold(event);
+        this.#fold(event, line);
         this.#cursorValue += 1;
         this.#recordRunLog(event, line);
       }
@@ -527,7 +528,7 @@ export class RunQueueProjection {
     return row;
   }
 
-  #fold(event: SpanEventWire): { runIds: readonly string[]; workerChanged: boolean } {
+  #fold(event: SpanEventWire, line?: TimelineLine): { runIds: readonly string[]; workerChanged: boolean } {
     if (event.t === "run.queued") {
       if (this.#rows.has(event.runId)) {
         throw new Error(`run.queued replayed for ${event.runId}; identity attributes are write-once`);
@@ -609,6 +610,7 @@ export class RunQueueProjection {
       if (event.kind === "task") {
         const row = this.#row(event.runId, event.t);
         row.taskSpans.push({
+          ...(line === undefined ? {} : { nativeEventId: line.file.path.replace(/^timeline:/u, "") }),
           attempt: event.attempt,
           spanPath: event.spanPath,
           name: event.name,
@@ -662,6 +664,7 @@ export class RunQueueProjection {
       if (span === undefined) {
 
         span = {
+          ...(line === undefined ? {} : { nativeEventId: line.file.path.replace(/^timeline:/u, "") }),
           attempt: event.attempt,
           spanPath: event.spanPath,
           name: nodeIdOfTaskSpanPath(event.spanPath) ?? event.spanPath,

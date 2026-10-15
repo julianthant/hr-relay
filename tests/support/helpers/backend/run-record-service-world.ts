@@ -1,3 +1,6 @@
+import { fenceWriteFixture } from "../write-fence-fixture.js";
+import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
+import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,7 +14,7 @@ import { RuntimeConfigClaimTokenSchema } from "../../../../src/models/config/run
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_6, HASH_C, LATER } from "../../fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, NOW, UUID_1, UUID_6, HASH_C, LATER, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
@@ -117,6 +120,27 @@ export function createRunRecordServiceTestWorld() {
     return running.run;
   }
 
+  function parkedWriteIntent(database: AuthorityDatabase, run: RunRecord,
+    input: Readonly<{ writeIntentId: string; code: "unknown" | "operator-required"; message: string }>) {
+    const proof = { ...WRITE_INTENT_ATTEMPTING.bindingProof, runId: run.envelope.runId,
+      attempt: run.envelope.attempt, afterPrepareSpanPath: `${run.envelope.traceId}/termination/prepare` };
+    const bindingProofDigest = deriveWriteBindingProofDigest(proof);
+    const intent = { ...WRITE_INTENT_ATTEMPTING, writeIntentId: input.writeIntentId,
+      workflowId: run.envelope.workflow, itemId: run.envelope.itemId, runId: run.envelope.runId,
+      runAttempt: run.envelope.attempt, bindingProof: proof, bindingProofDigest };
+    database.withAuthorityTransaction(repositories => {
+      fenceWriteFixture(database, { intent, attempt: { ...WRITE_ATTEMPT, writeIntentId: intent.writeIntentId,
+        runId: intent.runId, runAttempt: intent.runAttempt, bindingProof: proof, bindingProofDigest } });
+      repositories.writeIntents.parkAttempt({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+        expectedVersion: intent.version, code: input.code, message: input.message, now: NOW,
+        authorityReason: deriveWriteAuthorityReason(input.code === "unknown" ? "post-click-verifier-unknown"
+          : "manual-confirmation-required", "probe", input.message) });
+    });
+    const parked = database.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(parked && parked.status === "parked");
+    return parked;
+  }
+
   const RaceEventSchema = z.discriminatedUnion("type", [
     z.strictObject({ type: z.enum(["ready", "reserved"]) }),
     z.strictObject({ type: z.literal("error"), message: z.string() }),
@@ -182,5 +206,5 @@ export function createRunRecordServiceTestWorld() {
     };
   }
   const cleanup = () => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); };
-  return { cleanups, fixture, created, runningRun, raceConnection, failureTerminalRequest, cleanup };
+  return { cleanups, fixture, created, runningRun, parkedWriteIntent, raceConnection, failureTerminalRequest, cleanup };
 }

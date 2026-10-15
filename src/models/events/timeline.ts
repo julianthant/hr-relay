@@ -3,7 +3,7 @@ import type { RunCheckpointRecord } from "../workflow/checkpoint.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema,
-  WorkerIdSchema, WorkflowIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema } from "../../rules/identity/ids.js";
+  WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, TraceIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema } from "../../rules/identity/ids.js";
 import { LedgerEntryPayloadSchema } from "../../rules/runs/ledger.js";
 import { NoteWireSchema, SpanEventWireSchema } from "./types.js";
 
@@ -46,6 +46,11 @@ export const DebugEventSchema = z.strictObject({
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
 
 export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("write-parked"), runId: RunIdSchema, workflow: WorkflowIdSchema,
+    attempt: PositiveIntSchema, traceId: TraceIdSchema, nodeId: NodeIdSchema,
+    writeIntentId: WriteIntentIdSchema, generation: PositiveIntSchema,
+  }),
   z.strictObject({
     kind: z.literal("failure-resolution"), runId: RunIdSchema, workflow: WorkflowIdSchema,
     failureId: FailureIdSchema, commandId: CommandIdSchema, actorId: ActorIdSchema,

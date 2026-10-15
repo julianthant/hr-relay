@@ -1,3 +1,4 @@
+import { uuidOf } from "../../../../fixtures/dashboard/fixture-identity.js";
 import { sectionResponse } from "../../../../fixtures/dashboard/run-detail/section-wire.js";
 import type * as FixtureIdentityTypes from "../../../../fixtures/dashboard/fixture-identity.js";
 import type * as FixtureQueueTypes from "../../../../fixtures/dashboard/fixture-queue.js";
@@ -20,6 +21,7 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
     return {
       runId,
       failureId,
+      native: { eventId: uuidOf(seed * 100 + 9900), order: 50, runId, attempt: 1, traceId: traceOf(seed), nodeId: "cross-verify" },
       resolution: {
         capability: { state: "available" },
         capture: { runId, failureId, resolution: { status: "unresolved", version: 1 } },

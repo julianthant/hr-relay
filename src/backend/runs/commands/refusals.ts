@@ -47,3 +47,11 @@ export class DiagnosticBundleBytesMissingError extends DiagnosticBundleCorruptEr
     this.name = "DiagnosticBundleBytesMissingError";
   }
 }
+
+export class LogIdentityRefusedError extends Error {
+  readonly code = "LOGS_IDENTITY_REFUSED";
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "LogIdentityRefusedError";
+  }
+}

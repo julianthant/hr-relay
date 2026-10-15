@@ -28,6 +28,7 @@ import {
   CommandIdSchema,
   FingerprintSchema,
   RunIdSchema,
+  NodeIdSchema,
 } from "../../../rules/identity/ids.js";
 import { nextAttemptEnvelope } from "../../../models/run/envelope.js";
 import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
@@ -1017,6 +1018,34 @@ export class RunRecordService {
     commandId: string, run: RunRecord): void {
     if (["claim-next", "transition", "worker-transition", "terminalize", "requeue"].includes(operation)) {
       const lifecycle = run.lifecycle;
+      if (lifecycle.state === "parked-write") {
+        const intent = repositories.writeIntents.get(lifecycle.writeIntentId);
+        if (intent === undefined || (intent.status !== "parked" && intent.status !== "attempting")
+          || intent.generation !== lifecycle.intentGeneration
+          || intent.workflowId !== run.envelope.workflow || intent.itemId !== run.envelope.itemId
+          || intent.bindingProof.runId !== intent.runId || intent.bindingProof.attempt !== intent.runAttempt) {
+          throw new Error("timeline-parked-write-owner-mismatch");
+        }
+        const owner = repositories.runs.get(intent.runId);
+        if (owner === undefined || owner.envelope.workflow !== intent.workflowId || owner.envelope.itemId !== intent.itemId
+          || owner.envelope.attempt < intent.runAttempt) throw new Error("timeline-parked-write-owner-mismatch");
+        const spanPath = intent.bindingProof.afterPrepareSpanPath;
+        const prefix = `${owner.envelope.traceId}/`;
+        const parsedNode = NodeIdSchema.safeParse(spanPath.startsWith(prefix) && spanPath.endsWith("/prepare")
+          ? spanPath.slice(prefix.length, -"/prepare".length) : undefined);
+        if (!parsedNode.success) throw new Error("timeline-parked-write-node-mismatch");
+        const nodeId = parsedNode.data;
+        const now = this.dependencies.clock.now();
+        repositories.timelineEvents.append({ schemaVersion: 1,
+          eventId: lifecycleCommandId("timeline-lifecycle", commandId),
+          workflow: run.envelope.workflow, scope: { kind: "run", runId: run.envelope.runId },
+          occurredAt: lifecycle.parkedAt, recordedAt: now.toISOString(), retentionDate: localDatePart(now),
+          source: { kind: "native" }, payload: { kind: "write-parked", workflow: run.envelope.workflow,
+            runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+            nodeId, writeIntentId: intent.writeIntentId, generation: intent.generation },
+        });
+        return;
+      }
       const event = operation === "claim-next" && lifecycle.state === "claimed"
         ? { t: "run.claimed", workerId: lifecycle.workerId, claimGeneration: run.claimGeneration }
         : lifecycle.state === "terminal"

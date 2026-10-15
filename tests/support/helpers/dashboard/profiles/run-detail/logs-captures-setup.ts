@@ -1,3 +1,4 @@
+import { traceOf } from "../../../../fixtures/dashboard/fixture-identity.js";
 import { sectionResponse } from "../../../../fixtures/dashboard/run-detail/section-wire.js";
 import { NotePageSchema } from "../../../../../../src/models/dashboard/run-detail.js";
 import type * as FixtureIdentityTypes from "../../../../fixtures/dashboard/fixture-identity.js";
@@ -18,9 +19,13 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
   function notePageOf(seed: number, notes: readonly NoteSeed[]) {
     const rows = notes.map((note, index) => ({
       kind: "note" as const,
+      native: { eventId: uuidOf(seed * 1000 + index + 1), order: index * 2 + 1,
+        runId: uuidOf(seed), attempt: 1, traceId: traceOf(seed), spanPath: traceOf(seed) },
       logId: uuidOf(seed * 1000 + index + 1),
       sequence: index,
       note: {
+        native: { eventId: uuidOf(seed * 1000 + index + 1), order: index * 2 + 1,
+          runId: uuidOf(seed), attempt: 1, traceId: traceOf(seed), spanPath: traceOf(seed) },
         noteId: uuidOf(seed * 1000 + index + 1),
         runId: uuidOf(seed),
         sequence: index,
