@@ -34,7 +34,7 @@ it("retains an unknown envelope across loaded-tree unmount and client replacemen
     const value = useMemo<DashboardCommandBinding>(() => {
       const epoch = { client: current, bootstrap: FIXTURE_BOOTSTRAP }, dayRequest = {};
       const authority = { epoch, catalog: [], nowIso: FIXTURE_BOOTSTRAP.serverClock.now, today: FIXTURE_DAY_WIRE.day, day: FIXTURE_DAY_WIRE.day,
-        dayState: { request: dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" as const }, refresh: () => undefined }, selection: { route: { start: false }, workflowId: "" } };
+        dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" as const }, refresh: () => undefined }, selection: { route: { start: false }, workflowId: "" } };
       return { authority, executor, scope: { actorId: "local-operator", client: current, authority: epoch, dayRequest }, feedback: outcome => feedback.push(outcome) };
     }, [current, executor]);
     return createElement(DashboardCommandBindingProvider, { binding: value, children });

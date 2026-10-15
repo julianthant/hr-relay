@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ArtifactIdSchema, FingerprintSchema, NoteIdSchema, ProjectionCursorSchema, ReviewRecordIdSchema, RunIdSchema } from "../../rules/identity/ids.js";
+import { ActorIdSchema, LocalDateSchema, ArtifactIdSchema, FingerprintSchema, NoteIdSchema, ProjectionCursorSchema, ReviewRecordIdSchema, RunIdSchema } from "../../rules/identity/ids.js";
 import { ArtifactResourceWireSchema } from "./artifacts.js";
 import { DashboardWireVersionSchema, ProjectionGenerationSchema, RecordRevisionSchema, RowRevisionSchema } from "./primitives.js";
-import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "./projection.js";
+import { DashboardDayWireSchema, NotificationWireSchema, QueueSurfaceWireSchema } from "./projection.js";
 import {
   NotePageSchema,
   NoteWireSchema,
@@ -139,8 +139,27 @@ const PatchEnvelopeSchemas = [
   z.strictObject({ type: z.literal("patch"), topic: z.literal("artifact"), cursor: ProjectionCursorSchema, payload: ArtifactReplacementPatchSchema }),
 ] as const;
 
+export const NotificationPublicationWireSchema = z.strictObject({
+  sourceId: FingerprintSchema,
+  actorId: ActorIdSchema,
+  durable: z.enum(["created", "folded"]),
+  notification: NotificationWireSchema,
+}).superRefine((publication, context) => {
+  if (publication.actorId !== publication.notification.actorId) context.addIssue({ code: "custom", path: ["actorId"], message: "notification publication actor must match its row" });
+});
+export type NotificationPublicationWire = z.infer<typeof NotificationPublicationWireSchema>;
+
+const NotificationPublicationEnvelopeSchema = z.strictObject({
+  type: z.literal("notification-publication"),
+  day: LocalDateSchema,
+  descriptorHash: FingerprintSchema,
+  projectionGeneration: ProjectionGenerationSchema,
+  publication: NotificationPublicationWireSchema,
+});
+
 export const DashboardStreamEnvelopeSchema = z.union([
   HelloEnvelopeSchema,
+  NotificationPublicationEnvelopeSchema,
   ...SnapshotEnvelopeSchemas,
   ...PatchEnvelopeSchemas,
   ResetRequiredEnvelopeSchema,

@@ -5,6 +5,7 @@ import { describe,it } from "vitest";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { subscribeDashboardDay,type SubscriptionState } from "../../../../src/dashboard/client/subscriptions/subscription.js";
 import type { DashboardTransport,SseMessage,StreamHandle } from "../../../../src/dashboard/client/transport.js";
+import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../../src/models/dashboard/subscription.js";
 import { type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 
 const DAY = "2026-08-03";
@@ -78,7 +79,7 @@ interface Harness {
   close(): void;
 }
 
-function subscribe(): Harness {
+function subscribe(onPublication?: (publication: NotificationPublicationWire) => void): Harness {
   const streams: FakeStream[] = [];
   const days: DashboardDayWire[] = [];
   const states: SubscriptionState[] = [];
@@ -127,6 +128,7 @@ function subscribe(): Harness {
   const subscription = subscribeDashboardDay({
     transport,
     day: DAY,
+    ...(onPublication === undefined ? {} : { publications: { actorId: "local-operator", onPublication } }),
     onDay: (day) => days.push(day),
     onState: (state) => states.push(state),
     schedule: (delayMs, run) => {
@@ -467,4 +469,57 @@ it("resets a high cursor on same-generation descriptor replacement and publishes
   assert.equal(h.streams[2].lastEventId, "pc:1");
   assert.equal(h.streams[2].lastProjectionGeneration, 7);
   h.close();
+});
+
+function publicationEnvelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { type: "notification-publication", day: DAY, descriptorHash: HASH_D, projectionGeneration: 7,
+    publication: { sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: {
+      kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1,
+      publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
+      occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" },
+    } }, ...overrides };
+}
+function startPublications(onPublication: (publication: NotificationPublicationWire) => void): Harness {
+  const h = subscribe(onPublication);
+  h.streams[0].push(hello("pc:1"));
+  h.streams[0].push(snapshotEnvelope("pc:1", []));
+  h.streams[0].push({ type: "health", state: "live" });
+  return h;
+}
+describe("committed publication transport", () => {
+  it("delivers explicit publications once without deriving them from baseline or resnapshots", () => {
+    const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+    assert.equal(publications.length, 0);
+    h.streams[0].push(publicationEnvelope()); h.streams[0].push(publicationEnvelope());
+    assert.equal(publications.length, 1);
+    h.streams[0].push(snapshotEnvelope("pc:1", []));
+    assert.equal(publications.length, 1);
+    h.close();
+  });
+  it("ignores superseded and closed stream callbacks and does not toast reconnect snapshots", async () => {
+    const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+    h.streams[0].eof(); await tick(); h.runScheduled();
+    h.streams[0].push(publicationEnvelope());
+    assert.equal(publications.length, 0);
+    h.streams[1].push(hello("pc:1")); h.streams[1].push(snapshotEnvelope("pc:1", [])); h.streams[1].push({ type: "health", state: "live" });
+    assert.equal(publications.length, 0);
+    h.streams[1].push(publicationEnvelope());
+    assert.equal(publications.length, 1);
+    h.streams[0].eof(); await tick(); assert.equal(h.streams.length, 2);
+    h.close(); h.streams[1].push(publicationEnvelope()); assert.equal(publications.length, 1);
+  });
+  it("refuses wrong day, descriptor, generation and actor, and requires the handshake baseline", () => {
+    const publication = NotificationPublicationWireSchema.parse(publicationEnvelope().publication);
+    for (const overrides of [{ day: "2026-08-02" }, { descriptorHash: "c".repeat(64) }, { projectionGeneration: 8 },
+      { publication: { ...publication, actorId: "other-operator" } },
+      { publication: { ...publication, actorId: "other-operator", notification: { ...publication.notification, actorId: "other-operator" } } }]) {
+      const publications: NotificationPublicationWire[] = [], h = startPublications(value => publications.push(value));
+      h.streams[0].push(publicationEnvelope(overrides));
+      assert.equal(publications.length, 0);
+      assert.equal(h.states.at(-1)?.state, "stopped"); h.close();
+    }
+    const h = subscribe(() => { throw new Error("baseline publication was delivered"); });
+    h.streams[0].push(hello("pc:1")); h.streams[0].push(publicationEnvelope());
+    assert.equal(h.states.at(-1)?.state, "stopped"); h.close();
+  });
 });

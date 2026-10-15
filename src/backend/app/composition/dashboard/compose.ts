@@ -576,7 +576,7 @@ async function composeDashboardRuntimeStartup(
       spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
     },
   });
-  const { backfillGapNotifier, observer: notificationObserver } = createTrustNotifications({
+  const { backfillGapNotifier, inbox: notificationInbox, observer: notificationObserver } = createTrustNotifications({
     admission, database, clock, ids, reader: lifecycle, stateRoot,
   });
   startupCleanups.push(() => notificationObserver.stop());
@@ -773,6 +773,13 @@ async function composeDashboardRuntimeStartup(
 
   const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
+    notificationPublications: { subscribe: notificationInbox.onPublication, project: publication => database.withAuthorityReadSnapshot(() => ({
+      sourceId: FingerprintSchema.parse(publication.sourceId), actorId: publication.notification.actorId, durable: publication.durable,
+      notification: notificationWireOf(publication.notification, clock.nowMs(), notificationDisplayContext(publication.notification, {
+        read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
+        checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
+      }), notificationSourceEventOf(publication.notification, { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, adopted: false, event: publication.event })),
+    })) },
     preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
   });
   const { hub } = shell;

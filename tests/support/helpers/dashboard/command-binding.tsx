@@ -23,7 +23,7 @@ export function FixtureCommandBinding({ children, actorId, requestKey = 0, nowIs
     const request = Object.freeze({ client, day, epoch, revision: requestKey });
     const authority: DashboardAuthority = Object.freeze({ epoch, catalog: [], nowIso: bootstrap.serverClock.now,
       today: day, day,
-      dayState: { request, day: { state: "loaded" as const, value: dayWire }, connection: { state: "connecting" as const }, refresh: () => { throw new Error("fixture day refresh is not served"); } },
+      dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request, day: { state: "loaded" as const, value: dayWire }, connection: { state: "connecting" as const }, refresh: () => { throw new Error("fixture day refresh is not served"); } },
       selection: { route: { start: false }, workflowId: "" },
     });
     return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: scopeActorId, client, authority: epoch, dayRequest: request }), feedback: () => undefined });
