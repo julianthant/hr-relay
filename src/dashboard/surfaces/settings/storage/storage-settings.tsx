@@ -1,9 +1,9 @@
 import { SkeletonText } from "../../shared/loading/loading.js";
 import { ShieldAlert } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import type { StorageDoctorWire } from "../../../../models/dashboard/storage.js";
 import { Badge, Banner, BodySection, Button, Disclosure, FormGroup, PageHeading, ResultRow, StatusDot, dsIcon } from "../../../ds/ui.js";
-import { useStorageClient } from "./storage-client.js";
+import { useStorageDoctor } from "./storage-settings-model.js";
 import { fmtClock, fmtInstantDay } from "../../shared/status/format.js";
 import type { StorageHealthSummary } from "./storage-settings-model.js";
 import "../../shared/run-evidence/diagnostic-presentation.css";
@@ -24,12 +24,6 @@ export function StorageBanner({ storage, onOpenSettings }: {
   </Banner>;
 }
 
-type DoctorState =
-  | { state: "idle"; report?: undefined }
-  | { state: "reading" }
-  | { state: "running"; report?: StorageDoctorWire }
-  | { state: "loaded"; report: StorageDoctorWire }
-  | { state: "failed"; message: string; report?: StorageDoctorWire };
 type CheckTone = "pass" | "attention" | "unavailable" | "neutral";
 interface CheckResult { tone: CheckTone; value: string; summary?: string; overview?: ReactNode; evidence?: string; detail?: string }
 const NOT_CHECKED: CheckResult = { tone: "neutral", value: "Not checked" };
@@ -124,16 +118,7 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
 }
 
 export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
-  const client = useStorageClient();
-  const [doctor, setDoctor] = useState<DoctorState>({ state: "reading" });
-  useEffect(() => {
-    let active = true;
-    client.latestStorageDoctor().then(
-      latest => { if (active) setDoctor(latest.state === "completed" ? { state: "loaded", report: latest.report } : { state: "idle" }); },
-      (caught: unknown) => { if (active) setDoctor({ state: "failed", message: caught instanceof Error ? caught.message : String(caught) }); },
-    );
-    return () => { active = false; };
-  }, [client]);
+  const { doctor, runDoctor } = useStorageDoctor();
   const report = doctor.state === "reading" ? undefined : doctor.report;
   const authority = storage.authority === "healthy" && report?.authority.state !== "degraded" ? "healthy" : "unavailable";
   const checks = [
@@ -141,14 +126,6 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
     { name: "Recovery", description: "Unfinished storage operations.", result: recoveryResult(report) },
     { name: "Storage updates", description: "History of changes to saved data.", result: upgradeResult(report) },
   ];
-  const runDoctor = (): void => {
-    setDoctor(previous => ({ state: "running", report: previous.state === "reading" ? undefined : previous.report }));
-    client.storageDoctor().then(
-      (next) => setDoctor({ state: "loaded", report: next }),
-      (caught: unknown) => setDoctor(previous => ({ state: "failed", report: previous.state === "reading" ? undefined : previous.report,
-        message: caught instanceof Error ? caught.message : String(caught) })),
-    );
-  };
   return <section className="diagnostics-page ds-body-stack" aria-label="Storage checks" aria-busy={doctor.state === "reading" || undefined}>
     <PageHeading title="Storage checks" description="Check saved data." className="settings-heading-actions" actions={
       <Button onClick={runDoctor} disabled={doctor.state === "running" || doctor.state === "reading"}>

@@ -117,3 +117,34 @@ it("overlapping refreshes retain the original unavailable reason and discard lat
   first.resolve(response({ state: "present", report })); await older;
   assert.deepEqual(resource.snapshot(), { state: "unavailable", reason: "New read failed", lastCompleted: report });
 });
+
+it("returning to an earlier identity creates a new incarnation and cannot revive a pending report", async () => {
+  const pending = Promise.withResolvers<PreflightReadinessWire>();
+  const client = { readPreflight: () => pending.promise } as never;
+  const first = preflightReadinessResource(client, identity);
+  const read = first.read();
+  preflightReadinessResource(client, { ...identity, actorId: "another-operator" });
+  const returned = preflightReadinessResource(client, identity);
+  assert.notEqual(returned, first);
+  pending.resolve({ state: "present", report });
+  await read;
+  assert.equal(returned.snapshot().state, "idle");
+});
+
+it("refuses mismatched selected rerun targets without dispatch and stops invalidated readback", async () => {
+  let commands = 0, reads = 0;
+  const pending = Promise.withResolvers<never>();
+  const client = { rerunPreflight: () => { commands++; return pending.promise; }, readPreflight: () => { reads++; return Promise.resolve({ state: "present", report }); } } as never;
+  const scoped = createPreflightReadinessResource(client, { ...identity, selection: { workflowId: "person-lookup" as never } });
+  await scoped.rerun(command);
+  assert.equal(commands, 0);
+  assert.equal(scoped.snapshot().state, "unavailable");
+  const resource = createPreflightReadinessResource(client, identity);
+  const rerun = resource.rerun(command);
+  resource.invalidate();
+  pending.resolve(undefined as never);
+  await rerun;
+  assert.equal(commands, 1);
+  assert.equal(reads, 0);
+  assert.equal(resource.snapshot().state, "unavailable");
+});
