@@ -205,7 +205,12 @@ export function appendLogPage(page: NotePage, requestedCursor: string, next: Not
   if (confirmedActions !== undefined && new Set(confirmedActions.map(action => action.eventId)).size !== confirmedActions.length) {
     throw new Error("log-confirmed-action-duplicate");
   }
-  return { runId: page.runId, rows, notes, ...(confirmedActions === undefined ? {} : { confirmedActions }), nextCursor: next.nextCursor, ...(operationStructure === undefined ? {} : { operationStructure }) };
+  const confirmedActionBindings = page.confirmedActionBindings === undefined || next.confirmedActionBindings === undefined
+    ? undefined : [...page.confirmedActionBindings, ...next.confirmedActionBindings];
+  if (confirmedActionBindings !== undefined && new Set(confirmedActionBindings.map(binding => binding.eventId)).size !== confirmedActionBindings.length) {
+    throw new Error("log-confirmed-action-binding-duplicate");
+  }
+  return { runId: page.runId, rows, notes, ...(confirmedActionBindings === undefined ? {} : { confirmedActionBindings }), ...(confirmedActions === undefined ? {} : { confirmedActions }), nextCursor: next.nextCursor, ...(operationStructure === undefined ? {} : { operationStructure }) };
 }
 
 export interface LogPagesState {

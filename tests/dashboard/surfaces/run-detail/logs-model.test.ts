@@ -14,6 +14,20 @@ const observation = (sequence: number) => OperationActionObservationWireSchema.p
 });
 
 describe("shared operation structure model", () => {
+  it("preserves exact confirmation bindings across pages and refuses duplicate publication identities", () => {
+    const cursor = `lc:${"a".repeat(64)}:1`;
+    const page = (sequence: number, next?: string) => NotePageSchema.parse({ runId, rows: [], notes: [],
+      confirmedActions: [], confirmedActionBindings: [{ eventId: `stream/${sequence}`, logId: observation(1).logId,
+        native: { eventId: observation(sequence).logId, order: sequence, runId, attempt: 1,
+          traceId: "pl-100000-0001", spanPath: "confirmed/first", nodeId: "first" } }],
+      nextCursor: next === undefined ? { state: "absent", reason: "end-of-page" } : { state: "present", value: next } });
+    const first = page(1, cursor), second = page(2);
+    assert.deepEqual(appendLogPage(first, cursor, second).confirmedActionBindings,
+      [...(first.confirmedActionBindings ?? []), ...(second.confirmedActionBindings ?? [])]);
+    assert.equal(appendLogPage(first, cursor, { ...second, confirmedActionBindings: undefined }).confirmedActionBindings, undefined);
+    assert.throws(() => appendLogPage(first, cursor, { ...second, confirmedActionBindings: first.confirmedActionBindings }), /binding-duplicate/);
+  });
+
   it("appends frozen observations with the exact ledger sequence and refuses a changed definition", () => {
     const page = (sequence: number, cursor?: string) => NotePageSchema.parse({ runId, rows: [], notes: [], operationStructure: { state: "observed", runId, definition, observations: [observation(sequence)] }, nextCursor: cursor === undefined ? { state: "absent", reason: "end-of-page" } : { state: "present", value: cursor } });
     const cursor = `lc:${"a".repeat(64)}:1`;

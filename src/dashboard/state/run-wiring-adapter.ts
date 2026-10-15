@@ -12,12 +12,21 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatal
 import { DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
-import type { IdentityGateDetailWire, RunDetailSectionResponse, RunDetailWire } from "../../models/dashboard/run-detail.js";
+import type { ConfirmedActionBindingWire, NativeRunEventWire, IdentityGateDetailWire, RunDetailSectionResponse, RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { appendLogPage, logPillsOf, logRowsOf, type NotePage } from "../surfaces/run-detail/logs-model.js";
 import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/logs/log-feed-model.js";
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
+
+class RunLogIdentityError extends Error {
+  readonly code = "LOGS_IDENTITY_REFUSED";
+}
+
+function requireNative(value: NativeRunEventWire | undefined): NativeRunEventWire {
+  if (value === undefined) throw new RunLogIdentityError("RUN_LOG_NATIVE_IDENTITY_MISSING");
+  return value;
+}
 
 type RunReads = Pick<DashboardClient, "runDetail" | "runSection">;
 export interface RunLogSnapshot {
@@ -25,6 +34,7 @@ export interface RunLogSnapshot {
   readonly logs: NotePage;
   readonly sections: readonly RunDetailSectionResponse[];
   readonly actionEvidence: Readonly<{ state: "available" | "unavailable"; events: readonly ConfirmedActionEvent[]; missingPages: readonly string[] }>;
+  readonly confirmedActionBindings?: readonly ConfirmedActionBindingWire[];
   readonly unavailableEvidence: readonly string[];
 }
 
@@ -32,34 +42,36 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   const { row } = selection;
   const detail = await client.runDetail(row.runId, signal);
   if (detail.runId !== row.runId || detail.rowRevision !== row.rowRevision || detail.header.traceId !== row.traceId
-    || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new Error("RUN_DETAIL_IDENTITY_MISMATCH");
+    || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
   signal.throwIfAborted();
-  if (!detail.availableSections.includes("logs")) throw new Error("RUN_LOGS_UNAVAILABLE");
+  if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
   const section = await client.runSection(row.runId, "logs", undefined, signal);
-  if (section.section !== "logs" || section.payload.runId !== row.runId) throw new Error("RUN_SECTION_IDENTITY_MISMATCH");
+  if (section.section !== "logs" || section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
   let logs = section.payload;
   logRowsOf(logs, "initial");
   const missingPages: string[] = logs.confirmedActions === undefined ? ["initial"] : [];
   const actions: ConfirmedActionEvent[] = logs.confirmedActions === undefined ? [] : [...logs.confirmedActions];
+  const confirmedActionBindings = [...(logs.confirmedActionBindings ?? [])];
   const cursors = new Set<string>();
   while (logs.nextCursor.state === "present") {
     signal.throwIfAborted();
     const cursor = logs.nextCursor.value;
-    if (cursors.has(cursor)) throw new Error("RUN_LOG_CURSOR_REPEATED");
+    if (cursors.has(cursor)) throw new RunLogIdentityError("RUN_LOG_CURSOR_REPEATED");
     cursors.add(cursor);
     const next = await client.runSection(row.runId, "logs", cursor, signal);
-    if (next.section !== "logs") throw new Error("RUN_SECTION_IDENTITY_MISMATCH");
+    if (next.section !== "logs") throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
     if (next.payload.confirmedActions === undefined) missingPages.push(cursor);
     else actions.push(...next.payload.confirmedActions);
+    confirmedActionBindings.push(...(next.payload.confirmedActionBindings ?? []));
     logs = appendLogPage(logs, cursor, next.payload);
   }
   if (actions.some(event => event.action.runId !== row.runId
-    || event.action.attempt > row.attempt || event.traceId !== row.traceId)) throw new Error("RUN_LOG_ACTION_IDENTITY_MISMATCH");
-  if (detail.captures !== undefined && detail.captures.state !== "error" && ((detail.captures.state === "available") !== detail.availableSections.includes("captures"))) throw new Error("RUN_CAPTURE_CAPABILITY_MISMATCH");
-  if (new Set(actions.map(event => event.eventId)).size !== actions.length) throw new Error("RUN_LOG_ACTION_DUPLICATE");
-  if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new Error("RUN_LOG_ROW_IDENTITY_MISMATCH");
+    || event.action.attempt > row.attempt || event.traceId !== row.traceId)) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
+  if (detail.captures !== undefined && detail.captures.state !== "error" && ((detail.captures.state === "available") !== detail.availableSections.includes("captures"))) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
+  if (new Set(actions.map(event => event.eventId)).size !== actions.length) throw new RunLogIdentityError("RUN_LOG_ACTION_DUPLICATE");
+  if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
   if (logs.operationStructure?.state === "observed" && logs.operationStructure.observations.some(observation =>
-    observation.occurrence.runId !== row.runId || observation.occurrence.attempt > row.attempt)) throw new Error("RUN_LOG_ACTION_IDENTITY_MISMATCH");
+    observation.occurrence.runId !== row.runId || observation.occurrence.attempt > row.attempt)) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
   signal.throwIfAborted();
   const unavailableEvidence: string[] = [];
   if (missingPages.length > 0) unavailableEvidence.push("Confirmed actions unavailable on one or more pages");
@@ -70,18 +82,114 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
     .map(name => client.runSection(row.runId, name, undefined, signal)));
   for (const section of sections) {
     if (section.section === "captures" && (detail.captures?.state !== "available"
-      || detail.captures.artifactCount !== section.payload.artifacts.length)) throw new Error("RUN_CAPTURE_CAPABILITY_MISMATCH");
+      || detail.captures.artifactCount !== section.payload.artifacts.length)) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
     if (section.section === "identity-gate" && section.payload.state === "available"
       && (section.payload.value.expectedVersion !== row.rowRevision || detail.gate.state !== "open"
-        || (detail.gate.nodeId !== undefined && detail.gate.nodeId !== section.payload.value.gateId))) throw new Error("RUN_GATE_IDENTITY_MISMATCH");
+        || (detail.gate.nodeId !== undefined && detail.gate.nodeId !== section.payload.value.gateId))) throw new RunLogIdentityError("RUN_GATE_IDENTITY_MISMATCH");
     if (section.section === "failure" && section.payload.state === "available" && (section.payload.value.attempt !== row.attempt
-      || section.payload.value.traceId !== row.traceId || section.payload.value.workflowId !== row.workflowId)) throw new Error("RUN_FAILURE_IDENTITY_MISMATCH");
-    if (section.section === "parked-write" && section.payload.runAttempt !== row.attempt) throw new Error("RUN_WRITE_IDENTITY_MISMATCH");
+      || section.payload.value.traceId !== row.traceId || section.payload.value.workflowId !== row.workflowId)) throw new RunLogIdentityError("RUN_FAILURE_IDENTITY_MISMATCH");
+    if (section.section === "parked-write" && section.payload.runAttempt !== row.attempt) throw new RunLogIdentityError("RUN_WRITE_IDENTITY_MISMATCH");
   }
   if (sections.some(section => section.section === "identity-gate" && section.payload.state === "available") && detail.gate.state === "open" && detail.gate.nodeId === undefined) {
     unavailableEvidence.push("Identity decision join not supplied");
   }
-  return { detail, logs, sections, actionEvidence: { state: missingPages.length === 0 ? "available" : "unavailable", events: actions, missingPages }, unavailableEvidence };
+  const snapshot: RunLogSnapshot = { detail, logs, sections, confirmedActionBindings, actionEvidence: { state: missingPages.length === 0 ? "available" : "unavailable", events: actions, missingPages }, unavailableEvidence };
+  validateRunLogSnapshot(snapshot);
+  return snapshot;
+}
+
+function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
+  const { detail, logs } = snapshot;
+  if (logs.runId !== detail.runId) throw new RunLogIdentityError("RUN_LOG_NATIVE_IDENTITY_MISMATCH");
+  const native = (value: NativeRunEventWire | undefined): NativeRunEventWire => {
+    if (value === undefined || value.runId !== detail.runId || value.traceId !== detail.header.traceId
+      || value.attempt > detail.header.attempt) throw new RunLogIdentityError("RUN_LOG_NATIVE_IDENTITY_MISMATCH");
+    return value;
+  };
+  const rows = logRowsOf(logs, "native-identity");
+  const rowIds = new Set(rows.map(row => row.logId));
+  const eventIds = new Set<string>();
+  const orders = new Set<number>();
+  for (const row of rows) {
+    const identity = native(row.native);
+    if (identity.spanPath === undefined) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
+    if (eventIds.has(identity.eventId) || orders.has(identity.order)) throw new RunLogIdentityError("RUN_LOG_NATIVE_IDENTITY_DUPLICATE");
+    eventIds.add(identity.eventId); orders.add(identity.order);
+    if (row.kind === "note") {
+      if (row.note.runId !== detail.runId) throw new RunLogIdentityError("RUN_LOG_NOTE_IDENTITY_MISMATCH");
+      if (row.note.native === undefined || canonicalJsonStringify(row.note.native) !== canonicalJsonStringify(identity)) throw new RunLogIdentityError("RUN_LOG_NOTE_IDENTITY_MISMATCH");
+    } else if (row.attempt !== identity.attempt || row.traceId !== identity.traceId
+      || row.spanPath !== identity.spanPath || row.producer.nodeId !== identity.nodeId) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
+  }
+  if (rowIds.size !== rows.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
+  const categories = detail.timeline.steps;
+  if (categories === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
+  const keys = new Set<string>();
+  const nodes = new Map<string, string>();
+  for (const category of categories) {
+    if (category.key === undefined || keys.has(category.key)) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISMATCH");
+    keys.add(category.key);
+    for (const member of category.members) {
+      if (member.nodeId === undefined || member.categoryKey !== category.key || nodes.has(member.nodeId)) throw new RunLogIdentityError("RUN_LOG_CATEGORY_MEMBER_IDENTITY_MISMATCH");
+      nodes.set(member.nodeId, category.key);
+    }
+  }
+  for (const event of detail.timeline.events) {
+    const identity = native(event.native);
+    if (identity.nodeId === undefined || event.categoryKey !== nodes.get(identity.nodeId)
+      || event.categoryKey === undefined || eventIds.has(identity.eventId) || orders.has(identity.order)) throw new RunLogIdentityError("RUN_LOG_TIMELINE_IDENTITY_MISMATCH");
+    eventIds.add(identity.eventId); orders.add(identity.order);
+  }
+  for (const row of rows) if (row.native?.nodeId !== undefined && !nodes.has(row.native.nodeId)) throw new RunLogIdentityError("RUN_LOG_NODE_CATEGORY_MISSING");
+  const bindings = snapshot.confirmedActionBindings ?? [];
+  const actions = snapshot.actionEvidence.events;
+  if (bindings.length !== actions.length || new Set(actions.map(event => event.eventId)).size !== actions.length
+    || new Set(bindings.map(binding => binding.native.eventId)).size !== bindings.length
+    || new Set(bindings.map(binding => binding.eventId)).size !== bindings.length) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISMATCH");
+  for (const event of actions) {
+    if (event.action.runId !== detail.runId || event.action.attempt > detail.header.attempt) throw new RunLogIdentityError("RUN_LOG_ACTION_IDENTITY_MISMATCH");
+    const binding = bindings.find(binding => binding.eventId === event.eventId);
+    if (binding === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISSING");
+    const identity = native(binding.native);
+    const owner = rows.find(row => row.native?.eventId === identity.eventId);
+    const target = rows.find(row => row.logId === binding.logId);
+    const observation = logs.operationStructure?.state === "observed"
+      ? logs.operationStructure.observations.filter(observation => observation.logId === binding.logId) : [];
+    const { value: _value, ...action } = event.action;
+    const targetAction = observation[0]?.occurrence;
+    const { value: _targetValue, ...targetIdentity } = targetAction ?? {};
+    if (owner?.kind !== "note" || target === undefined || observation.length !== 1
+      || canonicalJsonStringify(DeclaredActionIdentitySchema.parse(targetIdentity)) !== canonicalJsonStringify(DeclaredActionIdentitySchema.parse(action))
+      || canonicalJsonStringify(identity) !== canonicalJsonStringify(owner.native)
+      || identity.attempt !== target.native?.attempt || identity.nodeId !== event.action.nodeId
+      || identity.attempt !== event.action.attempt || event.traceId !== identity.traceId
+      || target.native?.nodeId !== event.action.nodeId
+      || target.native?.order === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_TARGET_MISMATCH");
+  }
+  for (const section of snapshot.sections) {
+    const identity = section.section === "parked-write" ? native(section.payload.native)
+      : (section.section === "failure" || section.section === "identity-gate") && section.payload.state === "available"
+        ? native(section.payload.value.native) : undefined;
+    if (identity === undefined) continue;
+    const timelineOwner = detail.timeline.events.find(event => event.native?.eventId === identity.eventId);
+    if (timelineOwner !== undefined) {
+      if (section.section !== "identity-gate" || section.payload.state !== "available"
+        || canonicalJsonStringify(timelineOwner.native) !== canonicalJsonStringify(identity)) {
+        throw new RunLogIdentityError("RUN_LOG_DECISION_IDENTITY_DUPLICATE");
+      }
+    } else {
+      if (eventIds.has(identity.eventId) || orders.has(identity.order)) throw new RunLogIdentityError("RUN_LOG_DECISION_IDENTITY_DUPLICATE");
+      eventIds.add(identity.eventId); orders.add(identity.order);
+    }
+    if (identity.nodeId !== undefined && !nodes.has(identity.nodeId)) throw new RunLogIdentityError("RUN_LOG_NODE_CATEGORY_MISSING");
+    if (section.section === "parked-write" && (section.payload.runId !== identity.runId
+      || section.payload.runAttempt !== identity.attempt || identity.nodeId === undefined)) throw new RunLogIdentityError("RUN_LOG_WRITE_IDENTITY_MISMATCH");
+    if (section.section === "identity-gate" && section.payload.state === "available"
+      && (section.payload.value.runId !== identity.runId || section.payload.value.gateId !== identity.nodeId)) throw new RunLogIdentityError("RUN_LOG_GATE_IDENTITY_MISMATCH");
+    if (section.section === "failure" && section.payload.state === "available"
+      && (section.payload.value.runId !== identity.runId || section.payload.value.attempt !== identity.attempt
+        || section.payload.value.nodeId !== identity.nodeId)) throw new RunLogIdentityError("RUN_LOG_FAILURE_IDENTITY_MISMATCH");
+  }
 }
 
 const TIMELINE_STATE: Record<RunDetailWire["timeline"]["events"][number]["state"], LogTimelineState> = {
@@ -89,7 +197,12 @@ const TIMELINE_STATE: Record<RunDetailWire["timeline"]["events"][number]["state"
 };
 
 export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardClient, "artifactUrl">): Readonly<{ steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] }> {
+  validateRunLogSnapshot(snapshot);
   const { detail, logs, sections } = snapshot;
+  const order = new Map<string, number>();
+  const node = new Map<string, string | undefined>();
+  const bindings = snapshot.confirmedActionBindings ?? [];
+  const confirmationNotes = new Set(bindings.map(binding => binding.native.eventId));
   const confirmedActions = snapshot.actionEvidence.events;
   const captures = sections.find(section => section.section === "captures");
   const screenshotsOf = (logId: string): readonly LogScreenshot[] => {
@@ -106,7 +219,9 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           width: artifact.width, height: artifact.height, label: origin.bundleId }] : []);
     });
   };
-  const steps = logRowsOf(logs, "projection").map((row): LogStep => {
+  const steps = logRowsOf(logs, "projection").filter(row => !confirmationNotes.has(requireNative(row.native).eventId) || bindings.some(binding => binding.logId === row.logId)).map((row): LogStep => {
+    order.set(row.logId, requireNative(row.native).order);
+    node.set(row.logId, requireNative(row.native).nodeId);
     const at = row.kind === "note" ? row.note.at : row.at;
     const time = fmtActionClock(at);
     const screenshots = screenshotsOf(row.logId);
@@ -117,6 +232,14 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     else if (row.kind === "transaction-fenced") entry = { kind: "note", id: row.logId, time, message: "Write fenced; submission is not confirmed." };
     else entry = { kind: "note", id: row.logId, time, message: row.note.message, ...(row.note.level === "error" ? { tone: "danger" } : {}) };
     const entries: LogEntry[] = [entry];
+    for (const binding of bindings.filter(binding => binding.logId === row.logId).toSorted((left, right) => left.native.order - right.native.order)) {
+      const event = confirmedActions.find(event => event.eventId === binding.eventId);
+      if (event === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISSING");
+      const message = event.kind === "fact" ? `${event.meaning} confirmed` : `${event.state}${event.reason === undefined ? "" : ` · ${event.reason}`}`;
+      entries.push({ kind: "note", id: event.eventId,
+        time: fmtActionClock(event.kind === "fact" ? event.confirmedAt : event.occurredAt), message,
+        ...(event.kind === "trace" && event.state === "failed" ? { tone: "danger" } : {}) });
+    }
     if (row.kind !== "observed" && screenshots.length > 0) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
       decision: { title: "Capture", state: "recorded", screenshots } });
     return { id: row.logId, time, title: row.kind === "note" ? "Run note" : row.producer.step,
@@ -125,6 +248,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   for (const section of sections) {
     if (section.section === "parked-write") {
       const write = section.payload;
+      order.set(write.writeIntentId, requireNative(write.native).order); node.set(write.writeIntentId, requireNative(write.native).nodeId);
       steps.push({ id: write.writeIntentId, time: fmtActionClock(write.parkedAt), title: write.taskId, system: write.system,
         entries: [{ kind: "decision", id: write.writeIntentId, time: fmtActionClock(write.parkedAt), decision: { title: "Write parked", state: "parked",
           message: write.parkedMessage, footer: "Resolution unavailable: this panel cannot collect the required write proof." } }] });
@@ -132,6 +256,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const failure = section.payload.value;
       const resolution = resolveErrorCatalogFailure(failure, "http-response");
       const message = resolution.state === "resolved" ? resolution.text : resolution.catalogFault.text;
+      order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
       steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
         entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, caution: `Write state: ${failure.writeState}`,
@@ -139,6 +264,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     } else if (section.section === "identity-gate" && section.payload.state === "available") {
       const gate = section.payload.value;
       const ceremony = identityCeremonyFor(gate, "approved");
+      order.set(gate.gateId, requireNative(gate.native).order); node.set(gate.gateId, requireNative(gate.native).nodeId);
       steps.push({ id: gate.gateId, time: fmtActionClock(gate.parkedAt), title: gate.label,
         entries: [{ kind: "decision", id: gate.gateId, time: fmtActionClock(gate.parkedAt), decision: { title: gate.label, state: "review",
           message: gate.packet.comparisons.map(comparison => comparison.note).join(" "),
@@ -148,24 +274,37 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           footer: "Some resolutions are unavailable: this panel cannot collect typed identity or rejection text.", actions: detail.gate.state === "open" && detail.gate.nodeId === gate.gateId && detail.captures !== undefined && detail.captures.state !== "error" ? gateLogActions(gate) : undefined } }] });
     }
   }
-  for (const event of confirmedActions) {
-    const time = fmtActionClock(event.kind === "fact" ? event.confirmedAt : event.occurredAt);
-    const message = event.kind === "fact" ? `${event.meaning} confirmed` : `${event.state}${event.reason === undefined ? "" : ` · ${event.reason}`}`;
-    steps.push({ id: event.eventId, time, title: event.action.logicalActionId,
-      ...(event.source.kind === "browser" ? { system: event.source.system } : {}),
-      entries: [{ kind: "note", id: event.eventId, time, message, ...(event.kind === "trace" && event.state === "failed" ? { tone: "danger" } : {}) }] });
-  }
+  const decisionEvents = new Set(sections.flatMap(section => section.section === "identity-gate" && section.payload.state === "available"
+    ? [requireNative(section.payload.value.native).eventId] : []));
   for (const event of detail.timeline.events) {
+    if (decisionEvents.has(requireNative(event.native).eventId)) continue;
     const time = fmtActionClock(event.at);
+    order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
     steps.push({ id: event.noteId, time, title: event.label, entries: [{ kind: "note", id: event.noteId, time,
       message: `${event.state}${event.notRun.state === "present" ? ` · ${event.notRun.reason}` : ""}` }] });
   }
-  const timeline: LogTimelineStage[] = detail.timeline.events.map(event => ({ id: event.noteId, label: event.label,
-    state: TIMELINE_STATE[event.state], time: fmtActionClock(event.at), stepId: event.noteId,
-    ...(event.durationMs?.state === "present" ? { durationLabel: fmtElapsed(event.durationMs.ms / 1000) } : {}), substeps: [] }));
-  for (const event of confirmedActions) timeline.push({ id: event.eventId, label: event.action.logicalActionId,
-    state: event.kind === "fact" || event.state === "completed" ? "completed" : event.state === "failed" ? "failed" : event.state === "not-run" ? "skipped" : "active",
-    time: fmtActionClock(event.occurredAt), stepId: event.eventId, substeps: [] });
+  if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
+  const orderOf = (id: string): number => {
+    const value = order.get(id);
+    if (value === undefined) throw new RunLogIdentityError("RUN_LOG_NATIVE_IDENTITY_MISSING");
+    return value;
+  };
+  steps.sort((left, right) => orderOf(left.id) - orderOf(right.id));
+  const categories = detail.timeline.steps;
+  if (categories === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
+  const timeline: LogTimelineStage[] = categories.map(category => {
+    const members = new Set<string | undefined>(category.members.map(member => member.nodeId));
+    const first = steps.find(step => members.has(node.get(step.id)));
+    if (category.key === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
+    return { id: category.key, label: category.label, state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
+      ...(first === undefined ? {} : { stepId: first.id, time: first.time }),
+      ...(category.durationSec === undefined ? {} : { durationLabel: fmtElapsed(category.durationSec) }),
+      substeps: category.members.map(member => {
+        if (member.nodeId === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_MEMBER_IDENTITY_MISMATCH");
+        return { id: member.nodeId, label: member.label,
+        state: member.state === "replayed" ? "completed" : TIMELINE_STATE[member.state],
+        ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
+  });
   return { steps, timeline };
 }
 
@@ -221,7 +360,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (active.current === request && !controller.signal.aborted) setSettled({ request, value: { state: "loaded", snapshot } });
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
-      const error = cause instanceof DashboardClientError && cause.kind !== "schema"
+      const error = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED")
+        ? formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text
+        : cause instanceof DashboardClientError && cause.kind !== "schema"
         ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
       setSettled(current => ({ request, value: { state: "failed", error, diagnostic: cause,
