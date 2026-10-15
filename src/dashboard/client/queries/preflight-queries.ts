@@ -5,6 +5,7 @@ PreflightRerunCommandRequestSchema,
 PreflightReadinessWireSchema, PreflightSelectionSchema, type PreflightSelection, type PreflightReadinessWire,
 PreflightRerunCommandResultWireSchema,
 } from "../../../models/preflight/preflight-contract.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { DashboardClientError } from "../errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "../transport.js";
@@ -43,7 +44,7 @@ export function createPreflightQueries(transport: DashboardTransport): Preflight
     async rerunPreflight(request: unknown): Promise<PreflightRerunCommandResult> {
       try {
       const command = PreflightRerunCommandRequestSchema.parse(request);
-      return parseOrThrow(
+      const result = parseOrThrow(
         PreflightRerunCommandResultWireSchema,
         "POST /api/v1/preflight/rerun",
         await transport.requestJson("/api/v1/preflight/rerun", {
@@ -51,6 +52,14 @@ export function createPreflightQueries(transport: DashboardTransport): Preflight
           body: JSON.stringify(command),
         }),
       );
-      } catch { throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_RERUN_UNAVAILABLE", message: "Preflight re-check could not be completed or verified. Read current readiness before retrying." }); }
+      if (result.commandId !== command.commandId || result.report.configFingerprint !== command.target.expectedConfigFingerprint
+        || result.report.descriptorFingerprint !== command.target.expectedDescriptorFingerprint) {
+        throw new DashboardClientError({ kind: "schema", code: "COMMAND_RESULT_IDENTITY_MISMATCH",
+          message: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_RESULT_IDENTITY_MISMATCH", {})).text });
+      }
+      return result;
+      } catch (error) {
+        if (error instanceof DashboardClientError && error.code === "COMMAND_RESULT_IDENTITY_MISMATCH") throw error;
+        throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_RERUN_UNAVAILABLE", message: "Preflight re-check could not be completed or verified. Read current readiness before retrying." }); }
     }
 }); }

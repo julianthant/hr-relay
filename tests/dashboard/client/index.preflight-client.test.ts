@@ -120,3 +120,12 @@ describe("preflight rerun dashboard client", () => {
     }, /omitted blocked capability dashboard\.serve/);
   });
 });
+
+it("rejects another command or report identity before readback can certify readiness", async () => {
+  for (const body of [
+    { ...RESULT, commandId: "00000000-0000-4000-8000-000000000002" },
+    { ...RESULT, report: { ...REPORT, configFingerprint: "f".repeat(64) } },
+    { ...RESULT, report: { ...REPORT, descriptorFingerprint: "f".repeat(64) } },
+  ]) await assert.rejects(clientFor(body).rerunPreflight(COMMAND), (error: unknown) => error instanceof DashboardClientError
+    && error.code === "COMMAND_RESULT_IDENTITY_MISMATCH");
+});

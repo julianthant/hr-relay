@@ -1,18 +1,24 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act,createElement } from "react";
+import { act,createElement,useMemo,type ReactNode } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,it,vi } from "vitest";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
+import { DashboardClientProvider, DashboardCommandBindingProvider, useDashboardCommandExecutor } from "../../../../../src/dashboard/state/client-context.js";
 import { PreflightActionsProvider } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 import { projectPreflight,useSettingsPreflight } from "../../../../../src/dashboard/surfaces/settings/preflight/settings-preflight-model.js";
 import { PreflightReportContent } from "../../../../../src/dashboard/surfaces/settings/preflight/settings-preflight.js";
+import { useDoctorPreflight } from "../../../../../src/dashboard/surfaces/shell/preflight-popover-model.js";
 import { preflightVerdict } from "../../../../../src/dashboard/surfaces/shell/preflight-popover-model.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
 import { createPreflightHarness } from "../../../../support/fixtures/preflight-seams.js";
+
+import type { DashboardCommandBinding } from "../../../../../src/dashboard/app/dashboard-app-model.js";
+import { FIXTURE_BOOTSTRAP } from "../../../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { FIXTURE_DAY_WIRE } from "../../../../support/fixtures/dashboard/fixture-queue.js";
+import { ViewNavigationContext } from "../../../../../src/dashboard/app/navigation/view-route-model.js";
 
 Reflect.set(globalThis,"IS_REACT_ACT_ENVIRONMENT",true);
 const now = new Date("2026-09-19T12:00:00.000Z");
@@ -105,4 +111,141 @@ it("restart-required settings refuse without rerunning an obsolete identity",asy
   host=document.createElement("div");document.body.append(host);
   await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(Subscriber)}));});
   assert.match(host.textContent??"",/restart required/u);await act(async()=>host?.querySelector("button")?.click());assert.equal(reads,1);assert.equal(reruns,0);
+});
+
+function Bound({ client, actorId, nowIso, children }: { client: DashboardClient; actorId: string; nowIso: string; children: ReactNode }) {
+  const executor = useDashboardCommandExecutor();
+  const epoch = useMemo(() => ({ client, actorId, bootstrap: FIXTURE_BOOTSTRAP }), [client, actorId]);
+  const dayRequest = useMemo(() => ({}), [epoch]);
+  const binding: DashboardCommandBinding = { executor, feedback() {},
+    scope: { actorId, client, authority: epoch, dayRequest },
+    authority: { epoch, catalog: [], nowIso, today: FIXTURE_DAY_WIRE.day, day: FIXTURE_DAY_WIRE.day,
+      dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" }, refresh() {} },
+      selection: { route: { start: false }, workflowId: "" } } };
+  return createElement(DashboardCommandBindingProvider, { binding, children });
+}
+
+it("uses served time under browser skew and expires at exactly sixty seconds", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2030-01-01T00:00:00Z"));
+  const served = await report(); let latest: ReturnType<typeof useSettingsPreflight> | undefined;
+  let sent: unknown;
+  const client = { readPreflight: () => Promise.resolve({ state: "present", report: served }), rerunPreflight: (command: unknown) => { sent = command; return Promise.resolve({}); } } as unknown as DashboardClient;
+  function Probe() { latest = useSettingsPreflight({ state: "loaded", document: FIXTURE_EDITABLE_SETTINGS }, { actorId: "local-operator", descriptorFingerprint: served.descriptorFingerprint }); return createElement("span", null, latest.preflight.state); }
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  const render = async (nowIso: string) => { await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(Bound, { client, actorId: "local-operator", nowIso, children: createElement(Probe) }) }))); };
+  await render(now.toISOString()); assert.equal(latest?.preflight.state, "completed");
+  await act(async () => latest?.rerunPreflight());
+  assert.equal(Reflect.get(sent as object, "requestedAt"), now.toISOString());
+  await render(new Date(now.valueOf() + 59_999).toISOString()); assert.equal(latest?.preflight.state, "completed");
+  await render(new Date(now.valueOf() + 60_000).toISOString()); assert.equal(latest?.preflight.state, "historical");
+});
+
+it("refuses an unknown scope and fences old callbacks and late actor A to B to A results", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now);
+  const served = await report(), pending = Promise.withResolvers<unknown>();
+  let reads = 0, reruns = 0, latest: ReturnType<typeof useSettingsPreflight> | undefined;
+  const client = { readPreflight: () => { reads++; return pending.promise; }, rerunPreflight: () => { reruns++; return Promise.resolve({}); } } as unknown as DashboardClient;
+  let actorId = "local-operator";
+  function Probe() { latest = useSettingsPreflight({ state: "loaded", document: FIXTURE_EDITABLE_SETTINGS }, { actorId, descriptorFingerprint: served.descriptorFingerprint }); return createElement("span", null, latest.preflight.state); }
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  const render = async (actor: string, scope = "dashboard") => { actorId = actor; await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(Bound, { client, actorId, nowIso: now.toISOString(), children: createElement(ViewNavigationContext.Provider, { value: { view: { preflightScope: scope }, start: false, setStart() {}, update() {} }, children: createElement(Probe) }) }) }))); };
+  await render("local-operator"); const obsolete = latest?.rerunPreflight;
+  await render("another-operator"); await render("local-operator");
+  await act(async () => obsolete?.()); assert.equal(reruns, 0);
+  const before = reads; await render("local-operator", "missing-workflow");
+  assert.equal(reads, before); assert.equal(latest?.preflight.state, "refused");
+  await act(async () => { pending.resolve({ state: "present", report: served }); });
+  assert.equal(latest?.preflight.state, "refused");
+  await act(async () => latest?.rerunPreflight()); assert.equal(reruns, 0);
+});
+
+it("known actor A gets a new request after B and ignores the first A settlement", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now);
+  const served = await report();
+  const pending = Array.from({ length: 3 }, () => Promise.withResolvers<unknown>());
+  let reads = 0, actorId = "first", latest: ReturnType<typeof useSettingsPreflight> | undefined;
+  const client = { readPreflight: () => pending[reads++].promise } as unknown as DashboardClient;
+  function Probe() { latest = useSettingsPreflight({ state: "loaded", document: FIXTURE_EDITABLE_SETTINGS }, { actorId, descriptorFingerprint: served.descriptorFingerprint }); return createElement("span", null, latest.preflight.state); }
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  const render = async (actor: string) => { actorId = actor; await act(async () => root?.render(createElement(DashboardClientProvider, { client,
+    children: createElement(Bound, { client, actorId, nowIso: now.toISOString(), children: createElement(Probe) }) }))); };
+  await render("first"); await render("second"); await render("first"); assert.equal(reads, 3);
+  await act(async () => pending[0].resolve({ state: "present", report: served }));
+  assert.equal(latest?.preflight.state, "running");
+  await act(async () => pending[1].resolve({ state: "present", report: served }));
+  assert.equal(latest?.preflight.state, "running");
+  await act(async () => pending[2].resolve({ state: "present", report: served }));
+  assert.equal(latest?.preflight.state, "completed");
+});
+
+it("changed-fingerprint server history is visibly historical even inside the freshness window", async () => {
+  const served = await report();
+  const historical = { ...served, configFingerprint: FingerprintSchema.parse("f".repeat(64)), descriptorFingerprint: FingerprintSchema.parse("e".repeat(64)) };
+  const projected = projectPreflight({ state: "unavailable", reason: "Settings changed; re-check readiness.", lastCompleted: historical }, now.valueOf());
+  assert.equal(projected.state, "historical");
+  if (projected.state !== "historical") assert.fail("changed identity treated as current");
+  assert.equal(projected.report, historical);
+  assert.equal(projected.message, "Settings changed; re-check readiness.");
+});
+
+it("a delayed doctor subscriber joins Setup's selected resource and shares rerun/readback", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now);
+  const served = await report();
+  const settings = Promise.withResolvers<typeof FIXTURE_EDITABLE_SETTINGS>();
+  const readback = Promise.withResolvers<unknown>();
+  const command = Promise.withResolvers<unknown>();
+  let reads = 0, commands = 0;
+  let setup: ReturnType<typeof useSettingsPreflight> | undefined, doctor: ReturnType<typeof useDoctorPreflight> | undefined;
+  const setupState = () => setup?.preflight;
+  const doctorState = () => doctor?.preflight;
+  const client = { editableSettings: () => settings.promise,
+    readPreflight: () => { reads++; return commands === 0 ? Promise.resolve({ state: "present", report: served }) : readback.promise; },
+    rerunPreflight: () => { commands++; return command.promise; } } as unknown as DashboardClient;
+  const actions = { actorId: "local-operator", descriptorFingerprint: served.descriptorFingerprint, showSettings() {}, showSessions() {} };
+  function Setup() { setup = useSettingsPreflight({ state: "loaded", document: FIXTURE_EDITABLE_SETTINGS }, actions); return null; }
+  function Doctor() { doctor = useDoctorPreflight(); return null; }
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  const render = async (open: boolean) => { await act(async () => root?.render(createElement(DashboardClientProvider, { client,
+    children: createElement(Bound, { client, actorId: actions.actorId, nowIso: now.toISOString(), children: createElement(PreflightActionsProvider, { actions,
+      children: [createElement(Setup, { key: "setup" }), open ? createElement(Doctor, { key: "doctor" }) : null] }) }) }))); };
+  await render(false); assert.equal(setupState()?.state, "completed");
+  await render(true); assert.equal(setupState()?.state, "completed"); assert.equal(doctorState()?.state, "idle");
+  await act(async () => settings.resolve(FIXTURE_EDITABLE_SETTINGS));
+  assert.equal(setupState()?.state, "completed"); assert.equal(doctorState()?.state, "completed");
+  await act(async () => doctor?.rerunPreflight());
+  assert.equal(commands, 1); assert.equal(setupState()?.state, "refreshing"); assert.equal(doctorState()?.state, "refreshing");
+  await act(async () => command.resolve({}));
+  assert.ok(reads >= 3); assert.equal(setupState()?.state, "refreshing"); assert.equal(doctorState()?.state, "refreshing");
+  const refreshed = { ...served, results: served.results.map(check => ({ ...check, summary: "Selected readback" })) };
+  await act(async () => readback.resolve({ state: "present", report: refreshed }));
+  const setupResult = setupState(), doctorResult = doctorState();
+  assert.equal(setupResult?.state, "completed"); assert.equal(doctorResult?.state, "completed");
+  if (setupResult?.state !== "completed" || doctorResult?.state !== "completed") assert.fail("shared readback missing");
+  assert.equal(setupResult.report, doctorResult.report); assert.equal(setupResult.report, refreshed);
+});
+
+it("known scope A after an unknown scope ignores old A's distinct pending response", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now);
+  const served = await report();
+  const pending = [Promise.withResolvers<unknown>(), Promise.withResolvers<unknown>()];
+  let reads = 0, latest: ReturnType<typeof useSettingsPreflight> | undefined;
+  const snapshot = () => latest?.preflight;
+  const client = { readPreflight: () => pending[reads++].promise } as unknown as DashboardClient;
+  const actions = { actorId: "local-operator", descriptorFingerprint: served.descriptorFingerprint };
+  function Probe() { latest = useSettingsPreflight({ state: "loaded", document: FIXTURE_EDITABLE_SETTINGS }, actions); return null; }
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  const render = async (scope: string) => { await act(async () => root?.render(createElement(DashboardClientProvider, { client,
+    children: createElement(Bound, { client, actorId: actions.actorId, nowIso: now.toISOString(), children: createElement(ViewNavigationContext.Provider, {
+      value: { view: { preflightScope: scope }, start: false, setStart() {}, update() {} }, children: createElement(Probe) }) }) }))); };
+  await render("dashboard"); assert.equal(reads, 1);
+  await render("missing-workflow"); assert.equal(reads, 1); assert.equal(snapshot()?.state, "refused");
+  await render("dashboard"); assert.equal(reads, 2); assert.equal(snapshot()?.state, "running");
+  await act(async () => pending[0].resolve({ state: "present", report: served }));
+  assert.equal(snapshot()?.state, "running");
+  const current = { ...served, results: served.results.map(check => ({ ...check, summary: "Current scope" })) };
+  await act(async () => pending[1].resolve({ state: "present", report: current }));
+  const observed = snapshot();
+  assert.equal(observed?.state, "completed");
+  if (observed?.state !== "completed") assert.fail("current scope did not complete");
+  assert.equal(observed.report, current);
 });

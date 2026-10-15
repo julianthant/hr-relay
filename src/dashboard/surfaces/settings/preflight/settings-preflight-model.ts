@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { systemClock } from "../../../../rules/time/clock.js";
 import type { PreflightReadinessWire } from "../../../../models/preflight/preflight-contract.js";
 import type { PreflightReadinessState } from "../../../client/queries/preflight-state.js";
+import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { usePreflightReadiness } from "./preflight-readiness.js";
 import { usePreflightScope } from "./preflight-client.js";
 import type { EditableSettingsState } from "../editor/settings-editor-model.js";
@@ -47,25 +48,31 @@ export function projectPreflight(state: PreflightReadinessState, nowMs: number):
 }
 export function useSettingsPreflight(editor: EditableSettingsState, input: { actorId: string; descriptorFingerprint: string }) {
   const scope = usePreflightScope();
+  const binding = useDashboardCommandBinding();
+  const nowMs = binding === undefined ? systemClock.nowMs() : Date.parse(binding.authority.nowIso);
   const document = editor.state === "loaded" ? editor.document : undefined;
   const descriptorFingerprint = scope.workflow?.descriptorFingerprint ?? input.descriptorFingerprint;
   const readiness = usePreflightReadiness({
+    actorId: input.actorId, selectedScope: scope.selected,
     configFingerprint: document?.activeConfigFingerprint ?? "unavailable", descriptorFingerprint,
     ...(scope.workflow === undefined ? {} : { selection: { workflowId: scope.workflow.id } }),
-    settingsRevision: document === undefined ? editor.state : JSON.stringify([document.revision, document.runtimeStatus, document.protectedSettings.state === "available" ? document.protectedSettings.readback.revision : "unavailable"]),
-  });
-  const ready = document !== undefined && document.runtimeStatus.state === "current";
+    settingsRevision: JSON.stringify([scope.selected, scope.state, document === undefined ? editor.state : [document.revision, document.runtimeStatus, document.protectedSettings.state === "available" ? document.protectedSettings.readback.revision : "unavailable"]]),
+  }, document === undefined || scope.state !== "ready");
+  const ready = document !== undefined && document.runtimeStatus.state === "current" && scope.state === "ready";
   const read = readiness.read;
-  useEffect(() => { if (document !== undefined) void read(); }, [document, read]);
+  useEffect(() => { if (document !== undefined && scope.state === "ready") void read(); }, [document, read, scope.state]);
   const checkedAt = readiness.state.state === "present" ? readiness.state.report.checkedAt : undefined;
   useEffect(() => {
     if (checkedAt === undefined) return;
-    const remaining = Date.parse(checkedAt) + 60_000 - systemClock.nowMs();
+    const remaining = Date.parse(checkedAt) + 60_000 - nowMs;
     const timer = window.setTimeout(() => { void read(); }, remaining > 0 ? remaining : 60_000);
     return () => { window.clearTimeout(timer); };
-  }, [checkedAt, read]);
-  const projected = projectPreflight(readiness.state, systemClock.nowMs());
-  const preflight: PreflightRerunState = document?.runtimeStatus.state === "restart-required"
+  }, [checkedAt, read, nowMs]);
+  const projected = projectPreflight(readiness.state, nowMs);
+  const preflight: PreflightRerunState = scope.state === "unavailable"
+    ? { state: "refused", message: "Workflow scopes could not be read." }
+    : scope.state !== "ready" ? { state: "idle" }
+    : document?.runtimeStatus.state === "restart-required"
     ? projected.state === "historical" ? { ...projected, message: "Settings restart required. Restart the runtime before re-checking." }
       : { state: "refused", message: "Settings restart required. Restart the runtime before re-checking." }
     : editor.state === "failed" ? { state: "refused", message: "Current settings are unavailable. Reload Settings before re-checking." }
@@ -73,7 +80,7 @@ export function useSettingsPreflight(editor: EditableSettingsState, input: { act
   const rerunPreflight = (): void => {
     if (!ready || document === undefined) return;
     void readiness.rerun({
-      commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: input.actorId,
+      commandId: crypto.randomUUID(), requestedAt: new Date(nowMs).toISOString(), requestedBy: input.actorId,
       source: "settings-surface", type: "rerun-preflight",
       target: { expectedConfigFingerprint: document.activeConfigFingerprint, expectedDescriptorFingerprint: descriptorFingerprint,
         ...(scope.workflow === undefined ? {} : { selection: { workflowId: scope.workflow.id } }) },

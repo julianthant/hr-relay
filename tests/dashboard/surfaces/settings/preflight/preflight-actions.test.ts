@@ -13,6 +13,8 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
 import { createPreflightHarness } from "../../../../support/fixtures/preflight-seams.js";
 
+import { usePreflightActions } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions-model.js";
+
 Reflect.set(globalThis,"IS_REACT_ACT_ENVIRONMENT",true);
 const now = new Date("2026-09-19T12:00:00.000Z");
 let root:Root|undefined, host:HTMLElement|undefined;
@@ -50,4 +52,20 @@ for (const presentation of ["compact", "settings"] as const) it(`${presentation}
   assert.equal(remedies.length, 3);
   for (const button of remedies) await act(async () => button.click());
   assert.deepEqual(destinations, ["credentials", "credentials", "routes"]);
+});
+
+it("a replaced remedy owner fences stale callbacks without running any repair", async () => {
+  const destinations: string[] = [];
+  let selected: ReturnType<typeof usePreflightActions> | undefined;
+  function Probe() { selected = usePreflightActions(); return null; }
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  const render = async (actorId: string) => { await act(async () => root?.render(createElement(PreflightActionsProvider, {
+    actions: { actorId, descriptorFingerprint: "a".repeat(64), showSettings: section => destinations.push(`${actorId}:${section}`), showSessions: () => destinations.push(`${actorId}:sessions`) }, children: createElement(Probe),
+  }))); };
+  await render("first"); const stale = selected;
+  await render("second");
+  stale?.showSettings("storage"); stale?.showSessions();
+  assert.deepEqual(destinations, []);
+  selected?.showSettings("credentials"); selected?.showSessions();
+  assert.deepEqual(destinations, ["second:credentials", "second:sessions"]);
 });
