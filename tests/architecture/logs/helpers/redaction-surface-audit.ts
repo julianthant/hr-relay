@@ -782,16 +782,16 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
 
 
 const WORKBOOK_VALUE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
-  { path: "libraryId", origin: "repository-authored" },
+  { path: "libraryId", origin: "captured-hr-value" },
   { path: "name", origin: "captured-hr-value" },
-  { path: "sheets[].columnBindings[].fieldId", origin: "repository-authored" },
-  { path: "sheets[].columnBindings[].id", origin: "repository-authored" },
+  { path: "sheets[].columnBindings[].fieldId", origin: "captured-hr-value" },
+  { path: "sheets[].columnBindings[].id", origin: "captured-hr-value" },
   { path: "sheets[].columnBindings[].sourceHeader", origin: "captured-hr-value" },
-  { path: "sheets[].id", origin: "repository-authored" },
+  { path: "sheets[].id", origin: "captured-hr-value" },
   { path: "sheets[].name", origin: "captured-hr-value" },
   { path: "sheets[].rows[].cells[].background", origin: "captured-hr-value" },
   { path: "sheets[].rows[].cells[].value", origin: "captured-hr-value" },
-  { path: "sheets[].rows[].id", origin: "repository-authored" },
+  { path: "sheets[].rows[].id", origin: "captured-hr-value" },
   { path: "themes", origin: "captured-hr-value" },
   { path: "themes[]", origin: "captured-hr-value" },
 ];
@@ -803,7 +803,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workbook-intake", path: "session.columns[].samples[]", origin: "captured-hr-value" },
   { surface: "wire/workbook-intake", path: "session.constants[].value", origin: "captured-hr-value" },
   { surface: "wire/workbook-intake", path: "session.corrections[].correctedValue", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.exclusions[].reason", origin: "repository-authored" },
+  { surface: "wire/workbook-intake", path: "session.exclusions[].reason", origin: "operator-authored" },
   { surface: "wire/workbook-intake", path: "session.headerCandidates[].cells[]", origin: "captured-hr-value" },
   { surface: "wire/workbook-intake", path: "session.manifest.validRows[].parsedInput", origin: "captured-hr-value" },
   { surface: "wire/workbook-intake", path: "session.rerun.diff.added[].parsedInput", origin: "captured-hr-value" },
@@ -825,14 +825,14 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   ...["durable/editable-workbook", "wire/editable-workbook"].flatMap(surface => WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, surface }))),
   ...["durable/saved-workbook", "wire/saved-workbook", "request/workbook-create", "request/workbook-save"].flatMap(surface => [
     ...(surface.startsWith("request/") ? [] : [{ surface, path: "libraryId", origin: "repository-authored" as const }]),
-    ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, surface, path: `workbook.${entry.path}` })),
+    ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, surface, path: `workbook.${entry.path}`, origin: entry.path === "libraryId" && !surface.startsWith("request/") ? "repository-authored" as const : entry.origin })),
   ]),
   ...["wire/workbook-list", "wire/workbook-history"].flatMap(surface => [
     { surface, path: "[].libraryId", origin: "repository-authored" as const },
-    ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, surface, path: `[].workbook.${entry.path}` })),
+    ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, surface, path: `[].workbook.${entry.path}`, origin: entry.path === "libraryId" ? "repository-authored" as const : entry.origin })),
   ]),
   { surface: "wire/workbook-intake", path: "code", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "message", origin: "repository-authored" },
+  { surface: "wire/workbook-intake", path: "message", origin: "captured-hr-value" },
   { surface: "wire/intake-command-result", path: "request.payload.correctedValue", origin: "captured-hr-value" },
   { surface: "wire/intake-command-result", path: "request.payload.reason", origin: "operator-authored" },
   { surface: "wire/intake-command-result", path: "request.payload.sheet", origin: "captured-hr-value" },
@@ -1669,7 +1669,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/intake-session", path: "columns[].samples[]", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "constants[].value", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "corrections[].correctedValue", origin: "captured-hr-value" },
-  { surface: "wire/intake-session", path: "exclusions[].reason", origin: "repository-authored" },
+  { surface: "wire/intake-session", path: "exclusions[].reason", origin: "operator-authored" },
   { surface: "wire/intake-session", path: "headerCandidates[].cells[]", origin: "captured-hr-value" },
 
   { surface: "wire/intake-session", path: "manifest.validRows[].parsedInput", origin: "captured-hr-value" },

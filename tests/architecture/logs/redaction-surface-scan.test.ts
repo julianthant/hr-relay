@@ -22,6 +22,8 @@ import { LEDGER_OUTBOX_PAYLOAD, NOW, UUID_1, UUID_6 } from "../../support/fixtur
 import { EXIT_RUN_ID, seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import { ALL_CANARY_NAMES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
+import { EditableWorkbookSchema, WorkbookCreateRequestSchema, decodeEditableWorkbook, encodeEditableWorkbook, decodeSavedWorkbook, encodeSavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
+import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
@@ -223,6 +225,68 @@ describe("redaction surface scan — the declaration audit", () => {
     const added = surfaces.map(surface => surface.id === "wire/saved-workbook"
       ? { ...surface, schema: z.strictObject({ snapshot: surface.schema, unclassified: z.string() }) } : surface);
     assert.ok(auditSurfaceOrigins(added, origins).some(problem => problem.includes('leaf "unclassified"')));
+  });
+
+  it("keeps arbitrary workbook identities and operator reasons in local custody", () => {
+    const module = "src/models/dashboard/workbooks.ts";
+    const surfaces = REDACTION_SURFACES.filter(surface => surface.module === module || surface.id === "wire/intake-session");
+    const sensitivePaths = ["sheets[].id", "sheets[].rows[].id", "sheets[].columnBindings[].id", "sheets[].columnBindings[].fieldId"];
+    for (const [surface, prefix] of [
+      ["durable/editable-workbook", ""], ["wire/editable-workbook", ""],
+      ["durable/saved-workbook", "workbook."], ["wire/saved-workbook", "workbook."],
+      ["request/workbook-create", "workbook."], ["request/workbook-save", "workbook."],
+      ["wire/workbook-list", "[].workbook."], ["wire/workbook-history", "[].workbook."],
+    ] as const) {
+      for (const path of sensitivePaths) {
+        assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === `${prefix}${path}`)?.origin, "captured-hr-value", `${surface}|${prefix}${path}`);
+      }
+    }
+    for (const surface of ["durable/editable-workbook", "wire/editable-workbook", "request/workbook-create", "request/workbook-save"]) {
+      const path = `${surface.startsWith("request/") ? "workbook." : ""}libraryId`;
+      assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "captured-hr-value");
+    }
+    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"]]) {
+      assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "operator-authored", `${surface}|${path}`);
+    }
+    for (const surface of ["durable/saved-workbook", "wire/saved-workbook", "wire/workbook-list", "wire/workbook-history"]) {
+      const prefix = surface.endsWith("list") || surface.endsWith("history") ? "[]." : "";
+      for (const path of [`${prefix}libraryId`, `${prefix}workbook.libraryId`]) {
+        assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "repository-authored", `${surface}|${path}`);
+      }
+    }
+    assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === "wire/workbook-intake" && entry.path === "message")?.origin, "captured-hr-value");
+    const origins = SURFACE_LEAF_ORIGINS.filter(entry => surfaces.some(surface => surface.id === entry.surface));
+    for (const egress of ["process-egress", "os-notification"] as const) {
+      const violations = auditSurfaceOrigins(surfaces.map(surface => ({ ...surface, egress })), origins);
+      for (const entry of origins.filter(entry => entry.origin !== "repository-authored")) {
+        assert.ok(violations.some(problem => problem.startsWith(`${entry.surface} (${egress}) leaf "${entry.path}"`) && problem.includes("may not carry at all")), `${egress}|${entry.surface}|${entry.path}`);
+      }
+    }
+  });
+
+  it("preserves HR-bearing workbook identities through the canonical codec and real library service", () => {
+    const canary = REDACTION_CANARIES.emplId;
+    const workbook = EditableWorkbookSchema.parse({
+      name: "Roster.xlsx", themes: [], hasFormulas: false,
+      sheets: [{ id: canary, name: "People", width: 1, hidden: [],
+        columnBindings: [{ id: canary, sourceColumn: 0, sourceHeader: "Employee", fieldId: `roster.SyntheticEmployee${canary}`, basis: "manual" }],
+        rows: [{ id: canary, cells: [{ value: new Date(NOW) }] }] }],
+    });
+    assert.deepEqual(decodeEditableWorkbook(encodeEditableWorkbook(workbook)), workbook);
+    const incoming = { ...workbook, libraryId: canary };
+    assert.equal(WorkbookCreateRequestSchema.parse({ workbook: encodeEditableWorkbook(incoming) }).workbook.libraryId, canary);
+    const service = createWorkbookLibraryService({ repository: openDatabase().authority.workbooks, clock: manualClock(new Date(NOW)) });
+    assert.throws(() => service.create(incoming), { code: "WORKBOOK_INVALID" });
+    const created = service.create(workbook);
+    assert.notEqual(created.libraryId, canary);
+    const saved = service.save(created.libraryId, 1, created.workbook);
+    for (const record of [service.read(created.libraryId), ...service.list(), ...service.history(created.libraryId)]) {
+      const served = decodeSavedWorkbook(encodeSavedWorkbook(record));
+      assert.deepEqual(served.workbook.sheets, workbook.sheets);
+      assert.equal(served.libraryId, created.libraryId);
+      assert.equal(served.workbook.libraryId, created.libraryId);
+    }
+    assert.equal(saved.version, 2);
   });
 
   it("registers every surface-bearing module in both directions", () => {
