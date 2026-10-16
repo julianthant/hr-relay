@@ -6,6 +6,21 @@ import { workflowPlanning, workflowProjections } from "../../../src/workflow-kit
 import { personLookupDescriptor, personLookupModule, separationsIdentityCheckDescriptor, separationsKronosTimecardDescriptor, separationsUcpathTerminationDescriptor } from "../../support/helpers/registered-workflows.js";
 
 describe("workflow definition public equivalence characterization", () => {
+  it("declares the exact Queue outcome table for Search and Match", () => {
+    assert.deepEqual(personLookupDescriptor.outcomeProjection, {
+      fieldPath: "activeStatus.state",
+      cases: [
+        { value: "active", label: "Active", tone: "success" },
+        { value: "inactive", label: "Inactive", tone: "neutral" },
+        { value: "crm-only", label: "CRM only", tone: "warning" },
+        { value: "multiple-matches", label: "Multiple matches", tone: "warning" },
+        { value: "not-found", label: "Not found", tone: "neutral" },
+        { value: "undetermined", label: "Undetermined", tone: "warning" },
+        { value: "found", label: "Found", tone: "success" },
+        { value: "not-found-in-ucpath", label: "Not found in UCPath", tone: "neutral" },
+      ],
+    });
+  });
   it("carries the complete typed input declaration through a JSON surface round trip", () => {
     const surface = personLookupDescriptor.surfaces.inputRun;
     assert.ok(surface?.typedInput);
@@ -61,7 +76,7 @@ describe("workflow definition public equivalence characterization", () => {
     }).toEqual({
   "descriptor": {
     "id": "person-lookup",
-    "version": 2,
+    "version": 3,
     "code": "pl",
     "label": "Person Lookup",
     "summary": "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",

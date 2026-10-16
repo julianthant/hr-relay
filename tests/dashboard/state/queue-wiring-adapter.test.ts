@@ -156,3 +156,23 @@ it("keeps parent and linked navigation refusal and exact cross-day identity", as
     assert.deepEqual(selected, [[row.runId, undefined], [linked.runId, linked.partitionDay]]);
   } finally { await mounted.close(); }
 });
+
+it("takes outcome maps only from visible canonical rows and refreshes/removes them", async () => {
+  const row = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(row);
+  const canonical = { ...row, outcome: { label: "Active", tone: "success" as const } };
+  const hidden = QueueSurfaceWireSchema.parse({ ...canonical, runId: "00000000-8000-4000-8000-000000000002" });
+  const overlay = { ...row, outcome: { label: "Fictional", tone: "warning" as const } };
+  const mounted = mountWiring({ rows: [overlay], allRows: [canonical, hidden] });
+  try {
+    const first = await mounted.draw();
+    assert.deepEqual([...first.outcomes], [[row.runId, canonical.outcome]]);
+    assert.equal(first.outcomes.get(row.runId), canonical.outcome);
+    assert.equal((await mounted.draw()).outcomes, first.outcomes);
+    const refreshed = await mounted.draw({ allRows: [{ ...canonical, outcome: { label: "Inactive", tone: "neutral" } }, hidden] });
+    assert.deepEqual([...refreshed.outcomes], [[row.runId, { label: "Inactive", tone: "neutral" }]]);
+    assert.deepEqual([...(await mounted.draw({ allRows: [row, hidden] })).outcomes], []);
+    assert.deepEqual([...(await mounted.draw({ allRows: [canonical, hidden], rows: [] })).outcomes], []);
+    assert.deepEqual([...(await mounted.draw({ rows: [overlay], activeWorkflowId: "other-workflow" })).outcomes], []);
+    assert.deepEqual([...(await mounted.draw({ allRows: undefined, activeWorkflowId: row.workflowId })).outcomes], []);
+  } finally { await mounted.close(); }
+});

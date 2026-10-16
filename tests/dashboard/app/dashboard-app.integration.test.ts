@@ -391,6 +391,41 @@ try {
 await _afterEachFixture0();
 }
 });
+it_m1("passes canonical Queue outcomes through the mounted app and refreshes outcome-only changes", async () => {
+  try {
+    const original = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(row => row.surfaceKind === "single"); assert_m1.ok(original);
+    const canonical = { ...original, status: "done", endedAt: { state: "present", value: original.updatedAt }, gateOpenedAt: { state: "absent", reason: "No gate" }, outcome: { label: "Active", tone: "success" } };
+    let current: Parameters<DashboardClient_m1["subscribeDay"]>[0] | undefined;
+    const publish = async (overrides: Record<string, unknown>) => {
+      const day = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1, queueSurfaces: [{ ...canonical, ...overrides }] });
+      await act_m1(async () => current?.onDay(day));
+      await settle();
+    };
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`, {
+      subscribeDay(input) {
+        current = input;
+        input.onDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1, queueSurfaces: [canonical] }));
+        input.onState({ state: "live" }); return { close() {} };
+      },
+    });
+    const text = () => {
+      const row = document.querySelector(`[data-demo-row-id="${original.runId}"]`); assert_m1.ok(row);
+      return row.textContent ?? "";
+    };
+    assert_m1.match(text(), /Active/u);
+    await publish({ outcome: { label: "Inactive", tone: "neutral" } });
+    assert_m1.match(text(), /Inactive/u); assert_m1.doesNotMatch(text(), /Active/u);
+    await publish({ outcome: undefined });
+    assert_m1.doesNotMatch(text(), /Inactive|Active/u); assert_m1.match(text(), /Done/u);
+    for (const [status, label] of [["running", "Running"], ["awaiting-approval", "Review"], ["failed", "Failed"], ["cancelled", "Cancelled"]]) {
+      await publish({ status,
+        endedAt: status === "running" || status === "awaiting-approval" ? { state: "absent", reason: "Run is active" } : canonical.endedAt,
+        gateOpenedAt: status === "awaiting-approval" ? { state: "present", value: original.updatedAt } : canonical.gateOpenedAt,
+      });
+      assert_m1.doesNotMatch(text(), /Active/u); assert_m1.match(text(), new RegExp(label, "iu"));
+    }
+  } finally { await _afterEachFixture0(); }
+});
 it_m1("keeps served Logs failures while explicit parity composition selects mock Logs for the same run", async () => {
   try {
     const { DashboardClientError } = await import("../../../src/dashboard/client/index.js");
