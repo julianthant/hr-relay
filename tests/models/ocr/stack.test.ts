@@ -43,7 +43,7 @@ describe("person match key", () => {
 
   it("keeps genuinely different people apart", () => {
     assert.notEqual(personMatchKey("Breldaa, Braure J."), personMatchKey("Blauthea, Graldi Graldo Gratha"));
-    assert.notEqual(personMatchKey("Claurnaa, Drithe A."), personMatchKey("Casey, Kyle A."));
+    assert.notEqual(personMatchKey("Claurnaa, Drithe A."), personMatchKey("Quillan, Petra A."));
   });
 });
 
