@@ -94,6 +94,7 @@ export const START_PLAN = {
   shape: "single",
   priority: "bulk",
   dryRun: false,
+  workers: "auto",
   planned: START_PLAN_PLANNED,
   refused: [],
   plannedBy: "local-operator",

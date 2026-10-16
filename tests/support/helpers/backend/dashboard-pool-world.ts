@@ -285,15 +285,15 @@ export function createDashboardPoolTestWorld() {
     return held.workerId;
   }
 
-  function dashboardLaunch(harness: ControlHarness, eid = "10873698") {
+  function dashboardLaunch(harness: ControlHarness, eid = "10873698", options: { workers?: "auto" | number; items?: number } = {}) {
     if (harness.database.authority.runtimeConfig.get() === undefined) seedSyntheticRuntimeConfig(harness.database);
     const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
     const planner = createStartPlanService({ authority: harness.database, authorityRead: harness.database,
       descriptors: { resolve: workflowId => DESCRIPTORS.find(descriptor => descriptor.id === workflowId) }, clock: harness.clock,
       ids: { uuid: nextCommandId }, planTtlMs: 600_000, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
-    const plan = planner.plan({ workflowId: WORKFLOW, submissions: [{ emplId: eid }], dryRun: false });
+    const plan = planner.plan({ workflowId: WORKFLOW, submissions: Array.from({ length: options.items ?? 1 }, (_, index) => ({ emplId: String(Number(eid) + index) })), dryRun: false, ...(options.workers === undefined ? {} : { workers: options.workers }) });
     assert.deepEqual(plan.refused, []);
-    assert.equal(plan.planned.length, 1);
+    assert.equal(plan.planned.length, options.items ?? 1);
     const request = { commandId: nextCommandId(), requestedAt: harness.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
       family: "start", type: "start-run", target: { workflowId: WORKFLOW, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints };
     return { plan, request };

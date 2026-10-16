@@ -203,3 +203,20 @@ it("plan service selects the active snapshot inside its write boundary after boo
  assert.equal(h.database.authority.startPlans.get(wire.startPlanId)?.configSnapshotId, nextId);
  assert.equal(h.database.authority.configSnapshots.get(UUID_4)?.fingerprint, CONFIG_SNAPSHOT.fingerprint);
 });
+
+
+describe("start plan workers", () => {
+  it.each([undefined, "auto", 1, 8] as const)("persists and returns %s with omitted starts selecting Auto", workers => {
+    const h = harnessFor(omissionAssertingDescriptor);
+    const wire = h.service.plan(request(h.descriptor, workers === undefined ? {} : { workers }));
+    assert.equal(wire.workers, workers ?? "auto");
+    assert.equal(h.database.authority.startPlans.get(wire.startPlanId)?.workers, workers ?? "auto");
+    assert.equal(h.database.authority.workerSlots.list().length, 0);
+  });
+  it.each([0, 9, 1.5, "1", null])("rejects invalid workers %s before writing a plan", workers => {
+    const h = harnessFor(omissionAssertingDescriptor);
+    assert.throws(() => h.service.plan(request(h.descriptor, { workers })));
+    assert.equal(h.transactions(), 0);
+    assert.deepEqual(h.ids.minted(), []);
+  });
+});

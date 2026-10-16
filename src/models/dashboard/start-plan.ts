@@ -11,7 +11,7 @@ import {
   StartPlanIdSchema,
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
-import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySchema } from "../run/envelope.js";
+import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySchema, RunWorkersSchema } from "../run/envelope.js";
 import { StartRefusalCodeSchema } from "../run/start-refusal.js";
 import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
 import { StepOmissionsSchema } from "../workflow/step-omission.js";
@@ -23,6 +23,7 @@ const SHARED_REQUEST_LEAVES = {
   warningAcknowledgment: FingerprintSchema.optional(),
   submissions: z.array(JsonValueSchema).min(1),
   dryRun: z.boolean(),
+  workers: RunWorkersSchema.optional(),
   /** The surface may request `bulk` explicitly; the server stamps the default. */
   priority: RunPrioritySchema.optional(),
   requestedInstance: InstanceSelectionSchema.optional(),
@@ -57,6 +58,7 @@ export const StartPlanWireSchema = z.strictObject({
   expectedVersion: z.number().int().positive(),
   expiresAt: IsoInstantSchema,
   dryRun: z.boolean(),
+  workers: RunWorkersSchema,
   browserMode: BrowserPresentationModeSchema.optional(),
   captureBrowserScreenshots: z.boolean().optional(),
   /** The omitted step KEYS, in timeline order, and never the facts. */

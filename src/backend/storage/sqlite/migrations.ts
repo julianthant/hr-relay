@@ -2,7 +2,7 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 3;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 4;
 
 export function isCurrentAuthoritySchemaVersion(version: number): boolean {
   return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
@@ -679,6 +679,7 @@ ALTER TABLE worker_pools_unbounded RENAME TO worker_pools;
 CREATE TRIGGER worker_pools_retained BEFORE DELETE ON worker_pools
 BEGIN SELECT RAISE(ABORT,'worker-pools-retained'); END;
 PRAGMA defer_foreign_keys=OFF;`] },
+  { version: 4, statements: ["UPDATE run_requests SET payload_json=json_set(payload_json, '$.workers', 'auto')"] },
 ]);
 
 export function auditMigrationTableCoverage(): readonly string[] {

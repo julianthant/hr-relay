@@ -335,10 +335,9 @@ describe("dashboard launch creates bounded worker capacity", () => {
     assert.equal(h.children.length, 1);
     assert.equal(JSON.stringify(h.database.authority.workerControls.list()), retained);
     const replacement = commands.submit(dashboardLaunch(h, "10002296").request);
-    await proveLaunchBirth(h);
     assert.equal((await replacement).state, "applied");
-    assert.equal(h.children.length, 2);
-    assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 2);
+    assert.equal(h.children.length, 1);
+    assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 1);
   });
 
   it("serializes concurrent launches so two queued runs share one cold worker", async () => {
@@ -372,28 +371,28 @@ describe("dashboard launch creates bounded worker capacity", () => {
   afterEach(cleanup);
 
 
-  it.each(["pause", "stop"] as const)("keeps a larger declaration and starts only a missing slot beside a %s-directed member", async directive => {
+  it.each(["pause", "stop"] as const)("keeps a larger declaration without spawning beside a %s-directed member", async directive => {
     const h = openControlHarness(); const { request } = dashboardLaunch(h);
     await admitPoolSlot(h, 3);
     occupyMember(h, 1, directive); const before = h.database.authority.workerLeases.get(WORKER_1);
-    const pending = launchCommands(h).submit(request); await proveLaunchBirth(h); await pending;
-    assert.equal(h.spawnRequests[0]?.member.workerId, WORKER_2);
-    assert.equal(h.children.length, 1); assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.version, 1);
+    assert.equal((await launchCommands(h).submit(request)).state, "applied");
+    assert.equal(h.spawnRequests[0]?.member.workerId, undefined);
+    assert.equal(h.children.length, 0); assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.version, 1);
     assert.deepEqual(h.database.authority.workerLeases.get(WORKER_1), before);
   });
 
-  it.each(["declared", "undeclared"] as const)("plans needed capacity around an owned %s paused member without resuming it", async declaration => {
+  it.each(["declared", "undeclared"] as const)("counts an owned %s paused member without resuming it", async declaration => {
     const h = openControlHarness(); const { request } = dashboardLaunch(h);
     await spawnPoolWorker(h);
     if (declaration === "declared") h.database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
     h.database.authority.workerLeases.control({ workerId: WORKER_1, expectedVersion: 1, control: { directive: "pause", requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
     const before = h.database.authority.workerLeases.get(WORKER_1);
-    const pending = launchCommands(h).submit(request); await proveLaunchBirth(h); await pending;
-    assert.equal(h.spawnRequests[1]?.member.workerId, WORKER_2); assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 2);
+    assert.equal((await launchCommands(h).submit(request)).state, "applied");
+    assert.equal(h.spawnRequests[1]?.member.workerId, undefined); assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
     assert.deepEqual(h.database.authority.workerLeases.get(WORKER_1), before);
   });
 
-  it.each(["stop-directed", "stopping"] as const)("refuses automatic growth before Plan effects around an owned %s member", async phase => {
+  it.each(["stop-directed", "stopping"] as const)("counts an owned %s member before Plan effects", async phase => {
     let planCalls = 0;
     const h = openControlHarness({ interceptPool: pool => ({ ...pool,
       planPoolWorkerCount: async context => { planCalls++; return pool.planPoolWorkerCount(context); },
@@ -409,19 +408,19 @@ describe("dashboard launch creates bounded worker capacity", () => {
     planCalls = 0;
     const before = { lease: h.database.authority.workerLeases.get(WORKER_1), pool: h.database.authority.workerPools.get(WORKFLOW),
       controls: h.database.authority.workerControls.list(), children: h.children.length };
-    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: the admitted roster contains a pending stop/);
+    assert.equal((await launchCommands(h).submit(request)).state, "applied");
     assert.equal(planCalls, 0);
     assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).length, 1);
     assert.deepEqual({ lease: h.database.authority.workerLeases.get(WORKER_1), pool: h.database.authority.workerPools.get(WORKFLOW),
       controls: h.database.authority.workerControls.list(), children: h.children.length }, before);
   });
 
-  it("refuses growth across a pending stop without resuming paused or stopping members", async () => {
+  it("keeps an overtarget roster without resuming paused or stopping members", async () => {
     const h = openControlHarness(); const { request } = dashboardLaunch(h);
     await admitPoolSlot(h, 3);
     for (let index = 1; index <= 3; index++) occupyMember(h, index, index === 2 ? "stop" : "pause");
     const before = JSON.stringify(h.database.authority.workerLeases.listLive());
-    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: the admitted roster contains a pending stop/);
+    assert.equal((await launchCommands(h).submit(request)).state, "applied");
     assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).length, 1); assert.equal(h.children.length, 0);
     assert.equal(JSON.stringify(h.database.authority.workerLeases.listLive()), before);
   });
@@ -633,8 +632,8 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       const failure = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin },
         body: JSON.stringify({ commandId: nextId, requestedAt: NOW, requestedBy: "local-operator", source: "run-start", family: "start", type: "start-run",
           target: { workflowId: WORKFLOW, startPlanId: nextPlan.startPlanId, expectedVersion: nextPlan.expectedVersion }, payload: nextPlan.fingerprints }) });
-      assert.equal(failure.status, 500);
-      assert.match(JSON.stringify(await failure.json()), /Runs queued .*worker startup did not complete at plan-worker-count .*externally owned; no worker was adopted/);
+      assert.equal(failure.status, 200);
+      assert.equal(((await failure.json()) as { state: string }).state, "applied");
       const committed = AdmittedAuthorityDatabase.open(admission,
         { path: join(stateRoot, "state.db"), busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, clock);
       try {

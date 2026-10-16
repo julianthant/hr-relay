@@ -7,7 +7,7 @@ import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sql
 import { inspectAuthorityBackupReadOnly,upgradeStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
 describe("current stopped authority initialization", () => {
-  it.each([4, 29, 31, 38, 46, 47, 48, 49, 56])("refuses noncurrent schema %s before credentials or rewriting bytes", async version => {
+  it.each([5, 29, 31, 38, 46, 47, 48, 49, 56])("refuses noncurrent schema %s before credentials or rewriting bytes", async version => {
     const f = storageRecoveryFixture(version);
     try {
       credentialTrap(f.root);
@@ -29,7 +29,7 @@ describe("current stopped authority initialization", () => {
       assert.equal((await f.run(true)).state, "planned");
       assert.deepEqual(storageTree(f.root), before);
       assert.equal((await f.run()).state, "initialized");
-      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 3);
+      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, 4);
       const initialized = storageTree(f.root);
       assert.equal((await f.run()).state, "already-upgraded");
       const repeated = storageTree(f.root);

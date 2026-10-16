@@ -1,3 +1,4 @@
+import { rerunWorkers, RerunRefusedError } from "./rerun.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
@@ -82,6 +83,9 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       if (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
         || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success) refuse("source-invalid");
       const repositories = deps.database.authority;
+      let workers;
+      try { workers = rerunWorkers(repositories, run); }
+      catch (error) { if (error instanceof RerunRefusedError) refuse("source-invalid"); throw error; }
       const intents = repositories.writeIntents.listByRun(request.runId);
       if (intents.some((intent) => !("runId" in intent) || intent.runId !== request.runId
         || intent.workflowId !== descriptor.id || intent.itemId !== run.envelope.itemId || intent.runAttempt > run.envelope.attempt)) refuse("source-invalid");
@@ -238,6 +242,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         return { key: step.key, state, nodes: members };
       });
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
+        workers,
         sourceInput: canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
           || containsProtected(run.input.parsed.value, privateValues)
           ? { state: "unavailable", reason: "protected" }
