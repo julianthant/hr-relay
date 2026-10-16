@@ -170,7 +170,9 @@ afterEach(_afterEachFixture0);
         snooze: { state: "snoozed", until: "2026-09-15T12:00:00Z" }, count: 4, version: 7,
         lastSeenAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), updatedAt: f.clock.now().toISOString() };
       db.authority.notifications.create(record);
+      const emitted: unknown[] = []; inbox.onPublication(publication => emitted.push(publication));
       const report = await inbox.publish(event, { identity: "d".repeat(64), occurredAt: f.clock.now().toISOString() });
+      expect(emitted).toEqual([]);
       expect(report.durable).toBe("existing"); expect(report.notification).toEqual(record);
       expect(db.authority.notificationPublications.latest(record.notificationId)).toBeUndefined();
     } finally { db.close(); }
@@ -216,3 +218,55 @@ afterEach(_afterEachFixture0);
   });
 });
 }
+
+describe("committed publication signal", () => {
+  const world = createNotificationInboxTestWorld();
+  afterEach(world._afterEachFixture0);
+  const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
+  it("emits created and folded exactly once after the outer commit, excluding replay and state commands", async () => {
+    const { database } = world.harness();
+    const inbox = createNotificationInbox({ authority: database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("f"), actorId: "local-operator" });
+    const emitted: import("../../../../src/backend/runs/notifications/inbox.js").NotificationPublication[] = [];
+    const dispose = inbox.onPublication(value => { assert(database.authority.notificationPublications.get(value.sourceId)); emitted.push(value); });
+    let pending: ReturnType<typeof inbox.publish> | undefined;
+    database.withAuthorityTransaction(() => {
+      pending = inbox.publish(event);
+      assert.equal(emitted.length, 0);
+    });
+    await pending;
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].durable, "created");
+    await inbox.publish(event);
+    assert.equal(emitted.length, 1);
+    const id = emitted[0].notification.notificationId;
+    inbox.markRead(id, 1);
+    inbox.snooze(id, 2, "2026-09-15T12:00:00Z");
+    assert.equal(emitted.length, 1);
+    const folded = await inbox.publish(event, { identity: "b".repeat(64), occurredAt: NOW });
+    assert.equal(folded.delivery.state, "suppressed-snoozed");
+    assert.equal(emitted[1].durable, "folded");
+    assert.equal(emitted[1].notification.snooze.state, "snoozed");
+    assert.notEqual(emitted[0].sourceId, emitted[1].sourceId);
+    dispose();
+    await inbox.publish(event, { identity: "c".repeat(64), occurredAt: NOW });
+    assert.equal(emitted.length, 2);
+  });
+  it("discards both outer and nested rolled-back publications, permitting later retry after rollback", async () => {
+    const { database } = world.harness();
+    const inbox = createNotificationInbox({ authority: database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("f"), actorId: "local-operator" });
+    const emitted: unknown[] = []; inbox.onPublication(value => emitted.push(value));
+    let pending: ReturnType<typeof inbox.publish> | undefined;
+    assert.throws(() => database.withAuthorityTransaction(() => { pending = inbox.publish(event); throw new Error("outer rollback"); }), /outer rollback/);
+    await pending;
+    assert.equal(emitted.length, 0);
+    database.withAuthorityTransaction(() => {
+      assert.throws(() => database.withAuthorityTransaction(() => { pending = inbox.publish(event); throw new Error("nested rollback"); }), /nested rollback/);
+      assert.equal(emitted.length, 0);
+    });
+    await pending;
+    assert.equal(emitted.length, 0);
+    assert.equal(database.authority.notificationPublications.list().length, 0);
+    assert.equal((await inbox.publish(event)).durable, "created");
+    assert.equal(emitted.length, 1);
+  });
+});

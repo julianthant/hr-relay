@@ -1,9 +1,11 @@
 import { commandSaveState, settingsSaveProblem } from "../surfaces/settings/editor/settings-attempt-model.js";
+import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
+import { useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
 import { useWorkspaceSearchData } from "../surfaces/shell/search/search-wiring-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { dsLayer } from "../ds/theme/tokens.js";
-import { productWorkflowComposition, workflowSource, type WorkflowComposition } from "./workflow-sources.js";
+import { productWorkflowComposition, workflowSource, type WorkflowComposition, type WorkflowSource } from "./workflow-sources.js";
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
 import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
@@ -75,6 +77,7 @@ import "../surfaces/shell/permanent-shell.css";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
 import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
+import { resolveNotificationNavigation } from "./navigation/notification-navigation.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
 import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
 import {
@@ -274,7 +277,7 @@ function LoadedApp({
   const explorerCatalog = useMemo(() => workflowComposition.explorerSources ? buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.explorerSources) : workflowCatalog, [workflows, workflowComposition, workflowCatalog]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
-  const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessions !== "mock") && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch);
+  const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessions !== "mock") && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch, boot.actor.id);
   const dayResource = dayState.day;
   const dayFailureText = useMemo(() => {
     if (dayResource.state !== "failed") return undefined;
@@ -289,14 +292,14 @@ function LoadedApp({
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
   const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
   const queueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
-  const selectedRow = queueRows.find(row => String(row.runId) === route.run);
+  const selectedRow = dayWire?.queueSurfaces.find(row => row.runId === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? route.view?.workflow ?? chosenWorkflowId;
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, catalog: workflowCatalog, nowIso, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
   const [requestedPreview, setRailPreview] = useViewState("preview", null);
   const routeWorkflowId = requestedPreview ?? activeWorkflowId;
-  const railPreview = requestedPreview && !workflowCatalog.some(flow => flow.id === requestedPreview) ? requestedPreview
+  const railPreview = route.run !== undefined && requestedPreview === null ? null : requestedPreview && !workflowCatalog.some(flow => flow.id === requestedPreview) ? requestedPreview
     : routeWorkflowId && workflowComposition.sourceForRoute(routeWorkflowId, requestedPreview !== null) === "mock" ? routeWorkflowId : null;
   const [allMockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
   const mockRuns = useMemo(() => allMockRuns.filter(run => workflowComposition.sourceForRoute(run.workflowId, true) === "mock"), [allMockRuns, workflowComposition]);
@@ -701,68 +704,123 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const runs = mockRuns.filter(run => run.workflowId === id);
     setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
   }, [mockRuns, setRoute]);
-  const searchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
+  const previewSearchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
+  const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
+    query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch });
+  const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
+  const openInbox = useCallback(() => setRoute(current => ({ ...current, view: { ...current.view, notifications: true } })), [setRoute]);
+  const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast, openInbox });
   const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
   const notifications = useWorkspaceNotifications(notificationScenario, {
     day, nowIso, rows: !hasServedWorkflows || dayWire ? queueRows : undefined, runs: mockRuns,
     workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
-  const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canSelectWorkflowId });
-  notificationContext.current = { day, rows: queueRows, runs: mockRuns, canSelectWorkflowId };
-  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
-    const destinationRefusal = () => {
+  const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
+  const notificationContext = useRef({ day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId });
+  notificationContext.current = { day, rows: queueRows, runs: mockRuns, canOpenRegisteredWorkflow, canSelectWorkflowId };
+  const notificationNavigation = useRef(0);
+  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void, source: WorkflowSource) => {
+    const request = ++notificationNavigation.current;
+    if (source === "mock" && destination.kind === "run") {
+      const validate = () => {
+        const context = notificationContext.current;
+        const refusal = notificationDestinationRefusal(destination, context);
+        if (refusal) return refusal;
+        const row = context.rows.find(row => row.runId === destination.runId)!;
+        return context.canSelectWorkflowId(row.workflowId) ? undefined : formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text;
+      };
+      const refusal = validate();
+      if (refusal) { refused(refusal); return; }
+      leaveSettings(() => {
+        const refusal = validate();
+        if (refusal) { refused(refusal); return; }
+        const row = notificationContext.current.rows.find(row => row.runId === destination.runId)!;
+        if (!setActiveWorkflowId(row.workflowId)) return;
+        setLaunchOpen(false); exitQueueSelection(); onFilter(["all"]);
+        setRoute({ ...routeWithoutTakeovers(routeRef.current), day: destination.day, start: false, run: destination.runId, section: "logs",
+          view: { ...routeRef.current.view, queueFilter: ["all"], workflow: row.workflowId, preview: null, mockRun: undefined, records: undefined, logFailure: undefined, notifications: false } });
+        opened();
+        requestAnimationFrame(() => {
+          const row = document.querySelector<HTMLElement>(`.dashboard-queue-column [data-demo-row-id="${CSS.escape(destination.runId)}"]`);
+          const pane = row?.closest<HTMLElement>("[data-queue-scroll]");
+          if (row && pane) pane.scrollTo({ top: pane.scrollTop + row.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12, behavior: "instant" });
+          document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus({ preventScroll: true });
+        });
+      });
+      return;
+    }
+    if (destination.kind !== "preview-run") {
       const context = notificationContext.current;
-      const refusal = notificationDestinationRefusal(destination, context);
-      if (refusal) return refusal;
-      if (destination.kind === "run" && !context.canSelectWorkflowId(context.rows.find(item => item.runId === destination.runId)!.workflowId))
-        return formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text;
-      return undefined;
-    };
+      const row = (destination.kind === "run" || destination.kind === "failure") && destination.day === context.day
+        ? context.rows.find(item => item.runId === destination.runId) : undefined;
+      if (row !== undefined && !context.canOpenRegisteredWorkflow(row.workflowId)) {
+        refused(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text);
+        return;
+      }
+      const scope = commandScope;
+      const origin = routeRef.current;
+      const current = () => notificationNavigation.current === request && currentCommandScope.current === scope && routeRef.current === origin;
+      const open = (result: Awaited<ReturnType<typeof resolveNotificationNavigation>>) => {
+        if (!current()) return;
+        if (result.state === "refused") { refused(result.message); return; }
+        setLaunchOpen(false);
+        exitQueueSelection();
+        onFilter(["all"]);
+        setRoute({ ...result.route, view: { ...result.route.view, queueFilter: ["all"] } });
+        opened();
+        requestAnimationFrame(() => document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus({ preventScroll: true }));
+      };
+      const resolve = () => resolveNotificationNavigation(client, destination, origin, notificationContext.current.canOpenRegisteredWorkflow);
+      void resolve().then(result => {
+        if (!current()) return;
+        if (result.state === "refused") { refused(result.message); return; }
+        leaveSettings(() => {
+          if (origin.settings === undefined) open(result);
+          else void resolve().then(open);
+        });
+      });
+      return;
+    }
+    const destinationRefusal = () => notificationDestinationRefusal(destination, notificationContext.current);
     const refusal = destinationRefusal();
     if (refusal) { refused(refusal); return; }
     leaveSettings(() => {
       const refusal = destinationRefusal();
       if (refusal) { refused(refusal); return; }
       const context = notificationContext.current;
-      if (destination.kind === "run") {
-        const row = context.rows.find(item => item.runId === destination.runId)!;
-        if (!setActiveWorkflowId(row.workflowId)) return;
-      }
       const next = { ...routeWithoutTakeovers(route), start: false, run: undefined, section: undefined };
       setRailReviewId(undefined);
       setMockLaunch(null);
       setLaunchOpen(false);
       exitQueueSelection();
       onFilter(["all"]);
-      if (destination.kind === "run") {
-        const row = context.rows.find(item => item.runId === destination.runId)!;
-        setRailPreview(null);
-        setRoute(current => ({ ...next, day: destination.day, run: destination.runId, section: "logs", view: { ...current.view, preview: null, workflow: row.workflowId, notifications: false } }));
-      } else {
-        const run = context.runs.find(item => item.id === destination.runId)!;
-        setRailPreview(run.workflowId); setRailRun(run.id);
-        if (destination.records) setRailReviewId(run.id);
-        setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined, notifications: false } }));
-      }
+      const run = context.runs.find(item => item.id === destination.runId)!;
+      setRailPreview(run.workflowId); setRailRun(run.id);
+      if (destination.records) setRailReviewId(run.id);
+      setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined, notifications: false } }));
       opened();
       requestAnimationFrame(() => {
-        const queueId = destination.kind === "run" ? destination.runId : mockQueueId(destination.runId);
+        const queueId = mockQueueId(destination.runId);
         const row = document.querySelector<HTMLElement>(`.dashboard-queue-column [data-demo-row-id="${CSS.escape(queueId)}"]`);
         const pane = row?.closest<HTMLElement>("[data-queue-scroll]");
         if (row && pane) pane.scrollTo({ top: pane.scrollTop + row.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12, behavior: "instant" });
-        const target = destination.kind === "preview-run" && destination.records
+        const target = destination.records
           ? document.querySelector<HTMLElement>("[data-ocr-review-heading]")
           : document.getElementById(DASHBOARD_MAIN_REGION_ID);
         target?.focus({ preventScroll: true });
       });
     });
-  }, [leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun]);
+  }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun]);
+
+  const onInboxNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
+    openNotification(destination, opened, refused, workflowComposition.inbox);
+  }, [openNotification, workflowComposition.inbox]);
 
   const onSearch = useCallback((result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => {
     if (!result.destination) { refused("This run is unavailable. Refresh search and try again."); return; }
-    openNotification(result.destination, opened, refused);
-  }, [openNotification]);
+    openNotification(result.destination, opened, refused, workflowComposition.search);
+  }, [openNotification, workflowComposition.search]);
 
 
   const destinationError = railPreview && !previewFlow ? "This workflow is not registered."
@@ -791,7 +849,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} searchData={searchData} onSearch={onSearch} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} inbox={workflowComposition.inbox === "served" ? inbox : undefined} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -893,7 +951,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
               onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => completeReview(railRow.id, "discard")} onRestore={() => completeReview(railRow.id, "restore")}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
-              <LogSample key={route.run} nowIso={nowIso} source={workflowSource(selectedRow.workflowId, workflowComposition.logsSources ?? workflowComposition.sources)} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
+              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={workflowComposition.logsSources ? workflowSource(selectedRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}

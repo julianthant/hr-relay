@@ -74,6 +74,7 @@ export function notificationPreviewState(scenario: string, input: PreviewInput):
 }
 
 export function notificationDestinationRefusal(destination: NotificationDestination, input: Pick<PreviewInput, "day" | "rows" | "runs">): string | undefined {
+  if (destination.kind !== "run" && destination.kind !== "preview-run") return "The linked preview is unavailable. Reopen the notification list.";
   if (destination.day !== input.day) return "The notification's day is no longer open. Reopen the notification from that day.";
   if (destination.kind === "run") return input.rows?.some(row => row.runId === destination.runId) ? undefined : "This run is no longer available. Refresh the run list and try again.";
   const run = input.runs.find(item => item.id === destination.runId);

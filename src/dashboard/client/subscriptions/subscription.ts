@@ -4,6 +4,7 @@ import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
+  type NotificationPublicationWire,
 } from "../../../models/dashboard/subscription.js";
 import { applyDashboardDayPatch } from "../queries/day-state.js";
 import { DashboardClientError, protocolError } from "../errors.js";
@@ -21,6 +22,7 @@ export interface DashboardDaySubscriptionDeps {
   readonly day: string;
   readonly onDay: (day: DashboardDayWire) => void;
   readonly onState: (state: SubscriptionState) => void;
+  readonly publications?: Readonly<{ actorId: string; onPublication: (publication: NotificationPublicationWire) => void }>;
   /** Injectable reconnect timer; defaults to setTimeout. */
   readonly schedule?: (delayMs: number, run: () => void) => () => void;
   readonly reconnectDelayMs?: number;
@@ -66,8 +68,10 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
   let generation: number | undefined;
   let descriptorHash: string | undefined;
   let greeted = false;
+  let publicationReady = false;
   let lastCursorNumber: number | undefined;
   let lastCursorId: string | undefined;
+  const published = new Set<string>();
 
   function stop(error?: DashboardClientError): void {
     if (closed) return;
@@ -99,6 +103,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     }
     if (!greeted) throw protocolError("day-stream-hello-missing");
     if (envelope.type === "health") {
+      publicationReady = envelope.state === "live";
       if (envelope.state === "degraded") deps.onState({ state: "degraded" });
       else if (envelope.state === "live") deps.onState({ state: "live" });
       else deps.onState({ state: "reconnecting" });
@@ -106,6 +111,17 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     }
     if (envelope.type === "reset-required") {
       resnapshot();
+      return;
+    }
+
+    if (envelope.type === "notification-publication") {
+      if (envelope.day !== day || envelope.descriptorHash !== descriptorHash || envelope.projectionGeneration !== generation) throw protocolError("notification-publication-authority-mismatch");
+      if (snapshot === undefined || !publicationReady) throw protocolError("notification-publication-baseline-missing");
+      if (deps.publications === undefined) return;
+      if (envelope.publication.actorId !== deps.publications.actorId) throw protocolError("notification-publication-actor-mismatch");
+      if (published.has(envelope.publication.sourceId)) return;
+      published.add(envelope.publication.sourceId);
+      deps.publications.onPublication(envelope.publication);
       return;
     }
 
@@ -166,6 +182,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     const lastProjectionGeneration = lastEventId === undefined ? undefined : generation;
     const identity = ++streamIdentity;
     greeted = false;
+    publicationReady = false;
     const handle = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
       ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),

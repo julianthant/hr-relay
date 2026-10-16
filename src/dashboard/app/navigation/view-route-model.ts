@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { z } from "zod";
+import { RunIdSchema, FailureIdSchema } from "../../../rules/identity/ids.js";
 import { RerunValuesRequestSchema } from "../../../models/dashboard/rerun-values.js";
 import type { AppRouteState } from "./url-state.js";
 
 const identity = z.string().max(200);
 const stage = z.enum(["Input", "Options", "Steps", "Values", "Confirm", "Warning"]);
 export const ViewRouteSchema = z.object({
+  logFailure: z.strictObject({ runId: RunIdSchema, failureId: FailureIdSchema }).optional(),
   workflow: identity.optional(), preview: identity.nullable().optional(), mockRun: identity.optional(), records: identity.optional(),
   launchRerun: RerunValuesRequestSchema.extend({ label: identity.optional(), traceId: identity.optional() }).optional(), launchServed: identity.optional(), launchWorkflow: identity.optional(), launchSource: identity.optional(), launchStage: stage.optional(), launchCustomize: z.boolean().optional(),
   reviewPages: z.record(identity, z.number().int().min(0).max(10000)).refine(value => Object.keys(value).length <= 200).optional(),

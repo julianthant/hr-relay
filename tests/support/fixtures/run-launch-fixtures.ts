@@ -120,7 +120,7 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
   const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
   const executor = new CommandExecutor(() => scope);
   const authority: DashboardAuthority = { epoch, catalog: [], nowIso: bootstrap.serverClock.now, today: day, day,
-    dayState: { request, day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
+    dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request, day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
     selection: { route: { start: false }, workflowId: descriptor.id } };
   const binding: DashboardCommandBinding = { authority, executor, scope, feedback: () => undefined };
   return { ...h, get queueRoots() { return h.queueRoots; }, workflow, app, client, launch, binding, submissions, finalCommands, loseResponse: () => { loseResponse = true; },

@@ -8,6 +8,7 @@ import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import type { DashboardClient,SubscriptionState } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { useDashboardDay,type DashboardDayState } from "../../../src/dashboard/state/use-dashboard-day.js";
+import { NotificationPublicationWireSchema } from "../../../src/models/dashboard/subscription.js";
 import { DashboardDayWireSchema,type DashboardDayWire } from "../../../src/models/dashboard/projection.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -175,4 +176,45 @@ it("uses a stable token for settlements and ticks, replacing it on explicit same
   await act(async () => h.latest().refresh());
   assert.notEqual(h.latest().request, first);
   assert.equal(h.latest().day.state, "loading");
+});
+
+it("forwards only live publication callbacks belonging to the current day, actor epoch and client", async () => {
+  const subscriptions: Parameters<DashboardClient["subscribeDay"]>[0][] = [];
+  const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => { subscriptions.push(input); return { close() {} }; } } as DashboardClient;
+  let state: DashboardDayState | undefined;
+  function Probe({ day, epoch, actor }: { day: string; epoch: object; actor: string }) { state = useDashboardDay(day, undefined, epoch, actor); return null; }
+  const root = createRoot(document.createElement("div")); mounted = root;
+  const epoch = {};
+  const render = async (day: string, currentEpoch = epoch, currentClient = client, actor = "local-operator") => {
+    await act(async () => root.render(createElement(DashboardClientProvider, { client: currentClient, children: createElement(Probe, { day, epoch: currentEpoch, actor }) })));
+  };
+  const publication = NotificationPublicationWireSchema.parse({ sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: {
+    kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1,
+    publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
+    occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" },
+  } });
+  await render(DAY);
+  assert(state);
+  const delivered: unknown[] = [];
+  const unsubscribe = state.subscribePublications(value => delivered.push(value));
+  await act(async () => subscriptions[0].onDay(EMPTY_DAY));
+  assert.equal(delivered.length, 0);
+  subscriptions[0].publications?.onPublication(publication);
+  assert.equal(delivered.length, 1);
+  unsubscribe(); subscriptions[0].publications?.onPublication(publication); assert.equal(delivered.length, 1);
+  state.subscribePublications(value => delivered.push(value));
+  await render("2026-08-04");
+  subscriptions[0].publications?.onPublication(publication); assert.equal(delivered.length, 1);
+  await render(DAY);
+  state.subscribePublications(value => delivered.push(value));
+  subscriptions[0].publications?.onPublication(publication); assert.equal(delivered.length, 1);
+  subscriptions[2].publications?.onPublication(publication); assert.equal(delivered.length, 2);
+  await render(DAY, {});
+  subscriptions[2].publications?.onPublication(publication); assert.equal(delivered.length, 2);
+  await render(DAY, epoch, { ...client });
+  subscriptions[3].publications?.onPublication(publication); assert.equal(delivered.length, 2);
+  await render(DAY, epoch, client, "other-operator");
+  subscriptions[4].publications?.onPublication(publication); assert.equal(delivered.length, 2);
+  await act(async () => root.unmount()); mounted = undefined;
+  subscriptions[5].publications?.onPublication(publication); assert.equal(delivered.length, 2);
 });

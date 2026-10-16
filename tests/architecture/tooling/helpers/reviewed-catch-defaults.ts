@@ -78,7 +78,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/dashboard/app/navigation/view-route-model.ts",
-    "sha256": "8fade512cb492ec8e768b01768c3bac48147d40588712091dbdc51256504b7fb",
+    "sha256": "72534f412535070615d068ba54639ad429c9c23ab3efb6ffde12e392974f1038",
     "reason": "Oversized or invalid view-route JSON returns null; the caller treats the route as unreadable instead of rebuilding shell navigation from a default."
   },
   {

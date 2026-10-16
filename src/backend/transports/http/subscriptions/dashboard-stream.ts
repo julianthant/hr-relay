@@ -3,8 +3,11 @@ import { z } from "zod";
 import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
+  type NotificationPublicationWire,
 } from "../../../../models/dashboard/subscription.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../../../runs/projections/run-queue-projection.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
+import type { NotificationInbox, NotificationPublication } from "../../../runs/notifications/inbox.js";
 import type { BackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
@@ -21,6 +24,10 @@ export interface DashboardStreamConnection {
 
 export interface DashboardStreamHubDeps {
   readonly projection: RunQueueProjection;
+  readonly notificationPublications?: {
+    readonly subscribe: NotificationInbox["onPublication"];
+    readonly project: (publication: NotificationPublication) => NotificationPublicationWire;
+  };
   readonly backfillGaps: Pick<BackfillGapNotifier, "detected">;
   /** Retained envelope count for cursor resume. */
   readonly retention?: number;
@@ -56,6 +63,7 @@ export class DashboardStreamHub {
   readonly #subscribers = new Set<Subscriber>();
   #retained: RetainedEntry[] = [];
   #disposeProjection: () => void;
+  #disposePublications?: () => void;
 
   constructor(deps: DashboardStreamHubDeps) {
     this.#projection = deps.projection;
@@ -63,10 +71,23 @@ export class DashboardStreamHub {
     this.#maxPending = z.number().int().positive().parse(deps.maxPending ?? 64);
     this.#backfillGaps = deps.backfillGaps;
     this.#disposeProjection = deps.projection.onChange((change) => this.#onProjectionChange(change));
+    const publications = deps.notificationPublications;
+    this.#disposePublications = publications?.subscribe(publication => {
+      if (publication.notification.actorId !== LOCAL_OPERATOR_ACTOR_ID) return;
+      if (this.#subscribers.size === 0) return;
+      const wire = publications.project(publication);
+      if (wire.sourceId !== publication.sourceId || wire.actorId !== publication.notification.actorId
+        || wire.notification.notificationId !== publication.notification.notificationId) throw new Error("NOTIFICATION_PUBLICATION_IDENTITY_MISMATCH");
+      for (const subscriber of this.#subscribers) this.#push(subscriber, DashboardStreamEnvelopeSchema.parse({
+        type: "notification-publication", day: subscriber.day, descriptorHash: this.#projection.descriptorSetHash(),
+        projectionGeneration: this.#projection.generation(), publication: wire,
+      }));
+    });
   }
 
   close(): void {
     this.#disposeProjection();
+    this.#disposePublications?.();
     for (const subscriber of this.#subscribers) this.#closeSubscriber(subscriber);
     this.#subscribers.clear();
   }

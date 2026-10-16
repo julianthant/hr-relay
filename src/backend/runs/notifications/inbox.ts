@@ -24,7 +24,15 @@ const NotificationPublishReportSchema = z.strictObject({
 });
 export type NotificationPublishReport = z.infer<typeof NotificationPublishReportSchema>;
 
+export interface NotificationPublication {
+  readonly sourceId: string;
+  readonly notification: NotificationRecord;
+  readonly event: z.infer<typeof NotificationTriggerEventSchema>;
+  readonly durable: "created" | "folded";
+}
+
 export interface NotificationInbox {
+  onPublication(this: void, listener: (publication: NotificationPublication) => void): () => void;
   /** Takes `unknown` and parses: the trigger union is the boundary. */
   publish(event: unknown, source?: Readonly<{ identity: string; occurredAt: string }>): Promise<NotificationPublishReport>;
   list(actorId: string, status?: "unread" | "read"): readonly NotificationRecord[];
@@ -38,6 +46,7 @@ export interface NotificationInbox {
 
 interface NotificationAuthority {
   readonly authority: Pick<AuthorityRepositories, "notifications" | "notificationPublications">;
+  afterAuthorityCommit(publish: () => void): void;
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
 }
 
@@ -52,6 +61,7 @@ export interface NotificationInboxDependencies {
 export function createNotificationInbox(
   dependencies: NotificationInboxDependencies,
 ): NotificationInbox {
+  const listeners = new Set<(publication: NotificationPublication) => void>();
   const repository = dependencies.authority.authority.notifications;
   const actorId = ActorIdSchema.parse(dependencies.actorId);
   const now = (): string => IsoInstantSchema.parse(dependencies.clock.now().toISOString());
@@ -77,6 +87,10 @@ export function createNotificationInbox(
   };
 
   return Object.freeze({
+    onPublication(listener: (publication: NotificationPublication) => void) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
     async publish(event: unknown, source?: Readonly<{ identity: string; occurredAt: string }>): Promise<NotificationPublishReport> {
       const trigger = NotificationTriggerEventSchema.parse(event);
       const projection = projectNotificationTrigger(trigger);
@@ -172,6 +186,10 @@ export function createNotificationInbox(
         delivery = { state: "no-channel" };
       }
 
+      dependencies.authority.afterAuthorityCommit(() => {
+        const publication = { sourceId, notification: current(notification.notificationId), event: trigger, durable };
+        for (const listener of listeners) listener(publication);
+      });
       return NotificationPublishReportSchema.parse({ notification, durable, delivery });
     },
     list: (listActorId: string, status?: "unread" | "read") => (status === undefined
