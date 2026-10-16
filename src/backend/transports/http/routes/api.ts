@@ -1,5 +1,6 @@
 import { errorText } from "../../../runs/lifecycle/support.js";
 import { DashboardReadFailedError } from "../../../runs/commands/refusals.js";
+import { registerChatGptAccountRoutes } from "./chatgpt-account.js";
 import { registerNotificationRoutes } from "./notifications.js";
 import { registerShellRoutes } from "./shell.js";
 import { registerSettingsPreflightRoutes } from "./settings-preflight.js";
@@ -52,6 +53,9 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/commands", operatorMutationIngressGuard);
   app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
   app.use("/api/v1/settings/path-picker", operatorMutationIngressGuard);
+  app.use("/api/v1/settings/chatgpt-account/sign-in", operatorMutationIngressGuard);
+  app.use("/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel", operatorMutationIngressGuard);
+  app.use("/api/v1/settings/chatgpt-account/sign-out", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
   app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
@@ -96,6 +100,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerNotificationRoutes(app, deps);
   registerSettingsPreflightRoutes(app, { clock: deps.bootstrap.clock, preflight: deps.preflight });
   registerSettingsRoutes(app, deps);
+  registerChatGptAccountRoutes(app, deps);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);
   registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });

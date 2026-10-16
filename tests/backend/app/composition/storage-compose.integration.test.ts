@@ -7,6 +7,8 @@ import { tmpdir } from "node:os";
 import { join as join_m0 } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { composeStorageCommand as composeStorageCommand_m0 } from "../../../../src/backend/app/composition/storage-compose.js";
+import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 
@@ -552,3 +554,35 @@ _afterEachFixture0();
 }
 });
 }
+
+describe("storage recover-chatgpt-lock", () => {
+  it("clears a dead owner's ChatGPT lock and stage, keeps the record, and refuses a live owner", async () => {
+    const root = realpathSync(mkdtempSync(join_m0(tmpdir(), "storage-chatgpt-lock-")));
+    try {
+      mkdirSync(join_m0(root, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
+      const admission = acquireEntrypointAdmission(root, "exclusive");
+      try {
+        const stateRoot = admission.stateRoot, repository = createChatGptCredentialRepository({ admission, stateRoot });
+        const run = () => composeStorageCommand_m0(rebuildRuntimeIsolation, ["recover-chatgpt-lock"], manualClock(new Date("2026-10-15T12:00:00.000Z")), root, admission);
+        assert.deepEqual(await run(), { output: "storage recover-chatgpt-lock: no ChatGPT credential lock", exitCode: 0 });
+        const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
+        await repository.withLock(async tx => { tx.replace(record, null); });
+        const directory = join_m0(stateRoot, "credentials"), id = randomUUID();
+        const lockPath = join_m0(directory, ".chatgpt-account.lock"), stagePath = join_m0(directory, `.chatgpt-account.${id}.tmp`);
+        writeFileSync(lockPath, JSON.stringify({ id, pid: 2_147_483_647, identity: { platform: "linux", startToken: "stale" } }), { mode: 0o600 });
+        writeFileSync(stagePath, "interrupted account stage", { mode: 0o600 });
+        assert.deepEqual(await run(), { output: "storage recover-chatgpt-lock: cleared an abandoned ChatGPT credential lock", exitCode: 0 });
+        assert.equal(existsSync(lockPath), false);
+        assert.equal(existsSync(stagePath), false);
+        assert.deepEqual(repository.read(), record);
+        const live = observeProcessIdentity(process.pid);
+        if (live.state !== "alive") throw new Error("synthetic test process identity is unavailable");
+        writeFileSync(lockPath, JSON.stringify({ id: randomUUID(), pid: process.pid, identity: live.identity }), { mode: 0o600 });
+        const refused = await run();
+        assert.equal(refused.exitCode, 1);
+        assert.match(refused.output, /CHATGPT_CREDENTIAL_BUSY/u);
+        assert.equal(existsSync(lockPath), true);
+      } finally { admission.release(); }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});

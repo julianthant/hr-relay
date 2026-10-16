@@ -1,3 +1,4 @@
+import { createChatGptAccountService } from "../../../accounts/chatgpt-account-service.js";
 import type { AnyWorkflowDescriptor } from "../../../../workflow-kit/workflow.js";
 import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
 import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
@@ -799,8 +800,11 @@ async function composeDashboardRuntimeStartup(
     );
   }
 
+  const chatGptAccount = createChatGptAccountService({ admission, stateRoot, clock });
+  startupCleanups.push(() => chatGptAccount.close());
   const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
   const app = createDashboardApp({
+    chatGptAccount,
     notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
@@ -835,7 +839,7 @@ async function composeDashboardRuntimeStartup(
     port: input.backendPortOverride ?? input.isolation.backendPort,
     onTransferError: reportDashboardTransferFault,
   });
-  startupCleanups.push(() => server.close());
+  startupCleanups.push(async () => { try { await chatGptAccount.close(); } finally { await server.close(); } });
   dashboardPreflightRunners.markBackendOwned(server.port);
   void notificationObserver.observe();
   const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
@@ -848,6 +852,7 @@ async function composeDashboardRuntimeStartup(
     noteWriter,
     stop: async (): Promise<void> => {
       const failures: unknown[] = [];
+      try { await chatGptAccount.close(); } catch (error: unknown) { failures.push(error); }
       try {
         await server.close();
       } catch (error: unknown) {

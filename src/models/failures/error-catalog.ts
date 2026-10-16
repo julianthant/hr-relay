@@ -367,6 +367,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The command could not be dispatched. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
+  CHATGPT_REVOCATION_UNCONFIRMED: catalogEntry(
+    "Your ChatGPT account is signed out locally. Remote revocation could not be confirmed.",
+    EmptyParametersSchema,
+  ),
   CHATGPT_AUTH_BUSY: catalogEntry(
     "A ChatGPT sign-in is already in progress.",
     EmptyParametersSchema,

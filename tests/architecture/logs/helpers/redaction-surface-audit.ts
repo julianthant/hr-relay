@@ -1,4 +1,5 @@
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
+import { ChatGptAccountViewSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptSignOutResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
 import { CompositeStreamEnvelopeSchema } from "../../../../src/models/dashboard/run-logs-subscription.js";
 import { OperationSourceResponseSchema } from "../../../../src/models/dashboard/operation-structure.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
@@ -745,6 +746,11 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/storage-doctor-latest", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorLatestWireSchema },
   { id: "wire/settings-facts", egress: "operator-loopback", module: "src/models/dashboard/settings.ts", schema: SettingsFactsWireSchema },
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/models/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
+  { id: "wire/chatgpt-account", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptAccountViewSchema },
+  { id: "wire/chatgpt-start", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInStartResultSchema },
+  { id: "wire/chatgpt-completion", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignInCompletionSchema },
+  { id: "wire/chatgpt-cancel", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptCancelResultSchema },
+  { id: "wire/chatgpt-signout", egress: "operator-loopback", module: "src/models/dashboard/chatgpt-account.ts", schema: ChatGptSignOutResultSchema },
   { id: "wire/native-path-picker", egress: "operator-loopback", module: "src/models/dashboard/native-path-picker.ts", schema: NativePathPickerResponseSchema },
   { id: "wire/workflow-explorer", egress: "operator-loopback", module: "src/models/dashboard/explorer.ts", schema: WorkflowExplorerWireSchema },
   { id: "wire/explorer-edit-validation", egress: "operator-loopback", module: "src/models/dashboard/explorer.ts", schema: ExplorerEditValidationResultSchema },
@@ -1011,6 +1017,16 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   {"surface": "wire/run-logs-stream", "path": "snapshot.events[].reason", "origin": "repository-authored"},
   {"surface": "wire/run-logs-stream", "path": "snapshot.events[].stepOccurrence", "origin": "repository-authored"},
   {"surface": "wire/run-logs-stream", "path": "snapshot.events[].workerStreamId", "origin": "repository-authored"},
+  { surface: "wire/chatgpt-account", path: "account.message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-account", path: "account.name", origin: "external-text" },
+  { surface: "wire/chatgpt-account", path: "message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-account", path: "name", origin: "external-text" },
+  { surface: "wire/chatgpt-start", path: "message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-completion", path: "account.message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-completion", path: "account.name", origin: "external-text" },
+  { surface: "wire/chatgpt-completion", path: "message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-cancel", path: "message", origin: "repository-authored" },
+  { surface: "wire/chatgpt-signout", path: "message", origin: "repository-authored" },
   { surface: "wire/operation-source", path: "structure.definition.invocations[].label", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.confirmedActions[].action.value.consumed.value", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.confirmedActions[].durableProof.checkpointNodeId", origin: "repository-authored" },
@@ -1767,6 +1783,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
 export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = Object.freeze(
   SurfaceModuleDispositionSchema.array().parse([
+    { module: "src/models/dashboard/chatgpt-account.ts", state: "audited", reason: "Local account identity and registered fixed failures only; OAuth start URL contains public PKCE, state and nonce, never tokens or verifier." },
     { module: "src/models/dashboard/dashboard-frontend-owner.ts", state: "no-surface", reason: "Declares a closed launch nonce and probe pathname; no wire or durable free-text schema." },
     { module: "src/models/dashboard/failure-display.ts", state: "audited", reason: "Repository-authored failure title and observation are embedded in run detail and archived failure values." },
     { module: "src/models/dashboard/run-logs-subscription.ts", state: "audited", reason: "Composite loopback stream embeds the dashboard envelope and confirmed action events with exact run and transport identities." },
