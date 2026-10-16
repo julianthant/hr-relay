@@ -3,7 +3,7 @@
 The dashboard is a browser app for one local operator. `src/dashboard/app/main.tsx` mounts
 `DashboardApp`; `app/dashboard-app.tsx` composes the workspace, Queue, Logs, launcher, Settings,
 and Sessions. `app/dashboard-takeovers.tsx` mounts Settings, Analytics, Explorer, and intake.
-The current workflow policy uses local mocks for every configured workflow. Bootstrap, Settings,
+The workflow policy serves Person Lookup and uses local mocks for the other configured workflows. Bootstrap, Settings,
 Preflight, storage, and the served intake workspace use the typed client. Retained backend
 capabilities do not imply that the corresponding product producer is mounted.
 
@@ -59,7 +59,7 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; all configured values
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup is `served` and the other configured values
 are `mock`. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the

@@ -30,8 +30,8 @@ use existing components. Served Explorer timelines come from registered backend 
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
 Every declared value is `mock` or `served`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
 for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product policy;
-`DashboardApp` receives `productWorkflowComposition` by default. All configured workflows currently
-use `mock`. There is no runtime served-to-mock fallback.
+`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup uses `served`; the other configured workflows use `mock`.
+Parity starts from an explicit mock policy and opts fixture workflows into served capability tests. There is no runtime served-to-mock fallback.
 
 `WorkflowComposition.sources` controls workflow presentation; `explorerSources`, `logsSources`,
 `dataSources`, `catalogIncludesMocks`, and `servedDay` allow explicit fixture composition.
