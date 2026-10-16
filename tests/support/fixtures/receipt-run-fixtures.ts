@@ -411,7 +411,7 @@ const KUALI_BINDING_PROOF = Object.freeze({
   observed: KUALI_SUBJECT_EVIDENCE,
   match: "match",
   observedAt: KUALI_FENCED_AT,
-  afterPrepareSpanPath: "finalize-kuali/prepare",
+  afterPrepareSpanPath: `${KUALI_TRACE_ID}/finalize-kuali/prepare`,
 });
 
 export interface KualiReceiptEvidence {

@@ -6,6 +6,7 @@ import type { RunDetailDescriptorView } from "../../../../src/backend/runs/queri
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import type { SpanOutcomeWire } from "../../../../src/models/events/types.js";
 import { claimEventOf, instantOffsetOf, queuedEventOf, runEndedEventOf, runRecordOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const {world, cleanup } = createRunDetailTestWorld();
 
@@ -16,7 +17,7 @@ const NODE = "search-person";
 
 /** The ONE declared category, so the timeline serves a member state per node. */
 const TIMELINE: NonNullable<RunDetailDescriptorView["timeline"]> = [
-  { label: "Lookup", nodes: [{ id: NODE, label: "Search person" }] },
+  { key: "lookup", label: "Lookup", nodes: [{ id: NODE, label: "Search person" }] },
 ];
 
 function detailOf(w: DashboardWorld, seed: number, timeline?: NonNullable<RunDetailDescriptorView["timeline"]>) {
@@ -25,7 +26,7 @@ function detailOf(w: DashboardWorld, seed: number, timeline?: NonNullable<RunDet
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
-      descriptors: { resolve: () => ({ details: [], ...(timeline === undefined ? {} : { timeline }) }) },
+      descriptors: { resolve: () => ({ version: 1, contractFingerprint: HASH_A, details: [], ...(timeline === undefined ? {} : { timeline }) }) },
     },
     uuidOf(seed),
   );

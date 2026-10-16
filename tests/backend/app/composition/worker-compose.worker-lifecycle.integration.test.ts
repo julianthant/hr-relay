@@ -1,3 +1,4 @@
+import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -241,9 +242,12 @@ describe("composed worker runtime", () => {
       now: NOW,
     });
     assert.ok(running.state === "applied");
+    const bindingProof = { ...WRITE_INTENT_ATTEMPTING.bindingProof,
+      afterPrepareSpanPath: `${running.run.envelope.traceId}/termination/prepare` };
+    const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
     fenceWriteFixture(crashed, {
-      intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: WORKFLOW_ID, itemId: ITEM_ID },
-      attempt: WRITE_ATTEMPT,
+      intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: WORKFLOW_ID, itemId: ITEM_ID, bindingProof, bindingProofDigest },
+      attempt: { ...WRITE_ATTEMPT, bindingProof, bindingProofDigest },
     });
     clock.advanceWall(2_000);
     clock.advanceMonotonic(2_000);

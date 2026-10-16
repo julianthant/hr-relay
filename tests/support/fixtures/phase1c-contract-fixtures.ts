@@ -114,7 +114,7 @@ export const SUBJECT_PROOF = {
   observed: SUBJECT_EVIDENCE,
   match: "match",
   observedAt: NOW,
-  afterPrepareSpanPath: "termination/prepare",
+  afterPrepareSpanPath: "se-120000-2222/termination/prepare",
 };
 export const BINDING_PROOF_DIGEST = deriveWriteBindingProofDigest(SUBJECT_PROOF);
 
@@ -129,7 +129,7 @@ export const UNSCOPED_PROOF = {
   pageStateId: "onbase.upload-ready",
   reviewedReasonId: "document-without-person-scope",
   observedAt: NOW,
-  afterPrepareSpanPath: "upload/prepare",
+  afterPrepareSpanPath: "se-120000-2222/upload/prepare",
 };
 
 export const ABSENCE_1 = {

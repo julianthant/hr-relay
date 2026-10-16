@@ -81,7 +81,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
       ]);
 
       const seed = 503;
-      queuedEventOf(world, { seed, workflow: id });
+      queuedEventOf(world, { seed, workflow: id, descriptor });
       for (const node of descriptor.nodes) {
         if (node.kind === "task") taskEventsOf(world, seed, String(node.id), "done");
       }
