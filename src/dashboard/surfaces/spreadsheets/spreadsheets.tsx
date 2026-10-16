@@ -64,7 +64,8 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, sour
   const libraryButtons = useRef(new Map<string, HTMLButtonElement>());
   const [busy, setBusy] = useState(false);
   const [localFileError, setFileError] = useState("");
-  const fileError = localFileError || (source === "served" ? served.error || served.openError || (served.loading ? "Loading spreadsheets…" : served.opening ? "Loading spreadsheet…" : "") : "");
+  const fileError = localFileError || (source === "served" ? served.error || served.openError : "");
+  const loading = source === "served" && !fileError ? served.loading ? "Loading spreadsheets…" : served.opening ? "Loading spreadsheet…" : "" : "";
   const [importOpen, setImportOpen] = useViewState("spreadsheetImport", false);
   const [importView, setImportView] = useViewState("spreadsheetImportView", "mapping");
   const importTrigger = useRef<HTMLButtonElement>(null);
@@ -118,6 +119,7 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, sour
   const visibleFiles = files.filter(file => `${file.name} ${types.find(type => type.id === file.typeId)?.name ?? ""}`.toLowerCase().includes(query.toLowerCase()));
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page min-w-0 text-body">
     <input ref={upload} disabled={busy || !!pendingImport} type="file" accept=".xlsx,.csv" aria-label="Open XLSX or CSV" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file); }} />
+    {loading && <p role="status" className="text-caption text-ui-muted">{loading}</p>}
     {fileError && <Banner tone="danger" title="Spreadsheet unavailable">{fileError}</Banner>}
     {selectedId !== null && !selected && source === "mock" ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={source === "served" ? served.key : selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={currentDirty} exportKeepsDirty={source === "served"} onSave={source === "served" ? (served.loading || served.error || served.openError) && !served.draft?.intent ? undefined : draft => served.adapter.save(selectedId!, draft) : saveMockSpreadsheet} onDocument={documentChange} onExported={() => toast({ tone: "success", title: "Spreadsheet copy exported" })} onMapping={selected ? () => {
       setEditingId(selected.id);

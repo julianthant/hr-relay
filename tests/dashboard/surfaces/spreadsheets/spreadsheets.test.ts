@@ -139,3 +139,20 @@ it('exports the served draft as a download without saving or clearing its dirty 
   await menu('Export copy', 'Excel workbook (.xlsx)'); assert.equal(vi.mocked(exportSpreadsheetInWorker).mock.calls.at(-1)?.[0], draft); assert.equal(createUrl.mock.calls.length, 1); assert.equal(download.mock.calls.length, 1);
   assert.equal(w.calls.filter(call => call.method === 'POST').length, 0); assert.equal(p.latest().book, draft); assert(p.latest().dirty); assert.match(document.body.textContent, /Edited copy/); assert.doesNotMatch(document.body.textContent, /Saved · version/);
 });
+
+for (const operation of ['list', 'open'] as const) it(`shows ${operation} loading as status and a rejected read as danger`, async () => {
+  const w = world();
+  const list = Promise.withResolvers<readonly SavedWorkbook[]>();
+  const open = Promise.withResolvers<SavedWorkbook>();
+  const client: DashboardClient = { ...w.client,
+    workbookList: () => operation === 'list' ? list.promise : w.client.workbookList(),
+    workbookOpen: id => operation === 'open' ? open.promise : w.client.workbookOpen(id) };
+  await page(client, operation === 'open' ? { spreadsheet: 'served-book' } : {});
+  const loading = operation === 'list' ? 'Loading spreadsheets…' : 'Loading spreadsheet…';
+  assert([...document.querySelectorAll('[role="status"]')].some(node => node.textContent === loading));
+  assert.doesNotMatch(document.body.textContent, /Spreadsheet unavailable/);
+  await act(async () => { (operation === 'list' ? list : open).reject(new Error('Synthetic read failed')); });
+  const danger = [...document.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes('Spreadsheet unavailable'));
+  assert(danger); assert.match(danger.textContent, /Synthetic read failed/);
+  assert(![...document.querySelectorAll('[role="status"]')].some(node => node.textContent === loading));
+});

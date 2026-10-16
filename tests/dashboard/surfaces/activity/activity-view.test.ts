@@ -39,7 +39,7 @@ it('supports the existing synchronous export callback', async () => {
 
 it('the mock report refuses export visibly without starting a download', async () => {
   await render();
-  await act(async () => root?.render(createElement(ActivityReport, { range: '', onRange() {} })));
+  await act(async () => root?.render(createElement(ActivityReport, { source: "mock", range: '', onRange() {} })));
   await act(async () => button().click());
   assert.match(document.body.textContent, /CSV export is unavailable in this preview./);
   assert.equal(document.querySelectorAll('a[download]').length, 0);

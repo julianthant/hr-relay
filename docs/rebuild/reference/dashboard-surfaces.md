@@ -25,7 +25,7 @@ All source paths in this table are relative to `src/dashboard/`.
 | Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | `sessionsSample` and `createSessionPreviewPort` |
 | Settings | `surfaces/settings/settings.tsx` | Typed editor, protected authority, readiness, storage, and local preferences |
 | ChatGPT account | `surfaces/settings/general/chatgpt-account.tsx` | `ChatGptAccountContext` default memory preview port |
-| Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Local library/editor with real worker parsing/export |
+| Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Served library and versioned Save through `state/spreadsheet-wiring-adapter.ts`; explicit fixture composition retains the mock library |
 | Intake | `surfaces/intake/intake.tsx` | Typed intake session and command client |
 | Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | AP1 population and selected browse through `state/activity-wiring-adapter.ts`; explicit fixture composition uses `activitySample` |
 | Explorer | `surfaces/explorer/explorer.tsx`, `explorer-flow.tsx` | Local workflow definitions, choices, and source models |
@@ -366,9 +366,10 @@ inner popup dismissal, and text editing keep their scope rather than turning typ
 ## Spreadsheets
 
 Spreadsheets has Registered spreadsheets and Spreadsheet types tabs, library search, New spreadsheet,
-Import spreadsheet, and Add spreadsheet type. The current library/type registry is local memory.
-Opening a registered copy mounts `SpreadsheetEditor`; a missing registration says Spreadsheet unavailable.
-Unsaved workbook drafts share Settings exit guards.
+Import spreadsheet, and Add spreadsheet type. The library reads served saved workbooks; Spreadsheet types remain local.
+Opening a saved workbook mounts `SpreadsheetEditor`. List and open reads use a loading status; read failures show Spreadsheet unavailable.
+New and imported workbooks remain drafts until Save. Save sends the opened version and confirms only matching readback.
+Conflicts and uncertain saves retain the draft. Unsaved workbook drafts share Settings exit guards.
 
 CSV/XLSX parsing and export run in real workers. Import chooses the header row and kept sheets/columns,
 then binds each retained column to a known typed field. Duplicate fields per sheet and invalid nonblank
@@ -428,8 +429,8 @@ unavailable; production and test transactions remain separate from run counts.
 Workflow source switches remain unchanged. Served generic identities never receive fictional Logs:
 mock workflow detail is explicitly unavailable; served detail requires exact day-row membership and
 the existing run-detail/log reader. AS1 retains summary/summary CSV/XLSX exports through the same
-nested report authority. AP1 full-population CSV is client/adapter-bound, but the existing view renders
-no export control; that control remains an operator-reviewed UI request.
+nested report authority. Export CSV downloads the snapshot-bound AP1 full population. The control stays
+pending until the download settles and reports refusal without starting another request.
 
 ## Explorer
 
