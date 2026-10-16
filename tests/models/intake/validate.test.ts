@@ -41,9 +41,9 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
   it("walks §8's worked example: 42 rows, 40 valid, 2 named rejections", () => {
     const rows = Array.from({ length: 42 }, (_, index) => {
       const row = index + 1;
-      if (row === 17) return ["10-4567", "Cleckoa, Crithe", "HDH"];
+      if (row === 17) return ["10-4567", "Morrow, Bea", "HDH"];
       if (row === 31) return ["TBD", "Roe, Rick", "HDH"];
-      return [`10${String(400000 + row).padStart(6, "0")}`, "Cleckoa, Crithe", "HDH"];
+      return [`10${String(400000 + row).padStart(6, "0")}`, "Morrow, Bea", "HDH"];
     });
     const result = validate(rows);
     assert.equal(result.valid.length, 40);
@@ -65,7 +65,7 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
   });
 
   it("re-validates a corrected cell without rewriting the source, and keeps the rejection history", () => {
-    const rows = [["10-4567", "Cleckoa, Crithe", "HDH"], ["10998801", "Roe, Rick", "HDH"]];
+    const rows = [["10-4567", "Morrow, Bea", "HDH"], ["10998801", "Roe, Rick", "HDH"]];
     const first = validate(rows);
     assert.equal(first.rejected.length, 1);
 
@@ -94,7 +94,7 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
   });
 
   it("derives the same reject id for the same defect, so revalidation is idempotent", () => {
-    const rows = [["10-4567", "Cleckoa, Crithe", "HDH"]];
+    const rows = [["10-4567", "Morrow, Bea", "HDH"]];
     assert.equal(validate(rows).rejected[0].rejectId, validate(rows).rejected[0].rejectId);
     assert.notEqual(
       deriveRowRejectId({ sourceSha256: SOURCE_SHA, sourceRow: 1, kind: "cell-coercion", subject: "emplId" }),
@@ -104,9 +104,9 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
 
   it("rejects BOTH rows of an identity collision rather than picking a winner", () => {
     const rows = [
-      ["10456712", "Cleckoa, Crithe", "HDH"],
+      ["10456712", "Morrow, Bea", "HDH"],
       ["10998801", "Roe, Rick", "HDH"],
-      ["10456712", "Cleckoa, Crithe", "HDH"],
+      ["10456712", "Morrow, Bea", "HDH"],
     ];
     const result = validate(rows);
     assert.equal(result.valid.length, 1);
@@ -126,7 +126,7 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
       projection: workStudyIntake,
       detected,
       bindings: bindings([["emplId", 0]]),
-      rows: [["10456712", "Cleckoa, Crithe", "HDH"], ["10998801", "Roe, Rick", "HDH"]],
+      rows: [["10456712", "Morrow, Bea", "HDH"], ["10998801", "Roe, Rick", "HDH"]],
       readAt: AT,
     deriveItemId,
     });
@@ -140,17 +140,17 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
   });
 
   it("treats a blank optional cell as absent and a blank required cell as a rejection", () => {
-    const result = validate([["10456712", "Cleckoa, Crithe", "   "]]);
+    const result = validate([["10456712", "Morrow, Bea", "   "]]);
     assert.equal(result.valid.length, 1);
     assert.equal("department" in (result.valid[0].parsedInput as object), false);
 
-    const required = validate([["   ", "Cleckoa, Crithe", "HDH"]]);
+    const required = validate([["   ", "Morrow, Bea", "HDH"]]);
     assert.equal(required.rejected.length, 1);
     assert.equal(required.rejected[0].kind, "cell-coercion");
   });
 
   it("retains the complete classified offending cell in the durable rejection", () => {
-    const result = validate([["10-4567", "Cleckoa, Crithe", "HDH"]]);
+    const result = validate([["10-4567", "Morrow, Bea", "HDH"]]);
     const reject = result.rejected[0];
     assert.equal(reject.kind, "cell-coercion");
     if (reject.kind !== "cell-coercion") return;
@@ -171,7 +171,7 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
         projection: workStudyIntake,
         detected: detectColumns(["Student Name"]),
         bindings: bindings([["emplId", 0]]),
-        rows: [["Cleckoa, Crithe"]],
+        rows: [["Morrow, Bea"]],
         readAt: AT,
         constants: [{ targetFieldId: IntakeTargetFieldIdSchema.parse("effectiveDate"), value: "2026-07-01" }],
         deriveItemId,
@@ -181,18 +181,18 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
   });
 
   it("produces canonical, stable parsed inputs", () => {
-    const once = validate([["10456712", "Cleckoa, Crithe", "HDH"]]).valid[0];
-    const twice = validate([["10456712", "Cleckoa, Crithe", "HDH"]]).valid[0];
+    const once = validate([["10456712", "Morrow, Bea", "HDH"]]).valid[0];
+    const twice = validate([["10456712", "Morrow, Bea", "HDH"]]).valid[0];
     assert.equal(once.inputHash, twice.inputHash);
     assert.deepEqual(once.parsedInput, { department: "HDH", effectiveDate: "2026-07-01", emplId: "10456712" });
   });
 });
 
 describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
-  const result = validate([["10456712", "Cleckoa, Crithe", "HDH"], ["10-4567", "Roe, Rick", "HDH"]]);
+  const result = validate([["10456712", "Morrow, Bea", "HDH"], ["10-4567", "Roe, Rick", "HDH"]]);
 
   it("refuses an excluded row with no recorded operator confirmation", () => {
-    const excludedResult = validate([["10456712", "Cleckoa, Crithe", "HDH"], ["10-4567", "Roe, Rick", "HDH"]], {
+    const excludedResult = validate([["10456712", "Morrow, Bea", "HDH"], ["10-4567", "Roe, Rick", "HDH"]], {
       excludedRows: [2],
     });
     const manifest = manifestFrom(excludedResult, 2, {
@@ -223,14 +223,14 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   });
 
   it("recognizes an identical rerun plan", () => {
-    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const manifest = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
     assert.deepEqual(rerunDiff(manifest, currentRerunFacts(manifest)), { kind: "same-plan" });
   });
 
   it("reports a newly valid stable item with its current row facts", () => {
-    const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const prior = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
     const current = validate([
-      ["10456712", "Cleckoa, Crithe", "HDH"],
+      ["10456712", "Morrow, Bea", "HDH"],
       ["10998801", "Roe, Rick", "Student Affairs"],
     ]);
 
@@ -245,11 +245,11 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
 
   it("reports a no-longer-valid stable item with its prior durable row facts", () => {
     const priorValidation = validate([
-      ["10456712", "Cleckoa, Crithe", "HDH"],
+      ["10456712", "Morrow, Bea", "HDH"],
       ["10998801", "Roe, Rick", "Student Affairs"],
     ]);
     const prior = manifestFrom(priorValidation, 2);
-    const current = validate([["10456712", "Cleckoa, Crithe", "HDH"]]);
+    const current = validate([["10456712", "Morrow, Bea", "HDH"]]);
 
     const diff = rerunDiff(prior, currentRerunFacts(prior, current.valid));
 
@@ -261,7 +261,7 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   });
 
   it("keeps identity vectors empty when a mapping change preserves the stable item", () => {
-    const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const prior = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
 
     const diff = rerunDiff(prior, currentRerunFacts(prior, prior.validRows, {
       mappingSnapshotHash: sha256Hex("a different mapping"),
@@ -275,8 +275,8 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   });
 
   it("reports changed canonical input hashes when a correction preserves the stable item", () => {
-    const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
-    const current = validate([["10456712", "Cleckoa, Crithe", "HDH"]], {
+    const prior = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
+    const current = validate([["10456712", "Morrow, Bea", "HDH"]], {
       corrections: [{
         sourceRow: 1,
         field: IntakeTargetFieldIdSchema.parse("department"),
@@ -303,7 +303,7 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   });
 
   it("reports remove plus add when a mapping change changes stable item identity", () => {
-    const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const prior = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
     const current = validate([["10998801", "Roe, Rick", "Student Affairs"]]);
 
     const diff = rerunDiff(prior, currentRerunFacts(prior, current.valid, {
@@ -318,7 +318,7 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   });
 
   it("reports a source-axis change even when stable items are unchanged", () => {
-    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const manifest = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
 
     const moved = rerunDiff(manifest, currentRerunFacts(manifest, manifest.validRows, {
       sourceSha256: sha256Hex("a different file"),
@@ -332,7 +332,7 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   });
 
   it("refuses missing current valid-row facts by field name", () => {
-    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const manifest = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
     const { validRows: omitted, ...missingCurrentRows } = currentRerunFacts(manifest);
     assert.notEqual(omitted, undefined);
 
@@ -343,7 +343,7 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   });
 
   it("refuses missing prior valid-row facts by field name", () => {
-    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const manifest = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
     const { validRows: omitted, ...missingPriorRows } = manifest;
     assert.notEqual(omitted, undefined);
 
@@ -354,7 +354,7 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   });
 
   it("refuses one stable identity in both rerun vectors", () => {
-    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const manifest = manifestFrom(validate([["10456712", "Morrow, Bea", "HDH"]]), 1);
     const row = manifest.validRows[0];
     if (row === undefined) throw new Error("the fixture manifest has no valid row");
 

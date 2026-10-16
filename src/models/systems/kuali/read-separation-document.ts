@@ -60,8 +60,8 @@ export const KualiReadSeparationDocument = defineTaskContract({
     documentNumber: "4510",
     formType: { observed: "RRSS Separation Request Form", matches: true },
     employee: {
-      name: { state: "present", value: "Clauckia, Drose" },
-      eid: { state: "present", value: "10001799" },
+      name: { state: "present", value: "Clauldoa, Droli" },
+      eid: { state: "present", value: "10203262" },
       employeeType: { state: "present", value: "Student" },
       studentTitleCode: { state: "present", value: "4921 - STDT 2" },
       division: { state: "present", value: "Campus Dining and Retail" },

@@ -7,7 +7,7 @@ import type { UcpathPendingSweepTarget, UcpathTransactionRow } from "../../../..
 import { EidSchema, IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import { createDeterministicUcpathDriverRow } from "../../../../support/helpers/ucpath-pending-row-fixtures.js";
 
-const EID = EidSchema.parse("10001799");
+const EID = EidSchema.parse("10203262");
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-28T19:00:00.000Z");
 const { transactionRow } = createDeterministicUcpathDriverRow(EID);
 

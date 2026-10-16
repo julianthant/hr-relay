@@ -128,7 +128,7 @@ describe("ref data-intake-and-edit-data §2.4 per-cell coercion", () => {
   });
 
   it("keeps SSN digits exact rather than padding or truncating", () => {
-    assert.equal(coerceAndParse("ssn", "951-57-1700"), "951571700");
+    assert.equal(coerceAndParse("ssn", "920-74-1459"), "920741459");
     assert.equal(coercionFailure("ssn", "12345678").reason.includes("nine-digit"), true);
     assert.equal(coercionFailure("ssn", "1234567890").reason.includes("nine-digit"), true);
   });

@@ -8,7 +8,7 @@ slatRenderComplete,
 type SlatRenderFact,
 } from "../../../../../src/backend/systems/new-kronos/driver/search-render.js";
 
-const COMPLETE: SlatRenderFact = Object.freeze({ label: "Name Cleckoa, Crithe ID 10000001", cardRendered: true });
+const COMPLETE: SlatRenderFact = Object.freeze({ label: "Name Morrow, Bea ID 10000001", cardRendered: true });
 
 const HOST_ONLY: SlatRenderFact = Object.freeze({ label: "", cardRendered: false });
 /** Stage 3 as observed under throttle: the card is in, its text nodes are not yet interpolated. */
@@ -25,7 +25,7 @@ describe("slatRenderComplete — the four stages, only the last of which is read
     assert.equal(slatRenderComplete(CARD_EMPTY), false);
     assert.equal(slatRenderComplete(CARD_RAW_BINDINGS), false);
     // text without the card is not a completed render either — the card is where the identity lives
-    assert.equal(slatRenderComplete({ label: "Name Cleckoa, Crithe ID 10000001", cardRendered: false }), false);
+    assert.equal(slatRenderComplete({ label: "Name Morrow, Bea ID 10000001", cardRendered: false }), false);
   });
 
   it("a row whose card is in and interpolated is complete", () => {
@@ -60,8 +60,8 @@ describe("judgeSearchRender — the Employee Search render verdict", () => {
 
 describe("parseSlatIdentity — the row's subject, or nothing", () => {
   it("reads `Name <name> ID <eid>` off a completed row's label", () => {
-    assert.deepEqual(parseSlatIdentity(COMPLETE.label), { displayName: "Cleckoa, Crithe", employeeId: "10000001" });
-    assert.deepEqual(parseSlatIdentity("  Name   Cleckoa,  Crithe \n ID  10000001 "), { displayName: "Cleckoa, Crithe", employeeId: "10000001" });
+    assert.deepEqual(parseSlatIdentity(COMPLETE.label), { displayName: "Morrow, Bea", employeeId: "10000001" });
+    assert.deepEqual(parseSlatIdentity("  Name   Morrow,  Bea \n ID  10000001 "), { displayName: "Morrow, Bea", employeeId: "10000001" });
   });
 
   it("an empty label carries no subject", () => {
@@ -74,11 +74,11 @@ describe("parseSlatIdentity — the row's subject, or nothing", () => {
 
   it("the nested krn-slat's own accessible name (a name, no EID) is not the identity", () => {
 
-    assert.equal(parseSlatIdentity("Item Name Cleckoa, Crithe not checked"), null);
+    assert.equal(parseSlatIdentity("Item Name Morrow, Bea not checked"), null);
   });
 
   it("completion says WHEN to read, never WHAT was read: a complete row with a foreign label still parses to nothing", () => {
-    const foreign: SlatRenderFact = { label: "Employee Cleckoa, Crithe #10000001", cardRendered: true };
+    const foreign: SlatRenderFact = { label: "Employee Morrow, Bea #10000001", cardRendered: true };
     assert.equal(judgeSearchRender([foreign]), "results");
     assert.equal(parseSlatIdentity(foreign.label), null);
   });

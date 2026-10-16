@@ -334,7 +334,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
     assert.equal((await launchCommands(h).submit(request)).state, "already-applied");
     assert.equal(h.children.length, 1);
     assert.equal(JSON.stringify(h.database.authority.workerControls.list()), retained);
-    const replacement = commands.submit(dashboardLaunch(h, "10002296").request);
+    const replacement = commands.submit(dashboardLaunch(h, "10203373").request);
     assert.equal((await replacement).state, "applied");
     assert.equal(h.children.length, 1);
     assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 1);
@@ -342,7 +342,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
 
   it("serializes concurrent launches so two queued runs share one cold worker", async () => {
     const h = openControlHarness(); const commands = launchCommands(h);
-    const first = dashboardLaunch(h).request; const second = dashboardLaunch(h, "10002296").request;
+    const first = dashboardLaunch(h).request; const second = dashboardLaunch(h, "10203373").request;
     const pending = Promise.all([commands.submit(first), commands.submit(second)]);
     await proveLaunchBirth(h);
     assert.deepEqual((await pending).map(result => result.state), ["applied", "applied"]);
@@ -431,7 +431,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
     assert.equal((await commands.submit(bad)).state, "rejected");
     const plan = h.database.authority.startPlans.get(request.target.startPlanId); assert.ok(plan);
     const { derivePlannedInputFingerprint } = await import("../../../../../src/models/run/start-plan.js");
-    const empty = { ...plan, startPlanId: nextCommandId(), planned: [], refused: [{ entry: 1, rawInput: { eid: "10873698" }, code: "input-invalid", message: "Refused input" }],
+    const empty = { ...plan, startPlanId: nextCommandId(), planned: [], refused: [{ entry: 1, rawInput: { eid: "10203372" }, code: "input-invalid", message: "Refused input" }],
       inputFingerprint: derivePlannedInputFingerprint([], plan.ingressSchemaHash, plan.canonicalInputSchemaHash) };
     h.database.authority.startPlans.create(empty);
     assert.equal((await commands.submit({ ...request, commandId: nextCommandId(), target: { ...request.target, startPlanId: empty.startPlanId },
@@ -558,7 +558,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     if (mode === "dashboard-start") {
       const proposed = await fetch(`${origin}/api/v1/start-plans`, {
         method: "POST", headers: { "content-type": "application/json", origin },
-        body: JSON.stringify({ workflowId: WORKFLOW, submissions: [{ emplId: "10873698" }], dryRun: false }),
+        body: JSON.stringify({ workflowId: WORKFLOW, submissions: [{ emplId: "10203372" }], dryRun: false }),
       });
       assert.equal(proposed.status, 200);
       const plan = StartPlanWireSchema.parse(await proposed.json());
@@ -625,7 +625,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       } finally { blocked.close(); }
       const nextPlanResponse = await fetch(`${origin}/api/v1/start-plans`, { method: "POST",
         headers: { "content-type": "application/json", origin },
-        body: JSON.stringify({ workflowId: WORKFLOW, submissions: [{ emplId: "10002296" }], dryRun: false }) });
+        body: JSON.stringify({ workflowId: WORKFLOW, submissions: [{ emplId: "10203373" }], dryRun: false }) });
       assert.equal(nextPlanResponse.status, 200);
       const nextPlan = StartPlanWireSchema.parse(await nextPlanResponse.json());
       const nextId = nextCommandId();

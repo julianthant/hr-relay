@@ -215,7 +215,7 @@ describe("served Logs wiring", () => {
     assert.equal(projectRunLogs(mismatch, client).steps[0].entries.length, 1);
   });
   it("exposes supported gate approvals and refuses typed IDs, rejection text and confirmation-copy downgrades", () => {
-    const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
     for (const packet of [fixtures.ONE_CLICK, fixtures.CHOOSE, fixtures.TYPE_EID]) {
       const gate = fixtures.gateDetail(packet);
       const approval = identityApprovalAction("Approve");
@@ -275,7 +275,7 @@ describe("served Logs wiring", () => {
   it("settles supported candidate approval only after matching readback and replays the same command", async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -314,7 +314,7 @@ describe("served Logs wiring", () => {
   it("shows exact one-click target and served basis before approval, then requires matched readback", async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3), title: "Generic run title" } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -356,7 +356,7 @@ describe("served Logs wiring", () => {
   for (const transition of ["identical", "command-revision", "run-roundtrip", "keyed-run-roundtrip", "unmounted", "foreign-scope"] as const) it(`isolates pending command ownership and feedback through ${transition} replacement`, async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -417,7 +417,7 @@ describe("served Logs wiring", () => {
     try {
       const selected = [RUN, OTHER].map(runId => ({ ...selection(runId), row: { ...selection(runId).row, rowRevision: RowRevisionSchema.parse(3) } }));
       const gates = [RUN, OTHER].map(runId => {
-        const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => runId);
+        const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => runId);
         return fixtures.gateDetail(fixtures.ONE_CLICK);
       });
       const resolved = new Set<string>(), releases = new Map<string, () => void>();
@@ -456,7 +456,7 @@ describe("served Logs wiring", () => {
   it("retains uncertain feedback and the exact replay envelope through identical row replacement", async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -484,7 +484,7 @@ describe("served Logs wiring", () => {
   for (const outcome of ["uncertain", "refused"] as const) it(`stabilizes restored ${outcome} command and replay inputs until state or scope changes`, async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -534,7 +534,7 @@ describe("served Logs wiring", () => {
   it("retains supplied notes and locks decision controls when gate/capture authority is omitted", async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       for (const omitted of ["node", "capture"] as const) {
@@ -561,7 +561,7 @@ describe("served Logs wiring", () => {
   it("keeps refusal feedback and permits only an explicit corrected approval in the mounted Logs panel", async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
@@ -599,7 +599,7 @@ describe("served Logs wiring", () => {
   it("releases a confirmed gate lock when the same run reaches its next authoritative gate", async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const firstGate = fixtures.gateDetail(fixtures.ONE_CLICK);
       const secondGate = fixtures.gateDetail(fixtures.ONE_CLICK, { gateId: "second-gate", expectedVersion: 5,
         actions: firstGate.actions.map(action => ({ ...action, expectedVersion: 5 })) });
@@ -637,7 +637,7 @@ describe("served Logs wiring", () => {
   for (const authority of ["current", "new-revision", "new-gate", "foreign-actor", "foreign-authority"] as const) it(`projects keyed pending-to-refused recovery only for ${authority} gate authority`, async () => {
     const h = launchHarness();
     try {
-      const fixtures = identityFixtures(AT, "10833507", "10001799", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
       const gate = fixtures.gateDetail(fixtures.CHOOSE);
       const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
       const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
