@@ -268,13 +268,13 @@ describe("native authority backup", () => {
     try { raw.exec("PRAGMA user_version=56"); } finally { raw.close(); }
     expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema/u);
     const current = new DatabaseSync(f.path);
-    try { current.exec("PRAGMA user_version=4; CREATE TABLE extra_authority(id TEXT)"); } finally { current.close(); }
+    try { current.exec("PRAGMA user_version=5; CREATE TABLE extra_authority(id TEXT)"); } finally { current.close(); }
     expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema-shape/u);
   });
   it("backs up a stopped current source without conversion or settings side files", async () => {
     const f = fixture(), expected = f.database.getMeta(); f.database.close();
     const source = openAuthorityBackupSourceReadOnly(f.admission, f.path);
-    try { expect(source.getMeta()).toEqual({ schemaVersion: 4, authorityGeneration: expected.authorityGeneration, updatedAt: expected.updatedAt });
+    try { expect(source.getMeta()).toEqual({ schemaVersion: 5, authorityGeneration: expected.authorityGeneration, updatedAt: expected.updatedAt });
       const report = await new AuthorityBackupService(f.admission, source, { directory: f.directory }, f.clock).request({ trigger: "operator", requiredGeneration: expected.authorityGeneration });
       expect(report.finalGeneration).toBe(expected.authorityGeneration);
     } finally { source.close(); }
