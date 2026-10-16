@@ -1,4 +1,7 @@
 import { createChatGptAccountService } from "../../../accounts/chatgpt-account-service.js";
+import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
+import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
+import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import type { AnyWorkflowDescriptor } from "../../../../workflow-kit/workflow.js";
 import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
 import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
@@ -771,6 +774,7 @@ async function composeDashboardRuntimeStartup(
   });
 
   const intake = composeIntake({ database, artifacts, parser: intakeParser, projections: intakeProjections, descriptors, clock, ids });
+  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
 
   const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
@@ -826,6 +830,8 @@ async function composeDashboardRuntimeStartup(
     },
     startPlans,
     intake,
+    intakeCommandResult: createIntakeCommandResultQuery(database),
+    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
     ...composeStorage({ admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
     ...explorerBoundary.routes,

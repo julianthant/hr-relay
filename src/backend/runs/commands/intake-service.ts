@@ -1,3 +1,4 @@
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 
 import { z } from "zod";
 import { CsvError } from "csv-parse/sync";
@@ -16,6 +17,7 @@ import {
 } from "../../../rules/identity/ids.js";
 import {
   IntakeSessionSchema,
+  WorkbookIntakeSourceSchema,
   type IntakeSession,
 } from "../../../models/intake/session.js";
 import { currentRerunState, deriveIntakeEnqueuePlan } from "../../../models/intake/enqueue.js";
@@ -53,6 +55,7 @@ const IntakeUploadRequestSchema = z.strictObject({
   mediaType: z.enum(INTAKE_UPLOAD_MEDIA_TYPES),
   // Capture the original filename at upload; content addressing cannot recover it.
   fileName: z.string().min(1).max(255),
+  workbookSource: WorkbookIntakeSourceSchema.optional(),
   byteLength: z.number().int().positive().max(
     INTAKE_UPLOAD_MAX_BYTES,
     `an intake upload may not exceed ${String(INTAKE_UPLOAD_MAX_BYTES)} bytes`,
@@ -87,6 +90,7 @@ export interface IntakeService {
     mediaType: string;
     fileName: string;
     bytes: Uint8Array;
+    workbookSource?: z.infer<typeof WorkbookIntakeSourceSchema>;
   }>): Promise<IntakeUploadOutcome>;
   read(intakeSessionId: string): Promise<IntakeSessionWire>;
   prepare(command: unknown): Promise<void>;
@@ -251,6 +255,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       workflow: session.workflow,
       artifact: session.artifact,
       ...(session.sourceName === undefined ? {} : { sourceName: session.sourceName }),
+      ...(session.workbookSource === undefined ? {} : { workbookSource: session.workbookSource }),
       state: session.state,
       expectedVersion: session.version,
       ...(reviewBinding === undefined ? {} : { reviewBinding }),
@@ -286,6 +291,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         mediaType: baseMediaType(input.mediaType),
         fileName: input.fileName,
         byteLength: input.bytes.byteLength,
+        ...(input.workbookSource === undefined ? {} : { workbookSource: input.workbookSource }),
       });
       requireProjection(request.workflow);
       requireDescriptor(request.workflow);
@@ -313,7 +319,10 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         const open = repositories.intakeSessions
           .findActiveBySource(artifact.sha256)
           .find((candidate) => candidate.workflow === request.workflow);
-        if (open !== undefined) return { state: "joined" as const, session: open };
+        if (open !== undefined) {
+          if (open.workbookSource?.libraryId !== request.workbookSource?.libraryId || open.workbookSource?.version !== request.workbookSource?.version) throw new WorkbookLibraryError("WORKBOOK_INTAKE_SOURCE_CONFLICT");
+          return { state: "joined" as const, session: open };
+        }
         const record = IntakeSessionSchema.parse({
           intakeSessionId: dependencies.ids.uuid(),
           reservedManifestId: dependencies.ids.uuid(),
@@ -321,6 +330,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
           workflow: request.workflow,
           artifact,
           sourceName: request.fileName,
+          ...(request.workbookSource === undefined ? {} : { workbookSource: request.workbookSource }),
           sheet: parse.sheet,
           headerRowIndex: parse.layout === null ? null : parse.layout.headerRowIndex,
           bindings: [],

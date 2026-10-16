@@ -22,6 +22,32 @@ import { COMMAND_FIXTURES, HASH_B, NOW, UUID_2, UUID_4 } from "../../support/fix
 import { QUEUED_RUN, sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
 
+function withoutIntakeCommandReceiptRead(content: string): string {
+  const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
+  const auditUses: ts.PropertyAccessExpression[] = [];
+  let admitted: ts.PropertyAccessExpression | undefined;
+  function inspect(node: ts.Node): void {
+    if (ts.isIdentifier(node) && node.text === "commandAudits" && ts.isPropertyAccessExpression(node.parent)
+      && node.parent.name === node) auditUses.push(node.parent);
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.getText(source) === "database.authority.commandAudits.findByCommand"
+      && node.arguments.length === 1 && node.arguments[0].getText(source) === "id") {
+      let parent: ts.Node | undefined = node.parent;
+      while (parent !== undefined && !ts.isArrowFunction(parent)) parent = parent.parent;
+      if (parent !== undefined && ts.isArrowFunction(parent) && ts.isCallExpression(parent.parent)
+        && parent.parent.expression.getText(source) === "database.withAuthorityReadSnapshot"
+        && parent.parent.arguments.length === 1 && parent.parent.arguments[0] === parent) {
+        admitted = node.expression.expression;
+      }
+    }
+    ts.forEachChild(node, inspect);
+  }
+  inspect(source);
+  if (auditUses.length !== 1 || admitted !== auditUses[0]) return content;
+  const start = admitted.name.getStart(source);
+  return content.slice(0, start) + "receiptReads" + content.slice(admitted.name.end);
+}
+
 function withoutReadOnlyHistoryFacade(content: string): string {
   const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
   const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
@@ -436,6 +462,19 @@ describe("control-command-single-path", () => {
     ]) assert.ok(withoutReadOnlyHistoryFacade(bad).includes("commandAudits"), "mutating or unrelated audit authority must remain visible");
   });
 
+  it("admits only the intake receipt query's snapshot-bound audit read", () => {
+    const source = readFileSync(join(REPO_ROOT, "src/backend/runs/queries/intake-command-result.ts"), "utf8");
+    assert.ok(!withoutIntakeCommandReceiptRead(source).includes("commandAudits"));
+    for (const bad of [
+      source.replace("commandAudits.findByCommand(id)", "commandAudits.insert(id)"),
+      source.replace("commandAudits.findByCommand(id)", "commandAudits.findByCommand(otherId)"),
+      source.replace("database.withAuthorityReadSnapshot", "database.withAuthorityTransaction"),
+      source.replace("commandAudits.findByCommand(id)", "commandAudits.get(id)"),
+      `${source}\nfunction forged(database: any) { database.authority.commandAudits.insert({}); }`,
+      `${source}\nfunction forged(database: any) { return database.authority.commandAudits; }`,
+    ]) assert.ok(withoutIntakeCommandReceiptRead(bad).includes("commandAudits"), "mutating, aliased or out-of-snapshot audit reach stays visible");
+  });
+
   it("keeps the command journal, audit, and start-plan consumption on exactly one executing path", () => {
     const allowed = new Set([
       "src/backend/runs/commands/command-kernel.ts",
@@ -463,6 +502,10 @@ describe("control-command-single-path", () => {
       if (allowed.has(path)) continue;
       for (const token of tokens) {
         const expectedSettingsAuditReads = settingsAuditReaders.get(path);
+        if (path === "src/backend/runs/queries/intake-command-result.ts" && token === "commandAudits") {
+          if (withoutIntakeCommandReceiptRead(content).includes(token)) violations.push(`${path} may only read its actual intake receipt in an authority snapshot`);
+          continue;
+        }
         if (expectedSettingsAuditReads !== undefined && token === "commandAudits") {
           const auditUses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
           if (auditUses.length !== expectedSettingsAuditReads

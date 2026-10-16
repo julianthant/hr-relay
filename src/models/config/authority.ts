@@ -48,6 +48,8 @@ export const AuthorityTableNameSchema = z.enum([
   "diagnostic_files",
   "dryrun_results",
   "run_search",
+  "workbook_library",
+  "workbook_library_history",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([]);
@@ -141,7 +143,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
 });
 
 const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({

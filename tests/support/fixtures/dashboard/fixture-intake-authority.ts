@@ -1,3 +1,4 @@
+import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -101,7 +102,7 @@ export function createIntakeAuthority() {
   app.use("/api/v1/commands", operatorMutationIngressGuard);
   registerIntakeRoutes(app, { intake: {
     upload: request => runtime.intake.upload(request), read: id => runtime.intake.read(id), prepare: request => runtime.intake.prepare(request),
-  } });
+  }, intakeCommandResult: (sessionId, commandId) => createIntakeCommandResultQuery(database)(sessionId, commandId) });
   registerQueueRoutes(app, { queue: { day: day => { runtime.projection.ingestFromTimeline(); return runtime.projection.buildDashboardDayWire(day); } },
     startPlans: { plan: forbidden, previewWarnings: forbidden },
   });

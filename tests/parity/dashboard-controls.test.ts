@@ -103,9 +103,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(range.locator(".date-field__prefix, .date-input-group__prefix")).toHaveCount(0);
       await expect(range.getByText("Start", { exact: true })).toHaveCount(1);
       await expect(range.locator(".ds-date-label").first()).toHaveClass(/sr-only/u);
-      const toolbar = (await settings.locator(".activity-header-filters").boundingBox())!, dateBounds = (await range.boundingBox())!, periodBounds = (await period.boundingBox())!;
+      const toolbar = (await settings.locator(".activity-header-filters").boundingBox())!, periodControls = (await settings.locator(".activity-period-controls").boundingBox())!, dateBounds = (await range.boundingBox())!, exportBounds = (await settings.getByRole("button", { name: "Export CSV", exact: true }).boundingBox())!, periodBounds = (await period.boundingBox())!;
       expect(periodBounds.x).toBeCloseTo(toolbar.x, 0);
-      expect(dateBounds.x + dateBounds.width).toBeCloseTo(toolbar.x + toolbar.width, 0);
+      expect(dateBounds.x + dateBounds.width).toBeCloseTo(periodControls.x + periodControls.width, 0);
+      expect(exportBounds.x + exportBounds.width).toBeCloseTo(toolbar.x + toolbar.width, 0);
+      expect(exportBounds.x).toBeGreaterThan(dateBounds.x + dateBounds.width);
       expect(dateBounds.x - periodBounds.x - periodBounds.width).toBeGreaterThan(24);
       await chooseSelect(period, "this-week");
       await range.getByRole("spinbutton", { name: /^day, Start/u }).press("ArrowUp");

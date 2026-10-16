@@ -1,7 +1,7 @@
 import { ActivityDurations } from "./activity-duration.js";
-import { type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BarChart3 } from "lucide-react";
-import { Select, PageHeading, dsFocus } from "../../ds/ui.js";
+import { Spinner, Button, Select, PageHeading, dsFocus } from "../../ds/ui.js";
 import { ActivityBreadcrumbs, ActivityDrilldown } from './activity-drilldown.js';
 import type { ActivityDrilldownData, ActivityBrowse, ActivitySelectionHandler } from './activity-drilldown-model.js';
 import { ActivitySkeleton } from "./activity-loading.js";
@@ -72,18 +72,31 @@ function Performance({ report }: { report: ActivitySummary }) {
   ]} /></section>;
 }
 
-export function ActivityView({ data, range, rangeRevision = 0, period, onPreset, onRange, notice, selection, onSelection, browse, pending = false }: {
+export function ActivityView({ data, range, rangeRevision = 0, period, onPreset, onRange, onExport, notice, selection, onSelection, browse, pending = false }: {
   data: ActivityViewState; range: ActivityDateRange; today: string; period: ActivityDatePreset;
   rangeRevision?: number;
   onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
-  onExport?: (format: "csv" | "xlsx") => void; notice?: string;
+  onExport?: (format: "csv" | "xlsx") => void | Promise<void>; notice?: string;
   browse?: ActivityDrilldownData; pending?: boolean;
   selection?: ActivityBrowse | null; onSelection?: ActivitySelectionHandler;
 }) {
+  const [exporting, setExporting] = useState<object>();
+  const [exportError, setExportError] = useState<{ report: ActivityViewState; reason: string }>();
+  const latest = useRef(data); latest.current = data;
+  const requestRef = useRef<object | undefined>(undefined);
+  useEffect(() => () => { requestRef.current = undefined; }, []);
+  const exportCsv = async () => {
+    if (!onExport || data.state !== 'loaded' || requestRef.current) return;
+    const report = data; const request = {}; requestRef.current = request; setExporting(request); setExportError(undefined);
+    try { await onExport('csv'); }
+    catch { if (requestRef.current === request && latest.current === report) setExportError({ report, reason: 'CSV export unavailable. Try again from this report.' }); }
+    finally { if (requestRef.current === request) { requestRef.current = undefined; setExporting(undefined); } }
+  };
   return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
     {selection && onSelection && data.state === 'loaded' && <ActivityBreadcrumbs report={data.report} selection={selection} onSelection={onSelection} browse={browse} />}
     <PageHeading title="Analytics" description="Run outcomes, volume and performance." />
-    <div className="activity-header-filters"><div className="activity-period-controls"><Select aria-label="Report period" variant="toolbar" value={period} onChange={event => onPreset(event.target.value as ActivityDatePreset)}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select><ActivityRange key={rangeRevision} range={range} onApply={onRange} onEdit={() => onPreset('custom')} /></div></div>
+    <div className="activity-header-filters"><div className="activity-period-controls"><Select aria-label="Report period" variant="toolbar" value={period} onChange={event => onPreset(event.target.value as ActivityDatePreset)}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select><ActivityRange key={rangeRevision} range={range} onApply={onRange} onEdit={() => onPreset('custom')} /></div><Button variant="secondary" aria-busy={!!exporting || undefined} disabled={data.state !== "loaded" || !onExport || !!exporting} icon={exporting ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void exportCsv()}>Export CSV</Button></div>
+    {exportError?.report === data && <p role="alert" className="m-0 text-body text-ui-danger">{exportError.reason}</p>}
     {notice && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}
     <div className="min-w-0" aria-busy={data.state === "loading" || pending || undefined}>
       {data.state === "loaded" ? selection && onSelection ? <ActivityDrilldown report={data.report} selection={selection} onSelection={onSelection} browse={browse} pending={pending} /> : <><Metrics report={data.report} onSelection={data.report.runs ? onSelection : undefined} /><div className="mt-6 flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><ActivityDurations report={data.report} onWorkflow={data.report.runs && onSelection ? workflow => onSelection({ metric: 'timed', workflow, page: 0 }) : undefined} /><ActivityVolume volume={data.report.volume} /><Transactions report={data.report} /><Coverage report={data.report} /><Performance report={data.report} /></div></> : data.state === "loading" ? <ActivitySkeleton range={range} /> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Analytics unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}

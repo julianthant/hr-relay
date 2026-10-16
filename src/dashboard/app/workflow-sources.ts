@@ -23,11 +23,12 @@ export interface WorkflowComposition {
   readonly activity?: WorkflowSource;
   readonly inbox: WorkflowSource;
   readonly search: WorkflowSource;
+  readonly spreadsheets?: WorkflowSource;
   readonly sourceForRoute: (id: string, requestedPreview: boolean) => WorkflowSource;
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {
-  return Object.freeze({ sources, sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
+  return Object.freeze({ sources, sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const, spreadsheets: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
 }
 
 export const PRODUCT_WORKFLOW_COMPOSITION = workflowComposition(WORKFLOW_SOURCES);

@@ -1,3 +1,4 @@
+import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
 import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 /** Label inventory copied from legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87 src/dashboard/components/dev/rebuild-demo/demo-wire.ts; presentation only. */
 const WORKFLOW_PREVIEW_DEFINITIONS = [{"id": "separations", "label": "Separations", "category": "Separations"}, {"id": "onboarding", "label": "Onboarding", "category": "Onboarding"}, {"id": "person-lookup", "label": "Person Lookup", "category": "Search"}, {"id": "i9-lookup", "label": "I-9 Lookup", "category": "Search"}, {"id": "work-study", "label": "Work-Study", "category": "Work Study"}, {"id": "kronos-pay-rule", "label": "Kronos Pay Rule", "category": "Payroll"}, {"id": "ocr", "label": "OCR", "category": "Utils"}, {"id": "oath-signature", "label": "Oath Signature", "category": "Onboarding"}, {"id": "oath-upload", "label": "Oath Upload", "category": "Onboarding"}, {"id": "emergency-contact", "label": "Emergency Contact", "category": "Onboarding"}, {"id": "onbase", "label": "OnBase", "category": "OnBase"}, {"id": "i9-check", "label": "I-9 Check", "category": "Separations"}, {"id": "crm-doc-download", "label": "CRM Doc Download", "category": "Utils"}, {"id": "sharepoint-download", "label": "SharePoint Download", "category": "Utils"}, {"id": "old-kronos-reports", "label": "Old Kronos Reports", "category": "Timekeeping"}] as const;
@@ -11,13 +12,23 @@ export type MockMethod = "typed" | "pdf" | "roster" | "delegated";
 export type MockStep = Readonly<{ key: string; label: string; system?: string; message: string; write?: boolean }>;
 export type MockWorkflow = Readonly<{
   id: MockWorkflowId; label: string; category: string; runnable: boolean; methods: readonly MockMethod[];
+  sampleOutcomes?: readonly (QueueBusinessOutcome & { lookupMode: "search" | "match" })[];
   inputLabel: string; placeholder: string; example: string; dryRun: boolean; roster: boolean;
   steps: readonly MockStep[]; result: readonly (readonly [string, string])[];
 }>;
 const step = (key: string, label: string, system: string | undefined, message: string, write = false): MockStep => ({ key, label, system, message, ...(write ? { write } : {}) });
 type Contract = Omit<MockWorkflow, "id" | "label" | "category">;
 const contracts: Record<MockWorkflowId, Contract> = {
-  "person-lookup": { runnable: true, methods: ["typed"], inputLabel: "Employee IDs or names", placeholder: "10000001; Lee, Jordan", example: "10000001", dryRun: false, roster: false, steps: [
+  "person-lookup": { sampleOutcomes: [
+    { label: "Active", tone: "success", lookupMode: "search" },
+    { label: "Inactive", tone: "neutral", lookupMode: "search" },
+    { label: "CRM only", tone: "warning", lookupMode: "search" },
+    { label: "Multiple matches", tone: "warning", lookupMode: "search" },
+    { label: "Not found", tone: "neutral", lookupMode: "search" },
+    { label: "Undetermined", tone: "warning", lookupMode: "search" },
+    { label: "Found", tone: "success", lookupMode: "match" },
+    { label: "Not found in UCPath", tone: "neutral", lookupMode: "match" },
+  ], runnable: true, methods: ["typed"], inputLabel: "Employee IDs or names", placeholder: "10000001; Lee, Jordan", example: "10000001", dryRun: false, roster: false, steps: [
     step("searching", "Search for person", "UCPath", "Search Person Org Summary by Employee ID or name; Match uses HR-Tasks person matching."),
     step("cross-verification", "Cross-check identity", "CRM", "Cross-check the name match against CRM when CRM check is enabled."),
     step("active-status", "Read employment status", "UCPath", "Read department, HR status and employment dates."),

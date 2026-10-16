@@ -1,8 +1,9 @@
+import type { EditableWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { DatabaseSync } from "node:sqlite";
 import Excel from "exceljs";
 import { afterEach, expect, it } from "vitest";
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
-import { createWorkbookLibraryService, WorkbookLibraryError, type EditableWorkbook } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
 const databases: DatabaseSync[] = [];

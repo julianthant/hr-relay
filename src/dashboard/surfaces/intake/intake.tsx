@@ -1,5 +1,5 @@
 import { IntakeOutcomeSkeleton, IntakeSkeleton } from "../shared/loading/loading.js";
-import { observeResource } from "../../state/async-resource.js";
+import { useIntakeWiringAdapter } from "../../state/intake-wiring-adapter.js";
 import { Checkbox as HeroCheckbox } from "@heroui/react";
 /** The spreadsheet intake workspace — ref data-intake-and-edit-data's upload → map → validate →
  * run, and ref dashboard-surfaces's surface contract . */
@@ -14,7 +14,7 @@ Play,
 Table2,
 X,
 } from "lucide-react";
-import { useCallback,useEffect,useMemo,useState,type ReactNode } from "react";
+import { useCallback,useMemo,useState,type ReactNode } from "react";
 import type { z } from "zod";
 import type { RowRejectSchema } from "../../../models/intake/manifest.js";
 import type {
@@ -23,7 +23,7 @@ DetectedColumnSchema,
 } from "../../../models/intake/mapping.js";
 import type { IntakeTargetSchema } from "../../../models/intake/projection.js";
 import type { SuggestionSchema } from "../../../models/intake/suggestions.js";
-import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../models/intake/wire.js";
+import { type IntakeSessionWire } from "../../../models/intake/wire.js";
 import {
 Badge,
 Banner,
@@ -65,7 +65,7 @@ Well,
 } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useIntakeClient as useDashboardClient } from "./intake-client.js";
-import { intakeFailureMessage, useIntakeCommands, type CommandProblem } from "./intake-command-model.js";
+import { type CommandProblem } from "./intake-command-model.js";
 import { fmtClock,plural,pluralize,shortHash } from "../shared/status/format.js";
 import {
 correctionEditorLabel,
@@ -1245,12 +1245,6 @@ function OutcomeBand({
 
 /* ── the workspace ────────────────────────────────────────────────────────── */
 
-/** The workspace requires an uploaded session; upload refusal belongs to its entry dialog. */
-type SessionState =
-  | { readonly state: "loading" }
-  | { readonly state: "loaded"; readonly session: IntakeSessionWire }
-  | { readonly state: "failed"; readonly message: string; readonly cause: unknown };
-
 export function IntakeWorkspace(props: Parameters<typeof IntakeSessionWorkspace>[0]) {
   return <IntakeSessionWorkspace key={props.sessionId} {...props} />;
 }
@@ -1274,15 +1268,13 @@ function IntakeSessionWorkspace({
   onEnqueued: () => void;
 }) {
   const client = useDashboardClient();
-  const [resource, setResource] = useState<SessionState>({ state: "loading" });
   /** Acknowledgement belongs to the served rejection set. */
   const [reviewedRejectionKey, setReviewedRejectionKey] = useState<string | undefined>(undefined);
-  const adopt = useCallback((session: IntakeSessionWire, command: { type: string }) => {
-    setResource({ state: "loaded", session });
+  const applied = useCallback((command: { type: string }) => {
     if (command.type === "validate-intake") setTab("review");
     if (command.type === "enqueue-intake-manifest") setTab("manifest");
   }, []);
-  const { issue, pending, problem, setProblem, recovery, busy, commandView } = useIntakeCommands(client, sessionId, adopt);
+  const { resource, issue, pending, problem, setProblem, recovery, busy } = useIntakeWiringAdapter(client, sessionId, applied);
   const [confirmedReview, setConfirmedReview] = useState<string | undefined>(undefined);
   /** Validated sessions open on rejection review until the operator selects another tab. */
   const [tab, setTab] = useState<IntakeTab | undefined>(undefined);
@@ -1290,17 +1282,6 @@ function IntakeSessionWorkspace({
   const rejectionReview = resource.state === "loaded"
     ? rejectionReviewEligibility(resource.session, reviewedRejectionKey)
     : undefined;
-
-  useEffect(() => {
-    setResource({ state: "loading" });
-    return observeResource(async () => {
-      const session = IntakeSessionWireSchema.parse(await client.intakeSession(sessionId));
-      if (session.intakeSessionId !== sessionId) throw new Error("Intake session identity mismatch");
-      return session;
-    },
-      (session) => setResource({ state: "loaded", session }),
-      (cause) => setResource({ state: "failed", message: intakeFailureMessage(), cause }));
-  }, [client, sessionId, commandView]);
 
   const body = ((): ReactNode => {
     if (resource.state === "loading") {

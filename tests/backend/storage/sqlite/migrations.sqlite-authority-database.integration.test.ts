@@ -1,3 +1,4 @@
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { authorityMutationCases, type MutationCase } from "../../../support/helpers/backend/authority-accounting-world.js";
 import { createAuthorityAccountingTestWorld } from "../../../support/helpers/backend/authority-accounting-world.js";
@@ -94,7 +95,7 @@ describe("authority generation accounting", () => {
 
   it("#16 enumerates every current deletion guard and each aborts without an admitted owner deletion", () => {
     const declarations = SQLITE_MIGRATIONS.flatMap(({ statements }) => statements.flatMap(statement =>
-      [...statement.matchAll(/CREATE TRIGGER\s+([a-z0-9_]+)\s+BEFORE DELETE ON "?([a-z0-9_]+)"?[\s\S]*?BEGIN SELECT RAISE\(ABORT,'([^']+)'\); END;/gu)]
+      [...statement.matchAll(/CREATE TRIGGER\s+([a-z0-9_]+)\s+BEFORE DELETE ON "?([a-z0-9_]+)"?[\s\S]*?BEGIN SELECT RAISE\(ABORT,'([^']+)'\); END;?/gu)]
         .map(match => ({ name: match[1], tableName: match[2], message: match[3] }))));
     const expected = [...new Map(declarations.map(trigger => [trigger.name, trigger])).values()];
     assert.ok(expected.length > 0, "deletion guard census must not be empty");
@@ -116,6 +117,11 @@ describe("authority generation accounting", () => {
         seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, path);
         assert.equal(fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }).state, "fenced");
         database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
+      } else if (trigger.tableName === "workbook_library_history") {
+        createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK }).create({
+          name: "Retained.xlsx", themes: [], hasFormulas: false,
+          sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "retained" }] }] }],
+        });
       } else if (trigger.tableName !== "database_upgrades") {
         const mutation = cases.find(({ table }) => table === trigger.tableName);
         assert.ok(mutation, `${trigger.name} needs a current owner fixture`);

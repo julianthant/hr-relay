@@ -22,7 +22,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
+const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
 
 export const AuthorityPendingCountsSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,

@@ -163,7 +163,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await chooseSelect(preflight.getByRole('combobox', { name: 'Check readiness for', exact: true }), 'person-lookup');
       await expect(preflight).toContainText('UCPath sign-in'); await expect(preflight.locator('.settings-reference-disclosure')).toHaveCount(1);
 
-      await choosePage('Analytics'); await expect(settings.getByRole('button', { name: 'Export report' })).toHaveCount(0); await expect(settings.getByRole('button', { name: 'How this report is counted' })).toHaveCount(0);
+      await choosePage('Analytics'); await settings.getByRole('button', { name: 'Export CSV', exact: true }).click(); await expect(settings).toContainText('CSV export is unavailable in this preview.'); await expect(settings.getByRole('button', { name: 'How this report is counted' })).toHaveCount(0);
       const outcomes = settings.getByRole('table', { name: 'Workflow outcomes', exact: true }); await expect(outcomes.getByRole('button')).toHaveCount(0); await expect(outcomes).not.toContainText('Version');
       const period = settings.getByRole('combobox', { name: 'Report period', exact: true }); await chooseSelect(period, 'this-week');
       await expect(settings.getByRole('group', { name: 'Report date range', exact: true })).toBeVisible();

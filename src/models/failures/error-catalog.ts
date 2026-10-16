@@ -443,6 +443,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The ChatGPT credential change could not be confirmed. Read its current state before trying again.",
     EmptyParametersSchema,
   ),
+  WORKBOOK_INTAKE_SOURCE_CONFLICT: catalogEntry(
+    "An active intake uses the same file with different workbook provenance. Finish that intake before importing this workbook.",
+    EmptyParametersSchema,
+  ),
   WORKBOOK_INVALID: catalogEntry(
     "The workbook is malformed and cannot be saved.",
     EmptyParametersSchema,

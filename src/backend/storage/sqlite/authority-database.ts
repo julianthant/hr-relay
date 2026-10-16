@@ -1,3 +1,4 @@
+import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "./workbook-library-repository.js";
 import { WorkerControlRecordSchema } from "../../../models/run/worker-control.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
@@ -104,7 +105,7 @@ import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-sce
 
 
 import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, SQLITE_MIGRATIONS, auditMigrationTableCoverage, tableClassification } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames, tableClassification } from "./migrations.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -541,6 +542,7 @@ export type AuthorityRepositories = Readonly<{
     listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
   }>;
   generatedArtifacts: ReturnType<typeof createGeneratedArtifactRepository>;
+  workbooks: ReturnType<typeof createWorkbookLibraryRepository>;
   artifactOutbox: ArtifactOutboxRepository;
   artifactSinkHeads: ArtifactSinkHeadRepository;
 }>;
@@ -935,6 +937,7 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
 function nativeTableKey(table: AuthorityTableName): string {
   if (table === "run_results" || table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
+  if (table === "workbook_library_history") return "workbook_id,version";
   if (table === "worker_controls") return "command_id";
   if (table === "auth_leases") return "credential_key";
   if (table === "timeline_events") return "cursor";
@@ -1005,7 +1008,8 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
-  for (const table of AuthorityTableNameSchema.options) {
+  for (const table of migrationTableNames(expectedSchemaVersion)) {
+    if (table === "workbook_library" || table === "workbook_library_history") continue;
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     for (const raw of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
       try {
@@ -1048,13 +1052,14 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
       validated++;
     }
   }
+  if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database);
   try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
 }
 
 function authorityContentFingerprint(database: DatabaseSync): string {
   const hash = createHash("sha256");
-  for (const table of AuthorityTableNameSchema.options) {
+  for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
       hash.update(canonicalJsonStringify(z.record(z.string(),z.union([z.string(),z.number(),z.null()])).parse(row)));
@@ -1203,13 +1208,13 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
-  if ((expectedSchemaVersion !== 1 && expectedSchemaVersion !== 2 && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
+  if ((expectedSchemaVersion !== 1 && expectedSchemaVersion !== 2 && expectedSchemaVersion !== 3 && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
   assertNativeSchema(database, schemaVersion);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw new Error(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
   const names = inspectionTableNames(database);
-  const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+  const expected = [...migrationTableNames(expectedSchemaVersion)].sort();
   if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
     throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
   }
@@ -1229,7 +1234,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
     if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
   }
-  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]) }).parse({
+  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]) }).parse({
     applicationId,
     schemaVersion,
     pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
@@ -1257,7 +1262,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   requireRuntimeAdmission(admission).assertExclusive();
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
-  if (version !== 1 && version !== 2) throw new AuthoritySchemaVersionError(version);
+  if (version !== 1 && version !== 2 && version !== 3) throw new AuthoritySchemaVersionError(version);
   database.exec("BEGIN EXCLUSIVE");
   try {
     if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority-application-mismatch");
@@ -3276,6 +3281,9 @@ export class AuthorityDatabase implements Disposable {
     const imports = createImportedArtifactRepositories({ database: this.#database,
       mutate: (work) => this.#authorityWrite("artifacts", work) });
     return Object.freeze({
+      workbooks: createWorkbookLibraryRepository({ database: this.#database,
+        mutate: work => this.#authorityWrite("workbook_library", work),
+        read: work => this.#withReadSnapshot(work) }),
       explorerOverrides: createExplorerOverrideRepository({ database: this.#database, mutate: (work) => {
         if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") throw new Error("explorer-override-command-transaction-required");
         return this.#authorityWrite("explorer_overrides", work);

@@ -6,7 +6,8 @@ import { afterEach,it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { IntakeWorkspace } from "../../../src/dashboard/surfaces/intake/intake.js";
-import { CommandResultSchema } from "../../../src/rules/commands/commands.js";
+import { IntakeCommandResultWireSchema } from "../../../src/models/dashboard/workbooks.js";
+import { IntakeCommandRequestSchema, CommandResultSchema } from "../../../src/rules/commands/commands.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
@@ -80,7 +81,7 @@ async function readyAuthority() {
 async function confirm(h: Awaited<ReturnType<typeof mount>>) {
   const checkbox = h.host.querySelector<HTMLButtonElement>('[role="checkbox"]'); assert.ok(checkbox); await flush(() => checkbox.click());
 }
-it("requires explicit confirmation, then guards duplicate clicks and replays the exact envelope after a lost reply", async () => {
+it("requires explicit confirmation, then guards duplicate clicks and reads the exact receipt after a lost reply", async () => {
   const { authority, wire } = await readyAuthority();
   const h = await mount(wire, { nowIso: authority.clock.now().toISOString(), post: async (request, n) => {
     const response = await authority.post(request);
@@ -91,12 +92,13 @@ it("requires explicit confirmation, then guards duplicate clicks and replays the
   await flush(() => { h.button("Start 2 runs").click(); h.button("Start 2 runs").click(); });
   assert.equal(h.calls.length, 1); assert.equal(h.button("Start 2 runs").disabled, true);
   const minted = authority.mintedIds;
-  await flush(() => h.button("Recover exact command").click()); assert.equal(h.calls.length, 2); assert.deepEqual(h.calls[1], h.calls[0]);
-  assert.equal(h.bodies[1], h.bodies[0]); assert.deepEqual(authority.mintedIds, minted);
+  authority.clock.advanceWall(5_000);
+  await flush(() => h.button("Recover exact command").click()); assert.equal(h.calls.length, 1);
+  assert.equal(h.bodies.length, 1); assert.deepEqual(authority.mintedIds, minted);
   assert.equal(h.host.textContent?.includes("Recover exact command"), false);
   assert.equal(h.enqueued, 0); await flush(() => h.button("Show the runs").click()); assert.equal(h.enqueued, 1);
 });
-it("after an applied response, recovery replays the exact journaled command and rereads its session and day without duplicate effects", async () => {
+it("after an applied response, recovery reads the exact journaled command and rereads its session and day without duplicate effects", async () => {
   const { authority, wire } = await readyAuthority();
   const replies: unknown[] = [];
   const h = await mount(wire, { nowIso: authority.clock.now().toISOString(), post: async request => {
@@ -108,16 +110,20 @@ it("after an applied response, recovery replays the exact journaled command and 
   assert.equal(h.button("Recover exact command").disabled, false); assert.equal(h.enqueued, 0);
   const committed = await authority.intake.read(wire.intakeSessionId); const minted = authority.mintedIds;
   assert.ok(committed.manifest); assert.equal(committed.expectedVersion, wire.expectedVersion + 1);
-  await flush(() => h.button("Recover exact command").click()); assert.equal(h.calls.length, 2);
-  assert.deepEqual(h.calls[1], h.calls[0]); assert.equal(h.bodies[1], h.bodies[0]);
-  assert.equal(CommandResultSchema.parse(replies[1]).state, "already-applied");
+  await flush(() => h.button("Recover exact command").click()); assert.equal(h.calls.length, 1);
+  assert.equal(h.bodies.length, 1);
+  const receiptUrl = h.readUrls.find(url => url.includes("/commands/")); assert.ok(receiptUrl);
+  const receipt = IntakeCommandResultWireSchema.parse(await (await authority.app.request(receiptUrl)).json());
+  assert.equal(receipt.state, "recorded");
+  if (receipt.state !== "recorded") throw new Error("durable receipt missing");
+  assert.deepEqual(receipt.request, { ...IntakeCommandRequestSchema.parse(h.calls[0]), requestedAt: receipt.request.requestedAt }); assert.deepEqual(receipt.result, replies[0]);
   assert.deepEqual(await authority.intake.read(wire.intakeSessionId), committed); assert.deepEqual(authority.mintedIds, minted);
   const sessionUrl = `http://intake.test/api/v1/intake/${wire.intakeSessionId}`;
   const dayUrl = `http://intake.test/api/v1/dashboard?day=${committed.manifest.createdAt.slice(0, 10)}`;
-  assert.deepEqual(h.readUrls, [sessionUrl, sessionUrl, sessionUrl, dayUrl]);
+  assert.deepEqual(h.readUrls, [sessionUrl, sessionUrl, receiptUrl, sessionUrl, dayUrl]);
   const day = DashboardDayWireSchema.parse(await (await authority.app.request(dayUrl)).json());
-  const reply = CommandResultSchema.parse(replies[1]); assert.equal(reply.state, "already-applied");
-  if (reply.state !== "already-applied") throw new Error("replay lacked journaled result");
+  const reply = receipt.result; assert.equal(reply.state, "applied");
+  if (reply.state !== "applied") throw new Error("receipt lacked applied result");
   const runIds = reply.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []);
   assert.equal(runIds.length, 2); assert.deepEqual(day.queueSurfaces.map(row => row.runId).sort(), [...runIds].sort());
   assert.equal(committed.intakeSessionId, wire.intakeSessionId); assert.equal(committed.manifest.manifestId, wire.reservedManifestId);

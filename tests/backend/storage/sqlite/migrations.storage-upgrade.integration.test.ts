@@ -24,7 +24,7 @@ function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    assert.equal(tables.length, 34);
+    assert.equal(tables.length, 36);
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
       return [String(row.name), raw.prepare(`SELECT * FROM "${String(row.name)}" ORDER BY rowid`).all()];

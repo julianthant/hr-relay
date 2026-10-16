@@ -27,8 +27,9 @@ export function ActivityReport({ range, onRange, client, today: servedToday, sou
     else setSelection(next);
   }, [navigation, setSelection, source, wire.pending]);
   const onExport = (format: "csv" | "xlsx") => {
-    if (source !== "served" || format !== "csv") { setNotice({ scope, text: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); return; }
-    void wire.exportCsv().then(download => {
+    if (source === "mock") { setNotice({ scope, text: "CSV export is unavailable in this preview." }); return; }
+    if (format !== "csv") { setNotice({ scope, text: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); return; }
+    return wire.exportCsv().then(download => {
       const url = URL.createObjectURL(new Blob([download.bytes], { type: download.mediaType }));
       const link = document.createElement("a"); link.href = url; link.download = download.filename;
       link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);

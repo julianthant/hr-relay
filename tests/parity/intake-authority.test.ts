@@ -1,3 +1,5 @@
+import { IntakeCommandRequestSchema } from "../../src/rules/commands/commands.js";
+import { IntakeCommandResultWireSchema } from "../../src/models/dashboard/workbooks.js";
 import { test, expect, type Page } from "@playwright/test";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { PARITY_THEMES, installTheme } from "./helpers/capture.js";
@@ -59,6 +61,13 @@ test(`explicit comparison and exact recovery @ ${theme.name}`, async ({ page }) 
     await page.keyboard.press("Escape"); await expect(page.getByRole("button", { name: "Show full prior manifest and changed-axis hashes" })).toBeFocused();
     await confirmation.press("Space");
     const envelopes: unknown[] = [];
+    const receiptReads: { url: string; body: unknown }[] = [];
+    await page.route("**/api/v1/intake/*/commands/*", async route => {
+      const response = await route.fetch();
+      const body: unknown = await response.json();
+      receiptReads.push({ url: route.request().url(), body });
+      await route.fulfill({ response });
+    });
     await page.route("**/api/v1/commands", async route => {
       const body: unknown = route.request().postDataJSON(); envelopes.push(body);
       const response = await route.fetch();
@@ -69,8 +78,18 @@ test(`explicit comparison and exact recovery @ ${theme.name}`, async ({ page }) 
     expect((await server.authority.intake.read(next.intakeSessionId)).state).toBe("enqueued");
     await expect(page.getByRole("button", { name: "Start 2 runs" })).toBeDisabled();
     await page.getByRole("button", { name: "Recover exact command" }).press("Enter");
+    await expect.poll(() => receiptReads.length).toBe(1);
+    expect(envelopes).toHaveLength(1);
+    expect(receiptReads).toHaveLength(1);
+    const receipt = IntakeCommandResultWireSchema.parse(receiptReads[0].body);
+    expect(receipt.state).toBe("recorded");
+    if (receipt.state !== "recorded") throw new Error("Actual durable receipt missing");
+    const submitted = IntakeCommandRequestSchema.parse(envelopes[0]);
+    expect(receipt.request).toEqual({ ...submitted, requestedAt: receipt.request.requestedAt });
+    expect(receipt.request.requestedAt).toBe(server.authority.clock.now().toISOString());
+    expect(receiptReads[0].url).toBe(`${server.baseUrl}/api/v1/intake/${next.intakeSessionId}/commands/${receipt.request.commandId}`);
+    expect(receipt.result.commandId).toBe(receipt.request.commandId);
     await expect(page.getByRole("table", { name: "Source row dispositions" })).toBeVisible();
-    expect(envelopes).toHaveLength(2); expect(envelopes[1]).toEqual(envelopes[0]);
     expect(server.authority.database.authority.runSessions.list()).toHaveLength(2);
   } finally { await server.close(); }
 });

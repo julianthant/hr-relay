@@ -85,7 +85,7 @@ describe("native authority backup", () => {
     const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path,
       suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
       async staged => { rebuilds += 1; const stagedAdmission = f.admission.stoppedStagedAuthority(staged);
-        try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toHaveLength(34); } finally { stagedAdmission.release(); } }, f.clock);
+        try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toHaveLength(36); } finally { stagedAdmission.release(); } }, f.clock);
     const restored = await restore.restore({ manifestPath, stoppedSystemProof });
     expect(restored.state).toBe("restored"); expect(rebuilds).toBe(1);
     expect(readFileSync(join(f.root, "backups", "suspects", restored.suspectFileName))).toEqual(original);
@@ -244,7 +244,7 @@ describe("native authority backup", () => {
     expect(manifest.verification.authorityGeneration).toBe(f.database.getMeta().authorityGeneration);
     const copy = f.admission.verifiedReadOnlyCopy(verified.backupPath, manifest.sha256);
     try { const inspection = inspectAuthorityBackupReadOnly(copy, verified.backupPath);
-      expect(inspection.tables).toHaveLength(34); expect(inspection.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
+      expect(inspection.tables).toHaveLength(36); expect(inspection.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
       expect(inspection.exactTableRegistry).toBe(true); expect(inspection.invariantViolations).toEqual([]);
     } finally { copy.release(); }
   });
@@ -268,13 +268,13 @@ describe("native authority backup", () => {
     try { raw.exec("PRAGMA user_version=56"); } finally { raw.close(); }
     expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema/u);
     const current = new DatabaseSync(f.path);
-    try { current.exec("PRAGMA user_version=3; CREATE TABLE extra_authority(id TEXT)"); } finally { current.close(); }
+    try { current.exec("PRAGMA user_version=4; CREATE TABLE extra_authority(id TEXT)"); } finally { current.close(); }
     expect(() => inspectAuthorityBackupReadOnly(f.admission, f.path)).toThrow(/schema-shape/u);
   });
   it("backs up a stopped current source without conversion or settings side files", async () => {
     const f = fixture(), expected = f.database.getMeta(); f.database.close();
     const source = openAuthorityBackupSourceReadOnly(f.admission, f.path);
-    try { expect(source.getMeta()).toEqual({ schemaVersion: 3, authorityGeneration: expected.authorityGeneration, updatedAt: expected.updatedAt });
+    try { expect(source.getMeta()).toEqual({ schemaVersion: 4, authorityGeneration: expected.authorityGeneration, updatedAt: expected.updatedAt });
       const report = await new AuthorityBackupService(f.admission, source, { directory: f.directory }, f.clock).request({ trigger: "operator", requiredGeneration: expected.authorityGeneration });
       expect(report.finalGeneration).toBe(expected.authorityGeneration);
     } finally { source.close(); }

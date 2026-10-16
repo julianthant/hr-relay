@@ -1,4 +1,5 @@
 import type { ChatGptAccountRouteDeps } from "./chatgpt-account.js";
+import type { WorkbooksRouteDeps } from "./workbooks.js";
 import type { TrustRouteDeps } from "./trust-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 import type { SettingsRouteDeps } from "./settings-types.js";
@@ -17,7 +18,7 @@ import type { StaticBundle } from "../static-bundle.js";
 import type { RequestIdentityCheckpoint } from "../request-identity.js";
 
 /** Shared wiring plus leaf-owned contracts. Existing composed fixtures remain valid. */
-export interface DashboardAppDeps extends ChatGptAccountRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps {
+export interface DashboardAppDeps extends ChatGptAccountRouteDeps, WorkbooksRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps {
   readonly notifications?: { snapshot(actor: string): readonly import("../../../../models/dashboard/projection.js").NotificationWire[]; target: ReturnType<typeof import("../../../runs/queries/notifications.js").createNotificationTargetQuery>; status(): import("../../../runs/notifications/observation.js").NotificationObservationStatus };
   readonly requestIdentity: RequestIdentityCheckpoint;
   readonly preflight: import("./settings-preflight-types.js").SettingsPreflightRouteDeps["preflight"];

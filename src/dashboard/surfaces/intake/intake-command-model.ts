@@ -140,7 +140,7 @@ export function useIntakeCommands(client: DashboardClient, sessionId: string, ad
     setRecoveryId(retainedId.current);
   }, [view]);
 
-  const perform = useCallback((request: IntakeRequest, basis: IntakeAttemptEvidence, replay: boolean) => {
+  const perform = useCallback((request: IntakeRequest, basis: IntakeAttemptEvidence, recover: boolean) => {
     if (!active.current || current.current !== view) return;
     if (binding === undefined || binding.scope.client !== client) {
       setProblem({ kind: "transport", message: intakeFailureMessage() });
@@ -173,7 +173,10 @@ export function useIntakeCommands(client: DashboardClient, sessionId: string, ad
       if (sent.family !== "intake" || "outcome" in reply) return { state: "mismatch" as const, evidence: sent };
       return verifyIntakeCommand(client, basis.before, sent, reply, basis.zone);
     }, publish };
-    void (replay ? binding.executor.replay(request.commandId, options) : binding.executor.execute(request, options)).finally(() => {
+    void (recover ? binding.executor.check(request.commandId, { ...options, observe: async sent => {
+      const record = await client.intakeCommandResult(request.target.intakeSessionId, sent.commandId);
+      return record.state === "recorded" && same(record.request, { ...sent, requestedAt: record.request.requestedAt }) ? record.result : undefined;
+    } }) : binding.executor.execute(request, options)).finally(() => {
       if (active.current && current.current === token) { inFlight.current = undefined; setPending(null); }
     });
   }, [adopt, binding, client, view]);
@@ -185,7 +188,7 @@ export function useIntakeCommands(client: DashboardClient, sessionId: string, ad
       setProblem({ kind: "transport", message: intakeFailureMessage() }); return;
     }
     const parsed = IntakeCommandRequestSchema.safeParse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso,
-      requestedBy: binding.scope.actorId, source: "intake-workspace", family: "intake", target: { intakeSessionId: sessionId, expectedVersion: session.expectedVersion }, ...command });
+      requestedBy: binding.scope.actorId, source: "dashboard", family: "intake", target: { intakeSessionId: sessionId, expectedVersion: session.expectedVersion }, ...command });
     if (!parsed.success) { setProblem({ kind: "transport", message: intakeFailureMessage(), cause: parsed.error }); return; }
     let evidence = intakeEvidence.get(binding.executor);
     if (evidence === undefined) { evidence = new Map(); intakeEvidence.set(binding.executor, evidence); }
