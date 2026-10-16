@@ -161,11 +161,11 @@ schema and send parsed output. The raw-draft fingerprint invalidates plans even 
 edits; each async settlement retains its dispatch fingerprint. Confirmed cancellation creates no
 new run. Rerun creates a new attempt with explicit lineage, never overwrites the original.
 
-Served Run Options sends an explicit `workers` choice of `"auto"` or an integer from 1 through 8.
-New dialogs start at Auto. Rerun restores `RerunValuesSnapshot.workers`; an edited choice overrides
+Served Run Options shows Workers when the workflow has a served input, as the preview does, and
+sends an explicit `workers` choice of `"auto"` or an integer from 1 through 8; a hidden picker sends
+`"auto"`. New dialogs start at Auto. Rerun restores `RerunValuesSnapshot.workers`; an edited choice overrides
 that source value. Workers participates in the draft fingerprint, so edits invalidate settled plans
-and late responses. Preview admission rejects a different accepted choice, and Confirm displays the
-stored plan's choice. The start command consumes that plan without a second worker field.
+and late responses. Preview admission rejects a different accepted choice. Confirm shows no Workers row. The start command consumes that plan without a second worker field.
 Pool admission and replay follow [execution and sessions](execution-and-sessions.md#113-capacity-for-a-submitted-start).
 
 Bulk commands preserve a parent request and per-run child outcomes rather than claiming all-or-none
