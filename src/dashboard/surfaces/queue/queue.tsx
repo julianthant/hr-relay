@@ -1,3 +1,4 @@
+import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
 import { memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -179,10 +180,12 @@ const rowChip = (tone: RowChipTone, extra?: string): string =>
   );
 
 function HeaderChips({
+  outcome,
   surface,
   status,
   nowIso,
 }: {
+  outcome?: QueueBusinessOutcome;
   surface: QueueSurfaceWire;
   status: ProposedStatus;
   /** the bootstrap-calibrated instant every elapsed on this panel measures against */
@@ -224,6 +227,7 @@ function HeaderChips({
       )}
       <StatusBadge
         status={status}
+        outcome={outcome}
         presentation="queue"
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
         {...(gateAge === undefined ? {} : { age: gateAge })}
@@ -626,6 +630,7 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
 /* ── the row ─────────────────────────────────────────────────────────────── */
 
 export function QueueRow({
+  outcome,
   surface,
   itemGroup,
   members = NO_MEMBERS,
@@ -636,6 +641,7 @@ export function QueueRow({
   parentOf,
   deferOffscreen = false,
 }: {
+  outcome?: QueueBusinessOutcome;
   surface: QueueSurfaceWire;
   itemGroup?: QueueItemGroup;
   /** the joined member surfaces, for an operation row */
@@ -740,7 +746,7 @@ export function QueueRow({
               <div className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-[var(--ds-space-snug)]">
                 {/* Status ALWAYS sits on the title row's right — never on the
                     subline. */}
-                <HeaderChips surface={surface} status={status} nowIso={state.nowIso} />
+                <HeaderChips outcome={outcome} surface={surface} status={status} nowIso={state.nowIso} />
               </div>
             </div>
 
@@ -862,6 +868,7 @@ const MemoQueueRow = memo(QueueRow, (before, after) => {
 
 /** Keep memoized queue props stable between deliberate live-clock ticks. */
 export const QueuePanel = memo(function QueuePanel({
+  outcomes,
   surfaces,
   state,
   handlers,
@@ -876,6 +883,7 @@ export const QueuePanel = memo(function QueuePanel({
   header,
   renderBody,
 }: {
+  outcomes?: ReadonlyMap<string, QueueBusinessOutcome>;
   /** the day's flat queue projection, already scoped to this panel's workflow */
   surfaces: readonly QueueSurfaceWire[];
   state: QueueViewState;
@@ -1022,6 +1030,7 @@ export const QueuePanel = memo(function QueuePanel({
                   return <MemoQueueRow
                     key={item.key}
                     surface={visible}
+                    outcome={outcomes?.get(String(visible.runId))}
                     itemGroup={item}
                     members={membersOf.get(String(visible.runId)) ?? NO_MEMBERS}
                     deferOffscreen={displayTop.length > 100}

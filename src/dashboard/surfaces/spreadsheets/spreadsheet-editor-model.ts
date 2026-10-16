@@ -236,3 +236,21 @@ export function spreadsheetCellProblem(sheet: EditableSheet, column: number, val
   const field = spreadsheetField(fieldId);
   return `Does not match ${field.label} (${field.format}).`;
 }
+
+export type SpreadsheetSaveResult =
+  | { state: 'confirmed'; version: number; readback: EditableWorkbook }
+  | { state: 'refused' | 'conflict' | 'uncertain'; reason: string };
+
+function sameSpreadsheetValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (left instanceof Date || right instanceof Date) return left instanceof Date && right instanceof Date && left.getTime() === right.getTime();
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object' || Array.isArray(left) !== Array.isArray(right)) return false;
+  if (Array.isArray(left) && Array.isArray(right) && left.length !== right.length) return false;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every(key => Object.hasOwn(right, key) && sameSpreadsheetValue(Reflect.get(left, key), Reflect.get(right, key)));
+}
+
+export function spreadsheetSaveMatches(draft: EditableWorkbook, result: SpreadsheetSaveResult): result is Extract<SpreadsheetSaveResult, { state: 'confirmed' }> {
+  return result.state === 'confirmed' && Number.isSafeInteger(result.version) && result.version > 0
+    && sameSpreadsheetValue(result.readback, draft);
+}

@@ -1,5 +1,6 @@
 import type { TypedInputDraft } from "../../../../models/workflow/ingress.js";
 import { typedInputDefaults, changeTypedInput } from "../../run-start/run-start-model.js";
+import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
 import { manualFact, mockStepInputError, usesManualRead } from "./workflow-manual-model.js";
 import { displayExtractedDate } from "../../../lib/date-format.js";
 import { MOCK_WORKFLOWS, MOCK_ONBASE_TYPES, mockOnbaseDocumentType, mockWorkflow, type MockMethod, type MockStep, type MockWorkflowId } from "./workflow-mock-catalog.js";
@@ -26,6 +27,7 @@ export type MockDraft = Readonly<{
   ocrMode?: "extract" | "manual"; manualSteps?: readonly string[]; manualValues?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }>;
 export type MockRun = Readonly<{
+  businessOutcome?: QueueBusinessOutcome;
   id: string; workflowId: MockWorkflowId; title: string; subject: string; draft: MockDraft;
   sourceId?: string; parentId?: string; parentWorkflowId?: MockWorkflowId; approved: boolean; seeded: boolean;
   role?: "preparation" | "person"; records?: readonly ReviewRecord[]; inputRecord?: ReviewRecord;
@@ -200,6 +202,11 @@ export function seedMockRuns(): readonly MockRun[] {
       files: document ? [{ name: document.name, size: 4096, digest: `fixture:document:${document.name}` }] : pdf ? [{ name: flow.example.endsWith(".pdf") ? flow.example : "oaths.pdf", size: 4096, digest: `fixture:${flow.id}` }] : [] };
     const subject = pdf ? draft.files.map(file => file.name).join(" + ") : draft.text;
     const parent: MockRun = { id: `mock:${flow.id}:sample`, workflowId: flow.id, subject, title: subject, draft, approved: false, seeded: true };
+    if (flow.sampleOutcomes) return flow.sampleOutcomes.map(({ lookupMode, ...businessOutcome }, index) => {
+      const subject = index === 0 ? parent.subject : `Sample lookup ${index + 1}`;
+      return { ...parent, id: index === 0 ? parent.id : `${parent.id}:${index}`, subject, title: subject, businessOutcome,
+        draft: { ...parent.draft, lookupMode } };
+    });
     return delegateMockOcr(parent);
   });
   return runs.map(run => ["i9-lookup", "sharepoint-download"].includes(run.workflowId) ? { ...run, parentId: "mock:onbase:sample:ocr", parentWorkflowId: "ocr" } : run);

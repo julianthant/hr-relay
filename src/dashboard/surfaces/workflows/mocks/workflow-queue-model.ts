@@ -1,4 +1,6 @@
-import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../../models/dashboard/projection.js";
+import { QueueSurfaceWireSchema } from "../../../../models/dashboard/projection.js";
+import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
+import type { QueueSurfaceWire } from "../../queue/queue-model.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { mockNeedsReview, mockWaitsForOcr, mockQueueStatus, mockRunLog, type MockRun } from "./workflow-mock-model.js";
 import { reviewCanApprove, reviewRecords } from "./workflow-review-model.js";
@@ -55,4 +57,8 @@ export function mockQueueSurfaces(runs: readonly MockRun[], day: string): readon
   const surfaces = runs.map(run => mockQueueSurface(run, day));
   if (new Set(surfaces.map(surface => surface.runId)).size !== runs.length) throw new Error("MOCK_QUEUE_ID_COLLISION");
   return surfaces;
+}
+
+export function mockQueueOutcomes(runs: readonly MockRun[]): ReadonlyMap<string, QueueBusinessOutcome> {
+  return new Map(runs.flatMap(run => run.businessOutcome ? [[mockQueueId(run.id), run.businessOutcome] as const] : []));
 }
