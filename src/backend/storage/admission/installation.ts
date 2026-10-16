@@ -38,7 +38,7 @@ const PlanBindingSchema = z.strictObject({ commandId: z.uuid(), revision: z.numb
   requestFingerprint: DigestSchema, desiredDigest: DigestSchema });
 const PreparationEvidenceSchema = z.strictObject({ operationId: z.uuid(), installationId: z.uuid(),
   sourceGeneration: GenerationSchema, source: PairSchema, destination: PairSchema, plan: PlanBindingSchema,
-  sourceDatabaseIdentity: DigestSchema, sourceSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  sourceDatabaseIdentity: DigestSchema, sourceSchemaVersion: z.number().int().positive().max(CURRENT_AUTHORITY_SCHEMA_VERSION),
   sourceAuthorityGeneration: GenerationSchema, sourceAuthorityContentFingerprint: DigestSchema,
   backupReceiptId: z.string().min(1).max(200), backupManifestPath: z.string().min(1),
   backupManifestSha256: DigestSchema, backupFilePath: z.string().min(1), backupFileSha256: DigestSchema });
@@ -48,8 +48,16 @@ const StageEvidenceSchema = z.strictObject({ operationId: z.uuid(), installation
   source: PairSchema, destination: PairSchema, plan: PlanBindingSchema, stagingReceiptId: z.string().min(1),
   stagingDigest: DigestSchema, backupReceiptId: z.string().min(1), backupDigest: DigestSchema,
   finalDatabasePath: z.string().min(1), configSnapshotId: z.uuid(), configFingerprint: DigestSchema,
-  authorityVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION), databaseIdentity: z.string().min(1),
+  authorityVersion: z.number().int().positive().max(CURRENT_AUTHORITY_SCHEMA_VERSION), databaseIdentity: z.string().min(1),
   managedStateEntries: z.array(ManagedEntrySchema) });
+const CurrentPreparationEvidenceSchema = PreparationEvidenceSchema.extend({
+  sourceSchemaVersion: PreparationEvidenceSchema.shape.sourceSchemaVersion.refine(
+    (version): boolean => version === CURRENT_AUTHORITY_SCHEMA_VERSION, { message: `expected ${CURRENT_AUTHORITY_SCHEMA_VERSION}` }),
+});
+const CurrentStageEvidenceSchema = StageEvidenceSchema.extend({
+  authorityVersion: StageEvidenceSchema.shape.authorityVersion.refine(
+    (version): boolean => version === CURRENT_AUTHORITY_SCHEMA_VERSION, { message: `expected ${CURRENT_AUTHORITY_SCHEMA_VERSION}` }),
+});
 const StageCopySchema = z.strictObject({ manifestPath: z.string().min(1), manifestSha256: DigestSchema,
   backupPath: z.string().min(1), backupSha256: DigestSchema });
 const ActivationIntentSchema = z.strictObject({ operationId: z.uuid(), installationId: z.uuid(), sourceGeneration: GenerationSchema,
@@ -90,13 +98,13 @@ const JournalSchema = z.discriminatedUnion("phase", [
   AuthorityRestoreJournalSchema,
   z.strictObject({ schemaVersion: z.literal(1), phase: z.literal("adopting"), installationId: z.uuid() }),
   z.strictObject({ ...JournalBase, phase: z.literal("preparing") }),
-  z.strictObject({ ...JournalBase, phase: z.literal("prepared"), preparation: PreparationEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("activating"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("staged"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("fenced"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("retaining"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("retained"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("switched"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("prepared"), preparation: CurrentPreparationEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("activating"), preparation: CurrentPreparationEvidenceSchema, activationIntent: ActivationIntentSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("staged"), preparation: CurrentPreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: CurrentStageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("fenced"), preparation: CurrentPreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: CurrentStageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("retaining"), preparation: CurrentPreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: CurrentStageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("retained"), preparation: CurrentPreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: CurrentStageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("switched"), preparation: CurrentPreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: CurrentStageEvidenceSchema }),
 ]);
 const CompletionReceiptSchema = z.strictObject({ ...JournalBase, fromGeneration: GenerationSchema, toGeneration: GenerationSchema,
   preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema,
@@ -249,12 +257,12 @@ function verifyPreparation(pending: RelocationJournal, verify: RelocationPrepara
   if (typeof raw === "object" && raw !== null && typeof Reflect.get(raw, "then") === "function") {
     fail("relocation preparation verifier must complete synchronously");
   }
-  const preparation = PreparationEvidenceSchema.parse(raw);
+  const preparation = CurrentPreparationEvidenceSchema.parse(raw);
   checkPreparationBinding(pending, preparation);
   return preparation;
 }
 function verifyStage(journal: RelocationJournal, sourceLocator: RuntimeLocator, verify: RelocationVerifier): VerifiedRelocationEvidence {
-  const evidence = StageEvidenceSchema.parse(verify(sourceLocator, Object.freeze({ ...journal.destination }), journal.operationId,
+  const evidence = CurrentStageEvidenceSchema.parse(verify(sourceLocator, Object.freeze({ ...journal.destination }), journal.operationId,
     Object.freeze({ ...journal.plan })));
   if (evidence.operationId !== journal.operationId || evidence.installationId !== journal.installationId
     || evidence.sourceGeneration !== journal.fromGeneration || !equalPair(evidence.source, journal.source)
