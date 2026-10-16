@@ -1,3 +1,4 @@
+import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { default as assert } from 'node:assert/strict';
@@ -49,10 +50,12 @@ import { makeWorld, receiptWithWarningsOf } from "../../../support/helpers/backe
 
 it("keeps the resolved subject and operator label distinct in the derived summary day", () => {
 const f = foundationFixture();
+const { descriptor: subjectDescriptor } = createSubjectTitleTestWorld();
 try {
   const runId = id(720);
   f.db.authority.runs.enqueue(RunRecordSchema.parse({ ...f.run,
-    envelope: { ...f.run.envelope, runId, itemId: runId, enqueuedAt: NOW },
+    envelope: { ...f.run.envelope, runId, itemId: runId, enqueuedAt: NOW,
+      descriptorVersion: subjectDescriptor.version, contractFingerprint: subjectDescriptor.contractFingerprint },
     input: { ...f.run.input, raw: { emplId: '10000000' },
       parsed: { ...f.run.input.parsed, value: { emplId: '10000000', keepNonHdh: false, includeCrmDates: false }, protectedBindings: [] } },
     lifecycle: { state: 'queued' }, claimGeneration: 0, version: 1, createdAt: NOW, updatedAt: NOW,
@@ -90,7 +93,7 @@ try {
   });
   const reader = new RunRecordService({ database: f.db, clock: f.clock, ids: { uuid: () => id(723) }, publishQueued: () => {} });
   const ledger = createTransactionHistory(f.db.authority);
-  const descriptors = { resolve: (workflow: string) => workflow === 'person-lookup' ? personLookupDescriptor : undefined };
+  const descriptors = { resolve: (workflow: string) => workflow === 'person-lookup' ? subjectDescriptor : undefined };
   const servedReader: Parameters<typeof createOperatorProjection>[0]["reader"] = { read: reader.read.bind(reader), list: reader.list.bind(reader),
     summaries: { withSnapshot: work => f.db.withAuthorityReadSnapshot(work),
       queue: query => queryQueueSummaries(f.db, query),
@@ -101,7 +104,7 @@ try {
   projection.rebuildFromTimeline();
   assert.equal(projection.health().state, 'live');
 
-  const detailDeps = createOperatorRunDetail({ database: f.db, stateRoot: f.root, projection, runReader: reader });
+  const detailDeps = { ...createOperatorRunDetail({ database: f.db, stateRoot: f.root, projection, runReader: reader }), descriptors };
   const observe = (stage: string) => {
     const canonical = projection.queueSurface(runId);
     servedReader.list = () => { throw new Error('whole-history-read-forbidden'); };
@@ -122,7 +125,7 @@ hdh: true };
   const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: e.workflow, itemId: e.itemId, runId,
     nodeId: 'searching', attempt: e.attempt, claimGeneration: running.run.claimGeneration,
     output: { schemaHash: deriveSchemaHash(SearchPersonOrgOutputSchema, 'output'), value },
-    descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
+    descriptorVersion: subjectDescriptor.version, contractFingerprint: subjectDescriptor.contractFingerprint,
     implFingerprint: HASH, provenance: [], writtenAt: NOW });
   f.db.authority.runCheckpoints.insert(checkpoint);
   const resolved = observe('after-checkpoint');

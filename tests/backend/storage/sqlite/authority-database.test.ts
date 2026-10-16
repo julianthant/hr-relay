@@ -29,7 +29,7 @@ it("uses the existing stopped upgrade maintenance door without changing authorit
   const input = { stateRoot, processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), plan: false };
   try {
     const noWork = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade"], clock, root, admission);
-    assert.deepEqual(noWork, { output: "storage upgrade: already-upgraded (v3 → v3)\ncredentials: unchanged", exitCode: 0 });
+    assert.deepEqual(noWork, { output: "storage upgrade: already-upgraded (v5 → v5)\ncredentials: unchanged", exitCode: 0 });
     const writer = createContentAddressedArtifactWriter({ admission });
     const ordinary = await writer.stageDiagnostic(Buffer.from("ordinary pending"), { mediaType: "application/json" }, "ordinary"); ordinary.publish();
     const pinned = await writer.stageDiagnostic(Buffer.from("protected pending"), { mediaType: "application/json" }, "pinned"); pinned.publish();
@@ -48,7 +48,7 @@ it("uses the existing stopped upgrade maintenance door without changing authorit
     assert.equal(existsSync(join(artifactRoot, `${pinned.ref.sha256}.artifact`)), true);
     assert.deepEqual(pendingDiagnosticArtifacts(admission), [pinned.ref]);
     const cli = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade"], clock, root, admission);
-    assert.deepEqual(cli, { output: "storage upgrade: already-upgraded (v3 → v3)\ncredentials: unchanged\ndiagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-accounted", exitCode: 0 });
+    assert.deepEqual(cli, { output: "storage upgrade: already-upgraded (v5 → v5)\ncredentials: unchanged\ndiagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-accounted", exitCode: 0 });
     assert.deepEqual(readFileSync(databasePath), databaseBytes);
     const after = AuthorityDatabase.inspectExistingReadOnly(admission, databasePath);
     assert.equal(after.authorityGeneration, inspection.authorityGeneration);

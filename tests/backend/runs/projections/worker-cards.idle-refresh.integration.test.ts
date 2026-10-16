@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -49,7 +50,7 @@ it("rearms idle refresh from genuine native admission, browser settlement and cu
     const member = h.database.authority.workerSlots.get(world.WORKER_1); assert(member);
     const card = workerCardOf({ lease, member, ownerAlive: true, fold: undefined, resolveRun: () => undefined, owned: true,
       operations: h.database.authority.workerControls.list(), observations: h.database.authority.workerControls.browsers(world.WORKER_1) });
-    return sessionsFromDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerAuthority: { state: "present", members: [member] }, workerCards: [card] }), buildWorkflowCatalog([]), h.clock.now().toISOString());
+    return sessionsFromDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerAuthority: { state: "present", members: [member] }, workerCards: [card] }), buildWorkflowCatalog([], true, previewFixtureSources([])), h.clock.now().toISOString());
   };
   try {
     sessions.bindRunConfigFingerprint(fingerprint, "headed");

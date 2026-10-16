@@ -8,11 +8,13 @@ import { createNoteTimelineWriter } from "../../../../src/backend/storage/events
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import type { RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
 import { AT, cleanReceiptOf, makeWorld, queuedEventOf, receiptWithWarningsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
-import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 
+const { descriptor: subjectDescriptor } = createSubjectTitleTestWorld();
 const worlds: DashboardWorld[] = [];
 function world(): DashboardWorld {
-  const created = makeWorld({ descriptors: { resolve: () => personLookupDescriptor } });
+  const created = makeWorld({ descriptors: { resolve: () => subjectDescriptor } });
   worlds.push(created);
   return created;
 }
@@ -68,6 +70,14 @@ function countAuthorityReads<Result>(
     w.authority.latestCheckpoint = original.latestCheckpoint;
     w.authority.getReceipt = original.getReceipt;
   }
+}
+
+function boundReceipt(w: DashboardWorld, receipt: RunEvidenceReceipt): RunEvidenceReceipt {
+  const run = w.authority.records.get(receipt.runId);
+  assert.ok(run);
+  const e = run.envelope;
+  return RunEvidenceReceiptSchema.parse({ ...receipt, runId: e.runId, traceId: e.traceId, attempt: e.attempt,
+    workflowId: e.workflow, descriptorFingerprint: e.contractFingerprint, configFingerprint: e.configFingerprint });
 }
 
 describe("member preview slices before joining", () => {
@@ -146,7 +156,7 @@ describe("a row reads its evidence receipt once", () => {
   it("reads the receipt exactly once for a terminal row", () => {
     const w = world();
     terminalDone(w, 1);
-    w.authority.receipts.set(uuidOf(1), cleanReceiptOf({ seed: 1 }));
+    w.authority.receipts.set(uuidOf(1), boundReceipt(w, cleanReceiptOf({ seed: 1 })));
     const counted = countAuthorityReads(w, () => w.projection.queueSurface(uuidOf(1)));
     assert.equal(counted.getReceipt, 1);
   });
@@ -168,7 +178,7 @@ describe("a row reads its evidence receipt once", () => {
   it("keeps both consumers' answers, from that one read", () => {
     const w = world();
     terminalDone(w, 1);
-    w.authority.receipts.set(uuidOf(1), cleanReceiptOf({ seed: 1 }));
+    w.authority.receipts.set(uuidOf(1), boundReceipt(w, cleanReceiptOf({ seed: 1 })));
     const row = w.projection.queueSurface(uuidOf(1));
     assert.ok(row !== undefined);
     assert.deepEqual(row.warnings, {
@@ -212,12 +222,12 @@ describe("a row reads its evidence receipt once", () => {
     terminalDone(w, 2);
     terminalDone(w, 3);
     terminalDone(w, 4);
-    w.authority.receipts.set(uuidOf(1), cleanReceiptOf({ seed: 1 }));
-    w.authority.receipts.set(uuidOf(2), receiptWithWarningsOf({
+    w.authority.receipts.set(uuidOf(1), boundReceipt(w, cleanReceiptOf({ seed: 1 })));
+    w.authority.receipts.set(uuidOf(2), boundReceipt(w, receiptWithWarningsOf({
       seed: 2,
       summaries: ["a safe warning"],
-    }));
-    const legacyReceipt = { ...cleanReceiptOf({ seed: 4 }) };
+    })));
+    const legacyReceipt = boundReceipt(w, cleanReceiptOf({ seed: 4 }));
     w.authority.receipts.set(uuidOf(4), legacyReceipt);
 
     const counted = countAuthorityReads(w, () => w.projection.buildActivityReportWire(

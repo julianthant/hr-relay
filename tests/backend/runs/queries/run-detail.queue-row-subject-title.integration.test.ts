@@ -8,15 +8,15 @@ import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { DAY, makeWorld, queuedEventOf, runRecordOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
-import { personLookupDescriptor, separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const { searchingCheckpoint, RESOLVED } = createSubjectTitleTestWorld();
+const { descriptor: subjectDescriptor, searchingCheckpoint, RESOLVED } = createSubjectTitleTestWorld();
 
 
 const worlds: DashboardWorld[] = [];
 
 
-function world(descriptor: AnyWorkflowDescriptor | "none" = personLookupDescriptor): DashboardWorld {
+function world(descriptor: AnyWorkflowDescriptor | "none" = subjectDescriptor): DashboardWorld {
   const created = makeWorld({
     descriptors: { resolve: () => (descriptor === "none" ? undefined : descriptor) },
   });
@@ -138,7 +138,7 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
     const w = world();
     const generic = runRecordOf({ seed: 10, version: 2 });
     const run = RunRecordSchema.parse({ ...generic, envelope: { ...generic.envelope,
-      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint } });
+      descriptorVersion: subjectDescriptor.version, contractFingerprint: subjectDescriptor.contractFingerprint } });
     w.authority.put(run);
     w.writer.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "EID 10873698" }));
     const checkpoint = RunCheckpointRecordSchema.parse(searchingCheckpoint(10, RESOLVED));
@@ -149,7 +149,7 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces)", () => {
       stateRoot: w.stateRoot,
       projection: w.projection,
       authority: w.authority,
-      descriptors: { resolve: () => personLookupDescriptor },
+      descriptors: { resolve: () => subjectDescriptor },
     }, uuidOf(10));
 
     assert.equal(detail.header.title, "Battistessa, Johnnie");

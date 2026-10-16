@@ -11,7 +11,7 @@ import { inMemoryRunReaderFake } from "../../../support/helpers/canonical-run-re
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { ActivityReportWireSchema,type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
-import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
 import { fixtureUuid,ledgerCommitFixture } from "../../../support/fixtures/ledger-projection-fixtures.js";
@@ -95,6 +95,14 @@ const CLAIM = {
   claimedAt: "2026-08-03T17:00:05.000Z",
   heartbeatAt: "2026-08-03T17:00:05.000Z",
 } as const;
+
+function boundReceipt(w: DashboardWorld, receipt: RunEvidenceReceipt): RunEvidenceReceipt {
+  const run = w.authority.records.get(receipt.runId);
+  assert.ok(run);
+  const e = run.envelope;
+  return RunEvidenceReceiptSchema.parse({ ...receipt, runId: e.runId, traceId: e.traceId, attempt: e.attempt,
+    workflowId: e.workflow, descriptorFingerprint: e.contractFingerprint, configFingerprint: e.configFingerprint });
+}
 
 function receiptWithPersonFactOf(
   seed: number,
@@ -498,11 +506,11 @@ describe("the Activity report", () => {
         version: 3,
       }));
     }
-    w.authority.receipts.set(uuidOf(31), receiptWithWarningsOf({
+    w.authority.receipts.set(uuidOf(31), boundReceipt(w, receiptWithWarningsOf({
       seed: 31,
       summaries: ["CRM dates were replayed past their freshness limit", "a second warning"],
-    }));
-    w.authority.receipts.set(uuidOf(32), cleanReceiptOf({ seed: 32 }));
+    })));
+    w.authority.receipts.set(uuidOf(32), boundReceipt(w, cleanReceiptOf({ seed: 32 })));
 
     const report = ActivityReportWireSchema.parse(w.projection.buildActivityReportWire(D0, D0));
 

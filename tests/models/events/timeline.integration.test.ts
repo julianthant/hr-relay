@@ -1,3 +1,4 @@
+import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -121,7 +122,8 @@ function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    assert.equal(tables.length, 34);
+    assert.equal(tables.length, 36);
+    assert.deepEqual(tables.map(row => row.name), AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort());
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
       return [String(row.name), raw.prepare(`SELECT * FROM "${String(row.name)}" ORDER BY rowid`).all()];

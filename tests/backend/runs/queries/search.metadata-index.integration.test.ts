@@ -15,8 +15,8 @@ import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/check
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
-import { failure,foundationFixture,HASH,NOW,terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
-import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { failure,HASH,NOW } from "../../../support/helpers/database-foundation/fixtures.js";
+import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 function fixture() {
@@ -132,10 +132,23 @@ it("expires snapshots and retains exact pages until authority changes", () => {
 });
 
 it("publishes declared subject names, authentic recorded actors and typed failure evidence with source writes", () => {
-  const f = foundationFixture();
+  const f = fixture();
   try {
-    const e = f.run.envelope;
-    f.db.registerRunSearchDeclarations([{ workflow: e.workflow, version: e.descriptorVersion, contractFingerprint: e.contractFingerprint, subjectProjection: personLookupDescriptor.subjectProjection }]);
+    const { descriptor } = createSubjectTitleTestWorld();
+    const queued = runRecordOf({ seed: 4801, descriptor, enqueuedAt: NOW });
+    f.db.authority.runs.enqueue(queued);
+    const { workerId } = testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["ucpath"] });
+    const claimed = f.db.authority.runs.claimNext({ workflow: "person-lookup", workerId, now: NOW });
+    assert.ok(claimed.state === "claimed");
+    const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
+    const validating = f.db.authority.runs.transition({ runId: queued.envelope.runId, expectedVersion: claimed.run.version, claim, now: NOW,
+      lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW } });
+    assert.ok(validating.state === "applied");
+    const running = f.db.authority.runs.transition({ runId: queued.envelope.runId, expectedVersion: validating.run.version, claim, now: NOW,
+      lifecycle: { state: "running", workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: "searching" } });
+    assert.ok(running.state === "applied");
+    const run = running.run, e = run.envelope;
+    f.db.registerRunSearchDeclarations([{ workflow: e.workflow, version: e.descriptorVersion, contractFingerprint: e.contractFingerprint, subjectProjection: descriptor.subjectProjection }]);
     createTimelineEmitter({ repository: f.db.authority.timelineEvents, clock: f.clock, pid: 4242 }).emit({
       t: "run.queued", kind: "run", ts: NOW, workflow: e.workflow, runId: e.runId, attempt: e.attempt,
       traceId: e.traceId, spanPath: e.traceId, itemId: e.itemId, shape: e.shape, priority: e.priority, dryRun: e.dryRun,
@@ -146,7 +159,7 @@ it("publishes declared subject names, authentic recorded actors and typed failur
 hdh: true };
     const value = SearchPersonOrgOutputSchema.parse({ results: [selected], selection: { status: "resolved", selected, candidateEids: [selected.emplId] } });
     f.db.authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({ workflowId: e.workflow, itemId: e.itemId, runId: e.runId,
-      nodeId: "searching", attempt: e.attempt, claimGeneration: f.run.claimGeneration,
+      nodeId: "searching", attempt: e.attempt, claimGeneration: run.claimGeneration,
       output: { schemaHash: deriveSchemaHash(SearchPersonOrgOutputSchema, "output"), value }, descriptorVersion: e.descriptorVersion,
       contractFingerprint: e.contractFingerprint, implFingerprint: HASH, provenance: [], writtenAt: NOW }));
     const search = (q: string, facets = {}) => f.db.authority.runs.search({ q, scope: "all", facets, limit: 5 });
@@ -164,7 +177,10 @@ hdh: true };
       try { assert.deepEqual(peer.authority.runs.search({q:"resolved",scope:"all",facets:{},limit:5}).rows[0]?.metadata,names.rows[0]?.metadata); }
       finally { peer.close(); }
     } finally { raw.close(); }
-    terminalizeFixtureFailure(f, f.run, failure());
+    const failed = { ...failure(), runId: e.runId, traceId: e.traceId, attempt: e.attempt, workflowId: e.workflow };
+    f.db.terminalizeFailure(descriptor, { failure: failed, authorization: { kind: "failed", runId: e.runId,
+      workflowId: e.workflow, attempt: e.attempt, descriptorVersion: e.descriptorVersion, contractFingerprint: e.contractFingerprint,
+      expectedVersion: run.version, claim, authorizedAt: NOW, failureId: failed.failureId } });
     assert.equal(search("", { failure: "FIXTURE_FAILURE", evidence: "failure", state: "failed" }).totalMatches, 1);
     assert.equal(search("", { evidence: "receipt" }).totalMatches, 0);
     assert.equal(search("", { evidence: "diagnostic" }).totalMatches, 0);

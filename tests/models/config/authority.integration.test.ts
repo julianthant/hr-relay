@@ -1,3 +1,4 @@
+import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createAuthorityAccountingTestWorld } from "../../support/helpers/backend/authority-accounting-world.js";
 import { authorityMutationCases, type MutationCase } from "../../support/helpers/backend/authority-accounting-world.js";
 import { default as assert } from "node:assert/strict";
@@ -69,7 +70,17 @@ afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-  const cases: readonly MutationCase[] = authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT });
+  const cases: readonly MutationCase[] = [...authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }),
+    ...(["workbook_library", "workbook_library_history"] as const).map(table => ({ table,
+      mutate: (database: Parameters<MutationCase["mutate"]>[0]) => {
+        const service = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK });
+        const saved = service.create({ name: "Accounting.xlsx", themes: [], hasFormulas: false,
+          sheets: [{ id: "sheet", name: "Rows", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "synthetic" }] }] }] });
+        assert.deepEqual(database.authority.workbooks.read(saved.libraryId), saved);
+        assert.deepEqual(database.authority.workbooks.history(saved.libraryId), [saved]);
+      },
+    })),
+  ];
 
   it("accounts for every authority table and increments once per outer authority mutation", () => {
     assert.deepEqual([...new Set(cases.map(({ table }) => table))].sort(), AUTHORITY_TABLE_REGISTRY
