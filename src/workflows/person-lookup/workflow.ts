@@ -21,9 +21,22 @@ export const PersonLookupResultSchema = z.strictObject({ activeStatus: ActiveSta
   crmDates: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("included"), dates: ReadOnboardingDatesOutputSchema }), z.strictObject({ state: z.literal("not-requested") })]) });
 export const personLookupIntake = defineIntakeProjection(PersonLookupInput, { emplId: CANONICAL_FIELDS.eid, name: CANONICAL_FIELDS.fullName });
 export const personLookupWorkflow = defineWorkflow({
-  id: "person-lookup", version: 2, code: "pl", label: "Person Lookup", summary: "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
+  id: "person-lookup", version: 3, code: "pl", label: "Person Lookup", summary: "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
   icon: "Search", category: "search", canonicalInput: PersonLookupCanonicalInput,
   inputSubject: (input) => input.mode === "match" ? "name" : "emplId" in input ? "eid" : "name",
+  outcomeProjection: {
+    fieldPath: "activeStatus.state",
+    cases: [
+      { value: "active", label: "Active", tone: "success" },
+      { value: "inactive", label: "Inactive", tone: "neutral" },
+      { value: "crm-only", label: "CRM only", tone: "warning" },
+      { value: "multiple-matches", label: "Multiple matches", tone: "warning" },
+      { value: "not-found", label: "Not found", tone: "neutral" },
+      { value: "undetermined", label: "Undetermined", tone: "warning" },
+      { value: "found", label: "Found", tone: "success" },
+      { value: "not-found-in-ucpath", label: "Not found in UCPath", tone: "neutral" },
+    ],
+  },
   subtitleProjection: { fieldPath: "activeStatus.details.eid", display: "eid" },
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   capabilities: { review: false, editData: { fields: [

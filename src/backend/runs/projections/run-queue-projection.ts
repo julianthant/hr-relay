@@ -933,6 +933,23 @@ export class RunQueueProjection {
     return eid === null ? absent : { state: "present", value: eid };
   }
 
+  #resultOutcome(run: RunRecord, receipt: ReceiptView | undefined, projection: AnyWorkflowDescriptor["outcomeProjection"]): QueueSurfaceWire["outcome"] {
+    if (projection === undefined || receipt === undefined
+      || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") return undefined;
+    const value = receipt.value;
+    if (value.runId !== run.envelope.runId || value.traceId !== run.envelope.traceId || value.attempt !== run.envelope.attempt
+      || value.workflowId !== run.envelope.workflow || value.descriptorFingerprint !== run.envelope.contractFingerprint
+      || value.configFingerprint !== run.envelope.configFingerprint) throw new ProjectionDegradedError("result-outcome-receipt-identity-mismatch");
+    const verification = value.verification.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "verification", "completion.terminal-result"));
+    if (verification?.obligation !== "completion.terminal-result" || verification.verdict !== "verified") return undefined;
+    const fact = value.output.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "output", projection.fieldPath));
+    if (fact?.state !== "satisfied" || fact.value.state !== "allowed") return undefined;
+    const raw = fact.value.rawValue === undefined ? fact.value.value : fact.value.rawValue;
+    const outcome = projection.cases.find(entry => entry.value === raw);
+    if (outcome === undefined) throw new ProjectionDegradedError("result-outcome-value-undeclared");
+    return { label: outcome.label, tone: outcome.tone };
+  }
+
   #pipeline(row: RunFoldRecord | undefined, workflow: string, runTerminal: boolean): QueueSurfaceWire["pipeline"] {
     if (row === undefined) return [];
     const descriptor = this.#deps.descriptors.resolve(workflow);
@@ -1150,6 +1167,7 @@ export class RunQueueProjection {
         && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
         : { state: "present", value: row?.queued.subtitle },
+      outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       status,
       liveMessage: this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),

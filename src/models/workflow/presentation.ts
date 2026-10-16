@@ -138,6 +138,20 @@ export const ResultSubtitleProjectionSchema = z.strictObject({
 });
 export type ResultSubtitleProjection = z.input<typeof ResultSubtitleProjectionSchema>;
 
+export const OutcomeProjectionSchema = z.strictObject({
+  fieldPath: ContractFieldPathSchema,
+  cases: z.array(z.strictObject({
+    value: z.string().min(1),
+    label: z.string().min(1),
+    tone: z.enum(["success", "warning", "neutral"]),
+  })).min(1),
+}).superRefine((projection, context) => {
+  if (new Set(projection.cases.map(entry => entry.value)).size !== projection.cases.length) {
+    context.addIssue({ code: "custom", path: ["cases"], message: "outcome projection values must be unique" });
+  }
+});
+export type OutcomeProjection = z.input<typeof OutcomeProjectionSchema>;
+
 // Timeline categories must cover every node exactly once.
 /** A timeline category's STABLE ANCHOR, distinct from its display label: a key is an identifier a folder name and a role declaration both have to spell the same way, which is why it is kebab-case. */
 export const TimelineCategoryKeySchema = slugSchema("timeline category key must be a kebab-case slug");

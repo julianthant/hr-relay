@@ -101,6 +101,12 @@ export const RunWarningsWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 
+export const QueueBusinessOutcomeSchema = z.strictObject({
+  label: z.string().min(1),
+  tone: z.enum(["success", "warning", "neutral"]),
+});
+export type QueueBusinessOutcome = z.infer<typeof QueueBusinessOutcomeSchema>;
+
 const QueueBaseFields = {
   runId: RunIdSchema,
   itemId: ItemIdSchema,
@@ -158,6 +164,7 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   status: QueueStatusSchema,
+  outcome: QueueBusinessOutcomeSchema.optional(),
   liveMessage: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
