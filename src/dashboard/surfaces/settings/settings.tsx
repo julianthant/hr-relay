@@ -150,6 +150,7 @@ export function SettingsPage({
   searchTarget,
   dataContent,
   appearance,
+  spreadsheetSource,
   actorId,
   descriptorFingerprint,
   preflight: _preflight,
@@ -168,6 +169,7 @@ export function SettingsPage({
   searchTarget?: string;
   dataContent?: ReactNode;
   appearance?: ReactNode;
+  spreadsheetSource?: "mock" | "served";
   actorId: string;
   descriptorFingerprint: string;
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
@@ -306,7 +308,7 @@ export function SettingsPage({
           </Banner>
         )}
         {isDataSection && dataContent}
-        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}

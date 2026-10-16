@@ -20,6 +20,7 @@ export interface WorkflowComposition {
   readonly catalogIncludesMocks?: boolean;
   readonly servedDay?: boolean;
   readonly sessions?: WorkflowSource;
+  readonly spreadsheets?: WorkflowSource;
   readonly sourceForRoute: (id: string, requestedPreview: boolean) => WorkflowSource;
 }
 

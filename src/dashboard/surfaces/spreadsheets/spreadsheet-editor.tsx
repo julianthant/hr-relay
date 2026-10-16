@@ -8,7 +8,7 @@ import { exportSheetInWorker, exportSpreadsheetInWorker } from "./spreadsheet-im
 import { EMPTY_WORKBOOK_HISTORY, recordWorkbookEdit, stepWorkbookHistory, type WorkbookHistory } from './spreadsheet-history-model.js';
 import './spreadsheet-editor.css';
 
-export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported, onSave }: { document: EditableWorkbook; dirty: boolean; onSave?: (draft: EditableWorkbook) => Promise<SpreadsheetSaveResult>; onExported?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
+export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported, onSave, exportKeepsDirty = false }: { document: EditableWorkbook; dirty: boolean; exportKeepsDirty?: boolean; onSave?: (draft: EditableWorkbook) => Promise<SpreadsheetSaveResult>; onExported?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
   const [save, setSave] = useState<{ document: EditableWorkbook; result: SpreadsheetSaveResult | { state: 'pending' } }>();
   const saveRequest = useRef<object | undefined>(undefined);
   const latestDocument = useRef(document); latestDocument.current = document;
@@ -22,10 +22,13 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
     catch { result = { state: 'uncertain', reason: 'Save outcome is uncertain. Check the library before saving again.' }; }
     if (saveRequest.current !== request) return;
     saveRequest.current = undefined;
-    if (latestDocument.current !== draft) { setSave(undefined); return; }
+    if (latestDocument.current !== draft && !(draft.libraryId === undefined && result.state === 'confirmed' && result.version === 1 && spreadsheetSaveMatches(draft, { ...result, readback: latestDocument.current }))) { setSave(undefined); return; }
     if (result.state === 'confirmed' && !spreadsheetSaveMatches(draft, result)) result = { state: 'uncertain', reason: 'The library readback does not match this draft.' };
-    setSave({ document: draft, result });
-    if (result.state === 'confirmed') { savedCopy.current = draft; onDocument(draft, false); }
+    if (result.state === 'confirmed') {
+      const saved = draft.libraryId === result.readback.libraryId ? draft : latestDocument.current.libraryId === result.readback.libraryId ? latestDocument.current : { ...draft, libraryId: result.readback.libraryId };
+      if (saved !== draft) setHistory(current => ({ undo: current.undo.map(book => ({ ...book, libraryId: saved.libraryId })), redo: current.redo.map(book => ({ ...book, libraryId: saved.libraryId })) }));
+      savedCopy.current = saved; setSave({ document: saved, result }); onDocument(saved, false);
+    } else setSave({ document: draft, result });
   };
   const [sheetId, setSheetId] = useViewState('spreadsheetSheet', '');
   const [query, setQuery] = useViewState('spreadsheetRowsQuery', '', 'replace');
@@ -42,6 +45,13 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
   const [focusedCell, setFocusedCell] = useState<{ rowId: string; column: number } | null>(null);
   const cellProblemId = useId();
   const [history, setHistory] = useState<WorkbookHistory>(EMPTY_WORKBOOK_HISTORY);
+  const previousIdentity = useRef(document.libraryId);
+  useEffect(() => {
+    if (previousIdentity.current === undefined && document.libraryId !== undefined) {
+      setHistory(current => ({ undo: current.undo.map(book => book.libraryId === document.libraryId ? book : ({ ...book, libraryId: document.libraryId })), redo: current.redo.map(book => book.libraryId === document.libraryId ? book : ({ ...book, libraryId: document.libraryId })) }));
+    }
+    previousIdentity.current = document.libraryId;
+  }, [document.libraryId]);
   const editGroup = useRef<string | undefined>(undefined);
   const savedCopy = useRef<EditableWorkbook | undefined>(dirty ? undefined : document);
   const deferredQuery = useDeferredValue(query);
@@ -63,7 +73,7 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
   const exportFile = async (format: 'csv' | 'xlsx') => {
     if (!document || !sheet) throw new Error('SPREADSHEET_DOCUMENT_UNAVAILABLE');
     setBusy(true); setError('');
-    try { downloadSpreadsheet(format === 'csv' ? await exportSheetInWorker(sheet) : await exportSpreadsheetInWorker(document), document.name, format); const partial = format === 'csv' && document.sheets.length > 1 || document.sheets.some(item => item.hidden.length > 0); if (!partial) savedCopy.current = document; onDocument(document, partial ? dirty : false); }
+    try { downloadSpreadsheet(format === 'csv' ? await exportSheetInWorker(sheet) : await exportSpreadsheetInWorker(document), document.name, format); const partial = format === 'csv' && document.sheets.length > 1 || document.sheets.some(item => item.hidden.length > 0); if (!partial && !exportKeepsDirty) savedCopy.current = document; onDocument(document, partial || exportKeepsDirty ? dirty : false); }
     catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); return; }
     finally { setBusy(false); }
     onExported?.();
