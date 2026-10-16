@@ -13,10 +13,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
-    const errors: string[] = [], writes: string[] = [], catalogRequests: string[] = [];
+    const errors: string[] = [], writes: { method: string; url: string }[] = [], catalogRequests: string[] = [];
 
     page.on('pageerror', error => errors.push(error.message));
-    page.on('request', request => { if (request.method() !== 'GET') writes.push(request.url()); if (request.url().includes('/api/v1/ui-catalog')) catalogRequests.push(request.url()); });
+    page.on('request', request => { if (request.method() !== 'GET') writes.push({ method: request.method(), url: request.url() }); if (request.url().includes('/api/v1/ui-catalog')) catalogRequests.push(request.url()); });
     const captureSemanticEvidence = async (name: string) => { await attachShellA11y(page, info, `${name}-${theme.attribute}-${width}.a11y.yml`); };
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
@@ -61,8 +61,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(add).toBeEnabled(); await captureSemanticEvidence('workers');
       await cancel.click();
       await page.goto(`${server.baseUrl}/?settings=general`);
+      expect(writes).toEqual([]);
+      const signInWrite = { method: 'POST', url: `${server.baseUrl}/api/v1/settings/chatgpt-account/sign-in` };
       await page.getByRole('button', { name: 'Continue with ChatGPT', exact: true }).click();
       const account = page.getByRole('group', { name: 'ChatGPT account', exact: true }); await expect(account).toContainText('jordan.lee@example.com');
+      expect(writes).toEqual([signInWrite]);
       await expect(account).not.toContainText('Using ChatGPT plan'); await expect(account).not.toContainText('Preview');
       await expect(page.getByRole('dialog')).toHaveCount(0); await expect(page.getByRole('link', { name: 'UI catalog', exact: true })).toHaveCount(0);
       await page.getByRole('searchbox', { name: 'Search settings', exact: true }).fill('UI catalog'); await expect(page.getByRole('link', { name: /UI catalog/ })).toHaveCount(0);
@@ -86,7 +89,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(date.getByRole('spinbutton', { name: /month/ })).toHaveText('08'); await expect(date.getByRole('spinbutton', { name: /day/ })).toHaveText('03'); await expect(date.getByRole('spinbutton', { name: /year/ })).toHaveText('2026');
 
       await captureSemanticEvidence('idle');
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); expect(errors).toEqual([]); expect(writes).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); expect(errors).toEqual([]); expect(writes).toEqual([signInWrite]);
     } finally { await server.close(); }
   });
 }
