@@ -13,7 +13,7 @@ export function fixturePreflightReport(profile: FixtureDashboardProfile, workflo
   return PreflightReportWireSchema.parse({
     configFingerprint: FIXTURE_EDITABLE_SETTINGS.activeConfigFingerprint,
     descriptorFingerprint: workflow?.descriptorFingerprint ?? profile.bootstrap.descriptorHash,
-    checkedAt: new Date().toISOString(), requestedCapabilities: capabilities,
+    checkedAt: profile.bootstrap.serverClock.now, requestedCapabilities: capabilities,
     results: expectedPreflightChecks(capabilities).map(check => warning && check.id === "process.orphans"
       ? { status: "warning", check: check.id, summary: "An unused worker process is still present.", impact: "No active run is blocked.", remediation: "Review unused workers in Sessions." }
       : { status: "pass", check: check.id, summary: "Check passed for this scope." }),
