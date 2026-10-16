@@ -59,6 +59,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 
   const FIXTURE_START_PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
     wireVersion: 1,
+    workers: "auto",
     startPlanId: uuidOf(900),
     workflowId: WORKFLOW_ID,
     expectedVersion: 1,
@@ -85,6 +86,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 
   const FIXTURE_SEPARATIONS_START_PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
     wireVersion: 1,
+    workers: "auto",
     startPlanId: uuidOf(930),
     workflowId: separationsDescriptor.id,
     expectedVersion: separationsDescriptor.version,

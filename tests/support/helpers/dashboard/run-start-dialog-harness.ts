@@ -80,6 +80,7 @@ export function createRunStartDialogHarness() {
   function planResponse(startPlanId: string): StartPlanResponse {
     return StartPlanResponseSchema.parse({
       wireVersion: 1,
+      workers: "auto",
       startPlanId,
       workflowId: WORKFLOW_ID,
       expectedVersion: 4,

@@ -40,7 +40,7 @@ describe("Start enqueue verification through the actual command and day transpor
       browserMode: "headless", captureBrowserScreenshots: false, priority: "interactive" };
     const plan = await w.launch.preview(request);
     assert.equal(plan.planned.length, 1);
-    for (const change of [{ plannedBy: "another-operator" }, { workflowId: "another-workflow" }, { dryRun: false }, { browserMode: "headed" }]) {
+    for (const change of [{ plannedBy: "another-operator" }, { workflowId: "another-workflow" }, { dryRun: false }, { browserMode: "headed" }, { workers: 2 }]) {
       w.client.submitStartPlan = async () => StartPlanWireSchema.parse({ ...plan, ...change });
       await assert.rejects(() => w.launch.preview(request), planIdentityError);
     }
