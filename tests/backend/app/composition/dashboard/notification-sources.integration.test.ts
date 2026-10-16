@@ -1,4 +1,5 @@
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { describe, expect, it } from "vitest";
 import { readNotificationSources } from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
@@ -137,4 +138,49 @@ describe("canonical notification producers", () => {
       }
     } finally { f.close(); }
   });
+});
+
+it("reports a real successful run's missing completion receipt through observer status without read writes", async () => {
+  const f = await fixture();
+  try {
+    const { run } = seedPersonLookupExitRun(f.db);
+    expect(run.envelope.dryRun).toBe(false);
+    expect(run.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
+    expect(f.db.authority.runResults.get(run.envelope.runId)).toBeDefined();
+    expect(f.db.authority.evidenceReceipts.listByRun(run.envelope.runId)).toEqual([]);
+    const before = f.db.getMeta();
+    const first = readNotificationSources(f.db, f.reader);
+    expect.soft(first).toEqual({ observations: [], diagnostics: ["NOTIFICATION_RECEIPT_MISSING"] });
+    expect(readNotificationSources(f.db, f.reader)).toEqual(first);
+    expect(f.db.getMeta()).toEqual(before);
+    expect(f.db.authority.evidenceReceipts.listByRun(run.envelope.runId)).toEqual([]);
+    const observer = createNotificationObserver({ read: () => readNotificationSources(f.db, f.reader), inbox: f.inbox, health: async () => undefined });
+    try {
+      await observer.observe();
+      expect.soft(observer.status()).toEqual({ state: "failed", code: "NOTIFICATION_RECEIPT_MISSING", pending: 1 });
+      expect(formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_RECEIPT_MISSING", {})).text).toMatch(/receipt/i);
+      expect(f.inbox.list("local-operator")).toEqual([]);
+      expect(f.db.getMeta()).toEqual(before);
+      f.db.authority.evidenceReceipts.insert(receiptOf(run, 7));
+      await observer.observe();
+      expect(observer.status()).toEqual({ state: "ready", pending: 0 });
+      expect(f.inbox.list("local-operator").map(row => row.trigger)).toEqual(["verified-done"]);
+      const settled = f.db.getMeta();
+      expect(readNotificationSources(f.db, f.reader).diagnostics).toEqual([]);
+      expect(f.db.getMeta()).toEqual(settled);
+    } finally { await observer.stop(); }
+  } finally { f.close(); }
+});
+
+it("does not report a missing completion receipt for queued or dry-run success", async () => {
+  const f = await fixture();
+  try {
+    const queued = seedRun(f, runRecordOf({ seed: 91, lifecycle: { state: "queued" } }));
+    const { run } = seedPersonLookupExitRun(f.db, { dryRun: true });
+    expect(f.db.authority.evidenceReceipts.listByRun(queued.envelope.runId)).toEqual([]);
+    expect(f.db.authority.evidenceReceipts.listByRun(run.envelope.runId)).toEqual([]);
+    const before = f.db.getMeta();
+    expect(readNotificationSources(f.db, f.reader)).toEqual({ observations: [], diagnostics: [] });
+    expect(f.db.getMeta()).toEqual(before);
+  } finally { f.close(); }
 });

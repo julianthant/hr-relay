@@ -37,8 +37,10 @@ export function readNotificationSources(database: AuthorityDatabase, reader: Pic
     };
     for (const run of live) {
       for (const failure of database.authority.failures.listByRun(run.envelope.runId)) consumeFailure(failure, run);
-      for (const receipt of database.authority.evidenceReceipts.listByRun(run.envelope.runId)) consumeReceipt(receipt, run);
+      const receipts = database.authority.evidenceReceipts.listByRun(run.envelope.runId);
+      for (const receipt of receipts) consumeReceipt(receipt, run);
       const state = run.lifecycle;
+      if (!run.envelope.dryRun && state.state === "terminal" && state.outcome === "done" && receipts.length === 0) diagnostics.push("NOTIFICATION_RECEIPT_MISSING");
       if (state.state === "parked-gate") result.push(observation({ kind: "gate-opened", runId: run.envelope.runId, workflowId: run.envelope.workflow, gateId: state.gateId }, `${run.envelope.runId}:${state.gateId}:${state.parkedAt}`, state.parkedAt));
       if (state.state === "parked-write") result.push(observation({ kind: "write-parked", runId: run.envelope.runId, workflowId: run.envelope.workflow, writeIntentId: state.writeIntentId }, `${state.writeIntentId}:${String(state.intentGeneration)}:${state.parkedAt}`, state.parkedAt));
     }
