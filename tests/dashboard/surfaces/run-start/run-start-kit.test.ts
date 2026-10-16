@@ -41,6 +41,7 @@ const HASH = "a".repeat(64);
 /** parsed through the real wire schema, so a fixture cannot outlive its contract */
 const PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
   wireVersion: 1,
+  workers: "auto",
   startPlanId: "5a000000-0000-4000-8000-000000000001",
   workflowId: "person-lookup",
   expectedVersion: 4,

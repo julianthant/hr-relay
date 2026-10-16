@@ -88,7 +88,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "30b91c45a4a577e1aa744a14e7d9b480ebb384452266a9afc8cc1225c8649f1d",
+    "sha256": "727862a0d0fb1348230f7ec8234c39adc9e4b75ef07fa912f4910be8294e164e",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
   },
   {

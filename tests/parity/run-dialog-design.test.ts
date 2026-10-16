@@ -38,7 +38,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await dialog.getByRole("button", { name: "Continue", exact: true }).click();
       await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
-      expect((await dialog.locator(".ds-choice-picker > button").boundingBox())!.height).toBe(36);
+      expect((await dialog.getByRole("button", { name: "None Workbook · Optional", exact: true }).boundingBox())!.height).toBe(36);
+      expect((await dialog.getByRole("button", { name: "Auto Workers", exact: true }).boundingBox())!.height).toBe(36);
       await dialog.getByRole("checkbox", { name: "Dry run", exact: true }).check();
 
       await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();

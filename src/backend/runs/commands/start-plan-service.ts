@@ -9,7 +9,7 @@ import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { buildRerunPlan, previewRerunWarnings, RerunRefusedError } from "../start/rerun.js";
+import { buildRerunPlan, previewRerunWarnings, rerunWorkers, RerunRefusedError } from "../start/rerun.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema, type RerunWarningWire } from "../../../models/dashboard/rerun-warning.js";
 import { projectRerunPlanForOperator } from "../../../models/run/rerun.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../models/run/start-plan.js";
@@ -93,6 +93,12 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         throw new Error("Rerun source selection must equal submitted selection");
       }
       const rerunSource = ingress.rerunSource;
+      const source = rerunSource === undefined ? undefined : deps.authority.withAuthorityTransaction(repositories => {
+        if (repositories.deletedRuns.get(rerunSource.runId) !== undefined) throw new RerunRefusedError("target-deleted", "Rerun source was deleted");
+        const run = repositories.runs.get(rerunSource.runId);
+        if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
+        return { input: run.input.parsed, workers: rerunWorkers(repositories, run) };
+      });
       let record = planStart(
         {
           authority: deps.authorityRead,
@@ -104,18 +110,12 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         {
           descriptor,
           ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
-          ...(rerunSource === undefined ? {} : {
-            retainedInputs: [deps.authority.withAuthorityTransaction((repositories) => {
-              if (repositories.deletedRuns.get(rerunSource.runId) !== undefined) throw new RerunRefusedError("target-deleted", "Rerun source was deleted");
-              const run = repositories.runs.get(rerunSource.runId);
-              if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
-              return run.input.parsed;
-            })],
-          }),
+          ...(source === undefined ? {} : { retainedInputs: [source.input] }),
           submissions: ingress.submissions.map((submission) =>
             applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,
+          workers: ingress.workers ?? source?.workers ?? "auto",
           browserMode: ingress.browserMode,
           captureBrowserScreenshots: ingress.captureBrowserScreenshots,
           ...(stepOmissions === undefined ? {} : { stepOmissions }),
@@ -150,6 +150,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         expectedVersion: record.version,
         expiresAt: record.expiresAt,
         dryRun: record.dryRun,
+        workers: record.workers,
         ...(record.browserMode === undefined ? {} : { browserMode: record.browserMode }),
         ...(record.captureBrowserScreenshots === undefined
           ? {}

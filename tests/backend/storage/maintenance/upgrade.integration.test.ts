@@ -1,3 +1,6 @@
+import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { START_PLAN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,writeFileSync } from "node:fs";
@@ -63,6 +66,74 @@ describe("stopped native upgrade admission",()=>{
   } finally {raw.close();}
   return f;
  }
+ function retainedPlan(version: 3 | 4, patch: Record<string, unknown> = {}) {
+  const f=baselineFixture(version), raw=new DatabaseSync(f.path);
+  const { workers: _workers, ...prior }=START_PLAN;
+  const plan={...prior,...patch};
+  let workbookRows: Record<string, unknown[]> = {};
+  try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
+   plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);
+   if(version===4){
+    const library=createWorkbookLibraryService({repository:createWorkbookLibraryRepository({database:raw,mutate:work=>work().result,read:work=>work()}),clock});
+    const first=library.create({name:"Retained.xlsx",themes:[],hasFormulas:false,sheets:[{id:"sheet",name:"People",width:1,hidden:[],rows:[{id:"row",cells:[{value:"retained"}]}]}]});
+    library.save(first.libraryId,first.version,{...first.workbook,name:"Saved.xlsx"});
+    workbookRows=Object.fromEntries(["workbook_library","workbook_library_history"].map(table=>[table,raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+   }
+  }finally{raw.close();}
+  return {...f,plan,workbookRows};
+ }
+ it.each([3,4] as const)("upgrades retained schema %s plans to explicit Auto while preserving fields and workbook history",async version=>{
+  const f=retainedPlan(version);
+  const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),AuthoritySchemaVersionError);
+  const before=readFileSync(f.path);
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
+  assert.deepEqual(readFileSync(f.path),before);
+  assert.equal((await f.run()).state,"upgraded");
+  const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock);
+  try {assert.deepEqual(current.authority.startPlans.get(f.plan.startPlanId),{...f.plan,workers:"auto"});
+   assert.equal(current.getMeta().schemaVersion,5);
+   assert.equal(current.authority.workbooks.list().length,version===4?1:0);
+  }finally{current.close();}
+  const stored=new DatabaseSync(f.path,{readOnly:true});
+  try {
+   for(const [table,rows] of Object.entries(f.workbookRows))assert.deepEqual(stored.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
+   const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
+   const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
+   const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
+   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5]:[5]);
+   assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:5,
+    sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
+  }finally{stored.close();}
+  const directory=join(f.root,"backups","authority"),name=readdirSync(directory).find(name=>name.endsWith(".manifest.json"));assert.ok(name);
+  const verified=await verifyBackupManifestAtPath(f.admission,join(directory,name),AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  assert.equal(verified.manifest.schemaVersion,version);
+  assert.equal(verified.manifest.authorityContentFingerprint,source.authorityContentFingerprint);
+  const prior=new DatabaseSync(verified.backupPath,{readOnly:true});
+  try {assert.deepEqual(JSON.parse(String(prior.prepare("SELECT payload_json FROM run_requests").get()?.payload_json)),f.plan);}finally{prior.close();}
+ });
+ for(const version of [3,4] as const) it.each([{workers:"auto"},{workers:2},{priority:"corrupt"},{plannedBy:""}])(`refuses malformed schema ${version} plan %j without writes`,async patch=>{
+  const f=retainedPlan(version,patch),before=readFileSync(f.path);
+  await assert.rejects(f.run(true),/run_requests/u);
+  assert.deepEqual(readFileSync(f.path),before);
+ });
+ it.each([3,4] as const)("rolls back schema %s worker backfill and preceding migrations on failure",async version=>{
+  const f=retainedPlan(version),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
+  assert.ok(typeof exec==="function");
+  vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
+   Reflect.apply(exec,this,[sql]);
+   if(sql==="UPDATE run_requests SET payload_json=json_set(payload_json, '$.workers', 'auto')")throw new Error("injected-worker-backfill-failure");
+  });
+  await assert.rejects(f.run(),/injected-worker-backfill-failure/u);
+  assert.deepEqual(readFileSync(f.path),before);
+ });
+ it("refuses current retained plans without explicit workers",()=>{
+  const f=fixture();initialize(f);
+  const raw=new DatabaseSync(f.path);const {workers:_workers,...plan}=START_PLAN;
+  try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
+   plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/run_requests/u);
+ });
  function populatedV2(){
   const f=baselineFixture(2), raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   const now=clock.now().toISOString(), commandId=randomUUID();
@@ -90,7 +161,7 @@ describe("stopped native upgrade admission",()=>{
    .map(table=>[table.name,raw.prepare(`SELECT * FROM ${table.name} ORDER BY rowid`).all()]));}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),AuthoritySchemaVersionError);
   assert.deepEqual(readFileSync(f.path),before);
-  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:3,toSchemaVersion:4,credentials:"unchanged"});
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:3,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.deepEqual(readFileSync(f.path),before);
   assert.equal(existsSync(join(f.root,"backups")),false);
   const migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
@@ -103,14 +174,14 @@ describe("stopped native upgrade admission",()=>{
   });
   assert.equal((await f.run()).state,"upgraded");
   const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"upgrade-test"},clock);
-  try {assert.equal(current.getMeta().schemaVersion,4);assert.deepEqual(current.authority.workbooks.list(),[]);}finally{current.close();}
+  try {assert.equal(current.getMeta().schemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);assert.deepEqual(current.authority.workbooks.list(),[]);}finally{current.close();}
   const upgraded=new DatabaseSync(f.path,{readOnly:true});
   try {for(const [table,rows] of Object.entries(retained))assert.deepEqual(upgraded.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
    assert.deepEqual(upgraded.prepare("PRAGMA foreign_key_check").all(),[]);
   }finally{upgraded.close();}
  });
- it("refuses a schema 3 backup mismatch before migration effects",async()=>{
-  const f=baselineFixture(3),before=readFileSync(f.path),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
+ it.each([3,4] as const)("refuses a schema %s backup mismatch before migration effects",async version=>{
+  const f=baselineFixture(version),before=readFileSync(f.path),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
   vi.spyOn(AuthorityDatabase,"upgradeStopped").mockImplementation((...args)=>{
    const backup=args[5];assert.ok(backup);
    return migrate(args[0],args[1],args[2],args[3],args[4],
@@ -132,7 +203,7 @@ describe("stopped native upgrade admission",()=>{
  it("upgrades populated schema 2 with an exact verified backup and retained roster history",async()=>{
   const f=populatedV2();
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),AuthoritySchemaVersionError);
-  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:2,toSchemaVersion:4,credentials:"unchanged"});
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:2,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.equal((await f.run()).state,"upgraded");
   const raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   try {
@@ -140,7 +211,7 @@ describe("stopped native upgrade admission",()=>{
    assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(),[]);
    assert.equal(raw.prepare("PRAGMA foreign_keys").get()?.foreign_keys,1);
    assert.throws(()=>raw.exec("DELETE FROM worker_pools"),/worker-pools-retained/u);
-   assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version,4);
+   assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version,CURRENT_AUTHORITY_SCHEMA_VERSION);
   }finally{raw.close();}
   const directory=join(f.root,"backups","authority"),names=readdirSync(directory).filter(name=>name.endsWith(".manifest.json"));
   assert.equal(names.length,1);
@@ -231,10 +302,10 @@ describe("stopped native upgrade admission",()=>{
   assert.ok("backup" in record);
   assert.equal(record.phase,"settled");
   assert.equal(record.fromSchemaVersion,1);
-  assert.equal(record.toSchemaVersion,4);
+  assert.equal(record.toSchemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);
   assert.match(record.planDigest,/^[a-f0-9]{64}$/u);
   assert.notEqual(record.planDigest,source.authorityContentFingerprint);
-  assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:1,toSchemaVersion:4,
+  assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:1,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
    sourceContentFingerprint:source.authorityContentFingerprint,statements:SQLITE_MIGRATIONS.filter(migration=>migration.version>1).flatMap(migration=>migration.statements)})).digest("hex"));
   const verified=await verifyBackupManifestAtPath(f.admission,record.backup.manifestPath,AuthorityDatabase.sourceDatabaseIdentity(f.path));
   assert.equal(verified.manifest.schemaVersion,1);
@@ -243,7 +314,7 @@ describe("stopped native upgrade admission",()=>{
  });
  it("plans the schema 1 upgrade without backup or source effects",async()=>{
   const f=baselineFixture(),before=storageTree(f.root),bytes=readFileSync(f.path);
-  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:4,credentials:"unchanged"});
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.deepEqual(storageTree(f.root),before);
   assert.deepEqual(readFileSync(f.path),bytes);
   assert.equal(existsSync(join(f.root,"backups")),false);
@@ -257,11 +328,11 @@ describe("stopped native upgrade admission",()=>{
   }}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/schema/u);
   const before=storageTree(f.root);
-  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:4,credentials:"unchanged"});
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.deepEqual(storageTree(f.root),before);
   assert.equal((await f.run()).state,"upgraded");
   const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"upgrade-test"},clock);
-  try {assert.equal(current.getMeta().schemaVersion,4);assert.ok(current.authority.runtimeConfig.get());
+  try {assert.equal(current.getMeta().schemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);assert.ok(current.authority.runtimeConfig.get());
    const inspection=AuthorityUpgradeInspectionSchema.parse(current.readUpgradePhases());
    assert.equal(inspection.state,"available");
    if(inspection.state==="available")assert.deepEqual(inspection.phases.map(({phase})=>phase),["baseline","settled"]);
@@ -355,7 +426,7 @@ describe("stopped native upgrade admission",()=>{
   let reachedCurrentSchema=false;
   vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
    Reflect.apply(exec,this,[sql]);
-   if(sql==="PRAGMA user_version=4"){
+   if(sql===`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}`){
     reachedCurrentSchema=true;
     assert.ok(this.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get());
     Reflect.apply(exec,this,["DELETE FROM settings"]);
@@ -413,7 +484,7 @@ describe("stopped native upgrade admission",()=>{
   assert.equal((await f.run()).state,"already-upgraded");const current=readFileSync(f.path);
   assert.equal((await f.run(true)).state,"planned");assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
  });
- it.each([5,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
+ it.each([6,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
   const f=fixture();initialize(f);const raw=new DatabaseSync(f.path);
   try{raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),error=>error instanceof AuthoritySchemaVersionError && error.code==="authority-schema-mismatch");assert.deepEqual(storageTree(f.root),before);

@@ -472,19 +472,23 @@ excludes run binding during controls and retains failed or uncertain health.
 
 ### 11.3 Capacity for a submitted start
 
-`src/backend/runs/commands/run-worker-capacity.ts` ensures one usable workflow worker after a
-start queues runs. A `run`-directed lease in `starting`, `idle`, or `busy` supplies capacity,
-including an external worker. Preview and a zero-run confirmation create no worker effects.
+`src/backend/runs/commands/run-worker-capacity.ts` reads the stored start plan's `workers`
+choice. Auto uses the standing pool and adds one member only when the pool is empty. A number
+from 1 through 8 adds the shortfall to that count, capped by `plan.planned.length`. Every
+nonretired member counts, including paused and failed members. An overtarget pool stays intact.
+Preview and zero-item plans create no worker effects.
 
-Absent capacity, the service reuses a stopped slot or adds one through journaled
-Plan and Spawn. It preserves directives and refuses a Plan covering a pending stop. It starts one
-member, retaining command identity, actor, timestamp, and CAS basis for replay.
+Capacity adds members through the native journaled Plan and Spawn path. The retained Plan roster
+fixes the new member identities, and each Spawn retains its command identity, actor, timestamp,
+and CAS basis. Capacity never restarts, stops, or removes an existing member. Free workers share
+the workflow's unclaimed items, including workers that become free or are added in Sessions later.
+Created workers remain in the pool, idle after their work finishes.
 
-Enqueue can commit before startup. A startup refusal reports the queued run ids and child command;
-it does not call the queued runs rejected. Exact replay does not restart a settled launch after
-another crash. Replay without retained startup evidence or a usable worker reports unknown startup
-and requires reconciliation. `src/backend/runs/commands/command-service.ts` serializes
-enqueue and startup per workflow.
+Enqueue can commit before startup. A startup refusal reports the queued run ids and child command.
+Exact replay reconciles retained children without repeating failed or uncertain effects or replacing
+a member that later crashed or was removed. A capacity shortfall on replay without retained startup
+evidence reports unknown startup and requires reconciliation.
+`src/backend/runs/commands/command-service.ts` serializes enqueue and startup per workflow.
 
 ### 11.4 Browser-login verification
 

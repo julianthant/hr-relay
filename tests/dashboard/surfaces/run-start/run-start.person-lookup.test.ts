@@ -78,7 +78,7 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.equal(dialog.text().includes("123456789"), false);
   });
   it("keeps protected source input unavailable and never offers output values as its replacement", async () => {
-    const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
+    const snapshot = RerunValuesSnapshotSchema.parse({ workers: "auto", source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
       descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "done" },
       sourceInput: { state: "unavailable", reason: "protected" },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
@@ -91,7 +91,7 @@ describe("served Person Lookup Run and Rerun", () => {
   });
   it("blocks a cleared rerun input before planning and accepts fresh canonical replacement input", async () => {
     const input = { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: false };
-    const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
+    const snapshot = RerunValuesSnapshotSchema.parse({ workers: "auto", source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
       descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "done" },
       sourceInput: { state: "available", value: input },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
@@ -115,7 +115,7 @@ describe("served Person Lookup Run and Rerun", () => {
     { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: true },
     { mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789", crmCheck: true, includeCrmDates: false },
   ]) it(`restores exact ${input.mode} source values and masks Match confirmation`, async () => {
-    const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
+    const snapshot = RerunValuesSnapshotSchema.parse({ workers: "auto", source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
       descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "done" },
       sourceInput: { state: "available", value: input },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });

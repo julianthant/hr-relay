@@ -390,12 +390,12 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 4` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 5` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
 ordinary startup; only an absent database receives the current baseline in an exclusive transaction.
-Schemas 1–3 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
+Schemas 1–4 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
 
 `AuthorityBootStore` reports `healthy` with mutations `available`, or `degraded-read-only` with
 mutations `blocked`. Empty, corrupt, unavailable, or incompatible existing authority does not become a
@@ -407,13 +407,14 @@ Storage causes use the closed codes in `recovery-contracts.ts`, including `autho
 `authority-invariant`, `authority-locked`, `authority-corrupt`, and `authority-unavailable`.
 
 `storage upgrade --plan` requires exclusive installation admission and stopped runtime locks. For an
-existing schema 1, 2 or 3 database, the plan validates its native form without changing the
+existing schema 1, 2, 3 or 4 database, the plan validates its native form without changing the
 source or creating a backup.
 `upgradeStorage` reports `planned`, `initialized`, `upgraded`, or `already-upgraded`, with
 `credentials: "unchanged"`. It initializes absent current authority, verifies existing current authority,
-or upgrades schema 1, 2 or 3 under stopped exclusive custody. The schema 1 path first adds the
+or upgrades schema 1, 2, 3 or 4 under stopped exclusive custody. The schema 1 path first adds the
 stream-head index. Schemas 1 and 2 then rebuild `worker_pools` with `desired_workers >= 0`.
 Migration 4 adds the workbook library and immutable version history, and protects imported artifacts’ workbook provenance.
+Migration 5 gives retained start plans an explicit `workers: "auto"` choice. Current readers require the field.
 Under restore admission, the service rechecks the source fingerprint, creates a stopped-authority
 backup, and verifies its manifest. The migration rechecks the source and backup inside one exclusive
 SQLite transaction, then applies the required migrations. The settled record carries the verified backup

@@ -1,3 +1,5 @@
+import { StartPlanRecordSchema } from "../../../../src/models/run/start-plan.js";
+import { RunSessionRecordSchema } from "../../../../src/models/run/session.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
@@ -55,6 +57,55 @@ describe("source-bound Rerun value read", () => {
     assert.equal(result.snapshot.steps[0]?.state, "completed");
     assert.deepEqual(result.snapshot.transactions, []);
     assert.equal(snapshot(h, run), before);
+  });
+  it("inherits the source plan choice and honors explicit Auto and number overrides", async () => {
+    const h = harness();
+    const selectedStepKeys = h.descriptor.timeline.map(({ key }) => key);
+    const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }],
+      dryRun: false, workers: 7, selectedStepKeys });
+    const queued = h.start(plan); assert.equal((await h.execute(queued)).state, "done");
+    const run = h.fresh(queued);
+    const result = readRerunValues(rerunValuesDeps(h), request(run)); assert.ok(result.state === "available");
+    assert.equal(result.snapshot.workers, 7);
+    const input = { workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false, selectedStepKeys,
+      rerunSource: { ...request(run), intent: "rerun", selectedStepKeys } };
+    assert.equal(h.planner.plan(input).workers, 7);
+    assert.equal(h.planner.plan({ ...input, workers: "auto" }).workers, "auto");
+    assert.equal(h.planner.plan({ ...input, workers: 2 }).workers, 2);
+  });
+  it.each(["session", "plan", "mismatch"] as const)("refuses a missing or mismatched source %s even with an explicit override", async missing => {
+    const h = harness(); const run = await completed(h); const deps = rerunValuesDeps(h);
+    const authority = { ...h.database.authority,
+      ...(missing === "session" ? { runSessions: { ...h.database.authority.runSessions, get: () => undefined } }
+        : { startPlans: { ...h.database.authority.startPlans, get: (id: string) => {
+          const plan = h.database.authority.startPlans.get(id);
+          return missing === "plan" || plan === undefined ? undefined : StartPlanRecordSchema.parse({ ...plan, workflowId: "wrong-workflow" });
+        } } }),
+    };
+    assert.deepEqual(readRerunValues({ ...deps, database: { ...deps.database, authority,
+      withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, request(run)),
+    { state: "refused", code: "source-invalid" });
+    const { createStartPlanService } = await import("../../../../src/backend/runs/commands/start-plan-service.js");
+    const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
+    const planner = createStartPlanService({ authority: { withAuthorityTransaction: work => h.database.withAuthorityTransaction(() => work(authority)) },
+      authorityRead: h.database, descriptors: { resolve: () => h.descriptor }, clock: h.clock, ids: h.planIds,
+      planTtlMs: 600_000, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
+    const selectedStepKeys = h.descriptor.timeline.map(({ key }) => key);
+    assert.throws(() => planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false,
+      workers: "auto", selectedStepKeys, rerunSource: { ...request(run), intent: "rerun", selectedStepKeys } }),
+    error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
+  });
+  it.each(["sessionless", "intake"] as const)("uses Auto for a legitimate %s source without a start choice", async origin => {
+    const h = harness(); const original = await completed(h); const deps = rerunValuesDeps(h);
+    const { sessionId: _sessionId, ...sessionless } = original;
+    const run = origin === "sessionless" ? RunRecordSchema.parse(sessionless) : original;
+    const sessions = h.database.authority.runSessions;
+    const result = readRerunValues({ ...deps, reader: { read: () => ({ state: "present", disposition: "live", run }) },
+      database: { authority: { ...h.database.authority, runSessions: { ...sessions, get: (id: string) => {
+        const session = sessions.get(id); assert.ok(session);
+        return RunSessionRecordSchema.parse({ ...session, origin: { kind: "intake-manifest", intakeManifestId: h.ids.uuid(), actorId: "local-operator" } });
+      } } }, withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, request(run));
+    assert.ok(result.state === "available"); assert.equal(result.snapshot.workers, "auto");
   });
   it("round-trips attribution into the existing planner and rejects an edited value retaining attribution", async () => {
     const h = harness(); const run = await completed(h);

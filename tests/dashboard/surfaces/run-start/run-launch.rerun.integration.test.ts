@@ -16,6 +16,24 @@ function sourceBytes(h: Harness, source: RunRecord) { return JSON.stringify({ ru
   intents: h.database.authority.writeIntents.listByRun(source.envelope.runId) }); }
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
+  it.each([undefined, "auto", 2] as const)("restores source workers and submits override %s", async override => {
+    const h = setup();
+    const selectedStepKeys = h.descriptor.timeline.map(step => step.key);
+    const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }],
+      dryRun: false, workers: 5, selectedStepKeys });
+    const queued = h.start(plan); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    assert.equal((await h.execute(queued)).state, "done"); const source = h.fresh(queued);
+    await mount(h, source); await press("Continue"); await press("Confirm"); await press("Continue");
+    assert.ok(document.querySelector('button[aria-label="5 Workers"]'));
+    if (override !== undefined) {
+      await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="5 Workers"]')?.click());
+      const option = document.querySelector<HTMLElement>(`[role="menuitemradio"][aria-label="${override === "auto" ? "Auto" : override}"]`); assert.ok(option);
+      await act(async () => option.click());
+    }
+    await press("Continue");
+    assert.equal(StartPlanRequestSchema.parse(h.submissions.at(-1)).workers, override ?? 5);
+    assert.match(text(), /Review the plan/u);
+  });
   it("warns before Values exist, Cancel returns to Steps and Confirm only advances; final dry run executes fresh work", async () => {
     const h = setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
     await mount(h, source);

@@ -1,3 +1,4 @@
+import { RunWorkersSchema } from "../run/envelope.js";
 import { z } from "zod";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { FingerprintSchema, IsoInstantSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema,
@@ -30,6 +31,7 @@ const ValueCandidateSchema = z.discriminatedUnion("state", [
 ]);
 
 export const RerunValuesSnapshotSchema = z.strictObject({
+  workers: RunWorkersSchema,
   sourceInput: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("available"), value: JsonValueSchema }),
     z.strictObject({ state: z.literal("unavailable"), reason: z.literal("protected") }),
