@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -664,7 +665,7 @@ describe('mounted frontend reliability contracts', () => {
   it('keeps mock rerun stages under the mock form when its routed dialog mounts or restores', async () => {
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
     const runs = seedMockRuns(), source = runs.find(run => run.workflowId === 'onboarding'); assert(source);
-    const previewLaunch = { workflowId: source.workflowId, source }, catalog = buildWorkflowCatalog([]);
+    const previewLaunch = { workflowId: source.workflowId, source }, catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
     const requests: string[] = [];
     const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async url => { requests.push(String(url)); throw new Error('Unexpected backend request'); } });
     let current: AppRouteState;

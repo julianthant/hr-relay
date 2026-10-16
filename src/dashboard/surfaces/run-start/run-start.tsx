@@ -14,7 +14,7 @@ import { candidateText, defaultRerunSteps, initialRerunValueDrafts, rerunSubmiss
 import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "./run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "./run-launch-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Keyboard, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import {
@@ -33,7 +33,6 @@ import {
   KeyValueList,
   MetaLine,
   ChoicePicker,
-  Textarea,
   Well,
   dsFg,
   dsFocus,
@@ -44,16 +43,15 @@ import type { CommandResult } from "../../../rules/commands/commands.js";
 import { settleCommandResult } from "../../app/commands/command-result.js";
 import {
   inputRunValueNoun,
-  parseInputRunText,
-  toRawSubmission,
   type InputRunSurface,
-  type ParsedInputEntry,
+  type TypedInputDraft,
 } from "../../../models/workflow/ingress.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
 import {
+  TypedInput,
   EnqueueResultBanner,
   LockedFact,
   PlanRefusals,
@@ -68,11 +66,17 @@ import {
   foldStepOmissionFacts,
   forcedStepOmissions,
   initialStepOmissionDraft,
-  inputRunDelimiterHint,
   inputRunFieldLabel,
   omittedStepViews,
   startRequestFingerprint,
   toggleStepSelection,
+  previewRunInput,
+  typedInputDefaults,
+  typedInputText,
+  restoreTypedInput,
+  typedControlAvailable,
+  changeTypedInput,
+  type RunInputPreview,
   type BrowserMode,
   type StartPriority,
   type StepOmissionDraft,
@@ -216,75 +220,6 @@ export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void 
 
 
 
-interface ParsePreview {
-  readonly entries: readonly ParsedInputEntry[];
-  /** the parser's own refusal, surfaced verbatim — never swallowed to an empty list */
-  readonly problem: string | null;
-}
-
-/** Preview the shared parser’s whole refusal; client splitting could silently omit subjects the operator expects queued. */
-function TypedInput({
-  surface,
-  workflowId,
-  text,
-  onText,
-  preview,
-  inputRef,
-}: {
-  surface: InputRunSurface;
-  workflowId: string;
-  text: string;
-  onText: (next: string) => void;
-  preview: ParsePreview;
-  /** the dialog's handle on the box, so an exit from a banner can focus it */
-  inputRef: RefObject<HTMLTextAreaElement | null>;
-}) {
-  return (
-    <div className="flex flex-col gap-[var(--ds-space-snug)]">
-      <Field
-        // Derive hints and preview from the parser specification so the control cannot promise unused rules.
-        label={inputRunFieldLabel(surface.parser)}
-        description={inputRunDelimiterHint(surface.parser)}
-        error={preview.problem}
-      >
-        <Textarea
-          // Re-keyed per workflow so switching one puts the caret in the box the
-          // operator is about to type into.
-          key={workflowId}
-          ref={inputRef}
-          autoFocus
-          rows={4}
-          value={text}
-          placeholder={inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder}
-          onChange={(event) => onText(event.target.value)}
-        />
-      </Field>
-
-      {preview.entries.length > 0 && (
-        <section aria-label="Parsed input" className="mt-3 flex flex-col gap-3">
-          <div className="flex items-center justify-between"><h4 className="text-body font-semibold">Parsed input</h4><Badge tone="neutral">{preview.entries.length} {preview.entries.length === 1 ? 'run' : 'runs'}</Badge></div>
-        <ul className="launch-parsed-input overflow-hidden rounded-md border border-ui-stroke divide-y divide-ui-stroke">
-          {preview.entries.map((entry) => (
-            <li
-              key={entry.index}
-              className={cn(
-                "flex min-w-0 items-center gap-2 bg-ui-table px-[10px] py-2",
-              )}
-            >
-              <span className="text-body">{entry.index + 1}.</span>
-              <span className="min-w-0 flex-1 truncate font-mono text-caption">{entry.sourceText}</span>
-              <span className="text-caption text-ui-muted">1 run</span>
-            </li>
-          ))}
-        </ul>
-        </section>
-      )}
-    </div>
-  );
-}
-
-
-
 /** Never auto-pick a harness; select one only when the operator already chose its panel. */
 function defaultWorkflowId(
   workflows: readonly RunStartWorkflow[],
@@ -385,6 +320,8 @@ export function RunStartDialog({
   const [touchedFacts, setTouchedFacts] = useState<ReadonlySet<string>>(() => new Set());
   const [factsAttempted, setFactsAttempted] = useState(false);
   const [text, setText] = useState("");
+  const [typedDraft, setTypedDraft] = useState<TypedInputDraft>(() => initialWorkflow?.inputRun.state === "present" && initialWorkflow.inputRun.surface.typedInput ? typedInputDefaults(initialWorkflow.inputRun.surface.typedInput) : {});
+  const [sourceInputUnchanged, setSourceInputUnchanged] = useState(false);
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
   const [browserMode, setBrowserMode] = useState<BrowserMode>("headed");
@@ -399,6 +336,8 @@ export function RunStartDialog({
   const selectWorkflow = useCallback((next: string, preserveStage = false) => {
     setWorkflowId(next);
     setText("");
+    const nextInput = workflows.find(entry => entry.workflowId === next)?.inputRun;
+    setTypedDraft(nextInput?.state === "present" && nextInput.surface.typedInput ? typedInputDefaults(nextInput.surface.typedInput) : {}); setSourceInputUnchanged(false);
     setPlan(null);
     setResult(null);
     setError(null);
@@ -424,7 +363,7 @@ export function RunStartDialog({
     if (!routed && !previewLaunch && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
     if (!routed) setLocalPreviewSelection(previewLaunch);
     setPickerQuery("");
-    setSnapshot(null); setSourceError(null); setValueDrafts({}); setCopiedOmissions({});
+    setSnapshot(null); setSourceError(null); setValueDrafts({}); setCopiedOmissions({}); setSourceInputUnchanged(false);
     setWarning(null); setAcknowledgment(undefined); setBusy(false); sending.current = false;
     try { setRecovery(readLaunchRecovery(window.sessionStorage, actorId)); setRecoveryError(null); }
     catch (caught) { setRecoveryError(caught instanceof Error ? caught.message : String(caught)); }
@@ -433,13 +372,26 @@ export function RunStartDialog({
       void launchService.openRerun({ runId: rerunSource.runId, expectedVersion: rerunSource.expectedVersion }).then((response) => {
         if (launchInstance.current !== instance) return;
         if (response.state === "refused") { setSourceError(`Rerun unavailable: ${response.code}`); return; }
+        if (response.snapshot.source.runId !== rerunSource.runId || response.snapshot.source.version !== rerunSource.expectedVersion) throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text);
         const sourceWorkflow = workflows.find((entry) => entry.workflowId === response.snapshot.source.workflow);
         if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
         const selection = defaultRerunSteps(response.snapshot, sourceWorkflow);
         setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection); setSnapshot(response.snapshot);
         setValueDrafts(initialRerunValueDrafts(response.snapshot, sourceWorkflow));
+        if (sourceWorkflow.inputRun.state === "present" && sourceWorkflow.inputRun.surface.typedInput !== undefined) {
+          if (response.snapshot.sourceInput.state !== "available") throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text);
+          const declaration = sourceWorkflow.inputRun.surface.typedInput;
+          const input = response.snapshot.sourceInput.value;
+          const restored = restoreTypedInput(declaration, input);
+          setTypedDraft(restored);
+          setText(typedInputText(declaration, input));
+          setSourceInputUnchanged(true);
+          setSelectedStepKeys(sourceWorkflow.steps.filter(step => step.control.state !== "selectable"
+            || restored[step.control.inputField] === true).map(step => step.key));
+          setValueDrafts({});
+        }
       }).catch((caught: unknown) => {
-        if (launchInstance.current === instance) setSourceError(caught instanceof Error ? caught.message : String(caught));
+        if (launchInstance.current === instance) { setSnapshot(null); setSourceError(caught instanceof Error ? caught.message : String(caught)); }
       });
     }
     return () => { launchInstance.current = instance + 1; };
@@ -462,6 +414,18 @@ export function RunStartDialog({
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
+  const typedDeclaration = inputRun.state === "present" ? inputRun.surface.typedInput : undefined;
+  const declaredInput = typedDeclaration !== undefined;
+  const typedValues = useMemo(() => {
+    if (typedDeclaration === undefined) return typedDraft;
+    const values = { ...typedInputDefaults(typedDeclaration), ...typedDraft };
+    for (const step of workflow?.steps ?? []) {
+      const control = step.control;
+      if (control.state === "selectable" && typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "step"))
+        values[control.inputField] = typedControlAvailable(typedDeclaration, values, control.inputField) && selectedStepKeys.includes(step.key);
+    }
+    return values;
+  }, [typedDeclaration, typedDraft, workflow, selectedStepKeys]);
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
   const launchStages = useMemo(() => runStartStages(customizeSteps, "typed", isRerun), [customizeSteps, isRerun]);
@@ -486,7 +450,7 @@ export function RunStartDialog({
     },
   ), [customizeSteps, steps, selectedStepKeys, stepDrafts]);
   const stepOmissions = useMemo(() => completeStepOmissions(omissionRows), [omissionRows]);
-  const requestFingerprint = canonicalJsonStringify([rerunSource ?? null, valueDrafts, copiedOmissions, startRequestFingerprint({
+  const requestFingerprint = canonicalJsonStringify([rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, startRequestFingerprint({
     workflowId,
     text,
     dryRun,
@@ -518,29 +482,23 @@ export function RunStartDialog({
     typedInputRef.current?.focus();
   }, [currentStage]);
 
-  const preview = useMemo((): ParsePreview => {
-    if (inputRun.state !== "present" || text.trim().length === 0) return { entries: [], problem: null };
-    try {
-      return { entries: parseInputRunText(inputRun.surface.parser, text), problem: null };
-    } catch (caught) {
-      // The parser refuses an entry no rule claims. That refusal is precisely
-      // what the operator has to see — it is rendered, never defaulted away.
-      return { entries: [], problem: caught instanceof Error ? caught.message : String(caught) };
-    }
-  }, [inputRun, text]);
+  const preview = useMemo((): RunInputPreview => inputRun.state !== "present" ? { entries: [], submissions: [], problem: null }
+    : previewRunInput(inputRun.surface, text, typedValues,
+      sourceInputUnchanged && snapshot?.source.runId === rerunSource?.runId && snapshot?.source.version === rerunSource?.expectedVersion && snapshot?.sourceInput.state === "available" ? snapshot.sourceInput.value : undefined),
+    [inputRun, text, typedValues, snapshot, rerunSource, sourceInputUnchanged]);
 
 
 
   const submitPlan = useCallback(async (): Promise<void> => {
     if (!isRerun && preview.entries.length === 0) return;
     if (isRerun && (snapshot === null || preview.entries.length > 1)) return;
+    if (declaredInput && preview.submissions.length !== 1 && isRerun) return;
     const dispatchedFor = requestFingerprint;
     const instance = launchInstance.current;
     setBusy(true);
     setError(null);
     try {
-      const values = snapshot === null ? null : rerunSubmission(snapshot,
-        preview.entries[0] === undefined ? {} : JsonValueSchema.parse(toRawSubmission(preview.entries[0])), valueDrafts);
+      const values = snapshot === null ? null : rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts);
       const copiedFrom = [...(values?.copiedFrom ?? []), ...Object.entries(copiedOmissions).flatMap(([index, copied]) => {
         const candidate = snapshot?.values[Number(index)];
         return copied && candidate?.state === "available" && candidate.targetStepKey !== undefined
@@ -549,14 +507,14 @@ export function RunStartDialog({
       })];
       const next = await launchService.preview({
         workflowId,
-        submissions: values === null ? preview.entries.map((entry) => toRawSubmission(entry)) : [values.submission],
+        submissions: values === null ? preview.submissions : [values.submission],
         ...(snapshot === null ? {} : { rerunSource: { runId: snapshot.source.runId, expectedVersion: snapshot.source.version,
           intent: "rerun", selectedStepKeys, copiedFrom }, ...(acknowledgment === undefined ? {} : { warningAcknowledgment: acknowledgment }) }),
         dryRun,
         browserMode,
         captureBrowserScreenshots,
         priority,
-        ...(customizeSteps ? { selectedStepKeys } : {}),
+        ...(customizeSteps || declaredInput ? { selectedStepKeys } : {}),
         // Send omission facts only after every declared form parses.
         ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
       });
@@ -574,7 +532,7 @@ export function RunStartDialog({
     } finally {
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage]);
+  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput]);
 
   const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
     if (sending.current) return;
@@ -632,6 +590,7 @@ export function RunStartDialog({
       : preview.entries.length === 0
         ? "Type at least one value."
         : null;
+  const rerunInputBlocked = preview.problem !== null || preview.entries.length > 1 || (declaredInput && preview.entries.length === 0);
   /** Incomplete omitted-step facts block confirmation using the descriptor’s own schema refusal. */
   /** Omission facts describe one person; fan-out must not assert the same dates for multiple subjects. */
   const subjectCount = preview.entries.length;
@@ -670,7 +629,12 @@ export function RunStartDialog({
   const changeCustomizeSteps = useCallback((next: boolean) => {
     setCustomizeSteps(next);
     if (!next) {
-      setSelectedStepKeys(workflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
+      setSelectedStepKeys(workflow?.steps.filter(step => {
+        const control = step.control;
+        return declaredInput && control.state === "selectable"
+          ? typedDeclaration.controls.some(field => field.placement === "input" && field.field === control.inputField) && typedValues[control.inputField] === true
+          : step.includedByDefault;
+      }).map(({ key }) => key) ?? []);
       // Leaving customization clears facts so unchosen assertions cannot survive invisibly.
       setStepDrafts({});
       setTouchedFacts(new Set());
@@ -678,7 +642,7 @@ export function RunStartDialog({
     } else if (currentStage === "Confirm") {
       setCurrentStage("Steps");
     }
-  }, [currentStage, workflow, setCurrentStage, setCustomizeSteps]);
+  }, [currentStage, workflow, setCurrentStage, setCustomizeSteps, declaredInput, typedDeclaration, typedValues]);
 
   /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
   const toggleStep = useCallback((key: string, next: boolean) => {
@@ -706,6 +670,7 @@ export function RunStartDialog({
 
   const advance = useCallback(async (): Promise<void> => {
     if (nextStage === null) return;
+    if (isRerun && currentStage === "Values" && rerunInputBlocked) return;
     if (isRerun && currentStage === "Steps") {
       if (snapshot === null) return;
       const instance = launchInstance.current;
@@ -734,7 +699,7 @@ export function RunStartDialog({
       return;
     }
     setCurrentStage(nextStage);
-  }, [currentStage, nextStage, plan, stepsBlockedReason, submitPlan, isRerun, snapshot, requestFingerprint, launchService, workflowId, selectedStepKeys, acknowledgment, setCurrentStage]);
+  }, [currentStage, nextStage, plan, stepsBlockedReason, submitPlan, isRerun, snapshot, requestFingerprint, launchService, workflowId, selectedStepKeys, acknowledgment, setCurrentStage, rerunInputBlocked]);
 
   /** Discard spent plans and stage state together; restore focus after settled controls unmount. */
   const returnToInput = useCallback(() => {
@@ -824,7 +789,7 @@ export function RunStartDialog({
               <h3 className="text-heading font-semibold">{currentStage === "Options" ? "Run options" : currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : currentStage === "Values" ? "Values for the new run" : currentStage === "Confirm" ? "Review the plan" : workflow === undefined ? "No workflow" : "Run input"}</h3>
               {currentStage === "Steps" && workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}
               </div>
-              {currentStage === "Input" && inputRun.state === "present" && <p className="text-body text-ui-secondary">Enter {inputRunFieldLabel(inputRun.surface.parser) === "Kuali ID" ? "Kuali IDs" : inputRunValueNoun(inputRun.surface.parser)}. Each entry starts one run.</p>}
+              {currentStage === "Input" && inputRun.state === "present" && <p className="text-body text-ui-secondary">{declaredInput ? typedDeclaration.description : <>Enter {inputRunFieldLabel(inputRun.surface.parser) === "Kuali ID" ? "Kuali IDs" : inputRunValueNoun(inputRun.surface.parser)}. Each entry starts one run.</>}</p>}
               {currentStage === "Options" && <p className="text-body text-ui-secondary">Set how this work enters the queue.</p>}
               {currentStage === "Steps" && <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>}
               {currentStage === "Values" && <p className="text-body text-ui-secondary">Review the input and values this rerun will use.</p>}
@@ -834,13 +799,22 @@ export function RunStartDialog({
               {(currentStage === "Input" || currentStage === "Values") && (
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {inputRun.state === "present" ? (
-                    isRerun && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
+                    !declaredInput && isRerun && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
                       surface={inputRun.surface}
                       workflowId={workflowId}
                       text={text}
-                      onText={setText}
+                      onText={next => { setText(next); setSourceInputUnchanged(false); }}
                       preview={preview}
                       inputRef={typedInputRef}
+                      draft={typedValues}
+                      onValue={(field, value) => {
+                        if (typedDeclaration === undefined) return;
+                        const next = changeTypedInput(typedDeclaration, typedValues, field, value);
+                        setTypedDraft(next);
+                        if (field === typedDeclaration.modeField) setSourceInputUnchanged(false);
+                        setSelectedStepKeys(current => workflow?.steps.filter(step => step.control.state !== "selectable"
+                          ? current.includes(step.key) : next[step.control.inputField] === true).map(step => step.key) ?? []);
+                      }}
                     />
                   ) : (
                     <Well>
@@ -852,7 +826,7 @@ export function RunStartDialog({
                       />
                     </Well>
                   )}
-                  {isRerun && snapshot !== null && (
+                  {!declaredInput && isRerun && snapshot !== null && (
                     <section aria-label="Previous values" className="flex flex-col gap-[var(--ds-space-cozy)]">
                       {snapshot.values.length === 0 && <p className={cn(dsText.body, dsFg.muted)}>No reusable values recorded.</p>}
                       <div className="launch-values-fields grid gap-[var(--ds-space-cozy)]">
@@ -926,7 +900,7 @@ export function RunStartDialog({
                       return (
                         <li key={step.key} className="launch-step-row flex min-w-0 flex-col gap-2">
                           <div className="flex items-start gap-[var(--ds-space-base)]">
-                            <Checkbox checked={selected} disabled={control.state === "required" || forcedBy.length > 0 || (control.state === "omittable" && multiSubject && selected)}
+                            <Checkbox checked={selected} disabled={control.state === "required" || forcedBy.length > 0 || (typedDeclaration !== undefined && control.state === "selectable" && (typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "input") || !typedControlAvailable(typedDeclaration, typedValues, control.inputField))) || (control.state === "omittable" && multiSubject && selected)}
                               onCheckedChange={next => toggleStep(step.key, next === true)} label={step.label}
                               description={step.systems?.map(system => SYSTEM_LABEL[system]).join(" · ")}
                               title={control.state === "required" ? control.reason : control.state === "omittable" && multiSubject ? multiSubjectOmissionReason : undefined} />
@@ -1027,7 +1001,7 @@ export function RunStartDialog({
               variant="primary"
               loading={busy}
               iconAfter={<ArrowRight aria-hidden className="size-[14px]" />}
-              disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (preview.problem !== null || preview.entries.length > 1 || stepsBlockedReason !== null)))) || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
+              disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
               onClick={() => void advance()}
             >
               {nextStage === "Confirm" ? "Preview plan" : "Continue"}

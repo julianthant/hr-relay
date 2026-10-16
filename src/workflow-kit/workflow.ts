@@ -65,6 +65,10 @@ import {
   InputSubjectSchema,
   StepProjectionSchema,
   SubjectProjectionSpecRuntimeSchema,
+  OutcomeProjectionSchema,
+  type OutcomeProjection,
+  ResultSubtitleProjectionSchema,
+  type ResultSubtitleProjection,
   SurfaceShapeSchema,
   NodePurposeSpecSchema,
   TimelineCategoryProjectionSchema,
@@ -94,6 +98,7 @@ import type {
 import { deriveGraphCoveragePoints } from "./validation/scenario-coverage.js";
 import type { GraphCoveragePoint } from "./validation/scenario-coverage.js";
 import {
+  contractSchemaLeaves,
   assertContractBoundarySchema,
   assertBooleanSelectionField,
   assertSchemaOffersPath,
@@ -210,6 +215,8 @@ export interface WorkflowDescriptor<
   readonly details: readonly DetailProjectionSpec<S>[];
   /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
+  readonly subtitleProjection?: ResultSubtitleProjection;
+  readonly outcomeProjection?: OutcomeProjection;
    /** The run-detail timeline's categorical shape, DERIVED by the factory: the declared
     * categories with member labels, or the one-per-node default. Always exhaustive. */
   readonly timeline: readonly TimelineCategoryProjection[];
@@ -265,6 +272,8 @@ export interface AnyWorkflowDescriptor {
    /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
     * functions of the exact input type). The run/queue projection reads it. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  readonly subtitleProjection?: ResultSubtitleProjection;
+  readonly outcomeProjection?: OutcomeProjection;
   /** Plain data like `subjectProjection`, so it rides the broad view. */
   readonly timeline: readonly Readonly<{
     /** The category's stable anchor: the step folder's name, and what a `chunk-harness.step` names. */
@@ -907,6 +916,24 @@ export function defineWorkflowDescriptor<
     assertNodeFieldPath(id, nodes, detail.source.nodeId, detail.source.fieldPath, `detail "${detail.key}"`);
   }
   assertUnique(id, "detail keys", spec.details.map((detail) => detail.key));
+
+  if (spec.outcomeProjection !== undefined) {
+    const projection = OutcomeProjectionSchema.parse(spec.outcomeProjection);
+    const owner = `${id}: result outcome projection`;
+    assertSchemaOwnsPath(spec.flow.result.schema, projection.fieldPath, owner);
+    const leaf = contractSchemaLeaves(spec.flow.result.schema).find(entry => entry.path === projection.fieldPath);
+    if (leaf === undefined || !["string", "enum", "literal"].includes(leaf.kind)) {
+      throw new Error(`${owner} must name a string outcome field`);
+    }
+    const vocabulary = leaf.options;
+    if (vocabulary !== undefined && projection.cases.some(entry => !vocabulary.includes(entry.value))) {
+      throw new Error(`${owner} contains a value outside the result field vocabulary`);
+    }
+  }
+  if (spec.subtitleProjection !== undefined) {
+    ResultSubtitleProjectionSchema.parse(spec.subtitleProjection);
+    assertSchemaOwnsPath(spec.flow.result.schema, spec.subtitleProjection.fieldPath, `${id}: result subtitle projection`);
+  }
 
     // Absent subject arm keeps the start title.
   if (spec.subjectProjection !== undefined) {

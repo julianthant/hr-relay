@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { buildWorkflowCatalog as buildWorkflowCatalog_m0 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
@@ -15,7 +16,7 @@ import { WorkflowRail as WorkflowRail_m1 } from "../../../../src/dashboard/surfa
 import { MOCK_WORKFLOW_CATALOG as MOCK_WORKFLOW_CATALOG_m1 } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { buildWorkflowCatalog as buildWorkflowCatalog_m1,servedLaunchWorkflows as servedLaunchWorkflows_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../parity/helpers/fixture-start.js";
-import { servedFixtureSources as servedFixtureSources_m1 } from "../../../parity/helpers/workflow-composition.js";
+import { PARITY_WORKFLOW_COMPOSITION, servedFixtureSources as servedFixtureSources_m1 } from "../../../parity/helpers/workflow-composition.js";
 
 
 {
@@ -38,7 +39,7 @@ async function render(): Promise<void> {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot_m0(host);
-  await act_m0(async () => root?.render(createElement_m0(WorkflowExplorer_m0, { catalog: buildWorkflowCatalog_m0([]) })));
+  await act_m0(async () => root?.render(createElement_m0(WorkflowExplorer_m0, { catalog: buildWorkflowCatalog_m0([], true, previewFixtureSources([])) })));
 }
 function button(name: string): HTMLButtonElement {
   const found = [...document.querySelectorAll("button")].find((node) => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);
@@ -67,7 +68,7 @@ afterEach_m0(_afterEachFixture2);
     const workflowSelect = document.querySelector('[aria-label="Explorer workflow"]');
     assert_m0.ok(workflowSelect instanceof HTMLButtonElement);
     await act_m0(async () => workflowSelect.click());
-    assert_m0.deepEqual([...document.querySelectorAll('[role="option"]')].map(option => option.textContent), buildWorkflowCatalog_m0([]).map(entry => entry.label));
+    assert_m0.deepEqual([...document.querySelectorAll('[role="option"]')].map(option => option.textContent), buildWorkflowCatalog_m0([], true, previewFixtureSources([])).map(entry => entry.label));
     await act_m0(async () => document.querySelector<HTMLElement>('[role="option"][data-value="fixture-separations"]')?.click());
     assert_m0.equal(document.querySelector('aside[aria-label="Workflow browser"]'), null);
     for (const name of ["Expand all", "Collapse all", "Version registry", "Show action legend"]) {
@@ -91,22 +92,34 @@ afterEach_m0(_afterEachFixture2);
 
 
 const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows));
-const catalog = buildWorkflowCatalog_m1(served);
+const catalog = buildWorkflowCatalog_m1(served, true, servedFixtureSources_m1([]));
 const noop = () => {};
 
 describe_m1("frontend workflow catalog", () => {
-  it_m1("uses the declared mock source regardless of served labels or availability", () => {
+  it_m1("retains custom served bootstrap workflows in Explorer and Logs preview catalogs", () => {
+    const custom = { ...served[0], workflowId: "launch-proof", label: "Launch proof" };
+    const bootstrap = [...served, custom];
+    const composition = PARITY_WORKFLOW_COMPOSITION(bootstrap);
+    for (const policy of [composition.explorerSources, composition.logsSources]) {
+      expect_m1(() => buildWorkflowCatalog_m1(bootstrap, true, policy)).not.toThrow();
+      const entries = buildWorkflowCatalog_m1(bootstrap, true, policy);
+      expect_m1(entries.find(entry => entry.id === custom.workflowId)).toMatchObject({ source: "served", served: custom });
+      for (const id of Object.keys(WORKFLOW_SOURCES_m1)) expect_m1(policy?.[id]).toBe("mock");
+      expect_m1(entries.find(entry => entry.id === "person-lookup")?.source).toBe("preview");
+    }
+  });
+  it_m1("retains explicit mock fixtures while production selects Person Lookup served", () => {
     expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.map(flow => flow.id).sort()).toEqual(Object.keys(WORKFLOW_SOURCES_m1).sort());
     expect_m1(Object.keys(WORKFLOW_SOURCES_m1).sort()).toEqual(catalog.map(entry => entry.id).sort());
-    expect_m1(Object.values(WORKFLOW_SOURCES_m1).every(source => source === "mock")).toBe(true);
+    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["person-lookup"]);
     expect_m1(served.every(flow => Object.hasOwn(WORKFLOW_SOURCES_m1, flow.workflowId))).toBe(true);
     expect_m1(catalog.every(entry => entry.source === "preview" && entry.served === undefined)).toBe(true);
     expect_m1(servedLaunchWorkflows_m1(catalog)).toEqual([]);
     const changed = served.map(flow => ({ ...flow, label: "Served label", inputRun: { state: "absent" as const, reason: "Not available" } }));
-    expect_m1(buildWorkflowCatalog_m1(changed)).toEqual(catalog);
+    expect_m1(buildWorkflowCatalog_m1(changed, true, servedFixtureSources_m1([]))).toEqual(catalog);
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.dataSources).toBeUndefined();
-    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("person-lookup", false)).toBe("mock");
-    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("person-lookup", true)).toBe("mock");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("person-lookup", false)).toBe("served");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("person-lookup", true)).toBe("served");
     expect_m1(() => workflowSource_m1("unknown-workflow")).toThrow("WORKFLOW_SOURCE_UNDECLARED");
     const configured = { ...WORKFLOW_SOURCES_m1, "person-lookup": "served" as const };
     expect_m1(workflowComposition_m1(configured).dataSources).toBeUndefined();

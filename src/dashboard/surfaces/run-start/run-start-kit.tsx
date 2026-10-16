@@ -1,5 +1,6 @@
+import type { RefObject } from "react";
 import { Check, CheckCircle2, FlaskConical } from "lucide-react";
-import type { SurfaceField } from "../../../models/workflow/ingress.js";
+import type { SurfaceField, InputRunSurface, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
 import {
   Badge,
@@ -15,6 +16,7 @@ import {
   MetaLine,
   Refusal,
   Select,
+  SegmentedChoice,
   Textarea,
   Well,
   dsFg,
@@ -25,7 +27,7 @@ import { fmtClock } from "../shared/status/format.js";
 import type { CommandResult } from "../../../rules/commands/commands.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
-import type { StepOmissionDraft, StepOmissionFactDraft } from "./run-start-model.js";
+import { typedInputMode, typedInputDefaults, inputRunFieldLabel, inputRunDelimiterHint, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 /** the non-default run flags shown in the preview and confirmation */
 export function RunFlagChips({
@@ -432,4 +434,52 @@ export function StepOmissionFactsForm({
       })}
     </fieldset>
   );
+}
+
+export function TypedInput({
+  surface,
+  workflowId,
+  text,
+  onText,
+  preview,
+  inputRef,
+  draft = {},
+  onValue,
+  presentation = "served",
+}: {
+  surface: InputRunSurface;
+  workflowId: string;
+  text: string;
+  onText: (next: string) => void;
+  preview: RunInputPreview;
+  draft?: TypedInputDraft;
+  onValue?: (field: string, value: string | boolean) => void;
+  presentation?: "mock" | "served";
+  /** the dialog's handle on the box, so an exit from a banner can focus it */
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
+}) {
+  const declaration = surface.typedInput;
+  const values = declaration === undefined ? draft : { ...typedInputDefaults(declaration), ...draft };
+  const mode = declaration === undefined ? undefined : typedInputMode(declaration, values);
+  const field = <Field label={mode?.inputLabel ?? inputRunFieldLabel(surface.parser)} description={mode?.hint ?? inputRunDelimiterHint(surface.parser)} error={presentation === "served" ? preview.problem : undefined}>
+    <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text}
+      placeholder={mode?.placeholder ?? (inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder)}
+      onChange={event => onText(event.target.value)} />
+  </Field>;
+  const controls = declaration && <>
+    <SegmentedChoice label={declaration.modeLabel} value={mode?.value ?? declaration.initialMode}
+      options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
+      onChange={value => onValue?.(declaration.modeField, value)} />
+    {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? declaration.initialMode)).map(control =>
+      <Checkbox key={control.field} label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value === true)} />)}
+  </>;
+  if (presentation === "mock") return <>{controls}{field}
+    {preview.entries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{preview.entries.map(entry => <li key={entry.index} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{entry.index + 1}</span><span className="truncate">{entry.sourceText}</span></li>)}</ul>}
+  </>;
+  return <>{controls}<div className="flex flex-col gap-[var(--ds-space-snug)]">{field}
+    {preview.entries.length > 0 && <section aria-label="Parsed input" className="mt-3 flex flex-col gap-3">
+      <div className="flex items-center justify-between"><h4 className="text-body font-semibold">Parsed input</h4><Badge tone="neutral">{preview.entries.length} {preview.entries.length === 1 ? "run" : "runs"}</Badge></div>
+      <ul className="launch-parsed-input overflow-hidden rounded-md border border-ui-stroke divide-y divide-ui-stroke">{preview.entries.map(entry => <li key={entry.index} className="flex min-w-0 items-center gap-2 bg-ui-table px-[10px] py-2"><span className="text-body">{entry.index + 1}.</span><span className="min-w-0 flex-1 truncate font-mono text-caption">{entry.sourceText}</span><span className="text-caption text-ui-muted">1 run</span></li>)}</ul>
+    </section>}
+  </div></>;
 }

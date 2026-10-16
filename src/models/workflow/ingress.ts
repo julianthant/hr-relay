@@ -193,7 +193,7 @@ export function parseInputRunText(
 }
 
 /** Assemble one entry into a raw submission. The CALLER parses it with `descriptor.input`. */
-export function toRawSubmission(entry: ParsedInputEntry): unknown {
+export function toRawSubmission(entry: ParsedInputEntry): Record<string, string | boolean | number> {
   const submission: { [key: string]: string | boolean | number } = {};
   for (const { field, value } of entry.fields) {
     switch (value.kind) {
@@ -350,9 +350,43 @@ export const InputRunExampleSchema = z.strictObject({
 });
 export type InputRunExample = z.infer<typeof InputRunExampleSchema>;
 
+const TypedInputControlSchema = z.strictObject({
+  field: InputFieldNameSchema,
+  label: z.string().min(1),
+  placement: z.enum(["input", "step", "hidden"]),
+  modes: z.array(z.string().min(1)).min(1),
+  requires: z.array(InputFieldNameSchema),
+});
+const TypedInputModeSchema = z.strictObject({
+  value: z.string().min(1), label: z.string().min(1),
+  inputLabel: z.string().min(1), hint: z.string().min(1), placeholder: z.string().min(1),
+  defaults: z.array(SurfaceFieldSchema),
+  parser: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("entries"), spec: InputParserSpecSchema }),
+    z.strictObject({ kind: z.literal("name-tuple"), delimiter: z.string().min(1),
+      familyName: InputFieldNameSchema, givenName: InputFieldNameSchema,
+      identifiers: z.array(z.strictObject({ field: InputFieldNameSchema, canonicalField: z.enum(["ssn", "text"]) })).min(1),
+      missing: z.string().min(1), missingIdentifiersCode: z.literal("PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS"),
+    }),
+  ]),
+  display: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("first-present"), fields: z.array(InputFieldNameSchema).min(1) }),
+    z.strictObject({ kind: z.literal("tuple"), fields: z.array(InputFieldNameSchema).min(1), separator: z.string(), missing: z.string(), masked: z.array(InputFieldNameSchema) }),
+  ]),
+  identityFields: z.array(InputFieldNameSchema).min(1),
+});
+export const TypedInputSurfaceSchema = z.strictObject({
+  modeField: InputFieldNameSchema, modeLabel: z.string().min(1), initialMode: z.string().min(1),
+  description: z.string().min(1),
+  modes: z.array(TypedInputModeSchema).min(1), controls: z.array(TypedInputControlSchema),
+});
+export type TypedInputSurface = z.infer<typeof TypedInputSurfaceSchema>;
+export type TypedInputDraft = Readonly<Record<string, string | boolean>>;
+
 export const InputRunSurfaceSchema = z.strictObject({
   placeholder: z.string().min(1),
   parser: InputParserSpecSchema,
+  typedInput: TypedInputSurfaceSchema.optional(),
     /* Declared, and proved typeable by `defineWorkflowDescriptor`: every example's text must parse under this surface's own parser and satisfy the workflow's input schema. */
   examples: z.array(InputRunExampleSchema).min(1).optional(),
     /* DERIVED, never authored: stamped from the graph's `dryRun: "stop-after-prepare"` transaction nodes, because previewability is a property of what a workflow writes. */

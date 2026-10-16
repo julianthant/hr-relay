@@ -1,7 +1,7 @@
 {
   "separations": "mock",
   "onboarding": "mock",
-  "person-lookup": "mock",
+  "person-lookup": "served",
   "i9-lookup": "mock",
   "work-study": "mock",
   "kronos-pay-rule": "mock",

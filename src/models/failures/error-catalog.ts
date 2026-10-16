@@ -209,6 +209,10 @@ export const ERROR_CATALOG = Object.freeze({
     "The supplied data does not match the expected contract.",
     z.strictObject({ source: BoundarySourceSchema }),
   ),
+  RERUN_SOURCE_INPUT_PROTECTED: catalogEntry(
+    "The source input is protected and cannot be copied into a rerun.",
+    EmptyParametersSchema,
+  ),
   TASK_UNHANDLED_FAILURE: catalogEntry(
     "The task stopped with an unclassified failure. Review local diagnostic evidence.",
     EmptyParametersSchema,

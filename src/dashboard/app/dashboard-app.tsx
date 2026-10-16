@@ -595,7 +595,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       document.getElementById(RUN_START_DOOR_ID)?.focus({ preventScroll: true });
     });
   }, [onSelectMode, onBulkIds]);
-  const { surfaces, parentOf, viewState, queueHandlers, actionsOf } = useQueueWiring({
+  const { surfaces, outcomes, parentOf, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
     openWells, selectMode, bulkIds, nowIso, workflowLabelOf, selectRun, setActiveWorkflowId, onWells, onBulkIds,
     setBatchGrouping, exitQueueSelection, runQueueAction,
@@ -918,6 +918,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 </PanelBody></Panel>
               ) : <QueuePanel
                 surfaces={surfaces}
+                outcomes={outcomes}
                 state={viewState}
                 handlers={queueHandlers}
                 actionsOf={actionsOf}

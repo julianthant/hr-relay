@@ -22,6 +22,11 @@ The callback returns ordered `[WorkflowTimelineGroup, readonly AnyWorkflowEntry[
 terminal `result` declaration. Tuple order determines presentation. Typed entry references determine
 execution dependencies.
 
+An optional `outcomeProjection` maps a terminal-result field to declared `{ value, label, tone }`
+cases. `defineWorkflowDescriptor` requires a string, enum, or literal field and rejects case values
+outside its schema vocabulary. Person Lookup declares eight cases for `activeStatus.state`; the
+`multiple-matches` case is shared by Search and Match mode.
+
 `WorkflowDescriptorSpec` holds the graph and presentation contract. `defineWorkflowDescriptor`
 validates contract placement, schema paths, input examples, node purposes, timeline membership,
 identity, presentation, and result dependencies. Its sealed projections derive steps, gates,

@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
@@ -25,7 +26,7 @@ async function render(): Promise<void> {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root?.render(createElement(WorkflowExplorer, { catalog: buildWorkflowCatalog([]) })));
+  await act(async () => root?.render(createElement(WorkflowExplorer, { catalog: buildWorkflowCatalog([], true, previewFixtureSources([])) })));
 }
 function button(name: string): HTMLButtonElement {
   const found = [...document.querySelectorAll("button")].find((node) => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);

@@ -3,11 +3,11 @@ import { useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Play } from "lucide-react";
 import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
 import { MOCK_FORM_TYPES, MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
-import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockDraftInputError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOcrReadSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
+import { mockTypedInputValues, changeMockTypedInput, initialMockDraft, mockConfirmationFacts, mockDraftError, mockDraftInputError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOcrReadSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "../../run-start/launch-presentation.css";
 import { cn } from "../../../lib/utils.js";
 import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-start/run-launch-layout.js";
-import { RunFlagChips } from "../../run-start/run-start-kit.js";
+import { TypedInput, RunFlagChips } from "../../run-start/run-start-kit.js";
 import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
@@ -62,13 +62,16 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         {(stage === "Input" || stage === "Values") && <section aria-label={stage} className="flex flex-col gap-3">
           {flow.methods.length > 1 && <SegmentedChoice label="Input method" value={draft.method} options={flow.methods.map(value => ({ value, label: value === "typed" ? "Employee IDs" : "PDFs" }))} onChange={method => patch({ method })} />}
           {workflowId === "oath-upload" && <SegmentedChoice label="Processing mode" value={draft.uploadMode} options={[{ value: "full", label: "Full process" }, { value: "upload-only", label: "Upload-only" }]} onChange={uploadMode => patch({ uploadMode })} />}
-          {workflowId === "person-lookup" && <><SegmentedChoice label="Lookup mode" value={draft.lookupMode} options={[{ value: "search", label: "Search" }, { value: "match", label: "Match" }]} onChange={lookupMode => patch({ lookupMode, crmCheck: lookupMode === "search" })} /><Checkbox label="CRM check" checked={draft.crmCheck} onCheckedChange={value => patch({ crmCheck: value === true })} /></>}
-          {draft.method === "typed" && <>
-            <Field label={workflowId === "person-lookup" && draft.lookupMode === "match" ? "Name, DOB and SSN" : flow.inputLabel} description={workflowId === "person-lookup" ? draft.lookupMode === "match" ? "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with semicolons." : "Separate people with a semicolon or a new line." : "Separate values with a comma or a new line."}>
-              <Textarea autoFocus rows={4} value={draft.text} placeholder={workflowId === "person-lookup" && draft.lookupMode === "match" ? "Lee, Jordan, 01/01/2000, x" : flow.placeholder} onChange={event => patch({ text: event.target.value })} />
+          {draft.method === "typed" && (flow.typedInput ? <TypedInput presentation="mock" workflowId={workflowId}
+            surface={{ typedInput: flow.typedInput, placeholder: flow.placeholder, parser: { split: { kind: "whole-text" }, rules: [{ when: { kind: "otherwise" }, emit: "value" }] } }}
+            text={draft.text} onText={text => patch({ text })} draft={mockTypedInputValues(workflowId, draft)}
+            onValue={(field, value) => patch(changeMockTypedInput(workflowId, draft, field, value))}
+            preview={{ entries: typedEntries.map((sourceText, index) => ({ index, sourceText })), submissions: [], problem: null }} /> : <>
+            <Field label={flow.inputLabel} description="Separate values with a comma or a new line.">
+              <Textarea autoFocus rows={4} value={draft.text} placeholder={flow.placeholder} onChange={event => patch({ text: event.target.value })} />
             </Field>
             {typedEntries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{typedEntries.map((entry, number) => <li key={number} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{number + 1}</span><span className="truncate">{entry}</span></li>)}</ul>}
-          </>}
+          </>)}
           {pdf && <>
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
             <div className={cn("grid min-w-0 gap-3", flow.roster && !uploadOnly && (workflowId === "ocr" || workflowId === "onbase") && "grid-cols-2")}>

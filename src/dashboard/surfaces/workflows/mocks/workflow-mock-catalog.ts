@@ -1,3 +1,4 @@
+import type { TypedInputSurface } from "../../../../models/workflow/ingress.js";
 import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
 import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 /** Label inventory copied from legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87 src/dashboard/components/dev/rebuild-demo/demo-wire.ts; presentation only. */
@@ -12,6 +13,7 @@ export type MockMethod = "typed" | "pdf" | "roster" | "delegated";
 export type MockStep = Readonly<{ key: string; label: string; system?: string; message: string; write?: boolean }>;
 export type MockWorkflow = Readonly<{
   id: MockWorkflowId; label: string; category: string; runnable: boolean; methods: readonly MockMethod[];
+  typedInput?: TypedInputSurface;
   sampleOutcomes?: readonly (QueueBusinessOutcome & { lookupMode: "search" | "match" })[];
   inputLabel: string; placeholder: string; example: string; dryRun: boolean; roster: boolean;
   steps: readonly MockStep[]; result: readonly (readonly [string, string])[];
@@ -19,7 +21,26 @@ export type MockWorkflow = Readonly<{
 const step = (key: string, label: string, system: string | undefined, message: string, write = false): MockStep => ({ key, label, system, message, ...(write ? { write } : {}) });
 type Contract = Omit<MockWorkflow, "id" | "label" | "category">;
 const contracts: Record<MockWorkflowId, Contract> = {
-  "person-lookup": { sampleOutcomes: [
+  "person-lookup": { typedInput: {
+    modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
+    modes: [
+      { value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
+        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
+        display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
+      },
+      { value: "match", label: "Match", inputLabel: "Name, DOB and SSN", hint: "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with semicolons.", placeholder: "Lee, Jordan, 01/01/2000, x",
+        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS" },
+        display: { kind: "tuple", fields: ["lastName", "firstName", "dob", "ssn"], separator: ", ", missing: "x", masked: ["ssn"] }, identityFields: ["lastName", "firstName", "dob", "ssn"],
+      },
+    ],
+    controls: [
+      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["search", "match"], requires: [] },
+      { field: "keepNonHdh", label: "Keep non-HDH candidates", placement: "hidden", modes: ["search"], requires: [] },
+      { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
+    ],
+  }, sampleOutcomes: [
     { label: "Active", tone: "success", lookupMode: "search" },
     { label: "Inactive", tone: "neutral", lookupMode: "search" },
     { label: "CRM only", tone: "warning", lookupMode: "search" },

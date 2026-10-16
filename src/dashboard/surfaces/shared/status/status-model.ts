@@ -79,4 +79,4 @@ export function statusAccessibleName(status: ProposedStatus, age?: string): stri
   return dsStatusAccessibleName(status, age);
 }
 
-export type QueueBusinessOutcome = Readonly<{ label: string; tone: "success" | "warning" | "neutral" }>;
+export type { QueueBusinessOutcome } from "../../../../models/dashboard/projection.js";

@@ -35,6 +35,22 @@ const { lookupInput, fixtureWorkflow } = createSearchWorkflowDefinitionFixtures(
 type Author = WorkflowAuthor<typeof PersonLookupInput>;
 
 describe("workflow definition compiler", () => {
+  it("validates outcome declarations against the result field and unique vocabulary", () => {
+    const projection = personLookupWorkflow.outcomeProjection;
+    assert.ok(projection);
+    expect(compileWorkflow(personLookupWorkflow).descriptor.outcomeProjection).toEqual(projection);
+    expect(() => compileWorkflow({ ...personLookupWorkflow, outcomeProjection: { ...projection, fieldPath: "activeStatus.missing" } })).toThrow(/result outcome projection/u);
+    expect(() => compileWorkflow({ ...personLookupWorkflow, outcomeProjection: { ...projection, fieldPath: "activeStatus..state" } })).toThrow();
+    expect(() => compileWorkflow({ ...personLookupWorkflow, outcomeProjection: { ...projection, fieldPath: "activeStatus.details" } })).toThrow(/result outcome projection/u);
+    expect(() => compileWorkflow({ ...personLookupWorkflow, outcomeProjection: { ...projection, cases: [projection.cases[0], projection.cases[0]] } })).toThrow(/unique/u);
+    expect(() => compileWorkflow({ ...personLookupWorkflow, outcomeProjection: { ...projection, cases: [{ value: "unknown-result", label: "Unknown", tone: "warning" }] } })).toThrow(/vocabulary/u);
+  });
+  it("validates declared result subtitle paths against the terminal result schema", () => {
+    const projection = { fieldPath: "activeStatus.details.eid", display: "eid" as const };
+    expect(compileWorkflow({ ...personLookupWorkflow, subtitleProjection: projection }).descriptor.subtitleProjection).toEqual(projection);
+    expect(() => compileWorkflow({ ...personLookupWorkflow, subtitleProjection: { ...projection, fieldPath: "activeStatus.details.missing" } })).toThrow(/result subtitle projection/u);
+    expect(() => compileWorkflow({ ...personLookupWorkflow, subtitleProjection: { ...projection, fieldPath: "activeStatus..eid" } })).toThrow();
+  });
   it("exports the compiled ordered tuple product and refuses an uncompiled definition", () => {
     const declaration = workflowExplorerDeclaration(personLookupWorkflow);
     expect(declaration.map((group) => [group.key, group.label, group.entries.map((entry) => ({

@@ -1,4 +1,5 @@
 import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
@@ -19,7 +20,7 @@ import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-con
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../parity/helpers/fixture-day.js";
 
-const catalog = buildWorkflowCatalog([]);
+const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
 const now = FIXTURE_NOW;
 function dayWith(count = 1): DashboardDayWire {
   const base = FIXTURE_DAY_WIRE;

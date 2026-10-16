@@ -1,10 +1,11 @@
+import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,it } from "vitest";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-const catalog = buildWorkflowCatalog([]);
+const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
 
 describe("frontend timeline and sessions", () => {
   it("renders the canonical Sessions host without any dashboard client provider", () => {

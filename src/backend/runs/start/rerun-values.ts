@@ -238,6 +238,10 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         return { key: step.key, state, nodes: members };
       });
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
+        sourceInput: canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
+          || containsProtected(run.input.parsed.value, privateValues)
+          ? { state: "unavailable", reason: "protected" }
+          : { state: "available", value: run.input.parsed.value },
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
           descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: lifecycle.outcome },
         steps, values, transactions,

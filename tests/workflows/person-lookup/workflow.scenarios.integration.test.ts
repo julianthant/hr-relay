@@ -22,7 +22,7 @@ import { ReadOnboardingDatesOutputSchema } from "../../../src/models/systems/crm
 import { searchPersonOrgWithPagePort, assignmentDetailsToCells, type PersonOrgDetail } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { searchPersonMatchWithPort } from "../../../src/backend/systems/ucpath/driver/person-match-operation.js";
 import { PersonLookupResultSchema } from "../../../src/workflows/person-lookup/workflow.js";
-import { PersonLookupInput, parsePersonLookupRequest } from "../../../src/models/workflows/person-lookup/input.js";
+import { PersonLookupInput, PersonLookupMatchInputError, parsePersonLookupRequest } from "../../../src/models/workflows/person-lookup/input.js";
 import { SearchPersonOrgOutputSchema, UcpathCandidateSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { CrmDiscoveredRecordSchema } from "../../../src/models/systems/crm/search-onboarding-records.js";
@@ -37,7 +37,7 @@ import { WorkerIdSchema, WorkflowIdSchema, FingerprintSchema } from "../../../sr
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 const candidate = UcpathCandidateSchema.parse({ emplId: "10000001", name: "Example, Person", department: "Housing Dining Hospitality", jobTitle: "Assistant", employeeStatus: "active", hdh: true,
-  hrStatus: "Active", startDate: "07/01/2026", effectiveDate: "07/01/2026", terminationDate: "", terminationReason: "" });
+  hrStatus: "Active", startDate: "06/15/2026", effectiveDate: "07/01/2026", terminationDate: "", terminationReason: "" });
 const other = UcpathCandidateSchema.parse({ ...candidate, emplId: "10000002" });
 const record = CrmDiscoveredRecordSchema.parse({ recordId: "ONB-1", recordUrl: "https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=ONB-1", emplId: candidate.emplId, name: candidate.name,
   department: candidate.department, firstDayOfService: "07/01/2026", dateSigned: "06/25/2026" });
@@ -142,7 +142,8 @@ function makeCase(testCase: Case) {
         recordBrowserAction("read", "crm.onboarding.record", JSON.stringify(request));
         return request;
       },
-      async searchOnboardingRecords() {
+      async searchOnboardingRecords(request: z.output<typeof import("../../../src/models/systems/crm/search-onboarding-records.js").CrmSearchOnboardingRecords.input>) {
+        if (testCase.id === "M5") assert.deepEqual(request, { eid: candidate.emplId, name: candidate.name });
         recordBrowserAction("typed", "crm.onboarding.search-criteria", candidate.name);
         recordBrowserAction("clicked", "crm.onboarding.search");
         testCase.onCrmSearch?.();
@@ -164,6 +165,13 @@ function makeCase(testCase: Case) {
     rawInput: entry.rawInput, canonicalInput: entry.input, ingressSchemaHash: plan.ingressSchemaHash, configFingerprint: plan.configFingerprint, configSnapshotId: plan.configSnapshotId,
     resolvedInstance: plan.resolvedInstance, shape: plan.shape, priority: plan.priority, dryRun: false, attempt: 1, runNumber: 1, appVersion: "0.1.0", now: clock.now().toISOString() });
   return { harness, queued, input, plan };
+}
+function stepStatuses(harness: ReturnType<typeof world.executorHarness>) {
+  const tasks = harness.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "task");
+  return personLookupDescriptor.timeline.map((step) => {
+    const outcomes = tasks.filter((event) => event.t === "span.ended" && event.kind === "task" && step.nodes.some((node) => event.spanPath.includes(`/${node.id}#`))).map((event) => event.t === "span.ended" ? event.outcome : "");
+    return outcomes.includes("failed") ? "failed" : outcomes.includes("done") ? "completed" : outcomes.length > 0 && outcomes.every((outcome) => outcome === "skipped") ? "skipped" : "not-started";
+  });
 }
 describe("approved Person Lookup scenarios", () => {
   for (const testCase of cases) it(testCase.id, async () => {
@@ -227,18 +235,23 @@ describe("approved Person Lookup scenarios", () => {
       foundInUcpath: matchMode ? !missing : null, matchedEid: matchMode && resolved ? candidate.emplId : null, matchedName: matchMode && resolved ? candidate.name : null,
     });
     if (testCase.crm !== undefined) assert.equal(output.activeStatus.details.crm, testCase.crm);
-    if (testCase.state === "multiple-matches") { assert.equal(output.activeStatus.details.eid, null); assert.equal(output.activeStatus.candidateEids.length, 2); }
+    if (testCase.state === "multiple-matches") { assert.equal(output.activeStatus.details.eid, null); assert.deepEqual(output.activeStatus.candidateEids, [candidate.emplId, other.emplId]); }
     if (testCase.id === "S2") { assert.equal(output.activeStatus.details.endDate, "09/01/2026"); assert.equal(output.activeStatus.details.terminationReason, "Resigned"); }
-    if (testCase.id === "S3") assert.equal(output.activeStatus.hdh, false);
+    if (testCase.id === "S3") {
+      assert.equal(output.activeStatus.hdh, false);
+      const employment = database.authority.timelineEvents.page({}).find(event => event.payload.kind === "note" && event.payload.note.message === "Employment status");
+      assert.ok(employment?.payload.kind === "note");
+      assert.ok(employment.payload.note.spanPath.includes("/active-status#1"));
+      assert.ok(employment.payload.note.fields?.some(field => field.key === "HDH department" && field.value === "No"));
+      assert.ok(employment.payload.note.fields?.some(field => field.key === "department" && field.value === "Engineering"));
+    }
+    if (testCase.id === "S14") assert.equal(output.activeStatus.reason, "UCPath HR status is unreadable: Unreadable");
     if (testCase.id === "S15") { assert.equal(harness.sessions.opens("crm"), 0); assert.equal(output.activeStatus.details.startDate, null); }
     if (testCase.dates) { assert.ok(output.crmDates.state === "included"); assert.equal(output.crmDates.dates.employmentDate, "2026-07-01"); assert.equal(output.crmDates.dates.oathDate, "2026-06-25"); }
     const endedIds = tasks.map((event) => event.t === "span.ended" && event.kind === "task" ? event.spanPath.split("/").at(-1)!.split("#")[0] : "");
     const order = personLookupDescriptor.nodes.map((node) => String(node.id));
     assert.deepEqual(endedIds, [...endedIds].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
-    const statuses = personLookupDescriptor.timeline.map((step) => {
-      const outcomes = tasks.filter((event) => event.t === "span.ended" && event.kind === "task" && step.nodes.some((node) => event.spanPath.includes(`/${node.id}#`))).map((event) => event.t === "span.ended" ? event.outcome : "");
-      return outcomes.includes("failed") ? "failed" : outcomes.includes("done") ? "completed" : outcomes.length > 0 && outcomes.every((outcome) => outcome === "skipped") ? "skipped" : "not-started";
-    });
+    const statuses = stepStatuses(harness);
     assert.deepEqual(statuses, ["completed", input.crmCheck && (!matchMode || testCase.state === "found") ? "completed" : "skipped", matchMode ? "skipped" : "completed", testCase.dates ? "completed" : "skipped"]);
     const actions = database.authority.timelineEvents.page({}).flatMap((event) => event.payload.kind === "note" && event.payload.note.action !== undefined ? [event.payload.note.action] : []);
     const searchActions = ["ucpath.person-org.summary", "ucpath.person-org.criteria", "ucpath.person-org.search-button"];
@@ -320,7 +333,7 @@ describe("approved Person Lookup scenarios", () => {
     if (failed) assert.equal(actions.length, 1);
   });
   it("M4", () => {
-    assert.throws(() => parsePersonLookupRequest("Example, Person, x, X", { mode: "match" }), /Match requires/);
+    assert.throws(() => parsePersonLookupRequest("Example, Person, x, X", { mode: "match" }), (error: unknown) => error instanceof PersonLookupMatchInputError && error.code === "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS");
     assert.equal(PersonLookupInput.safeParse({ mode: "match", lastName: "Example", firstName: "Person", dob: "x" }).success, false);
   });
   it("F3", async () => {
@@ -344,6 +357,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.ok(events.length > 0);
     assert.equal(JSON.stringify(database.authority.timelineEvents.page({}).filter(event => event.payload.kind === "note")).includes(".login"), false);
     assert.ok(events.some(event => typeof event === "object" && event !== null && "reason" in event && event.reason === "login-failed"));
+    assert.deepEqual(stepStatuses(harness), system === "crm" ? ["completed", "failed", "not-started", "not-started"] : ["failed", "not-started", "not-started", "not-started"]);
     if (system !== "crm") assert.equal(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId).length, 0);
     }
   });
@@ -359,6 +373,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(database.authority.runs.get(queued.envelope.runId)?.lifecycle.state, "terminal");
     assert.equal(harness.sessions.opens(), 0);
     assert.equal(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId).length, 0);
+    assert.deepEqual(stepStatuses(harness), ["not-started", "not-started", "not-started", "not-started"]);
     const running = makeCase({ id: "F4-midrun", state: "cancelled", onCrmSearch: () => {
       const run = running.harness.authority.database.authority.runs.get(running.queued.envelope.runId); assert.ok(run);
       assert.equal(testRunService(running.harness.authority.database, running.harness.authority.clock).transition({ commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } }).state, "applied");
@@ -368,6 +383,9 @@ describe("approved Person Lookup scenarios", () => {
     const checkpoints = running.harness.authority.database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, midClaim.run.envelope.itemId);
     assert.ok(checkpoints.some(checkpoint => checkpoint.nodeId === "searching"));
     assert.equal(checkpoints.some(checkpoint => checkpoint.nodeId === "active-status"), false);
+    assert.deepEqual(stepStatuses(running.harness), ["completed", "completed", "not-started", "not-started"]);
+    const cancelled = running.harness.authority.database.authority.runs.get(midClaim.run.envelope.runId); assert.ok(cancelled);
+    assert.ok(cancelled.lifecycle.state === "terminal"); assert.equal(cancelled.lifecycle.outcome, "cancelled");
 
   });
   it("F5", async () => {
@@ -377,6 +395,8 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal((await executeClaimedRun(harness.deps, { ...claimed, signal: world.SIGNAL })).state, "done");
     const source = database.authority.runs.get(queued.envelope.runId); assert.ok(source);
     const before = JSON.stringify(source);
+    const beforeResult = JSON.stringify(database.authority.runResults.get(source.envelope.runId));
+    const beforeCheckpoints = JSON.stringify(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, source.envelope.itemId));
     const rerun = buildRerunPlan(database.authority, personLookupDescriptor, { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys: personLookupDescriptor.timeline.map((step) => step.key) }, plan.planned);
     const runtimeConfig = database.authority.runtimeConfig.get(); assert.ok(runtimeConfig);
     const service = new RunRecordService({ database, clock, ids: sequentialIdFactory("c"), publishQueued: () => undefined });
@@ -389,6 +409,13 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(next.envelope.retryOf, source.envelope.runId);
     assert.deepEqual(next.input.parsed.value, source.input.parsed.value);
     assert.deepEqual(next.input.parsed.value, input);
+    const nextClaim = database.authority.runs.claimNext({ workflow: personLookupDescriptor.id, workerId: claimed.claim.workerId, now: clock.now().toISOString() });
+    assert.ok(nextClaim.state === "claimed", JSON.stringify(nextClaim));
+    assert.equal(nextClaim.run.envelope.runId, next.envelope.runId);
+    assert.equal((await executeClaimedRun(harness.deps, { run: nextClaim.run, claim: { workerId: claimed.claim.workerId, claimGeneration: nextClaim.run.claimGeneration }, signal: world.SIGNAL })).state, "done");
+    assert.deepEqual(database.authority.runResults.get(next.envelope.runId)?.result.value, database.authority.runResults.get(source.envelope.runId)?.result.value);
     assert.equal(JSON.stringify(database.authority.runs.get(source.envelope.runId)), before);
+    assert.equal(JSON.stringify(database.authority.runResults.get(source.envelope.runId)), beforeResult);
+    assert.equal(JSON.stringify(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, source.envelope.itemId).filter(checkpoint => checkpoint.runId === source.envelope.runId)), beforeCheckpoints);
   });
 });

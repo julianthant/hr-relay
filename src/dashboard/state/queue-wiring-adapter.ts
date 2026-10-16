@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import type { QueueBusinessOutcome } from "../../models/dashboard/projection.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import { filterQueueSurfaces, type QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import type { QueueHandlers, QueueViewState } from "../surfaces/queue/queue.js";
@@ -38,6 +39,10 @@ export function useQueueWiring(input: Readonly<{
     });
     return filterQueueSurfaces(scoped, filter);
   }, [allRows, rows, activeWorkflowId, filter]);
+
+  const outcomes = useMemo((): ReadonlyMap<string, QueueBusinessOutcome> => new Map(
+    surfaces.flatMap(surface => surface.outcome === undefined ? [] : [[surface.runId, surface.outcome] as const]),
+  ), [surfaces]);
 
   const parentOf = useCallback(
     (parentRunId: string) => {
@@ -100,5 +105,5 @@ export function useQueueWiring(input: Readonly<{
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);
-  return { surfaces, parentOf, viewState, queueHandlers, actionsOf };
+  return { surfaces, outcomes, parentOf, viewState, queueHandlers, actionsOf };
 }

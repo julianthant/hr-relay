@@ -5,6 +5,7 @@ import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationDisplayContext } from "../queries/notification-display.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
+import { deriveEvidenceEntryId } from "../../../models/trust/evidence-identity.js";
 
 import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -29,6 +30,7 @@ import {
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
 import {
   PositiveIntSchema,
+  EidSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
   type Fingerprint,
@@ -919,6 +921,38 @@ export class RunQueueProjection {
     );
   }
 
+  #resultSubtitle(run: RunRecord, receipt: ReceiptView | undefined, fieldPath: string): QueueSurfaceWire["subtitle"] {
+    const absent = { state: "absent", reason: "this run has no resolved EID available for its subtitle" } as const;
+    if (receipt === undefined || retainedRunProtectedBindings(run).length > 0) return absent;
+    const value = receipt.value;
+    const fact = value.output.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "output", fieldPath));
+    if (fact?.state !== "satisfied" || fact.value.state === "redacted") return absent;
+    if (value.runId !== run.envelope.runId || value.attempt !== run.envelope.attempt
+      || value.workflowId !== run.envelope.workflow || value.descriptorFingerprint !== run.envelope.contractFingerprint
+      || value.configFingerprint !== run.envelope.configFingerprint) throw new ProjectionDegradedError("result-subtitle-receipt-identity-mismatch");
+    const raw = fact.value.rawValue ?? (fact.value.state === "allowed" ? fact.value.value : undefined);
+    if (raw === undefined) return absent;
+    const eid = EidSchema.nullable().parse(raw);
+    return eid === null ? absent : { state: "present", value: eid };
+  }
+
+  #resultOutcome(run: RunRecord, receipt: ReceiptView | undefined, projection: AnyWorkflowDescriptor["outcomeProjection"]): QueueSurfaceWire["outcome"] {
+    if (projection === undefined || receipt === undefined
+      || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") return undefined;
+    const value = receipt.value;
+    if (value.runId !== run.envelope.runId || value.traceId !== run.envelope.traceId || value.attempt !== run.envelope.attempt
+      || value.workflowId !== run.envelope.workflow || value.descriptorFingerprint !== run.envelope.contractFingerprint
+      || value.configFingerprint !== run.envelope.configFingerprint) throw new ProjectionDegradedError("result-outcome-receipt-identity-mismatch");
+    const verification = value.verification.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "verification", "completion.terminal-result"));
+    if (verification?.obligation !== "completion.terminal-result" || verification.verdict !== "verified") return undefined;
+    const fact = value.output.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "output", projection.fieldPath));
+    if (fact?.state !== "satisfied" || fact.value.state !== "allowed") return undefined;
+    const raw = fact.value.rawValue === undefined ? fact.value.value : fact.value.rawValue;
+    const outcome = projection.cases.find(entry => entry.value === raw);
+    if (outcome === undefined) throw new ProjectionDegradedError("result-outcome-value-undeclared");
+    return { label: outcome.label, tone: outcome.tone };
+  }
+
   #pipeline(row: RunFoldRecord | undefined, workflow: string, runTerminal: boolean): QueueSurfaceWire["pipeline"] {
     if (row === undefined) return [];
     const descriptor = this.#deps.descriptors.resolve(workflow);
@@ -1131,11 +1165,12 @@ export class RunQueueProjection {
 
       title: this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId,
       displayName,
-      subtitle: row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
+      subtitle: descriptor?.subtitleProjection !== undefined ? this.#resultSubtitle(authority, receipt, descriptor.subtitleProjection.fieldPath) : row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
         && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
         && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
         : { state: "present", value: row?.queued.subtitle },
+      outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       status,
       liveMessage: this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),

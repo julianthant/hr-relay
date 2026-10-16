@@ -1,3 +1,4 @@
+import { servedFixtureSources as previewFixtureSources } from "../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -222,7 +223,7 @@ it("renders complete mock previews without requesting registered data", async ()
   const host = document.createElement("div"); const root = createRoot(host);
   const client = createDashboardClient({ baseUrl: "http://unused.test", fetchImpl: () => { throw new Error("unexpected mock request"); } });
   try {
-    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(WorkflowExplorer, { catalog: buildWorkflowCatalog([]), client }) })));
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(WorkflowExplorer, { catalog: buildWorkflowCatalog([], true, previewFixtureSources([])), client }) })));
     assert.ok(host.textContent?.includes("Separation filed and Kuali document verified"));
   } finally { await act(async () => root.unmount()); }
 });
@@ -231,7 +232,7 @@ it("resets hypothetical choices on injected-client replacement without dispatchi
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const client = () => createDashboardClient({ baseUrl: "http://unused.test", fetchImpl: () => { throw new Error("local choices cannot query or dispatch"); } });
-  const catalog = buildWorkflowCatalog([]);
+  const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
   const render = async (current: ReturnType<typeof client>) => { await act(async () => root.render(createElement(DashboardClientProvider, { client: current, children: createElement(WorkflowExplorer, { catalog, client: current }) }))); };
   try {
     await render(client());
