@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
+import { createOperatorRunDetail } from "../../../../../src/backend/app/composition/dashboard/run-detail.js";
+import { buildRunDetail, buildRunSection } from "../../../../../src/backend/runs/queries/run-detail.js";
+import { projectRunLogs } from "../../../../../src/dashboard/state/run-wiring-adapter.js";
+import { resolveErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { DiagnosticBundleCorruptError } from "../../../../../src/backend/runs/commands/refusals.js";
 import { buildReceiptFailureSection } from "../../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
 import { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
@@ -79,7 +83,7 @@ function availableFailure(response: ReturnType<typeof buildReceiptFailureSection
 }
 
 describe("run-detail failure diagnostic-bundle linkage", () => {
-  it("serves the failed terminal event's native identity with the exact failure node", () => {
+  it("retains an early terminal failure in Logs when the empty evidence fold skips timeline reads", () => {
     const h = fixture();
     const runId = h.run.envelope.runId;
     const record = h.f.database.authority.timelineEvents.append({ schemaVersion: 1,
@@ -88,10 +92,66 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
       source: { kind: "native" }, payload: { kind: "span", event: { t: "span.ended", kind: "run", outcome: "failed",
         failureId: h.failure.failureId, runId, attempt: h.failure.attempt, traceId: h.failure.traceId,
         spanPath: h.failure.traceId, workflow: h.run.envelope.workflow, pid: 4242, ts: NOW } } }).record;
-    const value = availableFailure(h.read());
+    const { world } = h.f;
+    const e = h.run.envelope;
+    world.authority.records.set(runId, h.run);
+    world.writer.emit({ t: "run.queued", kind: "run", ts: NOW, workflow: e.workflow, runId,
+      attempt: e.attempt, traceId: e.traceId, spanPath: e.traceId, itemId: e.itemId,
+      shape: e.shape, priority: e.priority, dryRun: e.dryRun, actorId: "local-operator", title: "Early failure",
+      descriptorVersion: e.descriptorVersion, contractFingerprint: e.contractFingerprint,
+      resolvedInstance: e.resolvedInstance, configFingerprint: e.configFingerprint, configSnapshotId: e.configSnapshotId });
+    const row = world.projection.runFold(runId);
+    assert.ok(row);
+    assert.equal(row.queued.runId, runId);
+    assert.deepEqual(row.taskSpans, []);
+    assert.deepEqual(row.openGates, []);
+    assert.deepEqual(row.resolvedGates, []);
+    const deps = createOperatorRunDetail({ stateRoot: world.stateRoot, projection: world.projection,
+      database: h.f.database, runReader: h.f.reader, trust: h.f.receipts });
+    let timelineReads = 0;
+    const detail = buildRunDetail({ ...deps, timeline: { ...deps.timeline, page(input) {
+      timelineReads++;
+      return deps.timeline.page(input);
+    } } }, runId);
+    assert.equal(timelineReads, 0);
+    assert.equal(detail.runId, runId);
+    assert.equal(detail.header.status, "failed");
+    assert.equal(detail.header.traceId, h.failure.traceId);
+    assert.equal(detail.header.attempt, h.failure.attempt);
+    assert.ok(detail.outcome.state === "terminal");
+    assert.equal(detail.outcome.result, "failed");
+    assert.ok(detail.availableSections.includes("failure"));
+    assert.deepEqual(detail.timeline.events, []);
+    const failureSection = buildRunSection(deps, runId, "failure");
+    const value = availableFailure(failureSection);
+    assert.equal(value.failureId, h.failure.failureId);
+    assert.equal(value.summary, h.failure.summary);
+    assert.equal(value.code, h.failure.code);
+    assert.equal(value.nodeId, undefined);
     assert.deepEqual(value.native, { eventId: record.eventId, order: record.cursor, runId,
       attempt: h.failure.attempt, traceId: h.failure.traceId, spanPath: h.failure.traceId,
       ...(h.failure.nodeId === undefined ? {} : { nodeId: h.failure.nodeId }) });
+    const logs = buildRunSection(deps, runId, "logs");
+    assert.ok(logs.section === "logs");
+    assert.ok(logs.payload.confirmedActions !== undefined);
+    const projected = projectRunLogs({ detail, logs: logs.payload, sections: [failureSection],
+      actionEvidence: { state: "available", events: logs.payload.confirmedActions, missingPages: [] },
+      confirmedActionBindings: logs.payload.confirmedActionBindings, unavailableEvidence: [] },
+    { artifactUrl: () => { throw new Error("early failure has no artifacts"); } });
+    const failureStep = projected.steps.find(step => step.id === h.failure.failureId);
+    assert.ok(failureStep);
+    assert.equal(value.display?.title, "Step could not be completed");
+    assert.equal(failureStep.title, "Step could not be completed");
+    const decision = failureStep.entries.find(entry => entry.kind === "decision");
+    assert.ok(decision?.kind === "decision");
+    const message = resolveErrorCatalogFailure(h.failure, "http-response");
+    assert.ok(message.state === "resolved");
+    assert.equal(message.code, "ERROR_CATALOG_CODE_UNREGISTERED");
+    assert.equal(message.text, "This failure code is not in the current catalog. Review the recorded local evidence.");
+    assert.equal(decision.id, h.failure.failureId);
+    assert.equal(decision.decision.title, "Step could not be completed");
+    assert.equal(decision.decision.state, "failed");
+    assert.equal(decision.decision.message, "This failure code is not in the current catalog. Review the recorded local evidence.");
   });
 
   it("keeps an unlinked failure's capture absent", () => {
