@@ -108,3 +108,38 @@ it('clears a typed refusal as a known result while preserving the local draft an
   client.workbookSave.mockRejectedValue(new DashboardClientError({ kind: 'http', status: 422, code: 'WORKBOOK_INVALID', message: 'Workbook refused.' }));
   const result = await adapter.save('saved', draft); assert.deepEqual(result, { state: 'refused', reason: 'Workbook refused.' }); assert.equal(adapter.draft('saved')?.intent, undefined); assert.equal(adapter.draft('saved')?.document, draft); assert.equal(adapter.draft('saved')?.opened?.version, 3);
 });
+
+it('discards every ordinary draft and prevents late list and open responses from restoring discarded state', async () => {
+  const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
+  adapter.change('saved', { ...book(), name: 'Discard.xlsx' }, true);
+  const local = adapter.create(newEditableWorkbook());
+  const lateList = Promise.withResolvers<SavedWorkbook[]>(), lateOpen = Promise.withResolvers<SavedWorkbook>();
+  client.workbookList.mockImplementationOnce(() => lateList.promise);
+  client.workbookOpen.mockImplementationOnce(() => lateOpen.promise);
+  const listing = adapter.list(), opening = adapter.open('other');
+  adapter.discard();
+  assert.equal(adapter.draft('saved'), undefined); assert.equal(adapter.draft(local), undefined);
+  assert.deepEqual(adapter.snapshot().files.map(file => file.name), [book().name]);
+  assert.equal(adapter.snapshot().loading, false); assert.equal(adapter.snapshot().opening, undefined);
+  lateList.resolve([saved(1, { ...book(), name: 'Stale.xlsx' })]);
+  lateOpen.resolve(saved(1, { ...book(), libraryId: 'other', name: 'Stale.xlsx' }));
+  await Promise.all([listing, opening]);
+  assert.equal(adapter.draft('other'), undefined); assert.equal(adapter.draft('saved'), undefined);
+  assert.deepEqual(adapter.snapshot().files.map(file => file.name), [book().name]);
+  client.workbookOpen.mockResolvedValueOnce(saved(8)); await adapter.open('saved');
+  assert.equal(adapter.draft('saved')?.opened?.version, 8);
+  assert.equal(client.workbookSave.mock.calls.length, 0); assert.equal(client.workbookCreate.mock.calls.length, 0);
+});
+it('keeps a pending create and its UNKNOWN intent when discarding other ordinary drafts', async () => {
+  const { client, adapter } = setup(); const original = newEditableWorkbook(), id = adapter.create(original);
+  const unsent = adapter.create(newEditableWorkbook());
+  const response = Promise.withResolvers<SavedWorkbook>();
+  client.workbookCreate.mockImplementationOnce(() => response.promise);
+  const saving = adapter.save(id, original), intent = adapter.draft(id)?.intent;
+  assert(intent); adapter.discard();
+  assert.equal(adapter.draft(id)?.intent, intent); assert.equal(adapter.draft(unsent), undefined);
+  response.reject(new Error('response lost')); assert.equal((await saving).state, 'uncertain');
+  adapter.discard(); assert.equal(adapter.draft(id)?.intent, intent);
+  assert.equal((await adapter.save(id, original)).state, 'uncertain');
+  assert.equal(adapter.draft(id)?.intent, intent); assert.equal(client.workbookCreate.mock.calls.length, 1);
+});

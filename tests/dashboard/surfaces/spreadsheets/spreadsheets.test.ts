@@ -13,6 +13,11 @@ import { ViewNavigationContext, type ViewRoute } from '../../../../src/dashboard
 import { SavedWorkbookSchema, WorkbookCreateRequestSchema, encodeSavedWorkbook, decodeEditableWorkbook, type SavedWorkbook } from '../../../../src/models/dashboard/workbooks.js';
 import { importSpreadsheetInWorker, exportSpreadsheetInWorker } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js';
 vi.mock('../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ importSpreadsheetInWorker: vi.fn(), exportSheetInWorker: vi.fn(), exportSpreadsheetInWorker: vi.fn() }));
+import { StorageHealthSummaryWireSchema } from '../../../../src/models/dashboard/bootstrap.js';
+import { SettingsPage } from '../../../../src/dashboard/surfaces/settings/settings.js';
+import { FixtureCommandBinding } from '../../../support/helpers/dashboard/command-binding.js';
+import { FIXTURE_EDITABLE_SETTINGS, FIXTURE_STORAGE_RELOCATION } from '../../../parity/helpers/fixture-settings.js';
+import { useSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver); });
@@ -39,6 +44,8 @@ function world() {
   const calls: { path: string; method: string; body?: unknown }[] = [];
   const clientOptions: Parameters<typeof createDashboardClient>[0] = { baseUrl: 'http://spreadsheets.test', fetchImpl: async (url, init) => {
     const path = new URL(String(url)).pathname; const method = init?.method ?? 'GET'; const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined; calls.push({ path, method, body });
+    if (path.endsWith('/settings/editable')) return Response.json(FIXTURE_EDITABLE_SETTINGS);
+    if (path.endsWith('/settings/storage-relocation')) return Response.json(FIXTURE_STORAGE_RELOCATION);
     if (method === 'POST') {
       await postGate;
       if (outcome === 'lost') throw new Error('lost response');
@@ -155,4 +162,53 @@ for (const operation of ['list', 'open'] as const) it(`shows ${operation} loadin
   const danger = [...document.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes('Spreadsheet unavailable'));
   assert(danger); assert.match(danger.textContent, /Synthetic read failed/);
   assert(![...document.querySelectorAll('[role="status"]')].some(node => node.textContent === loading));
+});
+
+async function settingsPage(client: DashboardClient) {
+  let exitGuard: ((proceed: () => void) => void) | undefined;
+  let show!: (value: boolean) => void;
+  let adapter!: ReturnType<typeof useSpreadsheetWiringAdapter>["adapter"];
+  function Probe() { adapter = useSpreadsheetWiringAdapter(false, null).adapter; return null; }
+  function Harness() {
+    const [shown, setShown] = useState(true); show = setShown;
+    const [route, setRoute] = useState<ViewRoute>({ spreadsheet: 'served-book' });
+    return createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: 'local-operator', nowIso: '2026-10-16T12:00:00Z', children:
+      createElement(ViewNavigationContext.Provider, { value: { view: route, start: false, setStart() {}, update(patch) { setRoute(previous => ({ ...previous, ...patch })); } }, children: createElement('div', null, createElement(Probe), shown ? createElement(SettingsPage, {
+        onClose() {}, storage: StorageHealthSummaryWireSchema.parse({ authority: 'healthy', backup: 'current', checkedAt: '2026-10-16T12:00:00Z' }), sections: [], workflowLabels: new Map(), section: 'spreadsheets', actorId: 'local-operator', descriptorFingerprint: 'd'.repeat(64), preflight: [], onSection() {}, onExitGuardChange(guard) { exitGuard = guard; }
+      }) : null) }) }) });
+  }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(Harness) })));
+  return {
+    adapter: () => adapter,
+    async discardAndExit() {
+      assert(exitGuard); await act(async () => exitGuard?.(() => show(false)));
+      assert.match(document.body.textContent, /Discard unsaved settings/);
+      await click('Discard changes');
+    },
+    async reenter() { await act(async () => show(true)); }
+  };
+}
+it('Settings confirmed Discard removes ordinary workbook edits on exit and reentry', async () => {
+  const w = world(); const p = await settingsPage(w.client);
+  await edit('Discard this edit');
+  await p.discardAndExit(); await p.reenter();
+  assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="A2"]')?.value, '');
+  assert.equal(p.adapter().draft('served-book')?.dirty, false);
+  assert.equal(w.calls.filter(call => call.method === 'POST').length, 0);
+});
+it.each(['pending', 'unknown'] as const)('Settings Discard keeps %s Save custody and never resends', async state => {
+  const w = world(); const p = await settingsPage(w.client); await edit('Submitted original');
+  const release = state === 'pending' ? w.pausePosts() : undefined;
+  w.outcome('lost'); await click('Save');
+  const adapter = p.adapter(), intent = adapter.draft('served-book')?.intent;
+  assert(intent); const original = structuredClone({ draft: intent.draft, expectedVersion: intent.expectedVersion, libraryId: intent.libraryId });
+  await edit('Later local edit'); await p.discardAndExit(); await p.reenter();
+  assert.equal(adapter.draft('served-book')?.intent, intent);
+  assert.deepEqual({ draft: intent.draft, expectedVersion: intent.expectedVersion, libraryId: intent.libraryId }, original);
+  if (release) await act(async () => release());
+  await click('Save'); await click('Save');
+  assert.equal(w.calls.filter(call => call.method === 'POST').length, 1);
+  assert.equal(adapter.draft('served-book')?.intent, intent);
+  assert.match(document.body.textContent, /Save uncertain/);
 });

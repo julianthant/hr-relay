@@ -65,6 +65,11 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         publish({ files: snapshot.files.map(file => file.id === key ? libraryRow(opened.libraryId, opened.workbook, opened.createdAt) : file) });
       } else publish({ files: snapshot.files.filter(file => file.id !== key) });
     },
+    discard() {
+      listing++; opening++;
+      for (const key of drafts.keys()) adapter.close(key);
+      publish({ loading: false, opening: undefined });
+    },
     create(document: EditableWorkbook) {
       const key = crypto.randomUUID(); const draft = { document, dirty: true }; drafts.set(key, draft); updateRow(key, draft); return key;
     },

@@ -1,3 +1,4 @@
+import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import type { EditableWorkbook } from "../spreadsheets/spreadsheet-editor-model.js";
 import "./settings-data.css";
@@ -181,6 +182,7 @@ export function SettingsPage({
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
   const [workbookDraft, setWorkbookDraft] = useState<{ document: EditableWorkbook | null; dirty: boolean }>({ document: null, dirty: false });
+  const spreadsheets = useSpreadsheetWiringAdapter(false, null);
   const onWorkbook = (document: EditableWorkbook | null, dirty: boolean) => setWorkbookDraft({ document, dirty });
   const editor = useEditableSettings({ actorId, descriptorFingerprint, onSaved, onSaveProblem });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
@@ -247,6 +249,7 @@ export function SettingsPage({
   const discardAndExit = (): void => {
     if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
     exitFocusTarget.current = null;
+    if (spreadsheetSource !== "mock") spreadsheets.adapter.discard();
     setWorkbookDraft({ document: null, dirty: false });
     editor.discard();
     editor.protectedEditor.discard();
