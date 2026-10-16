@@ -70,7 +70,10 @@ it("opens canonical historical run detail while ordinary workflow sources remain
   const params = new URLSearchParams(location.search);
   assert.equal(params.get("run"), runId);
   assert.equal(params.get("day"), FIXTURE_DAY_WIRE.day);
-  assert(host.textContent?.includes("Source order · cross-source chronology unavailable"));
+  const section = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
+  assert(section.section === "failure" && section.payload.state === "available");
+  assert(host.querySelector(`section[aria-labelledby$="${section.payload.value.failureId}"]`));
+  assert.equal(host.textContent?.includes("Source order · cross-source chronology unavailable"), false);
   assert.equal(host.textContent?.includes("Run unavailable"), false);
 });
 it("opens the exact failure step through the existing Logs initial focus input", async () => {

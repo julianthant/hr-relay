@@ -120,7 +120,7 @@ function Bound({ client, actorId, nowIso, children }: { client: DashboardClient;
   const binding: DashboardCommandBinding = { executor, feedback() {},
     scope: { actorId, client, authority: epoch, dayRequest },
     authority: { epoch, catalog: [], nowIso, today: FIXTURE_DAY_WIRE.day, day: FIXTURE_DAY_WIRE.day,
-      dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" }, refresh() {} },
+      dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" }, refresh() {} },
       selection: { route: { start: false }, workflowId: "" } } };
   return createElement(DashboardCommandBindingProvider, { binding, children });
 }
