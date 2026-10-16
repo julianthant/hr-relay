@@ -1,5 +1,6 @@
 // Use a namespaced SHA-256 seed in a UUID v5 shape; this is deterministic identity, not a random UUID.
 import { createHash } from "node:crypto";
+import { NodeIdSchema, TraceIdSchema } from "../../../rules/identity/ids.js";
 
 export function deterministicUuid(seed: string): string {
   const digest = createHash("sha256").update("hrauto:server-derived-id:v1\0").update(seed).digest("hex");
@@ -19,9 +20,12 @@ export function errorText(error: unknown): string {
 
 
 export function nodeIdOfTaskSpanPath(spanPath: string): string | undefined {
-  const segment = spanPath.split("/").at(-1);
-  if (segment === undefined || !segment.includes("#")) return undefined;
-  return segment.slice(0, segment.lastIndexOf("#"));
+  const segments = spanPath.split("/");
+  const segment = segments.at(-1);
+  if (segment !== undefined && segment.includes("#")) return segment.slice(0, segment.lastIndexOf("#"));
+  if (segments.length !== 3 || !["probe", "prepare", "commit", "verify"].includes(segments[2] ?? "")) return undefined;
+  return TraceIdSchema.safeParse(segments[0]).success && NodeIdSchema.safeParse(segments[1]).success
+    ? segments[1] : undefined;
 }
 
 // Malformed browser span identities refuse; silently losing a live-session card would misreport ownership.

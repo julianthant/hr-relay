@@ -1,7 +1,7 @@
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { browserSessionOfSpanPath } from "../../../../src/backend/runs/lifecycle/support.js";
+import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../../../../src/backend/runs/lifecycle/support.js";
 const SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 describe("the browser span path is read, never guessed", () => {
@@ -25,5 +25,25 @@ describe("the browser span path is read, never guessed", () => {
       () => browserSessionOfSpanPath(`worker/person-lookup/w1/browser:ucpath#${SESSION}`, "crm"),
       /declares system crm while its own path names ucpath/,
     );
+  });
+});
+
+describe("task span node identity", () => {
+  const trace = "pl-120000-abcd";
+  it("preserves hash-attempt task paths, including nested task names", () => {
+    assert.equal(nodeIdOfTaskSpanPath(`${trace}/searching#1`), "searching");
+    assert.equal(nodeIdOfTaskSpanPath(`${trace}/finalize-kuali/finalize#1.1`), "finalize");
+  });
+  it.each(["probe", "prepare", "commit", "verify"])("resolves the transaction %s role", role => {
+    assert.equal(nodeIdOfTaskSpanPath(`${trace}/submit-write/${role}`), "submit-write");
+  });
+  it.each([
+    "", "submit-write", `${trace}/submit-write`, `${trace}/submit-write/task`,
+    `${trace}/submit-write/rollback`, `${trace}/submit-write/Prepare`,
+    `${trace}/submit-write/probe/extra`, `prefix/${trace}/submit-write/probe`,
+    `${trace}//probe`, `/submit-write/probe`, `${trace}/submit-write/`,
+    "invalid-trace/submit-write/probe", `${trace}/InvalidNode/probe`, `${trace}/node:name/probe`,
+  ])("leaves a malformed or unknown role path unresolved: %s", path => {
+    assert.equal(nodeIdOfTaskSpanPath(path), undefined);
   });
 });
