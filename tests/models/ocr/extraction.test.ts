@@ -311,7 +311,7 @@ describe("the i9 is one form across two loose sections", () => {
         firstName: { state: "read", raw: "Kayla", confidence: 0.96 },
         middleInitial: { state: "read", raw: "A", confidence: 0.9 },
         dateOfBirth: { state: "absent", reason: "not-on-form" },
-        ssn: { state: "read", raw: "951-57-1700", confidence: 0.92 },
+        ssn: { state: "read", raw: "920-74-1459", confidence: 0.92 },
         hireDate: { state: "read", raw: "04/17/2018", confidence: 0.95 },
       } },
     });
@@ -320,7 +320,7 @@ describe("the i9 is one form across two loose sections", () => {
     const ssn = admission.extraction.record!.answers.find((answer) => answer.path === "ssn");
     // The employer's independent List C transcription, canonicalized by the
     // same ssn field an intake column runs.
-    assert.equal(ssn?.state === "read" && ssn.value, "951571700");
+    assert.equal(ssn?.state === "read" && ssn.value, "920741459");
     // A mandatory field on THIS section that came back illegible still blocks.
     assert.deepEqual(admission.extraction.record!.blockingPaths, ["lastName"]);
   });

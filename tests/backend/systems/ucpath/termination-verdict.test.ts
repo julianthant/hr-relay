@@ -18,8 +18,8 @@ UcpathTransactionScan,
 import { EidSchema,IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { TerminationReceiptSchema } from "../../../../src/rules/separations/termination-receipt.js";
 
-const EID = EidSchema.parse("10001799");
-const NAME = "Drose Clauckia";
+const EID = EidSchema.parse("10203262");
+const NAME = "Droli Clauldoa";
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-14T02:00:00.000Z");
 const EFFDT = "06/11/2026";
 
@@ -52,7 +52,7 @@ const SWEEP_TARGET = { emplId: EID, expectedName: NAME, observedSet: EMPTY_SET }
 
 describe("ucpath termination verdicts", () => {
 
-  it("folds the live four-row scan for EID 10001799 to `present` on the matching date", () => {
+  it("folds the live four-row scan for EID 10203262 to `present` on the matching date", () => {
 
     const verdict = ucpathTerminationVerdict(TARGET, scan([
       row(),
@@ -171,11 +171,11 @@ describe("ucpath termination verdicts", () => {
   });
 
   it("compares names as token multisets, because UCPath and Kuali order them differently", () => {
-    // Live: UCPath renders `Drose Clauckia`, the Kuali document says
-    // `Clauckia, Drose`. Both are the same person and neither is a mismatch.
-    assert.equal(firstDisagreeingName(scan([row()]), "Clauckia, Drose"), undefined);
-    assert.equal(firstDisagreeingName(scan([row()]), "  drose   clauckia "), undefined);
-    assert.equal(firstDisagreeingName(scan([row()]), "Dreitho Cramia"), NAME);
+    // Live: UCPath renders `Droli Clauldoa`, the Kuali document says
+    // `Clauldoa, Droli`. Both are the same person and neither is a mismatch.
+    assert.equal(firstDisagreeingName(scan([row()]), "Clauldoa, Droli"), undefined);
+    assert.equal(firstDisagreeingName(scan([row()]), "  droli   clauldoa "), undefined);
+    assert.equal(firstDisagreeingName(scan([row()]), "Dreindo Craria"), NAME);
     // An unreadable scan has no rows to disagree — the verdict handles it.
     assert.equal(
       firstDisagreeingName(

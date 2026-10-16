@@ -68,16 +68,16 @@ describe("bounded native debug events", () => {
   it("retains structural UUID correlation while masking mixed SSN text", () => {
     const { records, repository } = fixture();
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
-    const correlationId = "aaaaaaaa-aaaa-4aaa-8aaa-a123456789aa";
+    const correlationId = "aaaaaaaa-aaaa-4aaa-8aaa-a902481357aa";
     writer.emit({ category: "http", phase: "failed", correlationId,
-      message: `${correlationId} person 951-57-1700 and 951571700` });
+      message: `${correlationId} person 920-74-1459 and 920741459` });
     assert.equal(records.length, 1);
     const payload = records[0].payload;
     assert.equal(payload.kind, "debug");
     if (payload.kind !== "debug") throw new Error("debug event expected");
     assert.equal(payload.event.correlationId, correlationId);
-    assert.equal(payload.event.message?.includes("951-57-1700"), false);
-    assert.equal(payload.event.message?.includes("person 951571700"), false);
+    assert.equal(payload.event.message?.includes("920-74-1459"), false);
+    assert.equal(payload.event.message?.includes("person 920741459"), false);
     assert.match(payload.event.message ?? "", /person \[SSN masked\] and \[SSN masked\]/u);
   });
 

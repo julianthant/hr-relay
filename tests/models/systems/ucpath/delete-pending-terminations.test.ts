@@ -8,8 +8,8 @@ ucpathPendingSweepIdempotencyKey
 
 import { EidSchema,IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 
-const EID = EidSchema.parse("10001799");
-const NAME = "Drose Clauckia";
+const EID = EidSchema.parse("10203262");
+const NAME = "Droli Clauldoa";
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-14T02:00:00.000Z");
 const EFFDT = "06/11/2026";
 

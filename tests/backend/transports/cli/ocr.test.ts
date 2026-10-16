@@ -115,9 +115,9 @@ describe("cli ocr", () => {
       sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
       classifiedAt: "2026-08-07T09:00:00.000Z",
       pages: [
-        { sourcePage: 1, pageKind: "i9-section2", subjectName: "Clauldia, Drona A.", confidence: 0.95 },
-        { sourcePage: 2, pageKind: "i9-section1", subjectName: "Brethea, Brauso J.", confidence: 0.95 },
-        { sourcePage: 9, pageKind: "i9-section1", subjectName: "Drona Clauldia", confidence: 0.94 },
+        { sourcePage: 1, pageKind: "i9-section2", subjectName: "Claurnaa, Drithe A.", confidence: 0.95 },
+        { sourcePage: 2, pageKind: "i9-section1", subjectName: "Breldaa, Braure J.", confidence: 0.95 },
+        { sourcePage: 9, pageKind: "i9-section1", subjectName: "Drithe Claurnaa", confidence: 0.94 },
       ],
     };
     const { output, exitCode } = run(["stack", "classified.json", "i9"], classified);

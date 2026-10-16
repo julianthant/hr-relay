@@ -19,7 +19,7 @@ const { deriveItemId, validate, manifestFrom } =
   createWorkStudyIntakeFixtures();
 
 describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
-  const result = validate([["10456712", "Cleckoa, Crithe", "HDH"], ["10-4567", "Roe, Rick", "HDH"]]);
+  const result = validate([["10456712", "Morrow, Bea", "HDH"], ["10-4567", "Roe, Rick", "HDH"]]);
 
   it("refuses a manifest whose totals disagree with its own dispositions", () => {
     const manifest = manifestFrom(result, 2);

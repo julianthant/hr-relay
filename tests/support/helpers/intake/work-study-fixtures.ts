@@ -24,7 +24,7 @@ export function createWorkStudyIntakeFixtures() {
   const SOURCE_SHA = sha256Hex("WorkStudy_July.xlsx");
   const detected = detectColumns(
     ["Employee ID#", "Student Name", "Dept"],
-    [["10456712"], ["Cleckoa, Crithe"], ["Housing Dining Hospitality"]],
+    [["10456712"], ["Morrow, Bea"], ["Housing Dining Hospitality"]],
   );
 
   function bindings(targets: readonly [string, number][]) {

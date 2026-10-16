@@ -39,7 +39,7 @@ describe("native note writer and classified fields", () => {
     const clock = manualClock(AT);
     const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
     const canaryPassword = "hunter2-canary-password";
-    const canarySsn = "951-57-1700";
+    const canarySsn = "920-74-1459";
     const note = writer.emitNote({
       workflow: "person-lookup",
       address: { runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: `${TRACE}/searching#1` },
@@ -133,7 +133,7 @@ describe("native note writer and classified fields", () => {
         traceId: run.envelope.traceId,
         spanPath: run.envelope.traceId,
       },
-      action: { kind: "typed", targetId: "ucpath.person-org.eid-input", value: "951-57-1700", at: clock.now().toISOString(),
+      action: { kind: "typed", targetId: "ucpath.person-org.eid-input", value: "920-74-1459", at: clock.now().toISOString(),
         operation: DeclaredActionOccurrenceSchema.parse({ runId: run.envelope.runId,
           definitionFingerprint: run.envelope.contractFingerprint, nodeId: run.envelope.operationDisplaySnapshot.invocations[0].entryId,
           taskId: "ucpath/search-person-org", attempt: 1, claimGeneration: 1, taskAttempt: 1,
@@ -141,12 +141,12 @@ describe("native note writer and classified fields", () => {
           logicalActionId: "fill-eid", occurrence: 1, logicalSessionId: "ucpath-worker",
           physicalSessionId: "00000000-0000-4000-8000-000000000001",
           value: { slot: "empl-id", fieldPath: "emplId", producer: { kind: "run-input", path: "emplId" },
-            consumed: { state: "observed", value: "951-57-1700" } } }) },
+            consumed: { state: "observed", value: "920-74-1459" } } }) },
     }, run);
     assert.equal(note.message, 'Typed "[SSN masked]" into ucpath person org eid input');
     assert.equal(projectNoteForOperator(note, true).message, note.message);
     const bytes = nativeLines(root, "notes")[0].text;
-    assert.equal(bytes.includes("951-57-1700"), false);
+    assert.equal(bytes.includes("920-74-1459"), false);
     assert.equal(bytes.includes("ucpath.person-org.eid-input"), true);
   });
 
@@ -155,7 +155,7 @@ describe("native note writer and classified fields", () => {
     const run = boundBrowserRun();
     const clock = manualClock(new Date(run.updatedAt));
     const writer = createNoteTimelineWriter({ repository: repositoryOf(root), clock, pid: 7 });
-    for (const value of ["951-57-1700", "951571700", { nested: ["123 45 6789", "10873698"] }, "10873698"]) {
+    for (const value of ["920-74-1459", "920741459", { nested: ["902 48 1357", "10873698"] }, "10873698"]) {
       const operation = DeclaredActionOccurrenceSchema.parse({ runId: run.envelope.runId,
         definitionFingerprint: run.envelope.contractFingerprint,
         nodeId: run.envelope.operationDisplaySnapshot.invocations[0].entryId,
@@ -172,12 +172,12 @@ describe("native note writer and classified fields", () => {
         action: { kind: "typed", targetId: "ucpath.person-org.eid-input", at: clock.now().toISOString(), operation,
           ...(typeof value === "string" ? { value } : {}) },
       }, run);
-      for (const ssn of ["951-57-1700", "951571700", "123 45 6789"]) assert.equal(JSON.stringify(note).includes(ssn), false);
+      for (const ssn of ["920-74-1459", "920741459", "902 48 1357"]) assert.equal(JSON.stringify(note).includes(ssn), false);
       if (value === "10873698" || typeof value === "object") assert.equal(JSON.stringify(note).includes("10873698"), true);
       assert.deepEqual(note.action?.operation?.value?.producer, operation.value?.producer);
     }
     const persisted = nativeLines(root, "notes").map(line => line.text).join("\n");
-    for (const ssn of ["951-57-1700", "951571700", "123 45 6789"]) assert.equal(persisted.includes(ssn), false);
+    for (const ssn of ["920-74-1459", "920741459", "902 48 1357"]) assert.equal(persisted.includes(ssn), false);
     assert.equal(persisted.includes("10873698"), true);
   });
 
@@ -195,7 +195,7 @@ describe("native note writer and classified fields", () => {
       }, run));
     }
     assert.deepEqual(nativeLines(root, "notes"), []);
-    const association = "aaaaaaaa-aaaa-4aaa-8aaa-a123456789aa:bbbbbbbb-bbbb-4bbb-8bbb-b123456789bb";
+    const association = "aaaaaaaa-aaaa-4aaa-8aaa-a902481357aa:bbbbbbbb-bbbb-4bbb-8bbb-b902481357bb";
     const note = writer.emitRunAction({ workflow: run.envelope.workflow,
       address: { runId: run.envelope.runId, attempt: run.envelope.attempt,
         traceId: run.envelope.traceId, spanPath: `${run.envelope.traceId}/searching#1` },
