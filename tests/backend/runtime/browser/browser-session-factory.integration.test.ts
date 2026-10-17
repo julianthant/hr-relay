@@ -3,6 +3,7 @@ import { BrowserLoginError } from "../../../../src/backend/systems/browser-share
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 
 import assert from "node:assert/strict";
+import { PNG } from "pngjs";
 import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve as resolvePath } from "node:path";
@@ -143,11 +144,11 @@ describe("worker browser session factory", () => {
     });
   });
 
-  it("captures only PNG bytes and the configured viewport dimensions", async () => {
+  it("captures only PNG bytes and their actual dimensions", async () => {
     await withTempRuntime(async ({ config }) => {
       const launcher = fakeLauncher();
       const count = async () => 0;
-      const frames = [0, 1, 2].map(frameId => ({ locator: (selector: string) => ({ selector, frameId, count }) }));
+      const frames = [0, 1, 2].map(frameId => ({ ...launcher.page.mainFrame(), locator: (selector: string) => ({ selector, frameId, count }) }));
       launcher.page.frames = () => frames;
       let screenshotOptions: unknown;
       const originalScreenshot = launcher.page.screenshot;
@@ -157,11 +158,11 @@ describe("worker browser session factory", () => {
       await resource.authentication.authenticate("ucpath", {});
       const screenshot = await resource.screenshot?.();
       assert.ok(screenshot?.state === "available");
-      assert.deepEqual([...screenshot.bytes], [137, 80, 78, 71]);
-      assert.deepEqual(screenshotOptions, { type: "png", mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId, count })) });
+      assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
+      assert.deepEqual(screenshotOptions, { type: "png", clip: { x: 0, y: 0, width: config.display.screenWidth + 24, height: Math.min(config.display.screenHeight, 1200) }, mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId, count })) });
       assert.deepEqual(
         { width: screenshot.width, height: screenshot.height },
-        { width: config.display.screenWidth, height: config.display.screenHeight },
+        { width: config.display.screenWidth + 24, height: config.display.screenHeight },
       );
       await resource.close({ reason: "worker-stop" });
     });
@@ -180,7 +181,7 @@ describe("worker browser session factory", () => {
         const screenshot = await resource.screenshot?.();
         assert.equal(screenshot?.state, "available");
         assert.ok(screenshot?.state === "available");
-        assert.deepEqual([...screenshot.bytes], [137, 80, 78, 71]);
+        assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
         assert.equal(screenshot.pageVersion, 2);
         assert.deepEqual(verifier.seen(), [url, url]);
       } finally { await resource.close({ reason: "worker-stop" }); }
@@ -228,6 +229,7 @@ describe("worker browser session factory", () => {
       }
       const launcher = fakeLauncher();
       const child = {
+        ...launcher.page.mainFrame(),
         url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
         locator: (selector: string) => ({ selector, count: async () => 0 }),
       };
@@ -246,7 +248,7 @@ describe("worker browser session factory", () => {
         const screenshot = await resource.screenshot?.();
         assert.ok(screenshot?.state === "available");
         assert.equal(screenshot.pageVersion, 4);
-        assert.deepEqual([...screenshot.bytes], [137, 80, 78, 71]);
+        assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
       } finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
@@ -259,6 +261,7 @@ describe("worker browser session factory", () => {
           let present = phase === "before";
           let imageReads = 0;
           const child = {
+            ...launcher.page.mainFrame(),
             url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
             locator: (selector: string) => ({ selector, count: async () => present && selector.includes(control) ? 1 : 0 }),
           };
@@ -284,6 +287,7 @@ describe("worker browser session factory", () => {
       await withTempRuntime(async ({ config }) => {
         const launcher = fakeLauncher();
         const child = {
+          ...launcher.page.mainFrame(),
           url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
           locator: (selector: string) => ({ selector, count: async () => 0 }),
         };

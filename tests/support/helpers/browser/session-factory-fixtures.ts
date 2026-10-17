@@ -1,3 +1,5 @@
+import { PNG } from "pngjs";
+import { runInNewContext } from "node:vm";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,27 +20,62 @@ export function createBrowserSessionFactoryFixtures(
   SESSION_ID: string,
   NEVER_SCHEDULER: BrowserDeadlineScheduler,
 ) {
+  interface FakeFrame {
+    url: () => string;
+    locator: (selector: string) => { selector: string; count: () => Promise<number> };
+    evaluate: <T, A>(callback: (arg: A) => T, arg: A) => Promise<T>;
+    isDetached: () => boolean;
+  }
   interface FakePage {
     on: (event: string, listener: (frame: { url: () => string }) => void) => void;
-    mainFrame: () => { url: () => string };
+    mainFrame: () => FakeFrame;
     emitFrameEvent: (event: "framenavigated" | "frameattached" | "framedetached", frame: { url: () => string }) => void;
     off: () => void;
     locator: () => { count: () => Promise<number> };
-    frames: () => readonly { locator: (selector: string) => { selector: string; count: () => Promise<number> } }[];
+    frames: () => readonly FakeFrame[];
+    evaluate: FakeFrame["evaluate"];
+    viewportSize: () => { width: number; height: number };
+    setViewportSize: (size: { width: number; height: number }) => Promise<void>;
+    waitForTimeout: () => Promise<void>;
     closed: boolean;
     gotoUrls: string[];
     url: () => string;
     isClosed: () => boolean;
     close: () => Promise<void>;
     goto: (url: string) => Promise<null>;
-    screenshot: (options: Readonly<{ type: "png" }>) => Promise<Buffer>;
+    screenshot: (options: Readonly<{ type: "png"; clip?: { width: number; height: number } }>) => Promise<Buffer>;
   }
 
   function fakePage(options: Readonly<{ url?: string; refuseClose?: boolean }> = {}): FakePage {
     let current = options.url ?? "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/app";
     const frameListeners = new Map<string, ((frame: { url: () => string }) => void)[]>();
-    const mainFrame = { url: () => current, locator: (selector: string) => ({ selector, ...page.locator() }) };
+    const realm = {
+      innerWidth: 1920, innerHeight: 1080, scrollX: 0, scrollY: 0,
+      scrollTo({ left, top }: { left: number; top: number }) { this.scrollX = left; this.scrollY = top; },
+      document: { documentElement: { scrollHeight: 1080, scrollWidth: 1920 }, body: { scrollHeight: 1080, scrollWidth: 1920 },
+        querySelector: () => null, querySelectorAll: () => [],
+        createRange: () => ({ selectNodeContents: () => undefined, getBoundingClientRect: () => ({ bottom: realm.innerHeight }) }) },
+      MutationObserver: class { observe() {} disconnect() {} },
+    };
+    let contentSize: { width: number; height: number } | undefined;
+    const sandbox = { ...realm, window: realm };
+    const evaluate: FakeFrame["evaluate"] = async <T, A>(callback: (arg: A) => T, arg: A): Promise<T> => {
+      const result: unknown = runInNewContext(`(${callback.toString()})(arg)`, { ...sandbox, document: realm.document, arg });
+      return result as T;
+    };
+    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator: (selector: string) => ({ selector, ...page.locator() }) };
     const page: FakePage = {
+      evaluate,
+      viewportSize: () => ({ width: realm.innerWidth, height: realm.innerHeight }),
+      setViewportSize: async size => {
+        contentSize ??= size;
+        realm.innerWidth = size.width; realm.innerHeight = size.height;
+        realm.document.documentElement.scrollHeight = Math.max(contentSize.height, size.height);
+        realm.document.documentElement.scrollWidth = Math.max(contentSize.width, size.width);
+        realm.document.body.scrollWidth = Math.max(contentSize.width, size.width);
+        realm.document.body.scrollHeight = Math.max(contentSize.height, size.height);
+      },
+      waitForTimeout: async () => undefined,
       on: (event, listener) => { frameListeners.set(event, [...frameListeners.get(event) ?? [], listener]); },
       mainFrame: () => mainFrame,
       emitFrameEvent: (event, frame) => { for (const listener of frameListeners.get(event) ?? []) listener(frame); },
@@ -59,7 +96,7 @@ export function createBrowserSessionFactoryFixtures(
         page.emitFrameEvent("framenavigated", mainFrame);
         return null;
       },
-      screenshot: async () => Buffer.from([137, 80, 78, 71]),
+      screenshot: async options => PNG.sync.write(new PNG({ width: options.clip?.width ?? realm.innerWidth, height: options.clip?.height ?? realm.innerHeight })),
     };
     return page;
   }
@@ -124,6 +161,7 @@ export function createBrowserSessionFactoryFixtures(
         observeProcess: (_directory, pid = 123) => ({ pid, observation: closed ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "fixture-process" } } }),
         async launch(input) {
           mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
+          await page.setViewportSize(input.viewport);
           launches.push({ ...input });
           return context as unknown as BrowserContext;
         },
