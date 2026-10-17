@@ -8071,7 +8071,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "normalization/read-contact-advice"
     },
     {
-      "fingerprint": "e19126c569ae09701fbee7549da1fef0f65cc8c0847fa591b1590afa6d0b84b1",
+      "fingerprint": "4a70aab4583990aceeb5563a25ef5b234a718f0b7b4be973b0fc4b8333981dfe",
       "sources": [
         {
           "path": "src/backend/processing/ocr/tasks/extract-form-page.ts",
@@ -8139,7 +8139,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ocr/form-registry.ts",
-          "sha256": "c8fa399961f5ec804c9d67f37de00ad62be56d74a747e944d79ec9f943046461"
+          "sha256": "a12a54250a031d95abc6a1fc0ab72f3e7d417bd0d950a9b358563e7c03d3f2df"
         },
         {
           "path": "src/models/ocr/instruction.ts",

@@ -35,8 +35,8 @@ describe("every route is told the same thing", () => {
     assert.equal(oath.includes("do NOT drop the leading `10`"), true);
     assert.equal(oath.includes("top margin"), true);
     const contact = buildExtractionInstruction("emergency-contact");
-    assert.equal(contact.includes("10843962"), true, "the observed digit transposition is named");
-    assert.equal(contact.includes("Sharaf"), true, "the observed letter drop is named");
+    assert.equal(contact.includes("10493848"), true, "the observed digit transposition is named");
+    assert.equal(contact.includes("Morath"), true, "the observed letter drop is named");
     assert.equal(contact.includes("NEVER skip the contact's address"), true);
   });
 
