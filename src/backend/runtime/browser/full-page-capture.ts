@@ -96,7 +96,7 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
     let bestElOverflow = 0;
     for (const el of all) {
       const overflow = el.scrollHeight - el.clientHeight;
-      if (!["auto", "scroll"].includes(getComputedStyle(el).overflowY) || overflow <= 40 || overflow <= bestElOverflow || !visibility.visible(el)) continue;
+      if (!["auto", "scroll"].includes(getComputedStyle(el).overflowY) || overflow <= bestElOverflow || !visibility.visible(el)) continue;
       bestEl = el;
       bestElOverflow = overflow;
     }
@@ -107,7 +107,7 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
       if (!doc) continue;
       const scroller = doc.scrollingElement ?? doc.documentElement;
       const overflow = scroller.scrollHeight - scroller.clientHeight;
-      if (overflow <= 40 || overflow <= bestFrameOverflow || !visibility.visible(frame)) continue;
+      if (overflow <= bestFrameOverflow || !visibility.visible(frame)) continue;
       bestFrame = frame;
       bestFrameOverflow = overflow;
     }
@@ -164,6 +164,9 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
         const y = Math.max(0, r.top + (target?.clientTop ?? 0));
         const width = Math.min(target?.clientWidth ?? r.width, vw - x);
         const height = Math.min(clientHeight, vh - y);
+        const contentDocument = mode === "iframe" ? bestFrame!.contentDocument! : document;
+        const requiredWidth = mode === "element" ? target!.scrollWidth : Math.max(contentDocument.documentElement.scrollWidth, contentDocument.body?.scrollWidth ?? 0);
+        if (requiredWidth > width) throw new Error("Full-page capture has uncaptured horizontal overflow");
         return { x, y, width, height, offset: mode === "element" ? target!.scrollTop : targetWindow.scrollY };
       },
     };

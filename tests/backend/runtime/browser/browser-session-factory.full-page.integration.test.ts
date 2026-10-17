@@ -58,6 +58,38 @@ describe("whole-page factory screenshots", () => {
       });
     });
   }
+  for (const target of ["window", "element", "iframe"] as const) {
+    it(`refuses residual horizontal overflow at the width limit for a ${target}`, async () => {
+      const wide = '<div style="width:7000px;height:620px;background:rgb(20,30,210)"></div>';
+      const body = target === "window" ? wide : target === "element" ? `<div style="height:600px;overflow:auto">${wide}</div>` : `<iframe style="border:0;width:100%;height:600px" srcdoc='${html(wide)}'></iframe>`;
+      await withPage(body, async (page, resource) => {
+        const evidence = await resource.screenshot?.();
+        assert.ok(evidence?.state === "unavailable");
+        assert.equal(evidence.reason, "verification-failed");
+        assert.deepEqual(page.viewportSize(), { width: 800, height: 600 });
+      });
+    });
+  }
+  for (const target of ["element", "iframe"] as const) {
+    it(`captures the final20px of near-viewport ${target} overflow`, async () => {
+      const nearViewport = '<div style="height:600px;background:rgb(210,20,30)"></div><div style="height:20px;background:rgb(20,30,210)"></div>';
+      const body = target === "element" ? `<div style="height:600px;overflow:auto">${nearViewport}</div>` : `<iframe style="border:0;width:100%;height:600px" srcdoc='${html(nearViewport)}'></iframe>`;
+      await withPage(body, async (_page, resource) => {
+        const png = await image(resource);
+        assert.equal(png.height, 620);
+        assert.deepEqual(pixel(png, 20, 610), [20, 30, 210]);
+      });
+    });
+  }
+  it("captures responsive wide content that fits after resizing", async () => {
+    await withPage('<div style="width:100%;height:180px;background:rgb(20,30,210)"></div>', async (page, resource) => {
+      await page.setViewportSize({ width: 7000, height: 600 });
+      const png = await image(resource);
+      assert.equal(png.width, 6000);
+      assert.deepEqual(pixel(png, 5980, 20), [20, 30, 210]);
+      assert.deepEqual(page.viewportSize(), { width: 7000, height: 600 });
+    });
+  });
   it("keeps a short page tight and restores width, scroll and fixed overlays", async () => {
     await withPage('<div style="height:180px;background:rgb(20,30,210)"></div>', async (page, resource) => {
       const png = await image(resource);
