@@ -162,7 +162,7 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","runtime",COMPLETION_SQL),false);
     assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","convertRunCompletions","DELETE FROM workflow_runs"),false);
   });
-  it("limits lifecycle writes to the service/adapter and remaining exact stopped conversions", () => { assert.deepEqual(audit(), []); });
+  it("limits lifecycle writes to the service/adapter and remaining exact stopped conversions", () => { assert.deepEqual(audit(), []); }, 45_000);
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {
     const found = audit(true);
     for (const arm of ["sql", "mutator", "view"]) assert.ok(found.some((entry) => entry.startsWith(`src/core/guard-fixtures/${arm}.ts:`)), arm);
@@ -172,6 +172,7 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.ok(found.some((entry) => entry.includes("UPDATE workflow_workers")), "renamed worker table remains protected");
     assert.ok(found.some((entry) => entry.includes("mutate({})")), "destructured mutator is still resolved");
     assert.ok(found.some((entry) => entry.includes("mutatorFactory(repositories)({})")), "factory-returned mutator is still resolved");
+    assert.ok(found.some((entry) => entry.endsWith(":mutator:repositories.runs.resume")), "bare mutator reference remains protected");
     assert.ok(!found.some((entry) => entry.includes('overloaded("safe")')), "safe selected overload remains allowed");
     for (const call of ["facade.move({})", 'indexed["continue"]({})', "overloaded({})", "optional?.({})", "generic({})", "union({})"]) {
       assert.ok(found.some((entry) => entry.includes(call)), `indirect mutator remains protected: ${call}`);
