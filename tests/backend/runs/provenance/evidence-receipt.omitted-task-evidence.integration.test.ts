@@ -148,7 +148,7 @@ describe("evidence receipt under step omission", () => {
   it("refuses a marked row the terminal record leaves out of a dependency the derive declares", () => {
     assert.throws(
       () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ dropAssertedDependency: true }))),
-      /\[MOVED\] terminal-dependency-set — the stored result was built from \[search-identity, crm-identity, matching, crm-selected-record, crm-dates\]/u,
+      /\[MOVED\] terminal-dependency-set — the stored result was built from \[search-identity, crm-identity, matching, crm-selected-record, crm-results, crm-dates\]/u,
     );
   });
 

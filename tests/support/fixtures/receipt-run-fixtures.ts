@@ -332,6 +332,7 @@ export function seedPersonLookupExitRun(
     [
       ...identityCheckpoints.map(value => ({ state: "resolved" as const, nodeId: RunCheckpointRecordSchema.parse(value).nodeId, checkpoint: value })),
       { state: "not-run", nodeId: "matching", reason: "condition-false" },
+      { state: "not-run", nodeId: "crm-results", reason: "condition-false" },
       { state: "resolved", nodeId: "active-status", checkpoint: activeStatus },
       { state: "not-run", nodeId: "crm-dates", reason: "condition-false" },
     ],

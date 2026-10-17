@@ -22,7 +22,7 @@ afterEach(cleanup);
 
 describe("person-lookup full walk", () => {
 
-  it("walks every declared node to sealed terminal success, skipping crm-dates by condition", async () => {
+  it("walks every declared node to sealed terminal success, skipping crm-results and crm-dates by condition", async () => {
     const harness = executorHarness();
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
@@ -40,8 +40,10 @@ describe("person-lookup full walk", () => {
     assert.ok(result);
     assert.deepEqual(
       result.dependencies.map((dependency) => [dependency.nodeId, dependency.state]),
-      [["search-identity", "resolved"], ["crm-identity", "resolved"], ["matching", "not-run"], ["crm-selected-record", "resolved"], ["active-status", "resolved"], ["crm-dates", "not-run"]],
+      [["search-identity", "resolved"], ["crm-identity", "resolved"], ["matching", "not-run"], ["crm-selected-record", "resolved"], ["crm-results", "not-run"], ["active-status", "resolved"], ["crm-dates", "not-run"]],
     );
+    const crmResults = result.dependencies.find((dependency) => dependency.nodeId === "crm-results");
+    assert.ok(crmResults?.state === "not-run" && crmResults.reason === "condition-false");
     const crmDates = result.dependencies.find((dependency) => dependency.nodeId === "crm-dates");
     assert.ok(crmDates?.state === "not-run" && crmDates.reason === "condition-false");
     assert.ok(database.authority.runs.get(RUN_ID)?.completion);
@@ -52,6 +54,7 @@ describe("person-lookup full walk", () => {
     for (const nodeId of ["searching", "search-identity", "cross-verify", "crm-identity", "crm-selected-record", "active-status"]) {
       assert.ok(database.authority.runCheckpoints.latest(WORKFLOW_ID, itemId, nodeId), nodeId);
     }
+    assert.equal(database.authority.runCheckpoints.latest(WORKFLOW_ID, itemId, "crm-results"), undefined);
     assert.equal(database.authority.runCheckpoints.latest(WORKFLOW_ID, itemId, "crm-dates"), undefined);
 
     // One warm session per browser system, one login each; nothing poisoned.
@@ -87,6 +90,8 @@ describe("person-lookup full walk", () => {
       ["span.started", taskSpanPath(trace, node("crm-selected-record"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("crm-selected-record"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("crm-selected-record"), 1, 1), "done"],
+      ["span.started", taskSpanPath(trace, node("crm-results"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("crm-results"), 1, 1), "skipped"],
       ["span.started", taskSpanPath(trace, node("crm-only-recovery"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("crm-only-recovery"), 1, 1), "skipped"],
       ["span.started", taskSpanPath(trace, node("active-status"), 1, 1), ""],
@@ -97,6 +102,11 @@ describe("person-lookup full walk", () => {
       ["span.ended", trace, "done"],
     ]);
 
+
+    const crmResultsSpan = harness.emitter.events().find((event) =>
+      event.t === "span.ended" && event.spanPath === taskSpanPath(trace, node("crm-results"), 1, 1));
+    assert.ok(crmResultsSpan?.t === "span.ended" && crmResultsSpan.kind === "task" && crmResultsSpan.outcome === "skipped");
+    assert.equal(crmResultsSpan.notRunReason, crmResults.reason);
 
     const skipSpan = harness.emitter.events().find((event) =>
       event.t === "span.ended" && "outcome" in event && event.outcome === "skipped");

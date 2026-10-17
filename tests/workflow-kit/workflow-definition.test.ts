@@ -123,6 +123,11 @@ describe("workflow definition compiler", () => {
             dependsOn: [
               "crm-identity"
             ]
+          },
+          {
+            id: "crm-results",
+            nodeIds: ["crm-results"],
+            dependsOn: ["search-identity", "cross-verify", "crm-identity", "searching", "matching"]
           }
         ]
       ],
@@ -137,7 +142,8 @@ describe("workflow definition compiler", () => {
             ],
             dependsOn: [
               "crm-identity",
-              "crm-selected-record"
+              "crm-selected-record",
+              "crm-results"
             ]
           },
           {
@@ -149,7 +155,8 @@ describe("workflow definition compiler", () => {
               "search-identity",
               "crm-identity",
               "crm-only-recovery",
-              "crm-selected-record"
+              "crm-selected-record",
+              "crm-results"
             ]
           }
         ]
@@ -175,8 +182,9 @@ describe("workflow definition compiler", () => {
       {id: "cross-verify", dependsOn: ["search-identity", "searching", "matching"]},
       {id: "crm-identity", dependsOn: ["search-identity", "cross-verify", "searching", "matching"]},
       {id: "crm-selected-record", dependsOn: ["crm-identity"]},
-      {id: "crm-only-recovery", dependsOn: ["crm-identity", "crm-selected-record"]},
-      {id: "active-status", dependsOn: ["search-identity", "crm-identity", "crm-only-recovery", "crm-selected-record"]},
+      {id: "crm-results", dependsOn: ["search-identity", "cross-verify", "crm-identity", "searching", "matching"]},
+      {id: "crm-only-recovery", dependsOn: ["crm-identity", "crm-selected-record", "crm-results"]},
+      {id: "active-status", dependsOn: ["search-identity", "crm-identity", "crm-only-recovery", "crm-selected-record", "crm-results"]},
       {id: "crm-dates", dependsOn: ["active-status"]},
     ]);
     expect(personLookupWorkflow.steps.map(([group]) => group.key)).toEqual([
