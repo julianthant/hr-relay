@@ -571,3 +571,38 @@ describe("scenario task-point screenshots", () => {
       cases: [{ ...scenarioCase, screenshots: { nodes: ["read", "read"] } }] }));
   });
 });
+
+describe("live-read scenario attempt evidence", () => {
+  const scenarioCase = parseDryRunScenarioManifest({
+    scenarioId: "fixture-workflow/live-read", workflow: "fixture-workflow", arm: "live-read", recordedBy: "fixture",
+    cases: [{ caseId: "fresh", subjectLabel: "fixture-canary", subjectKind: "ordinary", why: "fresh read proof",
+      nodesReached: ["read"], nodesExcluded: [],
+      checkpoints: [{ node: "read", attempt: 1, keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] }],
+      screenshots: { nodes: ["read"] }, gateResults: [],
+      durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
+      receipt: { result: "verified-done", confidence: "verified", verification: [{ obligation: "node.read", verdict: "verified", mandatory: true }] },
+      terminal: { lifecycle: "done", resultSchema: "workflow-result", kind: "live-read" } }],
+  }).cases[0];
+  assert.ok(scenarioCase);
+  const before = { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 };
+  const evidence = { runAttempt: 6, reachedNodeIds: ["read"],
+    checkpoints: [{ node: "read", attempt: 6, keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] }],
+    screenshots: [{ node: "read", attempt: 6, sessionId: "11111111-1111-4111-8111-111111111111",
+      bundleId: "22222222-2222-4222-8222-222222222222", artifactId: "33333333-3333-4333-8333-333333333333" }],
+    gateResults: [], writeSafetyAfter: before,
+    receipt: { result: "verified-done", confidence: "verified", verification: [{ obligation: "node.read", verdict: "verified", mandatory: true }] },
+    terminal: { lifecycle: "done-live-read", resultSchema: "workflow-result", kind: "live-read" } };
+
+  it("accepts fresh checkpoint and screenshot evidence for the run's sixth attempt", () => {
+    assert.deepEqual(evaluateDryRunScenarioEvidence("live-read", scenarioCase, before, evidence)
+      .filter(row => row.verdict !== "met"), []);
+  });
+
+  it.each([1, 5])("rejects a replayed node and screenshot from attempt %s", attempt => {
+    const assertions = evaluateDryRunScenarioEvidence("live-read", scenarioCase, before, { ...evidence,
+      checkpoints: evidence.checkpoints.map(row => ({ ...row, attempt })),
+      screenshots: evidence.screenshots.map(row => ({ ...row, attempt })) });
+    assert.equal(assertions.find(row => row.assertionId === "checkpoints")?.verdict, "failed");
+    assert.equal(assertions.find(row => row.assertionId === "screenshot-actions")?.verdict, "failed");
+  });
+});

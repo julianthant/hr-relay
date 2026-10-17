@@ -289,6 +289,40 @@ describe("live-read arm — person-lookup", () => {
 
   });
 
+  it("executes fresh live-read tasks when the subject already has replayable checkpoints", async () => {
+    const { root, clock } = composedRoot("hrauto-scenario-fresh-reads-");
+    const settings = selectedSettingsFixture(root, clock, {}, databases);
+    settings.activate();
+    const sessions = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver(), crm: () => healthyCrmDriver() });
+    const runtime = createProductionDryRunScenarioRuntime({
+      admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
+      preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation,
+      repoRoot: root, env: {}, clock, ids: sequentialIdFactory("e"),
+      sessionFactory: sessions.factory, duoCeremony: fixtureDuoCeremonyGates(clock), processId: 4243,
+      processIdentityObserver: pid => ({ state: "alive", identity: { platform: "darwin", startToken: `synthetic-${String(pid)}` } }),
+      write: () => undefined,
+    });
+    const base = PERSON_LOOKUP_LIVE_READ.cases[0];
+    assert.ok(base);
+    const manifest = parseDryRunScenarioManifest({ ...PERSON_LOOKUP_LIVE_READ,
+      cases: [{ ...base, checkpoints: base.checkpoints.map(row => ({ ...row, attempt: 1 })) }] });
+    const scenarioCase = manifest.cases[0];
+    assert.ok(scenarioCase);
+    const previous = await runtime.start({ manifest, scenarioCase, canonicalInput: CANONICAL_INPUT });
+    await runtime.drain(manifest.workflow);
+    const firstEvidence = DryRunScenarioEvidenceSchema.parse(await runtime.collectEvidence(previous.runId));
+    assert.deepEqual(evaluateDryRunScenarioEvidence(manifest.arm, scenarioCase, previous.writeSafetyBefore, firstEvidence)
+      .filter(row => row.verdict !== "met"), []);
+    const started = await runtime.start({ manifest, scenarioCase, canonicalInput: CANONICAL_INPUT });
+    await runtime.drain(manifest.workflow);
+    const evidence = DryRunScenarioEvidenceSchema.parse(await runtime.collectEvidence(started.runId));
+    assert.equal(sessions.opens("ucpath"), 2, "a replayable searching checkpoint must not replace the second UCPath read");
+    assert.deepEqual(evidence.reachedNodeIds, scenarioCase.nodesReached);
+    assert.ok(evidence.checkpoints.every(row => row.attempt === 2));
+    assert.deepEqual(evaluateDryRunScenarioEvidence(manifest.arm, scenarioCase, started.writeSafetyBefore, evidence)
+      .filter(row => row.verdict !== "met"), []);
+  });
+
   it("refuses a live-read manifest on a transaction-bearing graph, and a preview manifest on a transaction-free graph, before any effect", async () => {
     const { root, clock } = composedRoot("hrauto-live-read-refusals-");
     const database = AuthorityDatabase.open(
