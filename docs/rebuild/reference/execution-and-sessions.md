@@ -168,6 +168,13 @@ against Duo's rendered terminal refusal. The canceled-or-timed-out screen throws
 `DuoTerminalRefusalError`; the runtime does not click Try again or wait for the acquisition envelope
 to expire before reporting that outcome.
 
+The operator sentence is the catalog text for `DUO_TERMINAL_REFUSAL`. The refusal is almost never
+Duo hand-approval. It is a Duo Autopilot signCount regression: this browser profile's stored counter
+has fallen behind the value Duo has already observed for the shared credential. A counter that does
+not advance is a cloned-key signal, which happens when any other profile using the same credential
+signed more recently. Check the extension's stored signCount before changing
+`timeouts.duoApprovalSeconds` or `timeouts.sessionAcquireMs`.
+
 The WebAuthn counter belongs to the credential across profiles. `nextSignCount` in
 `duo-autopilot/src/sign-count.js` computes `max(stored + 1, nowSec)`. The extension serializes signs
 within its background worker and persists the advanced counter in `chrome.storage.session`.

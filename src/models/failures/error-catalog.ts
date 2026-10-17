@@ -170,7 +170,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   DUO_TERMINAL_REFUSAL: catalogEntry(
-    "Duo refused the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; this login is dead and the prompt will not clear on its own. The cause is almost never Duo hand-approval: it is a Duo Autopilot signCount regression, where this browser profile's stored counter has fallen behind the value Duo has already observed for the shared credential (a counter that does not advance is a cloned-key signal), which is what happens when any other profile using the same credential signed more recently. Check the extension's stored signCount before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs.",
+    "Duo refused the sign-in. Run it again; if it repeats, check Duo Autopilot.",
     EmptyParametersSchema,
   ),
   UCPATH_SIGN_IN_FAILED: catalogEntry(
@@ -223,6 +223,10 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   TASK_UNHANDLED_FAILURE: catalogEntry(
     "The task stopped with an unclassified failure. Review local diagnostic evidence.",
+    EmptyParametersSchema,
+  ),
+  BROWSER_SESSION_ACQUISITION_TIMEOUT: catalogEntry(
+    "Sign-in took too long. Run it again; if it repeats, check the system's sign-in in Sessions.",
     EmptyParametersSchema,
   ),
   ERROR_CATALOG_FORMAT_FAILED: catalogEntry(
@@ -296,7 +300,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   WORKER_LEASE_EXPIRED: catalogEntry(
-    "lease expired — its process stopped reporting",
+    "The worker stopped responding. Run it again.",
     EmptyParametersSchema,
   ),
   COMMAND_OUTCOME_UNCERTAIN: catalogEntry(
@@ -575,6 +579,23 @@ export function operatorFailureSentence(code: string): string {
   return ERROR_CATALOG[registered.data].text;
 }
 
+const SESSION_ACQUISITION_TIMEOUT = "browser-session-acquisition-timeout";
+
+export function catalogCodeForThrown(error: unknown): ErrorCatalogCode | undefined {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (typeof current === "object" && current !== null && !seen.has(current)) {
+    seen.add(current);
+    const name = "name" in current ? current.name : undefined;
+    const code = "code" in current ? current.code : undefined;
+    if (name === "SessionAcquisitionTimeoutError" || code === SESSION_ACQUISITION_TIMEOUT) {
+      return "BROWSER_SESSION_ACQUISITION_TIMEOUT";
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return undefined;
+}
+
 function resolveAs<Failure>(
   originalFailure: Failure,
   code: ErrorCatalogCode,
@@ -593,6 +614,9 @@ export function resolveErrorCatalogFailure<Failure>(
     if (!parsedSource.success) {
       return resolveAs(originalFailure, "TASK_UNHANDLED_FAILURE", {});
     }
+
+    const mapped = catalogCodeForThrown(originalFailure);
+    if (mapped !== undefined) return resolveAs(originalFailure, mapped, {});
 
     if (typeof originalFailure !== "object" || originalFailure === null || !("code" in originalFailure)) {
       return resolveAs(originalFailure, "TASK_UNHANDLED_FAILURE", {});
