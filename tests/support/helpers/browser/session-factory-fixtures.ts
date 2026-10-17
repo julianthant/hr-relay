@@ -21,9 +21,10 @@ export function createBrowserSessionFactoryFixtures(
   interface FakePage {
     on: (event: string, listener: (frame: { url: () => string }) => void) => void;
     mainFrame: () => { url: () => string };
+    emitFrameEvent: (event: "framenavigated" | "frameattached" | "framedetached", frame: { url: () => string }) => void;
     off: () => void;
     locator: () => { count: () => Promise<number> };
-    frames: () => readonly { locator: (selector: string) => { selector: string } }[];
+    frames: () => readonly { locator: (selector: string) => { selector: string; count: () => Promise<number> } }[];
     closed: boolean;
     gotoUrls: string[];
     url: () => string;
@@ -35,14 +36,15 @@ export function createBrowserSessionFactoryFixtures(
 
   function fakePage(options: Readonly<{ url?: string; refuseClose?: boolean }> = {}): FakePage {
     let current = options.url ?? "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/app";
-    const navigationListeners: ((frame: { url: () => string }) => void)[] = [];
-    const mainFrame = { url: () => current };
+    const frameListeners = new Map<string, ((frame: { url: () => string }) => void)[]>();
+    const mainFrame = { url: () => current, locator: (selector: string) => ({ selector, ...page.locator() }) };
     const page: FakePage = {
-      on: (event, listener) => { if (event === "framenavigated") navigationListeners.push(listener); },
+      on: (event, listener) => { frameListeners.set(event, [...frameListeners.get(event) ?? [], listener]); },
       mainFrame: () => mainFrame,
+      emitFrameEvent: (event, frame) => { for (const listener of frameListeners.get(event) ?? []) listener(frame); },
       off: () => undefined,
       locator: () => ({ count: async () => 0 }),
-      frames: () => [{ locator: (selector: string) => ({ selector }) }],
+      frames: () => [mainFrame],
       closed: false,
       gotoUrls: [],
       url: () => current,
@@ -54,7 +56,7 @@ export function createBrowserSessionFactoryFixtures(
       goto: async (url: string) => {
         page.gotoUrls.push(url);
         current = url;
-        for (const listener of navigationListeners) listener(mainFrame);
+        page.emitFrameEvent("framenavigated", mainFrame);
         return null;
       },
       screenshot: async () => Buffer.from([137, 80, 78, 71]),

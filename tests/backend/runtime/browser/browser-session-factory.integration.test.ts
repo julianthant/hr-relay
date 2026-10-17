@@ -146,7 +146,8 @@ describe("worker browser session factory", () => {
   it("captures only PNG bytes and the configured viewport dimensions", async () => {
     await withTempRuntime(async ({ config }) => {
       const launcher = fakeLauncher();
-      const frames = [0, 1, 2].map(frameId => ({ locator: (selector: string) => ({ selector, frameId }) }));
+      const count = async () => 0;
+      const frames = [0, 1, 2].map(frameId => ({ locator: (selector: string) => ({ selector, frameId, count }) }));
       launcher.page.frames = () => frames;
       let screenshotOptions: unknown;
       const originalScreenshot = launcher.page.screenshot;
@@ -157,7 +158,7 @@ describe("worker browser session factory", () => {
       const screenshot = await resource.screenshot?.();
       assert.ok(screenshot?.state === "available");
       assert.deepEqual([...screenshot.bytes], [137, 80, 78, 71]);
-      assert.deepEqual(screenshotOptions, { type: "png", mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId })) });
+      assert.deepEqual(screenshotOptions, { type: "png", mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId, count })) });
       assert.deepEqual(
         { width: screenshot.width, height: screenshot.height },
         { width: config.display.screenWidth, height: config.display.screenHeight },
@@ -212,6 +213,98 @@ describe("worker browser session factory", () => {
             sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString(),
           });
           assert.equal(imageReads, refusal === "page-changed" ? 1 : 0);
+        } finally { await resource.close({ reason: "worker-stop" }); }
+      });
+    });
+  }
+
+  it("captures stable child frames while reporting navigation only for the main frame", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const navigation: string[] = [];
+      class NavigationFactory extends PlaywrightWorkerSessionFactory {
+        constructor(options: ConstructorParameters<typeof PlaywrightWorkerSessionFactory>[0]) {
+          super({ ...options, onNavigation: url => navigation.push(url) });
+        }
+      }
+      const launcher = fakeLauncher();
+      const child = {
+        url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
+        locator: (selector: string) => ({ selector, count: async () => 0 }),
+      };
+      const frames = [...launcher.page.frames(), child];
+      launcher.page.frames = () => frames;
+      const resource = await factoryFor(config, launcher, recordingBindings(), NEVER_SCHEDULER,
+        protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }), NavigationFactory).open(OPEN_INPUT);
+      try {
+        await resource.authentication.authenticate("ucpath", {});
+        launcher.page.emitFrameEvent("frameattached", child);
+        launcher.page.emitFrameEvent("framenavigated", child);
+        assert.deepEqual(navigation, []);
+        const url = "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/results";
+        await launcher.page.goto(url);
+        assert.deepEqual(navigation, [url]);
+        const screenshot = await resource.screenshot?.();
+        assert.ok(screenshot?.state === "available");
+        assert.equal(screenshot.pageVersion, 4);
+        assert.deepEqual([...screenshot.bytes], [137, 80, 78, 71]);
+      } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
+
+  for (const phase of ["before", "after"] as const) {
+    for (const control of ['input[type="password"]', 'input[autocomplete="one-time-code"]']) {
+      it(`refuses a child-frame ${control} ${phase} capture without returning bytes`, async () => {
+        await withTempRuntime(async ({ config }) => {
+          const launcher = fakeLauncher();
+          let present = phase === "before";
+          let imageReads = 0;
+          const child = {
+            url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
+            locator: (selector: string) => ({ selector, count: async () => present && selector.includes(control) ? 1 : 0 }),
+          };
+          const frames = [...launcher.page.frames(), child];
+          launcher.page.frames = () => frames;
+          launcher.page.screenshot = async () => { imageReads += 1; present = true; return Buffer.from([137, 80, 78, 71]); };
+          const resource = await factoryFor(config, launcher, recordingBindings()).open(OPEN_INPUT);
+          try {
+            await resource.authentication.authenticate("ucpath", {});
+            assert.deepEqual(await resource.screenshot?.(), {
+              state: "unavailable", reason: "secret-controls-present", pageVersion: 1,
+              sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString(),
+            });
+            assert.equal(imageReads, phase === "before" ? 0 : 1);
+          } finally { await resource.close({ reason: "worker-stop" }); }
+        });
+      });
+    }
+  }
+
+  for (const event of ["framenavigated", "frameattached", "framedetached"] as const) {
+    it(`refuses child-frame ${event} during capture without returning bytes`, async () => {
+      await withTempRuntime(async ({ config }) => {
+        const launcher = fakeLauncher();
+        const child = {
+          url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
+          locator: (selector: string) => ({ selector, count: async () => 0 }),
+        };
+        const mainFrames = launcher.page.frames();
+        let frames = event === "frameattached" ? mainFrames : [...mainFrames, child];
+        launcher.page.frames = () => frames;
+        let imageReads = 0;
+        launcher.page.screenshot = async () => {
+          imageReads += 1;
+          frames = event === "framedetached" ? mainFrames : [...mainFrames, child];
+          launcher.page.emitFrameEvent(event, child);
+          return Buffer.from([137, 80, 78, 71]);
+        };
+        const resource = await factoryFor(config, launcher, recordingBindings()).open(OPEN_INPUT);
+        try {
+          await resource.authentication.authenticate("ucpath", {});
+          assert.deepEqual(await resource.screenshot?.(), {
+            state: "unavailable", reason: "page-changed", pageVersion: 1,
+            sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString(),
+          });
+          assert.equal(imageReads, 1);
         } finally { await resource.close({ reason: "worker-stop" }); }
       });
     });

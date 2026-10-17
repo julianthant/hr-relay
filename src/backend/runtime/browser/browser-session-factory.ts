@@ -259,8 +259,11 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       let pageVersion = 1;
       const onNavigation = this.#options.onNavigation;
       page.on("framenavigated", (frame) => {
-        if (frame === page.mainFrame()) { pageVersion += 1; onNavigation?.(frame.url()); }
+        pageVersion += 1;
+        if (frame === page.mainFrame()) onNavigation?.(frame.url());
       });
+      page.on("frameattached", () => { pageVersion += 1; });
+      page.on("framedetached", () => { pageVersion += 1; });
       const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
       const emit = (phase: DebugEvent["phase"], code?: string): void => this.#options.onDebug?.(workerId, { phase, correlationId: sessionId, ...(code === undefined ? {} : { code }) });
       const label = `worker ${workerId} ${system} session`;
@@ -286,13 +289,15 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           try {
             const proof = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
             if (!proof.authenticated) return unavailable("authentication-unverified");
-            if (await page.locator('input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]').count() > 0) return unavailable("secret-controls-present");
+            const frames = page.frames();
+            const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
+            for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
             if (pageVersion !== version) return unavailable("page-changed");
-            const bytes = new Uint8Array(await page.screenshot({ type: "png", mask: page.frames().map((frame) => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)) }));
+            const bytes = new Uint8Array(await page.screenshot({ type: "png", mask: frames.map((frame) => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)) }));
             if (pageVersion !== version) return unavailable("page-changed");
             const after = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
             if (!after.authenticated || pageVersion !== version) return unavailable("page-changed");
-            if (await page.locator('input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]').count() > 0) return unavailable("secret-controls-present");
+            for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
             if (pageVersion !== version) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", bytes, width: config.display.screenWidth, height: config.display.screenHeight, diagnosticAttachments: diagnostics.snapshot() });
           } catch { return unavailable("verification-failed"); }
