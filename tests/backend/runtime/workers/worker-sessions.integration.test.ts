@@ -1,3 +1,4 @@
+import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { createWorkerSessionManagerTestWorld } from "../../../support/helpers/backend/worker-session-manager-world.js";
 
@@ -400,6 +401,51 @@ describe("bounded browser-session acquisition", () => {
     await sessions.closeAll("worker-stop");
   });
 
+  it("propagates a login diagnostic aggregate without poisoning proved closure", async () => {
+    const base = sessionFactory();
+    const failure = new AggregateError([new Error("login failed"), new Error("diagnostic failed")], "operation failed");
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
+      factory: { open: async input => ({ ...await base.factory.open(input),
+        authentication: { authenticate: async () => { throw failure; } } }) },
+      clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    await assert.rejects(sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("login failed")), error => error === failure);
+    assert.equal(base.closes(), 1);
+    await sessions.closeAll("worker-stop");
+    await sessions.closeAll("worker-stop");
+    assert.deepEqual(sessions.activeSystems(), []);
+  });
+
+  it("allows shutdown while pending login settles with an aggregate and proved closure", async () => {
+    const base = sessionFactory();
+    const failure = new AggregateError([new Error("login failed"), new Error("diagnostic failed")], "operation failed");
+    let rejectLogin: (error: unknown) => void = () => assert.fail("login has not started");
+    let loginStarted: () => void = () => undefined;
+    const started = new Promise<void>(resolve => { loginStarted = resolve; });
+    const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
+    const sessions = new WorkerSessionManager({
+      workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,
+      factory: { open: async input => ({ ...await base.factory.open(input), authentication: {
+        authenticate: () => new Promise<never>((_resolve, reject) => { rejectLogin = reject; loginStarted(); }),
+      } }) }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
+    });
+    sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
+    const acquisition = sessions.withDriver(UCPATH_NEED, "prod", SIGNAL, async () => assert.fail("login failed"));
+    const rejected = assert.rejects(acquisition, error => error === failure);
+    await started;
+    const closing = sessions.closeAll("worker-stop");
+    rejectLogin(failure);
+    await rejected;
+    await closing;
+    assert.equal(base.closes(), 1);
+    assert.deepEqual(sessions.activeSystems(), []);
+  });
+
   it("awaits failed acquisition cleanup before closeAll returns", async () => {
     const base = sessionFactory({ loginHangs: true });
     let releaseCleanup: (() => void) | undefined;
@@ -484,7 +530,7 @@ describe("bounded browser-session acquisition", () => {
   });
 
   it("retains failed factory cleanup after its acquisition promise has settled", async () => {
-    const failure = new AggregateError([new Error("launch failed"), new Error("closure unproved")], "setup cleanup failed");
+    const failure = new BrowserSessionClosureUnprovedError([new Error("launch failed"), new Error("closure unproved")], "setup cleanup failed");
     const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID, workflowId: WORKFLOW_ID, stores: taskStoreRegistry,

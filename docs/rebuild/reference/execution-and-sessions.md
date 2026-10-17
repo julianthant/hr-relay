@@ -500,6 +500,27 @@ cleanup retains the member and reservation. Explicit recovery requires the origi
 process acquisition and release, a gone owner, and exact slot custody and closure evidence; it
 cannot adopt a PID or infer a member from a historical process-only claim.
 
+`--recover-owned-slot <acquisitionId>` repairs only the exact recorded reservation when its normal
+`.closed.json` proof is missing. It requires the immutable original claim and process release, a gone
+owner, unchanged native membership and roots, no unresolved controls, and the same worker/system's
+released Duo lease. On Darwin it freshly scans process arguments and open files for the derived
+system profile, deletes only that profile through the owned-profile guards, then checks absence
+again. Query failure or uncertain ownership refuses recovery without retiring the reservation.
+
+Recovery writes an exclusive `<originalAcquisition>-<recoveryAcquisition>.recovered.json` with current
+observations and binds it to the live recovery process and original claim fingerprint. Native
+retirement validates that selected proof and authority before committing. It never manufactures a
+normal closure proof. A failed retirement retains the claim and recovery evidence; a new recovery
+process can retry with fresh observations even when the profile is already absent. Successful
+retirement removes only the selected claim and current recovery proof; prior interrupted proofs and
+unrelated files remain. The global `--retire-owned-slots` path keeps its strict directory rules.
+
+The factory contract uses `BrowserSessionClosureUnprovedError` for an uncertain launch or failed
+setup cleanup. An ordinary login/diagnostic `AggregateError` with proved closure remains the primary
+operation failure and does not poison subsequent cleanup. Duo release and actual close failures
+continue to retain custody.
+
+
 ## Not built yet
 
 - Wiring-base work connects the approved dashboard controls and session views to served worker and browser authority through the shared client.

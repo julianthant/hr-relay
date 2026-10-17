@@ -63,6 +63,13 @@ export interface WorkerBrowserResource {
     Promise<BrowserSessionCloseProof>;
 }
 
+export class BrowserSessionClosureUnprovedError extends AggregateError {
+  constructor(errors: readonly unknown[], message: string, options?: ErrorOptions) {
+    super(errors, message, options);
+    this.name = "BrowserSessionClosureUnprovedError";
+  }
+}
+
 /** The one concrete browser-creation port: the worker session manager is its only caller; implementations own launch, profile isolation, auth dispatch and provable teardown. */
 export interface WorkerBrowserSessionFactory {
   readonly open: (input: Readonly<{

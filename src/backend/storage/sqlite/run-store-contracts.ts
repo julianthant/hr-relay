@@ -537,7 +537,8 @@ export const WorkerVerificationRetirementRequestSchema = z.strictObject({
   expectedRevision: PositiveIntSchema, expectedPoolVersion: NonNegativeIntSchema, now: IsoInstantSchema,
   cleanup: z.strictObject({ acquisitionId: z.uuid(), browsersClosed: z.literal(true),
     profilesReleased: z.literal(true), duoReleased: z.literal(true), mode: z.enum(["live", "recovery"]),
-    evidence: z.enum(["browserless", "closed"]) }),
+    evidence: z.enum(["browserless", "closed", "recovered"]), recoveryAcquisitionId: z.uuid().optional() })
+    .refine(cleanup => cleanup.evidence === "recovered" ? cleanup.mode === "recovery" && cleanup.recoveryAcquisitionId !== undefined : cleanup.recoveryAcquisitionId === undefined),
 });
 
 export const WorkerVerificationClaimSchema = z.strictObject({
@@ -547,3 +548,10 @@ export const WorkerVerificationClaimSchema = z.strictObject({
   && claim.slot.retiredAt === null && claim.slot.reservationCommandId !== null, "worker-verification-claim-invalid");
 export const WorkerVerificationClosureProofSchema = z.strictObject({ acquisitionId: z.uuid(), workerId: WorkerIdSchema,
   membershipRevision: PositiveIntSchema, browsersClosed: z.literal(true), checkedAt: IsoInstantSchema });
+
+export const WorkerVerificationRecoveryProofSchema = z.strictObject({ acquisitionId: z.uuid(),
+  recoveryOwner: RuntimeProcessLockFileSchema, workerId: WorkerIdSchema, membershipRevision: PositiveIntSchema,
+  claimFingerprint: FingerprintSchema, profileDirectory: z.string().min(1),
+  processAbsent: z.literal(true), openFilesAbsent: z.literal(true), profileRemoved: z.literal(true), checkedAt: IsoInstantSchema,
+}).refine(proof => proof.recoveryOwner.name === "live-smoke" && proof.recoveryOwner.releasedAt === null
+  && proof.recoveryOwner.acquisitionId !== proof.acquisitionId);
