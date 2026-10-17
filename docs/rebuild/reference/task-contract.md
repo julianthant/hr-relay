@@ -515,8 +515,9 @@ Browser read implementations declare `screenshots: "task"` to own their successf
 `ctx.captureScreenshot(): Promise<void>`. This replaces generic successful-lease capture for those
 implementations. Task-point capture runs only when the envelope sets `captureBrowserScreenshots`
 to true; otherwise the call resolves without an action. The capability exposes no bytes or paths
-and cannot outlive its lease. Missing capability, unavailable capture, and persistence failures use
-`BROWSER_SCREENSHOT_CAPTURE_FAILED`.
+and cannot outlive its lease. An unavailable or failed capture logs one warning with its reason and
+the task continues without a Screenshot action. Lease expiry or cancellation, undeclared ownership and
+Screenshot action persistence failures use `BROWSER_SCREENSHOT_CAPTURE_FAILED`.
 
 The worker persists task-point screenshots through `RunBrowserScreenshotCapture` as restricted
 diagnostic attachments. Logs joins each Screenshot action to its verified artifact reference.
