@@ -128,9 +128,11 @@ it('reopens a verified first create through its durable route with a fresh clien
 it('retains existing-workbook mapping review through child navigation and saves with its opened version', async () => {
   const w = world(); const p = await page(w.client); await click('Served.xlsx'); await edit('Ada'); await menu('Workbook actions', 'Edit column mappings');
   await click('Dashboard field for A');
-  const notes = document.querySelector<HTMLElement>('[role="option"][data-value="roster.notes"]'); assert(notes); await act(async () => notes.click());
+  const aListbox = button('Dashboard field for A').getAttribute('aria-controls'); assert(aListbox);
+  const notes = document.getElementById(aListbox)?.querySelector<HTMLElement>('[role="option"][data-value="roster.notes"]'); assert(notes); await act(async () => notes.click());
   await click('Dashboard field for C');
-  const name = document.querySelector<HTMLElement>('[role="option"][data-value="fullName"]'); assert(name); await act(async () => name.click());
+  const cListbox = button('Dashboard field for C').getAttribute('aria-controls'); assert(cListbox);
+  const name = document.getElementById(cListbox)?.querySelector<HTMLElement>('[role="option"][data-value="fullName"]'); assert(name); await act(async () => name.click());
   const reviewing = p.latest().book; assert.equal(reviewing?.libraryId, undefined);
   await p.remountChild(); assert.equal(p.latest().book, reviewing); assert.doesNotMatch(document.body.textContent, /Import unavailable/);
   assert.equal(document.querySelector('[aria-label="Dashboard field for A"]')?.getAttribute('data-value'), 'roster.notes');
