@@ -306,7 +306,7 @@ describe("a logs GET opens only its run partitions", () => {
       address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
       level: "step",
       message: "Entered person details",
-      fields: [{ key: "ssn", classification: "direct-identifier", transform: "last4", value: "951-57-1700" }],
+      fields: [{ key: "ssn", classification: "direct-identifier", transform: "last4", value: "920-74-1459" }],
     });
     const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");

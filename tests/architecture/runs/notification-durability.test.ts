@@ -144,12 +144,12 @@ describe("notification-durability: every closed trigger commits a durable item",
   it("has no free-text channel a captured value could enter through", () => {
 
     assert.equal(
-      NotificationTriggerEventSchema.safeParse({ ...RUN_FAILED, message: "SSN 951-57-1700" }).success,
+      NotificationTriggerEventSchema.safeParse({ ...RUN_FAILED, message: "SSN 920-74-1459" }).success,
       false,
     );
     const projection = projectNotificationTrigger(RUN_FAILED);
     assert.ok(projection.summary.includes(RUN_FAILED.runId));
-    assert.ok(!projection.summary.includes("951-57-1700"));
+    assert.ok(!projection.summary.includes("920-74-1459"));
   });
 });
 

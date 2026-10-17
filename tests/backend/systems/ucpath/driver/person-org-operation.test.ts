@@ -345,11 +345,11 @@ describe("strict UCPath Person Org operation", () => {
   });
 
   it("keeps the reviewed non-HDH option explicit", async () => {
-    const nonHdh = detail(EID_A, "Crithe Cleckoa", { department: "CHEMISTRY" });
+    const nonHdh = detail(EID_A, "Bea Morrow", { department: "CHEMISTRY" });
     const filtered = pageHarness({ outcomes: [{ kind: "detail", detail: nonHdh }] });
     const absent = await searchPersonOrgWithPagePort(filtered.port, {
       kind: "by-name",
-      name: "Cleckoa, Crithe",
+      name: "Morrow, Bea",
       keepNonHdh: false,
     });
     assert.equal(absent.selection.status, "not-found");
@@ -357,7 +357,7 @@ describe("strict UCPath Person Org operation", () => {
     const retained = pageHarness({ outcomes: [{ kind: "detail", detail: nonHdh }] });
     const found = await searchPersonOrgWithPagePort(retained.port, {
       kind: "by-name",
-      name: "Cleckoa, Crithe",
+      name: "Morrow, Bea",
       keepNonHdh: true,
     });
     assert.equal(found.selection.status, "resolved");

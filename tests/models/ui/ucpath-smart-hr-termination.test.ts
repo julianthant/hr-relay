@@ -9,8 +9,8 @@ isUcpathTerminationInProgress,
 } from "../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 
-const EID = EidSchema.parse("10001799");
-const NAME = "Drose Clauckia";
+const EID = EidSchema.parse("10203262");
+const NAME = "Droli Clauldoa";
 const EFFDT = "06/11/2026";
 
 const { row } = createUcpathPendingRowFixtures(EID, NAME, EFFDT);

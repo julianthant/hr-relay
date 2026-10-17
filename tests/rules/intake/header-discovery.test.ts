@@ -87,7 +87,7 @@ describe("ref data-intake-and-edit-data §3 header discovery", () => {
     const rows = [
       ["Onboarding Roster — July 2026", "", "", ""],
       ["EID", "Legal Name", "Dept", "Start Date"],
-      ["10456712", "Cleckoa, Crithe", "HDH", "07/01/2026"],
+      ["10456712", "Morrow, Bea", "HDH", "07/01/2026"],
       ["10998801", "Roe, Rick", "HDH", "07/01/2026"],
     ];
     const discovery = rankHeaderRows(rows, NO_ALIASES);
@@ -115,7 +115,7 @@ describe("ref data-intake-and-edit-data §3 header discovery", () => {
 
     const rows = [
       ["EID", "Legal Name", "Dept", "Status"],
-      ["10456712", "Cleckoa, Crithe", "HDH", "Active"],
+      ["10456712", "Morrow, Bea", "HDH", "Active"],
       ["10998801", "Roe, Rick", "HDH", "Active"],
       ["10998802", "Poe, Edgar", "HDH", "Active"],
     ];
@@ -131,7 +131,7 @@ describe("ref data-intake-and-edit-data §3 header discovery", () => {
     // not treat that supported layout as evidence against the header row.
     const rows = [
       ["Name", "Name", "EID"],
-      ["Cleckoa, Crithe", "Roe, Rick", "10456712"],
+      ["Morrow, Bea", "Roe, Rick", "10456712"],
       ["Poe, Edgar", "Coe, Joe", "10998801"],
     ];
     const blind = rankHeaderRows(rows, NO_ALIASES);

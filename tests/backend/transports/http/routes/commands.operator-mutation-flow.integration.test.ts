@@ -265,8 +265,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       });
       return singleAppliedRunId(CommandResultSchema.parse(await json(started)));
     };
-    const runA = await startRun("10873698", "1a000000-0000-4000-8000-000000000001");
-    const runB = await startRun("10002296", "1a000000-0000-4000-8000-000000000002");
+    const runA = await startRun("10203372", "1a000000-0000-4000-8000-000000000001");
+    const runB = await startRun("10203373", "1a000000-0000-4000-8000-000000000002");
     const runC = await startRun("10873700", "1a000000-0000-4000-8000-000000000003");
     const runD = await startRun("10873701", "1a000000-0000-4000-8000-000000000005");
     const versionOf = (runId: string): number => {

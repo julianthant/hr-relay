@@ -108,10 +108,10 @@ const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
     + "phone number in the contact half is the contact's, never the employee's.",
   extractionNotes: [
     "Employee ID digits are read one at a time. Eight digits beginning `10`. Do NOT transpose "
-      + "adjacent digits — 8↔9 and 3↔8 are the observed misreads (`10843962` reported when the paper "
-      + "said `10002337`; `10983978` for `10002339`). Ignore stray marks and crossed-out characters; "
+      + "adjacent digits — 8↔9 and 3↔8 are the observed misreads (`10493848` reported when the paper "
+      + "said `10493849`; `10493038` for `10493088`). Ignore stray marks and crossed-out characters; "
       + "read the final intended digits.",
-    "Transcribe names letter by letter — do not drop or swap letters (`Sharaf`, not `Shaaf`; "
+    "Transcribe names letter by letter — do not drop or swap letters (`Morath`, not `Moath`; "
       + "`Cecillia`, not `Cecilia`). If only a first name is written for the contact, report exactly "
       + "that; never invent a surname.",
     "NEVER skip the contact's address because it resembles the employee's — report what is written in "

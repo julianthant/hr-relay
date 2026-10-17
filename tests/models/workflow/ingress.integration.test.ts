@@ -70,6 +70,6 @@ describe("separations — start planning through the existing service", () => {
     assert.ok(surface);
     // No `otherwise` arm: the box refuses as a WHOLE rather than starting the
     // good half of a paste, which is what `inputRunParserLabel` promises.
-    assert.throws(() => parseInputRunText(surface.parser, "4502; Cramia, Dreitho"), /matched no parser rule/u);
+    assert.throws(() => parseInputRunText(surface.parser, "4502; Craria, Dreindo"), /matched no parser rule/u);
   });
 });

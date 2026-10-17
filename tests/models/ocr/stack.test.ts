@@ -23,10 +23,10 @@ function stack(pages: readonly [number, string, string | null][]) {
 
 describe("person match key", () => {
   it("matches the two name orders the corpus actually contains", () => {
-    // An I-9 Section 2 header reads `Clauldia, Drona A.`; a Section 1 spells the
+    // An I-9 Section 2 header reads `Claurnaa, Drithe A.`; a Section 1 spells the
     // same person across separate Last/First boxes.
-    assert.equal(personMatchKey("Clauldia, Drona A."), personMatchKey("Drona Clauldia"));
-    assert.equal(personMatchKey("BLAUCKEA, GRERA GRERE GRERI"), personMatchKey("Blauckea, Grera Grere Greri"));
+    assert.equal(personMatchKey("Claurnaa, Drithe A."), personMatchKey("Drithe Claurnaa"));
+    assert.equal(personMatchKey("BLAUTHEA, GRALDI GRALDO GRATHA"), personMatchKey("Blauthea, Graldi Graldo Gratha"));
   });
 
   it("drops a middle initial, so its absence cannot split one person in two", () => {
@@ -36,14 +36,14 @@ describe("person match key", () => {
 
   it("refuses to identify anybody from a single name", () => {
     // A surname alone would group siblings onto one subject.
-    assert.equal(personMatchKey("Clauldia"), null);
+    assert.equal(personMatchKey("Claurnaa"), null);
     assert.equal(personMatchKey("A."), null);
     assert.equal(personMatchKey("   "), null);
   });
 
   it("keeps genuinely different people apart", () => {
-    assert.notEqual(personMatchKey("Brethea, Brauso J."), personMatchKey("Blauckea, Grera Grere Greri"));
-    assert.notEqual(personMatchKey("Clauldia, Drona A."), personMatchKey("Casey, Kyle A."));
+    assert.notEqual(personMatchKey("Breldaa, Braure J."), personMatchKey("Blauthea, Graldi Graldo Gratha"));
+    assert.notEqual(personMatchKey("Claurnaa, Drithe A."), personMatchKey("Quillan, Petra A."));
   });
 });
 
@@ -51,10 +51,10 @@ describe("grouping does not assume adjacency", () => {
   it("groups the real I-9 stack by NAME, never by neighbour", () => {
 
     const grouping = groupStack(stack([
-      [1, "i9-section2", "Clauldia, Drona A."],
-      [2, "i9-section1", "Brethea, Brauso J."],
+      [1, "i9-section2", "Claurnaa, Drithe A."],
+      [2, "i9-section1", "Breldaa, Braure J."],
       [3, "i9-section2", "Cisneros, Metzli"],
-      [4, "i9-section1", "BLAUCKEA, GRERA GRERE GRERI"],
+      [4, "i9-section1", "BLAUTHEA, GRALDI GRALDO GRATHA"],
     ]), "oath");
     // None of them is an oath page, so an oath run correctly claims none of it.
     assert.deepEqual(grouping.subjects, []);
@@ -63,16 +63,16 @@ describe("grouping does not assume adjacency", () => {
 
   it("pairs a person's pages however far apart they sit", () => {
     const grouping = groupStack(stack([
-      [1, "oath", "Clauldia, Drona A."],
-      [2, "oath", "Brethea, Brauso J."],
+      [1, "oath", "Claurnaa, Drithe A."],
+      [2, "oath", "Breldaa, Braure J."],
       [3, "oath", "Cisneros, Metzli"],
-      [9, "oath", "Drona Clauldia"],
+      [9, "oath", "Drithe Claurnaa"],
     ]), "oath");
-    const casey = grouping.subjects.find((subject) => subject.displayName.includes("Clauldia"));
+    const claurnaa = grouping.subjects.find((subject) => subject.displayName.includes("Claurnaa"));
     // Pages 1 and 9 are one person; seven unrelated pages between them change
     // nothing, because the match is on the name.
-    assert.deepEqual(casey?.pages.map((page) => page.sourcePage), [1, 9]);
-    assert.equal(casey?.completeness, "duplicate");
+    assert.deepEqual(claurnaa?.pages.map((page) => page.sourcePage), [1, 9]);
+    assert.equal(claurnaa?.completeness, "duplicate");
     assert.equal(grouping.subjects.length, 3);
   });
 
@@ -105,8 +105,8 @@ describe("grouping does not assume adjacency", () => {
 
   it("accounts for every page, so a count reconciles against the paper", () => {
     const mixed = stack([
-      [1, "oath", "Clauldia, Drona A."],
-      [2, "emergency-contact", "Brethea, Brauso J."],
+      [1, "oath", "Claurnaa, Drithe A."],
+      [2, "emergency-contact", "Breldaa, Braure J."],
       [3, "boilerplate", null],
       [4, "unrelated", null],
       [5, "blank", null],
@@ -133,10 +133,10 @@ describe("the sectioned subject — an i9 spans two loose pages", () => {
   it("claims BOTH section kinds for an i9 run, and flags each half-person rather than pairing neighbours", () => {
 
     const report = reportStack(stack([
-      [1, "i9-section2", "Clauldia, Drona A."],
-      [2, "i9-section1", "Brethea, Brauso J."],
+      [1, "i9-section2", "Claurnaa, Drithe A."],
+      [2, "i9-section1", "Breldaa, Braure J."],
       [3, "i9-section2", "Cisneros, Metzli"],
-      [4, "i9-section1", "BLAUCKEA, GRERA GRERE GRERI"],
+      [4, "i9-section1", "BLAUTHEA, GRALDI GRALDO GRATHA"],
     ]), "i9");
     assert.deepEqual(report.subjects, { complete: 0, duplicate: 0, incomplete: 4 });
     assert.equal(report.pagesAccounted, 4);
@@ -146,8 +146,8 @@ describe("the sectioned subject — an i9 spans two loose pages", () => {
     );
 
     const grouping = groupStack(stack([
-      [1, "i9-section2", "Clauldia, Drona A."],
-      [2, "i9-section1", "Brethea, Brauso J."],
+      [1, "i9-section2", "Claurnaa, Drithe A."],
+      [2, "i9-section1", "Breldaa, Braure J."],
     ]), "i9");
 
     assert.deepEqual(grouping.subjects.map((subject) => [subject.pages[0].sourcePage, subject.missingKinds]), [
@@ -159,23 +159,23 @@ describe("the sectioned subject — an i9 spans two loose pages", () => {
   it("completes a person from a §2 and a §1 however far apart, whatever the name order", () => {
     // Match I-9 sections by independently supplied names, not page adjacency.
     const grouping = groupStack(stack([
-      [1, "i9-section2", "Clauldia, Drona A."],
-      [2, "i9-section1", "Brethea, Brauso J."],
-      [9, "i9-section1", "Drona Clauldia"],
+      [1, "i9-section2", "Claurnaa, Drithe A."],
+      [2, "i9-section1", "Breldaa, Braure J."],
+      [9, "i9-section1", "Drithe Claurnaa"],
     ]), "i9");
-    const casey = grouping.subjects.find((subject) => subject.displayName.includes("Clauldia"));
-    assert.deepEqual(casey?.pages, [
+    const claurnaa = grouping.subjects.find((subject) => subject.displayName.includes("Claurnaa"));
+    assert.deepEqual(claurnaa?.pages, [
       { sourcePage: 1, pageKind: "i9-section2" },
       { sourcePage: 9, pageKind: "i9-section1" },
     ]);
-    assert.equal(casey?.completeness, "complete");
-    assert.deepEqual(casey?.missingKinds, []);
+    assert.equal(claurnaa?.completeness, "complete");
+    assert.deepEqual(claurnaa?.missingKinds, []);
   });
 
   it("reports a duplicated section AND the still-missing one — one arm does not hide the other", () => {
     const grouping = groupStack(stack([
-      [1, "i9-section1", "Clauldia, Drona A."],
-      [2, "i9-section1", "Drona Clauldia"],
+      [1, "i9-section1", "Claurnaa, Drithe A."],
+      [2, "i9-section1", "Drithe Claurnaa"],
     ]), "i9");
     assert.equal(grouping.subjects.length, 1);
     assert.equal(grouping.subjects[0].completeness, "duplicate");
@@ -192,7 +192,7 @@ describe("the sectioned subject — an i9 spans two loose pages", () => {
   it("sends an unreadable-name section to unidentified rather than guessing its person", () => {
     const grouping = groupStack(stack([
       [1, "i9-section2", null],
-      [2, "i9-section1", "Brethea, Brauso J."],
+      [2, "i9-section1", "Breldaa, Braure J."],
     ]), "i9");
     assert.deepEqual(grouping.unidentified, [1]);
     assert.equal(grouping.subjects.length, 1);

@@ -153,7 +153,7 @@ describe("ref data-intake-and-edit-data §2.3 saved-mapping reuse is fail-closed
       employeeName: CANONICAL_FIELDS.fullName,
       contactName: CANONICAL_FIELDS.fullName,
     });
-    const twins = detectColumns(["Name", "Name"], [["Cleckoa, Crithe"], ["Doe, John"]]);
+    const twins = detectColumns(["Name", "Name"], [["Morrow, Bea"], ["Doe, John"]]);
     const mapping = ColumnMappingSchema.parse({
       workflow: "emergency-contact",
       intakeProjectionFingerprint: projection.fingerprint,
@@ -274,7 +274,7 @@ describe("ref data-intake-and-edit-data §2.5 suggestions propose and cannot bin
   });
 
   it("marks indistinguishable candidates ambiguous so neither preselects", () => {
-    const twins = detectColumns(["Name", "Name"], [["Cleckoa, Crithe"], ["Doe, John"]]);
+    const twins = detectColumns(["Name", "Name"], [["Morrow, Bea"], ["Doe, John"]]);
     const NameOnly = z.strictObject({ employeeName: CANONICAL_FIELDS.fullName.schema });
     const projection = defineIntakeProjection(NameOnly, { employeeName: CANONICAL_FIELDS.fullName });
     const suggestions = suggestBindings({ workflow: "emergency-contact", detected: twins, projection, readAt: CONFIRMED_AT });
