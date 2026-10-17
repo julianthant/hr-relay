@@ -17,11 +17,11 @@ function schemaFailure(error: unknown): boolean {
   return error instanceof Error && error.cause !== undefined && schemaFailure(error.cause);
 }
 
-/** Diagnostic note delivery must not replace a settled task or write outcome. */
 export function drainBrowserActionNotes(input: Readonly<{
   actions: readonly BrowserAction[];
   emitAction: (action: BrowserAction) => void;
   warn: () => void;
+  onFailure?: (action: BrowserAction, error: unknown) => void;
   publisher?: Pick<ConfirmedActionPublisher, "reportAppendFailure" | "reportProgramError">;
 }>): BrowserActionDrainStatus {
   let failed = 0;
@@ -38,6 +38,7 @@ export function drainBrowserActionNotes(input: Readonly<{
         : program ? input.publisher.reportProgramError() : input.publisher.reportAppendFailure(); }
       catch { health = { state: "report-failed" }; }
       try { input.warn(); } catch { warningFailed = true; }
+      input.onFailure?.(action, error);
     }
   }
   return { attempted: input.actions.length, failed,

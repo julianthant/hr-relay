@@ -44,10 +44,10 @@ export function currentBrowserActionSessionId(): string | undefined {
 }
 
 /** Record a completed browser gesture with its static control id and entered value. */
-export function recordBrowserAction(kind: BrowserActionKind, targetId: string, value?: string | boolean): void {
+export function recordBrowserAction(kind: BrowserActionKind, targetId: string, value?: string | boolean): boolean {
   const capture = scope.getStore();
-  if (capture?.state.active !== true) return;
-  if (capture.executingAction?.kind === kind && capture.executingAction.targetId === targetId) return;
+  if (capture?.state.active !== true) return false;
+  if (capture.executingAction?.kind === kind && capture.executingAction.targetId === targetId) return false;
   const action: BrowserAction = {
     kind,
     targetId,
@@ -58,6 +58,7 @@ export function recordBrowserAction(kind: BrowserActionKind, targetId: string, v
   const bound = capture.bind === undefined ? action : capture.bind(action);
   capture.actions.push(bound);
   capture.onBoundAction?.(bound);
+  return true;
 }
 
 /** Authentication remains in Sessions while the enclosing task owns its action scope. */
@@ -94,12 +95,17 @@ export async function withBrowserActionNotes<T>(
 ): Promise<T> {
   const capture: Capture = { clock, actions: [], state: { active: true }, onBoundAction };
   return scope.run(capture, async () => {
-    try {
-      return await operation();
-    } finally {
-      capture.state.active = false;
-      drain(capture.actions);
+    let outcome: Readonly<{ state: "succeeded"; value: T }> | Readonly<{ state: "failed"; error: unknown }>;
+    try { outcome = { state: "succeeded", value: await operation() }; }
+    catch (error) { outcome = { state: "failed", error }; }
+    capture.state.active = false;
+    try { drain(capture.actions); }
+    catch (error) {
+      if (outcome.state === "failed") throw new AggregateError([outcome.error, error], "browser operation and action persistence both failed", { cause: error });
+      throw error;
     }
+    if (outcome.state === "failed") throw outcome.error;
+    return outcome.value;
   });
 }
 

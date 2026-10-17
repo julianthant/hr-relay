@@ -1,3 +1,23 @@
+import { withBrowserActionBinding, withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
+import { createDeclaredActionBinder } from "../../../../src/backend/runtime/writes/operation-action-binding.js";
+import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
+import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
+import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
+import { NodeIdSchema } from "../../../../src/rules/identity/ids.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
+import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { ucpathStore } from "../../../../src/backend/systems/ucpath/task-registry.js";
+import { ucpathDriver } from "../../../../src/backend/systems/ucpath/driver-declaration.js";
+import { ucpathSession } from "../../../../src/backend/systems/ucpath/session-provider.js";
+import { searchPersonOrgTask } from "../../../../src/backend/systems/ucpath/tasks/search-person-org.js";
+import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-person-org.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { defineBrowserStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
+import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
+import { FIXTURE_SESSION_ACQUIRE_MS } from "../../../support/helpers/phase1f-executor-harness.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { z } from "zod";
@@ -416,7 +436,7 @@ describe("selected lease screenshot actions", () => {
     const actions: unknown[] = [];
     const capture = createRunBrowserScreenshotCapture({ service });
     const screenshotIdentity = { pageVersion: 1, sessionId: BrowserSessionIdSchema.parse("10000000-0000-4000-8000-000000000001"), observedAt: NOW };
-    const context = { runId: RUN_ID, configFingerprint: HASH_A, descriptorFingerprint: HASH_B, system: "ucpath", leaseOutcome: "succeeded" as const, screenshot: { ...screenshotIdentity, state: "available" as const, bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 } };
+    const context = { runId: RUN_ID, configFingerprint: HASH_A, descriptorFingerprint: HASH_B, system: "ucpath", trigger: { kind: "lease-end" as const, outcome: "succeeded" as const }, screenshot: { ...screenshotIdentity, state: "available" as const, bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 } };
     await withBrowserActionNotes(clock, () => capture.capture(context), notes => { actions.push(...notes); });
     const bundles = database.authority.diagnosticBundles.listByRun(RUN_ID);
     assert.equal(bundles.length, 1);
@@ -428,4 +448,94 @@ describe("selected lease screenshot actions", () => {
     const missing = createRunBrowserScreenshotCapture({ service: { ...service, capture: async input => ({ ...await service.capture(input), attachments: [] }) } });
     await assert.rejects(missing.capture(context), /without its screenshot artifact/);
   });
+});
+
+describe("task screenshot persistence before checkpoint", () => {
+  for (const failure of ["none", "note", "capture-and-close", "undeclared"] as const) it(`binds executor capture and preserves a named failure (${failure})`, async () => {
+    const world = createRunExecutorTestWorld();
+    try {
+      const captureTask = defineTask(ucpathDriver, SearchPersonOrg, {
+        sessions: searchPersonOrgTask.impl.sessions, ...(failure === "undeclared" ? {} : { screenshots: "task" as const }),
+        async run(args) {
+          const output = await searchPersonOrgTask.impl.run(args);
+          await args.ctx.captureScreenshot();
+          return output;
+        },
+      });
+      const stores = defineTaskStoreRegistry([...taskStoreRegistry.stores.filter(store => store.namespace !== "ucpath"), defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { ...ucpathStore.tasks, searchPersonOrg: captureTask })], taskStoreRegistry.corpus);
+      const harness = world.executorHarness({ stores });
+      const { database, clock } = harness.authority;
+      const queued = RunRecordSchema.parse(personLookupQueuedRun());
+      const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: true } }, clock.now().toISOString());
+      const { service } = captureService(database);
+      const capture = createRunBrowserScreenshotCapture({ service });
+      const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(claimed.claim.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"), stores,
+        factory: { open: async input => {
+          const resource = await harness.sessions.factory.open(input);
+          return { ...resource, screenshot: async () => {
+            if (failure === "capture-and-close") throw new Error("capture failure");
+            return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
+          }, close: async input => {
+            if (failure === "capture-and-close") throw new Error("close failure");
+            return resource.close(input);
+          } };
+        } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+        duoCeremony: fixtureDuoCeremonyGates(clock), browserScreenshotCapture: capture,
+      });
+      sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
+        descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: true });
+      const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+      const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: { ...notes, emitRunAction: (input, authority) => {
+        if (failure === "note" && input.action.kind === "screenshot") throw new Error("note append failure");
+        return notes.emitRunAction(input, authority);
+      } } }, { ...claimed, signal: new AbortController().signal });
+      if (failure === "none") {
+        assert.equal(result.state, "done");
+        assert.ok(database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).some(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot"));
+      } else {
+        assert.equal(result.state, "failed");
+        const failures = database.authority.failures.listByRun(claimed.run.envelope.runId);
+        assert.equal(failures[0]?.code, "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+        assert.equal(database.authority.runCheckpoints.latest(claimed.run.envelope.workflow, claimed.run.envelope.itemId, "searching"), undefined);
+        if (failure === "note") assert.ok(database.authority.diagnosticBundles.listByRun(claimed.run.envelope.runId).length > 0, "image persisted before note failure");
+      }
+    } finally { await world.cleanup(); }
+  });
+});
+
+it("persists a task screenshot through a complete frozen binder into Logs without operation proof", async () => {
+  const world = createRunExecutorTestWorld();
+  try {
+    const harness = world.executorHarness({ descriptor: world.actionBindingCompiled.descriptor });
+    const { database, clock } = harness.authority;
+    const claimed = world.enqueueAndClaim(database, world.actionBindingQueuedRun(clock.now().toISOString()), clock.now().toISOString(), world.ACTION_BINDING_WORKFLOW_ID);
+    const snapshot = claimed.run.envelope.operationDisplaySnapshot;
+    assert.ok(snapshot);
+    const binder = createDeclaredActionBinder({ snapshot, runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt,
+      claimGeneration: claimed.claim.claimGeneration, taskAttempt: 1, nodeId: "search", taskId: SearchPersonOrg.id, contractRole: "task",
+      parsedInput: { kind: "by-eid", emplId: "10873698" }, protectedBindings: [] });
+    const { service } = captureService(database);
+    const capture = createRunBrowserScreenshotCapture({ service });
+    const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+    const sessionId = BrowserSessionIdSchema.parse("00000000-0000-4000-8000-000000000003");
+    const address = { runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt, traceId: claimed.run.envelope.traceId,
+      spanPath: taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("search"), 1, claimed.claim.claimGeneration) };
+    await withBrowserActionNotes(clock, () => withBrowserActionSession(sessionId, () => withBrowserActionBinding(binder, () => capture.capture({
+      runId: claimed.run.envelope.runId, configFingerprint: claimed.run.envelope.configFingerprint, descriptorFingerprint: claimed.run.envelope.contractFingerprint,
+      system: "ucpath", trigger: { kind: "task-point", nodeId: "search", attempt: claimed.run.envelope.attempt },
+      screenshot: { state: "available", sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 },
+    }))), actions => { for (const action of actions) notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action }, claimed.run); });
+    const stored = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).filter(row => row.payload.kind === "note");
+    assert.equal(stored.length, 1);
+    assert.ok(stored[0].payload.kind === "note");
+    assert.equal(stored[0].payload.note.action?.operation, undefined);
+    const section = buildRunLogsSection({ timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps,
+      claimed.run.envelope.runId, undefined, claimed.run);
+    assert.ok(section.section === "logs");
+    const row = section.payload.rows?.[0];
+    assert.ok(row?.kind === "note");
+    assert.equal(row.native?.nodeId, "search");
+    assert.equal(row.note.screenshot?.sessionId, sessionId);
+    assert.equal(row.note.screenshot?.bundleId, database.authority.diagnosticBundles.listByRun(claimed.run.envelope.runId)[0]?.bundleId);
+  } finally { await world.cleanup(); }
 });

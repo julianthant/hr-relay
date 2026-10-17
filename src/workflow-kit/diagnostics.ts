@@ -15,14 +15,14 @@ export interface RunDiagnosticCapture {
   discard(bundle: DiagnosticBundle): void;
 }
 
-/** A capture selected on the immutable run envelope, taken while a lease still owns its page. */
+/** A run-selected capture taken while the worker lease still owns its page. */
 export interface RunBrowserScreenshotCapture {
   capture(context: Readonly<{
     runId: string;
     descriptorFingerprint: string;
     configFingerprint: string;
     system: string;
-    leaseOutcome: "succeeded" | "failed";
+    trigger: Readonly<{ kind: "task-point"; nodeId: string; attempt: number }> | Readonly<{ kind: "lease-end"; outcome: "succeeded" | "failed" }>;
     screenshot: BrowserScreenshotEvidence;
   }>): Promise<void>;
 }

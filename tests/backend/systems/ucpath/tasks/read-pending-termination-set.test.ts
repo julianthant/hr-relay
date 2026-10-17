@@ -75,6 +75,7 @@ function observationHarness() {
     run: (rows: readonly UcpathTransactionRow[]) => readPendingTerminationSetTask.impl.run({
       input: { emplId: EID, expectedName: NAME },
       ctx: {
+        captureScreenshot: async () => {},
         signal: new AbortController().signal,
         log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
         fail: (_code: string, message: string): never => { throw new Error(message); },

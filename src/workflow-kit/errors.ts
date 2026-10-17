@@ -27,3 +27,14 @@ export function wrapUnhandledTaskError(taskId: TaskId, error: unknown): TaskErro
   if (error instanceof Error || error instanceof z.ZodError) return new TaskError(taskId, "unhandled", error.message, { cause: error });
   return new TaskError(taskId, "unhandled", "task threw a non-Error value", { cause: error });
 }
+
+export function taskErrorCause(error: unknown): TaskError | undefined {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current instanceof Error && !seen.has(current)) {
+    if (current instanceof TaskError) return current;
+    seen.add(current);
+    current = current.cause;
+  }
+  return undefined;
+}

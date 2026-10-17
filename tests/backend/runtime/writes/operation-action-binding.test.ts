@@ -76,3 +76,13 @@ describe("exact expected-effect confirmation", () => {
     assert.equal(DeclaredActionIdentitySchema.safeParse({ ...identity, confirmation: f.proof }).success, false);
   });
 });
+
+it("keeps diagnostic screenshot associations unbound without admitting unknown gestures", () => {
+  const { binder, complete } = fixture();
+  const screenshot: BrowserAction = { kind: "screenshot", targetId: "ucpath.task-capture", at: "2026-09-29T12:00:00.000Z",
+    physicalSessionId: "00000000-0000-4000-8000-000000000002", value: "00000000-0000-4000-8000-000000000003:00000000-0000-4000-8000-000000000004" };
+  assert.equal(binder(screenshot), screenshot);
+  assert.equal(screenshot.operation, undefined);
+  assert.throws(() => binder({ ...screenshot, kind: "clicked", targetId: "unknown-control" }), /is not declared/);
+  assert.equal(complete("save").operation?.occurrence, 1);
+});

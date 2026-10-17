@@ -8,6 +8,7 @@ import { ConfirmedActionEventSchema } from "../events/confirmed-action.js";
 import {
   ActorIdSchema,
   ArtifactIdSchema,
+  BrowserSessionIdSchema,
   BrowserSystemIdSchema,
   DiagnosticBundleIdSchema,
   ElementIdSchema,
@@ -305,6 +306,7 @@ export const NoteWireSchema = z.strictObject({
   level: z.enum(["info", "warning", "error"]),
   message: z.string().min(1),
   fields: z.array(NoteFieldWireSchema).optional(),
+  screenshot: z.strictObject({ bundleId: DiagnosticBundleIdSchema, artifactId: ArtifactIdSchema, sessionId: BrowserSessionIdSchema }).optional(),
 });
 
 /** Notes and spans share one sequenced log; notes retain their own wire arm. */
@@ -614,11 +616,12 @@ export const FailureDetailWireSchema = z.strictObject({
 /** Provenance is a closed membership, not failure detail or actor data. */
 export const RunCaptureOriginWireSchema = z.strictObject({
   operation: DeclaredActionIdentitySchema.optional(),
+  browserCapture: z.strictObject({ nodeId: NodeIdSchema, attempt: PositiveIntSchema, sessionId: BrowserSessionIdSchema }).optional(),
   capturedAt: IsoInstantSchema.optional(),
   bundleId: DiagnosticBundleIdSchema,
   originKind: z.enum(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"]),
 }).superRefine((origin, context) => {
-  if ((origin.operation === undefined) !== (origin.capturedAt === undefined)) context.addIssue({ code: "custom", message: "an exact capture anchor requires its capture instant" });
+  if ((origin.operation === undefined && origin.browserCapture === undefined) !== (origin.capturedAt === undefined)) context.addIssue({ code: "custom", message: "an exact capture anchor requires its capture instant" });
 });
 export const RunCaptureArtifactWireSchema = z.strictObject({
   artifact: ArtifactRefWireSchema,

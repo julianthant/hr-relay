@@ -32,7 +32,7 @@ const person = SearchPersonOrgOutputSchema.parse({ results: [candidate], selecti
 const crmRecord = ReadOnboardingRecordOutputSchema.parse({ state: "found", record: { recordId: "ONB-40213", emplId: candidate.emplId, fullName: candidate.name, rawStage: "Completed" } });
 const crmDates = ReadOnboardingDatesOutputSchema.parse({ emplId: candidate.emplId, state: "read", employmentDate: "2026-07-15", oathDate: "2026-06-25", reason: "" });
 const crm = createDeterministicCrmOnboardingDriver({ record: crmRecord, dates: crmDates, discovery: [{ recordId: "ONB-40213", recordUrl: "https://example.invalid/record", emplId: candidate.emplId, name: candidate.name, department: candidate.department, firstDayOfService: "07/15/2026", dateSigned: "06/25/2026" }] });
-const commonCtx = { signal: new AbortController().signal, log: { debug: () => undefined, info: () => undefined, warn: () => undefined }, fail: (_code: string, message: string): never => { throw new Error(message); } };
+const commonCtx = { captureScreenshot: async () => {}, signal: new AbortController().signal, log: { debug: () => undefined, info: () => undefined, warn: () => undefined }, fail: (_code: string, message: string): never => { throw new Error(message); } };
 
 function collector(nodeId: string, taskId: string, checkpoints: readonly RunCheckpointRecord[], skippedTasks: readonly string[] = []) {
   return createTaskProvenanceCollector({ descriptor: personLookupDescriptor, canonicalInput: input,

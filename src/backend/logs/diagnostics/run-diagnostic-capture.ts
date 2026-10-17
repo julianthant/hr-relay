@@ -1,4 +1,4 @@
-import { recordBrowserAction } from "../../systems/browser-shared/action-notes.js";
+import { recordBrowserAction, currentBrowserActionSessionId } from "../../systems/browser-shared/action-notes.js";
 
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import type {
@@ -119,6 +119,9 @@ export function createRunBrowserScreenshotCapture(input: Readonly<{
 }>): RunBrowserScreenshotCapture {
   return Object.freeze({
     async capture(context: Parameters<RunBrowserScreenshotCapture["capture"]>[0]) {
+      if (context.trigger.kind === "task-point" && currentBrowserActionSessionId() !== context.screenshot.sessionId) {
+        throw new Error("task screenshot action has no matching active browser lease");
+      }
       const bundle = await operatorRequestedCapture({
         service: input.service,
         runId: context.runId,
@@ -126,7 +129,13 @@ export function createRunBrowserScreenshotCapture(input: Readonly<{
         descriptorFingerprint: context.descriptorFingerprint,
         fields: [
           { key: "browserSystem", classification: "safe-diagnostic", transform: "allow", value: context.system },
-          { key: "leaseOutcome", classification: "safe-diagnostic", transform: "allow", value: context.leaseOutcome },
+          { key: "browserSessionId", classification: "safe-diagnostic", transform: "allow", value: context.screenshot.sessionId },
+          ...(context.trigger.kind === "task-point" ? [
+            { key: "nodeId", classification: "safe-diagnostic" as const, transform: "allow" as const, value: context.trigger.nodeId },
+            { key: "runAttempt", classification: "safe-diagnostic" as const, transform: "allow" as const, value: context.trigger.attempt },
+          ] : []),
+          { key: "captureStage", classification: "safe-diagnostic", transform: "allow", value: context.trigger.kind },
+          ...(context.trigger.kind === "lease-end" ? [{ key: "leaseOutcome", classification: "safe-diagnostic" as const, transform: "allow" as const, value: context.trigger.outcome }] : []),
           ...(context.screenshot.state === "unavailable" ? [{ key: "captureUnavailable", classification: "safe-diagnostic", transform: "allow", value: context.screenshot.reason }] : []),
         ],
         attachments: context.screenshot.state === "unavailable" ? [...(context.screenshot.diagnosticAttachments ?? [])] : [...(context.screenshot.diagnosticAttachments ?? []), {
@@ -141,7 +150,8 @@ export function createRunBrowserScreenshotCapture(input: Readonly<{
       if (context.screenshot.state === "available") {
         const attachment = bundle.attachments.find((candidate) => candidate.kind === "screenshot");
         if (attachment === undefined) throw new Error("Screenshot capture persisted without its screenshot artifact");
-        recordBrowserAction("screenshot", `${context.system}.browser-capture`, `${bundle.bundleId}:${attachment.artifactId}`);
+        const recorded = recordBrowserAction("screenshot", `${context.system}.${context.trigger.kind === "task-point" ? "task-capture" : "browser-capture"}`, `${bundle.bundleId}:${attachment.artifactId}`);
+        if (context.trigger.kind === "task-point" && !recorded) throw new Error("task screenshot action was not queued");
       }
     },
   });

@@ -205,7 +205,28 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   const confirmationNotes = new Set(bindings.map(binding => binding.native.eventId));
   const confirmedActions = snapshot.actionEvidence.events;
   const captures = sections.find(section => section.section === "captures");
-  const screenshotsOf = (logId: string): readonly LogScreenshot[] => {
+  const screenshotsOf = (row: ReturnType<typeof logRowsOf>[number]): readonly LogScreenshot[] => {
+    const logId = row.logId;
+    const association = row.kind === "note" ? row.note.screenshot : undefined;
+    if (association !== undefined) {
+      const native = requireNative(row.native);
+      if (captures?.section !== "captures" || captures.payload.runId !== native.runId) throw new RunLogIdentityError("RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH");
+      const matches = captures.payload.artifacts.flatMap(capture => {
+        const artifact = capture.artifact;
+        if (artifact.artifactId !== association.artifactId || artifact.mediaKind !== "image") return [];
+        return capture.origins.flatMap(origin => {
+          const capturedAt = origin.capturedAt;
+          if (origin.bundleId !== association.bundleId || origin.browserCapture === undefined
+            || origin.browserCapture.nodeId !== native.nodeId || origin.browserCapture.attempt !== native.attempt
+            || origin.browserCapture.sessionId !== association.sessionId || capturedAt === undefined) return [];
+          return [{ artifact, origin, capturedAt }];
+        });
+      });
+      if (matches.length !== 1) throw new RunLogIdentityError("RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH");
+      const { artifact, origin, capturedAt } = matches[0];
+      return [{ src: client.artifactUrl(artifact.artifactId), alt: "Browser capture", time: fmtActionClock(capturedAt),
+        width: artifact.width, height: artifact.height, label: origin.bundleId, kind: "browser" }];
+    }
     const observation = logs.operationStructure?.state === "observed" ? logs.operationStructure.observations.find(row => row.logId === logId) : undefined;
     if (captures?.section !== "captures" || observation === undefined) return [];
     const { value: _value, ...occurrence } = observation.occurrence;
@@ -224,7 +245,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     node.set(row.logId, requireNative(row.native).nodeId);
     const at = row.kind === "note" ? row.note.at : row.at;
     const time = fmtActionClock(at);
-    const screenshots = screenshotsOf(row.logId);
+    const screenshots = screenshotsOf(row);
     let entry: LogEntry;
     if (row.kind === "observed") entry = { kind: "fields", id: row.logId, fields: logPillsOf(row).map((pill, index) => ({
       id: `${row.logId}:${index}`, time, kind: pill.direction === "read" ? "read" : "fill", label: pill.label, value: pill.value,
@@ -242,7 +263,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     }
     if (row.kind !== "observed" && screenshots.length > 0) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
       decision: { title: "Capture", state: "recorded", screenshots } });
-    return { id: row.logId, time, title: row.kind === "note" ? "Run note" : row.producer.step,
+    return { id: row.logId, time, title: row.kind === "note" ? row.note.screenshot === undefined ? "Run note" : "Screenshot" : row.producer.step,
       ...(row.kind !== "note" && row.producer.system !== undefined ? { system: row.producer.system } : {}), entries };
   });
   for (const section of sections) {

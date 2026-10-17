@@ -152,7 +152,7 @@ export interface BrowserTaskCtx<
 export type ReadTaskCtx<
   Driver extends { readonly system: BrowserSystemId },
   Codes extends readonly string[],
-> = BrowserTaskCtx<Driver, Codes>;
+> = BrowserTaskCtx<Driver, Codes> & Readonly<{ captureScreenshot: () => Promise<void> }>;
 
 export type PrepareTaskCtx<
   Driver extends { readonly system: BrowserSystemId },
@@ -213,6 +213,7 @@ export interface ReadTaskImpl<
 > {
   readonly sessions: SessionsFor<C>;
   readonly retry?: RetryPolicy;
+  readonly screenshots?: [BrowserSystemOf<C>] extends [never] ? never : "task";
   readonly run: (args: Readonly<{
     input: z.output<C["input"]>;
     ctx: ReadCtxFor<C, Driver> & ArtifactCtxFor<C>;
@@ -271,6 +272,7 @@ const FACTORY_DEFINED_TASKS = new WeakSet<object>();
 type RuntimeTaskImpl = Readonly<{
   sessions: readonly SessionNeed[];
   retry?: RetryPolicy;
+  screenshots?: "task";
   run: (args: never) => Promise<unknown>;
 }>;
 export type AnyTask = Readonly<{
@@ -298,7 +300,7 @@ function validateTaskBinding(
     throw new Error(`${contract.id} task implementation must be an object`);
   }
   const run = RuntimeTaskRunSchema.parse(Reflect.get(implInput, "run"));
-  const expectedKeys = new Set(["sessions", "run", ...(contract.effect === "read" ? ["retry"] : [])]);
+  const expectedKeys = new Set(["sessions", "run", ...(contract.effect === "read" ? ["retry", "screenshots"] : [])]);
   for (const key of Object.keys(implInput)) {
     if (!expectedKeys.has(key)) throw new Error(`${contract.id} task implementation has unknown field ${key}`);
   }
@@ -344,6 +346,10 @@ function validateTaskBinding(
       throw new Error(`${contract.id} workflow mini-store cannot declare artifacts`);
     }
   }
+  const screenshots: unknown = Reflect.get(implInput, "screenshots");
+  if (screenshots !== undefined && (screenshots !== "task" || !browser.success || contract.effect !== "read")) {
+    throw new Error(`${contract.id} task-owned screenshots require a browser read`);
+  }
   const retryInput: unknown = Reflect.get(implInput, "retry");
   const retry = retryInput === undefined ? undefined : Object.freeze(RetryPolicySchema.parse(retryInput));
   if (contract.effect !== "read" && retry !== undefined) {
@@ -352,6 +358,7 @@ function validateTaskBinding(
   return Object.freeze({
     sessions: Object.freeze(sessions),
     ...(retry === undefined ? {} : { retry }),
+    ...(screenshots === "task" ? { screenshots } : {}),
     run,
   });
 }

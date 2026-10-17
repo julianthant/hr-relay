@@ -3,6 +3,7 @@ import { SectionUnavailableError } from "../commands/refusals.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import {
   RunCaptureArtifactWireSchema,
+  RunCaptureOriginWireSchema,
   type RunCaptureAvailabilityWire,
   type RunCaptureArtifactWire,
 } from "../../../models/dashboard/run-detail.js";
@@ -105,13 +106,23 @@ async function verifyRunCaptures(
       || readback.manifest !== canonicalJsonStringify(bundle)) {
       captureCorrupt(runId, `bundle ${bundle.bundleId} exact-id readback disagrees with the run index`);
     }
+    const field = (key: string): unknown => {
+      const fields = bundle.redaction.fields.filter(field => field.key === key);
+      if (fields.length !== 1 || fields[0]?.transform !== "allow") return undefined;
+      return fields[0].value;
+    };
+    const taskPoint = field("captureStage") === "task-point";
+    const anchored = taskPoint ? RunCaptureOriginWireSchema.safeParse({ bundleId: bundle.bundleId, originKind: bundle.origin.kind,
+      capturedAt: bundle.createdAt, browserCapture: { nodeId: field("nodeId"), attempt: field("runAttempt"), sessionId: field("browserSessionId") },
+    }) : undefined;
+    if (anchored?.success === false) captureCorrupt(runId, "task screenshot capture identity is invalid", anchored.error);
     for (const attachment of bundle.attachments) {
       const candidate = captureArtifactRef(runId, attachment);
       const existing = artifacts.get(candidate.artifactId);
       if (existing !== undefined && canonicalJsonStringify(existing.artifact) !== canonicalJsonStringify(candidate)) {
         captureCorrupt(runId, `artifact ${candidate.artifactId} has conflicting verified metadata`);
       }
-      const origin = { bundleId: bundle.bundleId, originKind: bundle.origin.kind, ...(bundle.operation === undefined ? {} : { operation: bundle.operation, capturedAt: bundle.createdAt }) };
+      const origin = anchored?.success === true ? anchored.data : { bundleId: bundle.bundleId, originKind: bundle.origin.kind, ...(bundle.operation === undefined ? {} : { operation: bundle.operation, capturedAt: bundle.createdAt }) };
       if (existing === undefined) {
         artifacts.set(candidate.artifactId, { artifact: candidate, origins: [origin] });
       } else {

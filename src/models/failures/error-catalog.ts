@@ -9,6 +9,10 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  BROWSER_SCREENSHOT_CAPTURE_FAILED: catalogEntry(
+    "The browser screenshot could not be captured or saved.",
+    EmptyParametersSchema,
+  ),
   PREFLIGHT_READ_UNAVAILABLE: catalogEntry(
     "Preflight report could not be read or verified. Re-check readiness.",
     EmptyParametersSchema,

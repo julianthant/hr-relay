@@ -68,8 +68,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/logs/browser-action-drain.ts",
-    "sha256": "c4d3b7b97dacccffd5d6b95ee4b5c3079d6bb5558eb80bd1964143a6b7cca6e0",
-    "reason": "A failed note warn records warningFailed and keeps draining; a failed health report records report-failed. Neither invents delivered notes from a diagnostic failure."
+    "sha256": "e9b09cc2f9407f5b52a3ea9ae3389b649b63ab7d559d62fdc99928a2654589a3",
+    "reason": "A failed note warn records warningFailed and keeps draining; a failed health report records report-failed. Neither invents delivered notes from a diagnostic failure; task screenshot failures are retained for caller settlement."
   },
   {
     "path": "src/backend/logs/confirmed-action-publisher.ts",

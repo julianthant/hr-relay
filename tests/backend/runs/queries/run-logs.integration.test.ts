@@ -273,3 +273,23 @@ describe("person-lookup full walk", () => {
     assert.equal(freshContinuation.payload.rows?.at(-1)?.sequence, 265);
   });
 });
+
+it("retains a task screenshot association and native node without exposing raw actions", () => {
+  const harness = executorHarness();
+  const { database, clock } = harness.authority;
+  const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+  const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  const sessionId = UUID_5;
+  const address = { runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt, traceId: claimed.run.envelope.traceId,
+    spanPath: taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("searching"), 1, claimed.claim.claimGeneration) };
+  notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action: { kind: "screenshot", targetId: "ucpath.task-capture",
+    value: `${UUID_4}:${UUID_5}`, physicalSessionId: sessionId, at: clock.now().toISOString() } }, claimed.run);
+  const deps = { timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps;
+  const section = buildRunLogsSection(deps, claimed.run.envelope.runId, undefined, claimed.run);
+  assert.ok(section.section === "logs");
+  const row = section.payload.rows?.find(row => row.kind === "note");
+  assert.ok(row?.kind === "note");
+  assert.deepEqual(row.note.screenshot, { bundleId: UUID_4, artifactId: UUID_5, sessionId });
+  assert.equal(row.native?.nodeId, "searching");
+  assert.equal("action" in row.note, false);
+});

@@ -207,6 +207,7 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
       ...(confirmedAction === undefined ? {} : { confirmedAction }),
       ...(action === undefined ? {} : { action: { kind: action.kind, targetId: action.targetId,
         ...(action.value === undefined ? {} : { value: typeof action.value === "string" && action.kind !== "screenshot" ? maskSsnText(action.value) : action.value }),
+        ...(action.kind !== "screenshot" || action.physicalSessionId === undefined ? {} : { physicalSessionId: action.physicalSessionId }),
         ...(action.operation === undefined ? {} : { operation: maskOccurrenceValue(action.operation) }) } }),
       ...(fields.length === 0 ? {} : { fields }),
     });

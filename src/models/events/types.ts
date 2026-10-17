@@ -409,6 +409,7 @@ const NoteBodyFields = {
   action: z.strictObject({
     kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session", "screenshot"]),
     targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
+    physicalSessionId: UuidSchema.optional(),
     value: z.union([z.string(), z.boolean()]).optional(),
     operation: DeclaredActionOccurrenceWireSchema.optional(),
   }).optional(),

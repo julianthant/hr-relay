@@ -225,8 +225,7 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
     sequence += 1;
     const declared = findAction(actions, observed, invocation.operation.page);
     if (declared === undefined) {
-      // Session and field-clear notes are observations, not declared action outcomes.
-      if (observed.kind !== "cleared") {
+      if (observed.kind !== "cleared" && observed.kind !== "screenshot") {
         throw new Error(
           `browser action ${observed.kind} ${observed.targetId} is not declared for operation ${invocation.operation.id}`,
         );

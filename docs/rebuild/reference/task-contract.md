@@ -163,7 +163,8 @@ optional `confirmed`. The remaining members depend on the contract.
 
 | Task | Additional context |
 | --- | --- |
-| Browser read or prepare | Concrete semantic `driver`. |
+| Browser read | Concrete semantic `driver` and `ctx.captureScreenshot(): Promise<void>`. |
+| Browser prepare | Concrete semantic `driver`. |
 | Browser commit | `driver` and `mutation`. |
 | Service read with providers | `providers`, narrowed to the declared capability keys. |
 | Read with artifacts | `artifacts: ContentAddressedArtifactWriter`. |
@@ -510,7 +511,17 @@ There is no import prepare or commit implementation to use as an example.
 ### 9.3 Instrumentation boundary
 
 The runtime owns spans, observed data, and failure diagnostics. §4 owns confirmed task actions.
-There is no task-facing screenshot capture API.
+Browser read implementations declare `screenshots: "task"` to own their successful captures through
+`ctx.captureScreenshot(): Promise<void>`. This replaces generic successful-lease capture for those
+implementations. Task-point capture runs only when the envelope sets `captureBrowserScreenshots`
+to true; otherwise the call resolves without an action. The capability exposes no bytes or paths
+and cannot outlive its lease. Missing capability, unavailable capture, and persistence failures use
+`BROWSER_SCREENSHOT_CAPTURE_FAILED`.
+
+The worker persists task-point screenshots through `RunBrowserScreenshotCapture` as restricted
+diagnostic attachments. Logs joins each Screenshot action to its verified artifact reference.
+Existing failed-lease diagnostic screenshots remain independent of the option.
+`RunDiagnosticCapture.captureForFailure` separately associates diagnostic bundles with failure records.
 
 ## 10. Not built yet
 

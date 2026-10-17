@@ -31,7 +31,7 @@ const recordData = (input: DataPoint | readonly DataPoint[]): void => {
   }
 };
 
-const commonCtx = { signal, log, fail, recordData };
+const commonCtx = { captureScreenshot: async () => {}, signal, log, fail, recordData };
 
 const candidate = UcpathCandidateSchema.parse({
   emplId: "10873698",

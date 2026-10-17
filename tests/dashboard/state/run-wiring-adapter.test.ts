@@ -789,3 +789,30 @@ describe("served Logs wiring", () => {
     assert.equal(current?.snapshot?.logs.rows?.length, 0); assert.equal(pending[2].signal?.aborted, true);
   });
 });
+
+it("joins task screenshots by exact bundle, artifact, node, attempt and browser session", () => {
+  const sessionId = "20000000-0000-4000-8000-000000000001";
+  const initial = page();
+  const rows = initial.rows!.map(row => row.kind === "note" ? { ...row, note: { ...row.note, screenshot: { bundleId: NOTE, artifactId: OTHER, sessionId } } } : row);
+  const logs = NotePageSchema.parse({ ...initial, rows, notes: rows.flatMap(row => row.kind === "note" ? [row.note] : []), operationStructure: undefined });
+  const captures = RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId: RUN, artifacts: [{
+    artifact: { mediaKind: "image", mediaType: "image/png", artifactId: OTHER, sha256: "a".repeat(64), byteLength: 1, sensitivity: "restricted", redaction: "restricted-access", width: 1280, height: 720 },
+    origins: [{ bundleId: NOTE, originKind: "operator-request", capturedAt: AT, browserCapture: { nodeId: "first", attempt: 1, sessionId } }],
+  }] } });
+  const snapshot = { detail: detail(), logs, sections: [captures], actionEvidence: { state: "available" as const, events: [], missingPages: [] }, unavailableEvidence: [] };
+  const client = { artifactUrl: (id: string) => `/authority/${id}` };
+  const projected = projectRunLogs(snapshot, client);
+  assert.equal(projected.steps[0].title, "Screenshot");
+  const entry = projected.steps[0].entries.find(entry => entry.kind === "decision");
+  assert.ok(entry?.kind === "decision");
+  assert.deepEqual(entry.decision.screenshots?.map(shot => [shot.src, shot.width, shot.height]), [[`/authority/${OTHER}`, 1280, 720]]);
+  for (const patch of [{ bundleId: OTHER }, { artifactId: NOTE }, { sessionId: OTHER }]) {
+    const badRows = logs.rows!.map(row => row.kind === "note" ? { ...row, note: { ...row.note, screenshot: { ...row.note.screenshot!, ...patch } } } : row);
+    assert.throws(() => projectRunLogs({ ...snapshot, logs: NotePageSchema.parse({ ...logs, rows: badRows, notes: badRows.flatMap(row => row.kind === "note" ? [row.note] : []) }) }, client), /RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH/);
+  }
+  for (const patch of [{ nodeId: "cross-verify" }, { attempt: 2 }]) {
+    const badRows = logs.rows!.map(row => row.kind === "note" ? { ...row, native: { ...row.native!, ...patch }, note: { ...row.note, native: { ...row.note.native!, ...patch } } } : row);
+    assert.throws(() => projectRunLogs({ ...snapshot, logs: NotePageSchema.parse({ ...logs, rows: badRows, notes: badRows.flatMap(row => row.kind === "note" ? [row.note] : []) }) }, client), /RUN_LOG_(?:SCREENSHOT|NATIVE)_IDENTITY_MISMATCH/);
+  }
+  assert.throws(() => projectRunLogs({ ...snapshot, sections: [] }, client), /RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH/);
+});

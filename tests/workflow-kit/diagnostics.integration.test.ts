@@ -95,7 +95,7 @@ describe("worker browser sessions", () => {
     );
 
     assert.equal(screenshots, 2);
-    assert.deepEqual(captured.map(({ leaseOutcome }) => leaseOutcome), ["succeeded", "failed"]);
+    assert.deepEqual(captured.map(({ trigger }) => trigger), [{ kind: "lease-end", outcome: "succeeded" }, { kind: "lease-end", outcome: "failed" }]);
     assert.deepEqual(captured.map(({ system }) => system), ["ucpath", "ucpath"]);
   });
 });

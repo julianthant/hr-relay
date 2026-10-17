@@ -22,7 +22,7 @@ import {
   type SpanEventWire,
 } from "../../../models/events/types.js";
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
-import { deterministicUuid } from "../lifecycle/support.js";
+import { deterministicUuid, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DeclaredActionIdentitySchema } from "../../../models/workflow/operation-action-identity.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -299,8 +299,17 @@ function logRowOf(
   const identity = entry.kind === "note" ? entry.note : entry.event;
   const native = { eventId: entry.line.file.path.replace(/^timeline:/u, ""), order: entry.line.lineNumber,
     runId: identity.runId, attempt: identity.attempt, traceId: identity.traceId, spanPath: identity.spanPath,
-    ...(entry.kind === "note" ? (entry.note.action?.operation === undefined && entry.note.confirmedAction === undefined ? {} : { nodeId: entry.note.action?.operation?.nodeId ?? entry.note.confirmedAction?.action.nodeId }) : { nodeId: entry.producer.nodeId }) };
+    ...(entry.kind === "note" ? (entry.note.action?.operation === undefined && entry.note.confirmedAction === undefined && entry.note.action?.kind !== "screenshot" ? {} : { nodeId: entry.note.action?.operation?.nodeId ?? entry.note.confirmedAction?.action.nodeId ?? nodeIdOfTaskSpanPath(entry.note.spanPath) }) : { nodeId: entry.producer.nodeId }) };
   if (entry.kind === "note") {
+    let screenshot;
+    if (entry.note.action?.kind === "screenshot" && entry.note.action.targetId.endsWith(".task-capture")) {
+      const association = z.templateLiteral([z.uuid(), ":", z.uuid()]).safeParse(entry.note.action.value);
+      if (!association.success || entry.note.action.physicalSessionId === undefined || native.nodeId === undefined) {
+        throw new LogIdentityRefusedError("RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH");
+      }
+      const [bundleId, artifactId] = association.data.split(":");
+      screenshot = { bundleId, artifactId, sessionId: entry.note.action.physicalSessionId };
+    }
     return {
       kind: "note",
       native,
@@ -314,6 +323,7 @@ function logRowOf(
         at: entry.note.ts,
         level: LEVEL_MAP[entry.note.level],
         message: entry.note.message,
+        ...(screenshot === undefined ? {} : { screenshot }),
         ...(entry.note.fields === undefined ? {} : { fields: entry.note.fields }),
       },
     };

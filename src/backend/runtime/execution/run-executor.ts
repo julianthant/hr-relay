@@ -15,7 +15,7 @@ import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import { browserLoginFailure } from "../../systems/browser-shared/login-contract.js";
-import { TaskError, wrapUnhandledTaskError } from "../../../workflow-kit/errors.js";
+import { TaskError, taskErrorCause, wrapUnhandledTaskError } from "../../../workflow-kit/errors.js";
 import type { ProviderClient } from "../../../workflow-kit/providers.js";
 import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
@@ -33,6 +33,7 @@ import { createConfirmedInvocation } from "../../logs/confirmed-invocation.js";
 import { publishConfirmedSubmit } from "../../logs/confirmed-submit.js";
 import { drainBrowserActionNotes } from "../../logs/browser-action-drain.js";
 import { withBrowserActionBinding, withBrowserActionNotes, type BrowserAction, type BrowserActionBinder } from "../../systems/browser-shared/action-notes.js";
+import type { TaskId } from "../../../rules/identity/ids.js";
 import { GateIdSchema, IsoInstantSchema, NodeIdSchema, ProviderCapabilityIdSchema, TaskIdSchema } from "../../../rules/identity/ids.js";
 import type { Fingerprint, IsoInstant, NodeId, ProviderCapabilityId } from "../../../rules/identity/ids.js";
 import { RunLifecycleSchema, RunRecordSchema, runClaim, type RunLifecycle, type RunRecord } from "../../../models/run/record.js";
@@ -425,9 +426,15 @@ export async function executeClaimedRun(
     spanPath: runSpanPath(envelope.traceId),
   } as const;
 
-  const drainBrowserActions = (spanPath: string, actions: readonly BrowserAction[]): void => {
+  const drainBrowserActions = (spanPath: string, actions: readonly BrowserAction[], screenshotTaskId?: TaskId): void => {
     const sink = deps.taskNotes;
-    if (sink === undefined) return;
+    const screenshotFailures: unknown[] = [];
+    if (sink === undefined) {
+      if (screenshotTaskId !== undefined && actions.some(action => action.kind === "screenshot")) {
+        throw new TaskError(screenshotTaskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Screenshot action persistence is unavailable");
+      }
+      return;
+    }
     const address = { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath };
     drainBrowserActionNotes({ actions,
       emitAction: action => { sink.emitRunAction({
@@ -437,7 +444,13 @@ export async function executeClaimedRun(
         }, getRun()); },
       warn: () => deps.log.warn("browser action note could not be recorded"),
       publisher: deps.confirmedActionPublisher,
+      onFailure: (action, error) => { if (screenshotTaskId !== undefined && action.kind === "screenshot") screenshotFailures.push(error); },
     });
+    if (screenshotTaskId !== undefined && screenshotFailures.length > 0) {
+      throw new TaskError(screenshotTaskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Screenshot action could not be persisted", {
+        cause: new AggregateError(screenshotFailures, "Screenshot action persistence failed"),
+      });
+    }
   };
 
   const emit = (event: Readonly<Record<string, unknown>>): void => {
@@ -1172,18 +1185,22 @@ export async function executeClaimedRun(
           }
           raw = await (confirmedInvocation?.withNotes ?? ((operation, drain) => withBrowserActionNotes(clock, operation, drain)))(
             () => raceAbortable(
-              deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver) => raceAbortable(
+              deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver, captureScreenshot) => raceAbortable(
                 Promise.resolve().then(() => withBrowserActionBinding(
                   declaredActionBinder,
-                  () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver } }),
+                  () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver,
+                    captureScreenshot: task.impl.screenshots === "task" ? captureScreenshot : () => Promise.reject(new TaskError(
+                      contract.id, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Task screenshot capture requires declared task ownership",
+                    )),
+                  } }),
                 )),
                 controller.signal,
                 contract.id, retain,
-              )),
+              ), task.impl.screenshots === "task" ? { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt } : undefined),
               controller.signal,
               contract.id, retain,
             ),
-            (actions) => drainBrowserActions(spanPath, actions),
+            (actions) => drainBrowserActions(spanPath, actions, task.impl.screenshots === "task" ? contract.id : undefined),
           );
         }
       } finally {
@@ -1377,7 +1394,10 @@ export async function executeClaimedRun(
           }
           if (error instanceof RunAbandonedError) throw error;
           const loginFailure = browserLoginFailure(error);
-          const taskError = error instanceof TaskError ? error : loginFailure !== undefined
+          const nestedTaskError = taskErrorCause(error);
+          const taskError = error instanceof TaskError ? error : nestedTaskError?.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED"
+            ? new TaskError(contract.id, nestedTaskError.code, "The browser screenshot could not be captured or saved.", { cause: error })
+            : loginFailure !== undefined
             ? new TaskError(contract.id, loginFailure.code, loginFailure.message, { cause: error })
             : wrapUnhandledTaskError(contract.id, error);
           emit({
