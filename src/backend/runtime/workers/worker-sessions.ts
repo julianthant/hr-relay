@@ -1,3 +1,4 @@
+import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { mintWorkerControlClosure, type WorkerControlClosure } from "../../storage/sqlite/worker-control.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { WorkerLifecycleBindingSchema, WorkerResetBindingSchema, type WorkerLifecycleBinding, type WorkerResetBinding } from "../../../models/run/worker-control.js";
@@ -698,7 +699,7 @@ export class WorkerSessionManager {
                 try { await waitForAcquisition(starting, closing.signal, system); }
                 catch (error) {
                   if (error === timeout) throw error;
-                  if ((error instanceof AggregateError || error instanceof DuoCeremonyReleaseFailedError)
+                  if ((error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError)
                     && !this.#acquisitionCleanupFailures.has(system)) failures.push(error);
                 } finally {
                   handle.cancel();
@@ -859,7 +860,7 @@ export class WorkerSessionManager {
       return await started;
     } catch (error) {
       if (error instanceof DuoCeremonyReleaseFailedError
-        || error instanceof AggregateError && !this.#resources.has(need.system)) {
+        || error instanceof BrowserSessionClosureUnprovedError && !this.#resources.has(need.system)) {
         this.#acquisitionCleanupFailures.set(need.system, error);
       }
       throw error;

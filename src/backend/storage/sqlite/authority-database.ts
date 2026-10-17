@@ -3484,7 +3484,7 @@ export class AuthorityDatabase implements Disposable {
       } }),
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
       workerPools: this.#buildWorkerPoolRepository(),
-      workerSlots: createWorkerSlotRepository({ database: this.#database, mutate: work => this.#authorityWrite("worker_slots", () => {
+      workerSlots: createWorkerSlotRepository({ database: this.#database, admission: this.#admission, clock: this.#clock, mutate: work => this.#authorityWrite("worker_slots", () => {
         const outcome = work();
         if (outcome.changes > 0) this.#workerMembershipChanges.add(outcome.result.workflow);
         return outcome;

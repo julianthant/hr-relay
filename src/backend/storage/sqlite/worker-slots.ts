@@ -1,8 +1,12 @@
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
+import type { RuntimeAdmission } from "../admission/admission.js";
+import { createOrphanRetirementProof } from "./orphan-verification-proof.js";
+import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { lstatSync } from "node:fs";
 import { join } from "node:path";
 import { commandFromRow } from "./command-record-row.js";
 import { RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, readRuntimeProcessLock, observeProcessIdentity } from "./runtime-process-locks.js";
-import { WorkerStandingRecoveryRequestSchema, WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
+import { validateOrphanRetirementProof, WorkerStandingRecoveryRequestSchema, WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema, WorkerVerificationRecoveryProofSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
 import { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -12,6 +16,8 @@ import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema, WorkflowIdSchema } f
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 interface WorkerSlotPorts {
+  admission: RuntimeAdmission;
+  clock?: Clock;
   database: DatabaseSync;
   mutate(this: void, work: () => { result: WorkerSlotRecord; changes: number }): WorkerSlotRecord;
 }
@@ -47,8 +53,9 @@ export function verificationFromSlot(database: DatabaseSync, slot: WorkerSlotRec
   return { command, request, slot };
 }
 
-function requireVerificationCleanup(hold: NonNullable<ReturnType<typeof verificationFromSlot>>, request: z.infer<typeof WorkerVerificationRetirementRequestSchema>) {
+function requireVerificationCleanup(database: DatabaseSync, hold: NonNullable<ReturnType<typeof verificationFromSlot>>, request: z.infer<typeof WorkerVerificationRetirementRequestSchema>) {
   const { owner, processLockRoot, stateRoot } = hold.request;
+  if (request.cleanup.evidence === "orphan-retired") return;
   if (request.cleanup.mode === "live") {
     const current = readRuntimeProcessLock(processLockRoot, "live-smoke");
     const observed = observeProcessIdentity(owner.pid);
@@ -68,6 +75,30 @@ function requireVerificationCleanup(hold: NonNullable<ReturnType<typeof verifica
     return;
   }
   const claim = WorkerVerificationClaimSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root, `${owner.acquisitionId}.slot.json`).text));
+  const profileDirectory = join(stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers", `w${hold.slot.ordinal}`, claim.system);
+  if (request.cleanup.evidence === "recovered") {
+    const proof = WorkerVerificationRecoveryProofSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root,
+      `${owner.acquisitionId}-${request.cleanup.recoveryAcquisitionId}.recovered.json`).text));
+    const current = readRuntimeProcessLock(processLockRoot, "live-smoke");
+    const observed = current === undefined ? undefined : observeProcessIdentity(current.pid);
+    const row = database.prepare("SELECT payload_json FROM auth_leases WHERE credential_key=?").get(claim.credentialKey);
+    const lease = row === undefined ? undefined : DuoCeremonyLeaseRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json));
+    if (claim.profileRunId !== owner.acquisitionId
+      || request.cleanup.mode !== "recovery" || current?.pid !== process.pid || current.releasedAt !== null
+      || observed?.state !== "alive" || canonicalJsonStringify(observed.identity) !== canonicalJsonStringify(current.processIdentity)
+      || canonicalJsonStringify(proof.recoveryOwner) !== canonicalJsonStringify(current)
+      || proof.recoveryOwner.acquisitionId !== request.cleanup.recoveryAcquisitionId
+      || proof.acquisitionId !== owner.acquisitionId || proof.workerId !== hold.slot.workerId
+      || proof.membershipRevision !== hold.slot.membershipRevision || proof.checkedAt !== request.now
+      || Date.parse(proof.checkedAt) < Date.parse(hold.request.now) || Date.parse(proof.checkedAt) < Date.parse(current.acquiredAt)
+      || proof.claimFingerprint !== sha256Hex(canonicalJsonStringify(claim)) || proof.profileDirectory !== profileDirectory
+      || canonicalJsonStringify(claim.process) !== canonicalJsonStringify(owner)
+      || canonicalJsonStringify(claim.slot) !== canonicalJsonStringify(hold.slot)
+      || lease?.state !== "released" || lease.holder.workerId !== hold.slot.workerId || lease.holder.system !== claim.system
+      || lstatSync(profileDirectory, { throwIfNoEntry: false }) !== undefined
+      || lstatSync(join(root, "live-smoke-claims", `${owner.acquisitionId}.closed.json`), { throwIfNoEntry: false }) !== undefined) throw new Error("worker-verification-cleanup-unproved");
+    return;
+  }
   const proof = WorkerVerificationClosureProofSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root, `${owner.acquisitionId}.closed.json`).text));
   if (canonicalJsonStringify(claim.process) !== canonicalJsonStringify(owner)
     || canonicalJsonStringify(claim.slot) !== canonicalJsonStringify(hold.slot)
@@ -89,7 +120,7 @@ export function recoveryFromSlot(database: DatabaseSync, slot: WorkerSlotRecord)
   return { command, request, slot };
 }
 
-export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts) {
+export function createWorkerSlotRepository({ database, admission, clock = systemClock, mutate }: WorkerSlotPorts) {
   const get = (workerId: string) => { const row = database.prepare("SELECT * FROM worker_slots WHERE id=?").get(WorkerIdSchema.parse(workerId)); return row === undefined ? undefined : workerSlotFromRow(row); };
   const list = (workflow?: string) => (workflow === undefined ? database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all()
     : database.prepare("SELECT * FROM worker_slots WHERE workflow=? ORDER BY ordinal").all(WorkflowIdSchema.parse(workflow))).map(workerSlotFromRow);
@@ -97,7 +128,28 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
   const verifications = (workflow: string) => list(workflow).flatMap(slot => { const hold = verificationFromSlot(database, slot); return hold === undefined ? [] : [hold]; });
   const recovery = (workerId: string) => { const slot = get(workerId); return slot === undefined ? undefined : recoveryFromSlot(database, slot); };
   const recoveries = (workflow: string) => list(workflow).flatMap(slot => { const hold = recoveryFromSlot(database, slot); return hold === undefined ? [] : [hold]; });
-  return Object.freeze({ get, list, verification, verifications, recovery, recoveries,
+  const requireOrphanRetirement = (input: unknown) => {
+    const request = WorkerVerificationRetirementRequestSchema.parse(input);
+    if (request.cleanup.evidence !== "orphan-retired") return;
+    const hold = verification(request.workerId);
+    if (hold === undefined) throw new Error("worker-verification-authority-unavailable");
+    validateOrphanRetirementProof(request, hold.request, hold.slot);
+    const age = clock.nowMs() - Date.parse(request.now);
+    if (age < 0 || age > 30_000) throw new Error("orphan-verification-retirement-unproved");
+    const fresh = createOrphanRetirementProof(database, admission, hold.request, hold.slot, request.now);
+    if (clock.nowMs() - Date.parse(request.now) > 30_000
+      || canonicalJsonStringify(fresh) !== canonicalJsonStringify(request.cleanup.proof)) throw new Error("orphan-verification-retirement-unproved");
+  };
+  return Object.freeze({ get, list, verification, verifications, recovery, recoveries, requireOrphanRetirement,
+    planOrphanRetirement(input: unknown) {
+      const request = z.strictObject({ acquisitionId: z.uuid(), now: IsoInstantSchema }).parse(input);
+      const holds = list().flatMap(slot => { const hold = verificationFromSlot(database, slot); return hold?.request.owner.acquisitionId === request.acquisitionId ? [hold] : []; });
+      const hold = holds[0];
+      if (holds.length !== 1 || hold === undefined) throw new Error("worker-verification-authority-unavailable");
+      const proof = createOrphanRetirementProof(database, admission, hold.request, hold.slot, request.now);
+      const pool = z.object({ version: z.number().int().nonnegative() }).parse(database.prepare("SELECT version FROM worker_pools WHERE workflow=?").get(hold.slot.workflow));
+      return { hold, proof, poolVersion: pool.version };
+    },
     requireVerificationRetirements(workflow: string) {
       for (const slot of list(workflow)) {
         if (slot.retiredAt === null || slot.reservationCommandId === null) continue;
@@ -105,13 +157,20 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
         if (grantRow === undefined) throw new Error("worker-slot-reservation-authority-unavailable");
         const grant = commandFromRow(grantRow);
         if (!("kind" in grant) || grant.kind !== "run-lifecycle" || grant.operation !== "worker-verification-admission") continue;
-        const owner = WorkerVerificationAdmissionRequestSchema.parse(grant.request).owner;
+        const admissionRequest = WorkerVerificationAdmissionRequestSchema.parse(grant.request);
+        const owner = admissionRequest.owner;
         const rows = database.prepare("SELECT payload_json FROM command_audits WHERE command_id=?").all(slot.retirementCommandId);
         if (rows.length !== 1) throw new Error("worker-verification-retirement-unproved");
         const audit = RunLifecycleCommandAuditRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(rows[0]).payload_json));
         const retirementRow = database.prepare("SELECT * FROM commands WHERE id=?").get(slot.retirementCommandId);
         if (retirementRow === undefined || canonicalJsonStringify(commandFromRow(retirementRow)) !== canonicalJsonStringify(audit.request)) throw new Error("worker-verification-retirement-unproved");
         const retirement = WorkerVerificationRetirementRequestSchema.parse(audit.request.request);
+        if (retirement.cleanup.evidence === "orphan-retired") {
+          validateOrphanRetirementProof(retirement, admissionRequest, retirement.cleanup.proof.slot);
+          const original = retirement.cleanup.proof.slot;
+          if (canonicalJsonStringify({ ...original, membershipRevision: slot.membershipRevision, retiredAt: slot.retiredAt,
+            retirementCommandId: slot.retirementCommandId, updatedAt: slot.updatedAt }) !== canonicalJsonStringify(slot)) throw new Error("worker-verification-retirement-unproved");
+        }
         if (audit.request.operation !== "worker-verification-retirement" || audit.request.commandId !== slot.retirementCommandId
           || retirement.grantCommandId !== grant.commandId || retirement.workerId !== slot.workerId
           || retirement.expectedRevision + 1 !== slot.membershipRevision || retirement.cleanup.acquisitionId !== owner.acquisitionId
@@ -176,7 +235,8 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
           const pool = z.object({ version: z.number() }).parse(database.prepare("SELECT version FROM worker_pools WHERE workflow=?").get(current.workflow));
           if (retirement.now !== request.now || Number(pool.version) !== retirement.expectedPoolVersion
             || database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL").get(`worker-pool:${current.workflow}`) !== undefined) throw new Error("worker-verification-retirement-binding-mismatch");
-          requireVerificationCleanup(hold, retirement);
+          requireOrphanRetirement(retirement);
+          requireVerificationCleanup(database, hold, retirement);
           if (database.prepare("SELECT 1 FROM auth_leases WHERE holder_worker_id=? AND state='held'").get(current.workerId) !== undefined) throw new Error("worker-verification-duo-held");
         }
         if (current.membershipRevision !== request.expectedRevision) throw new Error("worker-slot-revision-conflict");
@@ -358,6 +418,7 @@ export function retireWorkerVerification(
   requireWorkerPoolRoster(repositories, hold.slot.workflow);
   const pool = repositories.workerPools.get(hold.slot.workflow);
   if (pool === undefined || Number(pool.version) !== request.expectedPoolVersion) throw new Error("worker-pool-version-conflict");
+  repositories.workerSlots.requireOrphanRetirement(request);
   repositories.lifecycleJournal.insertCommand(command);
   const slot = repositories.workerSlots.retire({ workerId: request.workerId, commandId: request.commandId,
     expectedRevision: request.expectedRevision, now: request.now });

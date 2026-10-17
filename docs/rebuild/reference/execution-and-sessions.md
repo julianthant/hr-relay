@@ -494,11 +494,70 @@ evidence reports unknown startup and requires reconciliation.
 
 The browser-login verifier reserves its temporary member through the native lifecycle journal's
 `worker-verification-admission` and `worker-verification-retirement` intents. Admission binds the
-actual live-smoke process acquisition. Its reservation excludes membership controls, claims and
-worker lease birth until browser closure, profile removal and Duo release are proved. An uncertain
+actual live-smoke process acquisition. New verifier profiles use that acquisition ID as their
+`profileRunId`; claim creation and profile admission require that exact binding. Its reservation
+excludes membership controls, claims and worker lease birth until browser closure, profile removal and Duo release are proved. An uncertain
 cleanup retains the member and reservation. Explicit recovery requires the original immutable
 process acquisition and release, a gone owner, and exact slot custody and closure evidence; it
 cannot adopt a PID or infer a member from a historical process-only claim.
+
+`--recover-owned-slot <acquisitionId>` repairs only the exact recorded reservation when its normal
+`.closed.json` proof is missing. It requires the immutable original claim and process release, a gone
+owner, unchanged native membership and roots, no unresolved controls, and the same worker/system's
+released Duo lease. On Darwin it freshly scans process arguments and open files for the derived
+system profile under the original acquisition ID, deletes only that profile through the
+owned-profile guards, then checks absence again. Query failure or uncertain ownership refuses recovery without retiring the reservation.
+
+`LIVE_SMOKE_RECOVERY_REFUSED` means required proof failed for the original claim, process release,
+owner death, native membership or roots, control absence, Duo release, or profile absence. The
+reservation remains in place. Missing-proof recovery refuses claims whose `profileRunId` differs
+from the original native acquisition ID, including profiles created with unrelated random IDs.
+It does not infer or rewrite their identity. Normal retirement with an existing closure proof
+retains its claim-based profile path.
+
+Recovery writes an exclusive `<originalAcquisition>-<recoveryAcquisition>.recovered.json` with current
+observations and binds it to the live recovery process and original claim fingerprint. Native
+retirement independently requires the claim profile ID to equal the original native acquisition ID
+and validates that selected proof and authority before committing. It never manufactures a
+normal closure proof. A failed retirement retains the claim and recovery evidence; a new recovery
+process can retry with fresh observations even when the profile is already absent. Successful
+retirement removes only the selected claim and current recovery proof; prior interrupted proofs and
+unrelated files remain. The global `--retire-owned-slots` path keeps its strict directory rules.
+
+`storage retire-orphan-verification --acquisition <original-acquisition-uuid> --plan` checks whether
+one exact reservation can be retired without binding or deleting its profile. Run the same command
+without `--plan` to append its retirement. Both modes hold exclusive offline installation admission,
+acquire no runtime process lock, and require the original acquisition and claim custody,
+a gone owner, no unresolved controls or live worker lease, no held runtime lock, and no held Duo
+lease anywhere. Failed or unknown checks refuse with `ORPHAN_VERIFICATION_RETIREMENT_REFUSED`
+before a lifecycle command is appended. An absent original release file is recorded as
+`ownerRelease: null`; it does not replace any owner-death or root-wide offline check. A present release
+must be safe, valid and bound to the original acquisition and time. Native retirement freshly
+rechecks the same observed release or absence before appending. Bound recovery still requires its
+original release file.
+
+On Darwin the command checks process arguments, open files and working directories across the entire
+`<stateRoot>/scratch/live-smoke` and `<stateRoot>/browsers` roots, including profiles whose IDs cannot
+be bound to the acquisition. The global open-file scan includes unlinked files and removed working
+directories; incomplete or malformed process/file records refuse. Unsafe paths or symlink escapes refuse. The command requires the
+ordinary browser root to be the admitted default: a custom root in saved settings or the active
+configuration refuses retirement. Settings and snapshots are authenticated through their ordinary
+storage readers; genuinely uninitialized settings are an explicit empty-override case.
+
+The appended cleanup arm is `mode: "offline", evidence: "orphan-retired"`. Its embedded proof binds
+the original native admission and slot, exact claim and file custody, roots, ordinary configuration
+and fingerprints, stopped runtime snapshot and current absence observations. Native retirement
+independently rechecks these conditions with live exclusive admission and proof age at most 30
+seconds. The historical reader validates the recorded bindings without requiring later runtime
+inactivity. Plan changes no journal, slot, pool or settings records. Execution appends the retirement
+command/audit and updates only its native slot and pool projections; claims and profile folders
+remain for a separate cleanup.
+
+The factory contract uses `BrowserSessionClosureUnprovedError` for an uncertain launch or failed
+setup cleanup. An ordinary login/diagnostic `AggregateError` with proved closure remains the primary
+operation failure and does not poison subsequent cleanup. Duo release and actual close failures
+continue to retain custody.
+
 
 ## Not built yet
 

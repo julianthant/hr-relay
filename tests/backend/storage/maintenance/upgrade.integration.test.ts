@@ -141,7 +141,7 @@ describe("stopped native upgrade admission",()=>{
    const pool=WorkerPoolRecordSchema.parse({workflow:"person-lookup",desiredWorkers:1,version:4,plannedBy:"local-operator",plannedAt:now,createdAt:now,updatedAt:now});
    raw.prepare("INSERT INTO worker_pools VALUES(?,?,?,?,?,?)").run(pool.workflow,pool.desiredWorkers,pool.version,canonicalJsonStringify(pool),now,now);
    insertNativeCommand(raw,{commandId,requestedAt:now,requestedBy:"local-operator",source:"dashboard",family:"worker-browser",type:"plan-worker-count",target:{workflowId:"person-lookup",expectedVersion:3},payload:{desiredWorkers:1}});
-   const slots=createWorkerSlotRepository({database:raw,mutate:work=>work().result});
+   const slots=createWorkerSlotRepository({database:raw,admission:f.admission,mutate:work=>work().result});
    const retired=slots.allocate({workflow:"person-lookup",poolIndex:1,commandId,now});
    const lease=WorkerLeaseRecordSchema.parse({workerId:retired.workerId,workflow:"person-lookup",browserSystems:[],processId:4100,leaseGeneration:1,controlRevision:2,version:3,control:{directive:"stop",requestedAt:now,requestedBy:"local-operator"},lifecycle:{state:"stopped",startedAt:now,stoppedAt:now,reason:"operator"},createdAt:now,updatedAt:now});
    raw.prepare("INSERT INTO worker_leases VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(lease.workerId,lease.workerId,lease.workflow,1,2,"stopped","stop",null,3,canonicalJsonStringify(lease),now,now);

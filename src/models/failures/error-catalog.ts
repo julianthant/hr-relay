@@ -161,6 +161,14 @@ export const ERROR_CATALOG = Object.freeze({
     "The UCSD training reminder appeared again after Continue Log In.",
     EmptyParametersSchema,
   ),
+  ORPHAN_VERIFICATION_RETIREMENT_REFUSED: catalogEntry(
+    "Relay couldn't safely retire an abandoned sign-in check, so close other Relay windows and try again.",
+    EmptyParametersSchema,
+  ),
+  LIVE_SMOKE_RECOVERY_REFUSED: catalogEntry(
+    "Relay couldn't safely clean up an abandoned sign-in check, so close other Relay windows and try again.",
+    EmptyParametersSchema,
+  ),
   DUO_TERMINAL_REFUSAL: catalogEntry(
     "Duo refused the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; this login is dead and the prompt will not clear on its own. The cause is almost never Duo hand-approval: it is a Duo Autopilot signCount regression, where this browser profile's stored counter has fallen behind the value Duo has already observed for the shared credential (a counter that does not advance is a cloned-key signal), which is what happens when any other profile using the same credential signed more recently. Check the extension's stored signCount before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs.",
     EmptyParametersSchema,
