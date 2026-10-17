@@ -90,10 +90,14 @@ export function createOrphanRetirementProof(database: DatabaseSync, admission: R
     || activeSnapshot !== null && activeSnapshot.config.paths.browserProfileRoot !== ordinaryRoot) refuse();
   const profileConfiguration = { settings, settingsFingerprint: derivePersistedSettingsFingerprint(settings), activeSnapshot };
   const original = RuntimeProcessLockFileSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(grant.processLockRoot, `${grant.owner.generation}.claim.json`).text));
-  const released = z.strictObject({ generation: z.number().int().positive(), acquisitionId: z.uuid(), releasedAt: IsoInstantSchema })
-    .parse(JSON.parse(readLiveSmokeRuntimeFile(grant.processLockRoot, `${grant.owner.generation}-${grant.owner.acquisitionId}.release.json`).text));
-  if (!same(original, grant.owner) || released.acquisitionId !== original.acquisitionId || released.generation !== original.generation
-    || Date.parse(released.releasedAt) < Date.parse(original.acquiredAt) || Date.parse(released.releasedAt) > Date.parse(now) || observeProcessIdentity(original.pid).state !== "gone") refuse();
+  const releaseName = `${grant.owner.generation}-${grant.owner.acquisitionId}.release.json`;
+  const releaseEntry = lstatSync(join(grant.processLockRoot, "live-smoke-claims", releaseName), { throwIfNoEntry: false });
+  const released = releaseEntry === undefined ? null
+    : z.strictObject({ generation: z.number().int().positive(), acquisitionId: z.uuid(), releasedAt: IsoInstantSchema })
+      .parse(JSON.parse(readLiveSmokeRuntimeFile(grant.processLockRoot, releaseName).text));
+  if (!same(original, grant.owner) || released !== null && (released.acquisitionId !== original.acquisitionId
+      || released.generation !== original.generation || Date.parse(released.releasedAt) < Date.parse(original.acquiredAt)
+      || Date.parse(released.releasedAt) > Date.parse(now)) || observeProcessIdentity(original.pid).state !== "gone") refuse();
   const record = readLiveSmokeRuntimeFile(join(grant.processLockRoot, "live-smoke-slots"), `${original.acquisitionId}.slot.json`);
   const claim = WorkerVerificationClaimSchema.parse(JSON.parse(record.text));
   const runtime = observeRuntimeLockSnapshot({ processLockRoot: grant.processLockRoot, sourceDatabaseIdentity: sha256Hex(canonicalJsonStringify(grant)) }, capturedInstantClock(now));

@@ -556,7 +556,7 @@ export const WorkerVerificationRecoveryProofSchema = z.strictObject({ acquisitio
 
 export const WorkerVerificationOrphanProofSchema = z.strictObject({
   admission: WorkerVerificationAdmissionRequestSchema, slot: WorkerSlotRecordSchema,
-  ownerRelease: z.strictObject({ generation: PositiveIntSchema, acquisitionId: z.uuid(), releasedAt: IsoInstantSchema }),
+  ownerRelease: z.strictObject({ generation: PositiveIntSchema, acquisitionId: z.uuid(), releasedAt: IsoInstantSchema }).nullable(),
   claim: WorkerVerificationClaimSchema,
   claimCustody: z.strictObject({ dev: z.number().int().nonnegative(), ino: z.number().int().nonnegative(),
     size: z.number().int().nonnegative(), mtimeMs: z.number().nonnegative() }),
@@ -587,9 +587,10 @@ export function validateOrphanRetirementProof(request: z.infer<typeof WorkerVeri
   const proof = request.cleanup.proof;
   if (!same(proof.admission, grant) || !same(proof.slot, slot)
     || grant.commandId !== request.grantCommandId || grant.owner.acquisitionId !== request.cleanup.acquisitionId
-    || proof.ownerRelease.generation !== grant.owner.generation || proof.ownerRelease.acquisitionId !== grant.owner.acquisitionId
-    || Date.parse(proof.ownerRelease.releasedAt) < Date.parse(grant.owner.acquiredAt)
-    || Date.parse(proof.ownerRelease.releasedAt) > Date.parse(request.now)
+    || proof.ownerRelease !== null && (proof.ownerRelease.generation !== grant.owner.generation
+      || proof.ownerRelease.acquisitionId !== grant.owner.acquisitionId
+      || Date.parse(proof.ownerRelease.releasedAt) < Date.parse(grant.owner.acquiredAt)
+      || Date.parse(proof.ownerRelease.releasedAt) > Date.parse(request.now))
     || proof.claim.process.acquisitionId !== grant.owner.acquisitionId || !same(proof.claim.process, grant.owner)
     || !same(proof.claim.slot, slot) || request.workerId !== slot.workerId || request.expectedRevision !== slot.membershipRevision
     || slot.reservationCommandId !== grant.commandId || slot.workflow !== grant.workflow

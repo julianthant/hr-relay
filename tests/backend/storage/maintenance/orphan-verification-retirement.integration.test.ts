@@ -8,7 +8,7 @@ import { WorkerVerificationRetirementRequestSchema } from "../../../../src/backe
 import * as childProcess from "node:child_process";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,7 @@ beforeEach(() => {
 });
 
 const nativeObserveProcessIdentity = locks.observeProcessIdentity;
+const nativeObserveRuntimeLockSnapshot = locks.observeRuntimeLockSnapshot;
 const cleanups: (() => void)[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0)) cleanup(); });
 
@@ -67,12 +68,14 @@ function fixture() {
   for (const profile of profiles) { mkdirSync(profile, { recursive: true, mode: 0o700 }); writeFileSync(join(profile, "retain"), "unchanged"); }
   original.release();
   vi.spyOn(locks, "observeProcessIdentity").mockReturnValue({ state: "gone" });
+  vi.spyOn(locks, "observeRuntimeLockSnapshot").mockImplementation((input, selectedClock, hooks) =>
+    nativeObserveRuntimeLockSnapshot(input, selectedClock, { ...hooks, observeProcessIdentity: locks.observeProcessIdentity }));
   const invoke = (plan = false, selectedAdmission = admission, extra: string[] = []) => composeStorageCommand(rebuildRuntimeIsolation,
     ["retire-orphan-verification", "--acquisition", owner.acquisitionId, ...(plan ? ["--plan"] : []), "--json", ...extra], clock, workspace, selectedAdmission);
   const snapshot = () => ({ generation: database.getMeta().authorityGeneration, slot: database.authority.workerSlots.get(slot.workerId), pool: database.authority.workerPools.get(slot.workflow) });
   const retained = () => { for (const profile of profiles) expect(readFileSync(join(profile, "retain"), "utf8")).toBe("unchanged"); expect(existsSync(claimPath)).toBe(true); };
   cleanups.push(() => { database.close(); admission.release(); rmSync(workspace, { recursive: true, force: true }); });
-  return { workspace, stateRoot, admission, clock, database, processLockRoot, owner, slot: claim.slot, peer, credentialKey, claimPath, profileRoots, profiles, invoke, snapshot, retained };
+  return { workspace, stateRoot, admission, clock, database, processLockRoot, owner, releasePath: join(processLockRoot, "live-smoke-claims", `${owner.generation}-${owner.acquisitionId}.release.json`), slot: claim.slot, peer, credentialKey, claimPath, profileRoots, profiles, invoke, snapshot, retained };
 }
 
 async function refuses(f: ReturnType<typeof fixture>, plan = false) {
@@ -107,6 +110,69 @@ describe("offline orphan verification retirement", () => {
     expect(command).toMatchObject({ operation: "worker-verification-retirement", request: { cleanup: { evidence: "orphan-retired", mode: "offline", proof: { profileRoots: f.profileRoots } } } });
     expect(() => f.database.authority.workerSlots.requireVerificationRetirements(f.slot.workflow)).not.toThrow();
     f.retained();
+  });
+
+  it("retires with genuinely absent original release and records observed absence", async () => {
+    const f = fixture();
+    unlinkSync(f.releasePath);
+    const before = f.snapshot();
+    const plan = await f.invoke(true);
+    expect(plan.exitCode, plan.output).toBe(0);
+    expect(f.snapshot()).toEqual(before);
+    const result = await f.invoke();
+    expect(result.exitCode, result.output).toBe(0);
+    const commandId = f.database.authority.workerSlots.get(f.slot.workerId)?.retirementCommandId;
+    expect(f.database.authority.lifecycleJournal.getCommand(String(commandId))).toMatchObject({
+      request: { cleanup: { evidence: "orphan-retired", proof: { ownerRelease: null } } },
+    });
+    expect(() => f.database.authority.workerSlots.requireVerificationRetirements(f.slot.workflow)).not.toThrow();
+    expect(existsSync(f.releasePath)).toBe(false);
+    f.retained();
+  });
+
+  it.each(["appeared", "disappeared"] as const)("native retirement rejects changed release presence: %s", async change => {
+    const f = fixture();
+    const releaseBytes = readFileSync(f.releasePath);
+    if (change === "appeared") unlinkSync(f.releasePath);
+    const proof = f.database.authority.workerSlots.planOrphanRetirement({ acquisitionId: f.owner.acquisitionId,
+      now: f.clock.now().toISOString() }).proof;
+    expect(proof.ownerRelease === null).toBe(change === "appeared");
+    if (change === "appeared") writeFileSync(f.releasePath, releaseBytes, { mode: 0o600 });
+    else unlinkSync(f.releasePath);
+    const before = f.snapshot();
+    expect(() => f.database.withAuthorityTransaction(repositories => retireWorkerVerification(repositories, {
+      commandId: randomUUID(), grantCommandId: f.slot.reservationCommandId, workerId: f.slot.workerId,
+      expectedRevision: f.slot.membershipRevision, expectedPoolVersion: repositories.workerPools.get(f.slot.workflow)?.version,
+      now: f.clock.now().toISOString(), cleanup: { acquisitionId: f.owner.acquisitionId, mode: "offline", evidence: "orphan-retired", proof },
+    }, randomUUID()))).toThrow();
+    expect(f.snapshot()).toEqual(before);
+    f.retained();
+  });
+
+  it.each(["alive-owner", "unknown-owner", "duo-held", "open-file"] as const)("absent release still refuses %s without mutation", async failure => {
+    const f = fixture();
+    unlinkSync(f.releasePath);
+    let fd: number | undefined;
+    if (failure === "alive-owner") vi.mocked(locks.observeProcessIdentity).mockReturnValue({ state: "alive", identity: f.owner.processIdentity });
+    if (failure === "unknown-owner") vi.mocked(locks.observeProcessIdentity).mockImplementation(() => { throw new Error("fixture owner unknown"); });
+    if (failure === "duo-held") f.database.authority.duoCeremonyLeases.acquire({ credentialKey: f.credentialKey, workerId: f.slot.workerId,
+      system: "ucpath", now: f.clock.now().toISOString(), ttlMs: 60_000 });
+    if (failure === "open-file") {
+      vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
+      const profile = f.profiles[0];
+      if (profile === undefined) throw new Error("fixture profile missing");
+      fd = openSync(join(profile, "held"), "w");
+    }
+    try { await refuses(f); } finally { if (fd !== undefined) closeSync(fd); }
+  });
+
+  it.each(["malformed", "unsafe", "symlink", "directory"] as const)("refuses a present %s original release", async failure => {
+    const f = fixture();
+    if (failure === "malformed") writeFileSync(f.releasePath, "{invalid");
+    if (failure === "unsafe") chmodSync(f.releasePath, 0o644);
+    if (failure === "symlink") { unlinkSync(f.releasePath); symlinkSync(f.claimPath, f.releasePath); }
+    if (failure === "directory") { unlinkSync(f.releasePath); mkdirSync(f.releasePath); }
+    await refuses(f);
   });
 
   it.each([false, true])("refuses an unknown owner without mutation (plan=%s)", async plan => {

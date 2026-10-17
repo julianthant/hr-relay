@@ -527,10 +527,14 @@ unrelated files remain. The global `--retire-owned-slots` path keeps its strict 
 `storage retire-orphan-verification --acquisition <original-acquisition-uuid> --plan` checks whether
 one exact reservation can be retired without binding or deleting its profile. Run the same command
 without `--plan` to append its retirement. Both modes hold exclusive offline installation admission,
-acquire no runtime process lock, and require the original acquisition/release and claim custody,
+acquire no runtime process lock, and require the original acquisition and claim custody,
 a gone owner, no unresolved controls or live worker lease, no held runtime lock, and no held Duo
 lease anywhere. Failed or unknown checks refuse with `ORPHAN_VERIFICATION_RETIREMENT_REFUSED`
-before a lifecycle command is appended.
+before a lifecycle command is appended. An absent original release file is recorded as
+`ownerRelease: null`; it does not replace any owner-death or root-wide offline check. A present release
+must be safe, valid and bound to the original acquisition and time. Native retirement freshly
+rechecks the same observed release or absence before appending. Bound recovery still requires its
+original release file.
 
 On Darwin the command checks process arguments, open files and working directories across the entire
 `<stateRoot>/scratch/live-smoke` and `<stateRoot>/browsers` roots, including profiles whose IDs cannot
