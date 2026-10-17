@@ -39,6 +39,35 @@ describe("CRM discovery cause diagnostics", () => {
     error.name = "TimeoutError";
     assert.deepEqual(await failure(error), [{ message: "CRM check cause", fields: { errorName: "TimeoutError", errorMessage: 'locator.waitFor: Timeout 30000ms exceeded. CRM record field "Date Signed"' } }]);
   });
+  it("keeps static fields from Playwright serialized exact-label regex timeouts", async () => {
+    for (const [field, serialized] of [
+      ["Department", String.raw`/^\s*Department\s*$/u`],
+      ["First Day of Service (Effective Date)", String.raw`/^\s*First Day of Service \(Effective Date\)\s*$/u`],
+    ]) {
+      const error = new Error(`locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n - waiting for locator('th').filter({ hasText: ${serialized} }).locator('xpath=following-sibling::td[1]')\n - locator resolved to <td>Private Person 10000001</td>`);
+      error.name = "TimeoutError";
+      assert.deepEqual(await failure(error), [{ message: "CRM check cause", fields: { errorName: "TimeoutError", errorMessage: `locator.waitFor: Timeout 30000ms exceeded. CRM record field "${field}"` } }]);
+    }
+  });
+  it("keeps date field and rejection reason while withholding the entire raw value", async () => {
+    for (const field of ["First Day of Service", "Date Signed"]) {
+      for (const reason of ["not M/D/YYYY with an optional time", "not a real calendar date"]) {
+        const raw = 'Private Person 10000001 2/30/2026 "extra" https://example.com/?id=10000001 password=secret';
+        assert.deepEqual(await failure(new Error(`CRM ${field} date "${raw}" is ${reason}`)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: `CRM ${field} date "[withheld]" is ${reason}` } }]);
+      }
+    }
+  });
+  it("retains only complete structural search-shape messages", async () => {
+    for (const message of [
+      "CRM search row 0 had 4 direct cells; expected exactly 5",
+      "CRM search row 1 had 2 record links; expected exactly one",
+      "CRM search row 2 record link had no href",
+      "CRM zero-result search expected one verified empty-state heading but found 2",
+    ]) {
+      assert.deepEqual(await failure(new Error(message)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: message } }]);
+      assert.deepEqual(await failure(new Error(`${message} Private Person 10000001`)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: "Unrecognized driver error detail withheld" } }]);
+    }
+  });
   it("withholds arbitrary messages and error names including identity, dates, URLs and credentials", async () => {
     const error = new Error("Private Person 10000001 07/01/2026 <td>secret</td> https://example.com/?id=10000001 password=secret");
     error.name = "Private Person 10000001";

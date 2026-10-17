@@ -11,6 +11,7 @@ function crmCauseDiagnostic(error: unknown): Readonly<{ errorName: string; error
   const message = error.message;
   const field = RECORD_FIELDS.find(label => [
     `CRM record field "${label}"`, `hasText: '${label}'`, `hasText: "${label}"`,
+    `hasText: /^\\s*${label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*$/u`,
   ].some(fragment => message.includes(fragment)));
   if (field !== undefined) {
     const prefix = `CRM record field "${field}"`;
@@ -19,9 +20,11 @@ function crmCauseDiagnostic(error: unknown): Readonly<{ errorName: string; error
       return { errorName, errorMessage: message };
     }
   }
+  const date = /^CRM (First Day of Service|Date Signed) date "[\s\S]*" is (not M\/D\/YYYY with an optional time|not a real calendar date)$/u.exec(message);
+  if (date !== null) return { errorName, errorMessage: `CRM ${date[1]} date "[withheld]" is ${date[2]}` };
   const timeout = /^(locator\.(?:waitFor|textContent|count|getAttribute)|page\.goto): Timeout (\d+)ms exceeded\./u.exec(message);
   if (timeout !== null) return { errorName, errorMessage: `${timeout[1]}: Timeout ${timeout[2]}ms exceeded.${field === undefined ? "" : ` CRM record field "${field}"`}` };
-  if (/^CRM (?:discovery results changed before capture|search rendered data rows and the no-results state simultaneously|search rendered more than one auxiliary two-cell row)$/u.test(message)) {
+  if (/^CRM (?:discovery results changed before capture|search rendered data rows and the no-results state simultaneously|search rendered more than one auxiliary two-cell row|search row \d+ (?:had \d+ direct cells; expected exactly 5|had \d+ record links; expected exactly one|record link had no href)|zero-result search expected one verified empty-state heading but found \d+)$/u.test(message)) {
     return { errorName, errorMessage: message };
   }
   return { errorName, errorMessage: "Unrecognized driver error detail withheld" };
