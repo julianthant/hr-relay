@@ -18,11 +18,12 @@ describe("registered dry-run scenario manifests", () => {
     const scenario = manifest.cases[0]; assert.ok(scenario);
     assert.equal(scenario.subjectKind, "search-by-eid");
     assert.deepEqual(scenario.nodesReached, ["searching", "search-identity", "cross-verify", "crm-identity", "crm-selected-record", "active-status"]);
-    assert.deepEqual(scenario.nodesExcluded, ["matching", "crm-only-recovery", "crm-dates"]);
+    assert.deepEqual(scenario.nodesExcluded, ["matching", "crm-results", "crm-only-recovery", "crm-dates"]);
     assert.deepEqual([...scenario.nodesReached, ...scenario.nodesExcluded].sort(), personLookupDescriptor.nodes.map(node => node.id).sort());
     assert.equal(personLookupDescriptor.nodes.some(node => node.kind === "transaction" || node.kind === "gate"), false);
     assert.deepEqual(scenario.checkpoints, scenario.nodesReached.map(node => ({ node, attempt: 1, keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] })));
     assert.deepEqual(scenario.gateResults, []);
+    assert.deepEqual(scenario.screenshots, { nodes: ["searching", "crm-selected-record"] });
     assert.deepEqual(scenario.durableDeltas, { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 });
     assert.deepEqual(scenario.terminal, { lifecycle: "done", resultSchema: "workflow-result", kind: "live-read" });
     assert.equal(scenario.receipt.result, "verified-done");
@@ -34,6 +35,7 @@ describe("registered dry-run scenario manifests", () => {
       { obligation: "node.cross-verify", verdict: "verified", mandatory: false },
       { obligation: "node.crm-identity", verdict: "verified", mandatory: true },
       { obligation: "node.crm-selected-record", verdict: "verified", mandatory: true },
+      { obligation: "node.crm-results", verdict: "absent", mandatory: false },
       { obligation: "node.crm-only-recovery", verdict: "unknown", mandatory: false },
       { obligation: "node.active-status", verdict: "verified", mandatory: true },
       { obligation: "node.crm-dates", verdict: "absent", mandatory: false },

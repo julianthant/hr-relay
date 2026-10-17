@@ -33,7 +33,7 @@ import { RunDryRunPreviewResultSchema } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../rules/separations/identity-approval.js";
 import type { DryRunScenarioAnyCase } from "../../../models/trust/dry-run-scenario.js";
-import { SpanEventWireSchema } from "../../../models/events/types.js";
+import { NoteWireSchema, SpanEventWireSchema } from "../../../models/events/types.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
@@ -46,6 +46,11 @@ import { createTrustRunReader } from "../../runs/trust/canonical-reader.js";
 import { requireTrustRun, assertTrustEvidenceIdentity } from "../../runs/trust/run-reader.js";
 import { createReceiptService } from "../../runs/trust/receipt-service.js";
 import { composeWorkerRuntime } from "../composition/worker-compose.js";
+
+import { createServerVerifiedArtifactReader } from "../../storage/artifacts/server-verified-artifact-reader.js";
+import { readRunCaptureSection } from "../../runs/queries/run-captures.js";
+import { nodeIdOfTaskSpanPath } from "../../runs/lifecycle/support.js";
+import { LogIdentityRefusedError } from "../../runs/commands/refusals.js";
 
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
@@ -354,6 +359,7 @@ export function createProductionDryRunScenarioRuntime(
             submissions: [request.canonicalInput],
             dryRun,
             priority: "interactive",
+            captureBrowserScreenshots: request.scenarioCase.screenshots !== undefined,
 
             browserMode: resolved.config.browser.headless ? "headless" : "headed",
           });
@@ -557,6 +563,35 @@ export function createProductionDryRunScenarioRuntime(
             mandatory,
           })),
         };
+        const screenshots = expected.screenshots === undefined ? undefined : await (async () => {
+          const artifactReader = createServerVerifiedArtifactReader({ admission });
+          await artifactReader.ready;
+          const captures = await readRunCaptureSection({ runReader,
+            captures: { authority: database.authority.diagnosticBundles, artifactReader } }, runId);
+          if (captures.section !== "captures") throw new Error("scenario capture query returned a different section");
+          return readTimelineRecords(database.authority.timelineEvents, 0, runId).records.flatMap(record => {
+            if (record.payload.kind !== "note") return [];
+            const note = NoteWireSchema.parse(record.payload.note);
+            if (note.action?.kind !== "screenshot" || !note.action.targetId.endsWith(".task-capture")) return [];
+            const association = z.templateLiteral([z.uuid(), ":", z.uuid()]).safeParse(note.action.value);
+            const node = nodeIdOfTaskSpanPath(note.spanPath);
+            if (!("runId" in note) || note.runId !== runId || note.workflow !== run.envelope.workflow
+              || record.workflow !== run.envelope.workflow || note.traceId !== run.envelope.traceId
+              || note.attempt !== run.envelope.attempt || node === undefined || !association.success
+              || note.action.physicalSessionId === undefined) {
+              throw new LogIdentityRefusedError("RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH");
+            }
+            const [bundleId, artifactId] = association.data.split(":");
+            const artifact = captures.payload.artifacts.find(capture => capture.artifact.artifactId === artifactId);
+            const origins = artifact?.origins.filter(origin => origin.bundleId === bundleId
+              && origin.browserCapture?.nodeId === node && origin.browserCapture.attempt === note.attempt
+              && origin.browserCapture.sessionId === note.action?.physicalSessionId);
+            if (artifact?.artifact.mediaKind !== "image" || origins?.length !== 1) {
+              throw new LogIdentityRefusedError("RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH");
+            }
+            return [{ node, attempt: note.attempt, sessionId: note.action.physicalSessionId, bundleId, artifactId }];
+          });
+        })();
         const common = {
           reachedNodeIds: reachedNodes(
             database,
@@ -569,6 +604,7 @@ export function createProductionDryRunScenarioRuntime(
           gateResults,
           writeSafetyAfter: database.authority.writeIntents.countDryRunEvidenceByRun(runId),
           receipt: receiptEvidence,
+          ...(screenshots === undefined ? {} : { screenshots }),
         };
         if (run.lifecycle.outcome === "failed") {
           if (failure?.nodeId === undefined) {

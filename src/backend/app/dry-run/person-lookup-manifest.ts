@@ -8,8 +8,9 @@ export const PERSON_LOOKUP_LIVE_READ = parseDryRunScenarioManifest({
   cases: [{
     caseId: "search-by-eid", subjectLabel: "person-lookup-canary", subjectKind: "search-by-eid",
     why: "Resolve the admitted current EID in UCPath, verify CRM identity and fold employment status without creating any transaction",
-    nodesReached: reached, nodesExcluded: ["matching", "crm-only-recovery", "crm-dates"],
+    nodesReached: reached, nodesExcluded: ["matching", "crm-results", "crm-only-recovery", "crm-dates"],
     checkpoints: reached.map((node) => ({ node, attempt: 1, keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] })),
+    screenshots: { nodes: ["searching", "crm-selected-record"] },
     gateResults: [], durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
     receipt: { result: "verified-done", confidence: "verified", verification: [
       { obligation: "node.searching", verdict: "verified", mandatory: false },
@@ -18,6 +19,7 @@ export const PERSON_LOOKUP_LIVE_READ = parseDryRunScenarioManifest({
       { obligation: "node.cross-verify", verdict: "verified", mandatory: false },
       { obligation: "node.crm-identity", verdict: "verified", mandatory: true },
       { obligation: "node.crm-selected-record", verdict: "verified", mandatory: true },
+      { obligation: "node.crm-results", verdict: "absent", mandatory: false },
       { obligation: "node.crm-only-recovery", verdict: "unknown", mandatory: false },
       { obligation: "node.active-status", verdict: "verified", mandatory: true },
       { obligation: "node.crm-dates", verdict: "absent", mandatory: false },

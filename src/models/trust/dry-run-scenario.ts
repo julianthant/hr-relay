@@ -121,6 +121,10 @@ const CaseIdentityFields = {
   nodesExcluded: z.array(NodeIdSchema),
   checkpoints: z.array(DryRunCheckpointExpectationSchema),
   gateResults: z.array(DryRunGateExpectationSchema),
+  screenshots: z.strictObject({
+    nodes: z.array(NodeIdSchema).min(1).refine(nodes => new Set(nodes).size === nodes.length,
+      "screenshot nodes must be unique and ordered"),
+  }).optional(),
     /* The positive no-write proof, as an exact zero delta over the three write-authority tables; both arms carry it, because a preview mints no intent and a live read has none to mint. */
   durableDeltas: z.strictObject({
     writeIntents: z.literal(0),

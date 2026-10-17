@@ -2,6 +2,7 @@ import { createDryRunScenarioFixtures } from "../../../support/helpers/dry-run-s
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { evaluateDryRunScenarioEvidence, parseDryRunScenarioArguments, runDryRunScenario } from "../../../../src/backend/runs/start/dry-run-scenario-runner.js";
+import { DiagnosticBundleBytesMissingError } from "../../../../src/backend/runs/commands/refusals.js";
 import type { DryRunScenarioResult } from "../../../../src/models/trust/dry-run-scenario-result.js";
 import {
 parseDryRunScenarioManifest
@@ -513,5 +514,60 @@ describe("dry-run scenario evidence assertions", () => {
     assert.deepEqual(outcomes.filter(({ verdict }) => verdict === "failed").map(({ assertionId }) => assertionId), [
       "terminal",
     ]);
+  });
+});
+
+
+describe("scenario task-point screenshots", () => {
+  const base = GATED_MANIFEST.cases[0];
+  const scenarioCase = parseDryRunScenarioManifest({ ...GATED_MANIFEST,
+    cases: [{ ...base, screenshots: { nodes: ["read"] } }] }).cases[0];
+  assert.ok(scenarioCase);
+  const before = { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 };
+  const capture = { node: "read", attempt: 1, sessionId: "11111111-1111-4111-8111-111111111111",
+    bundleId: "22222222-2222-4222-8222-222222222222", artifactId: "33333333-3333-4333-8333-333333333333" };
+
+  it("requires a screenshot assertion when the opted case has no action evidence", () => {
+    const assertions = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before, READY_EVIDENCE);
+    assert.equal(assertions.find(row => row.assertionId === "screenshot-actions")?.verdict, "failed");
+  });
+
+  it.each([
+    { name: "exact", captures: [capture], verdict: "met" },
+    { name: "missing", captures: [], verdict: "failed" },
+    { name: "extra", captures: [capture, { ...capture, node: "write" }], verdict: "failed" },
+    { name: "duplicate", captures: [capture, capture], verdict: "failed" },
+    { name: "wrong node", captures: [{ ...capture, node: "write" }], verdict: "failed" },
+    { name: "wrong attempt", captures: [{ ...capture, attempt: 2 }], verdict: "failed" },
+  ])("checks $name persisted task-point actions", ({ captures, verdict }) => {
+    const assertions = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before,
+      { ...READY_EVIDENCE, screenshots: captures });
+    assert.equal(assertions.find(row => row.assertionId === "screenshot-actions")?.verdict, verdict);
+  });
+
+  it("persists a failed scenario result and retains the named capture-evidence failure", async () => {
+    const records: DryRunScenarioResult[] = [];
+    const failure = new DiagnosticBundleBytesMissingError("fixture capture bytes unavailable");
+    await assert.rejects(runDryRunScenario({
+      args: { workflow: GATED_MANIFEST.workflow, subjectLabel: scenarioCase.subjectLabel },
+      loadManifest: () => Promise.resolve({ ...GATED_MANIFEST, cases: [scenarioCase] }),
+      resolveTarget: () => ({ state: "ready", label: scenarioCase.subjectLabel, canonicalInput: {} }),
+      persistResult: result => { records.push(result); },
+      createRuntime: () => ({
+        start: () => Promise.resolve({ runId: "11111111-1111-4111-8111-111111111111", traceId: "fx-180000-1111", writeSafetyBefore: before }),
+        drain: () => Promise.resolve(), resolveGate: () => Promise.resolve(),
+        collectEvidence: () => Promise.reject(failure),
+      }), clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+      ids: { uuid: () => "22222222-2222-4222-8222-222222222222" },
+    }), error => error instanceof Error && error.cause === failure);
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.verdict, "failed");
+    assert.deepEqual(records[0]?.assertions, [{ assertionId: "runner-execution", verdict: "failed", reason: "execution-error" }]);
+  });
+
+  it("refuses repeated expected nodes and binds screenshot expectations into the manifest", () => {
+    assert.doesNotThrow(() => parseDryRunScenarioManifest({ ...GATED_MANIFEST, cases: [scenarioCase] }));
+    assert.throws(() => parseDryRunScenarioManifest({ ...GATED_MANIFEST,
+      cases: [{ ...scenarioCase, screenshots: { nodes: ["read", "read"] } }] }));
   });
 });

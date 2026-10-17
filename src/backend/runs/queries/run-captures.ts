@@ -21,6 +21,8 @@ import { VerifiedArtifactOperationalError } from "../../storage/artifacts/server
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
 import { requireTrustRun } from "../trust/run-reader.js";
 
+type RunCaptureQueryDeps = Pick<RunDetailQueryDeps, "runReader" | "captures">;
+
 interface VerifiedRunCaptures {
   readonly state: "available";
   readonly artifacts: readonly RunCaptureArtifactWire[];
@@ -65,7 +67,7 @@ function captureArtifactRef(runId: string, attachment: DiagnosticBundle["attachm
 }
 
 async function verifyRunCaptures(
-  deps: RunDetailQueryDeps,
+  deps: RunCaptureQueryDeps,
   runId: string,
   signal?: AbortSignal,
 ): Promise<RunCaptureInspection> {
@@ -140,7 +142,7 @@ async function verifyRunCaptures(
 
 /** Verify initial capture availability, preserving named capture failures on the detail wire. */
 export async function readRunCaptureAvailability(
-  deps: RunDetailQueryDeps,
+  deps: RunCaptureQueryDeps,
   runId: string,
   signal?: AbortSignal,
 ): Promise<RunCaptureAvailabilityWire> {
@@ -171,7 +173,7 @@ export async function readRunCaptureAvailability(
 }
 
 /** Read one capture section through its trust-owned admission and verification. */
-export async function readRunCaptureSection(deps:RunDetailQueryDeps,runId:string,signal?:AbortSignal):Promise<RunDetailSectionResponse> {
+export async function readRunCaptureSection(deps:RunCaptureQueryDeps,runId:string,signal?:AbortSignal):Promise<RunDetailSectionResponse> {
   requireTrustRun(deps.runReader, runId);
   const inspected = await verifyRunCaptures(deps, runId, signal);
   requireTrustRun(deps.runReader, runId);

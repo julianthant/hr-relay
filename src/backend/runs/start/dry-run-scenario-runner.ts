@@ -111,6 +111,13 @@ export const DryRunScenarioEvidenceSchema = z.strictObject({
   checkpoints: z.array(EvidenceCheckpointSchema),
   gateResults: z.array(EvidenceGateResultSchema),
   writeSafetyAfter: DryRunWriteSafetyCountsSchema,
+  screenshots: z.array(z.strictObject({
+    node: NodeIdSchema,
+    attempt: z.number().int().positive(),
+    sessionId: z.uuid(),
+    bundleId: z.uuid(),
+    artifactId: z.uuid(),
+  })).optional(),
   receipt: EvidenceReceiptSchema,
   terminal: EvidenceTerminalSchema,
 });
@@ -238,6 +245,13 @@ export function evaluateDryRunScenarioEvidence(
     && evidence.terminal.node === scenarioCase.terminal.node
     && evidence.terminal.fingerprint === scenarioCase.terminal.fingerprint;
 
+  const screenshots = scenarioCase.screenshots === undefined ? [] : [assertion("screenshot-actions",
+    evidence.screenshots !== undefined
+      && same(evidence.screenshots.map(row => row.node), scenarioCase.screenshots.nodes)
+      && evidence.screenshots.every(row => expectedCheckpoints.some(checkpoint => checkpoint.node === row.node && checkpoint.attempt === row.attempt))
+      && new Set(evidence.screenshots.map(row => `${row.bundleId}:${row.artifactId}`)).size === evidence.screenshots.length,
+    "screenshot-actions-match", "screenshot-actions-mismatch")];
+
   if (!("preview" in scenarioCase)) {
     const terminalMatches = scenarioCase.terminal.lifecycle === "failed"
       ? failedTerminalMatches
@@ -260,6 +274,7 @@ export function evaluateDryRunScenarioEvidence(
         && same(evidence.receipt.verification, scenarioCase.receipt.verification),
       "receipt-match", "receipt-mismatch"),
       assertion("terminal", terminalMatches, "terminal-match", "terminal-mismatch"),
+      ...screenshots,
     ]);
   }
   const terminalMatches = scenarioCase.terminal.lifecycle === "failed"
@@ -297,6 +312,7 @@ export function evaluateDryRunScenarioEvidence(
     "receipt-match", "receipt-mismatch"),
     assertion("terminal", terminalMatches, "terminal-match", "terminal-mismatch"),
     assertion("preview", previewMatches, "preview-match", "preview-mismatch"),
+    ...screenshots,
   ]);
 }
 

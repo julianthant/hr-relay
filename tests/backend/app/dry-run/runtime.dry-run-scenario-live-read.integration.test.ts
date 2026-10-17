@@ -2,7 +2,10 @@ import { createDryRunCompositionTestWorld } from "../../../support/helpers/backe
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import assert from "node:assert/strict";
-import {mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
+import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
+import {mkdirSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -191,6 +194,99 @@ describe("live-read arm — person-lookup", () => {
       clock,
     );
     reopened.close();
+  });
+
+  it.each([true, false])("retains screenshot opt-in=%s and collects verified task-point action identities", async (enabled) => {
+    const { root, clock } = composedRoot("hrauto-scenario-captures-");
+    const settings = selectedSettingsFixture(root, clock, {}, databases);
+    settings.activate();
+    const sessions = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver(), crm: () => healthyCrmDriver() });
+    let captures = 0;
+    const runtime = createProductionDryRunScenarioRuntime({
+      admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
+      preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation,
+      repoRoot: root, env: {}, clock, ids: sequentialIdFactory("e"),
+      sessionFactory: { async open(input) {
+        const resource = await sessions.factory.open(input);
+        return { ...resource, async screenshot() {
+          captures += 1;
+          return { state: "available" as const, bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720,
+            sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString() };
+        } };
+      } }, duoCeremony: fixtureDuoCeremonyGates(clock), processId: 4243,
+      processIdentityObserver: pid => ({ state: "alive", identity: { platform: "darwin", startToken: `synthetic-${String(pid)}` } }),
+      write: () => undefined,
+    });
+    const base = PERSON_LOOKUP_LIVE_READ.cases[0];
+    assert.ok(base);
+    const candidateCase = { ...base, checkpoints: base.checkpoints.map(row => ({ ...row, attempt: 1 })),
+      ...(enabled ? { screenshots: { nodes: ["searching", "crm-selected-record"] } } : {}) };
+    const manifest = parseDryRunScenarioManifest({ ...PERSON_LOOKUP_LIVE_READ, cases: [candidateCase] });
+    const scenarioCase = manifest.cases[0];
+    assert.ok(scenarioCase);
+    const started = await runtime.start({ manifest, scenarioCase, canonicalInput: CANONICAL_INPUT });
+    const database = AuthorityDatabase.open({ path: join(root, rebuildRuntimeIsolation.stateRoot, "state.db"),
+      busyTimeoutMs: 250, migrationOwner: "scenario-captures-test" }, clock);
+    databases.push(database);
+    assert.equal(database.authority.runs.get(started.runId)?.envelope.captureBrowserScreenshots, enabled);
+    await runtime.drain(manifest.workflow);
+    const evidence = DryRunScenarioEvidenceSchema.parse(await runtime.collectEvidence(started.runId));
+    assert.equal(captures, enabled ? 2 : 0);
+    assert.equal(database.authority.diagnosticBundles.listByRun(started.runId).length, enabled ? 2 : 0);
+    const assertions = evaluateDryRunScenarioEvidence(manifest.arm, scenarioCase, started.writeSafetyBefore, evidence);
+    assert.deepEqual(assertions.filter(row => row.verdict !== "met"), []);
+    assert.equal(assertions.find(row => row.assertionId === "screenshot-actions")?.verdict, enabled ? "met" : undefined);
+    if (!enabled) return;
+    const rows = readTimelineRecords(database.authority.timelineEvents, 0, started.runId).records;
+    const action = rows.find(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot");
+    assert.ok(action?.payload.kind === "note" && "runId" in action.payload.note && action.payload.note.action);
+    const note = action.payload.note;
+    const raw = new DatabaseSync(join(root, rebuildRuntimeIsolation.stateRoot, "state.db"));
+    const trigger = z.object({ sql: z.string() }).parse(raw.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get());
+    const stored = z.object({ payload_json: z.string() }).parse(raw.prepare("SELECT payload_json FROM timeline_events WHERE cursor=?").get(action.cursor));
+    try {
+      for (const change of [
+        { name: "missing", note: { ...note, action: { ...note.action, kind: "read" } }, named: false },
+        { name: "wrong-node", note: { ...note, spanPath: note.spanPath.replace(/[^/]+#/u, "crm-identity#") }, named: true },
+        { name: "wrong-session", note: { ...note, action: { ...note.action, physicalSessionId: randomUUID() } }, named: true },
+        { name: "wrong-reference", note: { ...note, action: { ...note.action, value: `${randomUUID()}:${randomUUID()}` } }, named: true },
+      ]) {
+        raw.exec("DROP TRIGGER timeline_events_immutable");
+        raw.prepare("UPDATE timeline_events SET payload_json=? WHERE cursor=?")
+          .run(JSON.stringify({ ...action, payload: { kind: "note", note: change.note } }), action.cursor);
+        raw.exec(trigger.sql);
+        if (change.named) {
+          await assert.rejects(runtime.collectEvidence(started.runId), { name: "LogIdentityRefusedError" }, change.name);
+        } else {
+          const incomplete = await runtime.collectEvidence(started.runId);
+          assert.equal(evaluateDryRunScenarioEvidence(manifest.arm, scenarioCase, started.writeSafetyBefore, incomplete)
+            .find(row => row.assertionId === "screenshot-actions")?.verdict, "failed");
+        }
+        raw.exec("DROP TRIGGER timeline_events_immutable");
+        raw.prepare("UPDATE timeline_events SET payload_json=? WHERE cursor=?").run(stored.payload_json, action.cursor);
+        raw.exec(trigger.sql);
+      }
+    } finally {
+      raw.exec("DROP TRIGGER IF EXISTS timeline_events_immutable");
+      raw.prepare("UPDATE timeline_events SET payload_json=? WHERE cursor=?").run(stored.payload_json, action.cursor);
+      raw.exec(trigger.sql);
+      raw.close();
+    }
+    const { cursor: _cursor, ...append } = action;
+    for (let index = 0; index < 501; index += 1) {
+      database.authority.timelineEvents.append({ ...append, eventId: randomUUID(),
+        payload: { kind: "note", note: { ...note, action: { kind: "read", targetId: "ucpath.fixture-page" } } } });
+    }
+    database.authority.timelineEvents.append({ ...append, eventId: randomUUID() });
+    const duplicate = await runtime.collectEvidence(started.runId);
+    assert.equal(evaluateDryRunScenarioEvidence(manifest.arm, scenarioCase, started.writeSafetyBefore, duplicate)
+      .find(row => row.assertionId === "screenshot-actions")?.verdict, "failed");
+    const bundle = database.authority.diagnosticBundles.listByRun(started.runId)[0];
+    const attachment = bundle?.attachments[0];
+    assert.ok(attachment);
+    unlinkSync(join(root, rebuildRuntimeIsolation.artifactRoot, `${attachment.digest}.artifact`));
+    await assert.rejects(runtime.collectEvidence(started.runId), { name: "DiagnosticBundleBytesMissingError" });
+
   });
 
   it("refuses a live-read manifest on a transaction-bearing graph, and a preview manifest on a transaction-free graph, before any effect", async () => {

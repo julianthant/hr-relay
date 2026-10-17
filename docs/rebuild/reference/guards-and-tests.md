@@ -410,6 +410,19 @@ than inferring no-write from progress text. Ordinary checkpoints, gate results, 
 are legitimate rehearsal effects.
 The dry-run runner compares the complete ordered receipt verification list, including node obligations, and keeps absent, ambiguous, and unknown verdicts distinct.
 
+A case may declare `screenshots: { nodes: [...] }` with a nonempty, ordered list of unique
+task-point node IDs. Its presence sets the immutable run option `captureBrowserScreenshots: true`
+and adds the `screenshot-actions` assertion. Omission keeps capture off and adds no screenshot
+assertion. The assertion requires the exact node order, expected checkpoint attempts, and unique
+bundle/artifact pairs. A mismatch records `screenshot-actions-mismatch`.
+
+The runtime reads the complete paginated native timeline and joins task-point Screenshot actions
+to `readRunCaptureSection`'s verified diagnostic bundles and image bytes. It binds run, node,
+attempt, browser session, bundle, and artifact identities. An invalid action join throws
+`RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH`. Generic lease diagnostics do not satisfy this assertion.
+The prepared Person Lookup canary expects `searching` then `crm-selected-record`; `crm-results`
+is excluded and its receipt obligation is `absent`. This declaration does not prove a live run.
+
 ### 10.5 The subject registry — labels in the repo, values outside it
 
 `config/test-data.json` owns shared subjects, named files, and synthetic samples.

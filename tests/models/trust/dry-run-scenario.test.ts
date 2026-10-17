@@ -47,3 +47,13 @@ describe("dry-run scenario manifest boundary", () => {
     }), /repeats a subjectLabel/);
   });
 });
+
+
+it("binds screenshot opt-in and ordered expected nodes into the case digest", () => {
+  const manifest = { ...MANIFEST, cases: [{ ...MANIFEST.cases[0], screenshots: { nodes: ["read", "write"] } }] };
+  assert.notEqual(deriveDryRunScenarioManifestDigest(manifest), deriveDryRunScenarioManifestDigest(MANIFEST));
+  assert.notEqual(deriveDryRunScenarioManifestDigest(manifest), deriveDryRunScenarioManifestDigest({ ...manifest,
+    cases: [{ ...manifest.cases[0], screenshots: { nodes: ["write", "read"] } }] }));
+  assert.throws(() => parseDryRunScenarioManifest({ ...manifest,
+    cases: [{ ...manifest.cases[0], screenshots: { nodes: [] } }] }));
+});
