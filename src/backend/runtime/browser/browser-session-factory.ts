@@ -49,6 +49,7 @@ import { attachBrowserDiagnostics } from "./browser-diagnostics.js";
 import type { DebugEvent } from "../../../models/events/timeline.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { ProtectedStoreRecordSchema } from "../../../models/config/protected-settings.js";
+import { captureFullPage, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
 
 // Keep the acquisition scheduler structural so both ports use the same timer without a module cycle.
 export interface BrowserDeadlineScheduler {
@@ -293,14 +294,29 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
             for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
             if (pageVersion !== version) return unavailable("page-changed");
-            const bytes = new Uint8Array(await page.screenshot({ type: "png", mask: frames.map((frame) => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)) }));
+            const capture = await captureFullPage(page, {
+              secretControls,
+              afterCapture: async () => {
+                const after = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
+                if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
+              },
+              mask: () => page.frames().map(frame => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)),
+              assertSafe: async () => {
+                if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
+                for (const frame of page.frames()) if (await frame.locator(secretControls).count() > 0) throw new FullPageCaptureRefusedError("secret-controls-present");
+                if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
+              },
+            });
             if (pageVersion !== version) return unavailable("page-changed");
-            const after = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
-            if (!after.authenticated || pageVersion !== version) return unavailable("page-changed");
             for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
             if (pageVersion !== version) return unavailable("page-changed");
-            return Object.freeze({ ...identity, state: "available", bytes, width: config.display.screenWidth, height: config.display.screenHeight, diagnosticAttachments: diagnostics.snapshot() });
-          } catch { return unavailable("verification-failed"); }
+            return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });
+          } catch (error) {
+            if (error instanceof FullPageCaptureRestoreError) throw error;
+            if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
+            if (pageVersion !== version) return unavailable("page-changed");
+            return unavailable("verification-failed");
+          }
         },
         authentication: {
           authenticate: async (requested: BrowserSystemId, options): Promise<"logged-in" | "already-authenticated"> => {
