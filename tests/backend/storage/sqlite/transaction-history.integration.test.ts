@@ -184,15 +184,17 @@ it("bounds cold range/run selected evidence independently of unrelated current a
   const w = historyWorld({ terminalize: true });
   try {
     const deletedIds: string[] = [];
-    for (let index = 1000; index < 1120; index++) {
-      const fixture = w.commit(index, { confirmedAt: index === 1000 ? "2026-09-08T18:00:00.000Z" : "2026-08-01T18:00:00.000Z" });
-      if (index < 1040) {
-        const run = w.database.authority.runs.get(fixture.commit.transaction.runId); assert.ok(run);
-        assert.equal(testRunService(w.database, historyClock).delete({ commandId: fixtureUuid(`bounded-delete-${index}`),
-          runId: run.envelope.runId, expectedVersion: run.version }).state, "deleted");
-        deletedIds.push(run.envelope.runId);
+    w.database.withAuthorityTransaction(() => {
+      for (let index = 1000; index < 1120; index++) {
+        const fixture = w.commit(index, { confirmedAt: index === 1000 ? "2026-09-08T18:00:00.000Z" : "2026-08-01T18:00:00.000Z" });
+        if (index < 1040) {
+          const run = w.database.authority.runs.get(fixture.commit.transaction.runId); assert.ok(run);
+          assert.equal(testRunService(w.database, historyClock).delete({ commandId: fixtureUuid(`bounded-delete-${index}`),
+            runId: run.envelope.runId, expectedVersion: run.version }).state, "deleted");
+          deletedIds.push(run.envelope.runId);
+        }
       }
-    }
+    });
     w.reopen();
     const observed: Array<{ sql: string; rows: number }> = [];
     // eslint-disable-next-line @typescript-eslint/unbound-method -- restores the native receiver.
