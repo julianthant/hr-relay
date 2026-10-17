@@ -1,6 +1,7 @@
 import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 import assert from "node:assert/strict";
 import { describe, it, vi } from "vitest";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { BrowserLoginError, BrowserLandingStallError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { isAuthenticatedUcpathAppUrl, isUcpathPostSsoLanding, ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../../../src/backend/systems/ucpath/session.js";
 import { NEVER_SETTLES, type FakeCookie, type FakePageScript } from "../../../support/helpers/browser/fake-login-page.js";
@@ -393,7 +394,7 @@ describe("ucpath login recipe", () => {
     ]);
     assert.ok(settled instanceof BrowserLoginError, `expected a refusal; got ${String(settled)}`);
     assert.equal(settled.step, "duo-clearance");
-    assert.match(settled.message, /signCount/);
+    assert.equal(settled.message, ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text);
     assert.match(settled.message, /Duo refused/);
     assert.doesNotMatch(settled.message, /fixture-value|fixture-user/);
   });
@@ -417,7 +418,7 @@ describe("ucpath login recipe", () => {
       assert.ok(error instanceof BrowserLoginError);
       assert.equal(error.step, "duo-clearance");
       assert.match(error.message, /The Duo prompt never cleared/);
-      assert.doesNotMatch(error.message, /signCount/);
+      assert.equal(error.message, ERROR_CATALOG.DUO_PROMPT_STALLED.text);
       return true;
     });
   });

@@ -148,8 +148,9 @@ describe("notification-durability: every closed trigger commits a durable item",
       false,
     );
     const projection = projectNotificationTrigger(RUN_FAILED);
-    assert.ok(projection.summary.includes(RUN_FAILED.runId));
-    assert.ok(!projection.summary.includes("920-74-1459"));
+    assert.equal(projection.summary, "This failure code is not in the current catalog. Review the recorded local evidence.");
+    assert.equal(projection.summary.includes(RUN_FAILED.runId), false);
+    assert.equal(projection.summary.includes("920-74-1459"), false);
   });
 });
 

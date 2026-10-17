@@ -38,13 +38,17 @@ describe("the queue row's served facts", () => {
     return surface;
   }
 
-  it("a failed row carries its terminal failure summary VERBATIM", () => {
+  it("a failed row shows the unregistered-code sentence, not its raw summary", () => {
     const w = world();
     seedFailed(w);
     const failure = failureRecordOf({ seed: 4, code: "CRM_UNAVAILABLE" });
     w.authority.failures.set(String(failure.failureId), failure);
 
-    assert.deepEqual(rowOf(w, 4).liveMessage, { state: "present", value: failure.summary });
+    assert.deepEqual(rowOf(w, 4).liveMessage, {
+      state: "present",
+      value: "This failure code is not in the current catalog. Review the recorded local evidence.",
+    });
+    assert.notEqual(rowOf(w, 4).liveMessage, { state: "present", value: failure.summary });
   });
 
   it("a failure record authority does not hold is NAMED, never replaced by a guess", () => {

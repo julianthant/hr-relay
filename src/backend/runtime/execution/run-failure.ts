@@ -18,6 +18,7 @@ import {
 import type { NodeId, TaskId } from "../../../rules/identity/ids.js";
 import { RunRecordSchema } from "../../../models/run/record.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { catalogCodeForThrown } from "../../../models/failures/error-catalog.js";
 import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
@@ -79,7 +80,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
   const taskId = input.taskId === undefined ? undefined : TaskIdSchema.parse(input.taskId);
   const taskError: TaskError | undefined = input.error instanceof TaskError ? input.error : undefined;
   const errorCode = input.error instanceof Error && "code" in input.error && typeof input.error.code === "string" ? input.error.code : undefined;
-  const code = failureCodeFromTaskCode(taskError?.code ?? errorCode ?? "unhandled");
+  const code = catalogCodeForThrown(input.error) ?? failureCodeFromTaskCode(taskError?.code ?? errorCode ?? "unhandled");
   const summary = input.error instanceof Error
     ? Buffer.from(sanitizeDebugText(input.error.message)).subarray(0, 32 * 1024).toString("utf8")
     : `node ${nodeId} threw a non-Error value`;

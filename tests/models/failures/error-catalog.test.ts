@@ -29,7 +29,7 @@ describe("error catalog", () => {
       LANDING_PROBE_UNAVAILABLE: "No authenticated landing appeared, and the stalled page could not be probed.",
       AUTHENTICATED_LANDING_MISSING: "No authenticated landing appeared.",
       TRAINING_REMINDER_REPEATED: "The UCSD training reminder appeared again after Continue Log In.",
-      DUO_TERMINAL_REFUSAL: "Duo refused the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; this login is dead and the prompt will not clear on its own. The cause is almost never Duo hand-approval: it is a Duo Autopilot signCount regression, where this browser profile's stored counter has fallen behind the value Duo has already observed for the shared credential (a counter that does not advance is a cloned-key signal), which is what happens when any other profile using the same credential signed more recently. Check the extension's stored signCount before touching timeouts.duoApprovalSeconds or timeouts.sessionAcquireMs.",
+      DUO_TERMINAL_REFUSAL: "Duo refused the sign-in. Run it again; if it repeats, check Duo Autopilot.",
       UCPATH_SIGN_IN_FAILED: "UCPath sign-in failed.",
       CRM_SIGN_IN_FAILED: "CRM sign-in failed.",
       ONBASE_SIGN_IN_FAILED: "OnBase sign-in failed.",
@@ -220,7 +220,7 @@ it("owns Sessions availability and actual worker failure labels with strict empt
   const entries = {
     SESSIONS_UNAVAILABLE: "Session information is unavailable.",
     WORKER_CRASHED: "crashed",
-    WORKER_LEASE_EXPIRED: "lease expired — its process stopped reporting",
+    WORKER_LEASE_EXPIRED: "The worker stopped responding. Run it again.",
   } as const;
   for (const code of Object.keys(entries) as (keyof typeof entries)[]) {
     assert.equal(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text, entries[code]);
