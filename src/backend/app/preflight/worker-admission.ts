@@ -39,8 +39,7 @@ export function preflightSessionFactory(factory: WorkerBrowserSessionFactory, pr
         || !scope.requestedCapabilities.includes(`system.${request.system}.${request.instance ?? "prod"}` as PreflightAdmissionScope["requestedCapabilities"][number])) {
         throw new PreflightAdmissionRefusal("scope-mismatch", "Browser request differs from its admitted preflight scope.");
       }
-      await preflight.admission.prepare(scope, request.signal);
-      preflight.admission.assertReady(scope);
+      await preflight.prepareSession(scope, request.system, request.signal);
       return factory.open(request);
     },
     ...(factory.discardProfile === undefined ? {} : { discardProfile: factory.discardProfile.bind(factory) }),

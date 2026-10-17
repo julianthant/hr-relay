@@ -132,6 +132,15 @@ Identity drift closes before replacement. Reuse also checks download acceptance 
 incompatible launch properties refuse. Browser presentation is the envelope's `headed` or
 `headless` value, or the retained configuration default when the envelope omits it.
 
+Each browser open validates its exact retained configuration fingerprint and admitted system/instance.
+`RuntimePreflight.prepareSession` freshly executes the selected system's endpoint and credential checks
+plus `browser.assets` under their registered deadlines, then revalidates retained configuration and
+protected-settings revision before launch. Missing, duplicate, unhealthy or failed detectors refuse the
+open. A protected-settings change during preparation refuses as stale. These session checks do not run
+the whole-authority storage doctor while the active run is writing checkpoints or timeline events.
+Full workflow preflight remains required at start and worker claim; explicit storage doctor retains
+its fail-loud mixed-authority-snapshot check.
+
 A successful callback resets to neutral entry and proves authentication again. Failure or
 cancellation poison-closes the resource. Failed closure retains poison and refuses reuse;
 `AggregateError` preserves both operation and cleanup failures.

@@ -50,9 +50,9 @@ function admittedFactoryDelegations(source: ts.SourceFile, checker: ts.TypeCheck
           && method.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword) === true
           && method.parameters.length === 1 && method.parameters[0].name.getText(source) === "request"
           && method.parameters[0].type !== undefined && compact(method.parameters[0].type) === 'Parameters<WorkerBrowserSessionFactory["open"]>[0]'
-          && method.body?.statements.length === 4 && ts.isSpreadAssignment(properties[1])
+          && method.body?.statements.length === 3 && ts.isSpreadAssignment(properties[1])
           && compact(properties[1]) === '...(factory.discardProfile===undefined?{}:{discardProfile:factory.discardProfile.bind(factory)})') {
-          const [scopeCheck, prepare, ready, delegate] = method.body.statements;
+          const [scopeCheck, prepare, delegate] = method.body.statements;
           if (ts.isIfStatement(scopeCheck)
             && compact(scopeCheck.expression) === 'request.configFingerprint!==scope.configFingerprint||!scope.requestedCapabilities.includes(`system.${request.system}.${request.instance??"prod"}`asPreflightAdmissionScope["requestedCapabilities"][number])'
             && ts.isBlock(scopeCheck.thenStatement) && scopeCheck.elseStatement === undefined
@@ -60,8 +60,7 @@ function admittedFactoryDelegations(source: ts.SourceFile, checker: ts.TypeCheck
             && ts.isNewExpression(scopeCheck.thenStatement.statements[0].expression)
             && canonicalValue(scopeCheck.thenStatement.statements[0].expression.expression, "PreflightAdmissionRefusal", "/src/rules/preflight/preflight-admission.ts")
             && compact(scopeCheck.thenStatement.statements[0].expression) === 'newPreflightAdmissionRefusal("scope-mismatch","Browserrequestdiffersfromitsadmittedpreflightscope.")'
-            && compact(prepare) === 'awaitpreflight.admission.prepare(scope,request.signal);'
-            && compact(ready) === 'preflight.admission.assertReady(scope);'
+            && compact(prepare) === 'awaitpreflight.prepareSession(scope,request.system,request.signal);'
             && ts.isReturnStatement(delegate) && delegate.expression !== undefined
             && ts.isCallExpression(delegate.expression) && compact(delegate.expression) === 'factory.open(request)') admitted.push(delegate.expression);
         }
@@ -195,8 +194,11 @@ describe("driver lease boundary", () => {
     };
     assert.equal(audit(content), false);
     for (const bad of [
-      content.replace('await preflight.admission.prepare(scope, request.signal);', 'factory.open(request);'),
-      content.replace('preflight.admission.assertReady(scope);\n      return factory.open(request);', 'return factory.open(request);'),
+      content.replace('await preflight.prepareSession(scope, request.system, request.signal);', 'factory.open(request);'),
+      content.replace('await preflight.prepareSession(scope, request.system, request.signal);', 'preflight.prepareSession(scope, request.system, request.signal);'),
+      content.replace('await preflight.prepareSession(scope, request.system, request.signal);', ''),
+      content.replace('scope, request.system, request.signal', 'scope, "ucpath", request.signal'),
+      content.replace('!scope.requestedCapabilities.includes', 'scope.requestedCapabilities.includes'),
       content.replace('request.configFingerprint !== scope.configFingerprint', 'false'),
       content.replace('return factory.open(request);', 'factory.open(request); return factory.open(request);'),
       content.replace('import type { WorkerBrowserSessionFactory } from "../../../workflow-kit/session.js";', 'interface WorkerBrowserSessionFactory { open(request: unknown): unknown; discardProfile?: () => void }'),

@@ -1,9 +1,10 @@
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync } from "node:fs";
+import fs, { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -22,10 +23,11 @@ import { createTimelineEmitter } from "../../../../src/backend/storage/events/ti
 import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
+import type { PreflightRunner, PreflightRunnerContext } from "../../../../src/models/preflight/preflight.js";
 import { type RuntimeCapability } from "../../../../src/models/preflight/preflight-contract.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { ActorIdSchema, FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, FingerprintSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { PreflightAdmissionRefusal } from "../../../../src/rules/preflight/preflight-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -37,14 +39,14 @@ import { populatedProtectedRecord, runtimeFixture } from "../../../support/fixtu
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityBackupService, AuthorityDatabase, doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
 {
 
 const cleanup: (() => void)[] = [];
 const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0).reverse()) dispose(); };
 const signal = (): AbortSignal => new AbortController().signal;
-function harness() {
+function harness(configureRunners?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) {
   const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "preflight-admission-"));
   const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(stateRoot, { recursive: true });
   const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
@@ -63,10 +65,11 @@ function harness() {
     runnerFactory: input => {
       const available = healthyRuntimePreflightRunners(input);
       const missing = supportMissing ? createRuntimePreflightRunners(input).find(runner => runner.check === "browser.assets") : undefined;
-      return available.map(runner => missing !== undefined && runner.check === "browser.assets" ? missing : ({ ...runner, async run(context) {
+      const controlled = available.map(runner => missing !== undefined && runner.check === "browser.assets" ? missing : ({ ...runner, async run(context: PreflightRunnerContext) {
         probes.push(runner.check);
         return faults.has(runner.check) ? { check: runner.check, state: "unhealthy" as const, summary: "Controlled dependency unavailable", impact: "Selected work cannot use it" } : runner.run(context);
       } }));
+      return configureRunners?.(controlled) ?? controlled;
     } });
   let publications = 0;
   const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("b"), publishQueued: () => { publications += 1; },
@@ -208,6 +211,75 @@ _afterEachFixture0();
 }
 });
 
+it("session readiness checks only its admitted system and freshly refuses every required prerequisite", async () => {
+  try {
+    const h = harness();
+    const scope = h.preflight.currentScope(personLookupDescriptor.id);
+    let opens = 0;
+    const reachedBrowser = new Error("session prerequisites passed");
+    const factory = preflightSessionFactory({ open: async () => { opens += 1; throw reachedBrowser; } }, h.preflight, scope);
+    const open = {
+      workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id,
+      system: "crm" as const, instance: "prod", configFingerprint: scope.configFingerprint,
+      acceptDownloads: false, exclusive: false, signal: signal(),
+      duoCeremony: {} as Parameters<typeof factory.open>[0]["duoCeremony"],
+    };
+    h.faults.add("endpoint.ucpath.prod");
+    await assert.rejects(factory.open(open), error => error === reachedBrowser);
+    assert.equal(opens, 1);
+    assert.deepEqual(new Set(h.probes), new Set(["browser.assets", "secrets.ucpath-sso", "endpoint.crm.prod"]));
+    for (const check of ["browser.assets", "secrets.ucpath-sso", "endpoint.crm.prod"]) {
+      h.faults.add(check);
+      await assert.rejects(factory.open(open), error => error instanceof PreflightAdmissionRefusal && error.reason === "blocked" && error.message.includes(check));
+      assert.equal(opens, 1);
+      h.faults.delete(check);
+    }
+    const probes = h.probes.length;
+    for (const wrong of [
+      { ...open, instance: "test" }, { ...open, system: "kuali" as const },
+      { ...open, configFingerprint: FingerprintSchema.parse("f".repeat(64)) },
+    ]) await assert.rejects(factory.open(wrong), error => error instanceof PreflightAdmissionRefusal && error.reason === "scope-mismatch");
+    assert.equal(h.probes.length, probes);
+    assert.equal(opens, 1);
+    await assert.rejects(h.preflight.prepareSession(scope, "kuali", signal()), error => error instanceof PreflightAdmissionRefusal && error.reason === "scope-mismatch");
+    await assert.rejects(h.preflight.prepareSession({ ...scope, configFingerprint: FingerprintSchema.parse("f".repeat(64)) }, "crm", signal()), PreflightAdmissionRefusal);
+    assert.equal(h.probes.length, probes);
+  } finally { _afterEachFixture0(); }
+});
+
+for (const fault of ["missing", "duplicate", "throw", "protected-revision"] as const) {
+  it(`session readiness refuses ${fault} before browser effects`, async () => {
+    try {
+      const failure = new Error("controlled detector failure");
+      let revise: () => void = () => undefined;
+      const h = harness(runners => {
+        if (fault === "missing") return runners.filter(runner => runner.check !== "browser.assets");
+        if (fault === "duplicate") return [...runners, ...runners.filter(runner => runner.check === "browser.assets")];
+        return runners.map(runner => runner.check !== "endpoint.crm.prod" ? runner : { ...runner, async run(context) {
+          if (fault === "throw") throw failure;
+          const result = await runner.run(context);
+          revise();
+          return result;
+        } });
+      });
+      revise = () => { h.changeProtected(); };
+      let opens = 0;
+      const scope = h.preflight.currentScope(personLookupDescriptor.id);
+      const factory = preflightSessionFactory({ open: async () => { opens += 1; throw new Error("browser effect"); } }, h.preflight, scope);
+      await assert.rejects(factory.open({
+        workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id,
+        system: "crm", instance: "prod", configFingerprint: scope.configFingerprint,
+        acceptDownloads: false, exclusive: false, signal: signal(),
+        duoCeremony: {} as Parameters<typeof factory.open>[0]["duoCeremony"],
+      }), error => error instanceof PreflightAdmissionRefusal
+        && error.reason === (fault === "protected-revision" ? "stale" : "unavailable")
+        && (fault !== "throw" || error.cause === failure));
+      assert.equal(opens, 0);
+      if (fault === "missing" || fault === "duplicate") assert.equal(h.probes.length, 0);
+    } finally { _afterEachFixture0(); }
+  });
+}
+
 it("descriptor scope is derived from graph systems rather than a caller capability list", async () => {
 try {
 
@@ -280,7 +352,7 @@ _afterEachFixture0();
 const cleanup: (() => void)[] = [];
 const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0).reverse()) dispose(); };
 const signal = (): AbortSignal => new AbortController().signal;
-function harness() {
+function harness(beforeCrmEndpoint?: () => Promise<void>) {
   const f = runtimeFixture(["executor.run", "system.ucpath.prod", "system.crm.prod"]);
   const {root:repoRoot, clock}=f;
   const database=AuthorityDatabase.open({path:f.databasePath,busyTimeoutMs:250,migrationOwner:"setup-admission"},clock);
@@ -293,7 +365,7 @@ function harness() {
   let probes=0;
   const preflight=composeRuntimePreflight({ admission: RuntimeAdmission.syntheticRoots(join(repoRoot, rebuildRuntimeIsolation.stateRoot), join(repoRoot, rebuildRuntimeIsolation.artifactRoot)),database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
     descriptorSetHash:personLookupDescriptor.contractFingerprint,protectedSecrets:f.input.protectedSecrets,environment:{},
-    runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard,providerAvailability:f.input.providerAvailability}).map(runner=>({...runner,run(context){probes++;return runner.run(context);}}))});
+    runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard,providerAvailability:f.input.providerAvailability}).map(runner=>({...runner,run(context){probes++;return runner.check === "endpoint.crm.prod" && beforeCrmEndpoint !== undefined ? beforeCrmEndpoint().then(() => runner.run(context)) : runner.run(context);}}))});
   let publications = 0;
   const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("b"), publishQueued: run => { publications += 1; createTimelineEmitter({repository:database.authority.timelineEvents,clock}).emit(runQueuedSpanEvent({run,actorId:ActorIdSchema.parse("local-operator"),title:"Synthetic Setup admission proof"})); },
     admitQueuedRun: run => preflight.admission.assertReady(preflight.runScope(run.envelope)) });
@@ -310,6 +382,102 @@ function harness() {
     target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
   return {f,clock,database,preflight,plans,kernel,lifecycle,ingress,command,kernelWith:(workerRuntime:CommandKernelDependencies["workerRuntime"])=>createCommandKernel({...kernelDependencies,workerRuntime}),get probes(){return probes;},get publications(){return publications;}};
 }
+
+it("opens CRM during authority writes while the full doctor still rejects mixed snapshots", async () => {
+  const endpointReached = Promise.withResolvers<void>();
+  let release = Promise.withResolvers<void>();
+  let backupReadReached = Promise.withResolvers<void>();
+  let gateSession = false;
+  const h = harness(async () => {
+    if (!gateSession) return;
+    endpointReached.resolve();
+    await release.promise;
+  });
+  let restoreRead: () => void = () => undefined;
+  let doctorOutcome: Promise<unknown> | undefined;
+  let openOutcome: Promise<unknown> | undefined;
+  try {
+    await h.plans.prepare?.(h.ingress, signal());
+    const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const run = h.database.authority.runs.listByWorkflow(plan.workflowId)[0];
+    assert.ok(run);
+    const scope = h.preflight.runScope(run.envelope);
+    testWorkerPorts(h.database, h.clock, { path: h.f.databasePath, descriptor: personLookupDescriptor, poolIndex: 1 });
+    const workerId = h.database.authority.workerSlots.list(personLookupDescriptor.id)[0].workerId;
+    assert.equal((await claimWithPreflight({ preflight: h.preflight, signal: signal(), claim: admit => h.lifecycle.claimNext({
+      commandId: "ffffffff-ffff-4fff-8fff-ffffffffffff", workflow: plan.workflowId, workerId,
+      runtimeConfig: selectRunRuntime(h.database.authority),
+    }, admit) })).state, "applied");
+    let opens = 0;
+    const reachedBrowser = new Error("session prerequisites passed");
+    const factory = preflightSessionFactory({ open: async () => { opens += 1; throw reachedBrowser; } }, h.preflight, scope);
+    const open = {
+      workerId, workflowId: personLookupDescriptor.id,
+      system: "ucpath" as const, instance: "prod", configFingerprint: run.envelope.configFingerprint,
+      acceptDownloads: false, exclusive: false, signal: signal(),
+      duoCeremony: {} as Parameters<typeof factory.open>[0]["duoCeremony"],
+    };
+    await assert.rejects(factory.open(open), error => error === reachedBrowser);
+    assert.equal(opens, 1);
+    const directory = h.f.doctorOptions.backupDirectory;
+    await new AuthorityBackupService(h.database, { directory }, h.clock).request({
+      trigger: "operator", requiredGeneration: h.database.getMeta().authorityGeneration,
+    });
+    const createReadStream = fs.createReadStream;
+    const spy = vi.spyOn(fs, "createReadStream").mockImplementation((...args) => {
+      const stream = createReadStream(...args);
+      if (String(args[0]).startsWith(directory)) {
+        const read = stream._read.bind(stream);
+        stream._read = size => {
+          backupReadReached.resolve();
+          void release.promise.then(() => read(size));
+        };
+      }
+      return stream;
+    });
+    syncBuiltinESMExports();
+    restoreRead = () => { spy.mockRestore(); syncBuiltinESMExports(); };
+    doctorOutcome = doctorAuthorityStorage(h.f.doctorOptions, h.clock).catch((error: unknown) => error);
+    await backupReadReached.promise;
+    gateSession = true;
+    openOutcome = factory.open({ ...open, system: "crm" }).catch((error: unknown) => error);
+    await endpointReached.promise;
+    const generation = h.database.getMeta().authorityGeneration;
+    createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit({
+      t: "span.started", kind: "task", ts: h.clock.now().toISOString(), workflow: run.envelope.workflow,
+      runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+      spanPath: `${run.envelope.traceId}/searching#1`, parentSpanPath: run.envelope.traceId, name: "searching",
+    });
+    assert.ok(h.database.getMeta().authorityGeneration > generation);
+    release.resolve();
+    const doctorError = await doctorOutcome;
+    assert.ok(doctorError instanceof Error);
+    assert.match(doctorError.message, /authority changed while the storage doctor awaited external evidence/u);
+    assert.equal(await openOutcome, reachedBrowser);
+    assert.equal(opens, 2);
+    gateSession = false;
+    release = Promise.withResolvers<void>();
+    backupReadReached = Promise.withResolvers<void>();
+    doctorOutcome = h.preflight.admission.prepare(scope, signal()).catch((error: unknown) => error);
+    await backupReadReached.promise;
+    createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit({
+      t: "span.started", kind: "task", ts: h.clock.now().toISOString(), workflow: run.envelope.workflow,
+      runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+      spanPath: `${run.envelope.traceId}/crm-cross-verify#1`, parentSpanPath: run.envelope.traceId, name: "crm-cross-verify",
+    });
+    release.resolve();
+    const fullError = await doctorOutcome;
+    assert.ok(fullError instanceof PreflightAdmissionRefusal && fullError.reason === "unavailable");
+    assert.ok(fullError.cause instanceof Error);
+    assert.match(fullError.cause.message, /authority changed while the storage doctor awaited external evidence/u);
+  } finally {
+    release.resolve();
+    await Promise.allSettled([doctorOutcome, openOutcome]);
+    restoreRead();
+    _afterEachFixture0();
+  }
+});
 
 it("real detectors block enqueue for a missing workflow secret, then admit after explicit repair; replay remains read-only",async()=>{
 try {
@@ -345,6 +513,10 @@ try {
   let opens=0;const factory=preflightSessionFactory({open:async()=>{opens++;throw new Error("counted browser effect");}},h.preflight,h.preflight.runScope(original.envelope));
   const open={workerId:workerId,workflowId:personLookupDescriptor.id,system:"ucpath" as const,instance:"prod",configFingerprint:original.envelope.configFingerprint,acceptDownloads:false,exclusive:false,signal:signal(),duoCeremony:{} as Parameters<typeof factory.open>[0]["duoCeremony"]};
   await assert.rejects(factory.open(open),/counted browser effect/u);assert.equal(opens,1);
+  renameSync(h.f.executable, `${h.f.executable}.parked`);
+  await assert.rejects(factory.open(open), error => error instanceof PreflightAdmissionRefusal && error.reason === "blocked");
+  assert.equal(opens, 1);
+  renameSync(`${h.f.executable}.parked`, h.f.executable);
   h.f.setProtected(populatedProtectedRecord("ucpathPassword"));await assert.rejects(factory.open(open),PreflightAdmissionRefusal);assert.equal(opens,1);
 
 } finally {
