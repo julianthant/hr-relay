@@ -96,6 +96,15 @@ async function until(check: () => boolean): Promise<void> {
   for (let n = 0; n < 1000; n++) { if (check()) return; await sleep(10); }
   throw new Error("Timed out waiting for test-process proof");
 }
+async function untilGroupId(path: string): Promise<number> {
+  let group = Number.NaN;
+  await until(() => {
+    if (!existsSync(path)) return false;
+    group = Number(readFileSync(path, "utf8"));
+    return Number.isSafeInteger(group) && group > 1;
+  });
+  return group;
+}
 function alive(group: number): boolean {
   const result = spawnSync("/bin/ps", ["-axo", "pgid="], { encoding: "utf8" });
   assert.equal(result.status, 0);
@@ -243,12 +252,12 @@ describe("architecture project empty collection", () => {
   });
 });
 
-function suiteProcess(root: string, script: string, suiteLock: boolean | "borrowed" = true, waitTimeoutMs = 5_000, detached = false) {
+function suiteProcess(root: string, script: string, suiteLock: boolean | "borrowed" = true, waitTimeoutMs = 5_000, detached = false, idleTimeoutMs: number | false = 500) {
   const module = fileURLToPath(new URL("../../../scripts/test/runner.ts", import.meta.url));
   const options = {
     command: process.execPath, args: ["-e", script], cwd: root, env: {},
     rootDirectory: join(root, "runs"), suiteLock: suiteLock === "borrowed" ? undefined : suiteLock, suiteLockRetryIntervalMs: 20,
-    suiteLockWaitTimeoutMs: waitTimeoutMs, idleTimeoutMs: 500,
+    suiteLockWaitTimeoutMs: waitTimeoutMs, ...(idleTimeoutMs === false ? {} : { idleTimeoutMs }),
   };
   const source = `import {acquireSuiteLock,runTestProcess} from ${JSON.stringify(module)};const options=${JSON.stringify(options)};${suiteLock === "borrowed" ? "options.suiteLock=await acquireSuiteLock({directory:options.rootDirectory});" : ""}try{process.exitCode=(await runTestProcess(options)).code}catch(e){console.error(e.name+': '+e.message);process.exitCode=1}finally{${suiteLock === "borrowed" ? "await options.suiteLock.release();" : ""}}`;
   const child = spawn(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), "--input-type=module", "-e", source], { detached, stdio: ["ignore", "pipe", "pipe"] });
@@ -367,8 +376,7 @@ for (const ownership of [true, "borrowed"] as const) {
     let waiter: ReturnType<typeof suiteProcess> | undefined;
     let group: number | undefined;
     try {
-      await until(() => existsSync(ready));
-      group = Number(readFileSync(ready, "utf8"));
+      group = await untilGroupId(ready);
       assert.ok(Number.isSafeInteger(group) && group > 1);
       const wrapperGroup = holder.child.pid;
       assert.ok(wrapperGroup !== undefined && wrapperGroup > 1);
@@ -399,12 +407,12 @@ for (const ownership of [true, "borrowed"] as const) {
   it(`keeps the ${ownership === true ? "owned" : "borrowed"} suite lease until the detached child exits after runner SIGKILL`, async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-suite-proof-")));
     const ready = join(root, "ready"), marker = join(root, "waiter-started");
-    const holder = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(ready)},String(process.pid));setInterval(()=>{},1000)`, ownership);
+    const idleTimeoutMs = false;
+    const holder = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(ready)},String(process.pid));setInterval(()=>{},1000)`, ownership, 5_000, false, idleTimeoutMs);
     let waiter: ReturnType<typeof suiteProcess> | undefined;
     let group: number | undefined;
     try {
-      await until(() => existsSync(ready));
-      group = Number(readFileSync(ready, "utf8"));
+      group = await untilGroupId(ready);
       assert.ok(Number.isSafeInteger(group) && group > 1);
       waiter = suiteProcess(root, `require('node:fs').writeFileSync(${JSON.stringify(marker)},'started')`);
       await until(() => waiter!.output().includes("waiting for another"));
