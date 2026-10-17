@@ -1196,7 +1196,7 @@ export async function executeClaimedRun(
                 )),
                 controller.signal,
                 contract.id, retain,
-              ), task.impl.screenshots === "task" ? { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt } : undefined),
+              ), task.impl.screenshots === "task" ? { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt, log: taskLogger } : undefined),
               controller.signal,
               contract.id, retain,
             ),

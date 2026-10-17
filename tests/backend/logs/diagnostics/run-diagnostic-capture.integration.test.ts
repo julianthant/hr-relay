@@ -452,7 +452,7 @@ describe("selected lease screenshot actions", () => {
 });
 
 describe("task screenshot persistence before checkpoint", () => {
-  for (const failure of ["none", "note", "capture-and-close", "undeclared"] as const) it(`binds executor capture and preserves a named failure (${failure})`, async () => {
+  for (const failure of ["none", "note", "unavailable", "capture", "persist", "undeclared"] as const) it(`preserves task results and screenshot action persistence rules (${failure})`, async () => {
     const world = createRunExecutorTestWorld();
     try {
       const captureTask = defineTask(ucpathDriver, SearchPersonOrg, {
@@ -474,14 +474,12 @@ describe("task screenshot persistence before checkpoint", () => {
         factory: { open: async input => {
           const resource = await harness.sessions.factory.open(input);
           return { ...resource, screenshot: async () => {
-            if (failure === "capture-and-close") throw new Error("capture failure");
+            if (failure === "capture" && resource.system === "ucpath") throw Object.assign(new Error("private fixture content"), { name: "private fixture name" });
+            if (failure === "unavailable" && resource.system === "ucpath") return { state: "unavailable" as const, reason: "secret-controls-present" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString() };
             return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
-          }, close: async input => {
-            if (failure === "capture-and-close") throw new Error("close failure");
-            return resource.close(input);
           } };
         } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-        duoCeremony: fixtureDuoCeremonyGates(clock), browserScreenshotCapture: capture,
+        duoCeremony: fixtureDuoCeremonyGates(clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
       });
       sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
         descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: true });
@@ -493,6 +491,29 @@ describe("task screenshot persistence before checkpoint", () => {
       if (failure === "none") {
         assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
         assert.ok(database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).some(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot"));
+      } else if (failure === "unavailable" || failure === "capture" || failure === "persist") {
+        assert.equal(result.state, "done");
+        const settledRun = database.authority.runs.get(claimed.run.envelope.runId);
+        assert.ok(settledRun);
+        const lifecycle = settledRun.lifecycle;
+        assert.ok(lifecycle?.state === "terminal" && lifecycle.outcome === "done");
+        assert.deepEqual(database.authority.failures.listByRun(claimed.run.envelope.runId), []);
+        assert.ok(database.authority.runCheckpoints.latest(claimed.run.envelope.workflow, claimed.run.envelope.itemId, "searching"));
+        const notes = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId })
+          .flatMap(row => row.payload.kind === "note" ? [row.payload.note] : []);
+        assert.equal(notes.filter(note => note.spanPath === taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("searching"), 1, claimed.claim.claimGeneration) && note.action?.kind === "screenshot").length, 0);
+        const warnings = notes.filter(note => note.level === "warn");
+        assert.equal(warnings.length, 1);
+        assert.equal(warnings[0]?.message, "Screenshot capture failed.");
+        assert.deepEqual(warnings[0]?.fields?.map(field => ({ key: field.key, value: field.value })), [{ key: "reason", value: failure === "unavailable" ? "secret-controls-present" : failure === "persist" ? "TypeError" : "Error" }]);
+        assert.doesNotMatch(JSON.stringify(warnings), /private/);
+        const section = buildRunLogsSection({ timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps,
+          claimed.run.envelope.runId, undefined, settledRun);
+        assert.ok(section.section === "logs");
+        const warningRows = section.payload.rows?.filter(row => row.kind === "note" && row.note.level === "warning");
+        assert.equal(warningRows?.length, 1);
+        assert.match(JSON.stringify(warningRows), failure === "unavailable" ? /secret-controls-present/ : failure === "persist" ? /TypeError/ : /Error/);
+        assert.doesNotMatch(JSON.stringify(warningRows), /private/);
       } else {
         assert.equal(result.state, "failed");
         const failures = database.authority.failures.listByRun(claimed.run.envelope.runId);
