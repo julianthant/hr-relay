@@ -68,6 +68,29 @@ describe("CRM discovery cause diagnostics", () => {
       assert.deepEqual(await failure(new Error(`${message} Private Person 10000001`)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: "Unrecognized driver error detail withheld" } }]);
     }
   });
+  it("projects every current discovery navigation and structural failure without dynamic data", async () => {
+    const privateText = 'Private Person 10000001 password=secret https://example.com/?token=secret';
+    const cases = [
+      [`CRM navigation expected record ${privateText} but landed on a different record id`, "CRM navigation landed on a different record id"],
+      [`CRM navigation expected https://act-crm.my.site.com/hr/ONB_ViewOnboarding but landed on https://example.com/${privateText}`, "CRM navigation left the expected host or path"],
+      [`CRM navigation expected https://act-crm.my.site.com/hr/ONB_SearchOnboardings but landed on https://example.com/${privateText}`, "CRM navigation left the expected host or path"],
+      [`CRM search expected query ${privateText} but the rendered page used a different query`, "CRM rendered page used a different search query"],
+      [`CRM onboarding record link /${privateText} is missing its record id`, "CRM onboarding record link is missing its record id"],
+      ["CRM UI registry has no element crm.onboarding.record-field-value", "CRM UI registry is missing a required element"],
+      ['CRM expected exactly one heading "Search Results" but found 2', 'CRM expected exactly one heading "Search Results" but found 2'],
+      ...["row", "cells", "link"].map(kind => [`CRM search-result ${kind} recipe changed kind unexpectedly`, `CRM search-result ${kind} recipe changed kind unexpectedly`]),
+      ["CRM record-field recipe changed kind unexpectedly", "CRM record-field recipe changed kind unexpectedly"],
+      ["CRM onboarding search query cannot be blank", "CRM onboarding search query cannot be blank"],
+      ...["name", "process stage"].flatMap(field => ["rendered without text", "was blank"].map(reason => [`CRM search row 0 ${field} ${reason}`, `CRM search row 0 ${field} ${reason}`])),
+    ];
+    for (const [raw, expected] of cases) {
+      assert.deepEqual(await failure(new Error(raw)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: expected } }]);
+      if (!raw.startsWith("CRM navigation expected https://")) assert.deepEqual(await failure(new Error(`${raw} ${privateText}`)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: "Unrecognized driver error detail withheld" } }]);
+    }
+    const invalid = new Error(privateText);
+    invalid.name = "ZodError";
+    assert.deepEqual(await failure(invalid), [{ message: "CRM check cause", fields: { errorName: "ZodError", errorMessage: "CRM driver data failed schema validation; issue details withheld" } }]);
+  });
   it("withholds arbitrary messages and error names including identity, dates, URLs and credentials", async () => {
     const error = new Error("Private Person 10000001 07/01/2026 <td>secret</td> https://example.com/?id=10000001 password=secret");
     error.name = "Private Person 10000001";

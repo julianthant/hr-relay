@@ -9,6 +9,17 @@ function crmCauseDiagnostic(error: unknown): Readonly<{ errorName: string; error
   if (!(error instanceof Error)) return { errorName: "NonError", errorMessage: "Non-Error driver detail withheld" };
   const errorName = ERROR_NAMES.has(error.name) ? error.name : "Error";
   const message = error.message;
+  const dynamicFailures = [
+    [/^CRM navigation expected record [\s\S]+ but landed on a different record id$/u, "CRM navigation landed on a different record id"],
+    [/^CRM navigation expected https:\/\/act-crm\.my\.site\.com\/hr\/(?:ONB_ViewOnboarding|ONB_SearchOnboardings) but landed on [\s\S]+$/u, "CRM navigation left the expected host or path"],
+    [/^CRM search expected query [\s\S]+ but the rendered page used a different query$/u, "CRM rendered page used a different search query"],
+    [/^CRM onboarding record link [\s\S]+ is missing its record id$/u, "CRM onboarding record link is missing its record id"],
+    [/^CRM UI registry has no element crm\.onboarding\.(?:search-result-rows|search-result-row-cells|search-result-name-link|record-field-value)$/u, "CRM UI registry is missing a required element"],
+  ] as const;
+  for (const [pattern, errorMessage] of dynamicFailures) {
+    if (pattern.test(message)) return { errorName, errorMessage };
+  }
+  if (errorName === "ZodError") return { errorName, errorMessage: "CRM driver data failed schema validation; issue details withheld" };
   const field = RECORD_FIELDS.find(label => [
     `CRM record field "${label}"`, `hasText: '${label}'`, `hasText: "${label}"`,
     `hasText: /^\\s*${label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*$/u`,
@@ -24,7 +35,7 @@ function crmCauseDiagnostic(error: unknown): Readonly<{ errorName: string; error
   if (date !== null) return { errorName, errorMessage: `CRM ${date[1]} date "[withheld]" is ${date[2]}` };
   const timeout = /^(locator\.(?:waitFor|textContent|count|getAttribute)|page\.goto): Timeout (\d+)ms exceeded\./u.exec(message);
   if (timeout !== null) return { errorName, errorMessage: `${timeout[1]}: Timeout ${timeout[2]}ms exceeded.${field === undefined ? "" : ` CRM record field "${field}"`}` };
-  if (/^CRM (?:discovery results changed before capture|search rendered data rows and the no-results state simultaneously|search rendered more than one auxiliary two-cell row|search row \d+ (?:had \d+ direct cells; expected exactly 5|had \d+ record links; expected exactly one|record link had no href)|zero-result search expected one verified empty-state heading but found \d+)$/u.test(message)) {
+  if (/^CRM (?:discovery results changed before capture|search rendered data rows and the no-results state simultaneously|search rendered more than one auxiliary two-cell row|expected exactly one heading "Search Results" but found \d+|(?:search-result (?:row|cells|link)|record-field) recipe changed kind unexpectedly|onboarding search query cannot be blank|search row \d+ (?:name|process stage) (?:rendered without text|was blank)|search row \d+ (?:had \d+ direct cells; expected exactly 5|had \d+ record links; expected exactly one|record link had no href)|zero-result search expected one verified empty-state heading but found \d+)$/u.test(message)) {
     return { errorName, errorMessage: message };
   }
   return { errorName, errorMessage: "Unrecognized driver error detail withheld" };
