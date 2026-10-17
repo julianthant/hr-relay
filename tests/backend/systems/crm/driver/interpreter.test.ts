@@ -81,6 +81,7 @@ type RecordFixture = Readonly<{
   lastName: string;
   firstDayOfService: string;
   dateSigned?: string;
+  departmentHrRepName?: string;
 }>;
 
 type HistoryFixtureRow = readonly [string, string, string, string, string];
@@ -116,6 +117,7 @@ function recordFieldNodes(record: RecordFixture): readonly FixtureNode[] {
     ["Department", "Housing"],
     ["Date Signed", record.dateSigned ?? "6/25/2026"],
   ]);
+  if (record.departmentHrRepName !== undefined) fields.set("Department HR Rep Name", record.departmentHrRepName);
   return [...fields].map(([label, value]) => ({
     text: label,
     children: { "xpath=following-sibling::td[1]": [textNode(value)] },
@@ -310,6 +312,17 @@ describe("CRM onboarding selector-backed driver", () => {
     };
     await assert.rejects(createCrmOnboardingDriver(changing).searchOnboardingRecords({ eid: EID }),
       /discovery results changed before capture/u);
+  });
+
+  it("reads Department beside Department HR Rep Name using the complete label", async () => {
+    const page = fixturePage({
+      searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
+      records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/1/2026", departmentHrRepName: "Representative, Example" } },
+    });
+    const records = await createCrmOnboardingDriver(page).searchOnboardingRecords({ eid: EID });
+    assert.equal(records.length, 1);
+    assert.equal(records[0].department, "Housing");
+    assert.equal(records[0].firstDayOfService, "7/1/2026");
   });
 
   it("validates both nonblank dates at the actual discovery record reader", async () => {

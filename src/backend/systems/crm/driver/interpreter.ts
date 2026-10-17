@@ -219,7 +219,7 @@ function recordFieldLocator(page: Page, label: RecordFieldLabel): Locator {
   }
   return page
     .locator(recipe.labelCell)
-    .filter({ hasText: label })
+    .filter({ hasText: new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*$`, "u") })
     .locator(recipe.valueSelector);
 }
 
