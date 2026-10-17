@@ -4,7 +4,7 @@ import { afterEach,describe,it } from "vitest";
 import { createOperatorRunDetail } from "../../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { buildRunDetail, buildRunSection } from "../../../../../src/backend/runs/queries/run-detail.js";
 import { projectRunLogs } from "../../../../../src/dashboard/state/run-wiring-adapter.js";
-import { resolveErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
+import { ERROR_CATALOG, resolveErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { DiagnosticBundleCorruptError } from "../../../../../src/backend/runs/commands/refusals.js";
 import { buildReceiptFailureSection } from "../../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
 import { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
@@ -125,7 +125,8 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     const failureSection = buildRunSection(deps, runId, "failure");
     const value = availableFailure(failureSection);
     assert.equal(value.failureId, h.failure.failureId);
-    assert.equal(value.summary, h.failure.summary);
+    assert.equal(value.summary, ERROR_CATALOG.ERROR_CATALOG_CODE_UNREGISTERED.text);
+    assert.notEqual(value.summary, h.failure.summary);
     assert.equal(value.code, h.failure.code);
     assert.equal(value.nodeId, undefined);
     assert.deepEqual(value.native, { eventId: record.eventId, order: record.cursor, runId,
@@ -160,7 +161,8 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     assert.equal(value.diagnosticBundle.state, "absent");
     assert.ok(value.display?.title);
     assert.ok(value.display?.observation);
-    assert.equal(value.summary, h.failure.summary);
+    assert.equal(value.summary, ERROR_CATALOG.ERROR_CATALOG_CODE_UNREGISTERED.text);
+    assert.notEqual(value.summary, h.failure.summary);
     assert.deepEqual(value.remediation, h.failure.remediation);
     assert.equal(value.writeState, h.failure.writeState);
   });

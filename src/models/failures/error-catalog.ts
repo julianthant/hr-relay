@@ -568,6 +568,13 @@ export function formatErrorCatalogFailure(failure: ErrorCatalogFailure): ErrorCa
   return Object.freeze({ code, text: ERROR_CATALOG[code].text, parameters }) as ErrorCatalogMessage;
 }
 
+/** Operator sentence for a recorded failure code. An absent code uses the unregistered-code sentence. */
+export function operatorFailureSentence(code: string): string {
+  const registered = ErrorCatalogCodeSchema.safeParse(code);
+  if (!registered.success) return ERROR_CATALOG.ERROR_CATALOG_CODE_UNREGISTERED.text;
+  return ERROR_CATALOG[registered.data].text;
+}
+
 function resolveAs<Failure>(
   originalFailure: Failure,
   code: ErrorCatalogCode,

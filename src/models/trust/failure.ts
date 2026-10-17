@@ -16,6 +16,7 @@ import {
   WorkflowIdSchema,
   WriteBindingProofIdSchema,
 } from "../../rules/identity/ids.js";
+import { operatorFailureSentence } from "../failures/error-catalog.js";
 import { WriteAuthorityReasonSchema } from "../../rules/write-safety/write-authority-reason.js";
 
 export const WriteStateSchema = z.enum([
@@ -116,7 +117,44 @@ export const FailureRecordSchema = z.strictObject({
 
 export type FailureRecord = z.infer<typeof FailureRecordSchema>;
 
-/** Serve the durable failure as recorded. */
-export function projectFailureForOperator(failureInput: unknown, _protectedInput?: boolean): FailureRecord {
-  return FailureRecordSchema.parse(failureInput);
+function withoutDisplay<T extends { displayRedacted?: string }>(evidence: T): Omit<T, "displayRedacted"> {
+  const { displayRedacted: _display, ...rest } = evidence;
+  return rest;
+}
+
+/** Catalog sentence for the code. Protected input drops raw diagnostic text. */
+export function projectFailureForOperator(failureInput: unknown, protectedInput = false): FailureRecord {
+  const failure = FailureRecordSchema.parse(failureInput);
+  const summary = operatorFailureSentence(failure.code);
+  if (!protectedInput) return FailureRecordSchema.parse({ ...failure, summary });
+  const subject = failure.subject === undefined ? undefined : {
+    ...(failure.subject.expected === undefined ? {} : { expected: withoutDisplay(failure.subject.expected) }),
+    ...(failure.subject.observed === undefined ? {} : { observed: withoutDisplay(failure.subject.observed) }),
+    ...(failure.subject.proofRef === undefined ? {} : { proofRef: failure.subject.proofRef }),
+  };
+  const page = failure.page === undefined ? undefined : {
+    ...(failure.page.screen === undefined ? {} : { screen: failure.page.screen }),
+    ...(failure.page.state === undefined ? {} : { state: failure.page.state }),
+  };
+  return FailureRecordSchema.parse({
+    ...(failure.diagnosticSafetyVersion === undefined ? {} : { diagnosticSafetyVersion: failure.diagnosticSafetyVersion }),
+    failureId: failure.failureId,
+    fingerprint: failure.fingerprint,
+    runId: failure.runId,
+    traceId: failure.traceId,
+    attempt: failure.attempt,
+    workflowId: failure.workflowId,
+    ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
+    ...(failure.taskId === undefined ? {} : { taskId: failure.taskId }),
+    code: failure.code,
+    summary,
+    transient: failure.transient,
+    writeState: failure.writeState,
+    ...(subject === undefined || Object.keys(subject).length === 0 ? {} : { subject }),
+    ...(page === undefined || Object.keys(page).length === 0 ? {} : { page }),
+    ...(failure.action === undefined ? {} : { action: failure.action }),
+    causeChain: failure.causeChain.map(cause => ({ ...cause, summary })),
+    remediation: failure.remediation.map(action => ({ ...action, message: summary })),
+    occurredAt: failure.occurredAt,
+  });
 }

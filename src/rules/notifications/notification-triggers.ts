@@ -14,6 +14,7 @@ import {
   WorkflowIdSchema,
   WriteIntentIdSchema,
 } from "../identity/ids.js";
+import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../models/notifications/notifications.js";
 import { sha256Hex } from "../validation/sha256.js";
 
@@ -154,7 +155,7 @@ export function projectNotificationTrigger(input: unknown): NotificationProjecti
           trigger: "failed",
           channel: "ping",
           title: `Run failed — ${event.workflowId}`,
-          summary: `${event.workflowId} run ${event.runId} failed with ${event.code}. Open the failure for its diagnostic bundle and next safe action.`,
+          summary: operatorFailureSentence(event.code),
           links: [{ kind: "failure", failureId: event.failureId, runId: event.runId }],
         };
       case "subject-mismatch":

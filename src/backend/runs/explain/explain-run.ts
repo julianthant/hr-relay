@@ -210,9 +210,12 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     ? undefined
     : projectReceiptForOperator(evidence.receipt);
   const receipt = receiptProjection?.state === "available" ? receiptProjection.value : undefined;
+  const protectedInput = retainedRunProtectedBindings(evidence.run).length > 0;
   const failure = evidence.failure === undefined
     ? undefined
-    : projectFailureForOperator(evidence.failure, retainedRunProtectedBindings(evidence.run).length > 0);
+    : protectedInput
+      ? projectFailureForOperator(evidence.failure, true)
+      : evidence.failure;
   const lastSuccessful = [...(receipt?.actions ?? [])]
     .filter((action) => action.writeState !== "unknown" && action.writeState !== "attempting")
     .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))

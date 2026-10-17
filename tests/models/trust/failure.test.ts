@@ -14,6 +14,7 @@ import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/writ
 import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
 
 const RAW = "ucpath:termination|10812345|2026-08-29";
+const UNREGISTERED = "This failure code is not in the current catalog. Review the recorded local evidence.";
 const NODE_ID = NodeIdSchema.parse("searching");
 const TASK_ID = TaskIdSchema.parse("ucpath/search-person-org");
 
@@ -70,7 +71,8 @@ describe("diagnostic evidence projection", () => {
 
     assert.equal(authority.summary.includes(RAW), true, "authority retains every named validation problem");
     assert.equal(authority.diagnosticSafetyVersion, undefined);
-    assert.equal(JSON.stringify(projectFailureForOperator(authority)).includes(RAW), true);
+    assert.equal(projectFailureForOperator(authority).summary.includes(RAW), false);
+    assert.equal(JSON.stringify(projectFailureForOperator(authority, true)).includes(RAW), false);
   });
 
   it("stamps the closed non-Error fallback sentence because no thrown value is copied into it", () => {
@@ -85,20 +87,21 @@ describe("diagnostic evidence projection", () => {
 
     assert.equal(authority.diagnosticSafetyVersion, CURRENT_DIAGNOSTIC_SAFETY_VERSION);
     assert.equal(authority.summary, "node searching threw a non-Error value");
-    assert.deepEqual(projectFailureForOperator(authority, false), authority);
+    assert.equal(projectFailureForOperator(authority, false).summary, UNREGISTERED);
   });
 
   it("serves unstamped failure text without rewriting authority", () => {
     const authority = failure();
     const before = JSON.stringify(authority);
     const projected = projectFailureForOperator(authority);
-    assert.deepEqual(projected, authority);
+    assert.equal(projected.summary, UNREGISTERED);
     assert.equal(JSON.stringify(authority), before);
   });
 
   it("keeps current, stamped failure diagnostics useful", () => {
     const authority = failure(CURRENT_DIAGNOSTIC_SAFETY_VERSION);
-    assert.deepEqual(projectFailureForOperator(authority, false), authority);
+    assert.equal(authority.summary, "registered source could not be read");
+    assert.equal(projectFailureForOperator(authority, false).summary, UNREGISTERED);
   });
 
   it("serves protected and unstamped text from every source", () => {
@@ -106,9 +109,9 @@ describe("diagnostic evidence projection", () => {
       summary: RAW, causeChain: [{ code: "UNHANDLED", summary: RAW, role: "primary", transient: false }],
       remediation: [{ kind: "operator-action", message: RAW }] });
     const before = JSON.stringify(authority);
-    for (const source of [true, undefined])
-      assert.deepEqual(projectFailureForOperator(authority, source), authority);
-    assert.deepEqual(projectFailureForOperator(failure(), false), failure());
+    assert.equal(JSON.stringify(projectFailureForOperator(authority, true)).includes(RAW), false);
+    assert.equal(projectFailureForOperator(authority, undefined).summary, UNREGISTERED);
+    assert.equal(projectFailureForOperator(failure(), false).summary, UNREGISTERED);
     assert.equal(JSON.stringify(authority), before);
   });
 

@@ -95,9 +95,12 @@ whose operation is `commit`. Transience does not establish retry permission.
 
 `src/backend/runtime/execution/run-failure.ts` builds failure records and bounded debug details.
 The optional `diagnosticSafetyVersion: 1` remains a recorded field.
-`projectFailureForOperator` currently parses and returns the failure as recorded; it does not use
-that stamp to withhold or reconstruct prose. Names such as `urlRedacted`, `titleRedacted`, and
-`displayRedacted` describe producer fields, not a second redaction pass at projection.
+`projectFailureForOperator` serves the catalog sentence for the failure's code as `summary`. A code
+absent from the catalog uses the unregistered-code sentence. When the run retains protected input,
+the projection drops raw diagnostic text. The authority record keeps the original summary, and
+explain prints that diagnostic when the run has no protected input. Names such as `urlRedacted`,
+`titleRedacted`, and `displayRedacted` describe producer fields. A protected-input projection also
+omits those display strings.
 
 `src/backend/runs/queries/run-detail/receipts-failures.ts` projects the explicit
 `FailureDetailWireSchema` fields. It checks the failure's exact run/workflow/trace/attempt identity
