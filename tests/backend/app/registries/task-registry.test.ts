@@ -11,6 +11,7 @@ describe("Person Lookup task implementations", () => {
       [
         "crm/read-onboarding-dates",
         "crm/read-onboarding-record",
+        "crm/read-onboarding-results",
         "crm/search-onboarding-records",
         "crm/verify-onboarding-record",
         // The extraction service store lands before any descriptor consumes it.
