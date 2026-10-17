@@ -1,8 +1,9 @@
+import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { lstatSync } from "node:fs";
 import { join } from "node:path";
 import { commandFromRow } from "./command-record-row.js";
 import { RuntimeProcessLockFileSchema, readLiveSmokeRuntimeFile, readRuntimeProcessLock, observeProcessIdentity } from "./runtime-process-locks.js";
-import { WorkerStandingRecoveryRequestSchema, WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
+import { WorkerStandingRecoveryRequestSchema, WorkerVerificationClaimSchema, WorkerVerificationClosureProofSchema, WorkerVerificationRecoveryProofSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema } from "./run-store-contracts.js";
 import { RunLifecycleCommandRecordSchema, RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -47,7 +48,7 @@ export function verificationFromSlot(database: DatabaseSync, slot: WorkerSlotRec
   return { command, request, slot };
 }
 
-function requireVerificationCleanup(hold: NonNullable<ReturnType<typeof verificationFromSlot>>, request: z.infer<typeof WorkerVerificationRetirementRequestSchema>) {
+function requireVerificationCleanup(database: DatabaseSync, hold: NonNullable<ReturnType<typeof verificationFromSlot>>, request: z.infer<typeof WorkerVerificationRetirementRequestSchema>) {
   const { owner, processLockRoot, stateRoot } = hold.request;
   if (request.cleanup.mode === "live") {
     const current = readRuntimeProcessLock(processLockRoot, "live-smoke");
@@ -68,6 +69,29 @@ function requireVerificationCleanup(hold: NonNullable<ReturnType<typeof verifica
     return;
   }
   const claim = WorkerVerificationClaimSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root, `${owner.acquisitionId}.slot.json`).text));
+  const profileDirectory = join(stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers", `w${hold.slot.ordinal}`, claim.system);
+  if (request.cleanup.evidence === "recovered") {
+    const proof = WorkerVerificationRecoveryProofSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root,
+      `${owner.acquisitionId}-${request.cleanup.recoveryAcquisitionId}.recovered.json`).text));
+    const current = readRuntimeProcessLock(processLockRoot, "live-smoke");
+    const observed = current === undefined ? undefined : observeProcessIdentity(current.pid);
+    const row = database.prepare("SELECT payload_json FROM auth_leases WHERE credential_key=?").get(claim.credentialKey);
+    const lease = row === undefined ? undefined : DuoCeremonyLeaseRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json));
+    if (request.cleanup.mode !== "recovery" || current?.pid !== process.pid || current.releasedAt !== null
+      || observed?.state !== "alive" || canonicalJsonStringify(observed.identity) !== canonicalJsonStringify(current.processIdentity)
+      || canonicalJsonStringify(proof.recoveryOwner) !== canonicalJsonStringify(current)
+      || proof.recoveryOwner.acquisitionId !== request.cleanup.recoveryAcquisitionId
+      || proof.acquisitionId !== owner.acquisitionId || proof.workerId !== hold.slot.workerId
+      || proof.membershipRevision !== hold.slot.membershipRevision || proof.checkedAt !== request.now
+      || Date.parse(proof.checkedAt) < Date.parse(hold.request.now) || Date.parse(proof.checkedAt) < Date.parse(current.acquiredAt)
+      || proof.claimFingerprint !== sha256Hex(canonicalJsonStringify(claim)) || proof.profileDirectory !== profileDirectory
+      || canonicalJsonStringify(claim.process) !== canonicalJsonStringify(owner)
+      || canonicalJsonStringify(claim.slot) !== canonicalJsonStringify(hold.slot)
+      || lease?.state !== "released" || lease.holder.workerId !== hold.slot.workerId || lease.holder.system !== claim.system
+      || lstatSync(profileDirectory, { throwIfNoEntry: false }) !== undefined
+      || lstatSync(join(root, "live-smoke-claims", `${owner.acquisitionId}.closed.json`), { throwIfNoEntry: false }) !== undefined) throw new Error("worker-verification-cleanup-unproved");
+    return;
+  }
   const proof = WorkerVerificationClosureProofSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(root, `${owner.acquisitionId}.closed.json`).text));
   if (canonicalJsonStringify(claim.process) !== canonicalJsonStringify(owner)
     || canonicalJsonStringify(claim.slot) !== canonicalJsonStringify(hold.slot)
@@ -176,7 +200,7 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
           const pool = z.object({ version: z.number() }).parse(database.prepare("SELECT version FROM worker_pools WHERE workflow=?").get(current.workflow));
           if (retirement.now !== request.now || Number(pool.version) !== retirement.expectedPoolVersion
             || database.prepare("SELECT 1 FROM worker_controls WHERE scope=? AND audited_at IS NULL").get(`worker-pool:${current.workflow}`) !== undefined) throw new Error("worker-verification-retirement-binding-mismatch");
-          requireVerificationCleanup(hold, retirement);
+          requireVerificationCleanup(database, hold, retirement);
           if (database.prepare("SELECT 1 FROM auth_leases WHERE holder_worker_id=? AND state='held'").get(current.workerId) !== undefined) throw new Error("worker-verification-duo-held");
         }
         if (current.membershipRevision !== request.expectedRevision) throw new Error("worker-slot-revision-conflict");

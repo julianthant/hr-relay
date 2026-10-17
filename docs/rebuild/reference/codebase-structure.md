@@ -20,7 +20,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
 | `scripts/test/` | Test runner, suite measurement, direct-execution detection, suite policy, and artifact policy. |
-| `scripts/verify/` | Browser-login and test-target verification. |
+| `scripts/verify/` | Browser-login and test-target verification; `browser-login-recovery.ts` owns exact missing-proof recovery and fresh local profile-use observations. |
 | `scripts/verify-parity-json.ts` | Desktop parity runner. |
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |

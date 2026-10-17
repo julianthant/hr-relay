@@ -1,3 +1,4 @@
+import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -243,7 +244,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
       });
     } catch (error) {
-      throw new AggregateError([error], `${system} browser launch failed and its closure is unproved`, { cause: error });
+      throw new BrowserSessionClosureUnprovedError([error], `${system} browser launch failed and its closure is unproved`, { cause: error });
     }
 
     const lifecycle = observeContextLifecycle(context);
@@ -351,7 +352,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         await this.#closeWithProof(context, lifecycle, system, "login-failed");
         await this.#releaseProfile(profileDirectory);
       } catch (closeError) {
-        throw new AggregateError(
+        throw new BrowserSessionClosureUnprovedError(
           [error, closeError],
           `${system} browser session setup failed and its context could not be proven closed`,
           { cause: closeError },
