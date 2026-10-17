@@ -8,7 +8,7 @@ import { WorkerVerificationRetirementRequestSchema } from "../../../../src/backe
 import * as childProcess from "node:child_process";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,7 +28,12 @@ vi.mock("node:child_process", async importOriginal => {
   return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
 });
 const nativeChildProcess = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-beforeEach(() => { vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync); });
+beforeEach(() => {
+  vi.mocked(childProcess.spawnSync).mockImplementation((...args: Parameters<typeof childProcess.spawnSync>) => {
+    if (args[0] === "/usr/sbin/lsof") return { pid: 0, output: [], stdout: `p${process.pid}\nfcwd\ntDIR\nn/isolated-fixture\n`, stderr: "", status: 0, signal: null };
+    return nativeChildProcess.spawnSync(...args);
+  });
+});
 
 const nativeObserveProcessIdentity = locks.observeProcessIdentity;
 const cleanups: (() => void)[] = [];
@@ -124,6 +129,7 @@ describe("offline orphan verification retirement", () => {
 
   it.each([0, 1])("refuses a real open file anywhere in browser root %s", async index => {
     const f = fixture();
+    vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const profile = f.profiles[index];
     if (profile === undefined) throw new Error("fixture profile missing");
     const fd = openSync(join(profile, "open"), "w");
@@ -132,6 +138,7 @@ describe("offline orphan verification retirement", () => {
 
   it.each(["cwd", "arguments"])("refuses an owned child using a profile through %s", async mode => {
     const f = fixture();
+    vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const profile = f.profiles[0];
     if (profile === undefined) throw new Error("fixture profile missing");
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", ...(mode === "arguments" ? [profile] : [])], { cwd: mode === "cwd" ? profile : f.workspace, stdio: "ignore" });
@@ -140,6 +147,39 @@ describe("offline orphan verification retirement", () => {
       const closed = new Promise<void>(resolveClose => { child.once("close", () => resolveClose()); });
       child.kill(); await closed;
     }
+  });
+
+  it.each([
+    [0, "cwd", false], [0, "cwd", true], [0, "descriptor", false], [0, "descriptor", true],
+    [1, "cwd", false], [1, "cwd", true], [1, "descriptor", false], [1, "descriptor", true],
+  ] as const)("refuses root %s with a deleted-descendant %s (plan=%s)", async (rootIndex, kind, plan) => {
+    const f = fixture();
+    vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
+    const root = f.profileRoots[rootIndex];
+    if (root === undefined) throw new Error("fixture profile root missing");
+    const removedDirectory = join(root, "removed-descendant");
+    const heldPath = join(removedDirectory, "held");
+    mkdirSync(removedDirectory, { mode: 0o700 });
+    writeFileSync(heldPath, "owned synthetic file");
+    const source = kind === "cwd" ? 'process.stdout.write("ready");setInterval(() => {}, 1000);'
+      : 'process.stdin.once("data", path => { require("node:fs").openSync(path.toString(), "r");process.stdout.write("ready"); });setInterval(() => {}, 1000);';
+    const child = spawn(process.execPath, ["-e", source], { cwd: kind === "cwd" ? removedDirectory : f.workspace });
+    const closed = new Promise<void>(resolveClose => { child.once("close", () => resolveClose()); });
+    try {
+      if (kind === "descriptor") child.stdin.end(heldPath);
+      else child.stdin.end();
+      await new Promise<void>((ready, reject) => {
+        child.stdout.once("data", () => ready()); child.once("error", reject);
+        child.once("exit", () => reject(new Error("fixture child exited before readiness")));
+      });
+      unlinkSync(heldPath);
+      rmdirSync(removedDirectory);
+      const observation = nativeChildProcess.spawnSync("/usr/sbin/lsof", ["-nP", "-a", "-p", String(child.pid), "-F", "pfn"], { encoding: "utf8" });
+      expect(observation.status).toBe(0);
+      expect(observation.stderr).toBe("");
+      expect(observation.stdout.includes(`n${kind === "cwd" ? removedDirectory : heldPath}\n`)).toBe(true);
+      await refuses(f, plan);
+    } finally { child.kill(); await closed; }
   });
 
   it("refuses a symlink escape in either profile root", async () => {
@@ -151,17 +191,40 @@ describe("offline orphan verification retirement", () => {
     await refuses(f);
   });
 
-  it.each(["ps-error", "ps-empty", "ps-malformed", "ps-signal", "ps-status", "ps-spawn", "lsof-error", "lsof-malformed"])("refuses an incomplete process query: %s", async mode => {
+  it.each(["ps-error", "ps-empty", "ps-malformed", "ps-signal", "ps-status", "ps-spawn", "lsof-error", "lsof-malformed", "lsof-empty", "lsof-no-newline", "lsof-orphan-name", "lsof-truncated-file", "lsof-pid-only", "lsof-missing-name", "lsof-unknown-field", "lsof-signal", "lsof-spawn", "lsof-no-type", "lsof-nofd", "lsof-empty-type", "lsof-empty-directory", "lsof-empty-regular", "lsof-empty-unknown", "lsof-trailing-process"])("refuses an incomplete process query: %s", async mode => {
     const f = fixture();
     vi.mocked(childProcess.spawnSync).mockImplementation((...args: Parameters<typeof childProcess.spawnSync>) => {
       if (args[0] === "/bin/ps" && Array.isArray(args[1]) && args[1][0] === "-axo") {
         return { pid: 0, output: [], stdout: mode === "ps-empty" ? "" : mode === "ps-malformed" ? "unparseable\n" : `${process.pid} node\n`,
           stderr: mode === "ps-error" ? "failure" : "", status: mode === "ps-status" ? 2 : 0, signal: mode === "ps-signal" ? "SIGTERM" : null, ...(mode === "ps-spawn" ? { error: new Error("fixture spawn failed") } : {}) };
       }
-      if (args[0] === "/usr/sbin/lsof") return { pid: 0, output: [], stdout: mode === "lsof-malformed" ? "unparseable\n" : "", stderr: mode === "lsof-error" ? "failure" : "", status: mode === "lsof-error" ? 2 : 0, signal: null };
+      if (args[0] === "/usr/sbin/lsof") {
+        const stdout = mode === "lsof-malformed" ? "unparseable\n" : mode === "lsof-no-newline" ? "p1\nfcwd\ntDIR\nn/outside"
+          : mode === "lsof-orphan-name" ? "n/outside\n" : mode === "lsof-truncated-file" ? "p1\nfcwd\ntDIR\n"
+          : mode === "lsof-pid-only" ? "p1\n" : mode === "lsof-missing-name" ? "p1\nfcwd\ntDIR\nf1\ntREG\nn/outside\n"
+          : mode === "lsof-unknown-field" ? "p1\nfcwd\ntDIR\nxunknown\nn/outside\n"
+          : mode === "lsof-no-type" ? "p1\nfcwd\nn/outside\n" : mode === "lsof-nofd" ? "p1\nfNOFD\nn(no file information)\n" : mode === "lsof-empty-type" ? "p1\nfcwd\nt\nn/outside\n"
+          : mode === "lsof-empty-directory" ? "p1\nfcwd\ntDIR\nn\n" : mode === "lsof-empty-regular" ? "p1\nf3\ntREG\nn\n"
+          : mode === "lsof-empty-unknown" ? "p1\nf3\ntunknown\nn\n" : mode === "lsof-trailing-process" ? "p1\nf3\ntPIPE\nn\np2\n" : "";
+        return { pid: 0, output: [], stdout, stderr: mode === "lsof-error" ? "failure" : "", status: mode === "lsof-error" ? 2 : 0,
+          signal: mode === "lsof-signal" ? "SIGTERM" : null, ...(mode === "lsof-spawn" ? { error: new Error("fixture spawn failed") } : {}) };
+      }
       return nativeChildProcess.spawnSync(...args);
     });
     await refuses(f);
+  });
+
+  it.each(["NPOLICY", "NEXUS", "PIPE"])("accepts a complete nameless %s kernel object record", async fileType => {
+    const f = fixture();
+    vi.mocked(childProcess.spawnSync).mockImplementation((...args: Parameters<typeof childProcess.spawnSync>) => {
+      if (args[0] === "/usr/sbin/lsof") return { pid: 0, output: [], stdout: `p${process.pid}\nf3\nt${fileType}\nn\n`, stderr: "", status: 0, signal: null };
+      return nativeChildProcess.spawnSync(...args);
+    });
+    const before = f.snapshot();
+    const outcome = await f.invoke(true);
+    expect(outcome.exitCode, outcome.output).toBe(0);
+    expect(f.snapshot()).toEqual(before);
+    f.retained();
   });
 
   it("refuses actual shared installation admission for plan and execution", async () => {
@@ -223,6 +286,7 @@ describe("offline orphan verification retirement", () => {
     const planned = await f.invoke(true);
     expect(planned.exitCode, planned.output).toBe(0);
     const proof = f.database.authority.workerSlots.planOrphanRetirement({ acquisitionId: f.owner.acquisitionId, now: f.clock.now().toISOString() }).proof;
+    vi.mocked(childProcess.spawnSync).mockImplementation(nativeChildProcess.spawnSync);
     const profile = f.profiles[0];
     if (profile === undefined) throw new Error("fixture profile missing");
     const fd = openSync(join(profile, "late-open"), "w");

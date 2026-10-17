@@ -36,23 +36,31 @@ function requireRoot(path: string, descendants = false): void {
 /** Process arguments and filenames stay private. An incomplete OS query never proves absence. */
 function proveOrphanProfileRootsUnused(roots: readonly string[]): void {
   if (process.platform !== "darwin") refuse();
-  const query = (command: string, args: string[], absenceAllowed = false) => {
+  const query = (command: string, args: string[]) => {
     const result = spawnSync(command, args, { encoding: "utf8", timeout: 10_000, maxBuffer: 32 * 1024 * 1024 });
     if (result.error !== undefined || result.signal !== null || result.stderr.length !== 0
-      || result.status !== 0 && !(absenceAllowed && result.status === 1 && result.stdout.length === 0)) refuse();
+      || result.status !== 0) refuse();
     return result.stdout;
   };
   const processes = query("/bin/ps", ["-axo", "pid=,command=", "-ww"]);
   if (processes.trim().length === 0 || processes.split("\n").filter(Boolean).some(line => !/^\s*\d+\s+\S/u.test(line))
     || roots.some(root => processes.includes(root))) refuse();
-  for (const root of roots) {
-    requireRoot(root, true);
-    const exists = lstatSync(root, { throwIfNoEntry: false }) !== undefined;
-    const files = query("/usr/sbin/lsof", ["-nP", "-F", "pfn", ...(exists ? ["+D", root] : [])], exists);
-    if (exists && files.length !== 0 || !exists && (files.length === 0
-      || files.split("\n").filter(Boolean).some(line => !/^(?:p\d+|f.*|n.*)$/u.test(line)))) refuse();
-    if (files.split("\n").some(line => line.startsWith("n") && (line.slice(1) === root || line.slice(1).startsWith(`${root}${sep}`)))) refuse();
+  for (const root of roots) requireRoot(root, true);
+  const fields = query("/usr/sbin/lsof", ["-nP", "-F", "pftn"]).split("\n");
+  if (fields.pop() !== "" || fields.length === 0) refuse();
+  let state: "process" | "file" | "type" | "name" | "complete" = "process";
+  let fileType = "";
+  for (const field of fields) {
+    if (/^p[1-9]\d*$/u.test(field) && (state === "process" || state === "complete")) state = "file";
+    else if (field.startsWith("f") && field.length > 1 && (state === "file" || state === "complete")) state = "type";
+    else if (field.startsWith("t") && field.length > 1 && state === "type") { fileType = field.slice(1); state = "name"; }
+    else if (field.startsWith("n") && state === "name" && (field.length > 1 || ["NPOLICY", "NEXUS", "PIPE"].includes(fileType))) {
+      const name = field.slice(1);
+      if (roots.some(root => name === root || name.startsWith(`${root}${sep}`))) refuse();
+      state = "complete";
+    } else refuse();
   }
+  if (state !== "complete") refuse();
 }
 
 export function createOrphanRetirementProof(database: DatabaseSync, admission: RuntimeAdmission, grant: Grant, slot: WorkerSlotRecord,

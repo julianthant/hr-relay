@@ -534,7 +534,8 @@ before a lifecycle command is appended.
 
 On Darwin the command checks process arguments, open files and working directories across the entire
 `<stateRoot>/scratch/live-smoke` and `<stateRoot>/browsers` roots, including profiles whose IDs cannot
-be bound to the acquisition. Unsafe paths or symlink escapes refuse. The command requires the
+be bound to the acquisition. The global open-file scan includes unlinked files and removed working
+directories; incomplete or malformed process/file records refuse. Unsafe paths or symlink escapes refuse. The command requires the
 ordinary browser root to be the admitted default: a custom root in saved settings or the active
 configuration refuses retirement. Settings and snapshots are authenticated through their ordinary
 storage readers; genuinely uninitialized settings are an explicit empty-override case.
