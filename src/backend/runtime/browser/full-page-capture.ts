@@ -59,7 +59,7 @@ async function observeSecrets(frame: Frame, selector: string): Promise<void> {
       if (document.querySelector(selector)) state.seen = true;
       for (const record of records) {
         if (record.type === "attributes" && record.target instanceof HTMLInputElement && ((record.attributeName === "type" && record.oldValue?.toLowerCase() === "password")
-          || (record.attributeName === "autocomplete" && ["one-time-code", "current-password", "new-password"].includes(record.oldValue ?? "")))) state.seen = true;
+          || (record.attributeName === "autocomplete" && record.oldValue !== null && ["one-time-code", "current-password", "new-password"].includes(record.oldValue)))) state.seen = true;
         for (const node of record.addedNodes) if (node instanceof Element && (node.matches(selector) || node.querySelector(selector))) state.seen = true;
       }
     }), seen: document.querySelector(selector) !== null };
@@ -209,8 +209,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
   const viewport = page.viewportSize();
   const originalViewport = viewport ?? await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const frames: Frame[] = [];
-  let failure: unknown;
-  let failed = false;
+  let failure: { cause: unknown } | undefined;
   const assertSafe = async (): Promise<void> => {
     await options.assertSafe();
     for (const frame of frames) if (await frame.evaluate(() => {
@@ -241,7 +240,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
     }
     if (coveredTo < plan.scrollHeight) throw new Error("Full-page capture did not reach the content bottom");
     return stitchCaptureBands(bands);
-  } catch (error) { failure = error; failed = true; throw error; }
+  } catch (error) { failure = { cause: error }; throw error; }
   finally { await restoreCaptureState(); }
 
   async function restoreCaptureState(): Promise<void> {
@@ -251,7 +250,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
     await restore(() => page.setViewportSize(originalViewport));
     for (const frame of frames) if (!frame.isDetached()) await restore(() => frame.evaluate(() => (window as CaptureWindow).__relayCaptureSecrets?.restore()));
     let afterFailure: Error | undefined;
-    if (!failed) {
+    if (failure === undefined) {
       try { await options.afterCapture(); await assertSafe(); }
       catch (error) { afterFailure = error instanceof Error ? error : new Error("Full-page capture verification failed", { cause: error }); }
     }
@@ -259,7 +258,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
       (window as CaptureWindow).__relayCaptureSecrets?.observer.disconnect();
       delete (window as CaptureWindow).__relayCaptureSecrets;
     }));
-    if (errors.length) throw new FullPageCaptureRestoreError([...(failed ? [failure] : []), ...(afterFailure === undefined ? [] : [afterFailure]), ...errors]);
+    if (errors.length) throw new FullPageCaptureRestoreError([...(failure === undefined ? [] : [failure.cause]), ...(afterFailure === undefined ? [] : [afterFailure]), ...errors]);
     if (afterFailure !== undefined) throw afterFailure;
   }
 }

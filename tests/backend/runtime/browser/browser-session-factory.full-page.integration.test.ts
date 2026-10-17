@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { chromium, type Page } from "playwright";
 import { PNG } from "pngjs";
 import { describe, it } from "vitest";
@@ -7,7 +8,7 @@ import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/br
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { FullPageCaptureRestoreError } from "../../../../src/backend/runtime/browser/full-page-capture.js";
+import { captureFullPage, FullPageCaptureRestoreError } from "../../../../src/backend/runtime/browser/full-page-capture.js";
 import type { WorkerBrowserResource } from "../../../../src/workflow-kit/session.js";
 
 const clock = manualClock(new Date("2026-10-17T09:00:00Z"));
@@ -277,6 +278,30 @@ describe("whole-page factory screenshots", () => {
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
       assert.equal(evidence.reason, "verification-failed");
+    });
+  });
+  it("preserves an undefined capture failure and skips final authentication", async () => {
+    await withPage(content, async (page, _resource) => {
+      let finalProofs = 0;
+      page.screenshot = async () => { runInNewContext("throw undefined"); return Buffer.alloc(0); };
+      const capture = () => captureFullPage(page, {
+        assertSafe: async () => undefined,
+        afterCapture: async () => { finalProofs += 1; },
+        mask: () => [],
+        secretControls: 'input[type="password"]',
+      });
+      await assert.rejects(capture(), (error: unknown) => error === undefined);
+      assert.equal(finalProofs, 0);
+      const resize = page.setViewportSize.bind(page);
+      page.setViewportSize = async size => {
+        if (size.width === 800) throw new Error("fixture restore failure");
+        return resize(size);
+      };
+      await assert.rejects(capture(), error => error instanceof FullPageCaptureRestoreError
+        && error.errors.length === 2 && error.errors[0] === undefined
+        && error.errors[1] instanceof Error && error.errors[1].message === "fixture restore failure");
+      assert.equal(finalProofs, 0);
+      page.setViewportSize = resize;
     });
   });
   it("keeps capture and restoration failures named and attempts remaining cleanup", async () => {
