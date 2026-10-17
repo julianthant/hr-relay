@@ -3537,7 +3537,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "18f0a31efd2270edd8b7e7bb3a82dd4ca85bf3248ab26592a2ac55ff1ed0c849",
+      "fingerprint": "137c6ad8b0217e7e783da6d12c4a19a9368b4747878d9f9163809f3c1c506e47",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -3549,7 +3549,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "36c096872fe2837dd41ba20f296b1b7fcd3ca1fd7c86ee39f649a5f039b9e7dd"
+          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",
@@ -3843,7 +3843,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "1d8cbbb319d0293279bdf775f63c21239cb56d20fc80bba45b1c6c914629e8a8",
+      "fingerprint": "a4d2abf6045661a51295ea9885f9ab904f55728c4e135308d52fc395cb3d2194",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -3855,7 +3855,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "36c096872fe2837dd41ba20f296b1b7fcd3ca1fd7c86ee39f649a5f039b9e7dd"
+          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",
@@ -4149,7 +4149,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "3dc5ae77675eaaafd165f531392e6f12e94af252bd2c48e990414c39fd0ae7af",
+      "fingerprint": "06abdb0f26f74b5c1c6c2011680549de4da19f9abbf12474b392ed15cb73ad25",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -4161,7 +4161,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "36c096872fe2837dd41ba20f296b1b7fcd3ca1fd7c86ee39f649a5f039b9e7dd"
+          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",
@@ -4169,7 +4169,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/tasks/search-onboarding-records.ts",
-          "sha256": "8d81119e92f242ef079a75522ac91b85fa218f388d732049ee3a5817d299e25a"
+          "sha256": "6c193a9abaf7015ee13916ab1d5898aa3117c6b3165ff53c6061609db08e5b1f"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -4455,7 +4455,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/search-onboarding-records"
     },
     {
-      "fingerprint": "a83e34c7e94a8bafd0ebe96a121a19838785947d44694be9eb88663775fd7fea",
+      "fingerprint": "96d04da52e43cb65d5f0dd6ef89061df43c064962305f3824335df765a923f37",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -4467,7 +4467,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "36c096872fe2837dd41ba20f296b1b7fcd3ca1fd7c86ee39f649a5f039b9e7dd"
+          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",

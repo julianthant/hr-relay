@@ -1,6 +1,7 @@
 import { TaskRefusal } from "../../../../support/helpers/separation-task-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { searchOnboardingRecordsTask } from "../../../../../src/backend/systems/crm/tasks/search-onboarding-records.js";
 import { verifyOnboardingRecordTask } from "../../../../../src/backend/systems/crm/tasks/verify-onboarding-record.js";
 import { CrmDiscoveredRecordSchema, CrmRecordIdentityDriftError } from "../../../../../src/models/systems/crm/search-onboarding-records.js";
 import { createDeterministicCrmOnboardingDriver } from "../../../../../src/backend/systems/crm/driver/fake.js";
@@ -15,4 +16,97 @@ describe("selected CRM record verification", () => {
   const changed = { ...record, firstDayOfService: "07/02/2026" };
   assert.deepEqual(await verifyOnboardingRecordTask.impl.run({ input: record, ctx: { ...ctx, driver: { ...base, verifyOnboardingRecord: async () => changed } } }), { state: "checked", records: [changed] });
  });
+});
+
+describe("CRM discovery cause diagnostics", () => {
+  const base = createDeterministicCrmOnboardingDriver({ record: { state: "absent", queriedEid: record.emplId, reason: "none" }, dates: { state: "no-confident-record", emplId: record.emplId, employmentDate: null, oathDate: null, reason: "none" } });
+  async function failure(error: unknown) {
+    const diagnostics: unknown[] = [];
+    const result = await searchOnboardingRecordsTask.impl.run({ input: { eid: record.emplId }, ctx: { ...ctx,
+      log: { ...ctx.log, debug: (message: string, fields?: Readonly<Record<string, string | number | boolean>>) => { diagnostics.push({ message, fields }); } },
+      driver: { ...base, searchOnboardingRecords: async () => { throw error; } },
+    } });
+    assert.deepEqual(result, { state: "check-failed", code: "PERSON_LOOKUP_CRM_CHECK_FAILED", reason: "CRM check failed." });
+    return diagnostics;
+  }
+  it("records a structural driver cause separately from the operator result", async () => {
+    assert.deepEqual(await failure(new Error('CRM record field "Date Signed" resolved 2 values; expected exactly one')), [{
+      message: "CRM check cause", fields: { errorName: "Error", errorMessage: 'CRM record field "Date Signed" resolved 2 values; expected exactly one' },
+    }]);
+  });
+  it("keeps a Playwright timeout and field label without its DOM preview", async () => {
+    const error = new Error("locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n - waiting for locator('td').filter({ hasText: 'Date Signed' })\n - locator resolved to <td>Private Person 10000001 07/01/2026</td>");
+    error.name = "TimeoutError";
+    assert.deepEqual(await failure(error), [{ message: "CRM check cause", fields: { errorName: "TimeoutError", errorMessage: 'locator.waitFor: Timeout 30000ms exceeded. CRM record field "Date Signed"' } }]);
+  });
+  it("keeps static fields from Playwright serialized exact-label regex timeouts", async () => {
+    for (const [field, serialized] of [
+      ["Department", String.raw`/^\s*Department\s*$/u`],
+      ["First Day of Service (Effective Date)", String.raw`/^\s*First Day of Service \(Effective Date\)\s*$/u`],
+    ]) {
+      const error = new Error(`locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n - waiting for locator('th').filter({ hasText: ${serialized} }).locator('xpath=following-sibling::td[1]')\n - locator resolved to <td>Private Person 10000001</td>`);
+      error.name = "TimeoutError";
+      assert.deepEqual(await failure(error), [{ message: "CRM check cause", fields: { errorName: "TimeoutError", errorMessage: `locator.waitFor: Timeout 30000ms exceeded. CRM record field "${field}"` } }]);
+    }
+  });
+  it("keeps date field and rejection reason while withholding the entire raw value", async () => {
+    for (const field of ["First Day of Service", "Date Signed"]) {
+      for (const reason of ["not M/D/YYYY with an optional time", "not a real calendar date"]) {
+        const raw = 'Private Person 10000001 2/30/2026 "extra" https://example.com/?id=10000001 password=secret';
+        assert.deepEqual(await failure(new Error(`CRM ${field} date "${raw}" is ${reason}`)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: `CRM ${field} date "[withheld]" is ${reason}` } }]);
+      }
+    }
+  });
+  it("retains only complete structural search-shape messages", async () => {
+    for (const message of [
+      "CRM search row 0 had 4 direct cells; expected exactly 5",
+      "CRM search row 1 had 2 record links; expected exactly one",
+      "CRM search row 2 record link had no href",
+      "CRM zero-result search expected one verified empty-state heading but found 2",
+    ]) {
+      assert.deepEqual(await failure(new Error(message)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: message } }]);
+      assert.deepEqual(await failure(new Error(`${message} Private Person 10000001`)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: "Unrecognized driver error detail withheld" } }]);
+    }
+  });
+  it("projects every current discovery navigation and structural failure without dynamic data", async () => {
+    const privateText = 'Private Person 10000001 password=secret https://example.com/?token=secret';
+    const cases = [
+      [`CRM navigation expected record ${privateText} but landed on a different record id`, "CRM navigation landed on a different record id"],
+      [`CRM navigation expected https://act-crm.my.site.com/hr/ONB_ViewOnboarding but landed on https://example.com/${privateText}`, "CRM navigation left the expected host or path"],
+      [`CRM navigation expected https://act-crm.my.site.com/hr/ONB_SearchOnboardings but landed on https://example.com/${privateText}`, "CRM navigation left the expected host or path"],
+      [`CRM search expected query ${privateText} but the rendered page used a different query`, "CRM rendered page used a different search query"],
+      [`CRM onboarding record link /${privateText} is missing its record id`, "CRM onboarding record link is missing its record id"],
+      ["CRM UI registry has no element crm.onboarding.record-field-value", "CRM UI registry is missing a required element"],
+      ['CRM expected exactly one heading "Search Results" but found 2', 'CRM expected exactly one heading "Search Results" but found 2'],
+      ...["row", "cells", "link"].map(kind => [`CRM search-result ${kind} recipe changed kind unexpectedly`, `CRM search-result ${kind} recipe changed kind unexpectedly`]),
+      ["CRM record-field recipe changed kind unexpectedly", "CRM record-field recipe changed kind unexpectedly"],
+      ["CRM onboarding search query cannot be blank", "CRM onboarding search query cannot be blank"],
+      ...["name", "process stage"].flatMap(field => ["rendered without text", "was blank"].map(reason => [`CRM search row 0 ${field} ${reason}`, `CRM search row 0 ${field} ${reason}`])),
+    ];
+    for (const [raw, expected] of cases) {
+      assert.deepEqual(await failure(new Error(raw)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: expected } }]);
+      if (!raw.startsWith("CRM navigation expected https://")) assert.deepEqual(await failure(new Error(`${raw} ${privateText}`)), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: "Unrecognized driver error detail withheld" } }]);
+    }
+    const invalid = new Error(privateText);
+    invalid.name = "ZodError";
+    assert.deepEqual(await failure(invalid), [{ message: "CRM check cause", fields: { errorName: "ZodError", errorMessage: "CRM driver data failed schema validation; issue details withheld" } }]);
+  });
+  it("withholds arbitrary messages and error names including identity, dates, URLs and credentials", async () => {
+    const error = new Error("Private Person 10000001 07/01/2026 <td>secret</td> https://example.com/?id=10000001 password=secret");
+    error.name = "Private Person 10000001";
+    assert.deepEqual(await failure(error), [{ message: "CRM check cause", fields: { errorName: "Error", errorMessage: "Unrecognized driver error detail withheld" } }]);
+    assert.deepEqual(await failure("Private Person 10000001"), [{ message: "CRM check cause", fields: { errorName: "NonError", errorMessage: "Non-Error driver detail withheld" } }]);
+  });
+  it("rethrows cancellation without recording a CRM check cause", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const error = new Error("cancelled");
+    const diagnostics: unknown[] = [];
+    await assert.rejects(searchOnboardingRecordsTask.impl.run({ input: { eid: record.emplId }, ctx: { ...ctx,
+      signal: controller.signal, log: { ...ctx.log, debug: message => { diagnostics.push(message); } },
+      driver: { ...base, searchOnboardingRecords: async () => { throw error; } },
+    } }), error);
+    assert.deepEqual(diagnostics, []);
+  });
+
 });
