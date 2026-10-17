@@ -117,9 +117,8 @@ export const FailureRecordSchema = z.strictObject({
 
 export type FailureRecord = z.infer<typeof FailureRecordSchema>;
 
-function withoutDisplay<T extends { displayRedacted?: string }>(evidence: T): Omit<T, "displayRedacted"> {
-  const { displayRedacted: _display, ...rest } = evidence;
-  return rest;
+function subjectEvidence(evidence: z.infer<typeof SubjectEvidenceWireSchema>) {
+  return { kind: evidence.kind, digest: evidence.digest };
 }
 
 /** Catalog sentence for the code. Protected input drops raw diagnostic text. */
@@ -128,8 +127,8 @@ export function projectFailureForOperator(failureInput: unknown, protectedInput 
   const summary = operatorFailureSentence(failure.code);
   if (!protectedInput) return FailureRecordSchema.parse({ ...failure, summary });
   const subject = failure.subject === undefined ? undefined : {
-    ...(failure.subject.expected === undefined ? {} : { expected: withoutDisplay(failure.subject.expected) }),
-    ...(failure.subject.observed === undefined ? {} : { observed: withoutDisplay(failure.subject.observed) }),
+    ...(failure.subject.expected === undefined ? {} : { expected: subjectEvidence(failure.subject.expected) }),
+    ...(failure.subject.observed === undefined ? {} : { observed: subjectEvidence(failure.subject.observed) }),
     ...(failure.subject.proofRef === undefined ? {} : { proofRef: failure.subject.proofRef }),
   };
   const page = failure.page === undefined ? undefined : {
