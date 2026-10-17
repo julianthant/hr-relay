@@ -257,10 +257,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       const page = existing[0] ?? await context.newPage();
       const diagnostics = attachBrowserDiagnostics(page, this.#options.clock);
       let pageVersion = 1;
-      let authenticatedVersion: number | undefined;
       const onNavigation = this.#options.onNavigation;
       page.on("framenavigated", (frame) => {
-        if (frame === page.mainFrame()) { pageVersion += 1; authenticatedVersion = undefined; onNavigation?.(frame.url()); }
+        if (frame === page.mainFrame()) { pageVersion += 1; onNavigation?.(frame.url()); }
       });
       const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
       const emit = (phase: DebugEvent["phase"], code?: string): void => this.#options.onDebug?.(workerId, { phase, correlationId: sessionId, ...(code === undefined ? {} : { code }) });
@@ -284,7 +283,6 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
           const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"]): BrowserScreenshotEvidence => Object.freeze({ ...identity, state: "unavailable", reason });
           if (page.isClosed()) return unavailable("page-closed");
-          if (authenticatedVersion !== version) return unavailable("authentication-unverified");
           try {
             const proof = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
             if (!proof.authenticated) return unavailable("authentication-unverified");
@@ -321,11 +319,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               ...(input.claimStaleRequestRecovery === undefined ? {} : { claimStaleRequestRecovery: input.claimStaleRequestRecovery }),
               ...(input.acquisitionRemainingMs === undefined ? {} : { acquisitionRemainingMs: input.acquisitionRemainingMs }),
             };
-            authenticatedVersion = undefined;
             emit("started");
             try {
               const result = await binding.login(loginContext);
-              authenticatedVersion = pageVersion;
               emit("settled");
               return result;
             } catch (error) { emit("failed", "session-authentication-failed"); throw error; }
@@ -333,7 +329,6 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         },
         reset: async (resetInput): Promise<void> => {
           await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal);
-          authenticatedVersion = pageVersion;
           emit("reset");
         },
         close: async (closeInput): Promise<BrowserSessionCloseProof> => {

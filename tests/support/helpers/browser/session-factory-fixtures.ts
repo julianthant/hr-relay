@@ -19,7 +19,8 @@ export function createBrowserSessionFactoryFixtures(
   NEVER_SCHEDULER: BrowserDeadlineScheduler,
 ) {
   interface FakePage {
-    on: () => void;
+    on: (event: string, listener: (frame: { url: () => string }) => void) => void;
+    mainFrame: () => { url: () => string };
     off: () => void;
     locator: () => { count: () => Promise<number> };
     frames: () => readonly { locator: (selector: string) => { selector: string } }[];
@@ -34,8 +35,11 @@ export function createBrowserSessionFactoryFixtures(
 
   function fakePage(options: Readonly<{ url?: string; refuseClose?: boolean }> = {}): FakePage {
     let current = options.url ?? "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/app";
+    const navigationListeners: ((frame: { url: () => string }) => void)[] = [];
+    const mainFrame = { url: () => current };
     const page: FakePage = {
-      on: () => undefined,
+      on: (event, listener) => { if (event === "framenavigated") navigationListeners.push(listener); },
+      mainFrame: () => mainFrame,
       off: () => undefined,
       locator: () => ({ count: async () => 0 }),
       frames: () => [{ locator: (selector: string) => ({ selector }) }],
@@ -50,6 +54,7 @@ export function createBrowserSessionFactoryFixtures(
       goto: async (url: string) => {
         page.gotoUrls.push(url);
         current = url;
+        for (const listener of navigationListeners) listener(mainFrame);
         return null;
       },
       screenshot: async () => Buffer.from([137, 80, 78, 71]),

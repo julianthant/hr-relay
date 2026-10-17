@@ -166,6 +166,57 @@ describe("worker browser session factory", () => {
     });
   });
 
+  it("captures a freshly verified authenticated page after navigation", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const launcher = fakeLauncher();
+      const verifier = verifierFor();
+      const factory = factoryFor(config, launcher, recordingBindings({ verify: verifier.verify }));
+      const resource = await factory.open(OPEN_INPUT);
+      try {
+        await resource.authentication.authenticate("ucpath", {});
+        const url = "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/results";
+        await launcher.page.goto(url);
+        const screenshot = await resource.screenshot?.();
+        assert.equal(screenshot?.state, "available");
+        assert.ok(screenshot?.state === "available");
+        assert.deepEqual([...screenshot.bytes], [137, 80, 78, 71]);
+        assert.equal(screenshot.pageVersion, 2);
+        assert.deepEqual(verifier.seen(), [url, url]);
+      } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
+
+  for (const refusal of ["authentication-unverified", "secret-controls-present", "page-changed", "verification-failed", "page-closed"] as const) {
+    it(`refuses ${refusal} after navigation without exposing image bytes`, async () => {
+      await withTempRuntime(async ({ config }) => {
+        const launcher = fakeLauncher();
+        const verifier = verifierFor({ authenticated: refusal !== "authentication-unverified" });
+        let imageReads = 0;
+        launcher.page.screenshot = async () => {
+          imageReads += 1;
+          await launcher.page.goto("https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/changed");
+          return Buffer.from([137, 80, 78, 71]);
+        };
+        if (refusal === "secret-controls-present") launcher.page.locator = () => ({ count: async () => 1 });
+        const factory = factoryFor(config, launcher, recordingBindings({
+          verify: refusal === "verification-failed" ? async () => { throw new Error("private verifier detail"); } : verifier.verify,
+        }));
+        const resource = await factory.open(OPEN_INPUT);
+        try {
+          await resource.authentication.authenticate("ucpath", {});
+          await launcher.page.goto("https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/results");
+          if (refusal === "page-closed") launcher.page.closed = true;
+          const screenshot = await resource.screenshot?.();
+          assert.deepEqual(screenshot, {
+            state: "unavailable", reason: refusal, pageVersion: 2,
+            sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString(),
+          });
+          assert.equal(imageReads, refusal === "page-changed" ? 1 : 0);
+        } finally { await resource.close({ reason: "worker-stop" }); }
+      });
+    });
+  }
+
   it("launches the run's headed presentation in its own profile partition", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher();
@@ -491,7 +542,11 @@ describe("required profile custody admission", () => {
       page.locator = () => ({ count: async () => { domReads += 1; return 1; } });
       page.screenshot = async () => { imageReads += 1; return Buffer.from([]); };
       const harness = fakeLauncher({ page });
-      const factory = factoryFor(config, harness, recordingBindings());
+      let authenticated = false;
+      const factory = factoryFor(config, harness, recordingBindings({
+        onLogin: () => { authenticated = true; },
+        verify: async context => verifierFor({ authenticated }).verify(context),
+      }));
       const resource = await factory.open(OPEN_INPUT);
       try {
         assert.equal((await resource.screenshot?.())?.state, "unavailable");
