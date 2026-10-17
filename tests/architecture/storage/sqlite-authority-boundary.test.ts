@@ -18,6 +18,7 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/backend/storage/sqlite/imported-artifacts.ts",
   "src/backend/storage/sqlite/native-run-deletion.ts",
   "src/backend/storage/sqlite/notification-publications.ts",
+  "src/backend/storage/sqlite/orphan-verification-proof.ts",
   "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
   "src/backend/storage/sqlite/relocation-restore-candidate.ts",
   "src/backend/storage/sqlite/run-search-index.ts",
