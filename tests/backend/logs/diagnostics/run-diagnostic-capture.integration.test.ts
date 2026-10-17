@@ -53,6 +53,7 @@ import { RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixture
 import {
 happySessionHarness,
 healthyUcpathDriver,
+healthyCrmDriver,
 ManualScheduler,
 openAuthorityHarness,
 personLookupQueuedRun,
@@ -457,7 +458,7 @@ describe("task screenshot persistence before checkpoint", () => {
       const captureTask = defineTask(ucpathDriver, SearchPersonOrg, {
         sessions: searchPersonOrgTask.impl.sessions, ...(failure === "undeclared" ? {} : { screenshots: "task" as const }),
         async run(args) {
-          const output = await searchPersonOrgTask.impl.run(args);
+          const output = await searchPersonOrgTask.impl.run({ ...args, ctx: { ...args.ctx, captureScreenshot: async () => {} } });
           await args.ctx.captureScreenshot();
           return output;
         },
@@ -490,7 +491,7 @@ describe("task screenshot persistence before checkpoint", () => {
         return notes.emitRunAction(input, authority);
       } } }, { ...claimed, signal: new AbortController().signal });
       if (failure === "none") {
-        assert.equal(result.state, "done");
+        assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
         assert.ok(database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).some(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot"));
       } else {
         assert.equal(result.state, "failed");
@@ -538,4 +539,56 @@ it("persists a task screenshot through a complete frozen binder into Logs withou
     assert.equal(row.note.screenshot?.sessionId, sessionId);
     assert.equal(row.note.screenshot?.bundleId, database.authority.diagnosticBundles.listByRun(claimed.run.envelope.runId)[0]?.bundleId);
   } finally { await world.cleanup(); }
+});
+
+describe("Person Lookup final capture points", () => {
+  for (const kind of ["selected", "empty", "ambiguous"] as const) for (const enabled of [true, false]) {
+    it(`captures exactly the final CRM ${kind} page (enabled=${enabled})`, async () => {
+      const world = createRunExecutorTestWorld();
+      let sessions: WorkerSessionManager | undefined;
+      try {
+        const pages = new Map<string, string>();
+        const baseCrm = healthyCrmDriver();
+        const records = await baseCrm.searchOnboardingRecords({ eid: "10873698" });
+        const expected = kind === "empty" ? [] : kind === "ambiguous" ? [records[0], { ...records[0], recordId: "ONB-2", recordUrl: "https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=ONB-2" }] : records;
+        const factory = sessionFactoryHarness({
+          ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: async (input: z.output<typeof SearchPersonOrg.input>) => { pages.set("ucpath", "ucpath-detail"); return healthyUcpathDriver().searchPersonOrg(input); } }),
+          crm: () => ({ ...baseCrm,
+            searchOnboardingRecords: async () => { pages.set("crm", "crm-results"); return expected; },
+            verifyOnboardingRecord: async (record: Parameters<typeof baseCrm.verifyOnboardingRecord>[0]) => { pages.set("crm", "crm-record"); return record; },
+          }),
+        });
+        const harness = world.executorHarness({ sessions: factory });
+        const { database, clock } = harness.authority;
+        const queued = RunRecordSchema.parse(personLookupQueuedRun());
+        const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: enabled } }, clock.now().toISOString());
+        const { service } = captureService(database);
+        const capture = createRunBrowserScreenshotCapture({ service });
+        const acquired: string[] = [];
+        const persisted: string[] = [];
+        sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(claimed.claim.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: taskStoreRegistry,
+          factory: { open: async input => {
+            const resource = await factory.factory.open(input);
+            return { ...resource, screenshot: async () => {
+              acquired.push(pages.get(input.system) ?? "unexpected-page");
+              return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
+            } };
+          } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: fixtureDuoCeremonyGates(clock),
+          browserScreenshotCapture: { capture: async context => { await capture.capture(context); persisted.push(pages.get(context.system) ?? "unexpected-page"); } },
+        });
+        sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
+          descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: enabled });
+        const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+        const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: notes }, { ...claimed, signal: new AbortController().signal });
+        assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
+        const points = enabled ? ["ucpath-detail", kind === "selected" ? "crm-record" : "crm-results"] : [];
+        assert.deepEqual(acquired, points);
+        assert.deepEqual(persisted, points);
+        const screenshotNotes = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).flatMap(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot" ? [row.payload.note] : []);
+        assert.equal(screenshotNotes.length, points.length);
+        assert.equal(database.authority.diagnosticBundles.listByRun(claimed.run.envelope.runId).length, points.length);
+        assert.equal(database.authority.runCheckpoints.latest(claimed.run.envelope.workflow, claimed.run.envelope.itemId, "crm-results") !== undefined, kind !== "selected");
+      } finally { await sessions?.closeAll("worker-stop"); await world.cleanup(); }
+    });
+  }
 });

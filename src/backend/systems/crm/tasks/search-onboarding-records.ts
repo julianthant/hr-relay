@@ -42,6 +42,7 @@ function crmCauseDiagnostic(error: unknown): Readonly<{ errorName: string; error
 }
 
 export const searchOnboardingRecordsTask = defineTask(crmDriver, CrmSearchOnboardingRecords, {
+  screenshots: "task",
   sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
   async run({ input, ctx }) {
     let output: import("zod").z.output<typeof CrmDiscoveryOutputSchema>;

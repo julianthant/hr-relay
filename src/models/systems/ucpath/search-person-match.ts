@@ -13,7 +13,7 @@ export const SearchPersonMatch = defineTaskContract({
   id: taskId("ucpath/search-person-match"), title: "Search for person", effect: "read",
   input: z.strictObject({ lastName: z.string().min(1), firstName: z.string().min(1), dob: z.string().optional(), ssn: CANONICAL_FIELDS.ssn.schema.optional() })
     .refine((input) => input.dob !== undefined || input.ssn !== undefined, "Match requires a date of birth or SSN"),
-  output: SearchPersonMatchOutputSchema, errorCodes: ["PERSON_LOOKUP_UCPATH_SEARCH_FAILED"],
+  output: SearchPersonMatchOutputSchema, errorCodes: ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "PERSON_LOOKUP_UCPATH_SEARCH_FAILED"],
   subject: { kind: "none", reason: "Match resolves identity through HR Tasks and Person Org confirmation" },
   freshness: { defaultMaxAgeMs: 1.44e7, defaultOverride: "forbidden" }, provenance: { default: "live" },
   scenarios: ["person-lookup/m1", "person-lookup/m1b", "person-lookup/m2", "person-lookup/m3"],

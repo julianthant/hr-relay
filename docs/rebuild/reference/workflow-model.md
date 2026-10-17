@@ -417,21 +417,30 @@ Every start surface publishes the committed run through `runQueuedSpanEvent` bef
 
 ## 8. Person Lookup
 
-`src/workflows/person-lookup/workflow.ts` declares four task entries:
+`src/workflows/person-lookup/workflow.ts` declares four visible steps and ten graph nodes. Step order controls presentation. The table lists each step's nodes in declaration order.
 
-| Node | Contract | Dependencies and policy |
-| --- | --- | --- |
-| `searching` | `ucpath/search-person-org` | No upstream outputs; `checkpoint` |
-| `cross-verify` | `crm/read-onboarding-record` | `searching`; `checkpoint` |
-| `active-status` | `workflow:person-lookup/read-active-status` | `searching`, `cross-verify`; `always-rerun` |
-| `crm-dates` | `crm/read-onboarding-dates` | `searching`; `checkpoint`; `includeCrmDates` condition |
+| Visible step | Node | Contract | Dependencies | Replay and condition |
+| --- | --- | --- | --- | --- |
+| Search for person | `searching` | `ucpath/search-person-org` | None | `checkpoint`; `mode = "search"` |
+| Search for person | `matching` | `ucpath/search-person-match` | `searching` | `checkpoint`; `mode = "match"` |
+| Search for person | `search-identity` | `workflow:person-lookup/read-resolved-identity` | `searching`, `matching` | `always-rerun` |
+| Cross-check identity (`crmCheck=true`) | `cross-verify` | `crm/search-onboarding-records` | `search-identity`, `searching`, `matching` | `checkpoint`; `search-identity.shouldCheckCrm` is true |
+| Cross-check identity (`crmCheck=true`) | `crm-identity` | `workflow:person-lookup/read-resolved-identity` | `search-identity`, `cross-verify`, `searching`, `matching` | `always-rerun`; same condition as `cross-verify` |
+| Cross-check identity (`crmCheck=true`) | `crm-selected-record` | `crm/verify-onboarding-record` | `crm-identity` | `checkpoint`; `crm-identity.crmRecord` is present |
+| Cross-check identity (`crmCheck=true`) | `crm-results` | `crm/read-onboarding-results` | `search-identity`, `cross-verify`, `crm-identity`, `searching`, `matching` | `checkpoint`; `crm-identity.unselectedCrmRecords` is present |
+| Read employment status | `crm-only-recovery` | `ucpath/search-person-org` | `crm-identity`, `crm-selected-record`, `crm-results` | `checkpoint`; `crm-identity.recoveryEid` is present |
+| Read employment status | `active-status` | `workflow:person-lookup/read-active-status` | `search-identity`, `crm-identity`, `crm-only-recovery`, `crm-selected-record`, `crm-results` | `always-rerun`; `mode = "search"` |
+| Read CRM dates (`includeCrmDates=true`) | `crm-dates` | `crm/read-onboarding-dates` | `active-status` | `checkpoint`; `active-status.datesEid` is present |
 
-The input accepts an EID or name and applies `keepNonHdh` and `includeCrmDates` defaults once.
-The result derives from `active-status` and `crm-dates`, using `included` or `not-requested` for
-CRM dates. `requireFact` rejects an unavailable selected person or required conditional output.
-The workflow has no transaction, gate, parallel, or delegation node. Its dry-run preview refuses
-because the graph contains no transaction. Its declaration is not evidence of a current live run
-or completed dashboard wiring.
+Search mode accepts an EID or name. Match mode accepts a name plus a date of birth, an SSN, or both. The input schema owns the defaults for `crmCheck`, `keepNonHdh`, and `includeCrmDates`.
+
+The result uses `active-status` in Search mode. In Match mode, it derives the outcome from the identity, match output, and any verified CRM record. CRM dates are `included` when `crm-dates` runs and `not-requested` otherwise. `requireFact` refuses a missing required fact.
+
+`unselectedCrmRecords` is nullable. `crm-results` runs for an array, including `[]`, and skips when the field is `null`. Its bind builds the same query as `cross-verify`. The task reads the current CRM results and compares them with the discovered records. If they differ, it fails with `PERSON_LOOKUP_CRM_RESULTS_CHANGED`. `crm-results` returns unresolved rows without treating a row as the selected CRM record. When `crmRecord` is present, `crm-selected-record` reopens the record and verifies its current identity and facts. `crm-results` skips on this branch.
+
+`searching`, `matching`, `crm-selected-record`, and `crm-results` own the task-point screenshot captures. `captureBrowserScreenshots` gates image capture. With the option off, `crm-results` still reads and compares the CRM records, but its screenshot call is a no-op. Checkpoint replay restores task output and does not invoke capture or create a new Screenshot action.
+
+The workflow has no transaction, gate, parallel, or delegation node. Its dry-run preview refuses because the graph contains no transaction. Its declaration is not evidence of a current live run or completed dashboard wiring.
 
 ## Not built yet
 

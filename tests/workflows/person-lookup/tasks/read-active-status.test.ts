@@ -32,7 +32,7 @@ it("names inconsistent UCPath and CRM identities without recording output facts"
   await assert.rejects(readActiveStatusTask.impl.run({
     input: {
       input: PersonLookupInput.parse({ emplId: expectedEid }),
-      identity: ResolvedIdentitySchema.parse({ state: "resolved", crmIdentity: null, selected: { ...candidate, emplId: expectedEid }, crmRecord: { recordId: "ONB-2", recordUrl: "https://example.invalid/record", emplId: otherEid, name: "Other, Person", department: "Housing", firstDayOfService: "", dateSigned: "" },
+      identity: ResolvedIdentitySchema.parse({ unselectedCrmRecords: null, state: "resolved", crmIdentity: null, selected: { ...candidate, emplId: expectedEid }, crmRecord: { recordId: "ONB-2", recordUrl: "https://example.invalid/record", emplId: otherEid, name: "Other, Person", department: "Housing", firstDayOfService: "", dateSigned: "" },
         shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null, candidateEids: [expectedEid], recoveryEid: null, crmState: "Found", method: "eid-match" }),
     },
     ctx,
@@ -107,7 +107,7 @@ describe("Person Lookup task implementations", () => {
     const nonHdh = UcpathCandidateSchema.parse({ ...candidate, hdh: false });
     await assert.rejects(
       readActiveStatusTask.impl.run({
-        input: { input: PersonLookupInput.parse({ emplId: nonHdh.emplId }), identity: ResolvedIdentitySchema.parse({ state: "resolved", crmIdentity: null, selected: nonHdh, crmRecord: { recordId: "ONB-2", recordUrl: "https://example.invalid/record", emplId: "10101010", name: "Other, Person", department: "Housing", firstDayOfService: "", dateSigned: "" },
+        input: { input: PersonLookupInput.parse({ emplId: nonHdh.emplId }), identity: ResolvedIdentitySchema.parse({ unselectedCrmRecords: null, state: "resolved", crmIdentity: null, selected: nonHdh, crmRecord: { recordId: "ONB-2", recordUrl: "https://example.invalid/record", emplId: "10101010", name: "Other, Person", department: "Housing", firstDayOfService: "", dateSigned: "" },
           shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null, candidateEids: [nonHdh.emplId], recoveryEid: null, crmState: "Found", method: "eid-match" }) },
         ctx: commonCtx,
       }),

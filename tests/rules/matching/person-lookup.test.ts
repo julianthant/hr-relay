@@ -51,3 +51,11 @@ describe("Person Lookup identity evidence", () => {
   assert.equal(agreed.crmIdentity?.name, record.name); assert.equal(agreed.crmRecord, null);
  });
 });
+
+it("declares empty and ambiguous CRM results explicitly while selected or unchecked results stay absent", () => {
+  assert.deepEqual(resolve([person, other], []).unselectedCrmRecords, []);
+  const ambiguous = [{ ...record, emplId: person.emplId }, { ...record, recordId: "ONB-2", emplId: other.emplId }];
+  assert.deepEqual(resolve([person, other], ambiguous).unselectedCrmRecords, ambiguous);
+  assert.equal(resolve([person, other], [{ ...record, emplId: person.emplId }]).unselectedCrmRecords, null);
+  assert.equal(resolvePersonLookupIdentity({ input }).unselectedCrmRecords, null);
+});

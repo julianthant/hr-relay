@@ -4,6 +4,7 @@ import { CrmDiscoveryOutputSchema, CrmRecordIdentityDriftError, PersonLookupCrmC
 import { crmDriver } from "../driver-declaration.js";
 
 export const verifyOnboardingRecordTask = defineTask(crmDriver, CrmVerifyOnboardingRecord, {
+  screenshots: "task",
   sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
   async run({ input, ctx }) {
     let output: import("zod").z.output<typeof CrmDiscoveryOutputSchema>;
@@ -14,6 +15,7 @@ export const verifyOnboardingRecordTask = defineTask(crmDriver, CrmVerifyOnboard
       const failure = new PersonLookupCrmCheckError(error);
       output = { state: "check-failed", code: failure.code, reason: failure.message };
     }
+    if (output.state === "checked") await ctx.captureScreenshot();
     ctx.recordData(Object.entries<unknown>(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
     return output;
   },

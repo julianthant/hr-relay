@@ -26,7 +26,7 @@ export const PERSON_LOOKUP_ACTIVE = ReadActiveStatus.output.parse({
     foundInUcpath: null, matchedEid: null, matchedName: null },
 });
 
-const TERMINAL_IDENTITY = ReadResolvedIdentity.output.parse({ shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null,
+const TERMINAL_IDENTITY = ReadResolvedIdentity.output.parse({ unselectedCrmRecords: null, shouldCheckCrm: true, ucpathFound: true, crmErrorCode: null,
     state: "resolved", crmIdentity: null, selected: { emplId: "10873698", name: "Fixture, Person", department: "Housing", jobTitle: "Assistant",
       employeeStatus: "active", hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "", hdh: true },
     crmRecord: null, candidateEids: ["10873698"], recoveryEid: null, crmState: "Not found", method: "ucpath" });
@@ -45,6 +45,7 @@ export function personLookupTerminalIdentityEvidence(run: import("../../../src/m
         provenance: TERMINAL_IDENTITY_PATHS.map(path => ({ path, source: "derived", observedAt, originalObservedAt: observedAt })), writtenAt: observedAt }) })),
     { state: "not-run" as const, nodeId: "matching", reason: "condition-false" },
     { state: "not-run" as const, nodeId: "crm-selected-record", reason: "condition-false" },
+    { state: "not-run" as const, nodeId: "crm-results", reason: "condition-false" },
   ];
 }
 

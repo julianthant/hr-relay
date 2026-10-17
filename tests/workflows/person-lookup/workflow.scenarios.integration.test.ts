@@ -266,6 +266,7 @@ describe("approved Person Lookup scenarios", () => {
         ...(people.length > 0 && !["S7", "S8", "S13"].includes(testCase.id) ? ["ucpath.person-org.person", ...(byName ? ["ucpath.person-org.open-record"] : [])] : [])];
     if (input.crmCheck && (!matchMode || testCase.state === "found")) expectedActions.push("crm.onboarding.search-criteria", "crm.onboarding.search", ...(!testCase.crmFailure ? ["crm.onboarding.record-count"] : []));
     if (expectedCrm === "Found") expectedActions.push("crm.onboarding.record", "crm.onboarding.record");
+    if (["S5", "S8", "S11", "S12"].includes(testCase.id)) expectedActions.push("crm.onboarding.search-criteria", "crm.onboarding.search", "crm.onboarding.record-count");
     if (["S4", "S9", "S10", "S13"].includes(testCase.id)) expectedActions.push(...searchActions, ...(["S9", "S13"].includes(testCase.id) ? ["ucpath.person-org.employment-instances", "ucpath.person-org.person"] : []));
     assert.deepEqual(actions.map(action => action.targetId), expectedActions);
     assert.ok(actions.length > 0);

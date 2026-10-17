@@ -9,6 +9,10 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  PERSON_LOOKUP_CRM_RESULTS_CHANGED: catalogEntry(
+    "CRM search results changed before they could be captured.",
+    EmptyParametersSchema,
+  ),
   BROWSER_SCREENSHOT_CAPTURE_FAILED: catalogEntry(
     "The browser screenshot could not be captured or saved.",
     EmptyParametersSchema,

@@ -62,7 +62,7 @@ async function readChain() {
   const record = await verifyOnboardingRecordTask.impl.run({ input: CrmVerifyOnboardingRecord.input.parse(identity.crmRecord), ctx: { ...commonCtx, recordData: recordCollector.recordData, driver: crm } });
   const recordEvidence = recordCollector.finalizeRead(record);
   const recordCheckpoint = checkpoint("crm-selected-record", CrmVerifyOnboardingRecord.output, record, recordEvidence);
-  const activeCollector = collector("active-status", ReadActiveStatus.id, [initialCheckpoint, identityCheckpoint, recordCheckpoint], ["crm-only-recovery"]);
+  const activeCollector = collector("active-status", ReadActiveStatus.id, [initialCheckpoint, identityCheckpoint, recordCheckpoint], ["crm-only-recovery", "crm-results"]);
   const active = await readActiveStatusTask.impl.run({ input: { input, identity: ReadResolvedIdentity.output.parse(identity) }, ctx: { ...commonCtx, recordData: activeCollector.recordData } });
   const activeEvidence = activeCollector.finalizeRead(active);
   const activeCheckpoint = checkpoint("active-status", ReadActiveStatus.output, active, activeEvidence);

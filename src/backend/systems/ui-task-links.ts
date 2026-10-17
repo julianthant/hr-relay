@@ -19,6 +19,7 @@ const UCPATH_SOURCE_LINK = "src/backend/systems/ucpath/driver/ui-registry.ts#UCP
 const CRM_SOURCE_LINK = "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY";
 const KUALI_SOURCE_LINK = "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY";
 const NEW_KRONOS_SOURCE_LINK = "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY";
+const CRM_RESULTS_TASK = TaskIdSchema.parse("crm/read-onboarding-results");
 const CRM_RECORD_TASK = TaskIdSchema.parse("crm/read-onboarding-record");
 const CRM_DATES_TASK = TaskIdSchema.parse("crm/read-onboarding-dates");
 const KUALI_SEARCH_TASK = TaskIdSchema.parse("kuali/search-separation-action");
@@ -151,7 +152,7 @@ export function buildUiTaskLinks(): readonly UiTaskLink[] {
       system: screen.system,
       label: screen.label,
       verification: verifiedAt(screen.verification),
-      taskUses: [CRM_RECORD_TASK, CRM_DATES_TASK],
+      taskUses: screen.id === "crm.onboarding.history" ? [CRM_RECORD_TASK, CRM_DATES_TASK] : [CRM_RECORD_TASK, CRM_DATES_TASK, CRM_RESULTS_TASK],
       sourceLink: CRM_SOURCE_LINK,
     })),
     ...CRM_UI_REGISTRY.elements.map((element) => ({
@@ -162,7 +163,7 @@ export function buildUiTaskLinks(): readonly UiTaskLink[] {
       verification: verifiedAt(element.verification),
       taskUses: element.id === "crm.onboarding.history-rows"
         ? [CRM_DATES_TASK]
-        : [CRM_RECORD_TASK, CRM_DATES_TASK],
+        : [CRM_RECORD_TASK, CRM_DATES_TASK, CRM_RESULTS_TASK],
       sourceLink: CRM_SOURCE_LINK,
     })),
     ...CRM_UI_REGISTRY.states.map((state) => ({
@@ -173,7 +174,7 @@ export function buildUiTaskLinks(): readonly UiTaskLink[] {
       verification: verifiedAt(state.verification),
       taskUses: state.id === "crm.onboarding.history-ready"
         ? [CRM_DATES_TASK]
-        : [CRM_RECORD_TASK, CRM_DATES_TASK],
+        : [CRM_RECORD_TASK, CRM_DATES_TASK, CRM_RESULTS_TASK],
       sourceLink: CRM_SOURCE_LINK,
     })),
     ...CRM_UI_REGISTRY.observations.map((observation) => ({
@@ -182,7 +183,7 @@ export function buildUiTaskLinks(): readonly UiTaskLink[] {
       system: observation.system,
       label: observation.label,
       verification: verifiedAt(observation.verification),
-      taskUses: [CRM_RECORD_TASK, CRM_DATES_TASK],
+      taskUses: [CRM_RECORD_TASK, CRM_DATES_TASK, CRM_RESULTS_TASK],
       sourceLink: CRM_SOURCE_LINK,
     })),
     ...KUALI_UI_REGISTRY.screens.map((screen) => ({

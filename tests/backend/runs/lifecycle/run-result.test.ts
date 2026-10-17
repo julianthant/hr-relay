@@ -311,6 +311,7 @@ describe("factory-authenticated terminal run results", () => {
       { nodeId: "crm-identity", notRunReason: "condition-false" },
       { nodeId: "matching", notRunReason: "condition-false" },
       { nodeId: "crm-selected-record", notRunReason: "condition-false" },
+      { nodeId: "crm-results", notRunReason: "condition-false" },
       { nodeId: "active-status", notRunReason: "condition-false" },
       { nodeId: "crm-dates", notRunReason: "condition-false" },
     ]);
@@ -330,8 +331,8 @@ describe("factory-authenticated terminal run results", () => {
       ],
       CLOCK,
     );
-    assert.deepEqual(result.dependencies.map(({ nodeId }) => nodeId), ["search-identity", "crm-identity", "matching", "crm-selected-record", "active-status", "crm-dates"]);
-    assert.equal(result.dependencies[5]?.state, "not-run");
+    assert.deepEqual(result.dependencies.map(({ nodeId }) => nodeId), ["search-identity", "crm-identity", "matching", "crm-selected-record", "crm-results", "active-status", "crm-dates"]);
+    assert.equal(result.dependencies[6]?.state, "not-run");
     assert.deepEqual(RunResultRecordSchema.parse(result).result.value, {
       activeStatus: ACTIVE,
       crmDates: { state: "not-requested" },
@@ -349,7 +350,7 @@ describe("factory-authenticated terminal run results", () => {
       ],
       CLOCK,
     );
-    assert.deepEqual(result.dependencies.map(({ state }) => state), ["resolved", "resolved", "not-run", "not-run", "resolved", "resolved"]);
+    assert.deepEqual(result.dependencies.map(({ state }) => state), ["resolved", "resolved", "not-run", "not-run", "not-run", "resolved", "resolved"]);
   });
 
   it("rejects copied descriptors and missing, extra, duplicate, or illegal not-run evidence", () => {

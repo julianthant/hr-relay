@@ -384,6 +384,10 @@ describe("workflow definition public equivalence characterization", () => {
           {
             "id": "crm-selected-record",
             "label": "Verify selected CRM record"
+          },
+          {
+            "id": "crm-results",
+            "label": "Read unresolved CRM results"
           }
         ]
       },
@@ -575,11 +579,31 @@ describe("workflow definition public equivalence characterization", () => {
       }
     },
     {
+      "id": "crm-results",
+      "kind": "task",
+      "dependsOn": [
+        "search-identity",
+        "cross-verify",
+        "crm-identity",
+        "searching",
+        "matching"
+      ],
+      "when": {
+        "kind": "is-present",
+        "of": {
+          "from": "node",
+          "nodeId": "crm-identity",
+          "path": "unselectedCrmRecords"
+        }
+      }
+    },
+    {
       "id": "crm-only-recovery",
       "kind": "task",
       "dependsOn": [
         "crm-identity",
-        "crm-selected-record"
+        "crm-selected-record",
+        "crm-results"
       ],
       "when": {
         "kind": "is-present",
@@ -597,7 +621,8 @@ describe("workflow definition public equivalence characterization", () => {
         "search-identity",
         "crm-identity",
         "crm-only-recovery",
-        "crm-selected-record"
+        "crm-selected-record",
+        "crm-results"
       ],
       "when": {
         "kind": "equals",
@@ -674,6 +699,14 @@ describe("workflow definition public equivalence characterization", () => {
       "conditional": true
     },
     {
+      "key": "crm-results",
+      "nodeId": "crm-results",
+      "label": "Read unresolved CRM results",
+      "kind": "task",
+      "taskId": "crm/read-onboarding-results",
+      "conditional": true
+    },
+    {
       "key": "crm-only-recovery",
       "nodeId": "crm-only-recovery",
       "label": "Searching",
@@ -711,6 +744,7 @@ describe("workflow definition public equivalence characterization", () => {
     "crm/search-onboarding-records",
     "workflow:person-lookup/read-resolved-identity",
     "crm/verify-onboarding-record",
+    "crm/read-onboarding-results",
     "ucpath/search-person-org",
     "workflow:person-lookup/read-active-status",
     "crm/read-onboarding-dates"

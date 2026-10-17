@@ -8,6 +8,7 @@ import { ucpathDriver } from "../driver-declaration.js";
 
 
 export const searchPersonOrgTask = defineTask(ucpathDriver, SearchPersonOrg, {
+  screenshots: "task",
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
   retry: { attempts: 2, backoffMs: 2_000, retryOn: "transient" },
   async run({ input, ctx }) {
@@ -18,6 +19,7 @@ export const searchPersonOrgTask = defineTask(ucpathDriver, SearchPersonOrg, {
       const failure = new PersonLookupUcpathSearchError(error);
       return ctx.fail(failure.code, failure.message, { cause: failure });
     }
+    await ctx.captureScreenshot();
     ctx.recordData([
       { direction: "read", field: "results", value: output.results },
       { direction: "read", field: "selection", value: output.selection },
