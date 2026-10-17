@@ -57,6 +57,7 @@ export interface FanOutEnvelope {
   readonly commandId: string;
   readonly actorId: string;
   readonly sourceBound?: RunEnvelope["sourceBound"];
+  readonly recovery?: RunEnvelope["recovery"];
   readonly relaunch?: Readonly<{ archivedRunId: string; archiveFingerprint: string }>;
   readonly workflow: string;
   readonly descriptorVersion: number;
@@ -158,7 +159,7 @@ export function fanOutQueuedRuns(
       operationDisplaySnapshot,
       requestedInstance: envelope.requestedInstance, resolvedInstance: envelope.resolvedInstance,
       configFingerprint: envelope.configFingerprint, configSnapshotId: envelope.configSnapshotId,
-      shape: envelope.shape, priority: envelope.priority, dryRun: envelope.dryRun,
+      shape: envelope.shape, priority: envelope.priority, dryRun: envelope.dryRun, recovery: envelope.recovery,
       browserMode: envelope.browserMode, captureBrowserScreenshots: envelope.captureBrowserScreenshots,
       stepOmissions: envelope.stepOmissions, sourceBound: envelope.sourceBound,
       retryOf: entry.retryOf, appVersion: envelope.appVersion, sessionId: envelope.session.sessionId,

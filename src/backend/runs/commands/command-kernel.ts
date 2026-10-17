@@ -546,6 +546,7 @@ function executeStartRun(
       shape: plan.shape,
       priority: plan.priority,
       dryRun: plan.dryRun,
+      ...(plan.recovery === undefined ? {} : { recovery: plan.recovery }),
       ...(plan.browserMode === undefined ? {} : { browserMode: plan.browserMode }),
       ...(plan.captureBrowserScreenshots === undefined
         ? {}

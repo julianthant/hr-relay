@@ -100,6 +100,13 @@ describe("dry-run scenario production composition boundary", () => {
       scenarioCase,
       ...admittedFinalization(NAME_ONLY_FINALIZATION_INPUT),
     });
+    const previewDatabase = AuthorityDatabase.open({ path: join(root, rebuildRuntimeIsolation.stateRoot, "state.db"),
+      busyTimeoutMs: 250, migrationOwner: "preview-recovery-control" }, clock);
+    try {
+      assert.equal(previewDatabase.authority.runs.get(started.runId)?.envelope.recovery, undefined);
+    } finally {
+      previewDatabase.close();
+    }
     await runtime.drain(TEST_MANIFEST.workflow);
     await runtime.resolveGate({
       manifest: TEST_MANIFEST,

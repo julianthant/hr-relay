@@ -29,7 +29,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function harnessFor(descriptor: AnyWorkflowDescriptor) {
+function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start") {
   const root = mkdtempSync(join(tmpdir(), "hrauto-rebuild-omission-plan-"));
   roots.push(root);
   const database = AuthorityDatabase.open(
@@ -41,6 +41,7 @@ function harnessFor(descriptor: AnyWorkflowDescriptor) {
   const ids = sequentialIdFactory("b");
   let transactions = 0;
   const service = createStartPlanService({
+    ...(recovery === undefined ? {} : { recovery }),
     // The ONE door a plan row can be written through: counting it is what
     // makes "nothing durable happened" a measurement rather than a claim.
     authority: {
@@ -81,6 +82,17 @@ function refusal(run: () => unknown): StartStepOmissionRefusedError {
   }
   return assert.fail("the plan was accepted");
 }
+
+describe("start plan recovery", () => {
+  it.each([undefined, "restart-from-start"] as const)("retains trusted recovery=%s without exposing public ingress", recovery => {
+    const harness = harnessFor(omissionAssertingDescriptor, recovery);
+    const input = request(omissionAssertingDescriptor, {});
+    const wire = harness.service.plan(input);
+    assert.equal(harness.database.authority.startPlans.get(wire.startPlanId)?.recovery, recovery);
+    assert.equal("recovery" in wire, false);
+    assert.throws(() => harness.service.plan({ ...input, recovery: "restart-from-start" }));
+  });
+});
 
 describe("start plan step omissions", () => {
   it("carries the reconciled omissions onto the served wire and the durable plan record", () => {

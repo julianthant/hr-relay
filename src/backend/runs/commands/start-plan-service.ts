@@ -1,3 +1,4 @@
+import type { RunRecoveryMode } from "../../../models/run/envelope.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
 import type { PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
 import { selectNewRunIdentity } from "../settings/run-settings.js";
@@ -22,6 +23,7 @@ export type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
 
 export interface StartPlanServiceDeps {
   readonly preflight?: PreflightAdmission;
+  readonly recovery?: RunRecoveryMode;
   readonly protectedSecrets?: ProtectedSecretSource;
   /** Internal test admission only; never accepted by the public ingress schema. */
   readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
@@ -126,6 +128,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           plannedBy: deps.plannedBy,
         },
       );
+      if (deps.recovery !== undefined) record = StartPlanRecordSchema.parse({ ...record, recovery: deps.recovery });
       const stored = deps.authority.withAuthorityTransaction((repositories) => {
         const selected=selectNewRunIdentity(repositories,record);
         record=StartPlanRecordSchema.parse({...record,...selected});

@@ -24,6 +24,7 @@ import {
   RunPrioritySchema,
   RunWorkersSchema,
   RunShapeSchema,
+  RunRecoveryModeSchema,
 } from "./envelope.js";
 
 /** Why a submission cannot become a run. Every arm is a state the operator can act on. */
@@ -73,6 +74,7 @@ export const StartPlanRecordSchema = z.strictObject({
   shape: RunShapeSchema,
   priority: RunPrioritySchema,
   dryRun: z.boolean(),
+  recovery: RunRecoveryModeSchema.optional(),
   workers: RunWorkersSchema,
   browserMode: BrowserPresentationModeSchema.optional(),
   captureBrowserScreenshots: z.boolean().optional(),

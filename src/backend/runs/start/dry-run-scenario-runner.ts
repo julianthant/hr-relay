@@ -107,6 +107,7 @@ const EvidenceTerminalSchema = z.discriminatedUnion("lifecycle", [
 ]);
 
 export const DryRunScenarioEvidenceSchema = z.strictObject({
+  runAttempt: z.number().int().positive(),
   reachedNodeIds: z.array(z.string().min(1)),
   checkpoints: z.array(EvidenceCheckpointSchema),
   gateResults: z.array(EvidenceGateResultSchema),
@@ -219,7 +220,7 @@ export function evaluateDryRunScenarioEvidence(
   const evidence = DryRunScenarioEvidenceSchema.parse(inputEvidence);
   const expectedCheckpoints = scenarioCase.checkpoints.map(({ node, attempt, keyedBy }) => ({
     node,
-    attempt,
+    attempt: arm === "live-read" ? evidence.runAttempt : attempt,
     keyedBy,
   }));
   const expectedGates = scenarioCase.gateResults.map(({ gate, decision, resolvedBy }) => ({

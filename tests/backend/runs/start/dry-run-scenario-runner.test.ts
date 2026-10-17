@@ -21,6 +21,7 @@ const GATED_MANIFEST = {
 } as const;
 
 const READY_EVIDENCE = {
+  runAttempt: 1,
   reachedNodeIds: ["read", "approval", "write"],
   checkpoints: [{
     node: "read",
@@ -237,6 +238,7 @@ describe("dry-run scenario execution", () => {
         drain: () => Promise.resolve(),
         resolveGate: () => Promise.reject(new Error("no gate expected")),
         collectEvidence: () => Promise.resolve({
+          runAttempt: 1,
           reachedNodeIds: ["read"],
           checkpoints: [],
           gateResults: [],
@@ -543,6 +545,13 @@ describe("scenario task-point screenshots", () => {
     const assertions = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before,
       { ...READY_EVIDENCE, screenshots: captures });
     assert.equal(assertions.find(row => row.assertionId === "screenshot-actions")?.verdict, verdict);
+  });
+
+  it("keeps preview checkpoint and screenshot attempts bound to the fixture manifest", () => {
+    const assertions = evaluateDryRunScenarioEvidence("dry-run-preview", scenarioCase, before,
+      { ...READY_EVIDENCE, runAttempt: 6, screenshots: [capture] });
+    assert.equal(assertions.find(row => row.assertionId === "checkpoints")?.verdict, "met");
+    assert.equal(assertions.find(row => row.assertionId === "screenshot-actions")?.verdict, "met");
   });
 
   it("persists a failed scenario result and retains the named capture-evidence failure", async () => {

@@ -341,6 +341,7 @@ export function createProductionDryRunScenarioRuntime(
           const configSnapshotId = active.configSnapshotId;
           const identity = { fingerprint: active.configFingerprint, snapshotId: configSnapshotId };
           const plans = createStartPlanService({
+            ...(request.manifest.arm === "live-read" ? { recovery: "restart-from-start" as const } : {}),
             preflight: preflight.admission,
             ...(request.protectedBindings === undefined ? {} : { protectedSubmissionBindings: request.protectedBindings }),
             protectedSecrets: createCredentialSecretSource(createCredentialStore({ admission, stateRoot })),
@@ -593,6 +594,7 @@ export function createProductionDryRunScenarioRuntime(
           });
         })();
         const common = {
+          runAttempt: run.envelope.attempt,
           reachedNodeIds: reachedNodes(
             database,
             run.envelope.workflow,

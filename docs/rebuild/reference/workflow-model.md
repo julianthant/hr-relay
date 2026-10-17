@@ -349,6 +349,11 @@ next authority-allocated attempt and replays validated ancestors. `recovery: "re
 executes reads and computations again. Committed write authority remains protected in either case.
 An unfinished or unknown submit enters write recovery before another submit is considered.
 
+The `dry-run-scenario` live-read arm starts with `recovery: "restart-from-start"` so reads execute
+fresh instead of replaying prior-run checkpoints. Its checkpoint and screenshot expectations use
+the persisted run's authority-allocated attempt. Operator starts, Rerun, and preview fixtures keep
+their existing replay, freshness, and attempt rules.
+
 `src/backend/runs/start/rerun.ts` and `rerun-values.ts` own source-bound Rerun proposals and prefill.
 The source provides values, not checkpoint authority for the new run. The Run modal's submitted
 values and omission assertions form a new start plan. A selected completed transaction requires
