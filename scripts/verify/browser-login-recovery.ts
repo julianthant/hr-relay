@@ -60,10 +60,10 @@ export function recoverOwnedSmokeSlot(input: Readonly<{ database: AuthorityDatab
   const recoveryProcess = recoveryOwner === undefined ? undefined : observeRecoveryProcess(recoveryOwner.pid);
   const hold = input.database.authority.workerSlots.verification(claim.slot.workerId);
   const lease = input.database.authority.duoCeremonyLeases.get(claim.credentialKey);
-  const profileRoot = join(input.stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers");
+  const profileRoot = join(input.stateRoot, "scratch", "live-smoke", acquisitionId, "browsers");
   const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: claim.slot.ordinal, system: claim.system });
   const same = (a: unknown, b: unknown) => canonicalJsonStringify(a) === canonicalJsonStringify(b);
-  if (claim.process.acquisitionId !== acquisitionId || !same(original, claim.process)
+  if (claim.process.acquisitionId !== acquisitionId || claim.profileRunId !== acquisitionId || !same(original, claim.process)
     || release.generation !== original.generation || release.acquisitionId !== acquisitionId
     || observeRecoveryProcess(original.pid).state !== "gone"
     || recoveryOwner === undefined || recoveryOwner.pid !== process.pid || recoveryOwner.releasedAt !== null

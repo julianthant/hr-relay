@@ -162,7 +162,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   LIVE_SMOKE_RECOVERY_REFUSED: catalogEntry(
-    "Browser verification recovery requires exact released ownership, native reservation, released Duo lease and fresh proof that the profile is unused. Recovery was refused; the reservation is retained.",
+    "Relay couldn't safely clean up an abandoned sign-in check, so close other Relay windows and try again.",
     EmptyParametersSchema,
   ),
   DUO_TERMINAL_REFUSAL: catalogEntry(

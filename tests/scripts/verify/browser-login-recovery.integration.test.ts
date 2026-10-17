@@ -13,6 +13,8 @@ import * as processLocks from "../../../src/backend/storage/sqlite/runtime-proce
 import { admitWorkerVerification } from "../../../src/backend/storage/sqlite/worker-slots.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { WorkerVerificationRecoveryProofSchema, WorkerVerificationClaimSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 
@@ -39,7 +41,7 @@ function fixture() {
     commandId: randomUUID(), workflow: "person-lookup", expectedPoolVersion: repositories.workerPools.get("person-lookup")?.version,
     processLockRoot, stateRoot: root, owner: processLocks.readRuntimeProcessLock(processLockRoot, "live-smoke"), now: clock.now().toISOString(),
   }, randomUUID()));
-  const profileRunId = randomUUID();
+  const profileRunId = z.uuid().parse(original.acquisitionId);
   recordSmokeSlot({ database, processLockRoot, slot, profileRunId, system: "ucpath", credentialKey });
   const acquisitionId = z.uuid().parse(original.acquisitionId);
   const claimRoot = join(processLockRoot, "live-smoke-slots");
@@ -97,6 +99,44 @@ describe("targeted missing closure proof recovery", () => {
     expect(f.database.authority.lifecycleJournal.getCommand(String(f.database.authority.workerSlots.get(f.slot.workerId)?.retirementCommandId))).toMatchObject({ request: { cleanup: { evidence: "recovered", recoveryAcquisitionId: f.recovery.acquisitionId } } });
   });
 
+  it("refuses a retargeted profile claim while the original profile has an open file", () => {
+    const f = fixture();
+    const fd = openSync(join(f.profile, "open"), "w");
+    try {
+      f.query.mockImplementation(nativeChildProcess.spawnSync);
+      expect(() => proveSmokeProfileUnused(f.profile)).toThrow(SmokeSlotRecoveryRefusedError);
+      writeFileSync(f.claimPath, JSON.stringify({ ...f.claim, profileRunId: randomUUID() }));
+      expect(f.recover).toThrow(SmokeSlotRecoveryRefusedError);
+      expect(existsSync(f.profile)).toBe(true);
+      expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
+    } finally { closeSync(fd); }
+  });
+
+  it("native retirement refuses a retargeted claim and matching proof while the original profile is open", () => {
+    const f = fixture();
+    const transact = f.database.withAuthorityTransaction.bind(f.database);
+    let fd: number | undefined;
+    vi.spyOn(f.database, "withAuthorityTransaction").mockImplementationOnce(work => {
+      mkdirSync(f.profile, { recursive: true, mode: 0o700 });
+      fd = openSync(join(f.profile, "open"), "w");
+      const claim = { ...f.claim, profileRunId: randomUUID() };
+      const name = `${f.acquisitionId}-${f.recovery.acquisitionId}.recovered.json`;
+      const proof = WorkerVerificationRecoveryProofSchema.parse(JSON.parse(processLocks.readLiveSmokeRuntimeFile(f.claimRoot, name).text));
+      writeFileSync(f.claimPath, JSON.stringify(claim));
+      writeFileSync(join(f.claimRoot, "live-smoke-claims", name), JSON.stringify({ ...proof,
+        claimFingerprint: sha256Hex(canonicalJsonStringify(claim)),
+        profileDirectory: join(f.root, "scratch", "live-smoke", claim.profileRunId, "browsers", `w${f.slot.ordinal}`, "ucpath") }));
+      return transact(work);
+    });
+    try {
+      let failure: unknown;
+      try { f.recover(); } catch (error) { failure = error; }
+      expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
+      expect(failure).toMatchObject({ message: "worker-verification-cleanup-unproved" });
+      expect(existsSync(f.profile)).toBe(true);
+    } finally { if (fd !== undefined) closeSync(fd); }
+  });
+
   it("refuses an unresolved native control before profile deletion", () => {
     const f = fixture();
     const commandId = randomUUID();
@@ -125,7 +165,7 @@ describe("targeted missing closure proof recovery", () => {
     expect(f.database.authority.workerSlots.get(f.slot.workerId)).toEqual(f.slot);
   });
 
-  it.each(["slot", "root", "system"])("refuses mismatched %s binding", field => {
+  it.each(["slot", "root", "system", "profileRunId"])("refuses mismatched %s binding", field => {
     const f = fixture();
     if (field !== "root") writeFileSync(f.claimPath, JSON.stringify({ ...f.claim,
       ...(field === "slot" ? { slot: { ...f.claim.slot, membershipRevision: 2 } } : field === "profileRunId" ? { profileRunId: randomUUID() } : { system: "crm" }) }));

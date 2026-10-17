@@ -494,8 +494,9 @@ evidence reports unknown startup and requires reconciliation.
 
 The browser-login verifier reserves its temporary member through the native lifecycle journal's
 `worker-verification-admission` and `worker-verification-retirement` intents. Admission binds the
-actual live-smoke process acquisition. Its reservation excludes membership controls, claims and
-worker lease birth until browser closure, profile removal and Duo release are proved. An uncertain
+actual live-smoke process acquisition. New verifier profiles use that acquisition ID as their
+`profileRunId`; claim creation and profile admission require that exact binding. Its reservation
+excludes membership controls, claims and worker lease birth until browser closure, profile removal and Duo release are proved. An uncertain
 cleanup retains the member and reservation. Explicit recovery requires the original immutable
 process acquisition and release, a gone owner, and exact slot custody and closure evidence; it
 cannot adopt a PID or infer a member from a historical process-only claim.
@@ -504,12 +505,20 @@ cannot adopt a PID or infer a member from a historical process-only claim.
 `.closed.json` proof is missing. It requires the immutable original claim and process release, a gone
 owner, unchanged native membership and roots, no unresolved controls, and the same worker/system's
 released Duo lease. On Darwin it freshly scans process arguments and open files for the derived
-system profile, deletes only that profile through the owned-profile guards, then checks absence
-again. Query failure or uncertain ownership refuses recovery without retiring the reservation.
+system profile under the original acquisition ID, deletes only that profile through the
+owned-profile guards, then checks absence again. Query failure or uncertain ownership refuses recovery without retiring the reservation.
+
+`LIVE_SMOKE_RECOVERY_REFUSED` means required proof failed for the original claim, process release,
+owner death, native membership or roots, control absence, Duo release, or profile absence. The
+reservation remains in place. Missing-proof recovery refuses claims whose `profileRunId` differs
+from the original native acquisition ID, including profiles created with unrelated random IDs.
+It does not infer or rewrite their identity. Normal retirement with an existing closure proof
+retains its claim-based profile path.
 
 Recovery writes an exclusive `<originalAcquisition>-<recoveryAcquisition>.recovered.json` with current
 observations and binds it to the live recovery process and original claim fingerprint. Native
-retirement validates that selected proof and authority before committing. It never manufactures a
+retirement independently requires the claim profile ID to equal the original native acquisition ID
+and validates that selected proof and authority before committing. It never manufactures a
 normal closure proof. A failed retirement retains the claim and recovery evidence; a new recovery
 process can retry with fresh observations even when the profile is already absent. Successful
 retirement removes only the selected claim and current recovery proof; prior interrupted proofs and

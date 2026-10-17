@@ -225,7 +225,8 @@ export function recordSmokeSlot(input: Readonly<{ database: AuthorityDatabase; p
   if (processClaim?.pid !== process.pid || processClaim.releasedAt !== null) throw new SmokeSlotOwnershipUnavailableError();
   const hold = input.database.authority.workerSlots.verification(input.slot.workerId);
   if (hold === undefined || canonicalJsonStringify(hold.request.owner) !== canonicalJsonStringify(processClaim)
-    || hold.request.processLockRoot !== input.processLockRoot) throw new SmokeSlotOwnershipUnavailableError();
+    || hold.request.processLockRoot !== input.processLockRoot
+    || input.profileRunId !== hold.request.owner.acquisitionId) throw new SmokeSlotOwnershipUnavailableError();
   const slot = input.database.authority.workerSlots.observeVerificationAcquisition({ workerId: input.slot.workerId,
     grantCommandId: hold.command.commandId, now: hold.request.now });
   const claim = SmokeSlotClaimSchema.parse({ source: "live-smoke", slot, process: processClaim,
@@ -312,7 +313,8 @@ export function createSmokeProfileAdmission(input: Readonly<{
       || canonicalJsonStringify(hold.request.owner) !== canonicalJsonStringify(lock)
       || canonicalJsonStringify(claim.slot) !== canonicalJsonStringify(hold.slot)
       || canonicalJsonStringify(claim.process) !== canonicalJsonStringify(lock)
-      || claim.system !== input.system || input.profileRoot !== join(hold.request.stateRoot, "scratch", "live-smoke", claim.profileRunId, "browsers")) throw new Error("live-smoke-profile-custody-unavailable");
+      || claim.profileRunId !== hold.request.owner.acquisitionId
+      || claim.system !== input.system || input.profileRoot !== join(hold.request.stateRoot, "scratch", "live-smoke", hold.request.owner.acquisitionId, "browsers")) throw new Error("live-smoke-profile-custody-unavailable");
     const directory = workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: input.ordinal, system: input.system });
     const admission = BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false });
     const identity = canonicalJsonStringify(admission);
@@ -383,7 +385,7 @@ async function main(): Promise<void> {
   const hostFacts = hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay));
   const record = database.withAuthorityTransaction((repositories) => readSettings(repositories));
   const config = resolveConfigWithProvenance(record.settings, hostFacts, systemClock).config;
-  const profileRunId = randomUUID();
+  const profileRunId = z.uuid().parse(processLock.acquisitionId);
   const smokeProfileRoot = join(stateRoot, "scratch", "live-smoke", profileRunId, "browsers");
   ownedRecord = recordSmokeSlot({ database, processLockRoot, slot, profileRunId, system, credentialKey: duoCeremonyCredentialKey(config) });
   const smokeConfig = { ...config, paths: { ...config.paths, browserProfileRoot: smokeProfileRoot } };

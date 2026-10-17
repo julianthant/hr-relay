@@ -77,7 +77,8 @@ function requireVerificationCleanup(database: DatabaseSync, hold: NonNullable<Re
     const observed = current === undefined ? undefined : observeProcessIdentity(current.pid);
     const row = database.prepare("SELECT payload_json FROM auth_leases WHERE credential_key=?").get(claim.credentialKey);
     const lease = row === undefined ? undefined : DuoCeremonyLeaseRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json));
-    if (request.cleanup.mode !== "recovery" || current?.pid !== process.pid || current.releasedAt !== null
+    if (claim.profileRunId !== owner.acquisitionId
+      || request.cleanup.mode !== "recovery" || current?.pid !== process.pid || current.releasedAt !== null
       || observed?.state !== "alive" || canonicalJsonStringify(observed.identity) !== canonicalJsonStringify(current.processIdentity)
       || canonicalJsonStringify(proof.recoveryOwner) !== canonicalJsonStringify(current)
       || proof.recoveryOwner.acquisitionId !== request.cleanup.recoveryAcquisitionId

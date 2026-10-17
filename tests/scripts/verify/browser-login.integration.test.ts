@@ -1,6 +1,7 @@
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { randomUUID } from "node:crypto";
 import * as processLocks from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { WorkerVerificationClaimSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { admitWorkerVerification } from "../../../src/backend/storage/sqlite/worker-slots.js";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import assert from "node:assert/strict";
@@ -219,7 +220,7 @@ describe("registered browser-login smoke lifecycle", () => {
     const processLockRoot = join(root, "locks");
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     const slot = verificationSlot(database, root, processLockRoot);
-    const profileRunId = "00000000-0000-4000-8000-000000000002";
+    const profileRunId = z.uuid().parse(lock.acquisitionId);
     const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
     const profile = workerProfileDirectory({ profileRoot, slotOrdinal: slot.ordinal, system: "ucpath" });
     mkdirSync(profile, { recursive: true, mode: 0o700 });
@@ -254,7 +255,7 @@ describe("registered browser-login smoke lifecycle", () => {
     expect(() => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot: root, clock })).toThrow(SmokeSlotOwnershipUnavailableError);
     const next = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     const slot = verificationSlot(database, root, processLockRoot);
-    const record = recordSmokeSlot({ database, processLockRoot, slot, profileRunId: "00000000-0000-4000-8000-000000000003",
+    const record = recordSmokeSlot({ database, processLockRoot, slot, profileRunId: z.uuid().parse(next.acquisitionId),
       system: "ucpath", credentialKey });
     next.release();
     const cleanup = () => retireOwnedSmokeSlots({ database, processLockRoot, stateRoot: root, clock,
@@ -274,7 +275,7 @@ describe("registered browser-login smoke lifecycle", () => {
     const processLockRoot = join(root, "locks");
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     const slot = verificationSlot(database, root, processLockRoot);
-    const record = recordSmokeSlot({ database, processLockRoot, slot, profileRunId: "00000000-0000-4000-8000-000000000004",
+    const record = recordSmokeSlot({ database, processLockRoot, slot, profileRunId: z.uuid().parse(lock.acquisitionId),
       system: "ucpath", credentialKey });
     record.proveClosure(clock);
     lock.release();
@@ -303,7 +304,7 @@ describe("registered browser-login smoke lifecycle", () => {
     await helpers.withTempRuntime(async ({ config }) => {
       const processLockRoot = join(stateRoot, "locks");
       const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
-      const profileRunId = "00000000-0000-4000-8000-000000000005";
+      const profileRunId = z.uuid().parse(lock.acquisitionId);
       const profileRoot = join(stateRoot, "scratch", "live-smoke", profileRunId, "browsers");
       const failure = new Error("fixture uncertain launcher rejection");
       try {
@@ -358,11 +359,11 @@ describe("registered browser-login smoke lifecycle", () => {
     const scheduler = new ManualScheduler(clock);
     const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
     await helpers.withTempRuntime(async ({ config: originalConfig, root }) => {
-      const profileRunId = "00000000-0000-4000-8000-000000000006";
-      const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
-      const config = { ...originalConfig, paths: { ...originalConfig.paths, browserProfileRoot: profileRoot } };
       const processLockRoot = join(root, "locks");
       const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+      const profileRunId = z.uuid().parse(lock.acquisitionId);
+      const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
+      const config = { ...originalConfig, paths: { ...originalConfig.paths, browserProfileRoot: profileRoot } };
       try {
         let current = helpers.fakeLauncher();
         const first = current;
@@ -422,11 +423,11 @@ describe("registered browser-login smoke lifecycle", () => {
     const scheduler = new ManualScheduler(clock);
     const helpers = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-8000-000000000001", scheduler);
     await helpers.withTempRuntime(async ({ config: originalConfig, root }) => {
-      const profileRunId = "00000000-0000-4000-8000-000000000006";
-      const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
-      const config = { ...originalConfig, paths: { ...originalConfig.paths, browserProfileRoot: profileRoot } };
       const processLockRoot = join(root, "locks");
       const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+      const profileRunId = z.uuid().parse(lock.acquisitionId);
+      const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
+      const config = { ...originalConfig, paths: { ...originalConfig.paths, browserProfileRoot: profileRoot } };
       try {
         let loginStarted: () => void = () => undefined;
         const started = new Promise<void>(resolve => { loginStarted = resolve; });
@@ -490,13 +491,38 @@ describe("registered browser-login smoke lifecycle", () => {
     });
   });
 
+  it("binds claim creation and profile admission to the native acquisition", () => {
+    const { root, database } = fixture();
+    const processLockRoot = join(root, "locks");
+    const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
+    try {
+      const slot = verificationSlot(database, root, processLockRoot);
+      const foreignId = randomUUID();
+      expect(() => recordSmokeSlot({ database, processLockRoot, slot, profileRunId: foreignId,
+        system: "ucpath", credentialKey })).toThrow(SmokeSlotOwnershipUnavailableError);
+      expect(database.authority.workerSlots.get(slot.workerId)).toEqual(slot);
+      recordSmokeSlot({ database, processLockRoot, slot, profileRunId: z.uuid().parse(lock.acquisitionId), system: "ucpath", credentialKey });
+      const claimRoot = join(processLockRoot, "live-smoke-slots");
+      const name = `${lock.acquisitionId}.slot.json`;
+      const claim = WorkerVerificationClaimSchema.parse(JSON.parse(readLiveSmokeRuntimeFile(claimRoot, name).text));
+      writeFileSync(join(claimRoot, "live-smoke-claims", name), JSON.stringify({ ...claim, profileRunId: foreignId }));
+      const profileRoot = join(root, "scratch", "live-smoke", foreignId, "browsers");
+      const admit = createSmokeProfileAdmission({ database, processLockRoot, acquisitionId: z.uuid().parse(lock.acquisitionId),
+        workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot });
+      expect(() => admit({ workerId: slot.workerId, system: "ucpath", instance: "prod", configFingerprint: credentialKey,
+        signInFingerprint: credentialKey, browserMode: "headless",
+        profileDirectory: workerProfileDirectory({ profileRoot, slotOrdinal: slot.ordinal, system: "ucpath" }) })).toThrow(/custody-unavailable/u);
+      expect(existsSync(profileRoot)).toBe(false);
+    } finally { lock.release(); }
+  });
+
   it("re-admits only its exact already-admitted profile once for fresh-profile recovery", async () => {
     const { root, database } = fixture();
     const processLockRoot = join(root, "locks");
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     try {
       const slot = verificationSlot(database, root, processLockRoot);
-      const profileRunId = "00000000-0000-4000-8000-000000000007";
+      const profileRunId = z.uuid().parse(lock.acquisitionId);
       recordSmokeSlot({ database, processLockRoot, slot, profileRunId, system: "ucpath", credentialKey });
       const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
       const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: 1, system: "ucpath" });
@@ -524,7 +550,7 @@ describe("registered browser-login smoke lifecycle", () => {
     const lock = acquireRuntimeProcessLock({ processLockRoot, name: "live-smoke", pid: process.pid }, clock);
     try {
       const slot = verificationSlot(database, root, processLockRoot);
-      const profileRunId = "00000000-0000-4000-8000-000000000007";
+      const profileRunId = z.uuid().parse(lock.acquisitionId);
       recordSmokeSlot({ database, processLockRoot, slot, profileRunId, system: "ucpath", credentialKey });
       const profileRoot = join(root, "scratch", "live-smoke", profileRunId, "browsers");
       const profileDirectory = workerProfileDirectory({ profileRoot, slotOrdinal: 1, system: "ucpath" });
