@@ -273,7 +273,7 @@ const _afterEachFixture0 = () => { for (const db of databases.splice(0)) db.clos
 function fixture() {
   const db = new DatabaseSync(":memory:"); databases.push(db);
   for (const migration of SQLITE_MIGRATIONS) for (const sql of migration.statements) db.exec(sql);
-  const slots = createWorkerSlotRepository({ database: db, mutate(work) {
+  const slots = createWorkerSlotRepository({ database: db, admission: RuntimeAdmission.syntheticFixture(":memory:"), mutate(work) {
     if (db.isTransaction) return work().result;
     db.exec("BEGIN IMMEDIATE"); try { const result = work(); db.exec("COMMIT"); return result.result; }
     catch (error) { db.exec("ROLLBACK"); throw error; }

@@ -3,7 +3,7 @@ import { PublicRerunPlanSchema, SourceBoundRunSchema } from "../../../models/run
 import { RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { WorkerStandingRecoveryRequestSchema, WorkerLifetimeBirthSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema, CanonicalCreateRunRequestSchema, CanonicalClaimNextRequestSchema, CanonicalTransitionRequestSchema,
+import { validateOrphanRetirementProof, WorkerStandingRecoveryRequestSchema, WorkerLifetimeBirthSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema, CanonicalCreateRunRequestSchema, CanonicalClaimNextRequestSchema, CanonicalTransitionRequestSchema,
   CanonicalRenewClaimRequestSchema, CanonicalWorkerTransitionRequestSchema, CanonicalFailureTerminalizeRequestSchema,
   CanonicalSuccessTerminalizeRequestSchema, CanonicalCancellationTerminalizeRequestSchema, CanonicalRequeueRequestSchema,
   CanonicalRetrySourceRequestSchema, CanonicalDeleteRequestSchema, CanonicalPurgeRequestSchema } from "./run-store-contracts.js";
@@ -27,6 +27,11 @@ export function validateNativeLifecycleRequest(input: unknown): void {
     || canonicalJsonStringify(parsed) !== canonicalJsonStringify(command.request)
     || command.requestFingerprint !== sha256Hex(`hrauto:run-lifecycle-command:v1\0${command.operation}\0${canonicalJsonStringify(parsed)}`)) {
     throw new Error("run-lifecycle-request-binding-mismatch");
+  }
+  if (operation === "worker-verification-retirement") {
+    const retirement = WorkerVerificationRetirementRequestSchema.parse(parsed);
+    if (retirement.cleanup.evidence === "orphan-retired") validateOrphanRetirementProof(retirement,
+      retirement.cleanup.proof.admission, retirement.cleanup.proof.slot);
   }
   let expectedFence: unknown;
   if (["create","claim-next","purge","worker-admission","worker-lifetime-birth","worker-standing-recovery","worker-verification-admission","worker-verification-retirement"].includes(operation)) expectedFence = {kind:"none"};

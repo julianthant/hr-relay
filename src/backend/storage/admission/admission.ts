@@ -56,6 +56,7 @@ function assertActiveRootSafe(path: string): void {
 type AdmissionAuthority = Readonly<{
   assertHeld(): void;
   readRelocationReceipts?(): readonly RelocationCompletionReceipt[];
+  readInstallationContext?(): Readonly<{ workspace: string; locator: RuntimeLocator; receipts: readonly RelocationCompletionReceipt[] }> | undefined;
   release(): void;
 }>;
 
@@ -118,6 +119,10 @@ export class RuntimeAdmission {
     receipts: readonly RelocationCompletionReceipt[] }> | undefined {
     this.assertLive();
     if (this.#scope === "synthetic") return undefined;
+    if (this.#scope === "stopped-staged" || this.#scope === "synthetic-stopped-staged") {
+      if (this.#authority.readInstallationContext === undefined) throw new Error("runtime-admission: staged installation context unavailable");
+      return this.#authority.readInstallationContext();
+    }
     if (this.#scope !== "installation") throw new Error("runtime-admission: installation context authority required");
     const lease = this.#authority as InstallationLease;
     assertInstallationLease(lease);
@@ -298,7 +303,7 @@ export class RuntimeAdmission {
       || !/^\.restore-[0-9a-f-]{36}\.sqlite\.tmp$/u.test(resolve(path).slice(this.#stateRoot.length + 1))) {
       throw new Error("runtime-admission: staged authority path is not an owned restore copy");
     }
-    return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), release() {} },
+    return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), readInstallationContext: () => this.readInstallationContext(), release() {} },
       this.#stateRoot, this.#artifactRoot, [resolve(path)], this.#scope === "synthetic" ? "synthetic-stopped-staged" : "stopped-staged", "exclusive");
   }
 

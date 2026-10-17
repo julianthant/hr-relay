@@ -158,6 +158,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  explain diagnostics [--after <cursor>] [--through <cursor>] [--limit <1..1000>] [--run <runId>] [--json]  read one persisted debug page",
     "  explain diagnostics --boot [--json]  inspect the stopped boot fault spool without opening the database",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page",
+    "  storage retire-orphan-verification --acquisition <uuid> [--plan] [--json]  offline retirement of one abandoned sign-in reservation",
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
     "  storage backup [--json]  write ONE verified authority backup + manifest — the only backup writer",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup",

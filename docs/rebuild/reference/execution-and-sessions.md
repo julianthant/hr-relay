@@ -524,6 +524,30 @@ process can retry with fresh observations even when the profile is already absen
 retirement removes only the selected claim and current recovery proof; prior interrupted proofs and
 unrelated files remain. The global `--retire-owned-slots` path keeps its strict directory rules.
 
+`storage retire-orphan-verification --acquisition <original-acquisition-uuid> --plan` checks whether
+one exact reservation can be retired without binding or deleting its profile. Run the same command
+without `--plan` to append its retirement. Both modes hold exclusive offline installation admission,
+acquire no runtime process lock, and require the original acquisition/release and claim custody,
+a gone owner, no unresolved controls or live worker lease, no held runtime lock, and no held Duo
+lease anywhere. Failed or unknown checks refuse with `ORPHAN_VERIFICATION_RETIREMENT_REFUSED`
+before a lifecycle command is appended.
+
+On Darwin the command checks process arguments, open files and working directories across the entire
+`<stateRoot>/scratch/live-smoke` and `<stateRoot>/browsers` roots, including profiles whose IDs cannot
+be bound to the acquisition. Unsafe paths or symlink escapes refuse. The command requires the
+ordinary browser root to be the admitted default: a custom root in saved settings or the active
+configuration refuses retirement. Settings and snapshots are authenticated through their ordinary
+storage readers; genuinely uninitialized settings are an explicit empty-override case.
+
+The appended cleanup arm is `mode: "offline", evidence: "orphan-retired"`. Its embedded proof binds
+the original native admission and slot, exact claim and file custody, roots, ordinary configuration
+and fingerprints, stopped runtime snapshot and current absence observations. Native retirement
+independently rechecks these conditions with live exclusive admission and proof age at most 30
+seconds. The historical reader validates the recorded bindings without requiring later runtime
+inactivity. Plan changes no journal, slot, pool or settings records. Execution appends the retirement
+command/audit and updates only its native slot and pool projections; claims and profile folders
+remain for a separate cleanup.
+
 The factory contract uses `BrowserSessionClosureUnprovedError` for an uncertain launch or failed
 setup cleanup. An ordinary login/diagnostic `AggregateError` with proved closure remains the primary
 operation failure and does not poison subsequent cleanup. Duo release and actual close failures

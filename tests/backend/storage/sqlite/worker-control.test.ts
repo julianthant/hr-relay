@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createWorkerLeaseFixtures } from "../../../support/helpers/backend/worker-lease-fixtures.js";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it } from "vitest";
@@ -21,7 +22,7 @@ function fixture() {
   const pool = WorkerPoolRecordSchema.parse({ workflow: "person-lookup", desiredWorkers: 1, version: 1,
     plannedBy: "local-operator", plannedAt: NOW, createdAt: NOW, updatedAt: NOW });
   db.prepare("INSERT INTO worker_pools VALUES(?,?,?,?,?,?)").run(pool.workflow,1,1,canonicalJsonStringify(pool),NOW,NOW);
-  const slot = createWorkerSlotRepository({ database: db, mutate }).allocate({ workflow: pool.workflow, poolIndex: 1, commandId: null, now: NOW });
+  const slot = createWorkerSlotRepository({ database: db, admission: RuntimeAdmission.syntheticFixture(":memory:"), mutate }).allocate({ workflow: pool.workflow, poolIndex: 1, commandId: null, now: NOW });
   const request = { commandId: UUID_1, family: "worker-browser", type: "spawn-worker", requestedAt: NOW,
     requestedBy: "local-operator", source: "dashboard", target: { workflowId: pool.workflow, expectedVersion: 1 }, payload: { workerId: slot.workerId } };
   const record = { commandId: UUID_1, request, scope: "worker-pool:person-lookup", executorId: UUID_2,

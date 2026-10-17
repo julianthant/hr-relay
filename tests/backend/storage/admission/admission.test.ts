@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { initializeAdmissionFixture, fixtureAdmission, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtempSync,readdirSync,realpathSync,rmSync } from "node:fs";
@@ -53,4 +55,20 @@ it.each(["ordinary", "pinned"] as const)("keeps a killed %s publisher witness ac
       assert.equal(pendingDiagnosticArtifacts(admission).length, retention === "ordinary" ? 0 : 1);
     } finally { admission.release(); }
   } finally { publisher?.process.kill("SIGKILL"); if (publisher !== undefined) await publisher.exited; rmSync(root, { recursive: true, force: true }); }
+});
+
+it("delegates stopped-stage installation context only while its exclusive parent is live", () => {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "orphan-staged-admission-")));
+  initializeAdmissionFixture(workspace);
+  const shared = fixtureAdmission(workspace);
+  assert.throws(() => shared.assertExclusive(), /exclusive offline admission required/u);
+  releaseAdmissionFixture(workspace);
+  const parent = acquireExclusiveRuntimeAdmission(workspace);
+  const staged = parent.stoppedStagedAuthority(join(parent.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`));
+  try {
+    assert.deepEqual(staged.readInstallationContext(), parent.readInstallationContext());
+    assert.equal(staged.readInstallationContext()?.workspace, workspace);
+    parent.release();
+    assert.throws(() => staged.readInstallationContext(), /missing or released admission/u);
+  } finally { staged.release(); parent.release(); rmSync(workspace, { recursive: true, force: true }); }
 });
