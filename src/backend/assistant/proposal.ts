@@ -8,7 +8,7 @@ import { planStart, type StartPlannerDeps, type StartPlanRequest } from "../runs
 
 export interface AssistantPlanningContext {
   readonly subject: AssistantSubject;
-  readonly deps: StartPlannerDeps;
+  readonly deps: Omit<StartPlannerDeps, "protectedSecrets">;
   readonly request: StartPlanRequest;
   assertCurrent(): void;
   assertSubjectBinding(input: SchemaBoundCanonicalValue): void;
@@ -19,6 +19,7 @@ export interface AssistantPlanner {
 export function prepareAssistantProposal(planner: AssistantPlanner, workflowId: string, subject: AssistantSubject) {
   const context = planner.context(workflowId, subject), request = context.request;
   context.assertCurrent();
+  if (request.descriptor.protectedInputs !== undefined && request.descriptor.protectedInputs.length > 0) throw new Error("assistant-proposal-refused");
   if (JSON.stringify(context.subject) !== JSON.stringify(subject) || request.descriptor.id !== workflowId || !request.dryRun || request.submissions.length !== 1
     || request.rerun !== undefined || request.stepOmissions !== undefined || request.protectedSubmissionBindings !== undefined
     || request.retainedInputs !== undefined) throw new Error("assistant-proposal-refused");
@@ -26,7 +27,8 @@ export function prepareAssistantProposal(planner: AssistantPlanner, workflowId: 
   if (support.state !== "supported") throw new Error("assistant-proposal-refused");
   const stop = descriptorRuntimeNodes(request.descriptor).find(node => String(node.id) === support.stopsAt);
   if (stop?.kind !== "transaction" || stop.dryRun !== "stop-after-prepare") throw new Error("assistant-proposal-refused");
-  const plan = planStart(context.deps, request);
+  const plan = planStart({ authority: context.deps.authority, clock: context.deps.clock, ids: context.deps.ids,
+    planTtlMs: context.deps.planTtlMs }, request);
   context.assertCurrent();
   if (plan.refused.length > 0 || plan.planned.length !== 1 || Date.parse(plan.expiresAt) <= context.deps.clock.nowMs()) throw new Error("assistant-proposal-refused");
   context.assertSubjectBinding(plan.planned[0].input);

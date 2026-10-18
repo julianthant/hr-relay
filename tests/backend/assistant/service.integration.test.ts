@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
 import { it, vi } from "vitest";
+import { z } from "zod";
+import { flow } from "../../../src/workflow-kit/flow.js";
+import { defineWorkflowDescriptor, workflowDryRunSupport } from "../../../src/workflow-kit/workflow.js";
+import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { createAssistantContext, PUBLIC_ASSISTANT_REPOSITORY_ID } from "../../../src/backend/assistant/context.js";
 import { createAssistantService } from "../../../src/backend/assistant/service.js";
 import type { AssistantPlanningContext } from "../../../src/backend/assistant/proposal.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { writeFixtureDescriptor, writeFixtureDescriptorWithoutDryRunArm } from "../../support/fixtures/write-sequencer-fixtures.js";
+import { WriteFixturePrepare, WriteFixtureCommit, writeFixtureDescriptor, writeFixtureDescriptorWithoutDryRunArm } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { HASH_A, UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
@@ -183,4 +188,31 @@ it("rechecks current policy after synchronous planner authority validation", asy
   } });
   const result = await service.respond({ message: "x", subjectRef: selected.subjectRef }, new AbortController().signal);
   assert.equal(result.state, "refused"); if (result.state === "refused") assert.equal(result.code, "ASSISTANT_MODEL_UNVERIFIED");
+});
+it("refuses protected inputs before planning and never forwards an injected credential capability", async () => {
+  const input = z.strictObject({ eid: z.string().regex(/^\d{8}$/u), timekeeperName: z.string().min(1) });
+  const protectedDescriptor = defineWorkflowDescriptor({
+    id: "protected-assistant-fixture", version: 1, contractFingerprint: HASH_A, code: "pa", label: "Protected synthetic fixture", icon: "ShieldCheck", category: "operations",
+    canonicalInput: defineCanonicalInput(input, input, [{ eid: selected.employeeId, timekeeperName: "Synthetic timekeeper" }]),
+    protectedInputs: [{ inputPath: "timekeeperName", name: "timekeeperName" }], inputSubject: "eid", surface: { shape: "single" },
+    enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
+    identity: { matchKey: value => value.eid }, presentation: { title: () => "Synthetic protected subject" }, scenarios: ["protected-assistant/happy"],
+    flow: flow(input).transaction("protected-write", { dependsOn: [], prepare: { uses: WriteFixturePrepare, bind: ({ input: value }) => ({ eid: value.eid }) },
+      commit: { uses: WriteFixtureCommit, bind: ({ input: value }) => ({ eid: value.eid }) }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
+    }).build({ schema: z.strictObject({ ready: z.boolean() }), dependsOn: [], derive: () => ({ ready: true }) }),
+  });
+  assert.equal(workflowDryRunSupport(protectedDescriptor).state, "supported");
+  const canary = "CANARY_PROTECTED_STORE_PASSWORD";
+  for (const descriptor of [protectedDescriptor, writeFixtureDescriptor]) {
+    const f = fixture(); let capabilityReads = 0, secretReads = 0;
+    f.replies([{ ...propose, workflowId: String(descriptor.id) }]);
+    const deps = { ...f.planning.deps };
+    Object.defineProperty(deps, "protectedSecrets", { get() { capabilityReads++; return { read() { secretReads++; throw new Error(canary); } }; } });
+    const service = createAssistantService({ ...f.options, planner: { context: () => ({ ...f.planning, deps,
+      request: { ...f.planning.request, descriptor } }) } });
+    const result = await service.respond({ message: "Prepare", subjectRef: selected.subjectRef }, new AbortController().signal);
+    assert.equal(result.state, descriptor === protectedDescriptor ? "refused" : "proposal");
+    if (result.state === "refused") assert.equal(result.code, "ASSISTANT_PROPOSAL_REFUSED");
+    assert.equal(capabilityReads, 0); assert.equal(secretReads, 0); assert.equal(JSON.stringify({ result, payloads: f.payloads }).includes(canary), false);
+  }
 });
