@@ -11,6 +11,7 @@ const account = ChatGptAccountStateSchema.parse({ state: "connected", name: "Syn
 const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId, authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2026-10-12T12:05:00.000Z" });
 function setup(overrides: Partial<ChatGptAccountQueries> = {}, open?: () => ChatGptAuthorizationWindow | undefined) {
   const calls: string[] = [];
+  const initialWall = Date.now();
   const queries: ChatGptAccountQueries = {
     chatGptAccount: async () => { calls.push("read"); return { state: "signed-out" }; },
     startChatGptSignIn: async () => { calls.push("start"); return started; },
@@ -19,7 +20,7 @@ function setup(overrides: Partial<ChatGptAccountQueries> = {}, open?: () => Chat
     signOutChatGpt: async () => { calls.push("out"); return { state: "signed-out", remoteRevocation: "confirmed" }; }, ...overrides,
   };
   const popup = { navigate: (url: string) => { calls.push(`navigate:${url}`); }, close: () => { calls.push("close"); } };
-  const port = createServedChatGptAccountPort(queries, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: open ?? (() => { calls.push("open"); return popup; }) });
+  const port = createServedChatGptAccountPort(queries, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z") + Date.now() - initialWall, open: open ?? (() => { calls.push("open"); return popup; }) });
   return { port, calls };
 }
 it("opens synchronously, retains expiry and plan state, and never writes browser storage", async () => {
@@ -247,7 +248,7 @@ it("honors ten-minute expiry through the real query and transport, aborting the 
     if (url.endsWith(`/sign-in/${attemptId}`)) {
       completions++;
       completionSignal = init?.signal;
-      return new Promise<Response>((_resolve, reject) => { init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true }); });
+      return new Promise<Response>((_resolve, reject) => { init?.signal?.addEventListener("abort", () => reject(new DOMException("Synthetic completion aborted", "AbortError")), { once: true }); });
     }
     if (url.endsWith("/sign-in")) return Response.json({ ...started, expiresAt: "2026-10-12T12:10:00.000Z" });
     reads++; return Response.json({ state: "signed-out" });
@@ -264,4 +265,23 @@ it("honors ten-minute expiry through the real query and transport, aborting the 
     assert.equal(completionSignal?.aborted, true);
     assert.equal(completions, 1); assert.equal(reads, 1);
   } finally { port.dispose(); vi.useRealTimers(); }
+});
+
+it("expires a new pending attempt observed after confirmed cancellation", async () => {
+  vi.useFakeTimers();
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  let reads = 0;
+  const next = { state: "signing-in" as const, attemptId: "00000000-0000-4000-8000-000000000002", expiresAt: started.expiresAt, account: { state: "signed-out" as const } };
+  const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : next, completeChatGptSignIn: () => completion.promise });
+  try {
+    await f.port.refresh();
+    const signing = f.port.signIn({ usePlan: true });
+    await vi.advanceTimersByTimeAsync(0);
+    await f.port.cancelSignIn();
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text, account: next });
+    await vi.advanceTimersByTimeAsync(300_000);
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+    completion.resolve({ state: "completed", attemptId, account }); await signing;
+    assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
+  } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); vi.useRealTimers(); }
 });

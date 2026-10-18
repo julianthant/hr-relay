@@ -85,6 +85,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     clearTimeout(expiryTimer);
     resource = { state, code, ...(account === undefined ? {} : { account }) };
     snapshot = { state: "unavailable", message: ERROR_CATALOG[code].text, ...(account === undefined ? {} : { account }) };
+    if (account?.state === "signing-in") scheduleSignInExpiry(account.expiresAt, epoch);
     notify();
   };
   const closePopup = () => {
@@ -130,7 +131,6 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE");
       if (current(request)) {
         problem(state, code, account);
-        if (account.state === "signing-in") scheduleSignInExpiry(account.expiresAt, request);
       }
     } catch { if (current(request)) problem(state, code); }
   };
