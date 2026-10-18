@@ -16,3 +16,17 @@ it("roundtrips explicit Date cells while ISO-looking strings stay strings and pr
   assert.equal(EditableWorkbookWireSchema.safeParse(bad).success, false);
   assert.equal(EditableWorkbookWireSchema.safeParse(workbook).success, false);
 });
+
+it('keeps original cell metadata closed and bound to its displayed text', () => {
+  const document = { name: 'Synthetic.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 's', name: 'Sheet', width: 2, hidden: [], rows: [{ id: 'r', cells: [
+    { value: '001234', numFmt: '000000', hyperlink: 'https://example.com', tooltip: 'Record' },
+    { value: 'Tracker note', richText: [{ text: 'Tracker ', font: { bold: true, color: { theme: 1, tint: 0.2 } } }, { text: 'note', font: { underline: 'single' } }] },
+  ] }] }] };
+  assert.deepEqual(decodeEditableWorkbook(JSON.parse(JSON.stringify(encodeEditableWorkbook(document)))), document);
+  const invalid = structuredClone(document);
+  Reflect.set(invalid.sheets[0].rows[0].cells[1].richText![0].font!, 'unsupported', true);
+  assert.equal(EditableWorkbookSchema.safeParse(invalid).success, false);
+  const stale = structuredClone(document);
+  stale.sheets[0].rows[0].cells[1].value = 'Changed';
+  assert.equal(EditableWorkbookSchema.safeParse(stale).success, false);
+});

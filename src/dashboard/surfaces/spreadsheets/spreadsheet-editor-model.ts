@@ -1,11 +1,11 @@
 import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.js";
-import type { Fill } from 'exceljs';
+import type { Fill, RichText } from 'exceljs';
 import type { EditableWorkbook as LibraryWorkbook } from '../../../models/dashboard/workbooks.js';
 import { parse } from 'csv-parse/browser/esm/sync';
 import type { SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
 import { spreadsheetField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
 
-export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: Fill; background?: string }>;
+export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: Fill; background?: string; numFmt?: string; richText?: RichText[]; hyperlink?: string; tooltip?: string }>;
 export type SheetRow = Readonly<{ id: string; cells: readonly SheetCell[] }>;
 export type EditableSheet = Readonly<{ id: string; name: string; rows: readonly SheetRow[]; width: number; hidden: readonly number[]; headerRow?: number; sourceHeaderRow?: number; columnBindings?: readonly SpreadsheetColumnBinding[] }>;
 export type EditableWorkbook = Readonly<{ name: string; libraryId?: string; sheets: readonly EditableSheet[]; themes: LibraryWorkbook['themes']; hasFormulas: boolean }>;
@@ -96,6 +96,10 @@ function spreadsheetDataRow(sheet: EditableSheet, rowId: string): SheetRow {
 export function readSpreadsheetField(sheet: EditableSheet, rowId: string, fieldId: string): SheetCell['value'] {
   return spreadsheetDataRow(sheet, rowId).cells[spreadsheetFieldColumn(sheet, fieldId)].value;
 }
+function editedCell(cell: SheetCell, value: SheetCell['value']): SheetCell {
+  const { richText: _richText, hyperlink: _hyperlink, tooltip: _tooltip, ...retained } = cell;
+  return { ...retained, value };
+}
 export function updateSpreadsheetFields(sheet: EditableSheet, rowId: string, values: Readonly<Record<string, SheetCell['value']>>): EditableSheet {
   spreadsheetDataRow(sheet, rowId);
   const updates = Object.entries(values).map(([fieldId, value]) => {
@@ -105,7 +109,7 @@ export function updateSpreadsheetFields(sheet: EditableSheet, rowId: string, val
   });
   return { ...sheet, rows: sheet.rows.map(row => row.id !== rowId ? row : { ...row, cells: row.cells.map((cell, column) => {
     const update = updates.find(entry => entry.column === column);
-    return update ? { ...cell, value: update.value } : cell;
+    return update ? editedCell(cell, update.value) : cell;
   }) }) };
 }
 /** Imports retain all records; Excel's table filter rules are presentation metadata. */
@@ -169,6 +173,8 @@ export async function importSpreadsheet(name: string, data: ArrayBuffer): Promis
     const rows = Array.from({ length: height }, (_, rowIndex) => ({ id: `${sheet.id}-${rowIndex}`, cells: Array.from({ length: width }, (_, columnIndex): SheetCell => {
       const cell = sheet.getCell(rowIndex + 1, columnIndex + 1);
       let value = cell.value;
+      const richText = value && typeof value === 'object' && 'richText' in value ? structuredClone(value.richText) : undefined;
+      const link = value && typeof value === 'object' && 'hyperlink' in value ? value : undefined;
       if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
         if ('formula' in value || 'sharedFormula' in value) { hasFormulas = true; value = value.result ?? null; }
         else if ('richText' in value) value = value.richText.map(part => part.text).join('');
@@ -176,7 +182,7 @@ export async function importSpreadsheet(name: string, data: ArrayBuffer): Promis
         else if ('error' in value) value = value.error;
       }
       const fill = cell.fill ? structuredClone(cell.fill) : undefined;
-      return { value: value as SheetCell['value'], fill, background: fillBackground(fill, themes) };
+      return { value: value as SheetCell['value'], fill, background: fillBackground(fill, themes), numFmt: cell.numFmt, ...(richText === undefined ? {} : { richText }), ...(link === undefined ? {} : { hyperlink: link.hyperlink, ...(link.tooltip === undefined ? {} : { tooltip: link.tooltip }) }) };
     }) }));
     return { id: String(sheet.id), name: sheet.name, rows, width, hidden: [] };
   });
@@ -185,7 +191,7 @@ export async function importSpreadsheet(name: string, data: ArrayBuffer): Promis
 }
 export function editSpreadsheetCell(sheet: EditableSheet, rowId: string, column: number, value: string): EditableSheet {
   if (!sheet.rows.some(row => row.id === rowId) || column < 0 || column >= sheet.width) throw new Error('SPREADSHEET_CELL_UNAVAILABLE');
-  return { ...sheet, rows: sheet.rows.map(row => row.id !== rowId ? row : { ...row, cells: row.cells.map((cell, index) => index === column ? { ...cell, value } : cell) }) };
+  return { ...sheet, rows: sheet.rows.map(row => row.id !== rowId ? row : { ...row, cells: row.cells.map((cell, index) => index === column ? editedCell(cell, value) : cell) }) };
 }
 export function sortSpreadsheet(sheet: EditableSheet, column: number, direction: 'asc' | 'desc'): EditableSheet {
   if (column < 0 || column >= sheet.width) throw new Error('SPREADSHEET_COLUMN_UNAVAILABLE');
@@ -212,7 +218,8 @@ export async function spreadsheetXlsx(document: EditableWorkbook): Promise<Array
       row.cells.forEach((cell, source) => {
         if (sheet.hidden.includes(source)) return;
         const next = target.getCell(index + 1, column++);
-        next.value = cell.value;
+        next.value = cell.richText ? { richText: structuredClone(cell.richText) } : cell.hyperlink !== undefined ? { text: String(cell.value), hyperlink: cell.hyperlink, ...(cell.tooltip === undefined ? {} : { tooltip: cell.tooltip }) } : cell.value;
+        if (cell.numFmt !== undefined) next.numFmt = cell.numFmt;
         if (cell.fill) next.fill = structuredClone(cell.fill);
       });
     });
@@ -231,7 +238,7 @@ export function downloadSpreadsheet(data: ArrayBuffer | string, name: string, fo
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** A typed data cell that its column's field would refuse on import; typing remains a draft. */
+/** A canonical field issue; original library values remain editable. */
 export function spreadsheetCellProblem(sheet: EditableSheet, column: number, value: string): string | undefined {
   const fieldId = sheet.columnBindings?.[column]?.fieldId;
   if (!fieldId || spreadsheetValueMatches(fieldId, value)) return undefined;

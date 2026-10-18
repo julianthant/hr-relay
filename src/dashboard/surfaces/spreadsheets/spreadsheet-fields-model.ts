@@ -1,5 +1,8 @@
 import { CANONICAL_FIELDS, CANONICAL_FIELD_IDS, type CanonicalFieldId } from '../../../models/fields/registry.js';
-import { parseUsOrIsoDate } from '../../../models/fields/cell-coercion.js';
+import { isCellCoercionError } from '../../../models/fields/cell-coercion.js';
+import { systemClock } from '../../../rules/time/clock.js';
+import { WorkflowIdSchema, IntakeTargetFieldIdSchema } from '../../../rules/identity/ids.js';
+import { z } from 'zod';
 
 export type SpreadsheetFieldType = 'identifier' | 'name' | 'email' | 'phone' | 'date' | 'status' | 'text';
 export interface SpreadsheetField {
@@ -13,7 +16,7 @@ const DATE_FIELDS = new Set<CanonicalFieldId>(['dob', 'effectiveDate', 'hireDate
 const NAME_FIELDS = new Set<CanonicalFieldId>(['fullName', 'firstName', 'lastName', 'middleName', 'middleInitial', 'livedName', 'suffix', 'supervisor']);
 const IDENTIFIER_FIELDS = new Set<CanonicalFieldId>(['eid', 'ppsEid', 'pid', 'ssn', 'deptId', 'departmentCode', 'jobCode', 'positionNumber', 'recruitmentNumber', 'kualiDocId', 'transactionNumber']);
 const LABELS: Partial<Record<CanonicalFieldId, string>> = { eid: 'Employee ID', fullName: 'Legal name', livedName: 'Lived name', cellPhone: 'Phone', hireDate: 'Start date', supervisor: 'Supervisor name' };
-const EXTRA_ALIASES: Partial<Record<CanonicalFieldId, readonly string[]>> = { livedName: ['Preferred name'], workLocation: ['Proposed location assignment'], hireDate: ['Start date', 'Employment date'], supervisor: ['Supervisor name'] };
+const EXTRA_ALIASES: Partial<Record<CanonicalFieldId, readonly string[]>> = { eid: ['UCPath Empl ID'], transactionNumber: ['Transaction ID', 'Transaction No.', 'UCPath Transaction Number', 'UCPath Transaction ID', 'UCPath Transaction #'], livedName: ['Preferred name'], workLocation: ['Proposed location assignment'], hireDate: ['Start date', 'Employment date'], supervisor: ['Supervisor name'] };
 const extra = (id: string, label: string, type: SpreadsheetFieldType, aliases: readonly string[] = [], format = type === 'status' ? 'Yes, No, Pending or Complete' : 'Text'): SpreadsheetField => ({ id: `roster.${id}`, label, type, aliases, format });
 
 /** Canonical IDs are shared with intake; roster-only fields remain explicitly namespaced. */
@@ -22,7 +25,7 @@ export const SPREADSHEET_FIELDS: readonly SpreadsheetField[] = [
     const type: SpreadsheetFieldType = DATE_FIELDS.has(id) ? 'date' : NAME_FIELDS.has(id) ? 'name' : /email/i.test(id) ? 'email' : /phone/i.test(id) ? 'phone' : IDENTIFIER_FIELDS.has(id) ? 'identifier' : 'text';
     return { id, label: LABELS[id] ?? CANONICAL_FIELDS[id].label, type,
       aliases: [...CANONICAL_FIELDS[id].aliases, ...(EXTRA_ALIASES[id] ?? [])],
-      format: id === 'eid' ? '8 digits, starting with 10' : id === 'transactionNumber' ? 'Starts with T' : id === 'ssn' ? '9 digits' : type === 'date' ? 'MM/DD/YYYY or YYYY-MM-DD' : type === 'email' ? 'Email address' : type === 'phone' ? '7–15 digits' : type === 'identifier' ? 'Identifier stored as text' : 'Text',
+      format: id === 'eid' ? '8 digits, starting with 10' : id === 'ssn' ? '9 digits' : type === 'date' ? 'MM/DD/YYYY or YYYY-MM-DD' : type === 'email' ? 'Email address' : type === 'phone' ? '7–15 digits' : type === 'identifier' ? 'Identifier stored as text' : 'Text',
     };
   }),
   extra('i9ProfileId', 'I-9 profile ID', 'identifier', ['I9 profile', 'I-9 profile', 'I9 profile number', 'I-9 profile number', 'I9 ID', 'I9 profile ID'], '6 or 7 digits'),
@@ -62,15 +65,15 @@ export function fieldForSpreadsheetHeader(header: string): SpreadsheetField | un
 export function spreadsheetValueMatches(fieldId: string, raw: string): boolean {
   const field = spreadsheetField(fieldId), value = raw.trim();
   if (!value) return true;
-  if (fieldId === 'eid') return /^10\d{6}$/u.test(value);
-  if (fieldId === 'transactionNumber') return /^T\S+$/u.test(value);
-  if (fieldId === 'roster.i9ProfileId') return /^\d{6,7}$/u.test(value);
-  if (fieldId === 'ssn') return /^\d{3}-?\d{2}-?\d{4}$/u.test(value);
-  if (fieldId === 'ppsEid') return /^\d+$/u.test(value);
-  if (field.type === 'email') return CANONICAL_FIELDS.email.schema.safeParse(value).success;
-  if (field.type === 'phone') return /^\+?[\d\s().-]+$/u.test(value) && /^\d{7,15}$/u.test(value.replace(/\D/gu, ''));
-  if (field.type === 'date') return /^(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{4})$/u.test(value) && parseUsOrIsoDate(value, '2000-01-01T00:00:00Z') !== null;
-  if (field.type === 'status') return /^(yes|no|pending|complete|completed|done|true|false|y|n)$/iu.test(value);
+  const canonicalId = CANONICAL_FIELD_IDS.find(id => id === fieldId);
+  if (canonicalId === undefined) return true;
+  const canonical = CANONICAL_FIELDS[canonicalId];
+  try {
+    canonical.schema.parse(canonical.coerce(value, { workflow: WorkflowIdSchema.parse('spreadsheet'), readAt: systemClock.now().toISOString(), sourceRow: 1, header: field.label, targetFieldId: IntakeTargetFieldIdSchema.parse(canonicalId) }));
+  } catch (error) {
+    if (isCellCoercionError(error) || error instanceof z.ZodError) return false;
+    throw error;
+  }
   return true;
 }
 export function suggestSpreadsheetField(header: string, samples: readonly string[]): { fieldId: string | null; basis: 'header' | 'values' | 'unmapped' } {

@@ -16,7 +16,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
-      const content = 'Student applicants,,,,,\nOctober,,,,,\nLegal Name,UCPath ID,Personal Email,Transaction #,I9 Profile,Private note\nJordan Lee,10000001,jordan@example.com,T1234,123456,Excluded value\nTaylor Chen,10000002,taylor@example.com,T5678,1234567,Excluded value';
+      const content = 'Student applicants,,,,,\nOctober,,,,,\nLegal Name,UCPath ID,Personal Email,Transaction #,I9 Profile,Private note\nJordan Lee,10000001,jordan@example.com,T1234,123456,Excluded value\nTaylor Chen,Pending,taylor@example.com,T5678,1234567,Excluded value';
       await page.getByLabel('Open XLSX or CSV', { exact: true }).setInputFiles({ name: 'Fictional roster.csv', mimeType: 'text/csv', buffer: Buffer.from(content) });
       const dialog = page.getByRole('dialog', { name: 'Choose spreadsheet columns', exact: true });
       await expect(dialog).toBeVisible();
@@ -24,12 +24,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       for (const [letter, value] of [['A', 'fullName'], ['B', 'eid'], ['C', 'personalEmail'], ['D', 'transactionNumber'], ['E', 'roster.i9ProfileId']]) await expect(dialog.getByRole('combobox', { name: `Dashboard field for ${letter}`, exact: true })).toHaveAttribute('data-value', value);
       await expect(dialog.getByRole('textbox', { name: /^Label for/ })).toHaveCount(0);
       const submit = dialog.getByRole('button', { name: 'Import selected columns', exact: true });
-      await expect(submit).toBeDisabled();
+      await expect(submit).toBeEnabled();
+      await expect(dialog.getByRole('status')).toContainText('row 5, column B');
+      await expect(dialog.getByRole('status')).toContainText('Values will be kept.');
       await dialog.getByRole('checkbox', { name: 'F · Private note', exact: true }).uncheck();
       await expect(submit).toBeEnabled();
       const eid = dialog.getByRole('combobox', { name: 'Dashboard field for B', exact: true });
       await eid.click(); await page.getByRole('option', { name: 'Legal name', exact: true }).click();
-      await expect(submit).toBeDisabled(); await expect(dialog.getByRole('status')).toContainText('mapped more than once');
+      await expect(submit).toBeDisabled(); await expect(dialog.getByRole('status').filter({ hasText: 'mapped more than once' })).toContainText('mapped more than once');
       await eid.click(); await page.getByRole('option', { name: 'Employee ID', exact: true }).click();
       await eid.focus(); await eid.press('ArrowDown'); await expect(page.getByRole('listbox')).toBeVisible(); await page.keyboard.press('Escape'); await expect(eid).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

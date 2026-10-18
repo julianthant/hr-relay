@@ -1,3 +1,16 @@
+import { z } from 'zod';
+import { Readable } from 'node:stream';
+import { matchSpreadsheetTask } from '../../../src/backend/processing/roster/task-registry.js';
+import { ArtifactRefSchema } from '../../../src/models/artifacts/artifacts.js';
+import { MatchSpreadsheetInputSchema } from '../../../src/models/processing/roster/match-spreadsheet.js';
+import { importSpreadsheet, spreadsheetXlsx, editSpreadsheetCell, updateSpreadsheetFields } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { prepareSpreadsheetColumns, selectSpreadsheetColumns, spreadsheetColumnErrors, spreadsheetColumnValueIssues } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
+import { CANONICAL_FIELDS } from '../../../src/models/fields/registry.js';
+import { defineIntakeProjection } from '../../../src/models/intake/projection.js';
+import { confirmBinding, detectColumns, ColumnMappingSchema, headerFingerprint } from '../../../src/models/intake/mapping.js';
+import { validateIntakeRows } from '../../../src/models/intake/validate.js';
+import { parseSpreadsheetGrid } from '../../../src/backend/processing/spreadsheet/spreadsheet-grid.js';
+import { ItemIdSchema, IntakeTargetFieldIdSchema } from '../../../src/rules/identity/ids.js';
 import type { EditableWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { DatabaseSync } from "node:sqlite";
 import Excel from "exceljs";
@@ -175,4 +188,64 @@ it("preserves the actual theme object emitted by ExcelJS XLSX imports", async ()
   const value = { ...workbook(), themes: imported.model.themes };
   const saved = f.service.create(value);
   expect(f.service.read(saved.libraryId).workbook.themes).toEqual(imported.model.themes);
+});
+
+
+it('roundtrips a wide multi-sheet roster as raw library data while execution rejects invalid canonical rows', async () => {
+  const source = new Excel.Workbook();
+  for (let sheet = 0; sheet < 9; sheet++) {
+    const target = source.addWorksheet(`Synthetic ${sheet + 1}`);
+    target.getCell('A1').value = 'Synthetic roster';
+    const width = sheet === 0 ? 32 : 31;
+    target.getRow(5).values = ['Legal Name', 'Lived Name', 'UCPath ID', 'Email', 'Start date', 'Entered in UCPath', 'Date background entered', ...Array.from({ length: width - 7 }, (_, column) => `Custom ${column}`)];
+    for (let row = 6; row <= 9; row++) target.getRow(row).values = ['Morrow, Bea', 'Morrow, Bee', row === 7 ? 'Pending' : sheet === 1 && row === 6 ? '10-000-106' : `10${String(sheet * 100 + row).padStart(6, '0')}`, row === 8 ? 'invalid@' : 'bea@example.com', row === 9 ? '02/30/2026' : new Date('2026-10-19T00:00:00Z'), 'JZ 05/29/26', '6.16.26 KM', '  untouched  '];
+    target.getCell('A6').value = { richText: [{ text: 'Morrow, ', font: { bold: true, color: { argb: 'FF112233' } } }, { text: 'Bea', font: { italic: true } }] };
+    target.getCell('D6').value = { text: 'bea@example.com', hyperlink: 'mailto:bea@example.com', tooltip: 'Email' };
+    target.getCell('C6').numFmt = '00000000';
+    target.getCell('E6').numFmt = 'mm/dd/yyyy';
+    target.getCell('F6').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
+  }
+  const originalBytes = await source.xlsx.writeBuffer();
+  const imported = await importSpreadsheet('Synthetic.xlsx', originalBytes);
+  const prepared = prepareSpreadsheetColumns(imported);
+  expect(prepared.sheets.map(sheet => sheet.headerRow)).toEqual(Array(9).fill(5));
+  expect(spreadsheetColumnErrors(prepared)).toEqual([]);
+  expect(spreadsheetColumnValueIssues(prepared)).toHaveLength(27);
+  expect(spreadsheetColumnValueIssues(prepared)[0]).toContain('row 7, column C');
+  const selected = selectSpreadsheetColumns(prepared);
+  expect(selected.sheets.reduce((sum, sheet) => sum + sheet.width, 0)).toBe(280);
+  expect(selected.sheets[0].columnBindings?.slice(0, 2).map(binding => binding.fieldId)).toEqual(['fullName', 'livedName']);
+  expect(spreadsheetColumnValueIssues(selected)).toEqual(spreadsheetColumnValueIssues(prepared));
+  const f = fixture(), created = f.service.create(selected);
+  const saved = f.service.save(created.libraryId, 1, created.workbook);
+  const reopened = f.service.read(saved.libraryId);
+  expect(reopened).toEqual(saved);
+  expect(reopened.workbook.sheets).toEqual(selected.sheets);
+  const exported = await spreadsheetXlsx(reopened.workbook);
+  const reimported = await importSpreadsheet('Synthetic.xlsx', exported);
+  expect(reimported.sheets).toHaveLength(9);
+  for (let sheet = 0; sheet < 9; sheet++) expect(reimported.sheets[sheet].rows.map(row => row.cells)).toEqual(selected.sheets[sheet].rows.map(row => row.cells));
+  const first = selected.sheets[0], nameRow = first.rows[1];
+  const edited = editSpreadsheetCell(first, nameRow.id, 0, 'Morrow, Updated');
+  expect(edited.rows[1].cells[0].richText).toBeUndefined();
+  const updated = updateSpreadsheetFields(first, nameRow.id, { email: 'updated@example.com' });
+  expect(updated.rows[1].cells[3].hyperlink).toBeUndefined();
+  expect(updated.rows[1].cells[3].tooltip).toBeUndefined();
+  const grid = await parseSpreadsheetGrid({ bytes: Buffer.from(exported), artifactId: 'synthetic', mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', sheet: first.name });
+  if (grid.state !== 'parsed') throw new Error('Synthetic exported grid refused');
+  const projection = defineIntakeProjection(z.strictObject({ eid: CANONICAL_FIELDS.eid.schema, email: CANONICAL_FIELDS.email.schema, hireDate: CANONICAL_FIELDS.hireDate.schema }), { eid: CANONICAL_FIELDS.eid, email: CANONICAL_FIELDS.email, hireDate: CANONICAL_FIELDS.hireDate });
+  const detected = detectColumns(grid.grid[0]);
+  const result = validateIntakeRows({ workflow: 'synthetic', sourceSha256: 'ab'.repeat(32), projection, detected,
+    bindings: [['eid', 2], ['email', 3], ['hireDate', 4]].map(([field, column]) => confirmBinding({ projection, detected, targetFieldId: IntakeTargetFieldIdSchema.parse(field), sourceColumnId: detected[Number(column)].sourceColumnId, confirmedAt: saved.savedAt })),
+    rows: grid.grid.slice(1), readAt: saved.savedAt, deriveItemId: () => ItemIdSchema.parse('11111111-2222-4333-8444-555555555555') });
+  expect(result.valid).toHaveLength(1);
+  const rosterColumns = detectColumns(prepared.sheets[1].rows[4].cells.map(cell => String(cell.value ?? '')));
+  const rosterMapping = ColumnMappingSchema.parse({ workflow: 'person-lookup', intakeProjectionFingerprint: projection.fingerprint, fingerprint: headerFingerprint(rosterColumns), savedAt: saved.savedAt, headerRowIndex: 4,
+    columns: rosterColumns.map(({ samples: _samples, ...column }) => column),
+    bindings: [['eid', 2], ['fullName', 0]].map(([field, column]) => ({ canonicalFieldId: field, targetFieldId: field, sourceColumnId: rosterColumns[Number(column)].sourceColumnId, confirmedAt: saved.savedAt })) });
+  const matched = await matchSpreadsheetTask.impl.run({ input: MatchSpreadsheetInputSchema.parse({ rosterFileRef: ArtifactRefSchema.parse({ id: '11111111-2222-4333-8444-555555555555', sha256: 'ab'.repeat(32), bytes: originalBytes.byteLength, mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), sheet: 'Synthetic 2', mapping: rosterMapping, readAt: saved.savedAt,
+    subjects: [{ subjectId: '11111111-2222-4333-8444-555555555555', eid: '10000002', name: 'Bea Morrow' }, { subjectId: '11111111-2222-4333-8444-555555555556', eid: '10000002', name: 'Rick Roe' }, { subjectId: '11111111-2222-4333-8444-555555555557', name: 'Bea Morrow' }] }),
+    ctx: { artifacts: { open: async () => Readable.from([Buffer.from(originalBytes)]) }, fail: (code: string) => { throw new Error(code); }, recordData: () => undefined, log: { info: () => undefined } } as never });
+  expect(matched.matches.map(match => [match.matchedEid, match.mismatch])).toEqual([['10000002', 'none'], [null, 'name-eid-conflict'], [null, 'ambiguous']]);
+  expect(result.rejected.map(row => [row.sourceRow, 'field' in row ? row.field : undefined])).toEqual([[2, 'eid'], [3, 'email'], [4, 'hireDate']]);
 });

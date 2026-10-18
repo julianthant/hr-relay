@@ -3,7 +3,7 @@ import { default as assert_m0,default as assert_m1 } from 'node:assert/strict';
 import { act as act_m0,createElement as createElement_m0,useRef as useRef_m0,useState as useState_m0 } from 'react';
 import { createRoot as createRoot_m0,type Root as Root_m0 } from 'react-dom/client';
 import { afterEach as afterEach_m0,afterEach as afterEach_m1,describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from 'vitest';
-import { prepareSpreadsheetColumns as prepareSpreadsheetColumns_m0,prepareSpreadsheetColumns as prepareSpreadsheetColumns_m1,selectSpreadsheetColumns as selectSpreadsheetColumns_m0,selectSpreadsheetColumns as selectSpreadsheetColumns_m1,setSpreadsheetColumnField as setSpreadsheetColumnField_m0,setSpreadsheetColumnField as setSpreadsheetColumnField_m1,setSpreadsheetHeaderRow as setSpreadsheetHeaderRow_m1,spreadsheetColumnErrors as spreadsheetColumnErrors_m0,spreadsheetColumnErrors as spreadsheetColumnErrors_m1 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
+import { prepareSpreadsheetColumns as prepareSpreadsheetColumns_m0,prepareSpreadsheetColumns as prepareSpreadsheetColumns_m1,selectSpreadsheetColumns as selectSpreadsheetColumns_m0,selectSpreadsheetColumns as selectSpreadsheetColumns_m1,setSpreadsheetColumnField as setSpreadsheetColumnField_m0,setSpreadsheetColumnField as setSpreadsheetColumnField_m1,setSpreadsheetHeaderRow as setSpreadsheetHeaderRow_m1,spreadsheetColumnErrors as spreadsheetColumnErrors_m0,spreadsheetColumnErrors as spreadsheetColumnErrors_m1,spreadsheetColumnValueIssues } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
 import { SpreadsheetColumnImport as SpreadsheetColumnImport_m0 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import.js';
 import { newEditableWorkbook as newEditableWorkbook_m0,type EditableWorkbook as EditableWorkbook_m0,type EditableWorkbook as EditableWorkbook_m1 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { registerLocalSpreadsheet as registerLocalSpreadsheet_m0,registeredSpreadsheetWorkbook as registeredSpreadsheetWorkbook_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m1,searchMockSpreadsheet as searchMockSpreadsheet_m0 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js';
@@ -46,7 +46,7 @@ afterEach_m0(_afterEachFixture0);
     const book = newEditableWorkbook_m0();
     const sheet = setSpreadsheetColumnField_m0(setSpreadsheetColumnField_m0(book.sheets[0], 1, 'fullName'), 2, null);
     const duplicate = { ...book, sheets: [sheet] };
-    assert_m0.equal(spreadsheetColumnErrors_m0(duplicate).length, 2); assert_m0.throws(() => selectSpreadsheetColumns_m0(duplicate), /SPREADSHEET_COLUMNS_INVALID/);
+    assert_m0.equal(spreadsheetColumnErrors_m0(duplicate).length, 1); assert_m0.throws(() => selectSpreadsheetColumns_m0(duplicate), /SPREADSHEET_COLUMNS_INVALID/);
     assert_m0.throws(() => selectSpreadsheetColumns_m0({ ...book, sheets: [{ ...book.sheets[0], hidden: [0, 1, 2] }] }), /Select at least one/);
     const prepared = prepareSpreadsheetColumns_m0(duplicate);
     assert_m0.equal(prepared.sheets[0].rows[0].cells[2].value, 'Notes');
@@ -92,7 +92,7 @@ afterEach_m1(_afterEachFixture0);
     const source = book([['Student applicants', '', '', ''], ['Oct 5', '', '', ''], ['Legal Name', 'UCPath ID', 'Personal Email', 'Unneeded'], ['Jordan Lee', '10000001', 'jordan@example.com', 'discarded']]);
     const pending = prepareSpreadsheetColumns_m1(source), sheet = pending.sheets[0];
     assert_m1.equal(sheet.headerRow, 3); assert_m1.equal(sheet.columnBindings![1].fieldId, 'eid');
-    assert_m1.match(spreadsheetColumnErrors_m1(pending).join(), /choose a field for column D/);
+    assert_m1.deepEqual(spreadsheetColumnErrors_m1(pending), []);
     const selected = selectSpreadsheetColumns_m1({ ...pending, sheets: [{ ...sheet, hidden: [3] }] });
     assert_m1.equal(selected.sheets[0].sourceHeaderRow, 3); assert_m1.equal(selected.sheets[0].headerRow, 1);
     assert_m1.deepEqual(selected.sheets[0].rows.map(row => row.id), ['row-2', 'row-3']);
@@ -109,9 +109,29 @@ afterEach_m1(_afterEachFixture0);
   it_m1('checks all data rows and rejects duplicate mappings only among kept columns', () => {
     const pending = prepareSpreadsheetColumns_m1(book([['UCPath ID', 'Employee ID'], ...Array.from({ length: 30 }, () => ['10000001', '10000002']), ['99999999', '10000003']]));
     assert_m1.match(spreadsheetColumnErrors_m1(pending).join(), /mapped more than once/);
-    assert_m1.match(spreadsheetColumnErrors_m1(pending).join(), /1 value does not match/);
+    assert_m1.match(spreadsheetColumnValueIssues(pending).join(), /row 32/);
     assert_m1.throws(() => selectSpreadsheetColumns_m1(pending), /SPREADSHEET_COLUMNS_INVALID/);
     assert_m1.equal(spreadsheetColumnErrors_m1({ ...pending, sheets: [{ ...pending.sheets[0], hidden: [0] }] }).length, 0);
+  });
+});
+}
+
+{
+const book = (values: readonly (readonly string[])[]): EditableWorkbook_m1 => ({ name: 'Synthetic.csv', themes: [], hasFormulas: false, sheets: [{ id: 'sheet', name: 'Roster', width: values[0].length, hidden: [], rows: values.map((cells, i) => ({ id: `row-${i}`, cells: cells.map(value => ({ value })) })) }] });
+describe_m1('arbitrary roster columns', () => {
+  it_m1('imports trackers and unknown headers while locating and retaining invalid canonical values', () => {
+    const source = book([['Roster', '', '', ''], ['', '', '', ''], ['', '', '', ''], ['', '', '', ''],
+      ['UCPath ID', 'Entered in UCPath', 'Date background entered', 'Unfamiliar tracker'],
+      ['10000001', 'JZ 05/29/26', '6.16.26 KM', '  untouched  ']]);
+    const pending = prepareSpreadsheetColumns_m1(source);
+    assert_m1.equal(pending.sheets[0].headerRow, 5);
+    assert_m1.deepEqual(spreadsheetColumnErrors_m1(pending), []);
+    const selected = selectSpreadsheetColumns_m1(pending);
+    assert_m1.deepEqual(selected.sheets[0].rows[1].cells.map(cell => cell.value), source.sheets[0].rows[5].cells.map(cell => cell.value));
+    const invalid = prepareSpreadsheetColumns_m1(book([['UCPath ID', 'Notes'], ['10000001', 'fine'], ['pending', 'retained']]));
+    assert_m1.match(spreadsheetColumnValueIssues(invalid).join(), /row 3/);
+    assert_m1.deepEqual(spreadsheetColumnErrors_m1(invalid), []);
+    assert_m1.equal(selectSpreadsheetColumns_m1(invalid).sheets[0].rows[2].cells[0].value, 'pending');
   });
 });
 }

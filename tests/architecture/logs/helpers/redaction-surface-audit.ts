@@ -801,6 +801,7 @@ const WORKBOOK_VALUE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrig
   { path: "sheets[].name", origin: "captured-hr-value" },
   { path: "sheets[].rows[].cells[].background", origin: "captured-hr-value" },
   { path: "sheets[].rows[].cells[].value", origin: "captured-hr-value" },
+  ...["numFmt", "hyperlink", "tooltip", "richText[].text", "richText[].font.name"].map(path => ({ path: `sheets[].rows[].cells[].${path}`, origin: "captured-hr-value" as const })),
   { path: "sheets[].rows[].id", origin: "captured-hr-value" },
   { path: "themes", origin: "captured-hr-value" },
   { path: "themes[]", origin: "captured-hr-value" },

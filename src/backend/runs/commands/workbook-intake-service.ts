@@ -15,7 +15,8 @@ export function createWorkbookIntakeBridge(library: WorkbookLibraryService, inta
       const target = workbook.addWorksheet(sheet.name);
       sheet.rows.forEach((row, rowIndex) => row.cells.forEach((cell, columnIndex) => {
         const next = target.getCell(rowIndex + 1, columnIndex + 1);
-        next.value = cell.value;
+        next.value = cell.richText ? { richText: structuredClone(cell.richText) } : cell.hyperlink !== undefined ? { text: String(cell.value), hyperlink: cell.hyperlink, ...(cell.tooltip === undefined ? {} : { tooltip: cell.tooltip }) } : cell.value;
+        if (cell.numFmt !== undefined) next.numFmt = cell.numFmt;
         if (cell.fill !== undefined) next.fill = structuredClone(cell.fill);
       }));
       for (const column of sheet.hidden) target.getColumn(column + 1).hidden = true;

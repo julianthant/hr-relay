@@ -9,6 +9,8 @@ export const WorkbookIdSchema = z.string().min(1);
 const NameSchema = z.string().refine(value => value.trim().length > 0);
 const IndexSchema = z.number().int().nonnegative();
 const ColorSchema = z.strictObject({ argb: z.string().regex(/^(?:[a-f\d]{6}|[a-f\d]{8})$/iu).optional(), theme: IndexSchema.optional(), indexed: IndexSchema.optional(), tint: z.number().min(-1).max(1).optional() });
+const FontSchema = z.strictObject({ name: z.string().optional(), size: z.number().finite().optional(), family: z.number().finite().optional(), scheme: z.enum(['minor', 'major', 'none']).optional(), charset: z.number().finite().optional(), color: ColorSchema.optional(), bold: z.boolean().optional(), italic: z.boolean().optional(), underline: z.union([z.boolean(), z.enum(['none', 'single', 'double', 'singleAccounting', 'doubleAccounting'])]).optional(), vertAlign: z.enum(['superscript', 'subscript']).optional(), strike: z.boolean().optional(), outline: z.boolean().optional() });
+const RichTextSchema = z.array(z.strictObject({ text: z.string(), font: FontSchema.optional() }));
 const StopsSchema = z.array(z.strictObject({ position: z.number().min(0).max(1), color: ColorSchema })).min(2);
 const FillSchema = z.union([
   z.strictObject({ type: z.literal("pattern"), pattern: z.enum(["none", "solid", "darkVertical", "darkHorizontal", "darkGrid", "darkTrellis", "darkDown", "darkUp", "lightVertical", "lightHorizontal", "lightGrid", "lightTrellis", "lightDown", "lightUp", "darkGray", "mediumGray", "lightGray", "gray125", "gray0625"]), fgColor: ColorSchema.optional(), bgColor: ColorSchema.optional() }),
@@ -20,7 +22,12 @@ const BindingSchema = z.strictObject({ id: WorkbookIdSchema, sourceColumn: Index
 const PrimitiveCellSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
 const DateCellWireSchema = z.strictObject({ type: z.literal("date"), value: IsoInstantSchema });
 function workbookSchema<Value extends z.ZodType>(value: Value) {
-  const CellSchema = z.strictObject({ value, fill: FillSchema.optional(), background: z.string().optional() });
+  const CellSchema = z.strictObject({ value, fill: FillSchema.optional(), background: z.string().optional(), numFmt: z.string().optional(), richText: RichTextSchema.optional(), hyperlink: z.string().optional(), tooltip: z.string().optional() }).superRefine((cell, ctx) => {
+    const original = Reflect.get(cell, 'value');
+    if ((cell.richText !== undefined && (cell.richText.map(run => run.text).join('') !== original || cell.hyperlink !== undefined))
+      || (cell.hyperlink !== undefined && typeof original !== 'string')
+      || (cell.tooltip !== undefined && cell.hyperlink === undefined)) ctx.addIssue({ code: 'custom', message: 'invalid original cell metadata' });
+  });
   const SheetSchema = z.strictObject({ id: WorkbookIdSchema, name: NameSchema, rows: z.array(z.strictObject({ id: WorkbookIdSchema, cells: z.array(CellSchema) })).min(1), width: z.number().int().positive(), hidden: z.array(IndexSchema), headerRow: z.number().int().positive().optional(), sourceHeaderRow: z.number().int().positive().optional(), columnBindings: z.array(BindingSchema).optional() });
   const ThemesSchema = z.union([z.array(z.string()), z.record(z.string().regex(/^[a-zA-Z0-9]+$/u), z.string())]);
   function unique(values: readonly (string | number)[]): boolean { return new Set(values).size === values.length; }

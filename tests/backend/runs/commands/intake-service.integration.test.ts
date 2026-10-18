@@ -1,3 +1,4 @@
+import Excel from "exceljs";
 import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
 import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
@@ -725,8 +726,8 @@ describe("saved workbook intake bridge", () => {
     const first = library.create({ name: "Roster.xlsx", themes: [], hasFormulas: false, sheets: [
       { id: "roster", name: "Roster", width: 2, hidden: [], headerRow: 1, sourceHeaderRow: 7,
         columnBindings: [{ id: "eid", sourceColumn: 4, sourceHeader: "Original EID", fieldId: "eid", basis: "manual" }, { id: "date", sourceColumn: null, sourceHeader: "Added date", fieldId: "roster.notes", basis: "manual" }],
-        rows: [{ id: "head", cells: [{ value: "Employee ID#" }, { value: "Effective Date" }] }, { id: "data", cells: [{ value: "10456712" }, { value: new Date("2026-07-01T00:00:00.000Z") }] }] },
-      { id: "other", name: "Other", width: 1, hidden: [], rows: [{ id: "other-head", cells: [{ value: "Name" }] }, { id: "other-data", cells: [{ value: "Example Person" }] }] },
+        rows: [{ id: "head", cells: [{ value: "Employee ID#" }, { value: "Effective Date" }] }, { id: "data", cells: [{ value: "10456712", hyperlink: "https://example.com/employee", tooltip: "Employee" }, { value: new Date("2026-07-01T00:00:00.000Z"), numFmt: "mm/dd/yyyy" }] }] },
+      { id: "other", name: "Other", width: 1, hidden: [], rows: [{ id: "other-head", cells: [{ value: "Name" }] }, { id: "other-data", cells: [{ value: "Example Person", richText: [{ text: "Example ", font: { bold: true } }, { text: "Person" }] }] }] },
     ] });
     const bridge = createWorkbookIntakeBridge(library, h.intake);
     const request = { expectedVersion: 1, workflowId: INTAKE_FIXTURE_WORKFLOW_ID };
@@ -738,7 +739,14 @@ describe("saved workbook intake bridge", () => {
     assert.equal(result.session.headerRowIndex, 0); assert.deepEqual(result.session.bindings, []);
     assert.deepEqual(result.session.columns.map(column => column.samples), [["10456712"], ["2026-07-01"]]);
     const bytes = await readArtifactBytes(() => h.artifacts.open(result.session.artifact));
+    const preserved = new Excel.Workbook();
+    await preserved.xlsx.load(Uint8Array.from(bytes).buffer);
+    assert.deepEqual(preserved.worksheets[0].getCell('A2').value, { text: '10456712', hyperlink: 'https://example.com/employee' });
+    assert.equal(preserved.worksheets[0].getCell('B2').numFmt, 'mm/dd/yyyy');
+    assert.deepEqual(preserved.worksheets[1].getCell('A2').value, { richText: [{ text: 'Example ', font: { bold: true } }, { text: 'Person' }] });
     const zip = await JSZip.loadAsync(bytes);
+    const sheetXml = await zip.file('xl/worksheets/sheet1.xml')?.async('string');
+    assert.match(sheetXml ?? '', /<hyperlink[^>]+tooltip="Employee"/u);
     for (const entry of Object.values(zip.files)) assert.equal(entry.date.toISOString(), first.savedAt);
     const generation = h.database.getMeta().authorityGeneration;
     const joined = await bridge(first.libraryId, request); assert.equal(joined.state, "joined");

@@ -45,16 +45,22 @@ export function spreadsheetColumnErrors(document: EditableWorkbook): readonly st
       if (hidden.has(column)) continue;
       selected++;
       const binding = sheet.columnBindings?.[column];
-      if (!binding?.fieldId) { errors.push(`${sheet.name}: choose a field for column ${columnName(column)} or deselect it.`); continue; }
+      if (!binding?.fieldId) continue;
       const field = spreadsheetField(binding.fieldId);
       if (fields.has(field.id)) errors.push(`${sheet.name}: ${field.label} is mapped more than once.`);
       fields.add(field.id);
-      const invalid = spreadsheetColumnValueErrors(sheet, column);
-      if (invalid) errors.push(`${sheet.name}, column ${columnName(column)}: ${invalid} ${invalid === 1 ? 'value does' : 'values do'} not match ${field.label} (${field.format}).`);
     }
   }
   if (!selected) errors.push('Select at least one column to import.');
   return errors;
+}
+export function spreadsheetColumnValueIssues(document: EditableWorkbook): readonly string[] {
+  return document.sheets.flatMap(sheet => sheet.columnBindings?.flatMap((binding, column) => {
+    if (sheet.hidden.includes(column) || !binding.fieldId) return [];
+    const field = spreadsheetField(binding.fieldId);
+    return sheet.rows.slice(spreadsheetHeaderRow(sheet)).flatMap((row, index) => spreadsheetValueMatches(field.id, cellText(row.cells[column])) ? []
+      : [`${sheet.name}, row ${(sheet.sourceHeaderRow ?? spreadsheetHeaderRow(sheet)) + index + 1}, column ${columnName(binding.sourceColumn ?? column)}: does not match ${field.label}.`]);
+  }) ?? []);
 }
 export function selectSpreadsheetColumns(document: EditableWorkbook): EditableWorkbook {
   const errors = spreadsheetColumnErrors(document);

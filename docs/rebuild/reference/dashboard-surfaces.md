@@ -379,16 +379,20 @@ New and imported workbooks remain drafts until Save. Save sends the opened versi
 Conflicts and uncertain saves retain the draft. Unsaved workbook drafts share Settings exit guards.
 
 CSV/XLSX parsing and export run in real workers. Import chooses the header row and kept sheets/columns,
-then binds each retained column to a known typed field. Duplicate fields per sheet and invalid nonblank
-values refuse. Confirmation physically removes preamble and excluded sheets/columns instead of merely
+then optionally binds retained columns to known fields. Unbound columns and roster tracker fields keep
+their original values. Duplicate fields per sheet refuse. Canonical value issues show the original worksheet
+row and column without blocking library import; workflow Intake still refuses invalid execution rows. Confirmation physically removes preamble and excluded sheets/columns instead of merely
 hiding them. Source headers, source column coordinates, header-row provenance, suggestion/manual basis,
 and stable row identities survive. Inserted columns have a null source coordinate.
 
 Editable XLSX imports include hidden and filtered rows. Worksheet/table filter rules are not imported.
 Unsupported Excel table `colorFilter` metadata is removed only from a private parsing copy; original
-bytes stay unchanged. Values and supported fills survive, while malformed table XML refuses import.
+bytes stay unchanged. Values, supported fills, number formats, hyperlinks and rich-text runs survive
+save, reopen and XLSX export, while malformed table XML refuses import. Editing a cell clears its old
+rich text and hyperlink metadata. Formulas remain imported as their stored results.
 `spreadsheet-fields-model.ts` reuses canonical intake field IDs and namespaces roster-only IDs.
-T-prefixed transactions and six/seven-digit I-9 profiles are frontend mapping rules, not backend execution admission.
+Canonical value checks use the intake field coercers and schemas without rewriting stored values.
+Roster-only fields remain tracker text; workflow-specific transaction rules belong to execution admission.
 
 The editor provides sheet/column selection, row/cell search, sorting, insertion, typed editing,
 Undo/Redo, mapping edits, and Excel workbook or current-sheet CSV export. Rendering is bounded to
