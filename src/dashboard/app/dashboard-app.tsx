@@ -706,7 +706,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [mockRuns, setRoute]);
   const previewSearchData = useWorkspaceSearchData({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf, mockRuns });
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
-    query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch });
+    query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows: boot.workflows });
   const searchData = workflowComposition.search === "mock" ? previewSearchData : servedSearchData;
   const openInbox = useCallback(() => setRoute(current => ({ ...current, view: { ...current.view, notifications: true } })), [setRoute]);
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding, toast, openInbox });

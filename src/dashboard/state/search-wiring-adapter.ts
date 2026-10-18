@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CrossDateSearchQuerySchema, compareCrossDateSearchResults, currentCorpusSearchQuery, type CrossDateSearchPage, type CrossDateSearchQueryInput } from "../../models/dashboard/search.js";
+import { CrossDateSearchQuerySchema, CrossDateSearchStateFacetSchema, compareCrossDateSearchResults, currentCorpusSearchQuery, type CrossDateSearchPage, type CrossDateSearchQueryInput } from "../../models/dashboard/search.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
+import type { WorkflowBootstrapPrimitive } from "../surfaces/shell/shell-model.js";
 import type { DashboardClient } from "../client/index.js";
 import type { NavbarData, NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 
@@ -41,20 +42,30 @@ export function searchResults(snapshot: Awaited<ReturnType<typeof readSearchSnap
   }));
 }
 
-export function useSearchWiring({ client, enabled, query, today, epoch }: { client: DashboardClient; enabled: boolean; query: string; today: string; epoch: object }): NavbarData {
-  const request = useMemo(() => ({ client, enabled, query, epoch }), [client, enabled, query, epoch]);
+export function workspaceSearchQuery(query: string, workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]): CrossDateSearchQueryInput {
+  const normalized = query.trim().toLowerCase();
+  const matches = workflows.filter(workflow => workflow.label.toLowerCase() === normalized);
+  const state = CrossDateSearchStateFacetSchema.safeParse(normalized);
+  const base = currentCorpusSearchQuery(query);
+  if (matches.length === 1) return { ...base, q: "", facets: { workflow: matches[0].id } };
+  if (state.success) return { ...base, q: "", facets: { state: state.data } };
+  return base;
+}
+
+export function useSearchWiring({ client, enabled, query, today, epoch, workflows }: { client: DashboardClient; enabled: boolean; query: string; today: string; epoch: object; workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[] }): NavbarData {
+  const request = useMemo(() => ({ client, enabled, query, epoch, workflows }), [client, enabled, query, epoch, workflows]);
   const active = useRef(request); active.current = request;
   const [settled, setSettled] = useState<{ request: typeof request; data: NavbarData }>();
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
-    void readSearchSnapshot(client, currentCorpusSearchQuery(query), controller.signal).then(snapshot => {
+    void readSearchSnapshot(client, workspaceSearchQuery(query, workflows), controller.signal).then(snapshot => {
       if (active.current !== request || controller.signal.aborted) return;
       setSettled({ request, data: { today, counts: {}, results: searchResults(snapshot), totalMatches: snapshot.totalMatches } });
     }, () => {
       if (active.current === request && !controller.signal.aborted) setSettled({ request, data: { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_UNAVAILABLE") } });
     });
     return () => controller.abort();
-  }, [client, enabled, query, today, request]);
+  }, [client, enabled, query, today, workflows, request]);
   return settled?.request === request ? settled.data : { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_LOADING") };
 }
