@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { ProviderCallOptions } from "../../../workflow-kit/providers.js";
 import type { ProviderRequestEnvelope } from "../../../models/providers/providers.js";
-import type { ChatGptOcrAdapter } from "./provider-client.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { SubmittedExtractionSchema } from "../../../models/ocr/extraction.js";
 import { OCR_EXTRACTION_REQUEST_HASH, OCR_EXTRACTION_RESPONSE_HASH, OcrExtractionRequestSchema } from "../../../models/processing/ocr/extract-form-page.js";
@@ -19,7 +18,7 @@ export function createChatGptOcrAdapter(deps: {
   readonly artifacts: Pick<ContentAddressedArtifactWriter, "open">;
   readonly clock: Clock;
   readonly model: string;
-}): ChatGptOcrAdapter {
+}) {
   return Object.freeze({
     capability: "ocr.extract" as const,
     policy: Object.freeze({ kind: "chatgpt-subscription-only" as const, timeoutMs: 120_000 }),
