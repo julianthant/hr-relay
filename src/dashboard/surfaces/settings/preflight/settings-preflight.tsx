@@ -134,8 +134,8 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
     </>} />
     {scope.state === "unavailable" && <p className="diagnostic-status">Workflow scopes could not be read.</p>}
     <BodySection title="Status">
-    {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
-    {historical && <Banner tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
+    {preflight.state === "refused" && <Banner className="mb-[var(--ds-space-heading-content)]" tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
+    {historical && <Banner className="mb-[var(--ds-space-heading-content)]" tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
     {preflight.state !== "refused" && (displayed === undefined ? show && <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">
       <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label">
         <StatusDot status={busy ? "running" : historical ? "queued" : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />

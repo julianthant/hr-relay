@@ -91,10 +91,9 @@ function PathsContent({ editor }: { editor: Editor }) {
     ? fields.map(field => <PathRow key={field} editor={editor} field={field} />)
     : show ? <LoadingRegion label="Loading workflow paths" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={fields.length} wide copy={fields.map(settingPlaceholderCopy)} /></LoadingRegion> : null;
   return <>
-    <BodySection title="Runtime locations"><FormGroup label="Runtime locations">
-      <StorageRelocationRows editor={editor.relocationEditor} />
+    <StorageRelocationRows editor={editor.relocationEditor}>
       {paths(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"])}
-    </FormGroup></BodySection>
+    </StorageRelocationRows>
     <BodySection title="Generated files"><FormGroup label="Generated files">
       {paths(["paths.reportsDir", "paths.downloadsDir"])}
     </FormGroup></BodySection>

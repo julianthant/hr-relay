@@ -2,7 +2,7 @@ import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
-import { type Root } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach,beforeEach,describe,it,vi } from "vitest";
 import { ChatGptAccountContext,type ChatGptAccountPort,type ChatGptAccountSnapshot } from "../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
@@ -49,4 +49,16 @@ describe("General ChatGPT account", () => {
     assert.match(limited, /Manage usage/u);
     assert.doesNotMatch(limited, /Using ChatGPT plan|Continue with ChatGPT/u);
   });
+});
+
+
+it("places a rejected account port action outside the field group with its original failure copy", async () => {
+  const port = controlledPort({ state: "signed-out" }, { signIn: async () => { throw new Error("synthetic action failure"); } });
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
+  const action = [...host.querySelectorAll("button")].find(button => button.textContent === "Continue with ChatGPT");
+  assert.ok(action); await act(async () => action.click());
+  const banner = [...host.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes("ChatGPT connection failed"));
+  assert.ok(banner); assert.equal(banner.closest(".ds-form-group"), null);
+  assert.match(banner.textContent ?? "", /ChatGPT sign-in could not be completed. Try again./);
 });

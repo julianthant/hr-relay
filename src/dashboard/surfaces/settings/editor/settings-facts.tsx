@@ -24,9 +24,8 @@ export function FactsPane({
   }
   if (facts.state === "failed") {
     return (<>
-      {facts.facts !== undefined && children(facts.facts)}
       <Banner
-        className="m-[var(--ds-space-cozy)]"
+        className="mb-[var(--ds-space-heading-content)]"
         tone="danger"
         title="These facts could not be read"
       >
@@ -34,6 +33,7 @@ export function FactsPane({
           <span>{facts.message}</span>
         </span>
       </Banner>
+      {facts.facts !== undefined && children(facts.facts)}
     </>);
   }
   return <>{children(facts.facts)}</>;

@@ -26,6 +26,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const routes = section.leaves.map(leaf => ({ leaf, presentation: routePresentation(leaf) })).sort((a, b) => Number(b.leaf.path === "urls.crm.prod") - Number(a.leaf.path === "urls.crm.prod"));
   const credentials = editor.protectedEditor;
   const rosterName = "sharepointOnboardingRosterUrl";
+  const credentialWarning = credentials.save.state === "refused" || credentials.save.state === "conflict" || credentials.save.state === "unconfirmed";
   const filtered = routes.filter(({ leaf, presentation }) => `${presentation.name} ${presentation.description} ${Object.values(presentation.fields).map(field => `${field.name} ${field.description}`).join(" ")} ${leaf.path === "urls.sharepoint.prod" ? "Onboarding roster URL Download the onboarding roster" : ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="settings-page-panel routes-page">
     <PageHeading title="Routes" description="Production destinations, organized by system." />
@@ -52,8 +53,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
                 </Field>;
               })}
               {leaf.path === "urls.sharepoint.prod" && <>
-                {document.protectedSettings.state === "unknown" && <Banner tone="warning" title="Onboarding roster URL unavailable">The protected value could not be read. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
-                <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
+                {!credentialWarning && <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />}
                 <ProtectedSettingField editor={editor} name={rosterName} description="Download the onboarding roster." controlWidth="wide" className="routes-page-field"
                   onRemove={(hasSaved, label) => { removeTrigger.current = globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null; setRemoval({ hasSaved, label }); }} />
               </>}
@@ -63,6 +63,10 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
               </div>}
             </div>;
           return <BodySection key={leaf.path} className="routes-page-system" title={<span className="routes-section-heading"><span>{presentation.name}</span><span>{meta}</span></span>}>
+            {leaf.path === "urls.sharepoint.prod" && (document.protectedSettings.state === "unknown" || credentialWarning) && <div className="mb-[var(--ds-space-heading-content)] flex flex-col gap-[var(--ds-space-heading-content)]">
+              {document.protectedSettings.state === "unknown" && <Banner tone="warning" title="Onboarding roster URL unavailable">The protected value could not be read. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
+              {credentialWarning && <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />}
+            </div>}
             <FormGroup label={presentation.name}>{content}</FormGroup>
           </BodySection>;
         })}

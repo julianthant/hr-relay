@@ -51,6 +51,8 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const description = connected ? <><span className="block break-all">{displayed.email}</span>{plan !== "enabled" && <span className="block">{plan === "limit-reached" ? "Usage limit reached" : "ChatGPT plan access not enabled"}</span>}</>
     : displayed.state === "expired" ? "Your ChatGPT session expired." : "Sign in to use your plan for OCR.";
   return <BodySection title="ChatGPT account">
+      {account.state === "unavailable" && <Banner className="mb-[var(--ds-space-heading-content)]" tone="warning" title="ChatGPT account unavailable">{account.message}</Banner>}
+      {error !== undefined && <Banner className="mb-[var(--ds-space-heading-content)]" tone="danger" title="ChatGPT connection failed">{error}</Banner>}
     <FormGroup label="ChatGPT account"><div ref={region} data-settings-path="chatgpt.account">
       {account.state === "loading" ? show && <LoadingRegion label="Loading ChatGPT account"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
         : <ResultRow controlWidth="wide" label={label} description={description}
@@ -59,8 +61,6 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
             {(!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined || account.state === "unavailable"} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>Continue with ChatGPT</Button>}
             {connected && <Button variant="ghost" disabled={pending !== undefined || account.state === "unavailable"} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Sign out</Button>}
           </div>} />}
-      {account.state === "unavailable" && <Banner tone="warning" title="ChatGPT account unavailable">{account.message}</Banner>}
-      {error !== undefined && <Banner tone="danger" title="ChatGPT connection failed">{error}</Banner>}
     </div></FormGroup>
   </BodySection>;
 }
