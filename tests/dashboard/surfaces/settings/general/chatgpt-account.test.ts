@@ -19,7 +19,7 @@ afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; 
 
 function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {
@@ -94,8 +94,9 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     assert.ok(host.textContent?.includes(message));
     const recovery = button("Continue with ChatGPT"); assert.equal(recovery.disabled, false);
     await act(async () => { recovery.click(); recovery.click(); });
-    assert.equal(starts, 1); assert.equal(button("Continue with ChatGPT").disabled, true);
-    assert.ok(host.textContent?.includes(message));
+    assert.equal(starts, 1); assert.equal(button("Cancel").disabled, false);
+    assert.match(host.textContent ?? "", /Waiting for you to finish signing in in your browser/u);
+    assert.equal(host.textContent?.includes(message), false);
     await act(async () => { await port.signIn({ usePlan: true }); });
     assert.equal(starts, 1);
     await act(async () => { completion.resolve({ state: "completed", attemptId: started.attemptId, account }); });

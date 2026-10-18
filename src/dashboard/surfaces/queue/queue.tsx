@@ -623,7 +623,7 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
       className={cn("inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-caption text-ui-muted hover:bg-ui-hover hover:text-ui-primary", dsFocus)}>
       #{dayNumber(surface.runId)}<ChevronDown aria-hidden className="size-3" />
     </BareButton></DropdownMenuTrigger>
-    <DropdownMenuContent aria-label={`Attempts for ${title}`} className="w-56" onClick={event => event.stopPropagation()}>
+    <DropdownMenuContent side="top" aria-label={`Attempts for ${title}`} className="w-56 max-w-[calc(100vw-16px)]" onClick={event => event.stopPropagation()}>
       <DropdownMenuRadioGroup value={selectedRunId ?? String(surface.runId)} onValueChange={id => { onSelect(id); setOpen(false); }}>
         {[...attempts].reverse().map(attempt => <DropdownMenuRadioItem key={attempt.runId} value={String(attempt.runId)}>
           <span className="text-caption tabular-nums text-ui-muted">#{dayNumber(attempt.runId)}</span><StatusBadge status={dsStatusOf(attempt.status)} presentation="queue" />

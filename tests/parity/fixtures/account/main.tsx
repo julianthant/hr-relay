@@ -39,6 +39,7 @@ const port: ChatGptAccountPort = {
   subscribe: () => () => {},
   signIn: action,
   signOut: action,
+  cancelSignIn: action,
 };
 const container = document.getElementById("account-fixture");
 if (container === null) throw new Error("account-fixture-container-missing");
