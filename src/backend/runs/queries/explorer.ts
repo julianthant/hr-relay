@@ -812,6 +812,9 @@ function workflowWire(
     timeline: descriptor.timeline.map((group) => ({
       key: group.key,
       label: group.label,
+      ...(group.description === undefined ? {} : { description: group.description }),
+      ...(group.system === undefined ? {} : { system: group.system }),
+      ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
       nodes: group.nodes.map((node) => node.id),
     })),
     edges: edgesOf(nodes),

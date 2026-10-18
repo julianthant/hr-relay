@@ -130,26 +130,26 @@ export const personLookupWorkflow = defineWorkflow({
     const activeStatus = task({ id: "active-status", contract: ReadActiveStatus, replay: "always-rerun", when: { kind: "equals", of: { from: "input", path: "mode" }, value: "search" } }, [initial, identity, recovery, selectedRecord, crmResults], ({ input, outputs }) => ({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], verifiedCrm: outputs["crm-selected-record"], recovered: outputs["crm-only-recovery"] }));
     const crmDates = task({ id: "crm-dates", contract: CrmReadOnboardingDates, replay: "checkpoint", when: { kind: "is-present", of: { from: "node", nodeId: "active-status", path: "datesEid" } } }, [activeStatus], ({ outputs }) => ({ eid: requireFact(outputs["active-status"]?.details.eid, "active-status", "details.eid"), ...(outputs["active-status"]?.details.name == null ? {} : { name: outputs["active-status"].details.name }) }));
     return { steps: [
-      [{ key: "searching", label: "Search for person", system: "ucpath", operatorFields: [
-        ...[["emplId", "Employee ID"], ["name", "Name"], ["department", "Department"], ["jobTitle", "Job title"], ["hrStatus", "HR status"]].map(([path, label]) => ({ label, sources: [
+      [{ key: "searching", label: "Search for person", description: "Search UCPath by employee ID or name and read the matching person records.", system: "ucpath", operatorFields: [
+        ...[["emplId", "Employee ID", "10000001"], ["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["jobTitle", "Job title", "Fictional analyst"], ["hrStatus", "HR status", "Active"]].map(([path, label, example]) => ({ label, example, sources: [
           ...(["emplId", "name"].includes(path) ? [{ nodeId: "searching", kind: "input" as const, fieldPath: path }] : []),
           ...["results", "selection.selected"].map(prefix => ({ nodeId: "searching", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
           { nodeId: "search-identity", kind: "output" as const, fieldPath: `selected.${path}` },
           ...(["emplId", "name"].includes(path) ? [{ nodeId: "matching", kind: "output" as const, fieldPath: `confirmed.${path}` }] : []),
         ] })),
       ] }, [searching, matching, initial]],
-      [{ key: "cross-verify", label: "Cross-check identity", system: "crm", selection: { inputField: "crmCheck", selectedWhen: true }, operatorFields: [
-        ...[["name", "Name"], ["department", "Department"], ["emplId", "Employee ID"], ["firstDayOfService", "Start date"]].map(([path, label]) => ({ label, sources: [
+      [{ key: "cross-verify", label: "Cross-check identity", description: "Compare the person’s name, department and employee ID with CRM records.", system: "crm", selection: { inputField: "crmCheck", selectedWhen: true }, operatorFields: [
+        ...[["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["emplId", "Employee ID", "10000001"], ["firstDayOfService", "Start date", "3/14/2031"]].map(([path, label, example]) => ({ label, example, sources: [
           ...["cross-verify", "crm-selected-record", "crm-results"].map(nodeId => ({ nodeId, kind: "output" as const, fieldPath: `records.${path}` })),
           ...["crmIdentity", "crmRecord", "unselectedCrmRecords"].map(prefix => ({ nodeId: "crm-identity", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
         ] })),
       ] }, [crossVerify, identity, selectedRecord, crmResults]],
-      [{ key: "active-status", label: "Read employment status", system: "local", operatorFields: [
-        ...[["state", "Employment status"], ["hdh", "HDH department"], ["details.department", "Department"], ["details.endDate", "End date"], ["details.terminationReason", "Termination reason"]].map(([fieldPath, label]) => ({ label,
+      [{ key: "active-status", label: "Read employment status", description: "Determine employment status and read department and termination details when applicable.", system: "local", operatorFields: [
+        ...[["state", "Employment status", "Active"], ["hdh", "HDH department", "Yes"], ["details.department", "Department", "CAMPUS DINING OPERATIONS"], ["details.endDate", "End date", "4/25/2031"], ["details.terminationReason", "Termination reason", "Appointment ended"]].map(([fieldPath, label, example]) => ({ label, example,
           sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
       ] }, [recovery, activeStatus]],
-      [{ key: "crm-dates", label: "Read CRM dates", system: "crm", selection: { inputField: "includeCrmDates", selectedWhen: true }, operatorFields: [
-        ...[["employmentDate", "Employment date"], ["oathDate", "Oath date"]].map(([fieldPath, label]) => ({ label,
+      [{ key: "crm-dates", label: "Read CRM dates", description: "Read employment and oath dates from the selected CRM record.", system: "crm", selection: { inputField: "includeCrmDates", selectedWhen: true }, operatorFields: [
+        ...[["employmentDate", "Employment date", "3/14/2031"], ["oathDate", "Oath date", "3/10/2031"]].map(([fieldPath, label, example]) => ({ label, example,
           sources: [{ nodeId: "crm-dates", kind: "output" as const, fieldPath }] })),
       ] }, [crmDates]],
     ], result: result(PersonLookupResultSchema, [initial, identity, matching, selectedRecord, crmResults, activeStatus, crmDates], ({ input, outputs }) => ({

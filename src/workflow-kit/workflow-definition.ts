@@ -55,6 +55,7 @@ export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "tra
 const GROUP_OWNER = Symbol("workflow-group-owner");
 
 export interface WorkflowTimelineGroup {
+  readonly description?: string;
   readonly operatorFields?: readonly WorkflowOperatorField[];
   readonly system?: z.input<typeof BrowserSystemIdSchema> | "local";
   readonly key: string;
@@ -1133,6 +1134,7 @@ export function compileWorkflow<
   const timeline = steps.map(([group, entries]) => ({
     key: group.key,
     label: group.label,
+    ...(group.description === undefined ? {} : { description: group.description }),
     ...(group.system === undefined ? {} : { system: group.system }),
     nodes: entries.flatMap(entryNodeIds),
     ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
@@ -1141,7 +1143,7 @@ export function compileWorkflow<
   }));
   const usesDefaultTimeline = steps.every(([group, entries]) => {
     const [entry] = entries as readonly RuntimeEntry[];
-    if (entry === undefined || entries.length !== 1 || group.omission !== undefined || group.selection !== undefined || group.operatorFields !== undefined || group.system !== undefined) return false;
+    if (entry === undefined || entries.length !== 1 || group.omission !== undefined || group.selection !== undefined || group.operatorFields !== undefined || group.system !== undefined || group.description !== undefined) return false;
     const label = defaultEntryLabel(entry);
     return label !== undefined && group.key === entry.id && group.label === label;
   });
@@ -1316,6 +1318,9 @@ export function workflowExplorerDeclaration(definition: AnyWorkflowDefinition) {
   return Object.freeze(definition.steps.map(([group, entries]) => Object.freeze({
     key: group.key,
     label: group.label,
+    ...(group.description === undefined ? {} : { description: group.description }),
+    ...(group.system === undefined ? {} : { system: group.system }),
+    ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
     entries: Object.freeze(entries.map((entry) => Object.freeze({
       id: entry.id,
       kind: entry.kind,

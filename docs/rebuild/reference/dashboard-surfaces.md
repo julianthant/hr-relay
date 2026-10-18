@@ -436,6 +436,8 @@ pending until the download settles and reports refusal without starting another 
 
 ## Explorer
 
+Served Explorer uses registered timeline groups with declared operator fields as one step per group and system. It displays only their fictional example strings and safe field provenance, with explicit definition-preview copy. Groups without operator fields retain task labels, purposes and operator action text without raw contract fieldsets. Exact graph, frozen operation and source lineage validation remains internal; no run values are inferred.
+
 Explorer mounts in Settings and describes itself as fictional preview data. Its workflow picker
 uses stable fixture IDs and the shared catalog. Local scenario/choice controls alter the preview's
 branches, stopped-after boundary, fields, and source disclosures. Unknown selections show Workflow unavailable.

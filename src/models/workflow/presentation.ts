@@ -186,10 +186,12 @@ export type WorkflowStepOf<Key extends string> = z.infer<ReturnType<typeof Workf
 export const StartStepSelectionSchema = z.strictObject({ inputField: z.string().regex(/^[a-z][A-Za-z0-9]*$/u), selectedWhen: z.boolean() });
 
 export interface WorkflowOperatorField {
+  readonly example?: string;
   readonly label: string;
   readonly sources: readonly Readonly<{ nodeId: string; kind: "input" | "output"; fieldPath: string }>[];
 }
 export const WorkflowOperatorFieldSchema = z.strictObject({
+  example: z.string().trim().min(1).optional(),
   label: z.string().trim().min(1),
   sources: z.array(z.strictObject({ nodeId: NodeIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema })).min(1),
 });
@@ -198,6 +200,7 @@ export const TimelineCategorySpecSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),
   selection: StartStepSelectionSchema.optional(),
+  description: z.string().trim().min(1).optional(),
   operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
   system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
   nodes: z.array(NodeIdSchema).min(1),
@@ -209,6 +212,7 @@ export const TimelineCategoryProjectionSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),
   selection: StartStepSelectionSchema.optional(),
+  description: z.string().trim().min(1).optional(),
   operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
   system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
   nodes: z.array(z.strictObject({ id: NodeIdSchema, label: z.string().min(1) })).min(1),

@@ -23,6 +23,7 @@ import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../../workflow-kit/validation/module-role.js";
 import {
   EditDataFieldSchema,
+  WorkflowOperatorFieldSchema,
   EnqueuePolicySchema,
   IconNameSchema,
   TimelineCategoryKeySchema,
@@ -334,6 +335,9 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
       groups: z.array(z.strictObject({
         key: z.string().min(1),
         label: z.string().min(1),
+        description: z.string().min(1).optional(),
+        system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
+        operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
         entries: z.array(z.strictObject({
           id: NodeIdSchema,
           kind: z.enum(["task", "parallel", "delegate", "gate", "transaction"]),
@@ -419,6 +423,9 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
     key: TimelineCategoryKeySchema,
     label: z.string().min(1),
     nodes: z.array(NodeIdSchema).min(1),
+    description: z.string().min(1).optional(),
+    system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
+    operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
   })).min(1),
   edges: z.array(ExplorerEdgeWireSchema),
   scenarios: z.array(ExplorerScenarioWireSchema),

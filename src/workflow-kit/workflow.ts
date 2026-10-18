@@ -280,6 +280,7 @@ export interface AnyWorkflowDescriptor {
   readonly outcomeProjection?: OutcomeProjection;
   /** Plain data like `subjectProjection`, so it rides the broad view. */
   readonly timeline: readonly Readonly<{
+    description?: string;
     operatorFields?: readonly WorkflowOperatorField[];
     system?: z.input<typeof BrowserSystemIdSchema> | "local";
     /** The category's stable anchor: the step folder's name, and what a `chunk-harness.step` names. */
@@ -331,6 +332,7 @@ export interface WorkflowDescriptorSpec<
     key: string;
     label: string;
     nodes: readonly string[];
+    description?: string;
     operatorFields?: readonly WorkflowOperatorField[];
     system?: z.input<typeof BrowserSystemIdSchema> | "local";
     selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
@@ -645,7 +647,8 @@ function deriveStepOmissions(
 function deriveTimeline(
   id: string,
   nodes: readonly RuntimeFlowNode[],
-  declared: readonly Readonly<{ key: string; label: string; selection?: Readonly<{ inputField: string; selectedWhen: boolean }>; operatorFields?: readonly WorkflowOperatorField[]; system?: z.input<typeof BrowserSystemIdSchema> | "local"; nodes: readonly string[] }>[] | undefined,
+  declared: readonly Readonly<{ key: string; label: string; selection?: Readonly<{ inputField: string; selectedWhen: boolean }>; description?: string;
+    operatorFields?: readonly WorkflowOperatorField[]; system?: z.input<typeof BrowserSystemIdSchema> | "local"; nodes: readonly string[] }>[] | undefined,
 ): readonly TimelineCategoryProjection[] {
   if (declared === undefined) {
     // The per-node default's key is the NODE ID (the kebab anchor the nodes are already named by);
@@ -669,6 +672,7 @@ function deriveTimeline(
     return TimelineCategoryProjectionSchema.parse({
       key: parsed.key,
       label: parsed.label,
+      ...(parsed.description === undefined ? {} : { description: parsed.description }),
       ...(parsed.system === undefined ? {} : { system: parsed.system }),
       ...(parsed.selection === undefined ? {} : { selection: parsed.selection }),
       ...(parsed.operatorFields === undefined ? {} : { operatorFields: parsed.operatorFields }),
@@ -1120,7 +1124,7 @@ export function defineWorkflowDescriptor<
     result: spec.flow.result,
     nodes: spec.flow.nodes,
     scenarios: declaredScenarios,
-    timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, system, selection, operatorFields, nodes: members }) => ({ key, label, ...(system === undefined ? {} : { system }), ...(operatorFields === undefined ? {} : { operatorFields }), ...(selection === undefined ? {} : { selection }), nodes: members }))),
+    timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, description, system, selection, operatorFields, nodes: members }) => ({ key, label, ...(description === undefined ? {} : { description }), ...(system === undefined ? {} : { system }), ...(operatorFields === undefined ? {} : { operatorFields }), ...(selection === undefined ? {} : { selection }), nodes: members }))),
     timelineDeclared: spec.timeline !== undefined,
     stepOmissions,
     ...(rerunValues === undefined ? {} : { rerunValues }),
