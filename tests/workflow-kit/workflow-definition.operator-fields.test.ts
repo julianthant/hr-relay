@@ -28,3 +28,12 @@ it("keeps fictional display examples typed and rejects unknown example/source pr
   const descriptor = compileWorkflow(personLookupWorkflow).descriptor;
   assert.deepEqual(descriptor.timeline.map(group => group.operatorFields?.map(field => field.example)), personLookupWorkflow.steps.map(([group]) => group.operatorFields?.map(field => field.example)));
 });
+
+
+it("validates logs-only field visibility without creating a second source declaration", () => {
+  const field = { label: "Drop reason", visibility: "logs", sources: [{ nodeId: "matching", kind: "output", fieldPath: "dropped.reason" }] };
+  assert.equal(WorkflowOperatorFieldSchema.safeParse(field).success, true);
+  assert.equal(WorkflowOperatorFieldSchema.safeParse({ ...field, visibility: "unknown" }).success, false);
+  const group = compileWorkflow(personLookupWorkflow).descriptor.timeline[0];
+  assert.deepEqual(group.operatorFields?.find(field => field.label === "Drop reason"), field);
+});

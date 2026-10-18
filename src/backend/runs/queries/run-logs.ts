@@ -304,25 +304,32 @@ function logIdOf(entry: RunLogScanEntry): string {
 }
 
 function operatorFieldsOf(entry: Extract<RunLogScanEntry, { kind: "observed" }>) {
-  const atPath = (value: unknown, path: readonly string[]): readonly unknown[] => {
-    if (Array.isArray(value)) return value.flatMap(member => atPath(member, path));
-    if (path.length === 0) return [value];
+  const atPath = (value: unknown, path: readonly string[], order: readonly number[] = []): readonly Readonly<{ observed: unknown; order: readonly number[] }>[] => {
+    if (Array.isArray(value)) return value.flatMap((member, index) => atPath(member, path, [...order, index]));
+    if (path.length === 0) return [{ observed: value, order }];
     const [head, ...tail] = path;
     return head !== undefined && value !== null && typeof value === "object" && Object.hasOwn(value, head)
-      ? atPath(Reflect.get(value, head), tail) : [];
+      ? atPath(Reflect.get(value, head), tail, order) : [];
   };
   return entry.event.points.flatMap(point => point.values.flatMap(value =>
     (entry.producer.operatorFields ?? []).filter(field => field.kind === "output" &&
       (field.fieldPath === value.key || field.fieldPath.startsWith(`${value.key}.`))).flatMap(field => {
       const retained = value.state === "allowed" ? value.value : undefined;
       const values = value.state === "allowed" ? atPath(retained, field.fieldPath === value.key ? [] : field.fieldPath.slice(value.key.length + 1).split("."))
-        : value.state === "redacted" && field.fieldPath === value.key ? ["Redacted"] : [];
-      return values.flatMap(observed => !["string", "number", "boolean"].includes(typeof observed) || String(observed).trim().length === 0
-        ? [] : [{ direction: point.direction, label: field.label, value: String(observed),
+        : value.state === "redacted" && field.fieldPath === value.key ? [{ observed: "Redacted", order: [] }] : [];
+      return values.flatMap(({ observed, order }) => !["string", "number", "boolean"].includes(typeof observed) || String(observed).trim().length === 0
+        ? [] : [{ order, field: { direction: point.direction, label: field.label, value: String(observed),
           point: { direction: point.direction, field: field.fieldPath, values: [value.state === "allowed"
             ? { ...value, key: field.fieldPath, value: observed, rawValue: undefined }
-            : { ...value, key: field.fieldPath, rawValue: undefined }] } }]);
-    })));
+            : { ...value, key: field.fieldPath, rawValue: undefined }] } } }]);
+    }).sort((left, right) => {
+      for (let index = 0; index < Math.max(left.order.length, right.order.length); index++) {
+        const difference = (left.order[index] ?? -1) - (right.order[index] ?? -1);
+        if (difference !== 0) return difference;
+      }
+      return 0;
+    }).map(({ field }) => field)));
+
 }
 
 function operatorActionOf(note: RunAtRestNote, authority: RunRecord | undefined, descriptor: RunDetailDescriptorView | undefined) {

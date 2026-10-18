@@ -34,6 +34,7 @@ describe("served Person Lookup Explorer operator presentation", () => {
     assert.doesNotMatch(text, /\bNode\b|Dependencies:|Condition:|\bTask\b|ucpath\/search-person-org|workflow:person-lookup|active-status|search-identity/u);
     assert.match(text, /Search for person/u);
     assert.match(text, /UCPath/u);
+    assert.doesNotMatch(text, /Drop reason|Some example values are not declared/u);
   });
   it("uses only declared fictional examples and safe visible provenance without a run", () => {
     const wire = workflowWire();
@@ -41,7 +42,7 @@ describe("served Person Lookup Explorer operator presentation", () => {
     for (const [index, group] of wire.timeline.entries()) {
       assert.ok(group.operatorFields);
       const fields = allFields(projection.steps[index].parts);
-      assert.deepEqual(fields.map(field => [field.label, field.value]), group.operatorFields.map(field => [field.label, field.example]));
+      assert.deepEqual(fields.map(field => [field.label, field.value]), group.operatorFields.filter(field => field.visibility !== "logs").map(field => [field.label, field.example]));
       for (const field of fields) {
         assert.ok(field.source);
         const source = projection.sources.get(field.source); assert.ok(source);

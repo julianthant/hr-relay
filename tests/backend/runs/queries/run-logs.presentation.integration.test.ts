@@ -1,3 +1,5 @@
+import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import { projectRunLogs } from "../../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
@@ -74,4 +76,36 @@ it("groups the normal registered Person Lookup helper nodes into four walkthroug
   assert.equal(projected.timeline[3].state, "skipped");
   assert.match(logPlainText(projected.steps), /Skipped · Not needed for this run/u);
   assert.doesNotMatch(logPlainText(projected.steps), /Run note|\bdone\b|condition-false|search-identity|crm-identity|crm-only-recovery|workflow:person-lookup/u);
+});
+
+
+it("lists retained M1b hits and each dropped candidate with its reason through served Logs", () => {
+  const w = world();
+  queuedEventOf(w, { seed: 82, descriptor: personLookupModule.descriptor });
+  const queued = w.authority.records.get(uuidOf(82)); assert.ok(queued);
+  const input = PersonLookupInput.parse({ mode: "match", lastName: "Quillan", firstName: "Petra A.", dob: "2/19/2030" });
+  const run = RunRecordSchema.parse({ ...queued, input: { ...queued.input, raw: input, parsed: { ...queued.input.parsed, value: input } } });
+  w.authority.put(run);
+  const at = w.clock.now().toISOString();
+  const hits = [{ emplId: "10000001", name: "Quillan, Petra A." }, { emplId: "10000002", name: "Fable, Rowan B." }];
+  const dropped = hits.map((hit, index) => ({ ...hit, reason: index === 0 ? "No Person Org record" : "Last name does not match" }));
+  w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: "person-lookup", runId: run.envelope.runId,
+    attempt: 1, traceId: run.envelope.traceId, spanPath: `${run.envelope.traceId}/matching#1`, nodeId: "matching", taskId: "ucpath/search-person-match",
+    points: Object.entries({ hits, confirmed: [], dropped }).map(([field, value]) => ({ direction: "read" as const, field,
+      values: [{ key: field, state: "allowed" as const, classification: "safe-diagnostic" as const, transform: "allow" as const, value }] })) });
+  w.projection.ingestFromTimeline();
+  const deps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
+    descriptors: { resolve: () => ({ ...personLookupModule.descriptor, dataOrigins: dataOriginViewsOf(personLookupModule) }) } };
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  const section = buildRunLogsSection(deps, run.envelope.runId, w.projection.runFold(run.envelope.runId), run); assert.ok(section.section === "logs");
+  const row = section.payload.rows?.find(row => row.kind === "observed"); assert.ok(row?.kind === "observed", "retained M1b candidates must enter served Logs");
+  assert.deepEqual(row.displayFields?.map(field => [field.label, field.value]), [
+    ...hits.flatMap(hit => [["Employee ID", hit.emplId], ["Name", hit.name]]),
+    ...dropped.flatMap(hit => [["Employee ID", hit.emplId], ["Name", hit.name], ["Drop reason", hit.reason]]),
+  ]);
+  const projected = projectRunLogs({ detail, logs: section.payload, sections: [], confirmedActionBindings: [],
+    actionEvidence: { state: "available", events: [], missingPages: [] }, unavailableEvidence: [] }, { artifactUrl: () => "unused" });
+  const text = logPlainText(projected.steps);
+  for (const hit of dropped) assert.match(text, new RegExp(`${hit.emplId}[\\s\\S]*${hit.name.replace(".", "\\.")}[\\s\\S]*${hit.reason}`, "u"));
+  assert.doesNotMatch(text, /matching|confirmed|dropped|emplId|SSN|DOB|2\/19\/2030|ucpath\/search-person-match/u);
 });

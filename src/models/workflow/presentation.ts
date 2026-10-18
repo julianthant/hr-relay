@@ -186,11 +186,13 @@ export type WorkflowStepOf<Key extends string> = z.infer<ReturnType<typeof Workf
 export const StartStepSelectionSchema = z.strictObject({ inputField: z.string().regex(/^[a-z][A-Za-z0-9]*$/u), selectedWhen: z.boolean() });
 
 export interface WorkflowOperatorField {
+  readonly visibility?: "logs";
   readonly example?: string;
   readonly label: string;
   readonly sources: readonly Readonly<{ nodeId: string; kind: "input" | "output"; fieldPath: string }>[];
 }
 export const WorkflowOperatorFieldSchema = z.strictObject({
+  visibility: z.literal("logs").optional(),
   example: z.string().trim().min(1).optional(),
   label: z.string().trim().min(1),
   sources: z.array(z.strictObject({ nodeId: NodeIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema })).min(1),

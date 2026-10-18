@@ -191,7 +191,7 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
       }
       const number = operatorSteps.length + 1;
       const fields = group.operatorFields.flatMap((field, index) => {
-        if (field.example === undefined) return [];
+        if (field.visibility === "logs" || field.example === undefined) return [];
         const id = `operator:${group.key}:${index}`;
         sources.set(id, { origin: "Workflow definition", detail: "Fictional example for this definition preview; no run value is shown." });
         return [{ id, label: field.label, value: field.example, mode: "read" as const, source: id }];
@@ -200,7 +200,7 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
         parts: [{ kind: "note", text: group.description ?? group.label },
           { kind: "note", text: "Definition preview with fictional examples. No run values are shown." },
           ...(fields.length === 0 ? [] : [{ kind: "rows" as const, fields }]),
-          ...(group.operatorFields.some(field => field.example === undefined) ? [{ kind: "note" as const, text: "Some example values are not declared." }] : []),
+          ...(group.operatorFields.some(field => field.visibility !== "logs" && field.example === undefined) ? [{ kind: "note" as const, text: "Some example values are not declared." }] : []),
         ] });
     }
     return { state: "ready", projection: { steps: operatorSteps, sources } };
