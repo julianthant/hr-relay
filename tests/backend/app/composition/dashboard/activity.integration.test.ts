@@ -330,8 +330,26 @@ it("the client checks range and download filename, MIME, length, digest and sele
   const client=createActivityQueries(createDashboardTransport({baseUrl:"http://localhost",fetchImpl:(url,init)=>{
     observedSignal=init?.signal??undefined;return Promise.resolve(f.app.request(url,init));
   }}));
-  const read=await client.activityReport(report.from,report.to,controller.signal);assert.equal(observedSignal,controller.signal);
+  const read=await client.activityReport(report.from,report.to,controller.signal);assert.ok(observedSignal);assert.equal(observedSignal.aborted,false);
   const valid=await client.exportActivityCsv(read,controller.signal);assert.ok(valid.bytes.byteLength>0);
+  for (const operation of ["report", "download"] as const) {
+    const cancelled = new AbortController();
+    const reason = new Error("caller cancelled");
+    let transportSignal: AbortSignal | undefined;
+    const pendingClient = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (_url, init) => new Promise((_resolve, reject) => {
+      transportSignal = init?.signal ?? undefined;
+      assert.ok(transportSignal);
+      transportSignal.addEventListener("abort", () => reject(reason), { once: true });
+    }) }));
+    const pending = operation === "report" ? pendingClient.activityReport(report.from, report.to, cancelled.signal) : pendingClient.exportActivityCsv(read, cancelled.signal);
+    assert.ok(transportSignal);
+    assert.equal(transportSignal.aborted, false);
+    const rejected = assert.rejects(pending, /caller cancelled/u);
+    cancelled.abort(reason);
+    assert.equal(transportSignal.aborted, true);
+    assert.equal(transportSignal.reason, cancelled.signal.reason);
+    await rejected;
+  }
   const response=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:read.from,to:read.to,snapshot:read.snapshot.token})}`);
   const bytes=await response.arrayBuffer(),expected={path:"CSV",filename:valid.filename,mediaType:valid.mediaType,token:read.snapshot.token};
   for(const header of ["content-type","content-disposition","content-length","etag","x-selection-digest"]) {
