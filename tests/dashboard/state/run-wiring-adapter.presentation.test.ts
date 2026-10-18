@@ -50,7 +50,7 @@ describe("served Person Lookup Logs operator presentation", () => {
     const capture = entries[3]; assert.ok(capture.kind === "decision");
     assert.deepEqual(capture.decision.screenshots?.map(shot => [shot.src, shot.width, shot.height]), [[`/artifacts/${id(501)}`, 1280, 720]]);
   });
-  it("shows an identical field from several observation sources once and retains its first time", () => {
+  it("retains distinct native observations with equal labels and values in chronological order", () => {
     const original = snapshot();
     const source = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
     assert.ok(source?.kind === "observed");
@@ -59,9 +59,26 @@ describe("served Person Lookup Logs operator presentation", () => {
     const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []), repeated] });
     const fields = projectRunLogs({ ...original, logs }, client).steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
     assert.deepEqual(fields.filter(field => field.label === "Name").map(field => [field.id, field.time, field.value]),
-      [[`${id(104)}:0`, "10:00:00", "Quillan, Petra A."]]);
+      [[`${id(104)}:0`, "10:00:00", "Quillan, Petra A."], [`${id(106)}:0`, "10:01:00", "Quillan, Petra A."]]);
     assert.equal(logs.rows?.filter(row => row.kind === "observed").length, 3);
     assert.deepEqual(logs.rows?.at(-1), repeated);
+  });
+  it("retains equal fill and read values and separate task invocations in one category", () => {
+    const original = snapshot();
+    const source = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
+    assert.ok(source?.kind === "observed");
+    const fill = { ...source, native: native(6), logId: id(106), sequence: 6,
+      displayFields: [{ direction: "write", label: "Name", value: "Quillan, Petra A." }] };
+    const otherTask = { ...source, native: native(7, "verify-person"), logId: id(107), sequence: 7,
+      spanPath: `${TRACE}/verify-person#1`, producer: { ...source.producer, nodeId: "verify-person", taskId: "ucpath/verify-person" } };
+    const category = original.detail.timeline.steps?.[0]; assert.ok(category);
+    const detail = RunDetailWireSchema.parse({ ...original.detail, timeline: { ...original.detail.timeline,
+      steps: [{ ...category, members: [...category.members, { nodeId: "verify-person", categoryKey: "searching", label: "Verify person", state: "done" }] }] } });
+    const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []), fill, otherTask] });
+    const fields = projectRunLogs({ ...original, detail, logs }, client).steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
+    assert.deepEqual(fields.filter(field => field.label === "Name").map(field => [field.id, field.kind, field.value]), [
+      [`${id(104)}:0`, "read", "Quillan, Petra A."], [`${id(106)}:0`, "fill", "Quillan, Petra A."], [`${id(107)}:0`, "read", "Quillan, Petra A."],
+    ]);
   });
   it("keeps different values within a step and the same field in another step", () => {
     const original = snapshot();
@@ -80,7 +97,7 @@ describe("served Person Lookup Logs operator presentation", () => {
       ? entry.fields.filter(field => field.label === "Name").map(field => field.value) : [])]),
       [["Search for person", ["Quillan, Petra A.", "Fable, Rowan B."]], ["Cross-check identity", ["Quillan, Petra A."]]]);
   });
-  it("retains a verified screenshot when all fields in its observation collapse", () => {
+  it("retains a repeated observation and its verified screenshot under its own identity", () => {
     const original = snapshot();
     const source = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
     assert.ok(source?.kind === "observed");
@@ -105,11 +122,11 @@ describe("served Person Lookup Logs operator presentation", () => {
         origins: artifact.origins.map(origin => ({ ...origin, operation: occurrence })) })) } });
     const projected = projectRunLogs({ ...original, detail, logs, sections: [captures] }, client);
     const entries = projected.steps.flatMap(step => step.entries);
-    assert.equal(entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []).filter(field => field.label === "Name").length, 1);
-    const screenshot = entries.find(entry => entry.id === `${repeated.logId}:captures`);
-    assert.ok(screenshot?.kind === "decision");
-    assert.equal(screenshot.time, "10:01:00");
-    assert.deepEqual(screenshot.decision.screenshots?.map(shot => [shot.src, shot.time, shot.width, shot.height]),
+    assert.equal(entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []).filter(field => field.label === "Name").length, 2);
+    const screenshot = entries.find(entry => entry.id === repeated.logId);
+    assert.ok(screenshot?.kind === "fields");
+    assert.equal(screenshot.fields[0].time, "10:01:00");
+    assert.deepEqual(screenshot.screenshots?.map(shot => [shot.src, shot.time, shot.width, shot.height]),
       [[`/artifacts/${id(501)}`, "10:00:00", 1280, 720]]);
     assert.equal(entries.filter(entry => entry.kind === "click").length, 1);
   });
