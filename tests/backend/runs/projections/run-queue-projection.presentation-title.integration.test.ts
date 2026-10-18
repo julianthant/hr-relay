@@ -6,7 +6,7 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import { FICTIONAL_PERSON, seedPersonLookupPresentation } from "../../../support/fixtures/person-lookup-presentation.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 
-const { world, cleanup } = createRunQueueProjectionTestWorld();
+const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
 describe("served Person Lookup identity presentation", () => {
   it.each([
@@ -75,4 +75,13 @@ it("refuses every foreign receipt identity before projecting a resolved name", a
     { runId: "00000000-0000-4000-8000-000000000099" }, { traceId: "pl-100000-0099" }, { attempt: 2 },
     { workflowId: "another-workflow" }, { descriptorFingerprint: "e".repeat(64) }, { configFingerprint: "f".repeat(64) },
   ]) assert.throws(() => resolveResultTitle(personLookupDescriptor, run, RunEvidenceReceiptSchema.parse({ ...receipt, ...replacement })), /result-title-receipt-identity-mismatch/u);
+});
+
+it("preserves an operation group title when its workflow declares a person result title", () => {
+  const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  queuedEventOf(w, { seed: 1, shape: "operation", title: "Onboarding packet — 3 people" });
+  const surface = w.projection.buildDashboardDayWire("2026-08-03").queueSurfaces[0];
+  assert.ok(surface);
+  assert.equal(surface.surfaceKind, "operation");
+  assert.equal(surface.title, "Onboarding packet — 3 people");
 });

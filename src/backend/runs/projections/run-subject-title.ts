@@ -95,7 +95,7 @@ export function verifiedResultDisplayValue(run: RunRecord, receipt: RunEvidenceR
 
 export function resolveResultTitle(descriptor: AnyWorkflowDescriptor, run: RunRecord, receipt: RunEvidenceReceipt | undefined): string | undefined {
   const projection = descriptor.titleProjection;
-  if (projection === undefined || !allowsSubjectIdentity(run, descriptor)) return undefined;
+  if (run.envelope.shape === "operation" || projection === undefined || !allowsSubjectIdentity(run, descriptor)) return undefined;
   const inputTitle = workflowPlanning(descriptor).title(run.input.parsed.value);
   if (receipt === undefined || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") return inputTitle;
   const value = verifiedResultDisplayValue(run, receipt, projection.fieldPath, "title");
