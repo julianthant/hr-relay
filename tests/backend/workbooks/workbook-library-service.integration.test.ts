@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import JSZip from 'jszip';
 import { Readable } from 'node:stream';
 import { matchSpreadsheetTask } from '../../../src/backend/processing/roster/task-registry.js';
 import { ArtifactRefSchema } from '../../../src/models/artifacts/artifacts.js';
@@ -264,4 +265,68 @@ it('retains original worksheet row locations after sorting and save/reopen', asy
   const reopened = f.service.read(saved.libraryId);
   expect(reopened.workbook.sheets[0].rows.slice(1).map(row => row.sourceRow)).toEqual([7, 6]);
   expect(spreadsheetColumnValueIssues(reopened.workbook)).toEqual(spreadsheetColumnValueIssues(sorted));
+});
+
+
+it('preserves selected blank trailing columns and rows using native XLSX dimensions', async () => {
+  const source = new Excel.Workbook(), target = source.addWorksheet('Synthetic');
+  for (let row = 1; row <= 4; row++) for (let column = 1; column <= 3; column++) {
+    const cell = target.getCell(row, column);
+    cell.value = row === 1 && column < 3 ? `Field ${column}` : row === 2 && column === 1 ? false : null;
+    cell.fill = { type: 'pattern', pattern: 'none' };
+  }
+  const imported = selectSpreadsheetColumns(prepareSpreadsheetColumns(await importSpreadsheet('Synthetic.xlsx', await source.xlsx.writeBuffer())));
+  expect(imported.sheets[0].width).toBe(3);
+  expect(imported.sheets[0].rows).toHaveLength(4);
+  const f = fixture(), created = f.service.create(imported), reopened = f.service.read(created.libraryId);
+  const exported = await spreadsheetXlsx(reopened.workbook);
+  const reimported = await importSpreadsheet('Synthetic.xlsx', exported);
+  expect(reimported.sheets[0].width).toBe(3);
+  expect(reimported.sheets[0].rows).toHaveLength(4);
+  expect(reimported.sheets[0].rows.map(row => row.cells.map(cell => cell.value))).toEqual(imported.sheets[0].rows.map(row => row.cells.map(cell => cell.value)));
+  const excluded = { ...reopened.workbook, sheets: [{ ...reopened.workbook.sheets[0], hidden: [2] }] };
+  expect((await importSpreadsheet('Synthetic.xlsx', await spreadsheetXlsx(excluded))).sheets[0].width).toBe(2);
+});
+
+it('validates native worksheet dimensions and references before allocating the editable grid', async () => {
+  const source = new Excel.Workbook(); source.addWorksheet('Synthetic').getCell('C3').value = 'Retained';
+  const bytes = await source.xlsx.writeBuffer();
+  const rewrite = async (path: string, change: (xml: string) => string) => {
+    const archive = await JSZip.loadAsync(bytes);
+    const entry = archive.file(path); if (!entry) throw new Error('Synthetic XML missing');
+    archive.file(path, change(await entry.async('string')));
+    return archive.generateAsync({ type: 'arraybuffer' });
+  };
+  const declared = async (reference: string) => rewrite('xl/worksheets/sheet1.xml', xml => xml.replace(/<dimension[^>]+\/>/u, `<dimension ref="${reference}"/>`));
+  const noDimension = await rewrite('xl/worksheets/sheet1.xml', xml => xml.replace(/<dimension[^>]+\/>/u, ''));
+  const absent = await importSpreadsheet('Synthetic.xlsx', noDimension);
+  expect(absent.sheets[0].width).toBe(3); expect(absent.sheets[0].rows).toHaveLength(3);
+  const single = await importSpreadsheet('Synthetic.xlsx', await declared('E7'));
+  expect(single.sheets[0].width).toBe(5); expect(single.sheets[0].rows).toHaveLength(7);
+  for (const reference of ['invalid', 'D4:A1', 'A0:C3', 'A1:XFE2']) await expect(importSpreadsheet('Synthetic.xlsx', await declared(reference))).rejects.toThrow('SPREADSHEET_DIMENSIONS_INVALID');
+  await expect(importSpreadsheet('Synthetic.xlsx', await declared('A1:XFD1048576'))).rejects.toThrow('SPREADSHEET_SIZE_UNSUPPORTED');
+  const wrongNamespace = await rewrite('xl/_rels/workbook.xml.rels', xml => xml.replace('http://schemas.openxmlformats.org/package/2006/relationships', 'https://example.com/wrong'));
+  await expect(importSpreadsheet('Synthetic.xlsx', wrongNamespace)).rejects.toThrow('SPREADSHEET_WORKSHEET_REFERENCE_INVALID');
+  for (const target of ['https://example.com/sheet.xml', 'https://relay.invalid/xl/worksheets/sheet1.xml', '//relay.invalid/xl/worksheets/sheet1.xml', 'worksheets/%2e%2e%2fsheet.xml', 'worksheets/sheet.xml#fragment']) {
+    const invalid = await rewrite('xl/_rels/workbook.xml.rels', xml => xml.replace('Target="worksheets/sheet1.xml"', `Target="${target}"`));
+    await expect(importSpreadsheet('Synthetic.xlsx', invalid)).rejects.toThrow('SPREADSHEET_WORKSHEET_REFERENCE_INVALID');
+  }
+});
+
+
+it('maps native dimensions through exact worksheet relationships rather than relation order or sheet index', async () => {
+  const source = new Excel.Workbook();
+  source.addWorksheet('First').getCell('C3').value = 'First value';
+  source.addWorksheet('Second').getCell('F8').value = 'Second value';
+  const archive = await JSZip.loadAsync(await source.xlsx.writeBuffer());
+  const rels = archive.file('xl/_rels/workbook.xml.rels'); if (!rels) throw new Error('Synthetic relationships missing');
+  let xml = (await rels.async('string')).replace(/Target="worksheets\/sheet([12])\.xml"/gu, (_match, number: string) => `Target="/xl/worksheets/sheet${3 - Number(number)}.xml"`);
+  const reversed = [...xml.matchAll(/<Relationship\b[^>]*\/>/gu)].map(match => match[0]).reverse();
+  let index = 0;
+  xml = xml.replace(/<Relationship\b[^>]*\/>/gu, () => reversed[index++]);
+  archive.file(rels.name, xml);
+  const imported = await importSpreadsheet('Synthetic.xlsx', await archive.generateAsync({ type: 'arraybuffer' }));
+  expect(imported.sheets.map(sheet => [sheet.name, sheet.width, sheet.rows.length])).toEqual([['First', 6, 8], ['Second', 3, 3]]);
+  expect(imported.sheets[0].rows[7].cells[5].value).toBe('Second value');
+  expect(imported.sheets[1].rows[2].cells[2].value).toBe('First value');
 });

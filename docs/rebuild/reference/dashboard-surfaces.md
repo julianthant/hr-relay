@@ -389,7 +389,9 @@ labelled with their current row. Inserted columns have a null source coordinate.
 
 Editable XLSX imports include hidden and filtered rows. Worksheet/table filter rules are not imported.
 Unsupported Excel table `colorFilter` metadata is removed only from a private parsing copy; original
-bytes stay unchanged. Values, supported fills, number formats, hyperlinks and rich-text runs survive
+bytes stay unchanged. Standard worksheet dimensions retain selected trailing blank rows and columns;
+malformed ranges or worksheet references refuse, and declared extents count toward the workbook size limit.
+Values, supported fills, number formats, hyperlinks and rich-text runs survive
 save, reopen and XLSX export, while malformed table XML refuses import. Editing a cell clears its old
 rich text and hyperlink metadata. Formulas remain imported as their stored results.
 `spreadsheet-fields-model.ts` reuses canonical intake field IDs and namespaces roster-only IDs.

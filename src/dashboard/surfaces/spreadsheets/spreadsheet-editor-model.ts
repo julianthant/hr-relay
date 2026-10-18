@@ -1,5 +1,7 @@
 import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.js";
 import type { Fill, RichText } from 'exceljs';
+import type { SaxesTagNS } from 'saxes';
+import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 import type { EditableWorkbook as LibraryWorkbook } from '../../../models/dashboard/workbooks.js';
 import { parse } from 'csv-parse/browser/esm/sync';
 import type { SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
@@ -113,9 +115,57 @@ export function updateSpreadsheetFields(sheet: EditableSheet, rowId: string, val
   }) }) };
 }
 /** Imports retain all records; Excel's table filter rules are presentation metadata. */
-async function spreadsheetValueInput(data: ArrayBuffer): Promise<ArrayBuffer> {
+async function spreadsheetValueInput(data: ArrayBuffer): Promise<{ data: ArrayBuffer; dimensions: ReadonlyMap<string, { width: number; height: number }> }> {
   const [{ default: JSZip }, { SaxesParser }] = await Promise.all([import('jszip'), import('saxes')]);
   const archive = await JSZip.loadAsync(data);
+  const mainNamespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const relationshipNamespace = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const sheets: { name: string; relationship: string }[] = [];
+  const targets = new Map<string, string>();
+  const dimensions = new Map<string, { width: number; height: number }>();
+  const scan = async (path: string, onTag: (tag: SaxesTagNS) => void): Promise<void> => {
+    const entry = archive.file(path);
+    if (!entry) throw new Error(`SPREADSHEET_WORKSHEET_REFERENCE_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKSHEET_REFERENCE_INVALID.text}`);
+    const parser = new SaxesParser({ xmlns: true });
+    parser.on('opentag', onTag);
+    parser.on('error', cause => { throw new Error(`SPREADSHEET_WORKBOOK_XML_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKBOOK_XML_INVALID.text}`, { cause }); });
+    parser.write(await entry.async('string')).close();
+  };
+  await scan('xl/workbook.xml', tag => {
+    if (tag.local !== 'sheet' || tag.uri !== mainNamespace) return;
+    const name = tag.attributes.name?.value;
+    const relationship = Object.values(tag.attributes).find(attribute => attribute.local === 'id' && attribute.uri === relationshipNamespace)?.value;
+    if (!name || !relationship || sheets.some(sheet => sheet.name === name)) throw new Error(`SPREADSHEET_WORKSHEET_REFERENCE_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKSHEET_REFERENCE_INVALID.text}`);
+    sheets.push({ name, relationship });
+  });
+  await scan('xl/_rels/workbook.xml.rels', tag => {
+    if (tag.local !== 'Relationship' || tag.uri !== 'http://schemas.openxmlformats.org/package/2006/relationships' || tag.attributes.Type?.value !== `${relationshipNamespace}/worksheet`) return;
+    const id = tag.attributes.Id?.value, target = tag.attributes.Target?.value;
+    if (!id || !target || targets.has(id) || tag.attributes.TargetMode?.value === 'External'
+      || /^[a-z][a-z\d+.-]*:/iu.test(target) || target.startsWith('//') || target.includes('\\')) throw new Error(`SPREADSHEET_WORKSHEET_REFERENCE_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKSHEET_REFERENCE_INVALID.text}`);
+    let url: URL, path: string;
+    try { url = new URL(target, 'https://relay.invalid/xl/workbook.xml'); path = decodeURIComponent(url.pathname).slice(1); }
+    catch (cause) { throw new Error(`SPREADSHEET_WORKSHEET_REFERENCE_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKSHEET_REFERENCE_INVALID.text}`, { cause }); }
+    if (url.origin !== 'https://relay.invalid' || url.search || url.hash || path.includes('\\')
+      || path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error(`SPREADSHEET_WORKSHEET_REFERENCE_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKSHEET_REFERENCE_INVALID.text}`);
+    targets.set(id, path);
+  });
+  let declaredCells = 0;
+  for (const sheet of sheets) {
+    const target = targets.get(sheet.relationship);
+    if (!target) throw new Error(`SPREADSHEET_WORKSHEET_REFERENCE_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKSHEET_REFERENCE_INVALID.text}`);
+    await scan(target, tag => {
+      if (tag.local !== 'dimension' || tag.uri !== mainNamespace) return;
+      const match = /^\$?([A-Z]{1,3})\$?([1-9]\d*)(?::\$?([A-Z]{1,3})\$?([1-9]\d*))?$/iu.exec(tag.attributes.ref?.value ?? '');
+      if (!match || dimensions.has(sheet.name)) throw new Error(`SPREADSHEET_DIMENSIONS_INVALID: ${ERROR_CATALOG.SPREADSHEET_DIMENSIONS_INVALID.text}`);
+      const column = (letters: string) => [...letters.toUpperCase()].reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0);
+      const left = column(match[1]), top = Number(match[2]), width = column(match[3] ?? match[1]), height = Number(match[4] ?? match[2]);
+      if (left > width || top > height || width > 16_384 || height > 1_048_576) throw new Error(`SPREADSHEET_DIMENSIONS_INVALID: ${ERROR_CATALOG.SPREADSHEET_DIMENSIONS_INVALID.text}`);
+      dimensions.set(sheet.name, { width, height });
+      declaredCells += width * height;
+    });
+  }
+  if (declaredCells > MAX_CELLS) throw new Error('SPREADSHEET_SIZE_UNSUPPORTED: maximum workbook size is 100,000 cells.');
   let changed = false;
   for (const entry of Object.values(archive.files).filter(file => /^xl\/tables\/[^/]+\.xml$/u.test(file.name))) {
     const xml = await entry.async('string');
@@ -150,7 +200,7 @@ async function spreadsheetValueInput(data: ArrayBuffer): Promise<ArrayBuffer> {
     archive.file(entry.name, retained);
     changed = true;
   }
-  return changed ? archive.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' }) : data;
+  return { data: changed ? await archive.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' }) : data, dimensions };
 }
 export async function importSpreadsheet(name: string, data: ArrayBuffer): Promise<EditableWorkbook> {
   if (data.byteLength > 20 * 1024 * 1024) throw new Error('SPREADSHEET_TOO_LARGE: maximum file size is 20 MB.');
@@ -163,11 +213,13 @@ export async function importSpreadsheet(name: string, data: ArrayBuffer): Promis
   if (!/\.xlsx$/i.test(name)) throw new Error('SPREADSHEET_FORMAT_UNSUPPORTED: choose XLSX or CSV.');
   const Excel = (await import('exceljs')).default;
   const workbook = new Excel.Workbook();
-  await workbook.xlsx.load(await spreadsheetValueInput(data), { ignoreNodes: ['autoFilter'] });
+  const input = await spreadsheetValueInput(data);
+  await workbook.xlsx.load(input.data, { ignoreNodes: ['autoFilter'] });
   const themes = workbook.model.themes;
   let hasFormulas = false, total = 0;
   const sheets = workbook.worksheets.map(sheet => {
-    const width = Math.max(1, sheet.columnCount), height = Math.max(1, sheet.rowCount);
+    const dimension = input.dimensions.get(sheet.name);
+    const width = Math.max(1, sheet.columnCount, dimension?.width ?? 0), height = Math.max(1, sheet.rowCount, dimension?.height ?? 0);
     total += width * height;
     if (total > MAX_CELLS) throw new Error('SPREADSHEET_SIZE_UNSUPPORTED: maximum workbook size is 100,000 cells.');
     const rows = Array.from({ length: height }, (_, rowIndex) => ({ id: `${sheet.id}-${rowIndex}`, sourceRow: rowIndex + 1, cells: Array.from({ length: width }, (_, columnIndex): SheetCell => {

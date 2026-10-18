@@ -471,6 +471,18 @@ export const ERROR_CATALOG = Object.freeze({
     "The ChatGPT credential change could not be confirmed. Read its current state before trying again.",
     EmptyParametersSchema,
   ),
+  SPREADSHEET_WORKSHEET_REFERENCE_INVALID: catalogEntry(
+    "This workbook has an invalid worksheet reference. Export a new XLSX copy and try again.",
+    EmptyParametersSchema,
+  ),
+  SPREADSHEET_WORKBOOK_XML_INVALID: catalogEntry(
+    "This workbook could not be read. Export a new XLSX copy and try again.",
+    EmptyParametersSchema,
+  ),
+  SPREADSHEET_DIMENSIONS_INVALID: catalogEntry(
+    "This workbook has an invalid worksheet range. Export a new XLSX copy and try again.",
+    EmptyParametersSchema,
+  ),
   WORKBOOK_INTAKE_SOURCE_CONFLICT: catalogEntry(
     "An active intake uses the same file with different workbook provenance. Finish that intake before importing this workbook.",
     EmptyParametersSchema,

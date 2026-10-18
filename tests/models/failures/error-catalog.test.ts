@@ -47,6 +47,19 @@ describe("error catalog", () => {
     }
   });
 
+  it("registers spreadsheet parsing refusals with operator recovery text", () => {
+    const expected = {
+      SPREADSHEET_WORKSHEET_REFERENCE_INVALID: "This workbook has an invalid worksheet reference. Export a new XLSX copy and try again.",
+      SPREADSHEET_WORKBOOK_XML_INVALID: "This workbook could not be read. Export a new XLSX copy and try again.",
+      SPREADSHEET_DIMENSIONS_INVALID: "This workbook has an invalid worksheet range. Export a new XLSX copy and try again.",
+    } as const;
+    for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
+      const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+      assert.equal(message.code, code);
+      assert.equal(message.text, expected[code]);
+    }
+  });
+
   it("registers the exact Settings integration codes and fixed messages", () => {
     const expected = {
       SETTINGS_INITIAL_READ_UNAVAILABLE: "Settings could not be read. Try again.",
