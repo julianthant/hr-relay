@@ -781,6 +781,7 @@ async function composeDashboardRuntimeStartup(
     notificationPublications: { subscribe: notificationInbox.onPublication, project: publication => database.withAuthorityReadSnapshot(() => ({
       sourceId: FingerprintSchema.parse(publication.sourceId), actorId: publication.notification.actorId, durable: publication.durable,
       notification: notificationWireOf(publication.notification, clock.nowMs(), notificationDisplayContext(publication.notification, {
+        presentation: runDetailDeps,
         read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
         checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
       }), notificationSourceEventOf(publication.notification, { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, adopted: false, event: publication.event })),
@@ -810,6 +811,7 @@ async function composeDashboardRuntimeStartup(
   const app = createDashboardApp({
     chatGptAccount,
     notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
+      presentation: runDetailDeps,
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
     }), notificationSourceEventOf(record, database.authority.notificationPublications.latest(record.notificationId))))), target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)), status: notificationObserver.status },

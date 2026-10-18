@@ -128,6 +128,8 @@ when a later producer introduces paging.
 
 ## Logs and timeline
 
+When a live timeline is supplied, older runs use its current step names even after the workflow version or contract fingerprint changes. Every node recorded by that run's spans, checkpoints, gates, actions and same-run action lineage must map to exactly one keyed live category; missing or ambiguous mappings refuse as `LOGS_IDENTITY_REFUSED`. Notification display applies the same rule and retains its unavailable state on incompatibility. Frozen action evidence and every write, gate-resolution, resume, rerun and checkpoint-replay fingerprint check remain exact.
+
 Served Logs combines action notes, declared operator observations, fences and decisions in native ingestion order. Contiguous actions nest under their registered timeline group and system; helper completions do not create their own headings. Unknown field paths remain in Run data instead of becoming operator labels. Browser action labels come from exact frozen declarations or the UI registry. Values appear only through declared fields and existing frozen classification; legacy unbound gesture values remain explicitly unavailable. Captures join exact bundle, artifact, node, attempt and physical session metadata while their labels stay operator text.
 
 Selecting a run opens Logs beside Queue. No selection shows No run open; a run missing from the

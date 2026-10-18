@@ -26,9 +26,10 @@ import { noSeparationWritePlan } from "../../../../src/rules/separations/write-p
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
-import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { HASH_A, HASH_B, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, identityCheckDescriptor, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, identityCheckDescriptor, DESCRIPTOR_SET, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
 
 
 afterEach(() => {
@@ -197,6 +198,17 @@ describe("gate resolution", () => {
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
     return result;
   }
+
+  it("refuses gate resolution after a fingerprint change even when every timeline node remains", () => {
+    const descriptors = [...DESCRIPTOR_SET];
+    const harness = createHarness(undefined, { descriptors });
+    const staged = stageIdentityGateRun(harness);
+    const index = descriptors.findIndex(descriptor => descriptor.id === identityCheckDescriptor.id);
+    assert.ok(index >= 0);
+    descriptors[index] = { ...identityCheckDescriptor, contractFingerprint: FingerprintSchema.parse(HASH_B) };
+    assertGateRefusalHasNoMutation(harness, staged.runId,
+      gateCommand(staged.runId, staged.version, identityResult(staged)), "schema-mismatch");
+  });
 
   it("confirms the real gate node through typed transport and retains uncertainty for divergent readback", async () => {
     const harness = createHarness();

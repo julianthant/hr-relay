@@ -26,6 +26,7 @@ import {
 } from "../commands/refusals.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { requireCanonicalRun } from "./run-read.js";
+import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
 
 export { availableSections } from "./run-trust.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
@@ -204,12 +205,14 @@ export function buildRunDetail(
   const { row, authority } = requireCanonicalRun(deps, runId);
   const status = deriveRunStatus(authority);
   const descriptorView = deps.descriptors.resolve(authority.envelope.workflow);
+  let retainedCheckpoints: readonly RunCheckpointRecord[] | undefined;
+  const readCheckpoints = () => retainedCheckpoints ??= deps.authority.listCheckpoints(authority.envelope.workflow, authority.envelope.itemId);
   let latestByNode: Map<string, RunCheckpointRecord> | undefined;
   const checkpoints: SubjectCheckpointSource = {
     latestCheckpoint: (_workflowId, _itemId, nodeId) => {
       if (latestByNode === undefined) {
         latestByNode = new Map();
-        for (const checkpoint of deps.authority.listCheckpoints(authority.envelope.workflow, authority.envelope.itemId)) {
+        for (const checkpoint of readCheckpoints()) {
           const latest = latestByNode.get(checkpoint.nodeId);
           if (latest === undefined || checkpoint.attempt > latest.attempt
             || checkpoint.attempt === latest.attempt && checkpoint.claimGeneration > latest.claimGeneration) {
@@ -220,14 +223,12 @@ export function buildRunDetail(
       return latestByNode.get(nodeId);
     },
   };
-  if (descriptorView?.timeline !== undefined && (descriptorView.version !== authority.envelope.descriptorVersion
-    || descriptorView.contractFingerprint !== authority.envelope.contractFingerprint
-    || descriptorView.timeline.some(category => category.key === undefined))) {
-    throw new LogIdentityRefusedError("run timeline descriptor identity does not match its frozen authority");
-  }
-  const nativeRecords = row !== undefined && row.taskSpans.length === 0 && row.openGates.length === 0 && row.resolvedGates.length === 0
+  const nativeRecords = descriptorView?.timeline === undefined && row !== undefined && row.taskSpans.length === 0 && row.openGates.length === 0 && row.resolvedGates.length === 0
     ? []
     : readTimelineRecords(deps.timeline, 0, runId).records;
+  assertRunTimelineCompatible(authority, descriptorView?.timeline, {
+    timeline: deps.timeline, authority: { listCheckpoints: readCheckpoints, listGateResults: id => deps.authority.listGateResults(id) },
+  }, row, nativeRecords);
   const nativeOf = (record: (typeof nativeRecords)[number], nodeId?: string): NativeRunEventWire => {
     if (record.payload.kind !== "span" || !("runId" in record.payload.event)) throw new LogIdentityRefusedError("timeline event has no run identity");
     const event = record.payload.event;
