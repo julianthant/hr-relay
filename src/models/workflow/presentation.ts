@@ -111,17 +111,24 @@ export const WorkflowCapabilitiesSchema = z.strictObject({
 });
 export type WorkflowCapabilities = z.infer<typeof WorkflowCapabilitiesSchema>;
 
-/* ── projections over node outputs ───────────────────────────────────────── */
+/* ── presentation projections ────────────────────────────────────────────── */
 
-/** The declared patch set: every `SpanPatched` key is validated against this list, and the coverage guard proves every `fieldPath` exists in the producing node's own output schema. */
+const DetailConditionSchema = z.strictObject({
+  source: z.strictObject({ kind: z.enum(["input", "result"]), fieldPath: ContractFieldPathSchema }),
+  equals: z.union([z.string(), z.number(), z.boolean()]),
+});
+export type DetailCondition = z.input<typeof DetailConditionSchema>;
+
 export const DetailProjectionSpecRuntimeSchema = z.strictObject({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "detail key must be kebab-case"),
   label: z.string().min(1),
-  source: z.strictObject({
-    nodeId: NodeIdSchema,
-    fieldPath: ContractFieldPathSchema,
-  }),
+  source: z.union([
+    z.strictObject({ nodeId: NodeIdSchema, fieldPath: ContractFieldPathSchema }),
+    z.strictObject({ kind: z.literal("result"), fieldPath: ContractFieldPathSchema }),
+    z.strictObject({ kind: z.literal("input-title") }),
+  ]),
   display: z.enum(["text", "eid", "date", "count", "badge"]),
+  when: DetailConditionSchema.optional(),
 });
 export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRuntimeSchema>;
 

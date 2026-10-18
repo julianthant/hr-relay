@@ -5,10 +5,10 @@ import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationDisplayContext } from "../queries/notification-display.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
-import { deriveEvidenceEntryId } from "../../../models/trust/evidence-identity.js";
+import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
 
 import { z } from "zod";
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import {
@@ -1077,37 +1077,57 @@ export class RunQueueProjection {
     return { state: "present", value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", ") };
   }
 
-  // Read receipts without deriving them; queue reads must not create authority.
   #facts(
+    authority: RunRecord,
+    descriptor: AnyWorkflowDescriptor | undefined,
     status: QueueSurfaceWire["status"],
     receipt: ReceiptView | undefined,
-  ): { state: "present"; value: readonly { label: string; value: string }[] } | { state: "absent"; reason: string } {
-    if (!TERMINAL_QUEUE_STATUSES.has(status)) {
-      return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
-    }
-    if (receipt === undefined) {
-      return {
-        state: "absent",
-        reason: "no evidence receipt has been derived for this run, so its outputs are unknown",
-      };
-    }
-    if (receipt.value.output.length === 0) {
-      return { state: "absent", reason: "this run's evidence receipt records no output fact" };
-    }
+  ): QueueSurfaceWire["facts"] {
+    if (!TERMINAL_QUEUE_STATUSES.has(status)) return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
+    if (receipt === undefined) return { state: "absent", reason: "no evidence receipt has been derived for this run, so its outputs are unknown" };
+    if (descriptor === undefined || descriptor.details.length === 0) return { state: "absent", reason: "this workflow declares no detail fields" };
+    const value = receipt.value;
+    const run = authority.envelope;
+    if (value.runId !== run.runId || value.traceId !== run.traceId || value.attempt !== run.attempt
+      || value.workflowId !== run.workflow || value.descriptorFingerprint !== run.contractFingerprint
+      || value.configFingerprint !== run.configFingerprint) throw new ProjectionDegradedError("detail-receipt-identity-mismatch");
+    const factValue = (source: Readonly<{ nodeId: string; fieldPath: string }> | Readonly<{ kind: "result"; fieldPath: string }>) => {
+      const node = "nodeId" in source;
+      const obligation = node ? `node.${source.nodeId}` : "completion.terminal-result";
+      const verification = value.verification.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "verification", obligation));
+      const factId = deriveEvidenceEntryId(value.receiptId, node ? "observation" : "output", node ? `${source.nodeId}.${source.fieldPath}` : source.fieldPath);
+      const fact = (node ? value.observations : value.output).find(entry => entry.id === factId);
+      if (verification?.obligation !== obligation || verification.verdict !== "verified" || !verification.evidence.includes(evidenceEntryRef(factId))
+        || fact?.state !== "satisfied" || fact.value.state !== "allowed") return undefined;
+      return fact.value.rawValue === undefined ? fact.value.value : fact.value.rawValue;
+    };
+    const inputValue = (path: string): unknown => {
+      let current: unknown = descriptor.canonicalInput.parse(authority.input.parsed.value);
+      for (const segment of path.split(".")) {
+        if (typeof current !== "object" || current === null || Array.isArray(current) || !Object.hasOwn(current, segment)) {
+          throw new ProjectionDegradedError("detail-input-condition-path-unavailable");
+        }
+        current = Reflect.get(current, segment);
+      }
+      return current;
+    };
     const chips: { label: string; value: string }[] = [];
-    for (const fact of receipt.value.output) {
-      if (fact.state !== "satisfied") continue;
-      const value = fact.value.rawValue !== undefined ? fact.value.rawValue : (fact.value.state === "redacted" ? undefined : fact.value.value);
-      if (value !== undefined) chips.push({ label: fact.field,
-        value: typeof value === "string" ? displayScalar(value) : JSON.stringify(value) });
+    for (const detail of descriptor.details) {
+      if (detail.display === "badge") continue;
+      if (detail.when !== undefined) {
+        const condition = detail.when.source.kind === "input" ? inputValue(detail.when.source.fieldPath)
+          : factValue({ kind: "result", fieldPath: detail.when.source.fieldPath });
+        if (condition === undefined) return { state: "absent", reason: `detail ${detail.key} has no verified condition value` };
+        if (condition !== detail.when.equals) continue;
+      }
+      const source = detail.source;
+      const resolved = "kind" in source && source.kind === "input-title"
+        ? workflowPlanning(descriptor).title(authority.input.parsed.value) : factValue(source);
+      if (resolved === undefined) return { state: "absent", reason: `detail ${detail.key} has no verified value` };
+      if (resolved === null || typeof resolved === "string" && resolved.trim() === "") continue;
+      chips.push({ label: detail.label, value: typeof resolved === "object" ? JSON.stringify(resolved) : displayScalar(resolved) });
     }
-    if (chips.length === 0) {
-      return {
-        state: "absent",
-        reason: "this run's receipt retains no output values",
-      };
-    }
-    return { state: "present", value: chips };
+    return chips.length === 0 ? { state: "absent", reason: "this run has no applicable detail values" } : { state: "present", value: chips };
   }
 
   #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[]): SurfaceFold {
@@ -1157,7 +1177,6 @@ export class RunQueueProjection {
       session: this.#session(authority),
       containment: this.#containment(queued),
       linkedRuns: this.#linkedRuns(children),
-      facts: this.#facts(status, receipt),
       startedAt: queued.enqueuedAt,
       updatedAt: authority.updatedAt,
       endedAt: this.#endedAt(authority, status),
@@ -1171,6 +1190,7 @@ export class RunQueueProjection {
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
         : { state: "present", value: row?.queued.subtitle },
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
+      facts: this.#facts(authority, descriptor, status, receipt),
       status,
       liveMessage: this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),

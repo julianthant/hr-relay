@@ -67,7 +67,7 @@ export function dataOriginViewsOf(module: {
     if (existing === undefined) declaredPaths.set(nodeId, new Set([fieldPath]));
     else existing.add(fieldPath);
   };
-  for (const detail of descriptor.details) declare(String(detail.source.nodeId), detail.source.fieldPath);
+  for (const detail of descriptor.details) if ("nodeId" in detail.source) declare(String(detail.source.nodeId), detail.source.fieldPath);
   if (typeof editData === "object") {
     for (const field of editData.fields) declare(String(field.nodeId), field.fieldPath);
   }

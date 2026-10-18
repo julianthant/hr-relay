@@ -125,7 +125,7 @@ describe("workflow definition registry conformance", () => {
           details: details.map(({ key }) => key),
         })), id).toEqual(descriptor.nodes.map(({ id: nodeId }) => ({
           id: String(nodeId),
-          details: descriptor.details.filter((detail) => detail.source.nodeId === String(nodeId)).map(({ key }) => key),
+          details: descriptor.details.filter((detail) => "nodeId" in detail.source && detail.source.nodeId === String(nodeId)).map(({ key }) => key),
         })));
 
         const seed = 501 + index;

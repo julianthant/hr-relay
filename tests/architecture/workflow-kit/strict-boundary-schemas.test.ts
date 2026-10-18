@@ -743,6 +743,8 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { review: true, editData: true, delegationDisplay: "inline" },
   ] },
   { name: "DetailProjectionSpecRuntime", schema: DetailProjectionSpecRuntimeSchema, fixtures: [
+    { key: "result-name", label: "Name", source: { kind: "result", fieldPath: "activeStatus.details.name" }, display: "text", when: { source: { kind: "input", fieldPath: "mode" }, equals: "match" } },
+    { key: "search", label: "Search", source: { kind: "input-title" }, display: "text" },
     { key: "resolved-eid", label: "EID", source: { nodeId: "searching", fieldPath: "selection.selected" }, display: "eid" },
   ] },
   { name: "DurableArtifactProjectionSpecRuntime", schema: DurableArtifactProjectionSpecRuntimeSchema, fixtures: [

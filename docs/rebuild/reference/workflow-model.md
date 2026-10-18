@@ -88,6 +88,14 @@ A copied descriptor cannot supply the sealed planning or terminal-result interfa
 The projection includes contracts, steps, gates, systems, requirements, timeline, node purposes,
 dry-run support, and graph coverage points.
 
+`details` declares the ordered operator fields. A source names a node output (`nodeId`,
+`fieldPath`), a terminal result (`kind: "result"`, `fieldPath`), or the canonical input's safe
+presentation (`kind: "input-title"`). Optional equality conditions name a validated canonical-input
+or terminal-result path. Queue text details require exact receipt identity and their source's
+verified evidence entry; null, blank and inapplicable values are omitted. Badge details remain
+separate from text facts. Input-title details use the factory's canonical-input presentation and
+never read retained search tuples.
+
 `workflowExplorerDeclaration` derives ordered groups, entry kinds, node ids, task ids, and typed
 references from the compiled definition. `src/backend/runs/queries/explorer.ts` produces the
 Explorer declaration and explicit unavailable states. Definition previews grant no execution

@@ -795,13 +795,12 @@ function workflowWire(
       shape: nodeShape(node),
       tasks: nodeTasks(node, context),
       details: descriptor.details
-        .filter((detail) => detail.source.nodeId === String(node.id))
-        .map((detail) => ({
+        .flatMap((detail) => "nodeId" in detail.source && detail.source.nodeId === String(node.id) ? [{
           key: detail.key,
           label: detail.label,
           fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
           display: DetailDisplaySchema.parse(detail.display),
-        })),
+        }] : []),
       editableFields: editDataFields
         .filter((field) => field.nodeId === String(node.id))
         .map((field) => ({

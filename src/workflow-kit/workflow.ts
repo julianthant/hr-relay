@@ -58,6 +58,7 @@ import type { InputRunSurface, WorkflowSurfaces } from "../models/workflow/ingre
 import {
   ArtifactSinkIdSchema,
   DetailProjectionSpecRuntimeSchema,
+  type DetailCondition,
   DurableArtifactProjectionSpecRuntimeSchema,
   EnqueuePolicySchema,
   GateProjectionDefinitionSchema,
@@ -111,11 +112,13 @@ import type {
   WorkflowResultSpec,
 } from "./flow.js";
 
-// Compile error when a node is renamed; the factory proves the path exists.
+// The factory validates each source and condition path.
 export interface DetailProjectionSpec<S> {
   readonly key: string;
   readonly label: string;
-  readonly source: Readonly<{ nodeId: keyof S & string; fieldPath: string }>;
+  readonly source: Readonly<{ nodeId: keyof S & string; fieldPath: string }>
+    | Readonly<{ kind: "result"; fieldPath: string }> | Readonly<{ kind: "input-title" }>;
+  readonly when?: DetailCondition;
   readonly display: "text" | "eid" | "date" | "count" | "badge";
 }
 
@@ -263,12 +266,7 @@ export interface AnyWorkflowDescriptor {
   readonly capabilities?: WorkflowCapabilitiesSpec;
   /** Explicit optional candidates for new Run input/omission assertions. */
   readonly rerunValues?: readonly RerunValueMappingSpec[];
-  readonly details: readonly Readonly<{
-    key: string;
-    label: string;
-    source: Readonly<{ nodeId: string; fieldPath: string }>;
-    display: string;
-  }>[];
+  readonly details: readonly z.input<typeof DetailProjectionSpecRuntimeSchema>[];
    /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
     * functions of the exact input type). The run/queue projection reads it. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
@@ -913,7 +911,10 @@ export function defineWorkflowDescriptor<
 
   for (const detail of spec.details) {
     DetailProjectionSpecRuntimeSchema.parse(detail);
-    assertNodeFieldPath(id, nodes, detail.source.nodeId, detail.source.fieldPath, `detail "${detail.key}"`);
+    if ("nodeId" in detail.source) assertNodeFieldPath(id, nodes, detail.source.nodeId, detail.source.fieldPath, `detail "${detail.key}"`);
+    else if (detail.source.kind === "result") assertSchemaOwnsPath(spec.flow.result.schema, detail.source.fieldPath, `${id}: detail "${detail.key}" result`);
+    if (detail.when !== undefined) assertSchemaOwnsPath(detail.when.source.kind === "input" ? spec.canonicalInput : spec.flow.result.schema,
+      detail.when.source.fieldPath, `${id}: detail "${detail.key}" condition`);
   }
   assertUnique(id, "detail keys", spec.details.map((detail) => detail.key));
 

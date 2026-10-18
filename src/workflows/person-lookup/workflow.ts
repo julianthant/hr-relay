@@ -73,12 +73,23 @@ export const personLookupWorkflow = defineWorkflow({
     constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
   }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }] } },
   details: [
-    { key: "active-state", label: "Outcome", source: { nodeId: "active-status", fieldPath: "state" }, display: "badge" },
+    { key: "active-state", label: "Outcome", source: { kind: "result", fieldPath: "activeStatus.state" }, display: "badge" },
+    { key: "detail-search", label: "Search", source: { kind: "input-title" }, display: "text" },
     ...[
-      ["search", "Search"], ["name", "Name"], ["eid", "EID"], ["department", "Dept"], ["hrStatus", "HR Status"],
-      ["ucpath", "UCPath"], ["crm", "CRM"], ["startDate", "Start Date"], ["endDate", "End Date"], ["terminationReason", "Term Reason"],
-      ["foundInUcpath", "Found in UCPath"], ["matchedEid", "Matched EID"], ["matchedName", "Matched Name"],
-    ].map(([field, label]) => ({ key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label: label, source: { nodeId: "active-status", fieldPath: `details.${field}` }, display: "text" as const })),
+      ["name", "Name"], ["eid", "EID"], ["department", "Dept"], ["hrStatus", "HR Status"],
+      ["ucpath", "UCPath"], ["crm", "CRM"], ["startDate", "Start Date"],
+    ].map(([field, label]) => ({ key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
+      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: "text" as const })),
+    ...[["endDate", "End Date"], ["terminationReason", "Term Reason"]].map(([field, label]) => ({
+      key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
+      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: "text" as const,
+      when: { source: { kind: "result" as const, fieldPath: "activeStatus.state" }, equals: "inactive" },
+    })),
+    ...[["foundInUcpath", "Found in UCPath"], ["matchedEid", "Matched EID"], ["matchedName", "Matched Name"]].map(([field, label]) => ({
+      key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
+      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: "text" as const,
+      when: { source: { kind: "input" as const, fieldPath: "mode" }, equals: "match" },
+    })),
   ],
   identity: { matchKey: (input) => input.mode === "match" ? ["match", sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.dob, input.ssn]))].join(":") : "emplId" in input ? `eid:${input.emplId}` : `name:${input.name.toLowerCase()}` },
   presentation: { title: personLookupTitle, subtitle: () => "Person Lookup" },

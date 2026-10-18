@@ -4,13 +4,21 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { claimEventOf, cleanReceiptOf, DAY, instantOffsetOf, receiptWithOutputOf, runEndedEventOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { deriveEvidenceEntryId } from "../../../../src/models/trust/evidence-identity.js";
+import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../../src/models/trust/evidence-identity.js";
 import { RunIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 
 const {world, runRecordOf, queuedEventOf, appendOther, cleanup } = createRunQueueProjectionTestWorld();
 
 
 afterEach(cleanup);
+
+function verifyOutputs(receipt: ReturnType<typeof receiptWithOutputOf>) {
+  receipt.configFingerprint = runRecordOf({ seed: 1 }).envelope.configFingerprint;
+  if (receipt.output.length === 0) { receipt.verification = []; return; }
+  for (const fact of receipt.output) fact.id = deriveEvidenceEntryId(receipt.receiptId, "output", fact.field);
+  receipt.verification = [{ id: deriveEvidenceEntryId(receipt.receiptId, "verification", "completion.terminal-result"),
+    obligation: "completion.terminal-result", mandatory: true, verdict: "verified", evidence: receipt.output.map(fact => evidenceEntryRef(fact.id)) }];
+}
 
 
 describe("the queue row's ordinal, class, links and outcome", () => {
@@ -42,7 +50,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
   it("projects a declared result subtitle for an arbitrary workflow identity and result field", () => {
     const workflow = "fixture-result-subtitle";
     const fieldPath = "activeStatus.details.matchedEid";
-    const descriptor = { ...personLookupDescriptor, id: WorkflowIdSchema.parse(workflow), subtitleProjection: { fieldPath, display: "eid" as const } };
+    const descriptor = { ...personLookupDescriptor, details: [], id: WorkflowIdSchema.parse(workflow), subtitleProjection: { fieldPath, display: "eid" as const } };
     const w = world({ descriptors: { resolve: () => descriptor } });
     const seed = 53;
     queuedEventOf(w, { seed, workflow }); claimEventOf(w, seed); runEndedEventOf(w, seed, "done", { workflow });
@@ -173,19 +181,20 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     });
   });
 
-  it("renders a satisfied empty-string receipt fact without rejecting the feed", () => {
-    const w = world();
+  it("omits a satisfied empty-string declared detail without rejecting the feed", () => {
+    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, outcomeProjection: undefined, subtitleProjection: undefined, details: [{ key: "reason", label: "Reason", source: { kind: "result", fieldPath: "reason" }, display: "text" }] }) } });
     terminalDone(w, 6);
-    w.authority.receipts.set(uuidOf(6), receiptWithOutputOf({ seed: 6,
-      outputs: [{ field: "reason", value: "" }],
-    }));
+    const receipt = receiptWithOutputOf({ seed: 6, outputs: [{ field: "reason", value: "" }] });
+    verifyOutputs(receipt);
+    w.authority.receipts.set(uuidOf(6), receipt);
     const feed = DashboardDayWireSchema.parse(w.projection.buildDashboardDayWire(DAY));
     assert.deepEqual(feed.queueSurfaces.find(row => row.runId === uuidOf(6))?.facts,
-      { state: "present", value: [{ label: "reason", value: "(empty)" }] });
+      { state: "absent", reason: "this run has no applicable detail values" });
   });
 
-  it("chips the receipt's own printable outputs, and keeps four absences apart", () => {
-    const w = world();
+  it("chips only declared verified outputs and keeps unknown authority explicit", () => {
+    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, outcomeProjection: undefined, subtitleProjection: undefined,
+      details: ["displayedName", "hdh", "records"].map(field => ({ key: field === "displayedName" ? "name" : field, label: field, source: { kind: "result", fieldPath: field }, display: "text" })) }) } });
     // 1 — in flight: no terminal result exists to have facts about.
     queuedEventOf(w, { seed: 1 });
 
@@ -193,7 +202,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     // 3 — a derived receipt that recorded no output at all.
     terminalDone(w, 3);
     w.authority.receipts.set(uuidOf(3), cleanReceiptOf({ seed: 3 }));
-    // 4 — every output leaf redacted or structured: nothing the queue may print.
+    // 4 — no output matches a declared detail.
     terminalDone(w, 4);
     w.authority.receipts.set(uuidOf(4), receiptWithOutputOf({
       seed: 4,
@@ -202,7 +211,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
         { field: "grid", value: { rows: 3 } },
       ],
     }));
-    // 5 — the ordinary settled run: allowed primitives become chips.
+    // 5 — declared verified primitives become chips.
     terminalDone(w, 5);
     w.authority.receipts.set(uuidOf(5), receiptWithOutputOf({
       seed: 5,
@@ -214,6 +223,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
       ],
     }));
 
+    for (const seed of [3, 4, 5]) { const receipt = w.authority.receipts.get(uuidOf(seed)); assert.ok(receipt); verifyOutputs(receipt); }
     const byRun = new Map(w.projection.buildDashboardDayWire(DAY).queueSurfaces.map((row) => [String(row.runId), row.facts]));
     assert.deepEqual(byRun.get(uuidOf(1)), {
       state: "absent",
@@ -225,12 +235,9 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     });
     assert.deepEqual(byRun.get(uuidOf(3)), {
       state: "absent",
-      reason: "this run's evidence receipt records no output fact",
+      reason: "detail name has no verified value",
     });
-    assert.deepEqual(byRun.get(uuidOf(4)), {
-      state: "present",
-      value: [{ label: "grid", value: '{"rows":3}' }],
-    });
+    assert.deepEqual(byRun.get(uuidOf(4)), { state: "absent", reason: "detail name has no verified value" });
     assert.deepEqual(byRun.get(uuidOf(5)), {
       state: "present",
       value: [

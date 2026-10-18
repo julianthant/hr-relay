@@ -15,7 +15,7 @@ function setup(options: { workflow?: string; fieldPath?: string } = {}) {
   const workflow = options.workflow ?? "person-lookup";
   const fieldPath = options.fieldPath ?? "activeStatus.state";
   assert.ok(personLookupDescriptor.outcomeProjection);
-  const descriptor = { ...personLookupDescriptor, id: WorkflowIdSchema.parse(workflow),
+  const descriptor = { ...personLookupDescriptor, details: [], id: WorkflowIdSchema.parse(workflow),
     outcomeProjection: { ...personLookupDescriptor.outcomeProjection, fieldPath } };
   const w = world({ descriptors: { resolve: () => descriptor } });
   queuedEventOf(w, { seed, workflow });
