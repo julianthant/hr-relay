@@ -204,6 +204,7 @@ function DialogSurface({
     <>
       <Scrim layer={dsLayer.modal} entered={entered} />
       <DialogPrimitive.Content
+        {...(!description ? { "aria-describedby": undefined } : {})}
         onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus}
         onEscapeKeyDown={event => { protectNestedPopupEscape(event); onEscapeKeyDown?.(event); }}

@@ -71,6 +71,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(confirmation.locator(".command-confirm-target")).toContainText("Person Lookup");
       await expect(confirmation.locator(".command-confirm-reference")).toHaveText(`${traceOf(5)} · revision 5`);
       await expect(confirmation).toContainText("Cancelling is final");
+      expect(await confirmation.evaluate(element => {
+        const descriptionId = element.getAttribute("aria-describedby");
+        return descriptionId !== null && document.getElementById(descriptionId)?.textContent?.includes("Cancelling is final") === true;
+      })).toBe(true);
       await expect(confirmation.getByRole("button", { name: "Cancel the run", exact: true })).toBeEnabled();
 
       await page.keyboard.press("Escape");

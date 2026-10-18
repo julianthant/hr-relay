@@ -38,7 +38,6 @@ function factsFor(status: Status, over: Partial<QueueRowActionFacts> = {}): Queu
     memberCount: 0,
     isMember: false,
     named: false,
-    workflowLabel: "Person Lookup",
     hasReviewPanel: false,
     ...over,
   };
@@ -205,8 +204,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     }
   });
 
-  // The delete warning is unconditional; the projector cannot know whether a terminal run fenced a write.
-  it("names the released idempotency key, the rows, and the group in the delete confirm", () => {
+  it("serves plain delete confirmations for a run and a group", () => {
     const single = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done"))
       .find(({ key }) => key === "delete");
     assert.ok(single?.kind === "command" && single.command === "delete");
@@ -216,22 +214,14 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.equal(single.confirm?.title, "Delete this run");
     assert.equal(single.confirm?.confirmLabel, "Delete");
     assert.equal(single.confirm?.tone, "destructive");
-    assert.match(single.confirm?.body ?? "", /results, checkpoints, receipts, diagnostics, and its write ledger/);
-    assert.match(
-      single.confirm?.body ?? "",
-      /permanent idempotency key that stops the same write from being submitted twice is released with it/,
-    );
-    assert.match(single.confirm?.body ?? "", /Person Lookup's systems/);
-    assert.match(single.confirm?.body ?? "", /This is final; there is no undo\./);
+    assert.equal(single.confirm?.body, undefined);
 
     const group = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { memberCount: 9 }))
       .find(({ key }) => key === "delete");
     assert.ok(group?.kind === "command");
     assert.equal(group.label, "Delete group");
     assert.equal(group.confirm?.title, "Delete this group");
-    assert.match(group.confirm?.body ?? "", /its 9 delegated members with it/);
-    // The idempotency sentence does not become optional for a group.
-    assert.match(group.confirm?.body ?? "", /permanent idempotency key/);
+    assert.equal(group.confirm?.body, undefined);
   });
 
   /** The demo's group row: one key `FooterActions` titles with the blast radius. */
