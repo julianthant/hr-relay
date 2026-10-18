@@ -71,13 +71,18 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   const run = repositories.runs.get(source.runId);
   if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
   if (run.version !== source.expectedVersion) throw new RerunRefusedError("source-stale", "Rerun source revision changed; replan");
-  if (run.envelope.workflow !== descriptor.id || run.envelope.contractFingerprint !== descriptor.contractFingerprint
-    || run.envelope.descriptorVersion !== descriptor.version) throw new RerunRefusedError("schema-mismatch", "Rerun source descriptor changed");
+  if (run.envelope.workflow !== descriptor.id) throw new RerunRefusedError("schema-mismatch", "Rerun source workflow changed");
+  const older = run.envelope.contractFingerprint !== descriptor.contractFingerprint || run.envelope.descriptorVersion !== descriptor.version;
   // Use the same authority disposition predicate as RunRecordService.read.
   if (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(run.lifecycle.outcome)
     || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
     || repositories.writeIntents.listByRun(source.runId).some((intent) => intent.status === "parked")) {
     throw new RerunRefusedError("invalid-state", "Rerun requires a successful, failed or interrupted source without uncertain writes");
+  }
+  if (older && repositories.writeIntents.listByRun(source.runId).some(intent => intent.status === "committed"
+    && !descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction" && node.commit.uses.id === intent.taskId
+      && intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${node.id}/prepare`))) {
+    throw new RerunRefusedError("schema-mismatch", "Previous transaction warning evidence is incompatible");
   }
   const selectedKeys = source.selectedStepKeys;
   if (plannedLength !== undefined && plannedLength !== 1) throw new RerunRefusedError("invalid-state", "Rerun requires exactly one accepted submission");
@@ -90,8 +95,8 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
       throw new RerunRefusedError("invalid-value", "Rerun selection violates the workflow's required steps or omission cascade");
     }
   }
-  if (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
-    || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success) {
+  if (!older && (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
+    || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) {
     throw new RerunRefusedError("schema-mismatch", "Rerun source canonical input is invalid");
   }
   const checkpoints = repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId)
@@ -103,10 +108,13 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
     if (checkpoint.workflowId !== descriptor.id || checkpoint.itemId !== run.envelope.itemId
       || checkpoint.attempt > run.envelope.attempt
       || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > run.claimGeneration)
-      || checkpoint.descriptorVersion !== descriptor.version || checkpoint.contractFingerprint !== descriptor.contractFingerprint
-      || schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output")
-      || !schema.safeParse(checkpoint.output.value).success) {
+      || checkpoint.descriptorVersion !== run.envelope.descriptorVersion || checkpoint.contractFingerprint !== run.envelope.contractFingerprint
+      || (!older && (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output")
+        || !schema.safeParse(checkpoint.output.value).success))) {
       throw new RerunRefusedError("schema-mismatch", "Rerun source checkpoint is invalid");
+    }
+    if (older && node?.kind !== "transaction" && TransactionOutcomeSchema.safeParse(checkpoint.output.value).success) {
+      throw new RerunRefusedError("schema-mismatch", "Previous transaction warning evidence is incompatible");
     }
     if (node?.kind === "transaction") {
       try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Rerun warning source"); }
@@ -118,24 +126,27 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
       latest.set(String(checkpoint.nodeId), checkpoint);
     }
   }
-  const gates = repositories.gateResults.listByRun(source.runId);
+  const gates = repositories.gateResults.listByRun(source.runId).filter(gate => {
+    if (gate.runId !== source.runId) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
+    return !older || descriptorRuntimeNodes(descriptor).some(node => String(node.id) === String(gate.gateId));
+  });
   for (const gate of gates) {
     const node = descriptorRuntimeNodes(descriptor).find((candidate) => String(candidate.id) === String(gate.gateId));
-    if (gate.runId !== source.runId || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
-      || !node.result.safeParse(gate.result.value).success) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
+    if (!older && (node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
+      || !node.result.safeParse(gate.result.value).success)) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
   }
   for (const coordinate of source.copiedFrom ?? []) {
     const checkpoint = latest.get(coordinate.nodeId);
     const node = descriptorRuntimeNodes(descriptor).find((candidate) => candidate.id === coordinate.nodeId);
     const outputSchema = node?.kind === "task" ? node.uses.output : node?.kind === "transaction" ? TransactionOutcomeSchema : undefined;
-    if (checkpoint === undefined || outputSchema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(outputSchema, "output")
-      || !outputSchema.safeParse(checkpoint.output.value).success) {
+    if (checkpoint === undefined || outputSchema === undefined || (!older && (checkpoint.output.schemaHash !== deriveSchemaHash(outputSchema, "output")
+      || !outputSchema.safeParse(checkpoint.output.value).success))) {
       throw new RerunRefusedError("schema-mismatch", "copied-value source does not match its descriptor output");
     }
     const target = coordinate.targetStepKey === undefined ? entry?.rawInput
       : stepOmissions?.find((omission) => omission.step === coordinate.targetStepKey)?.facts;
 
-    if (checkpoint === undefined || checkpoint.contractFingerprint !== descriptor.contractFingerprint
+    if (checkpoint === undefined || checkpoint.contractFingerprint !== run.envelope.contractFingerprint
       || canonicalJsonStringify(field(checkpoint.output.value, coordinate.fieldPath))
         !== canonicalJsonStringify(field(target, coordinate.targetFieldPath))) {
       throw new RerunRefusedError("invalid-value", "copied value does not match its source coordinates");
@@ -150,17 +161,33 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
     const outputs: Record<string, JsonValue> = {};
     for (const dependency of node.dependsOn) {
       const checkpoint = latest.get(String(dependency));
-      if (checkpoint !== undefined) outputs[String(dependency)] = checkpoint.output.value;
+      if (checkpoint !== undefined) {
+        const dependencyNode = descriptorRuntimeNodes(descriptor).find(candidate => candidate.id === dependency);
+        const schema = dependencyNode?.kind === "task" ? dependencyNode.uses.output
+          : dependencyNode?.kind === "transaction" ? TransactionOutcomeSchema : undefined;
+        if (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output")
+          || !schema.safeParse(checkpoint.output.value).success) {
+          throw new RerunRefusedError("schema-mismatch", "Previous transaction warning evidence is incompatible");
+        }
+        outputs[String(dependency)] = checkpoint.output.value;
+      }
       else {
         const gate = gates.find((candidate) => String(candidate.gateId) === String(dependency));
-        if (gate !== undefined) outputs[String(dependency)] = gate.result.value;
+        if (gate !== undefined) {
+          const dependencyNode = descriptorRuntimeNodes(descriptor).find(candidate => String(candidate.id) === String(dependency));
+          if (dependencyNode?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(dependencyNode.result, "output")
+            || !dependencyNode.result.safeParse(gate.result.value).success) {
+            throw new RerunRefusedError("schema-mismatch", "Previous transaction warning evidence is incompatible");
+          }
+          outputs[String(dependency)] = gate.result.value;
+        }
       }
     }
     // Missing fresh upstream facts cannot authorize a repeat. Execution must
     // obtain renewed consent if its eventual natural key is not in this set.
     if (node.dependsOn.some((dependency) => !Object.hasOwn(outputs, String(dependency)))) {
-      if (entry === undefined && (latest.has(String(node.id)) || repositories.writeIntents.listByRun(source.runId)
-        .some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id))) {
+      if (latest.has(String(node.id)) || repositories.writeIntents.listByRun(source.runId)
+        .some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id)) {
         throw new RerunRefusedError("invalid-value", "Previous transaction warning evidence is unavailable");
       }
       continue;
