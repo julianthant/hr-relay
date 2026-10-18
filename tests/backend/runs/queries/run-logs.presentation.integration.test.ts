@@ -108,8 +108,10 @@ it("lists retained M1b hits and each dropped candidate with its reason through s
   const text = logPlainText(projected.steps);
   for (const hit of dropped) {
     assert.match(text, new RegExp(`${hit.emplId}[\\s\\S]*${hit.name.replace(".", "\\.")}[\\s\\S]*${hit.reason}`, "u"));
-    assert.equal(projected.steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []))
-      .filter(field => field.label === "Employee ID" && field.value === hit.emplId).length, 1);
+    const retained = projected.steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []))
+      .filter(field => field.label === "Employee ID" && field.value === hit.emplId);
+    assert.equal(retained.length, 2);
+    assert.equal(new Set(retained.map(field => field.id)).size, 2);
   }
   assert.doesNotMatch(text, /matching|confirmed|dropped|emplId|SSN|DOB|2\/19\/2030|ucpath\/search-person-match/u);
 });

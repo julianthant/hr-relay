@@ -6,6 +6,7 @@ export { DeclaredActionIdentitySchema } from "../../models/workflow/operation-ac
 export type { DeclaredActionIdentity } from "../../models/workflow/operation-action-identity.js";
 /** Finalize reads only when declared provenance covers the complete output. */
 import { z } from "zod";
+import { DataObservationAliasSchema, DataObservationOriginsSchema } from "../../models/events/data-observation-origin.js";
 import { GateIdSchema } from "../identity/ids.js";
 import { JsonValueSchema } from "../validation/canonical-json.js";
 import { ContractFieldPathSchema } from "../../models/task/task-contract.js";
@@ -36,6 +37,7 @@ export const DataPointSchema = z.strictObject({
   direction: z.enum(["read", "write"]),
   field: ContractFieldPathSchema,
   value: JsonValueSchema,
+  aliases: z.array(DataObservationAliasSchema).optional(),
 });
 /** Task-facing input; `recordData` performs the branding parse itself. */
 export type DataPoint = z.input<typeof DataPointSchema>;
@@ -91,6 +93,7 @@ export type DeclaredActionOccurrence = z.infer<typeof DeclaredActionOccurrenceSc
 export const RecordedDataPointSchema = DataPointSchema.extend({
   execution: TaskExecutionIdentitySchema,
   recordedAt: IsoInstantSchema,
+  origins: DataObservationOriginsSchema.optional(),
 });
 export type RecordedDataPoint = z.infer<typeof RecordedDataPointSchema>;
 

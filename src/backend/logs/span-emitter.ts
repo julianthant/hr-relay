@@ -1,5 +1,6 @@
 
 import { z } from "zod";
+import { DataObservationOriginsSchema } from "../../models/events/data-observation-origin.js";
 import { DiagnosticSafetyVersionSchema } from "../../models/trust/failure.js";
 import {
   BrowserSessionIdSchema,
@@ -69,6 +70,7 @@ export const ObservedDataPointSchema = z.strictObject({
   direction: z.enum(["read", "write"]),
   field: ContractFieldPathSchema,
   values: z.array(RedactedFieldSchema).min(1),
+  origins: DataObservationOriginsSchema.optional(),
 });
 export type ObservedDataPoint = z.infer<typeof ObservedDataPointSchema>;
 

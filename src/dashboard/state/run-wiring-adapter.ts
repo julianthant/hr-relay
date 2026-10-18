@@ -254,7 +254,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           width: artifact.width, height: artifact.height }] : []);
     });
   };
-  const steps = logRowsOf(logs, "projection").filter(row => !confirmationNotes.has(requireNative(row.native).eventId) || bindings.some(binding => binding.logId === row.logId)).map((row): LogStep => {
+  const observedCauses = new Set<string>();
+  const steps = logRowsOf(logs, "projection").filter(row => !confirmationNotes.has(requireNative(row.native).eventId) || bindings.some(binding => binding.logId === row.logId)).flatMap((row): LogStep[] => {
     if (row.kind !== "transaction-fenced") groupable.add(row.logId);
     order.set(row.logId, requireNative(row.native).order);
     node.set(row.logId, requireNative(row.native).nodeId);
@@ -262,11 +263,20 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const time = fmtActionClock(at);
     const screenshots = screenshotsOf(row);
     let entry: LogEntry | undefined;
-    if (row.kind === "observed") entry = row.displayFields === undefined || row.displayFields.length === 0
-      ? { kind: "note", id: row.logId, time, message: "Observed values have no declared operator labels; retained in run data." }
-      : { kind: "fields", id: row.logId, fields: row.displayFields.map((field, index) => ({
-        id: `${row.logId}:${index}`, time, kind: field.direction === "read" ? "read" : "fill", label: field.label, value: field.value,
-      })), screenshots };
+    if (row.kind === "observed") {
+      const fields = row.displayFields?.flatMap((field, index) => {
+        if (field.causal !== undefined) {
+          const key = canonicalJsonStringify([field.direction, field.causal]);
+          if (observedCauses.has(key)) return [];
+          observedCauses.add(key);
+        }
+        return [{ id: `${row.logId}:${index}`, time, kind: field.direction === "read" ? "read" as const : "fill" as const, label: field.label, value: field.value }];
+      }) ?? [];
+      entry = row.displayFields === undefined || row.displayFields.length === 0
+        ? { kind: "note", id: row.logId, time, message: "Observed values have no declared operator labels; retained in run data." }
+        : fields.length > 0 ? { kind: "fields", id: row.logId, fields, screenshots }
+        : screenshots.length > 0 ? { kind: "decision", id: `${row.logId}:captures`, time, decision: { title: "Screenshot", state: "recorded", screenshots } } : undefined;
+    }
     else if (row.kind === "transaction-fenced") entry = { kind: "note", id: row.logId, time, message: "Write fenced; submission is not confirmed." };
     else if (row.note.screenshot !== undefined) entry = undefined;
     else if (row.note.operatorAction !== undefined) {
@@ -294,9 +304,10 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     }
     if (row.kind !== "observed" && screenshots.length > 0) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
       decision: { title: "Screenshot", state: "recorded", screenshots } });
-    return { id: row.logId, time, title: row.kind === "note" ? row.note.screenshot === undefined ? "Run note" : "Screenshot" : row.producer.step,
+    if (row.kind === "observed" && entries.length === 0) return [];
+    return [{ id: row.logId, time, title: row.kind === "note" ? row.note.screenshot === undefined ? "Run note" : "Screenshot" : row.producer.step,
       ...(row.kind !== "note" && row.producer.system !== undefined ? { system: row.producer.system }
-        : row.kind === "note" && row.note.operatorAction?.system !== undefined ? { system: row.note.operatorAction.system } : {}), entries };
+        : row.kind === "note" && row.note.operatorAction?.system !== undefined ? { system: row.note.operatorAction.system } : {}), entries }];
   });
   for (const section of sections) {
     if (section.section === "parked-write") {
@@ -434,6 +445,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (active.current !== request || controller.signal.aborted) return;
       const error = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED")
         ? formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text
+        : cause instanceof DashboardClientError && cause.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED"
+        ? formatErrorCatalogFailure(createErrorCatalogFailure("RUN_LOG_DISPLAY_VALUE_UNMAPPED", {})).text
         : cause instanceof DashboardClientError && cause.kind !== "schema"
         ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;

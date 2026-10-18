@@ -97,10 +97,11 @@ describe("served Person Lookup Logs operator presentation", () => {
       ? entry.fields.filter(field => field.label === "Name").map(field => field.value) : [])]),
       [["Search for person", ["Quillan, Petra A.", "Fable, Rowan B."]], ["Cross-check identity", ["Quillan, Petra A."]]]);
   });
-  it("retains a repeated observation and its verified screenshot under its own identity", () => {
+  it.each([false, true])("retains exact screenshot attribution when a repeated observation is an explicit alias=%s", alias => {
     const original = snapshot();
-    const source = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
-    assert.ok(source?.kind === "observed");
+    const nativeSource = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
+    assert.ok(nativeSource?.kind === "observed");
+    const source = alias ? { ...nativeSource, displayFields: nativeSource.displayFields?.map(field => ({ ...field, causal: { declaration: "fixture/name", origin: { runId: RUN, attempt: 1, spanPath: `${TRACE}/searching#1`, nodeId: "searching", taskId: "ucpath/search-person-org", field: "name", path: [] } } })) } : nativeSource;
     const definition = freezeWorkflowOperationDisplaySnapshot({ display: plan1Leaf.descriptor.operationDisplay,
       workflowId: plan1Leaf.descriptor.id, definitionFingerprint: plan1Leaf.descriptor.contractFingerprint });
     assert.ok(definition);
@@ -109,7 +110,7 @@ describe("served Person Lookup Logs operator presentation", () => {
       logicalActionId: "consume-text", logicalSessionId: "plan1-local", occurrence: 1, state: "completed" };
     const repeated = { ...source, native: native(6, "first"), logId: id(106), sequence: 6, at: "2026-08-03T17:01:00.000Z", spanPath: `${TRACE}/first#1`,
       producer: { ...source.producer, nodeId: "first", taskId: "ocr/extract-form-page" } };
-    const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []), repeated],
+    const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []).map(row => row.logId === source.logId ? source : row), repeated],
       operationStructure: { state: "observed", runId: RUN, definition,
         observations: [{ logId: repeated.logId, at: AT, action: "read", targetId: "consume-text", occurrence: { ...occurrence, value: { slot: "text", fieldPath: "text",
           producer: { kind: "run-input", path: "text" }, state: "observed", classification: "local-operator", value: "same" } } }] } });
@@ -122,11 +123,11 @@ describe("served Person Lookup Logs operator presentation", () => {
         origins: artifact.origins.map(origin => ({ ...origin, operation: occurrence })) })) } });
     const projected = projectRunLogs({ ...original, detail, logs, sections: [captures] }, client);
     const entries = projected.steps.flatMap(step => step.entries);
-    assert.equal(entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []).filter(field => field.label === "Name").length, 2);
-    const screenshot = entries.find(entry => entry.id === repeated.logId);
-    assert.ok(screenshot?.kind === "fields");
-    assert.equal(screenshot.fields[0].time, "10:01:00");
-    assert.deepEqual(screenshot.screenshots?.map(shot => [shot.src, shot.time, shot.width, shot.height]),
+    assert.equal(entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []).filter(field => field.label === "Name").length, alias ? 1 : 2);
+    const screenshot = entries.find(entry => entry.id === (alias ? `${repeated.logId}:captures` : repeated.logId));
+    assert.ok(screenshot?.kind === "fields" || screenshot?.kind === "decision");
+    assert.equal(screenshot.kind === "fields" ? screenshot.fields[0].time : screenshot.time, "10:01:00");
+    assert.deepEqual((screenshot.kind === "fields" ? screenshot.screenshots : screenshot.decision.screenshots)?.map(shot => [shot.src, shot.time, shot.width, shot.height]),
       [[`/artifacts/${id(501)}`, "10:00:00", 1280, 720]]);
     assert.equal(entries.filter(entry => entry.kind === "click").length, 1);
   });
@@ -147,4 +148,27 @@ describe("served Person Lookup Logs operator presentation", () => {
     assert.equal(screenshots.length, 1);
     assert.ok(screenshots.every(shot => shot.label === undefined || !shot.label.includes(id(500))));
   });
+});
+
+it("collapses only explicit same-cause aliases across Run notes while retaining transitions, systems and actions", () => {
+  const original=snapshot(),source=original.logs.rows?.find(row=>row.kind==='observed'&&row.sequence===4);assert.ok(source?.kind==='observed');
+  const origin={runId:RUN,attempt:1,spanPath:`${TRACE}/searching#1`,nodeId:'searching',taskId:'ucpath/search-person-org',field:'results',path:[0,'name']};
+  const declaration='person-lookup/searching/1';
+  const observed={...source,displayFields:source.displayFields?.map(field=>({...field,causal:{declaration,origin}}))};
+  const unbound=NativeRunEventWireSchema.parse({eventId:id(6),order:6,runId:RUN,attempt:1,traceId:TRACE,spanPath:TRACE});
+  const note={kind:'note',native:unbound,logId:id(106),sequence:6,note:{native:unbound,noteId:id(106),runId:RUN,sequence:6,at:AT,level:'info',message:'Synthetic run note'}};
+  const alias={...observed,native:native(7,'search-identity'),logId:id(107),sequence:7,spanPath:`${TRACE}/search-identity#1`,producer:{...source.producer,nodeId:'search-identity',taskId:'workflow:person-lookup/read-resolved-identity'}};
+  const independent={...observed,native:native(8,'cross-verify'),logId:id(108),sequence:8,spanPath:`${TRACE}/cross-verify#1`,producer:{...source.producer,nodeId:'cross-verify',taskId:'crm/search-onboarding-records',system:'crm'},displayFields:observed.displayFields?.map(field=>({...field,causal:{declaration,origin:{...origin,nodeId:'cross-verify',taskId:'crm/search-onboarding-records',spanPath:`${TRACE}/cross-verify#1`}}}))};
+  const states=['Active','Inactive','Active'].map((value,index)=>({...source,native:native(9+index),logId:id(109+index),sequence:9+index,displayFields:[{direction:'read',label:'HR status',value,causal:{declaration:'person-lookup/searching/4',origin:{...origin,spanPath:`${TRACE}/searching#2.${index+2}`,field:'hrStatus',path:[]}}}]}));
+  const click=original.logs.rows?.find(row=>row.kind==='note'&&row.note.operatorAction?.kind==='click');assert.ok(click?.kind==='note');
+  const laterClick={...click,native:native(12),logId:id(112),sequence:12,note:{...click.note,native:native(12),noteId:id(112),sequence:12}};
+  const category=original.detail.timeline.steps?.[0];assert.ok(category);
+  const detail=RunDetailWireSchema.parse({...original.detail,timeline:{...original.detail.timeline,steps:[{...category,members:[...category.members,{nodeId:'search-identity',categoryKey:'searching',label:'Resolve identity',state:'done'}]},{key:'cross-verify',label:'Cross-check identity',state:'done',system:'crm',members:[{nodeId:'cross-verify',categoryKey:'cross-verify',label:'Cross-check identity',state:'done'}]}]}});
+  const logs=NotePageSchema.parse({...original.logs,rows:[...(original.logs.rows??[]).map(row=>row.logId===source.logId?observed:row),note,alias,independent,...states,laterClick],notes:[...original.logs.notes,note.note,laterClick.note]});
+  const result=projectRunLogs({...original,detail,logs},client),fields=result.steps.flatMap(step=>step.entries.flatMap(entry=>entry.kind==='fields'?entry.fields:[]));
+  assert.deepEqual(fields.filter(field=>field.label==='Name').map(field=>field.id),[`${id(104)}:0`,`${id(108)}:0`]);
+  assert.deepEqual(fields.filter(field=>field.label==='HR status').map(field=>field.value),['Active','Inactive','Active']);
+  assert.equal(result.steps.flatMap(step=>step.entries).filter(entry=>entry.kind==='click').length,2);
+  assert.match(logPlainText(result.steps),/Synthetic run note/u);
+  const captured=result.steps.flatMap(step=>step.entries).find(entry=>entry.id===`${id(105)}:captures`);assert.ok(captured?.kind==='decision');assert.deepEqual(captured.decision.screenshots?.map(shot=>[shot.src,shot.width,shot.height]),[[`/artifacts/${id(501)}`,1280,720]]);
 });

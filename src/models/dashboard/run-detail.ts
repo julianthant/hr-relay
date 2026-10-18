@@ -4,6 +4,7 @@ import { DeclaredActionIdentitySchema } from "../workflow/operation-action-ident
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
 import { z } from "zod";
+import { DataObservationOriginSchema } from "../events/data-observation-origin.js";
 import { ConfirmedActionEventSchema } from "../events/confirmed-action.js";
 import {
   ActorIdSchema,
@@ -345,7 +346,8 @@ export const ObservedLogRowWireSchema = z.strictObject({
   ...LogSpanIdentityWireSchema.shape,
   producer: LogProducerWireSchema,
   points: z.array(ObservedDataPointWireSchema).min(1),
-  displayFields: z.array(z.strictObject({ direction: z.enum(["read", "write"]), label: z.string().min(1), value: z.string().min(1) })).optional(),
+  displayFields: z.array(z.strictObject({ direction: z.enum(["read", "write"]), label: z.string().min(1), value: z.string().min(1),
+    causal: z.strictObject({ declaration: z.string().min(1), origin: DataObservationOriginSchema }).optional() })).optional(),
 });
 
 export const LogRowWireSchema = z.discriminatedUnion("kind", [

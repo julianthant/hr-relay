@@ -8,7 +8,7 @@ import { RerunRefusedError } from "../../../runs/start/rerun.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
-import { LogIdentityRefusedError, DashboardReadFailedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
+import { LogDisplayRefusedError, LogIdentityRefusedError, DashboardReadFailedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 import { errorText } from "../../../runs/lifecycle/support.js";
 
@@ -43,7 +43,7 @@ export function failureStatus(
 
     return { status: 400, body: wireError("START_STEP_OMISSION_REFUSED", message, false) };
   }
-  if (error instanceof LogIdentityRefusedError) {
+  if (error instanceof LogIdentityRefusedError || error instanceof LogDisplayRefusedError) {
     return { status: 409, body: wireError(error.code,
       formatErrorCatalogFailure(createErrorCatalogFailure(error.code, {})).text, false) };
   }

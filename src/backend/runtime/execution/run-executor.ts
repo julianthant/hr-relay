@@ -1066,6 +1066,7 @@ export async function executeClaimedRun(
             points: redactObservedDataPoints(contract.id, points),
           });
         },
+        observationSpanPath: spanPath,
       });
 
       const taskLog = (level: "step" | "debug" | "warn", message: string,
@@ -1235,6 +1236,7 @@ export async function executeClaimedRun(
         contractFingerprint: descriptor.contractFingerprint,
         implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, contract.id),
         provenance: provenance.provenance,
+        observationOrigins: provenance.points.flatMap(point => (point.origins ?? []).map(entry => ({ path: [...point.field.split("."), ...entry.path], origin: entry.origin }))),
         ...(operationDisplaySnapshot === undefined ? {} : { operationSources: [...actionSources].flatMap(([key, source]) =>
           key.startsWith(`${node.id}/`) && source.ambiguous !== true
             ? [{ path: key.slice(String(node.id).length + 1), identity: source.identity }] : []) }),

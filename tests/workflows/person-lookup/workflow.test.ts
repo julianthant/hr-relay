@@ -30,7 +30,9 @@ describe("workflow definition public equivalence characterization", () => {
       ["Status note", "active-status", "reason"],
     ]) assert.ok(fields.some(field => field.label === label && field.sources.some(source =>
       source.nodeId === nodeId && source.kind === "output" && source.fieldPath === fieldPath)), `${nodeId}.${fieldPath}`);
-    assert.equal(fields.some(field => field.sources.some(source => source.fieldPath === "method")), false);
+    const methods = fields.filter(field => field.sources.some(source => source.fieldPath === "method"));
+    assert.equal(methods.length, 2);
+    for (const field of methods) assert.ok(field.label === "How found" && field.display?.cases.length === 7);
   });
   it("carries the complete typed input declaration through a JSON surface round trip", () => {
     const surface = personLookupDescriptor.surfaces.inputRun;

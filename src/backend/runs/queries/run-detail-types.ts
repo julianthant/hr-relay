@@ -1,5 +1,6 @@
 import type { createFailureResolutionQuery } from "./failure-resolution.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import type { OperatorFieldDisplay } from "../../../models/workflow/presentation.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -56,7 +57,7 @@ export interface RunDetailDataOriginView {
     override: "forbidden" | "audited";
   }>[];
   /** Commit nodes this node's facts can statically reach (ref workflow-model ). */
-  readonly operatorFields?: readonly Readonly<{ label: string; kind: "input" | "output"; fieldPath: string }>[];
+  readonly operatorFields?: readonly Readonly<{ label: string; kind: "input" | "output"; fieldPath: string; declaration?: string; display?: OperatorFieldDisplay }>[];
   readonly feeds: readonly Readonly<{ nodeId: string; label: string }>[];
 }
 

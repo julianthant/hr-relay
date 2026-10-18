@@ -17,6 +17,12 @@ import { ReadActiveStatus, ActiveStatusOutcomeSchema } from "../../models/workfl
 import { derivePersonLookupOutcome } from "../../rules/matching/person-lookup.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 
+const lookupMethodDisplay = { cases: [
+  { value: "ucpath", text: "UCPath search" }, { value: "eid-match", text: "Employee ID agrees with CRM" },
+  { value: "date-match", text: "Start dates within one week" }, { value: "crm-only", text: "CRM only" },
+  { value: "multiple-matches", text: "Multiple matches" }, { value: "no-match", text: "No match" }, { value: "match", text: "UCPath Match" },
+] } as const;
+
 export { PersonLookupInput, PersonLookupCanonicalInput };
 export const PersonLookupResultSchema = z.strictObject({ activeStatus: ActiveStatusOutcomeSchema,
   crmDates: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("included"), dates: ReadOnboardingDatesOutputSchema }), z.strictObject({ state: z.literal("not-requested") })]) });
@@ -123,6 +129,7 @@ export const personLookupWorkflow = defineWorkflow({
           ...(["emplId", "name"].includes(path) ? ["hits", "confirmed", "dropped"].map(prefix => ({ nodeId: "matching", kind: "output" as const, fieldPath: `${prefix}.${path}` })) : []),
         ] })),
         { label: "Drop reason", visibility: "logs", sources: [{ nodeId: "matching", kind: "output", fieldPath: "dropped.reason" }] },
+        { label: "How found", display: lookupMethodDisplay, sources: [{ nodeId: "search-identity", kind: "output", fieldPath: "method" }] },
       ] }, [searching, matching, initial]],
       [{ key: "cross-verify", label: "Cross-check identity", description: "Compare the person’s name, department and employee ID with CRM records.", system: "crm", selection: { inputField: "crmCheck", selectedWhen: true }, operatorFields: [
         ...[["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["emplId", "Employee ID", "10000001"], ["firstDayOfService", "Start date", "3/14/2031"]].map(([path, label, example]) => ({ label, example, sources: [
@@ -130,9 +137,16 @@ export const personLookupWorkflow = defineWorkflow({
           ...["crmIdentity", "crmRecord", "unselectedCrmRecords"].map(prefix => ({ nodeId: "crm-identity", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
         ] })),
         { label: "CRM", example: "Found", sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "crmState" }] },
+        { label: "How found", display: lookupMethodDisplay, sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }] },
       ] }, [crossVerify, identity, selectedRecord, crmResults]],
       [{ key: "active-status", label: "Read employment status", description: "Determine employment status and read department and termination details when applicable.", system: "local", operatorFields: [
-        ...[["state", "Employment status", "Active"], ["hdh", "HDH department", "Yes"], ["details.department", "Department", "CAMPUS DINING OPERATIONS"], ["details.endDate", "End date", "4/25/2031"], ["details.terminationReason", "Termination reason", "Appointment ended"]].map(([fieldPath, label, example]) => ({ label, example,
+        { label: "Employment status", example: "Active", display: { cases: [
+          { value: "active", text: "Active" }, { value: "inactive", text: "Inactive" }, { value: "crm-only", text: "CRM only" },
+          { value: "multiple-matches", text: "Multiple matches" }, { value: "not-found", text: "Not found" },
+          { value: "undetermined", text: "Undetermined" }, { value: "found", text: "Found" }, { value: "not-found-in-ucpath", text: "Not found in UCPath" },
+        ] }, sources: [{ nodeId: "active-status", kind: "output", fieldPath: "state" }] },
+        { label: "HDH department", example: "Yes", display: { cases: [{ value: true, text: "Yes" }, { value: false, text: "No" }] }, sources: [{ nodeId: "active-status", kind: "output", fieldPath: "hdh" }] },
+        ...[["details.department", "Department", "CAMPUS DINING OPERATIONS"], ["details.endDate", "End date", "4/25/2031"], ["details.terminationReason", "Termination reason", "Appointment ended"]].map(([fieldPath, label, example]) => ({ label, example,
           sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
         ...[["details.ucpath", "UCPath", "Found"], ["details.crm", "CRM", "Not checked"]].map(([fieldPath, label, example]) => ({ label, example,
           sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),

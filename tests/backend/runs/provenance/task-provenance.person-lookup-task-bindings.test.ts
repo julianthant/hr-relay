@@ -23,6 +23,7 @@ import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import type { z } from "zod";
+import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 
 const NOW = "2026-08-02T18:00:00.000Z";
 const RUN_ID = "aaaaaaaa-0001-4000-8000-000100000000";
@@ -34,15 +35,16 @@ const crmDates = ReadOnboardingDatesOutputSchema.parse({ emplId: candidate.emplI
 const crm = createDeterministicCrmOnboardingDriver({ record: crmRecord, dates: crmDates, discovery: [{ recordId: "ONB-40213", recordUrl: "https://example.invalid/record", emplId: candidate.emplId, name: candidate.name, department: candidate.department, firstDayOfService: "07/15/2026", dateSigned: "06/25/2026" }] });
 const commonCtx = { captureScreenshot: async () => {}, signal: new AbortController().signal, log: { debug: () => undefined, info: () => undefined, warn: () => undefined }, fail: (_code: string, message: string): never => { throw new Error(message); } };
 
-function collector(nodeId: string, taskId: string, checkpoints: readonly RunCheckpointRecord[], skippedTasks: readonly string[] = []) {
+function collector(nodeId: string, taskId: string, checkpoints: readonly RunCheckpointRecord[], skippedTasks: readonly string[] = [], runId = RUN_ID) {
   return createTaskProvenanceCollector({ descriptor: personLookupDescriptor, canonicalInput: input,
-    execution: { runId: RUN_ID, traceId: "pl-180000-aaaa", attempt: 1, workflowId: personLookupDescriptor.id, nodeId, taskId },
+    observationSpanPath: `pl-180000-aaaa/${nodeId}#2.3`,
+    execution: { runId, traceId: "pl-180000-aaaa", attempt: 1, workflowId: personLookupDescriptor.id, nodeId, taskId },
     upstreamEvidence: { checkpoints: [...checkpoints], skippedTasks: [...skippedTasks] }, clock: manualClock(new Date(NOW)), onRecord: () => undefined });
 }
 function checkpoint(nodeId: string, schema: z.ZodType, output: unknown, evidence: ReturnType<ReturnType<typeof collector>["finalizeRead"]>) {
   return RunCheckpointRecordSchema.parse({ workflowId: personLookupDescriptor.id, itemId: "33333333-3333-4333-8333-333333333333", runId: RUN_ID, nodeId, attempt: 1, claimGeneration: 1,
     output: { schemaHash: deriveSchemaHash(schema, "output"), value: output }, descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
-    implFingerprint: "b".repeat(64), provenance: evidence.provenance, writtenAt: NOW });
+    implFingerprint: "b".repeat(64), provenance: evidence.provenance, observationOrigins: evidence.points.flatMap(point => (point.origins ?? []).map(entry => ({path:[...point.field.split("."),...entry.path],origin:entry.origin}))), writtenAt: NOW });
 }
 async function readChain() {
   const searchCollector = collector("searching", SearchPersonOrg.id, []);
@@ -106,4 +108,65 @@ it("refuses forged skipped task evidence before deriving facts", () => {
   assert.throws(() => createTaskProvenanceCollector({ descriptor: personLookupDescriptor, canonicalInput: input,
     execution: { runId: RUN_ID, traceId: "pl-180000-aaaa", attempt: 1, workflowId: personLookupDescriptor.id, nodeId: "search-identity", taskId: ReadResolvedIdentity.id },
     upstreamEvidence: { checkpoints: [], skippedTasks: ["searching", "matching"] }, clock: manualClock(new Date(NOW)), onRecord() {} }), /cannot skip required task searching/);
+});
+
+
+it.each([
+  { title: "stable first tie", results: [candidate, { ...candidate, name: "Second, Equal" }], index: 0 },
+  { title: "nonfirst preferred", results: [{ ...candidate, employeeStatus: "inactive" as const }, candidate], index: 1 },
+])("binds SearchPersonOrg $title to the algorithm-selected original member", async ({results,index}) => {
+  const output = SearchPersonOrgOutputSchema.parse({results,selection:{status:"resolved",selected:results[index],candidateEids:[candidate.emplId]}});
+  const c=collector("searching",SearchPersonOrg.id,[]);
+  const result=await searchPersonOrgTask.impl.run({input:{kind:"by-eid",emplId:candidate.emplId},ctx:{...commonCtx,recordData:c.recordData,driver:createDeterministicUcpathPersonOrgDriver(output)}});
+  const evidence=c.finalizeRead(result);
+  assert.deepEqual(evidence.points.find(point=>point.field==="selection")?.origins?.find(entry=>JSON.stringify(entry.path)==='["selected","name"]')?.origin.path,[index,"name"]);
+});
+
+it("refuses divergent selected driver output instead of inventing an alias",async()=>{
+  const output=SearchPersonOrgOutputSchema.parse({...person,selection:{...person.selection,selected:{...candidate,name:"Divergent"}}});
+  const c=collector("searching",SearchPersonOrg.id,[]);
+  await assert.rejects(searchPersonOrgTask.impl.run({input:{kind:"by-eid",emplId:candidate.emplId},ctx:{...commonCtx,recordData:c.recordData,driver:createDeterministicUcpathPersonOrgDriver(output)}}),/observation alias contradicts/u);
+});
+
+it.each(["ambiguous","not-found"] as const)("does not alias a %s selection",async status=>{
+  const output=SearchPersonOrgOutputSchema.parse({results:status==="ambiguous"?[candidate,{...candidate,emplId:"10101010"}]:[],selection:{status,selected:null,candidateEids:status==="ambiguous"?[candidate.emplId,"10101010"]:[],searchName:"Synthetic Person"}});
+  const c=collector("searching",SearchPersonOrg.id,[]);
+  const result=await searchPersonOrgTask.impl.run({input:{kind:"by-eid",emplId:candidate.emplId},ctx:{...commonCtx,recordData:c.recordData,driver:createDeterministicUcpathPersonOrgDriver(output)}});
+  const selection=c.finalizeRead(result).points.find(point=>point.field==="selection");
+  assert.equal(selection?.aliases,undefined);
+  assert.ok(selection?.origins?.every(entry=>entry.origin.field==="selection"));
+});
+
+it.each([true,false])("preserves original-run replay origins only when retained (lineage=%s)",async retained=>{
+  const search=collector("searching",SearchPersonOrg.id,[]);
+  search.recordData([{direction:"read",field:"results",value:person.results},{direction:"read",field:"selection",value:person.selection,aliases:[{path:["selected"],source:{kind:"local",field:"results",path:[0]}}]}]);
+  const cp=checkpoint("searching",SearchPersonOrg.output,person,search.finalizeRead(person));
+  const replay=RunCheckpointRecordSchema.parse({...cp,runId:"bbbbbbbb-0001-4000-8000-000100000000",observationOrigins:retained?cp.observationOrigins:undefined});
+  const c=collector("search-identity",ReadResolvedIdentity.id,[replay],["matching"],String(replay.runId));
+  const output=await readResolvedIdentityTask.impl.run({input:{input,person},ctx:{...commonCtx,recordData:c.recordData}});
+  const origin=c.finalizeRead(output).points.find(point=>point.field==="selected")?.origins?.find(entry=>JSON.stringify(entry.path)==='["name"]')?.origin;
+  assert.equal(origin?.nodeId,retained?"searching":"search-identity");
+  assert.equal(origin?.runId,retained?RUN_ID:replay.runId);
+  assert.deepEqual(origin?.path,retained?[0,"name"]:["name"]);
+});
+
+it("annotates preferred and filtered candidate branches, unique CRM forwarding, and leaves multi-record unanimity derived",async()=>{
+ const other={...candidate,emplId:EidSchema.parse("10101010")};
+ const record={recordId:"ONB-1",recordUrl:"https://example.invalid/record",emplId:candidate.emplId,name:candidate.name,department:candidate.department,firstDayOfService:"2026-07-15",dateSigned:""};
+ for(const preferred of [true,false]) {
+  const points: DataPoint[]=[];
+ const recordData = (point: DataPoint | readonly DataPoint[]) => { if ("field" in point) points.push(point); else points.push(...point); };
+  const person=SearchPersonOrgOutputSchema.parse({results:[other,candidate],selection:preferred?{status:"resolved",selected:candidate,candidateEids:[candidate.emplId]}:{status:"ambiguous",selected:null,candidateEids:[other.emplId,candidate.emplId],searchName:candidate.name}});
+  const output=await readResolvedIdentityTask.impl.run({input:{input:PersonLookupInput.parse({name:candidate.name}),person,crm:{state:"checked",records:[record]}},ctx:{...commonCtx,recordData}});
+  assert.ok(output.selected);
+  assert.deepEqual(points.find(point=>point.field==="selected")?.aliases?.[0].source,{kind:"dependency",nodeId:"searching",path:preferred?["selection","selected"]:["results",1]});
+  assert.deepEqual(points.find(point=>point.field==="crmRecord")?.aliases?.[0].source,{kind:"dependency",nodeId:"cross-verify",path:["records",0]});
+  assert.deepEqual(points.find(point=>point.field==="crmIdentity")?.aliases?.map(alias=>alias.source.kind==="dependency"?alias.source.path:null),Object.keys(output.crmIdentity??{}).map(field=>["records",0,field]));
+ }
+ const points: DataPoint[]=[];
+ const recordData = (point: DataPoint | readonly DataPoint[]) => { if ("field" in point) points.push(point); else points.push(...point); };
+ const output=await readResolvedIdentityTask.impl.run({input:{input,person,crm:{state:"checked",records:[record,{...record,recordId:"ONB-2"}]}},ctx:{...commonCtx,recordData}});
+ assert.ok(output.crmIdentity);assert.equal(output.crmRecord,null);
+ assert.equal(points.find(point=>point.field==="crmIdentity")?.aliases,undefined);
+ assert.deepEqual(points.find(point=>point.field==="unselectedCrmRecords")?.aliases?.[0].source,{kind:"dependency",nodeId:"cross-verify",path:["records"]});
 });

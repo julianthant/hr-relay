@@ -9,6 +9,10 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  RUN_LOG_DISPLAY_VALUE_UNMAPPED: catalogEntry(
+    "A retained value has no declared display text. Update the workflow declaration before reading these Logs.",
+    EmptyParametersSchema,
+  ),
   PERSON_LOOKUP_CRM_RESULTS_CHANGED: catalogEntry(
     "CRM search results changed before they could be captured.",
     EmptyParametersSchema,

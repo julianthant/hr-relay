@@ -3,6 +3,7 @@ import { SnapshotWorkflowValueReferenceSchema } from "../workflow/operation-disp
 import { OperationInputLineageSchema, OperationChildResultIdentitySchema } from "../workflow/operation-action-identity.js";
 /** The span/notes wire and at-rest contract: a zod-only leaf module whose id patterns are restated locally and pinned byte-for-byte by the parity test. */
 import { z } from "zod";
+import { DataObservationOriginsSchema } from "./data-observation-origin.js";
 import { ConfirmedActionEventSchema } from "./confirmed-action.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { DataClassificationSchema, refineLocalEvidenceTransformPair } from "../../rules/redaction/redaction-policy.js";
@@ -241,6 +242,7 @@ export const ObservedDataPointWireSchema = z.strictObject({
   direction: z.enum(["read", "write"]),
   field: SpanFieldPathSchema,
   values: z.array(RedactedSpanValueSchema).min(1),
+  origins: DataObservationOriginsSchema.optional(),
 });
 export type ObservedDataPointWire = z.infer<typeof ObservedDataPointWireSchema>;
 

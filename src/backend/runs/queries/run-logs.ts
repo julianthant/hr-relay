@@ -1,6 +1,6 @@
 import { isLocalActionValueEligible } from "../../storage/events/note-timeline-writer.js";
 import { buildUiTaskLinks } from "../../systems/ui-task-links.js";
-import { LogIdentityRefusedError } from "../commands/refusals.js";
+import { LogDisplayRefusedError, LogIdentityRefusedError } from "../commands/refusals.js";
 import { readTimelineRecords, timelineNoteLocation } from "../../storage/events/timeline-reader.js";
 import { RedactedFieldSchema } from "../../../rules/redaction/redaction.js";
 import { z } from "zod";
@@ -304,24 +304,32 @@ function logIdOf(entry: RunLogScanEntry): string {
 }
 
 function operatorFieldsOf(entry: Extract<RunLogScanEntry, { kind: "observed" }>) {
-  const atPath = (value: unknown, path: readonly string[], order: readonly number[] = []): readonly Readonly<{ observed: unknown; order: readonly number[] }>[] => {
-    if (Array.isArray(value)) return value.flatMap((member, index) => atPath(member, path, [...order, index]));
-    if (path.length === 0) return [{ observed: value, order }];
+  const atPath = (value: unknown, path: readonly string[], order: readonly number[] = [], address: readonly (string | number)[] = []): readonly Readonly<{ observed: unknown; order: readonly number[]; address: readonly (string | number)[] }>[] => {
+    if (Array.isArray(value)) return value.flatMap((member, index) => atPath(member, path, [...order, index], [...address, index]));
+    if (path.length === 0) return [{ observed: value, order, address }];
     const [head, ...tail] = path;
     return head !== undefined && value !== null && typeof value === "object" && Object.hasOwn(value, head)
-      ? atPath(Reflect.get(value, head), tail, order) : [];
+      ? atPath(Reflect.get(value, head), tail, order, [...address, head]) : [];
   };
   return entry.event.points.flatMap(point => point.values.flatMap(value =>
     (entry.producer.operatorFields ?? []).filter(field => field.kind === "output" &&
       (field.fieldPath === value.key || field.fieldPath.startsWith(`${value.key}.`))).flatMap(field => {
       const retained = value.state === "allowed" ? value.value : undefined;
       const values = value.state === "allowed" ? atPath(retained, field.fieldPath === value.key ? [] : field.fieldPath.slice(value.key.length + 1).split("."))
-        : value.state === "redacted" && field.fieldPath === value.key ? [{ observed: "Redacted", order: [] }] : [];
-      return values.flatMap(({ observed, order }) => !["string", "number", "boolean"].includes(typeof observed) || String(observed).trim().length === 0
-        ? [] : [{ order, field: { direction: point.direction, label: field.label, value: String(observed),
+        : value.state === "redacted" && field.fieldPath === value.key ? [{ observed: "Redacted", order: [], address: [] }] : [];
+      return values.flatMap(({ observed, order, address }) => {
+        if (typeof observed !== "string" && typeof observed !== "number" && typeof observed !== "boolean") return [];
+        const mapped = value.state === "allowed" && field.display !== undefined ? field.display.cases.find(entry => entry.value === observed) : undefined;
+        if (value.state === "allowed" && field.display !== undefined && mapped === undefined) throw new LogDisplayRefusedError();
+        const text = mapped?.text ?? String(observed);
+        const pointAddress = [...(value.key === point.field ? [] : value.key.slice(point.field.length + 1).split(".")), ...address];
+        const origin = point.origins?.find(entry => canonicalJsonStringify(entry.path) === canonicalJsonStringify(pointAddress))?.origin;
+        return text.trim().length === 0 ? [] : [{ order, field: { direction: point.direction, label: field.label, value: text,
+          ...(origin === undefined || field.declaration === undefined ? {} : { causal: { declaration: field.declaration, origin } }),
           point: { direction: point.direction, field: field.fieldPath, values: [value.state === "allowed"
             ? { ...value, key: field.fieldPath, value: observed, rawValue: undefined }
-            : { ...value, key: field.fieldPath, rawValue: undefined }] } } }]);
+            : { ...value, key: field.fieldPath, rawValue: undefined }] } } }];
+      });
     }).sort((left, right) => {
       for (let index = 0; index < Math.max(left.order.length, right.order.length); index++) {
         const difference = (left.order[index] ?? -1) - (right.order[index] ?? -1);
@@ -421,6 +429,7 @@ function logRowOf(
   }
   const { operatorFields: _operatorFields, ...producer } = entry.producer;
   if (entry.kind === "observed") {
+    const fields = operatorOnly ? operatorFieldsOf(entry) : undefined;
     return {
       kind: "observed",
       native,
@@ -431,8 +440,8 @@ function logRowOf(
       traceId: entry.event.traceId,
       spanPath: entry.event.spanPath,
       producer,
-      points: operatorOnly ? operatorFieldsOf(entry).map(field => field.point) : entry.event.points,
-      displayFields: operatorFieldsOf(entry).map(({ point: _point, ...field }) => field),
+      points: fields?.map(field => field.point) ?? entry.event.points,
+      ...(fields === undefined ? {} : { displayFields: fields.map(({ point: _point, ...field }) => field) }),
     };
   }
   return {

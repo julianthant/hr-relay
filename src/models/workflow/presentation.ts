@@ -185,16 +185,28 @@ export type WorkflowStepOf<Key extends string> = z.infer<ReturnType<typeof Workf
 
 export const StartStepSelectionSchema = z.strictObject({ inputField: z.string().regex(/^[a-z][A-Za-z0-9]*$/u), selectedWhen: z.boolean() });
 
+export const OperatorFieldDisplaySchema = z.strictObject({
+  cases: z.array(z.strictObject({ value: z.union([z.string(), z.number(), z.boolean()]), text: z.string().trim().min(1) })).min(1),
+}).superRefine((display, context) => {
+  if (new Set(display.cases.map(entry => entry.value)).size !== display.cases.length) {
+    context.addIssue({ code: "custom", path: ["cases"], message: "operator display values must be unique typed literals" });
+  }
+});
+export interface OperatorFieldDisplay {
+  readonly cases: readonly Readonly<{ value: string | number | boolean; text: string }>[];
+}
 export interface WorkflowOperatorField {
   readonly visibility?: "logs";
   readonly example?: string;
   readonly label: string;
+  readonly display?: OperatorFieldDisplay;
   readonly sources: readonly Readonly<{ nodeId: string; kind: "input" | "output"; fieldPath: string }>[];
 }
 export const WorkflowOperatorFieldSchema = z.strictObject({
   visibility: z.literal("logs").optional(),
   example: z.string().trim().min(1).optional(),
   label: z.string().trim().min(1),
+  display: OperatorFieldDisplaySchema.optional(),
   sources: z.array(z.strictObject({ nodeId: NodeIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema })).min(1),
 });
 

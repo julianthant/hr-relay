@@ -816,3 +816,17 @@ it("joins task screenshots by exact bundle, artifact, node, attempt and browser 
   }
   assert.throws(() => projectRunLogs({ ...snapshot, sections: [] }, client), /RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH/);
 });
+
+it("preserves a catalogued unmapped-display refusal from the actual HTTP client through the Logs hook", async () => {
+  const selected=selection();
+  const client=createDashboardClient({baseUrl:'http://fixture.test',fetchImpl:async input=>new URL(String(input)).pathname.endsWith('/logs')
+    ? Response.json({state:'error',code:'RUN_LOG_DISPLAY_VALUE_UNMAPPED',message:'Untrusted transport text',retryable:false},{status:409})
+    : Response.json(detail(selected))});
+  let current:ReturnType<typeof useRunWiring>|undefined;
+  function Probe(){current=useRunWiring(client,selected,undefined);return createElement('div',null,current.state==='failed'?current.error:'Loading');}
+  await mount(createElement(Probe));
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+  assert.equal(current?.state,'failed');
+  assert.match(document.body.textContent??'',/A retained value has no declared display text/u);
+  assert.doesNotMatch(document.body.textContent??'',/Dashboard data could not be read|Untrusted transport text/u);
+});

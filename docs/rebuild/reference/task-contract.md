@@ -179,9 +179,18 @@ through the protected write path, and commit driver operations check them before
 
 `createTaskProvenanceCollector` in `src/backend/runs/provenance/task-provenance.ts` owns read evidence.
 `recordData` accepts one `DataPoint` or a nonempty batch:
-`{ direction: "read" | "write", field: ContractFieldPath, value: JsonValue }`.
+`{ direction: "read" | "write", field: ContractFieldPath, value: JsonValue, aliases?: readonly DataObservationAlias[] }`.
 The collector stamps execution identity and one Clock instant per batch.
 Duplicate, overlapping, contradictory, and post-finalization points fail.
+
+An optional alias names a relative target `path` and an explicit source: a previously recorded local
+`{ kind: "local", field, path }`, or an admitted dependency `{ kind: "dependency", nodeId, path }`.
+Addresses use string object keys and numeric array indices. The collector checks the exact source
+address and typed value agreement; equal values never establish lineage. Alias targets cannot overlap.
+Each retained observation origin binds the original run, attempt, task span (including claim generation
+and task attempt), node, task, field and nested address. Checkpoints optionally retain complete origins
+for replay. Historical checkpoints without origins stay independent; operator corrections discard
+origins rather than attaching old identity to corrected data. FactProvenance and freshness are unchanged.
 
 Before checkpointing, `finalizeRead` parses the output and requires recorded read points covering
 every canonical output leaf. Recorded values must equal the parsed values.

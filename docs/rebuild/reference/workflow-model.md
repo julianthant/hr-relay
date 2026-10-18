@@ -493,3 +493,12 @@ The workflow has no transaction, gate, parallel, or delegation node. Its dry-run
 
 
 Workflow timeline groups may declare a default `system` and ordered `operatorFields`. Each field owns its operator label, optional fictional display-string `example` and exact node/input-or-output path sources. An optional `visibility: "logs"` limits a field to retained observations, excluding it from Explorer examples. Groups may also declare operator `description` text. The compiler checks that every source belongs to the group and resolves through its task contract; collection paths address all members, without selecting a candidate. Logs preserves member order and keeps each member’s declared fields together. Logs uses these declarations to project classified observations and eligible frozen action values. Unlisted paths remain in Run data and diagnostics. Explorer projects declared fields and examples in group order, with explicit definition-preview copy; an undeclared example is reported as unavailable rather than replaced by a run value.
+
+
+An operator field may declare optional closed `display.cases`, each with a string, number or boolean
+`value` and display `text`. Typed literals are distinct and duplicate typed cases refuse. Logs maps
+only declared allowed scalars; an unknown scalar refuses with `RUN_LOG_DISPLAY_VALUE_UNMAPPED`.
+Null and absent values omit the field, redacted values remain redacted, and retained raw values stay
+unchanged. Logs collapses forwarding aliases only when declaration identity, direction and exact
+original observation cause agree. Independent observations, transitions and actions remain in order;
+missing historical lineage never becomes a match by equal label, value or time.

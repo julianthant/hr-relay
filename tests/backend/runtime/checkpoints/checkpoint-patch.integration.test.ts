@@ -110,3 +110,11 @@ describe("applyCheckpointPatches", () => {
     );
   });
 });
+
+it("drops exact observation origins after an operator correction rather than laundering old source identity",()=>{
+ const origin={runId:RUN_ID,attempt:1,spanPath:"original/extract#1.1",nodeId:"extract",taskId:"workflow:fixture/extract",field:"identity",path:[]};
+ const replayed=RunCheckpointRecordSchema.parse({...REPLAYED,observationOrigins:Object.keys(OUTPUT_VALUE).map(key=>({path:[key],origin:{...origin,path:[key]}}))});
+ const applied=applyCheckpointPatches({replayed,patches:[PATCH],outputSchema:EditOutput,attempt:2,claimGeneration:1,runId:RUN2_ID,writtenAt:"2026-08-08T13:01:00.000Z"});
+ assert.equal(applied.record.observationOrigins,undefined);
+ assert.equal(applied.record.provenance.find(fact=>fact.path==="eid")?.source,"operator");
+});
