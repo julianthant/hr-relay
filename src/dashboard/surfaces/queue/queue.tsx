@@ -1008,7 +1008,7 @@ export const QueuePanel = memo(function QueuePanel({
                     {isToday ? "Today:" : `${dayLabel(day)}:`}
                   </span>
                   <span>
-                    <span className="font-semibold text-[color:var(--ds-success-fg)]">{digest.done}</span> verified
+                    <span className="font-semibold text-[color:var(--ds-success-fg)]">{digest.done}</span> completed
                   </span>
                   {digest.warned > 0 && (
                     <span className="text-[color:var(--ds-status-waiting-fg)]">
