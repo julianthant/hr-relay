@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { readSearchSnapshot, searchResults, useSearchWiring, searchMessage } from "../../../src/dashboard/state/search-wiring-adapter.js";
+import { readSearchSnapshot, searchResults, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
+import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { NavbarData } from "../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -45,8 +46,8 @@ it("does no reads in mock/closed mode and suppresses a stale query result", asyn
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => new Promise<Response>(resolve => {
     requests.push({ q: new URL(url).searchParams.get("q") ?? "", finish: value => resolve(Response.json(value)) });
   }) });
-  let data: NavbarData | undefined; const epoch = {};
-  function Probe({ query, enabled }: { query: string; enabled: boolean }) { data = useSearchWiring({ client, query, enabled, today: "2026-08-03", epoch }); return null; }
+  let data: NavbarData | undefined; const epoch = {}, workflows: Parameters<typeof workspaceSearchQuery>[1] = [];
+  function Probe({ query, enabled }: { query: string; enabled: boolean }) { data = useSearchWiring({ client, query, enabled, today: "2026-08-03", epoch, workflows }); return null; }
   root = createRoot(document.createElement("div"));
   const render = async (query: string, enabled: boolean) => { await act(async () => root?.render(createElement(Probe, { query, enabled }))); };
   await render("old", false); assert.equal(requests.length, 0);
@@ -55,4 +56,53 @@ it("does no reads in mock/closed mode and suppresses a stale query result", asyn
   assert.equal(data?.totalMatches, 0);
   await act(async () => requests[0].finish({ ...zeroMatchSearchPage(), totalMatches: 1, results: [result(1)] }));
   assert.equal(data?.totalMatches, 0); assert.equal(data?.results.length, 0);
+});
+
+it.each([
+  ["  pErSoN LoOkUp  ", "", "person-lookup", null],
+  ["  FAILED  ", "", null, "failed"],
+  ["pl-120000-0099", "pl-120000-0099", null, null],
+  ["Person", "Person", null, null],
+] as const)("maps exact workflow/status search %s through canonical facets and preserves ordinary text", async (query, q, workflow, state) => {
+  const requests: URL[] = [];
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
+    requests.push(new URL(url)); return Response.json(zeroMatchSearchPage());
+  } });
+  const workflows = [{ id: WorkflowIdSchema.parse("person-lookup"), label: "Person Lookup" }];
+  const epoch = {};
+  function Probe() { useSearchWiring({ client, enabled: true, query, today: "2026-08-03", epoch, workflows }); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe)));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].searchParams.get("q"), q);
+  assert.equal(requests[0].searchParams.get("workflow"), workflow);
+  assert.equal(requests[0].searchParams.get("state"), state);
+  assert.equal(requests[0].searchParams.get("scope"), "all");
+});
+
+it("keeps ambiguous labels and ordinary names as text queries", () => {
+  const workflows = [{ id: WorkflowIdSchema.parse("person-lookup"), label: "Same" }, { id: WorkflowIdSchema.parse("separations"), label: "Same" }];
+  assert.deepEqual(workspaceSearchQuery("Same", workflows), { q: "Same", scope: "all", facets: {}, limit: 20 });
+  assert.deepEqual(workspaceSearchQuery("Fable, Rowan", workflows), { q: "Fable, Rowan", scope: "all", facets: {}, limit: 20 });
+});
+
+it("drops a settlement when bootstrap workflow metadata changes under the same search text", async () => {
+  const pending: { url: URL; finish: (page: unknown) => void }[] = [];
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => new Promise<Response>(resolve => {
+    pending.push({ url: new URL(url), finish: value => resolve(Response.json(value)) });
+  }) });
+  const epoch = {};
+  let data: NavbarData | undefined;
+  function Probe({ workflows }: { workflows: Parameters<typeof workspaceSearchQuery>[1] }) {
+    data = useSearchWiring({ client, enabled: true, query: "Lookup", workflows, today: "2026-08-03", epoch }); return null;
+  }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe, { workflows: [{ id: WorkflowIdSchema.parse("person-lookup"), label: "Lookup" }] })));
+  await act(async () => root?.render(createElement(Probe, { workflows: [{ id: WorkflowIdSchema.parse("separations"), label: "Lookup" }] })));
+  assert.deepEqual(pending.map(request => request.url.searchParams.get("workflow")), ["person-lookup", "separations"]);
+  await act(async () => pending[1].finish(zeroMatchSearchPage()));
+  assert.equal(data?.totalMatches, 0);
+  await act(async () => pending[0].finish({ ...zeroMatchSearchPage(), totalMatches: 1, results: [result(1)] }));
+  assert.equal(data?.totalMatches, 0);
+  assert.equal(data?.results.length, 0);
 });
