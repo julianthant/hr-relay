@@ -653,5 +653,13 @@
       "frontend-tailwind-compliance"
     ],
     "state": "active-with-target-family"
-  }
+  },
+  "repositoryChecks": [
+    {
+      "name": "public-repository-privacy",
+      "command": "npm run privacy:check",
+      "owner": "docs/repository-governance.md",
+      "invariant": "Private HR inputs and credentials must not enter the public tree. Inspect staged paths and textual blobs; allow only named synthetic documents and known synthetic tokens in reviewed example locations. Report paths and rules without values."
+    }
+  ]
 }

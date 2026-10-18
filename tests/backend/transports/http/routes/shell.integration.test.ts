@@ -205,7 +205,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
     const h = harness();
     const run = insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-    const sensitiveNodeId = "ssn-920-74-1459-eid-10873698";
+    const sensitiveNodeId = "ssn-902-48-1357-eid-10873698";
     const sensitivePatch = {
       nodeId: sensitiveNodeId,
       fieldPath: "identifier",

@@ -12,8 +12,8 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
 - The roadmap at docs/roadmap/roadmap.md lists the key implementations and their status.
   Update it only when the operator or your brief asks.
 - Build the wiring base first: every dashboard component connected to the backend, with no
-  workflow-specific behavior. Then wire workflows one at a time, in this order: Person Lookup,
-  Separations, then the operator's order.
+  workflow-specific behavior. Then activate served workflows one at a time, in the order
+  defined under Git. Isolated workflow implementation may proceed in parallel.
 - A workflow is wired across Run, Rerun, Queue rows, Logs, Explorer, OCR/Records where it has them,
   notifications and Analytics. It is done after a dry run and operator sign-off.
 - The production codebase (`/Users/julianhein/Projects/hr-automation`) holds each workflow's complete
@@ -83,27 +83,32 @@ The repository holds only the current version. No compatibility readers, old mig
 
 ## Git
 
-- `master` is production: the released code, pushed to `origin/master`. `staging` is the
+- `main` is production: the released code, pushed to `origin/main`. `staging` is the
   integration branch the operator previews. Each task works on `feature/<slug>` branched from
   `staging`, in the main checkout's gitignored `.worktrees/<slug>/` folder.
-- The operator launches every task. A verified feature merges into `staging` on the operator's go.
-  The operator previews `staging` in the main checkout, which owns the store, credentials and ports:
-  stop the dashboard, switch to `staging`, start it. A rejected feature is reverted on `staging`.
-- After the operator signs off and the full checks pass on `staging`, `master` fast-forwards to it
-  and is pushed to `origin/master`, only on the operator's explicit go. Never push otherwise.
+- The operator launches every task. Non-overlapping feature implementation may run in parallel.
+  Workflow activation stays sequential: Person Lookup → Separations → OCR/Emergency Contact →
+  OnBase → Onboarding, after each workflow's dry run and operator sign-off.
+- A verified feature enters `staging` through a PR with a merge commit, after required checks and
+  independent review, on the operator's go. The operator previews `staging` in the main checkout,
+  which owns the store, credentials and ports: stop the dashboard, switch to `staging`, start it.
+  A rejected feature is reverted on `staging`.
+- After operator sign-off and full checks, a release PR merges `staging` into `main` with a merge
+  commit, only on the operator's explicit go. Sync `main` back into `staging` afterward.
+  Push only on explicit instruction. Required check names are in [repository governance](docs/repository-governance.md).
 - A `staging` with a store migration is previewed only after a verified `storage backup`.
 - Verify base, path and ownership before editing. Stage exact paths and commit by logical category.
   Never switch, reset or repurpose another checkout.
 - Briefs, receipts and evidence live in the main checkout's gitignored `.work/` folder; worktrees
   write there by absolute path. Remove a task's evidence folder once nothing needs it.
-- Once a feature reaches `master`, remove its worktree registration, folder and branch, after its
+- Once a feature reaches `main`, remove its worktree registration, folder and branch, after its
   evidence and unknown files are saved.
 
 ## Checks
 
 - During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
   generated checks. Update tests when behavior changes, and say when none exist.
-- Before `staging` is promoted to `master`: `npm run typecheck`, `npm run lint`, `npm run web:build`,
+- Before `staging` is promoted to `main`: `npm run typecheck`, `npm run lint`, `npm run web:build`,
   `npm run test:parity`, then `npm run test:coverage` alone, then `npm run test:perf`. Coverage selects
   the unit, integration and architecture suites without perf, so don't run those three separately.
 - A lint failure is a task failure. Keep assertions, test membership, isolation, coverage floors and

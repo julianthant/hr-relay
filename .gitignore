@@ -61,3 +61,6 @@ Thumbs.db
 OnboardingRoster-*.xlsx
 *.xlsx
 !tests/**/fixtures/**/*.xlsx
+
+# Private rosters, PDFs and local evidence; never publish.
+.local-private/

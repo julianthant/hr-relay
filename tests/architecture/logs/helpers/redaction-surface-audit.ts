@@ -693,7 +693,7 @@ export const REDACTION_CANARIES = Object.freeze({
   storageState: "CANARYstorageState7d2e0a5c",
   privateKey: "CANARYprivateKey5a8cBEGINPRIVATE",
   credentialPath: "/Users/canary/.auth-rebuild/duo-credential-CANARY-9f21.json",
-  ssn: "917-90-1546",
+  ssn: "666-45-8811",
   dob: "1899-02-30",
   personName: "Qwertzuiop Vbnmasdfghjkl",
   emplId: "10999881777",

@@ -39,9 +39,9 @@ describe("canonical Person Lookup launch input", () => {
     ]);
   });
   it("parses Match tuples, keeps SSN out of display identity and refuses missing identifiers", () => {
-    const preview = previewRunInput(surface, "Example, Person, x, 920741459; Example, Person, x, 920741459", { mode: "match", crmCheck: false, includeCrmDates: false });
+    const preview = previewRunInput(surface, "Example, Person, x, 902481357; Example, Person, x, 902481357", { mode: "match", crmCheck: false, includeCrmDates: false });
     assert.equal(preview.problem, null);
-    assert.deepEqual(preview.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "920741459", crmCheck: false, includeCrmDates: false }]);
+    assert.deepEqual(preview.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "902481357", crmCheck: false, includeCrmDates: false }]);
     assert.deepEqual(preview.entries, [{ index: 0, sourceText: "Example, Person, x, [masked]" }]);
     const rejected = previewRunInput(surface, "Example, Person, x, x", { mode: "match", crmCheck: false, includeCrmDates: false });
     assert.match(rejected.problem ?? "", /Match requires/u);
@@ -51,13 +51,13 @@ describe("canonical Person Lookup launch input", () => {
     for (const [mode, text] of [
       ["search", " 10000001 ; 10000001\nExample,  Person;example, person"],
       ["match", "Example, Person, Middle, 01/15/2000, x; Example, Person, Middle, 01/15/2000, x"],
-      ["match", "Person Example, x, 920741459"],
-      ["match", "Example, Person, 01/15/2000, 920741459"],
+      ["match", "Person Example, x, 902481357"],
+      ["match", "Example, Person, 01/15/2000, 902481357"],
     ] as const) {
       const options = { mode, crmCheck: mode === "search", includeCrmDates: false };
       assert.deepEqual(previewRunInput(surface, text, options).submissions, parsePersonLookupRequest(text, options));
     }
-    for (const text of ["Example, Person, x, 920-74-1459", "Example, Person, x, 902 48 1357", "Example, , x, 920741459", "Example, Person, x, x"]) {
+    for (const text of ["Example, Person, x, 902-48-1357", "Example, Person, x, 902 48 1357", "Example, , x, 902481357", "Example, Person, x, x"]) {
       assert.throws(() => parsePersonLookupRequest(text, { mode: "match" }));
       assert.ok(previewRunInput(surface, text, { mode: "match" }).problem);
     }
@@ -78,7 +78,7 @@ describe("canonical Person Lookup launch input", () => {
     assert.ok(surface.typedInput);
     for (const input of [
       { mode: "unknown" },
-      { mode: "match", crmCheck: false, includeCrmDates: false, ssn: "920741459" },
+      { mode: "match", crmCheck: false, includeCrmDates: false, ssn: "902481357" },
       { mode: "match", crmCheck: false, includeCrmDates: false, lastName: "Example", firstName: "Person" },
       { mode: "match", crmCheck: false, includeCrmDates: false, lastName: "Example", firstName: "Person", ssn: "bad" },
     ]) assert.throws(() => restoreTypedInput(surface.typedInput!, JsonValueSchema.parse(input)));

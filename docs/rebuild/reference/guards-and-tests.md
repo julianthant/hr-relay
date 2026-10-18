@@ -186,7 +186,7 @@ test, lint, and affected static or generated checks. A lint failure is a task fa
 collection membership, isolation, coverage floors, and timeouts remain unchanged unless the
 operator explicitly authorizes a change.
 
-Before `staging` is promoted to `master`, the root working instructions require this order:
+Before `staging` is promoted to `main`, the root working instructions require this order:
 
 ```sh
 npm run typecheck

@@ -22,6 +22,7 @@
     "roadmap:check": "tsx scripts/docs/roadmap.ts --check",
     "smoke:test-target-document-number": "tsx scripts/dev/secure-env-bootstrap.ts test-target-document-number",
     "typecheck": "tsc --noEmit",
+    "privacy:check": "tsx scripts/verify/privacy.ts",
     "lint": "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
     "test": "tsx scripts/test/runner.ts run",
     "test:unit": "tsx scripts/test/runner.ts unit",

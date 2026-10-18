@@ -70,14 +70,14 @@ describe("bounded native debug events", () => {
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
     const correlationId = "aaaaaaaa-aaaa-4aaa-8aaa-a902481357aa";
     writer.emit({ category: "http", phase: "failed", correlationId,
-      message: `${correlationId} person 920-74-1459 and 920741459` });
+      message: `${correlationId} person 902-48-1357 and 902481357` });
     assert.equal(records.length, 1);
     const payload = records[0].payload;
     assert.equal(payload.kind, "debug");
     if (payload.kind !== "debug") throw new Error("debug event expected");
     assert.equal(payload.event.correlationId, correlationId);
-    assert.equal(payload.event.message?.includes("920-74-1459"), false);
-    assert.equal(payload.event.message?.includes("person 920741459"), false);
+    assert.equal(payload.event.message?.includes("902-48-1357"), false);
+    assert.equal(payload.event.message?.includes("person 902481357"), false);
     assert.match(payload.event.message ?? "", /person \[SSN masked\] and \[SSN masked\]/u);
   });
 

@@ -8,7 +8,7 @@ description: Scan HR documents into structured data — scanner PDFs (Xerox Scan
 HR documents are predictable. The skill's memory is **`references/document-shapes.md`**: one entry per document type (how to recognize it, what fields it carries and where, what to ignore, known traps). Read it first; extend it last. A shape you have seen once should never be re-derived.
 
 ## 0 · Rails
-- **No SSNs** leave the page: never transcribe, store, or echo one (an SSN written as `8462`/`949-34-5573` means blank — say "blank", not the digits). No full DOBs in artifacts unless the artifact's purpose requires one and the operator said so.
+- **No SSNs** leave the page: never transcribe, store, or echo one (an SSN written as `8462`/`901-73-8462` means blank — say "blank", not the digits). No full DOBs in artifacts unless the artifact's purpose requires one and the operator said so.
 - Readers are **transcribe-only**: a reader reports what is on the page; the decision about what it means happens here, in one place.
 - Ambiguity is reported **by page number** ("p. 7: 'Hernandez, J.' could be Jose or Juan — two candidates in the lookup"), never resolved by guessing.
 - Live lookups are pre-authorized (person-lookup against UCPath/CRM, Duo hands-off) — don't ask.

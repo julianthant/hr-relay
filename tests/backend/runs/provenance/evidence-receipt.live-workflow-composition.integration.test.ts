@@ -81,7 +81,7 @@ function decisionOf(receipt: RunEvidenceReceipt, kind: string, contains: string)
 /** No credential, cookie, storage state, or raw SSN may appear anywhere. */
 function assertNoLeakage(receipt: RunEvidenceReceipt): void {
   const serialized = JSON.stringify(receipt);
-  for (const canary of ["password", "Cookie", "storageState", "sessionid", "920-74-1459", "PRIVATE KEY"]) {
+  for (const canary of ["password", "Cookie", "storageState", "sessionid", "902-48-1357", "PRIVATE KEY"]) {
     assert.ok(!serialized.includes(canary), `receipt leaked ${canary}`);
   }
 }

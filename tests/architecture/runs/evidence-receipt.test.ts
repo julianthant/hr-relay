@@ -392,7 +392,7 @@ const CANARIES = Object.freeze({
   password: "hunter2-CORRECT-HORSE",
   cookie: "sessionid=abc123; Path=/; HttpOnly",
   storageState: '{"cookies":[{"name":"JSESSIONID","value":"S3CR3T"}]}',
-  ssn: "920-74-1459",
+  ssn: "902-48-1357",
   privateKey: "-----BEGIN PRIVATE KEY-----MIIEvQ-----END PRIVATE KEY-----",
 });
 

@@ -210,7 +210,7 @@ describe("the failure and its bundle land together", () => {
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const sessions = sessionFactoryHarness({
-      ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: () => Promise.reject(new TaskError(CrmReadOnboardingRecord.id, "crm-unavailable", "CRM returned an unexpected page SSN 920741459", { cause: new Error("nested SSN 920-74-1459", { cause: new Error("deep SSN 902 48 1357") }) })) }),
+      ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: () => Promise.reject(new TaskError(CrmReadOnboardingRecord.id, "crm-unavailable", "CRM returned an unexpected page SSN 902481357", { cause: new Error("nested SSN 902-48-1357", { cause: new Error("deep SSN 902 48 1357") }) })) }),
       crm: () => Object.freeze({
         system: "crm" as const,
         verifyOnboardingRecord: () => Promise.reject(new TaskError(
@@ -323,7 +323,7 @@ describe("the failure and its bundle land together", () => {
     assert.ok(JSON.stringify(bundle).includes("UCPath search failed."));
     assert.ok(classifiedFailureFields(failure).length > 0);
     const persisted = JSON.stringify({ failure, bundle });
-    for (const value of ["920741459", "920-74-1459", "902 48 1357", "1357"]) assert.equal(persisted.includes(value), false);
+    for (const value of ["902481357", "902-48-1357", "902 48 1357", "1357"]) assert.equal(persisted.includes(value), false);
     assert.ok(failure.debug?.causes.some(cause => cause.includes("[SSN masked]")));
   });
 

@@ -160,7 +160,7 @@ describe_m2("local evidence and external disclosure boundaries", () => {
 
 
 it_m0("masks raw and formatted SSNs in error and nested-cause text", () => {
-  for (const value of ["920741459", "920-74-1459", "902 48 1357"]) {
+  for (const value of ["902481357", "902-48-1357", "902 48 1357"]) {
     const safe = sanitizeDebugText_m0(`failure: ${value}; cause: ${value}`);
     assert_m0.equal(safe.includes(value), false);
     assert_m0.equal(safe.includes("1357"), false);
