@@ -8477,11 +8477,11 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "normalization/read-contact-advice"
     },
     {
-      "fingerprint": "dee7b478be9d5570f514231857863377080be4e1211ed74907dad67480a81333",
+      "fingerprint": "32431f61979806ee058edff6bd0a475bf23e3be263c3ad917fac8de021551850",
       "sources": [
         {
           "path": "src/backend/processing/ocr/tasks/extract-form-page.ts",
-          "sha256": "0f0d07a30e47b8937d81db6e0682e28fceea9fd340677aa6a6a9e6719cd40875"
+          "sha256": "da0a37e85409e7e48717094a124d5eba6dddc83cdbcc39963eee350eb5e25832"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -8557,7 +8557,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/processing/ocr/extract-form-page.ts",
-          "sha256": "e2fa0d10d08048a88355e3aa192cb359dcd82277ccffbd5706bfec5d1a9ea986"
+          "sha256": "ab1143a467ac8ba1db8b67c03bfb6b9922fa366ddb806ea1500d06175a65bb93"
         },
         {
           "path": "src/models/providers/providers.ts",
