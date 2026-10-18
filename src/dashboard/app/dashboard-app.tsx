@@ -1,3 +1,5 @@
+import { AssistantPanel } from "../surfaces/assistant/assistant-panel.js";
+import { useAssistantController } from "../surfaces/assistant/assistant-controller-model.js";
 import { commandSaveState, settingsSaveProblem } from "../surfaces/settings/editor/settings-attempt-model.js";
 import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
@@ -670,6 +672,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   ), [filter, scopedStatusCounts, onFilter]);
 
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
+  const assistant = useAssistantController(client, authorityEpoch);
   const settingsResolution = resolveSettingsSection(buildSettingsNav(settingsSections), route.settings ?? "");
   const pageName = takeover === "settings" ? settingsResolution.state === "open" ? settingsResolution.entry.label : "Settings"
     : takeover === "archive" ? "Archive" : takeover === "activity" ? "Analytics" : takeover === "explore" ? "Explorer"
@@ -972,6 +975,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
+      <AssistantPanel {...assistant} onOpenSettings={openSettings} />
       <SessionPanel
         source={workflowComposition.sessions ?? "served"}
         binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}

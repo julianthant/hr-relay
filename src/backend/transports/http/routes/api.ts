@@ -1,3 +1,4 @@
+import { registerAssistantRoutes } from "./assistant.js";
 import { errorText } from "../../../runs/lifecycle/support.js";
 import { DashboardReadFailedError } from "../../../runs/commands/refusals.js";
 import { registerChatGptAccountRoutes } from "./chatgpt-account.js";
@@ -105,6 +106,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerSettingsPreflightRoutes(app, { clock: deps.bootstrap.clock, preflight: deps.preflight });
   registerSettingsRoutes(app, deps);
   registerChatGptAccountRoutes(app, deps);
+  registerAssistantRoutes(app, deps.assistant);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);
   registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });

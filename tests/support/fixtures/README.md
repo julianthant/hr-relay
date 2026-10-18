@@ -92,6 +92,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |
 | `helpers/browser/fake-login-page.ts` | fake login page |
 | `helpers/canonical-run-reader.ts` | canonical run reader |
+| `helpers/assistant-coupled-server.ts` | served synthetic assistant browser proof and owned cleanup |
+| `helpers/assistant-coupled-world.ts` | coupled assistant account transport, canonical authority and pure planner fixtures |
 | `helpers/chatgpt-account-fixtures.ts` | synthetic ChatGPT account fixtures |
 | `helpers/dashboard-model-fixtures.ts` | dashboard run detail, queue, pagination and artifact data |
 | `helpers/dashboard/fixture-bff.ts` | fixture bff |

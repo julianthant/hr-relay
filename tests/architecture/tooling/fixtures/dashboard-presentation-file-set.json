@@ -33,6 +33,8 @@
   "src/dashboard/surfaces/activity/activity-view.tsx",
   "src/dashboard/surfaces/activity/activity-volume.tsx",
   "src/dashboard/surfaces/activity/activity.tsx",
+  "src/dashboard/surfaces/assistant/assistant-panel.tsx",
+  "src/dashboard/surfaces/assistant/assistant.css",
   "src/dashboard/surfaces/explorer/explorer-comment.tsx",
   "src/dashboard/surfaces/explorer/explorer-flow.tsx",
   "src/dashboard/surfaces/explorer/explorer-parts.tsx",

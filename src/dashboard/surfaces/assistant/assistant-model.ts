@@ -1,7 +1,7 @@
 export interface AssistantSource {
   readonly id: string;
   readonly title: string;
-  readonly url: string;
+  readonly url?: string;
   readonly excerpt: string;
   readonly version: string;
 }
@@ -28,7 +28,7 @@ export interface AssistantMockProposal {
 export type AssistantTurn =
   | { readonly state: 'idle' }
   | { readonly state: 'waiting' | 'failed' | 'cancelled'; readonly requestId: number; readonly prompt: string }
-  | { readonly state: 'proposal'; readonly proposal: AssistantMockProposal; readonly disposition: 'review' | 'edited' | 'cancelled' | 'confirmed' };
+  | { readonly state: 'proposal'; readonly proposal: AssistantMockProposal; readonly disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' };
 
 export interface AssistantState {
   readonly draft: string;
@@ -41,6 +41,7 @@ export type AssistantAction =
   | { readonly type: 'edit'; readonly value: string }
   | { readonly type: 'send' | 'retry' | 'cancel' | 'confirm' | 'new-chat' }
   | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantMockProposal; readonly message: AssistantMessage }
+  | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantMockProposal }
   | { readonly type: 'fail'; readonly requestId: number };
 
 export function assistantReducer(state: AssistantState, action: AssistantAction): AssistantState {
@@ -61,6 +62,9 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
     case 'reply':
       if (turn.state !== 'waiting' || turn.requestId !== action.requestId) return state;
       return { ...state, messages: [...state.messages, action.message], turn: { state: 'proposal', proposal: action.proposal, disposition: state.draft === turn.prompt ? 'review' : 'edited' } };
+    case 'settle':
+      if (turn.state !== 'waiting' || turn.requestId !== action.requestId) return state;
+      return { ...state, messages: [...state.messages, action.message], turn: action.proposal === undefined ? { state: 'idle' } : { state: 'proposal', proposal: action.proposal, disposition: 'review' } };
     case 'fail':
       return turn.state === 'waiting' && turn.requestId === action.requestId ? { ...state, turn: { ...turn, state: 'failed' } } : state;
     case 'cancel':
@@ -83,6 +87,7 @@ export function assistantConfirmRefusal(state: AssistantState, revision: string,
   if (turn.disposition === 'confirmed') return 'Mock confirmation recorded. No run was started.';
   if (turn.disposition === 'cancelled') return 'Proposal cancelled. No run was started.';
   if (!accountAvailable) return 'ChatGPT account unavailable. Confirmation is disabled.';
+  if (turn.disposition === 'stale') return 'Plan out of date. Send the request again to refresh it.';
   if (turn.disposition === 'edited' || state.draft !== turn.proposal.prompt) return 'Request edited. Send it again to review a new proposal.';
   if (revision !== turn.proposal.revision) return 'Plan out of date. Send the request again to refresh it.';
   return undefined;

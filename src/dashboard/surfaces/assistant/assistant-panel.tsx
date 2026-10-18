@@ -7,12 +7,19 @@ import { dsFocus, dsIcon, dsLayer } from '../../ds/theme/tokens.js';
 import { ASSISTANT_STARTERS, assistantConfirmRefusal, type AssistantAction, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import './assistant.css';
 
-export function AssistantPanel({ state, revision, accountAvailable, onAction, onMockConfirm, defaultOpen = false }: {
+export function AssistantPanel({ state, revision, accountAvailable, onAction, onMockConfirm, defaultOpen = false, confirmRefusal, statusText = 'Mock preview', footnote = 'Scripted preview · Synthetic data · No runs start', onOpenSettings, launcherBottom, accountHeading = 'ChatGPT not connected', accountNotice = 'Review the connection in Settings. This mock cannot sign in.' }: {
   state: AssistantState;
   revision: string;
   accountAvailable: boolean;
   onAction: (action: AssistantAction) => void;
-  onMockConfirm: (proposal: AssistantMockProposal) => void;
+  onMockConfirm?: (proposal: AssistantMockProposal) => void;
+  confirmRefusal?: string;
+  statusText?: string;
+  footnote?: string;
+  onOpenSettings?: () => void;
+  accountNotice?: string;
+  accountHeading?: string;
+  launcherBottom?: string;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -23,7 +30,7 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
   const followLatest = useRef(true);
   const confirmed = useRef(new Set<string>());
   const turn = state.turn;
-  const refusal = assistantConfirmRefusal(state, revision, accountAvailable);
+  const refusal = assistantConfirmRefusal(state, revision, accountAvailable) ?? confirmRefusal;
   const waiting = turn.state === 'waiting';
   const transcriptRef = useCallback((node: HTMLDivElement | null) => {
     transcript.current = node;
@@ -48,7 +55,7 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
     if (turn.state !== 'proposal' || refusal || confirmed.current.has(turn.proposal.id)) return;
     confirmed.current.add(turn.proposal.id);
     dispatchAndFocus('confirm');
-    onMockConfirm(turn.proposal);
+    onMockConfirm?.(turn.proposal);
   }
   async function copyReply(id: string, text: string) {
     try { await navigator.clipboard.writeText(text); setCopyFeedback({ id, copied: true }); }
@@ -76,7 +83,7 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
     </div>
   </section>;
   return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild><IconButton label="Assistant" className={`assistant-launcher ${dsLayer.menu}`} icon={open ? <ChevronDown aria-hidden size={22} /> : <Sparkles aria-hidden size={22} />} /></PopoverTrigger>
+    <PopoverTrigger asChild><IconButton label="Assistant" style={launcherBottom === undefined ? undefined : { bottom: launcherBottom }} className={`assistant-launcher ${dsLayer.menu}`} icon={open ? <ChevronDown aria-hidden size={22} /> : <Sparkles aria-hidden size={22} />} /></PopoverTrigger>
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content asChild side="top" align="end" sideOffset={16} collisionPadding={16} aria-label="Relay assistant" onInteractOutside={event => event.preventDefault()} onOpenAutoFocus={event => {
         event.preventDefault(); composer.current?.focus({ preventScroll: true });
@@ -84,7 +91,7 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
         <FloatingSurface className={`assistant-panel ${dsLayer.menu}`}>
           <OverlayLayerPresence />
           <header className="assistant-header">
-            <div><h2>Relay assistant</h2><p><span className="assistant-status-dot" />Mock preview</p></div>
+            <div><h2>Relay assistant</h2><p><span className="assistant-status-dot" />{statusText}</p></div>
             <div className="assistant-header-actions"><Tooltip content="New chat"><IconButton label="New chat" icon={<Plus aria-hidden size={16} />} onClick={() => dispatchAndFocus('new-chat')} /></Tooltip><PopoverClose asChild><IconButton label="Close assistant" icon={<X aria-hidden size={16} />} /></PopoverClose></div>
           </header>
           <div className="assistant-thread">
@@ -98,7 +105,7 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
                 {message.role === 'assistant' && <p className="assistant-speaker"><Sparkles aria-hidden size={13} />Relay</p>}
                 <p className="assistant-message-text">{message.text}</p>
                 {message.sources?.map(source => <Disclosure key={source.id} className="assistant-source" summary={<span className="assistant-source-label"><Link2 aria-hidden size={12} /><span>Source: {source.title}</span></span>} contentClassName="assistant-source-content">
-                  <p>{source.excerpt}</p><p className="assistant-source-version">{source.version}</p><a className={dsFocus} href={source.url} target="_blank" rel="noopener noreferrer">{source.url} (opens a new tab)</a>
+                  <p className={source.url === undefined ? 'assistant-message-text' : undefined}>{source.url === undefined && <>{source.title}<br /></>}{source.excerpt}</p><p className="assistant-source-version">{source.version}</p>{source.url !== undefined && <a className={dsFocus} href={source.url} target="_blank" rel="noopener noreferrer">{source.url} (opens a new tab)</a>}
                 </Disclosure>)}
                 {index === state.messages.length - 1 && proposal}
                 {message.role === 'assistant' && <div className="assistant-message-actions"><Tooltip content="Copy reply"><IconButton label="Copy reply" size="xs" icon={copyFeedback?.id === message.id && copyFeedback.copied ? <Check aria-hidden className={dsIcon.md} /> : <Copy aria-hidden className={dsIcon.md} />} onClick={() => { void copyReply(message.id, message.text); }} /></Tooltip>{copyFeedback?.id === message.id && <span role="status">{copyFeedback.copied ? 'Copied' : 'Could not copy. Select the reply text.'}</span>}</div>}
@@ -110,14 +117,14 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
             {awayFromLatest && <button type="button" className={`assistant-latest ${dsFocus}`} onClick={() => { followLatest.current = true; transcript.current?.scrollTo({ top: transcript.current.scrollHeight }); composer.current?.focus({ preventScroll: true }); }}><ArrowDown aria-hidden size={14} />Jump to latest</button>}
           </div>
           <form className="assistant-composer" onSubmit={event => { event.preventDefault(); if (accountAvailable && !waiting && state.draft.trim()) dispatchAndFocus('send'); }}>
-            {!accountAvailable && <div className="assistant-account" role="alert"><CircleAlert aria-hidden size={15} /><div><strong>ChatGPT not connected</strong><p>Review the connection in Settings. This mock cannot sign in.</p></div></div>}
+            {!accountAvailable && <div className="assistant-account" role="alert"><CircleAlert aria-hidden size={15} /><div><strong>{accountHeading}</strong><p>{accountNotice}</p></div></div>}
             <div className="assistant-input-card">
               <Textarea ref={composer} className="assistant-compose-input" aria-label="Message" placeholder="Send a message…" rows={2} value={state.draft} onChange={event => onAction({ type: 'edit', value: event.target.value })} onKeyDown={event => {
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
               }} />
               <div className="assistant-send"><span>Enter to send · Shift+Enter for a new line</span>{waiting ? <IconButton key="stop" ref={preserveActionFocus} label="Stop reply" className="assistant-send-button" icon={<Square aria-hidden size={13} fill="currentColor" />} onClick={() => dispatchAndFocus('cancel')} /> : <IconButton key="send" type="submit" label="Send" className="assistant-send-button" icon={<ArrowUp aria-hidden size={17} />} disabled={!accountAvailable || !state.draft.trim()} />}</div>
             </div>
-            <p className="assistant-footnote">Scripted preview · Synthetic data · No runs start</p>
+            <p className="assistant-footnote">{footnote}{onOpenSettings !== undefined && <> <Button size="sm" variant="ghost" onClick={() => { setOpen(false); onOpenSettings(); }}>Open Settings</Button></>}</p>
           </form>
         </FloatingSurface>
       </PopoverPrimitive.Content>

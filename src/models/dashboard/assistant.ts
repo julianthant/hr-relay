@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { z } from "zod";
 
 const ReferenceSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u);
@@ -24,18 +25,18 @@ export const AssistantRequestSchema = z.strictObject({
 });
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 export const ASSISTANT_FAILURES = Object.freeze({
-  ASSISTANT_INVALID: "The assistant request or response was invalid.",
-  ASSISTANT_CONTEXT_UNAVAILABLE: "Verified public source context is unavailable.",
-  ASSISTANT_CONTEXT_STALE: "The public source context does not match this runtime.",
-  ASSISTANT_MODEL_UNVERIFIED: "The assistant model and ChatGPT plan permission need verification.",
-  ASSISTANT_USAGE_LIMIT: "The ChatGPT plan usage limit was reached.",
-  ASSISTANT_PLAN_DISABLED: "Enable ChatGPT plan usage before using the assistant.",
-  ASSISTANT_ACCOUNT_EXPIRED: "Reconnect the ChatGPT account before using the assistant.",
-  ASSISTANT_UNAVAILABLE: "The assistant is unavailable. Check the ChatGPT connection.",
-  ASSISTANT_CANCELLED: "The assistant request was cancelled.",
-  ASSISTANT_LIMIT: "The assistant reached its request limit.",
-  ASSISTANT_SUBJECT_REQUIRED: "Select an unambiguous subject before preparing a proposal.",
-  ASSISTANT_PROPOSAL_REFUSED: "The current planner refused this proposal. Review it in Run.",
+  ASSISTANT_INVALID: ERROR_CATALOG.ASSISTANT_INVALID.text,
+  ASSISTANT_CONTEXT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_CONTEXT_UNAVAILABLE.text,
+  ASSISTANT_CONTEXT_STALE: ERROR_CATALOG.ASSISTANT_CONTEXT_STALE.text,
+  ASSISTANT_MODEL_UNVERIFIED: ERROR_CATALOG.ASSISTANT_MODEL_UNVERIFIED.text,
+  ASSISTANT_USAGE_LIMIT: ERROR_CATALOG.ASSISTANT_USAGE_LIMIT.text,
+  ASSISTANT_PLAN_DISABLED: ERROR_CATALOG.ASSISTANT_PLAN_DISABLED.text,
+  ASSISTANT_ACCOUNT_EXPIRED: ERROR_CATALOG.ASSISTANT_ACCOUNT_EXPIRED.text,
+  ASSISTANT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_UNAVAILABLE.text,
+  ASSISTANT_CANCELLED: ERROR_CATALOG.ASSISTANT_CANCELLED.text,
+  ASSISTANT_LIMIT: ERROR_CATALOG.ASSISTANT_LIMIT.text,
+  ASSISTANT_SUBJECT_REQUIRED: ERROR_CATALOG.ASSISTANT_SUBJECT_REQUIRED.text,
+  ASSISTANT_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_PROPOSAL_REFUSED.text,
 });
 export type AssistantFailureCode = keyof typeof ASSISTANT_FAILURES;
 export const AssistantProposalSchema = z.strictObject({

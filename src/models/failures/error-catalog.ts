@@ -9,6 +9,19 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  ASSISTANT_INVALID: catalogEntry("The assistant request or response was invalid.", EmptyParametersSchema),
+  ASSISTANT_CONTEXT_UNAVAILABLE: catalogEntry("Verified public source context is unavailable.", EmptyParametersSchema),
+  ASSISTANT_CONTEXT_STALE: catalogEntry("The public source context does not match this runtime.", EmptyParametersSchema),
+  ASSISTANT_MODEL_UNVERIFIED: catalogEntry("The assistant model and ChatGPT plan permission need verification.", EmptyParametersSchema),
+  ASSISTANT_USAGE_LIMIT: catalogEntry("The ChatGPT plan usage limit was reached.", EmptyParametersSchema),
+  ASSISTANT_PLAN_DISABLED: catalogEntry("Enable ChatGPT plan usage before using the assistant.", EmptyParametersSchema),
+  ASSISTANT_ACCOUNT_EXPIRED: catalogEntry("Reconnect the ChatGPT account before using the assistant.", EmptyParametersSchema),
+  ASSISTANT_UNAVAILABLE: catalogEntry("The assistant is unavailable. Check the ChatGPT connection.", EmptyParametersSchema),
+  ASSISTANT_CANCELLED: catalogEntry("The assistant request was cancelled.", EmptyParametersSchema),
+  ASSISTANT_LIMIT: catalogEntry("The assistant reached its request limit.", EmptyParametersSchema),
+  ASSISTANT_SUBJECT_REQUIRED: catalogEntry("Select an unambiguous subject before preparing a proposal.", EmptyParametersSchema),
+  ASSISTANT_PROPOSAL_REFUSED: catalogEntry("The current planner refused this proposal. Review it in Run.", EmptyParametersSchema),
+
   RUN_LOG_DISPLAY_VALUE_UNMAPPED: catalogEntry(
     "A retained value has no declared display text. Update the workflow declaration before reading these Logs.",
     EmptyParametersSchema,
