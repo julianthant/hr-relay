@@ -206,7 +206,7 @@ or parent-only delegation. Served spreadsheet intake uploads in the launcher bef
 real `intake` session route.
 
 Options show Priority as Interactive or Bulk, Browser mode as Headed or Headless, Dry run where
-declared, Capture screenshots, worker count, and workflow-specific fields. New/reset dashboard
+declared, Capture screenshots and workflow-specific fields. New/reset dashboard
 launches start with Dry run off, Headed browser mode, and captures on. The operator explicitly
 chooses other values. Interactive work has priority over Bulk background batches; this is not a
 promise of immediate execution or preemption. Fixed facts use the shared field/grid treatment with
@@ -227,6 +227,9 @@ matching token and fingerprints. Raw-draft changes clear a settled plan; late se
 ignored when their request identity moved. Omissions use the declaration's schema and parsed
 output, not copied validators. A server omission set mismatch disables Start and names both sets.
 Cancellation creates no new run. Uncertain dispatch checks the original attempt before resubmission.
+
+Served Run and Rerun offer no worker choice. They use the workflow's live workers and start one when none
+is live. Only Sessions Add workers adds more.
 
 ## OCR Records
 

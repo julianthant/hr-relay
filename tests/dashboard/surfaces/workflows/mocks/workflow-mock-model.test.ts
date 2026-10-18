@@ -336,11 +336,12 @@ describe_m3("legacy workflow previews", () => {
     expect_m3(facts.some(row => row.key === "Roster" || row.key === "Workers")).toBe(false);
   });
   it_m3("confirms edited execution settings and omitted steps in operator language", () => {
-    const options = draft("onboarding", { priority: "background", browser: "headless", captures: false, workers: 3, hireType: "rehire", selectedSteps: ["transaction"] });
+    const options = draft("onboarding", { priority: "background", browser: "headless", captures: false, hireType: "rehire", selectedSteps: ["transaction"] });
     const facts = Object.fromEntries(mockConfirmationFacts_m3("onboarding", options).map(row => [row.key, row.value]));
     expect_m3(facts.Queue).toBe("Bulk");
     expect_m3(facts.Browser).toBe("Headless · screenshots off");
-    expect_m3(facts.Workers).toBe("3");
+    expect_m3(Object.hasOwn(options, "workers")).toBe(false);
+    expect_m3(Object.hasOwn(facts, "Workers")).toBe(false);
     expect_m3(facts["Hire type"]).toBe("Rehire · UC_CONC_HIRE");
     expect_m3(facts.Steps).toBe("1 / 8 included · Omitted: Sign in to CRM, Find onboarding record, Read entry sheet, Download onboarding documents, Sign in to UCPath, Match existing person, Create I-9 profile");
   });
@@ -384,10 +385,9 @@ describe_m3("legacy workflow previews", () => {
     const lookup = mockRunsForDraft_m3("person-lookup", draft("person-lookup"), 1)[0];
     expect_m3(mockRunLog_m3(lookup).timeline.filter(step => step.state === "skipped").map(step => step.label)).toEqual(["Cross-check identity", "Read CRM dates"]);
   });
-  it_m3("rejects reversed dates and invalid workers", () => {
+  it_m3("rejects reversed and invalid dates", () => {
     expect_m3(mockDraftError_m3("old-kronos-reports", draft("old-kronos-reports", { startDate: "2026-02-01", endDate: "2026-01-31" }))).toMatch(/date range/);
     expect_m3(mockDraftError_m3("work-study", draft("work-study", { effectiveDate: "2026-02-30" }))).toMatch(/effective date/);
-    expect_m3(mockDraftError_m3("ocr", draft("ocr", { workers: 0 }))).toMatch(/positive whole number/);
   });
   it_m3("retains source history on rerun and matches duplicates by content, not filename", () => {
     const source = mockRunsForDraft_m3("oath-upload", draft("oath-upload", { uploadMode: "upload-only", dryRun: false }), 1)[0];

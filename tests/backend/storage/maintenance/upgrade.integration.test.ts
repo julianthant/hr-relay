@@ -66,9 +66,50 @@ describe("stopped native upgrade admission",()=>{
   } finally {raw.close();}
   return f;
  }
+ it("upgrades schema 5 retained plans by removing only workers through stopped backup admission",async()=>{
+  const f=baselineFixture(5),raw=new DatabaseSync(f.path);
+  const plan={...START_PLAN,workers:8};
+  try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
+   plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
+  const before=readFileSync(f.path);
+  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION,6);
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),AuthoritySchemaVersionError);
+  assert.deepEqual(readFileSync(f.path),before);
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:5,toSchemaVersion:6,credentials:"unchanged"});
+  assert.deepEqual(readFileSync(f.path),before);
+  assert.equal((await f.run()).state,"upgraded");
+  const {workers:_removed,...expected}=plan;
+  const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"upgraded-readback"},clock);
+  try {assert.equal(current.getMeta().schemaVersion,6);assert.deepEqual(current.authority.startPlans.get(plan.startPlanId),expected);}finally{current.close();}
+  const directory=join(f.root,"backups","authority"),names=readdirSync(directory).filter(name=>name.endsWith(".manifest.json"));
+  assert.equal(names.length,1);
+  const backup=await verifyBackupManifestAtPath(f.admission,join(directory,names[0]),AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  assert.equal(backup.manifest.schemaVersion,5);
+  const prior=new DatabaseSync(backup.backupPath,{readOnly:true});
+  try {const row=prior.prepare("SELECT payload_json FROM run_requests WHERE id=?").get(plan.startPlanId);assert.ok(row);assert.deepEqual(JSON.parse(String(row.payload_json)),plan);}finally{prior.close();}
+  const upgraded=readFileSync(f.path);assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),upgraded);
+ });
+ it("rolls back schema 5 field removal when migration fails",async()=>{
+  const f=baselineFixture(5),raw=new DatabaseSync(f.path),plan={...START_PLAN,workers:"auto"};
+  try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
+   plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
+  const before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");assert.ok(typeof exec==="function");
+  vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
+   Reflect.apply(exec,this,[sql]);
+   if(sql==="UPDATE run_requests SET payload_json=json_remove(payload_json, '$.workers')")throw new Error("injected-worker-removal-failure");
+  });
+  await assert.rejects(f.run(),/injected-worker-removal-failure/u);assert.deepEqual(readFileSync(f.path),before);
+ });
+ it.each([undefined,0,9,1.5,"1",null])("refuses malformed schema 5 workers %j before upgrade effects",async workers=>{
+  const f=baselineFixture(5),raw=new DatabaseSync(f.path);
+  const plan={...START_PLAN,...(workers===undefined?{}:{workers})};
+  try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
+   plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
+  const before=readFileSync(f.path);await assert.rejects(f.run(true),/run_requests/u);assert.deepEqual(readFileSync(f.path),before);
+ });
  function retainedPlan(version: 3 | 4, patch: Record<string, unknown> = {}) {
   const f=baselineFixture(version), raw=new DatabaseSync(f.path);
-  const { workers: _workers, ...prior }=START_PLAN;
+  const prior=START_PLAN;
   const plan={...prior,...patch};
   let workbookRows: Record<string, unknown[]> = {};
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
@@ -82,7 +123,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
   return {...f,plan,workbookRows};
  }
- it.each([3,4] as const)("upgrades retained schema %s plans to explicit Auto while preserving fields and workbook history",async version=>{
+ it.each([3,4] as const)("upgrades retained schema %s plans without workers while preserving fields and workbook history",async version=>{
   const f=retainedPlan(version);
   const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),AuthoritySchemaVersionError);
@@ -91,8 +132,8 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(readFileSync(f.path),before);
   assert.equal((await f.run()).state,"upgraded");
   const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock);
-  try {assert.deepEqual(current.authority.startPlans.get(f.plan.startPlanId),{...f.plan,workers:"auto"});
-   assert.equal(current.getMeta().schemaVersion,5);
+  try {assert.deepEqual(current.authority.startPlans.get(f.plan.startPlanId),f.plan);
+   assert.equal(current.getMeta().schemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);
    assert.equal(current.authority.workbooks.list().length,version===4?1:0);
   }finally{current.close();}
   const stored=new DatabaseSync(f.path,{readOnly:true});
@@ -101,8 +142,8 @@ describe("stopped native upgrade admission",()=>{
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
    const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
-   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5]:[5]);
-   assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:5,
+   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6]:[5,6]);
+   assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
     sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
   }finally{stored.close();}
   const directory=join(f.root,"backups","authority"),name=readdirSync(directory).find(name=>name.endsWith(".manifest.json"));assert.ok(name);
@@ -127,9 +168,9 @@ describe("stopped native upgrade admission",()=>{
   await assert.rejects(f.run(),/injected-worker-backfill-failure/u);
   assert.deepEqual(readFileSync(f.path),before);
  });
- it("refuses current retained plans without explicit workers",()=>{
+ it("refuses current retained plans carrying removed workers",()=>{
   const f=fixture();initialize(f);
-  const raw=new DatabaseSync(f.path);const {workers:_workers,...plan}=START_PLAN;
+  const raw=new DatabaseSync(f.path);const plan={...START_PLAN,workers:"auto"};
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
    plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/run_requests/u);
@@ -484,7 +525,7 @@ describe("stopped native upgrade admission",()=>{
   assert.equal((await f.run()).state,"already-upgraded");const current=readFileSync(f.path);
   assert.equal((await f.run(true)).state,"planned");assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
  });
- it.each([6,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
+ it.each([7,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
   const f=fixture();initialize(f);const raw=new DatabaseSync(f.path);
   try{raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),error=>error instanceof AuthoritySchemaVersionError && error.code==="authority-schema-mismatch");assert.deepEqual(storageTree(f.root),before);

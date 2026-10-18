@@ -1038,11 +1038,13 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
           else extractedArtifactFromRow(raw);
         } else if (isNativeOrdinaryTable(table)) {
           let inspected = raw;
-          if (table === "run_requests" && expectedSchemaVersion < 5) {
+          if (table === "run_requests" && expectedSchemaVersion < 6) {
             const row = z.object({ payload_json: z.string() }).parse(raw);
             const payload = z.record(z.string(), z.unknown()).parse(JSON.parse(row.payload_json));
-            if (Object.hasOwn(payload, "workers")) throw new Error("pre-v5-start-plan-workers-unexpected");
-            inspected = { ...raw, payload_json: canonicalJsonStringify({ ...payload, workers: "auto" }) };
+            if (expectedSchemaVersion < 5 && Object.hasOwn(payload, "workers")) throw new Error("pre-v5-start-plan-workers-unexpected");
+            if (expectedSchemaVersion === 5) z.union([z.literal("auto"), z.number().int().min(1).max(8)]).parse(payload.workers);
+            const { workers: _removed, ...plan } = payload;
+            inspected = { ...raw, payload_json: canonicalJsonStringify(plan) };
           }
           const record = nativeOrdinaryRecordFromRow(table,inspected);
           if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record));
@@ -1215,7 +1217,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
-  if ((expectedSchemaVersion !== 1 && expectedSchemaVersion !== 2 && expectedSchemaVersion !== 3 && expectedSchemaVersion !== 4 && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
+  if ((expectedSchemaVersion !== 1 && expectedSchemaVersion !== 2 && expectedSchemaVersion !== 3 && expectedSchemaVersion !== 4 && expectedSchemaVersion !== 5 && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
   assertNativeSchema(database, schemaVersion);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
@@ -1241,7 +1243,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
     if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
   }
-  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]) }).parse({
+  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]) }).parse({
     applicationId,
     schemaVersion,
     pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
@@ -1269,7 +1271,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   requireRuntimeAdmission(admission).assertExclusive();
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
-  if (version !== 1 && version !== 2 && version !== 3 && version !== 4) throw new AuthoritySchemaVersionError(version);
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5) throw new AuthoritySchemaVersionError(version);
   database.exec("BEGIN EXCLUSIVE");
   try {
     if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority-application-mismatch");
@@ -5477,6 +5479,23 @@ export class AuthorityDatabase implements Disposable {
     if (custody.state !== "dead" && custody.state !== "released") throw new Error("worker-recovery-death-unproved");
     this.assertWorkerLifecycleRelease(member.workerId);
     if (this.authority.workerControls.browsers(member.workerId).some(value => value.health !== "closed")) throw new Error("worker-recovery-browser-closure-unproved");
+  }
+
+  settleDeadWorkerLifetime(workerId: string, now: string): WorkerLeaseRecord | undefined {
+    return this.withAuthorityTransaction(() => {
+      const lease = this.#readWorkerLease(workerId);
+      if (lease === undefined || lease.lifecycle.state === "stopped") return lease;
+      const custody = this.workerLifetimeCustody(workerId);
+      if (custody.state === "alive") return lease;
+      if (custody.state !== "dead" && custody.state !== "released") throw new Error("worker-recovery-death-unproved");
+      this.assertWorkerLifecycleRelease(workerId);
+      if (this.authority.workerControls.browsers(workerId).some(browser => browser.health !== "closed")) throw new Error("worker-recovery-browser-closure-unproved");
+      const stopped = WorkerLeaseRecordSchema.parse({ ...lease, lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt,
+        stoppedAt: now, reason: "crashed" }, control: { ...lease.control, directive: "stop", requestedAt: now },
+        version: lease.version + 1, updatedAt: now });
+      this.#writeWorkerLease(stopped, "update");
+      return stopped;
+    });
   }
 
   workerLifetimeCustody(workerId: string) {

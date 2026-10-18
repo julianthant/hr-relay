@@ -1,4 +1,4 @@
-import { rerunWorkers, RerunRefusedError } from "./rerun.js";
+import { validateRerunSourcePlan, RerunRefusedError } from "./rerun.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
@@ -82,8 +82,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       if (!older && (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
         || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) refuse("source-invalid");
       const repositories = deps.database.authority;
-      let workers;
-      try { workers = rerunWorkers(repositories, run); }
+      try { validateRerunSourcePlan(repositories, run); }
       catch (error) { if (error instanceof RerunRefusedError) refuse("source-invalid"); throw error; }
       const intents = repositories.writeIntents.listByRun(request.runId);
       if (intents.some((intent) => !("runId" in intent) || intent.runId !== request.runId
@@ -279,7 +278,6 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         }
       }
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
-        workers,
         sourceInput,
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
           descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome },

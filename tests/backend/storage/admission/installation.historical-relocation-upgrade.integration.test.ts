@@ -84,12 +84,12 @@ it("admits a completed schema-3 relocation and upgrades with an exact verified b
     const backup = await verifyBackupManifestAtPath(admission, join(directory, names[0]), source);
     assert.equal(backup.manifest.schemaVersion, 3);
     const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "historical-relocation-upgrade" }, clock);
-    try { assert.equal(database.getMeta().schemaVersion, 5); } finally { database.close(); }
+    try { assert.equal(database.getMeta().schemaVersion, 6); } finally { database.close(); }
     assert.deepEqual(readFileSync(receiptPath), historicalBytes);
     assert.deepEqual(admission.readInstallationContext()?.receipts, [historical]);
   } finally { admission.release(); }
   for (const section of ["preparation", "evidence"] as const) {
-    for (const version of [0, -1, 1.5, 6]) {
+    for (const version of [0, -1, 1.5, 7]) {
       const invalid = structuredClone(historical);
       Reflect.set(invalid[section], section === "preparation" ? "sourceSchemaVersion" : "authorityVersion", version);
       writeFileSync(receiptPath, canonicalJsonStringify(invalid));
@@ -113,16 +113,16 @@ it("refuses schema-3 preparation and stage evidence for a new relocation", () =>
     const plan = relocationPlan(lease, destination), operationId = lease.beginRelocation(destination, plan, held);
     const preparation = { operationId, installationId: lease.locator.installationId,
       sourceGeneration: lease.locator.generation, source: pair, destination, plan,
-      sourceDatabaseIdentity: "e".repeat(64), sourceSchemaVersion: 5 as const, sourceAuthorityGeneration: 0,
+      sourceDatabaseIdentity: "e".repeat(64), sourceSchemaVersion: 6 as const, sourceAuthorityGeneration: 0,
       sourceAuthorityContentFingerprint: "f".repeat(64), backupReceiptId: "historical-schema-refused",
       backupManifestPath: join(pair.stateRoot, "backup.manifest.json"), backupManifestSha256: "1".repeat(64),
       backupFilePath: join(pair.stateRoot, "backup.sqlite"), backupFileSha256: "2".repeat(64) };
     Reflect.set(preparation, 'sourceSchemaVersion', 3);
-    assert.throws(() => lease.recordVerifiedPreparation(() => preparation), /expected 5/);
+    assert.throws(() => lease.recordVerifiedPreparation(() => preparation), /expected 6/);
     prepareDestination(lease, destination);
     const verify = staged(lease, destination, operationId, plan), evidence = verify();
     Reflect.set(evidence, 'authorityVersion', 3);
-    assert.throws(() => lease.recordVerifiedStage(() => evidence), /expected 5/);
+    assert.throws(() => lease.recordVerifiedStage(() => evidence), /expected 6/);
     const journalPath = join(workspace, ".tracker/control/journal.json");
     const journalBytes = readFileSync(journalPath);
     const journal = z.record(z.string(), z.unknown()).parse(JSON.parse(journalBytes.toString("utf8")));
@@ -130,7 +130,7 @@ it("refuses schema-3 preparation and stage evidence for a new relocation", () =>
     recordedPreparation.sourceSchemaVersion = 3;
     journal.preparation = recordedPreparation;
     writeFileSync(journalPath, canonicalJsonStringify(journal));
-    try { assert.throws(() => lease.relocationInventory(), /expected 5/); }
+    try { assert.throws(() => lease.relocationInventory(), /expected 6/); }
     finally { writeFileSync(journalPath, journalBytes); }
   } finally { lease.release(); held.release(); }
 });

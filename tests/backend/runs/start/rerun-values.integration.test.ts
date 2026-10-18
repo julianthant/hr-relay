@@ -226,22 +226,22 @@ describe("source-bound Rerun value read", () => {
     assert.deepEqual(result.snapshot.transactions, []);
     assert.equal(snapshot(h, run), before);
   });
-  it("inherits the source plan choice and honors explicit Auto and number overrides", async () => {
+  it("keeps source plan identity without carrying a worker choice", async () => {
     const h = harness();
     const selectedStepKeys = h.descriptor.timeline.map(({ key }) => key);
     const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }],
-      dryRun: false, workers: 7, selectedStepKeys });
+      dryRun: false, selectedStepKeys });
     const queued = h.start(plan); assert.equal((await h.execute(queued)).state, "done");
     const run = h.fresh(queued);
     const result = readRerunValues(rerunValuesDeps(h), request(run)); assert.ok(result.state === "available");
-    assert.equal(result.snapshot.workers, 7);
+    assert.equal(Object.hasOwn(result.snapshot, "workers"), false);
     const input = { workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false, selectedStepKeys,
       rerunSource: { ...request(run), intent: "rerun", selectedStepKeys } };
-    assert.equal(h.planner.plan(input).workers, 7);
-    assert.equal(h.planner.plan({ ...input, workers: "auto" }).workers, "auto");
-    assert.equal(h.planner.plan({ ...input, workers: 2 }).workers, 2);
+    assert.equal(Object.hasOwn(h.planner.plan(input), "workers"), false);
+    assert.throws(() => h.planner.plan({ ...input, workers: "auto" }));
+    assert.throws(() => h.planner.plan({ ...input, workers: 2 }));
   });
-  it.each(["session", "plan", "mismatch"] as const)("refuses a missing or mismatched source %s even with an explicit override", async missing => {
+  it.each(["session", "plan", "mismatch"] as const)("refuses a missing or mismatched source %s without a worker choice", async missing => {
     const h = harness(); const run = await completed(h); const deps = rerunValuesDeps(h);
     const authority = { ...h.database.authority,
       ...(missing === "session" ? { runSessions: { ...h.database.authority.runSessions, get: () => undefined } }
@@ -260,10 +260,10 @@ describe("source-bound Rerun value read", () => {
       planTtlMs: 600_000, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
     const selectedStepKeys = h.descriptor.timeline.map(({ key }) => key);
     assert.throws(() => planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false,
-      workers: "auto", selectedStepKeys, rerunSource: { ...request(run), intent: "rerun", selectedStepKeys } }),
+      selectedStepKeys, rerunSource: { ...request(run), intent: "rerun", selectedStepKeys } }),
     error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
   });
-  it.each(["sessionless", "intake"] as const)("uses Auto for a legitimate %s source without a start choice", async origin => {
+  it.each(["sessionless", "intake"] as const)("accepts a legitimate %s source without a start choice", async origin => {
     const h = harness(); const original = await completed(h); const deps = rerunValuesDeps(h);
     const { sessionId: _sessionId, ...sessionless } = original;
     const run = origin === "sessionless" ? RunRecordSchema.parse(sessionless) : original;
@@ -273,7 +273,7 @@ describe("source-bound Rerun value read", () => {
         const session = sessions.get(id); assert.ok(session);
         return RunSessionRecordSchema.parse({ ...session, origin: { kind: "intake-manifest", intakeManifestId: h.ids.uuid(), actorId: "local-operator" } });
       } } }, withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, request(run));
-    assert.ok(result.state === "available"); assert.equal(result.snapshot.workers, "auto");
+    assert.ok(result.state === "available"); assert.equal(Object.hasOwn(result.snapshot, "workers"), false);
   });
   it("round-trips attribution into the existing planner and rejects an edited value retaining attribution", async () => {
     const h = harness(); const run = await completed(h);

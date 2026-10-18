@@ -18,3 +18,13 @@ describe("start-specific supersede review is atomic", () => {
   });
 
 });
+
+
+it("current start-plan readers reject the removed workers choice", () => {
+  const h = setup(); const wire = h.proposal();
+  const record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
+  assert.equal(StartPlanRecordSchema.safeParse(record).success, true);
+  for (const workers of ["auto", 1, 8]) {
+    assert.equal(StartPlanRecordSchema.safeParse({ ...record, workers }).success, false);
+  }
+});

@@ -50,7 +50,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const flagBounds = await run.locator(".launch-flags .ds-checkbox-row").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
       expect(new Set(flagBounds).size).toBe(1);
       expect((await run.getByRole("button", { name: "None Workbook · Optional", exact: true }).boundingBox())!.height).toBe(36);
-      expect((await run.getByRole("button", { name: "Auto Workers", exact: true }).boundingBox())!.height).toBe(36);
+      await expect(run.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
       await run.getByRole("button", { name: "1 Input", exact: true }).click();
       await expect(input).toHaveValue("10873698");
       await run.getByRole("button", { name: "Continue", exact: true }).click();

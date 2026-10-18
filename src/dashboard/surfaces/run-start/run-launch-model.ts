@@ -96,7 +96,7 @@ export function prefillRerun(input: RerunValuesSnapshot, options: Readonly<{
   if (new Set(options.selectedStepKeys).size !== options.selectedStepKeys.length
     || options.selectedStepKeys.some((key) => !snapshot.steps.some((step) => step.key === key))) throw new Error("RERUN_PREFILL_STEP_INVALID");
   return StartPlanRequestSchema.parse({ workflowId: snapshot.source.workflow, submissions: [submission],
-    workers: snapshot.workers, dryRun: options.dryRun, browserMode: options.browserMode, captureBrowserScreenshots: options.captureBrowserScreenshots,
+    dryRun: options.dryRun, browserMode: options.browserMode, captureBrowserScreenshots: options.captureBrowserScreenshots,
     selectedStepKeys: options.selectedStepKeys, rerunSource: { runId: snapshot.source.runId,
       expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys: options.selectedStepKeys, copiedFrom },
     ...(Object.keys(omissionFacts).length === 0 ? {} : { stepOmissions: Object.entries(omissionFacts).map(([step, facts]) => ({ step, facts })) }) });
@@ -114,8 +114,6 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
     const request = StartPlanRequestSchema.parse(input);
     const plan = StartPlanWireSchema.parse(await client.submitStartPlan(request));
     if (plan.workflowId !== request.workflowId || plan.plannedBy !== actorId || plan.dryRun !== request.dryRun
-      || (request.workers !== undefined && plan.workers !== request.workers)
-      || (request.workers === undefined && request.rerunSource === undefined && plan.workers !== "auto")
       || (plan.browserMode !== undefined && plan.browserMode !== request.browserMode)
       || (plan.captureBrowserScreenshots !== undefined && plan.captureBrowserScreenshots !== request.captureBrowserScreenshots)
       || plan.priority !== (request.priority ?? "interactive")

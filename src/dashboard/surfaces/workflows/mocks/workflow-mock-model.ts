@@ -21,7 +21,7 @@ export type MockDraft = Readonly<{
   typedValues?: TypedInputDraft;
   crmCheck: boolean; hireType: "new-hire" | "rehire"; uploadMode: "full" | "upload-only";
   roster: "existing" | "download" | "none"; formType: string; documentType: string;
-  effectiveDate: string; startDate: string; endDate: string; workers: number | "auto";
+  effectiveDate: string; startDate: string; endDate: string;
   dryRun: boolean; priority: "interactive" | "background"; browser: "headed" | "headless";
   captures: boolean; selectedSteps: readonly string[];
   ocrMode?: "extract" | "manual"; manualSteps?: readonly string[]; manualValues?: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -44,7 +44,7 @@ export function initialMockDraft(id: string): MockDraft {
   const flow = mockWorkflow(id);
   return { method: flow.methods[0], text: "", files: [], lookupMode: "search", crmCheck: true,
     hireType: "new-hire", uploadMode: "full", roster: "existing", formType: id === "i9-check" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
-    documentType: "Emergency Contact", effectiveDate: "2026-08-03", startDate: "2017-01-01", endDate: "2026-01-31", workers: id === "old-kronos-reports" ? 4 : "auto",
+    documentType: "Emergency Contact", effectiveDate: "2026-08-03", startDate: "2017-01-01", endDate: "2026-01-31",
     // Dry run is an explicit operator choice; every launch starts with it off.
     dryRun: false, priority: "interactive", browser: "headed", captures: true,
     ocrMode: "extract", manualSteps: [], manualValues: {}, selectedSteps: flow.steps.map(step => step.key) };
@@ -96,7 +96,6 @@ export function mockDraftInputError(id: string, draft: MockDraft): string | unde
   }
   if (id === "work-study" && !validDate(draft.effectiveDate)) return "Choose a valid effective date.";
   if (id === "old-kronos-reports" && (!validDate(draft.startDate) || !validDate(draft.endDate) || draft.startDate > draft.endDate)) return "Choose a valid report date range; start must precede end.";
-  if (draft.workers !== "auto" && (!Number.isInteger(draft.workers) || draft.workers < 1 || (id !== "old-kronos-reports" && draft.workers > 8))) return "Workers must be a positive whole number.";
   if (id === "ocr" && !["oath", "emergency-contact", "onbase-emergency-contact", "i9"].includes(draft.formType)) return "Choose a supported form type.";
   if (id === "onbase" && !MOCK_ONBASE_TYPES.some(type => type.value === draft.documentType)) return "Choose a supported document type.";
   if (draft.method === "pdf" && flow.roster && !(id === "oath-upload" && draft.uploadMode === "upload-only") && draft.roster === "none") return "Choose an existing roster or download the configured roster.";
@@ -363,7 +362,6 @@ export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): rea
     ...(id === "ocr" ? [{ key: "Form type", value: draft.formType }] : []),
     ...(pdf && flow.roster && !uploadOnly ? [{ key: "Roster", value: draft.roster === "download" ? "Download Onboarding Roster" : "Existing Onboarding Roster" }] : []),
     ...(id === "onbase" ? [{ key: "Document type", value: draft.documentType }] : []),
-    ...((pdf && !uploadOnly) || draft.method === "typed" ? [{ key: "Workers", value: draft.workers === "auto" ? "Auto" : String(draft.workers) }] : []),
     ...(id === "work-study" ? [{ key: "Effective date", value: displayExtractedDate(draft.effectiveDate) }] : []),
     ...(id === "old-kronos-reports" ? [{ key: "Report dates", value: `${displayExtractedDate(draft.startDate)} – ${displayExtractedDate(draft.endDate)}` }] : []),
   ];

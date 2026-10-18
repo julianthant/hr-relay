@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import type { AuthorityDatabase as PoolAuthorityDatabase } from "../admission-fixture.js";
 import { type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { type Clock } from "../../../../src/rules/time/clock.js";
@@ -110,6 +111,18 @@ export function createDashboardPoolTestWorld() {
     );
     seedSyntheticRuntimeConfig(database);
     openDatabases.push(database);
+    const nativeDeath = database.assertRetainedWorkerDeath.bind(database);
+    const death = vi.spyOn(database, "assertRetainedWorkerDeath").mockImplementation((member, lifetime, birth) => {
+      const lease = database.authority.workerLeases.get(member.workerId);
+      if (lease?.birthCommandId !== undefined) return nativeDeath(member, lifetime, birth);
+      assert.equal(lease?.lifecycle.state, "stopped");
+      assert.equal(lease?.leaseGeneration, lifetime.leaseGeneration);
+      assert.equal(lease?.processId, lifetime.processId);
+      assert.equal(lease?.lifecycle.startedAt, lifetime.startedAt);
+      database.assertWorkerLifecycleRelease(member.workerId);
+      assert.ok(database.authority.workerControls.browsers(member.workerId).every(browser => browser.health === "closed"));
+    });
+    cleanups.push(() => death.mockRestore());
     const scheduler = new ManualScheduler(clock, 0);
     const children: FakeWorkerChild[] = [];
     const spawnRequests: WorkerProcessSpawnRequest[] = [];
@@ -170,7 +183,7 @@ export function createDashboardPoolTestWorld() {
         } },
       })) },
       clock,
-      ids: sequentialIdFactory("d"),
+      ids: sequentialIdFactory("b"),
       descriptors: {
         resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
       },
@@ -285,13 +298,13 @@ export function createDashboardPoolTestWorld() {
     return held.workerId;
   }
 
-  function dashboardLaunch(harness: ControlHarness, eid = "10873698", options: { workers?: "auto" | number; items?: number } = {}) {
+  function dashboardLaunch(harness: ControlHarness, eid = "10873698", options: { items?: number } = {}) {
     if (harness.database.authority.runtimeConfig.get() === undefined) seedSyntheticRuntimeConfig(harness.database);
     const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
     const planner = createStartPlanService({ authority: harness.database, authorityRead: harness.database,
       descriptors: { resolve: workflowId => DESCRIPTORS.find(descriptor => descriptor.id === workflowId) }, clock: harness.clock,
       ids: { uuid: nextCommandId }, planTtlMs: 600_000, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
-    const plan = planner.plan({ workflowId: WORKFLOW, submissions: Array.from({ length: options.items ?? 1 }, (_, index) => ({ emplId: String(Number(eid) + index) })), dryRun: false, ...(options.workers === undefined ? {} : { workers: options.workers }) });
+    const plan = planner.plan({ workflowId: WORKFLOW, submissions: Array.from({ length: options.items ?? 1 }, (_, index) => ({ emplId: String(Number(eid) + index) })), dryRun: false });
     assert.deepEqual(plan.refused, []);
     assert.equal(plan.planned.length, options.items ?? 1);
     const request = { commandId: nextCommandId(), requestedAt: harness.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
@@ -301,7 +314,11 @@ export function createDashboardPoolTestWorld() {
 
   function launchCommands(harness: ControlHarness) {
     return createDashboardCommandService({ kernel: harness.kernel, projection: { ingestFromTimeline: () => {}, refreshRun: () => {} },
-      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority }) });
+      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority,
+        reconcileWorker: workerId => {
+          const lease = harness.database.authority.workerLeases.get(workerId);
+          return lease !== undefined && lease.lifecycle.state !== "stopped";
+        } }) });
   }
 
   async function proveLaunchBirth(harness: ControlHarness) {

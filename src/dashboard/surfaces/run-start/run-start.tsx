@@ -1,4 +1,3 @@
-import { RunWorkersSchema, type RunWorkers } from "../../../models/run/envelope.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
@@ -323,7 +322,6 @@ export function RunStartDialog({
   const [text, setText] = useState("");
   const [typedDraft, setTypedDraft] = useState<TypedInputDraft>(() => initialWorkflow?.inputRun.state === "present" && initialWorkflow.inputRun.surface.typedInput ? typedInputDefaults(initialWorkflow.inputRun.surface.typedInput) : {});
   const [sourceInputUnchanged, setSourceInputUnchanged] = useState(false);
-  const [workers, setWorkers] = useState<RunWorkers>("auto");
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
   const [browserMode, setBrowserMode] = useState<BrowserMode>("headed");
@@ -351,7 +349,6 @@ export function RunStartDialog({
     setStepDrafts({});
     setTouchedFacts(new Set());
     setFactsAttempted(false);
-    setWorkers("auto");
     setPriority("interactive");
     setDryRunRequested(false);
     setBrowserMode("headed");
@@ -366,7 +363,6 @@ export function RunStartDialog({
     if (!routed && !previewLaunch && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
     if (!routed) setLocalPreviewSelection(previewLaunch);
     setPickerQuery("");
-    setWorkers("auto");
     setSnapshot(null); setSourceError(null); setValueDrafts({}); setCopiedOmissions({}); setSourceInputUnchanged(false);
     setWarning(null); setAcknowledgment(undefined); setBusy(false); sending.current = false;
     try { setRecovery(readLaunchRecovery(window.sessionStorage, actorId)); setRecoveryError(null); }
@@ -380,7 +376,7 @@ export function RunStartDialog({
         const sourceWorkflow = workflows.find((entry) => entry.workflowId === response.snapshot.source.workflow);
         if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
         const selection = defaultRerunSteps(response.snapshot, sourceWorkflow);
-        setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection); setSnapshot(response.snapshot); setWorkers(response.snapshot.workers);
+        setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection); setSnapshot(response.snapshot);
         setValueDrafts(initialRerunValueDrafts(response.snapshot, sourceWorkflow));
         if (sourceWorkflow.inputRun.state === "present" && sourceWorkflow.inputRun.surface.typedInput !== undefined) {
           if (response.snapshot.sourceInput.state === "unavailable") throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text);
@@ -419,8 +415,6 @@ export function RunStartDialog({
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
-  const showWorkers = inputRun.state === "present";
-  const submittedWorkers = showWorkers ? workers : "auto";
   const typedDeclaration = inputRun.state === "present" ? inputRun.surface.typedInput : undefined;
   const declaredInput = typedDeclaration !== undefined;
   const typedValues = useMemo(() => {
@@ -461,7 +455,6 @@ export function RunStartDialog({
     workflowId,
     text,
     dryRun,
-    workers: submittedWorkers,
     browserMode,
     captureBrowserScreenshots,
     priority,
@@ -519,7 +512,6 @@ export function RunStartDialog({
         ...(snapshot === null ? {} : { rerunSource: { runId: snapshot.source.runId, expectedVersion: snapshot.source.version,
           intent: "rerun", selectedStepKeys, copiedFrom }, ...(acknowledgment === undefined ? {} : { warningAcknowledgment: acknowledgment }) }),
         dryRun,
-        workers: submittedWorkers,
         browserMode,
         captureBrowserScreenshots,
         priority,
@@ -541,7 +533,7 @@ export function RunStartDialog({
     } finally {
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, submittedWorkers, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput]);
+  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput]);
 
   const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
     if (sending.current) return;
@@ -889,9 +881,6 @@ export function RunStartDialog({
                     <Checkbox checked={captureBrowserScreenshots} onCheckedChange={next => setCaptureBrowserScreenshots(next === true)} label="Capture screenshots" description="Keep browser captures." />
                   </>}
                   fixedFacts={workflow && <><LockedFact label="Active policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} /><LockedFact label="Workflow version" value={versionTag(workflow.version)} reason="Fixed by the selected workflow." /></>}>
-                  {showWorkers && <div className="grid gap-4">
-                    <ChoicePicker label="Workers" value={String(workers)} options={[{ value: "auto", label: "Auto" }, ...Array.from({ length: 8 }, (_, number) => ({ value: String(number + 1), label: String(number + 1) }))]} onChange={value => setWorkers(RunWorkersSchema.parse(value === "auto" ? value : Number(value)))} />
-                  </div>}
                   <div>
                     <ChoicePicker label="Workbook · Optional" value={workbookId} onChange={setWorkbookId} options={[{ value: "", label: "None" }, ...spreadsheetMocks.files.map(file => ({ value: file.id, label: file.name, description: "Mock spreadsheet" }))]} />
                     <p className="mt-[5px] text-caption text-ui-muted">Choose an already imported workbook for reference or results.</p>

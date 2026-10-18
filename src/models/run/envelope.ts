@@ -28,8 +28,6 @@ export type SystemInstance = z.infer<typeof SystemInstanceSchema>;
 export const RunShapeSchema = z.enum(["single", "preview", "operation", "operation-member"]);
 export type RunShape = z.infer<typeof RunShapeSchema>;
 
-export const RunWorkersSchema = z.union([z.literal("auto"), z.number().int().min(1).max(8)]);
-export type RunWorkers = z.infer<typeof RunWorkersSchema>;
 
 /** Server-stamped from the run surface; children inherit their root's value. */
 export const RunPrioritySchema = z.enum(["interactive", "bulk"]);

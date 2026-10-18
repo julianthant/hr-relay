@@ -16,7 +16,7 @@ import {
   IsoInstantSchema,
   PositiveIntSchema,
 } from "../../../rules/identity/ids.js";
-import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape, RunWorkers } from "../../../models/run/envelope.js";
+import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../../models/run/envelope.js";
 import type { StepOmissions } from "../../../models/workflow/step-omission.js";
 import { InstanceSelectionSchema } from "../../../models/run/envelope.js";
 import { isTerminalRunState, type RunRecord } from "../../../models/run/record.js";
@@ -51,7 +51,6 @@ export interface StartPlanRequest {
   readonly submissions: readonly unknown[];
   readonly requestedInstance?: InstanceSelection;
   readonly dryRun: boolean;
-  readonly workers?: RunWorkers;
   // Dashboard starts require explicit choices; retained non-dashboard callers may omit them.
   readonly browserMode?: BrowserPresentationMode;
   /** Omission retains the pre-capture behavior (no browser screenshot). */
@@ -206,7 +205,6 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     shape: request.shape,
     priority: request.priority,
     dryRun: request.dryRun,
-    workers: request.workers ?? "auto",
     ...(request.browserMode === undefined ? {} : { browserMode: request.browserMode }),
     captureBrowserScreenshots: request.captureBrowserScreenshots ?? false,
     ...(request.stepOmissions === undefined ? {} : { stepOmissions: request.stepOmissions }),

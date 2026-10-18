@@ -34,8 +34,6 @@
       - text: New hire
       - radio "Rehire"
       - text: Rehire
-    - text: Workers
-    - button "Auto Workers": Auto
     - group "Priority":
       - text: Priority
       - radio "Interactive"

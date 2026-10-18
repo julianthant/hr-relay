@@ -40,10 +40,10 @@ afterEach(_afterEachFixture0);
 
   it("creates the current native schema and reopens with genuine baseline evidence",()=>{
     const f=fixture();const authority=f.open();
-    expect(authority.getMeta()).toMatchObject({schemaVersion:5,authorityGeneration:0});
-    expect(authority.readUpgradePhases()).toMatchObject({state:"available",phases:[{phase:"baseline",fromSchemaVersion:0,toSchemaVersion:5}]});
+    expect(authority.getMeta()).toMatchObject({schemaVersion:6,authorityGeneration:0});
+    expect(authority.readUpgradePhases()).toMatchObject({state:"available",phases:[{phase:"baseline",fromSchemaVersion:0,toSchemaVersion:6}]});
     authority.close();
-    const reopened=f.open();expect(reopened.getMeta().schemaVersion).toBe(5);reopened.close();
+    const reopened=f.open();expect(reopened.getMeta().schemaVersion).toBe(6);reopened.close();
     const db=new DatabaseSync(f.path,{readOnly:true});
     try { expect(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()).toHaveLength(36); }
     finally {db.close();}
@@ -94,7 +94,7 @@ afterEach(_afterEachFixture0);
     try {
       expect(fresh.report()).toMatchObject({ state: "healthy", mutationAvailability: "available" });
       const authority = fresh.requireWritable("enqueue");
-      expect(authority.getMeta()).toMatchObject({ schemaVersion: 5, authorityGeneration: 0 });
+      expect(authority.getMeta()).toMatchObject({ schemaVersion: 6, authorityGeneration: 0 });
       authority.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
       expect(authority.getMeta().authorityGeneration).toBe(1);
     } finally { fresh.close(); }
@@ -103,7 +103,7 @@ afterEach(_afterEachFixture0);
     try {
       expect(existing.report()).toMatchObject({ state: "healthy", mutationAvailability: "available" });
       const authority = existing.requireWritable("claim");
-      expect(authority.getMeta()).toMatchObject({ schemaVersion: 5, authorityGeneration: 1 });
+      expect(authority.getMeta()).toMatchObject({ schemaVersion: 6, authorityGeneration: 1 });
       expect(authority.authority.configSnapshots.get(CONFIG_SNAPSHOT.configSnapshotId)).toEqual(CONFIG_SNAPSHOT);
       expect(authority.authority.runtimeConfig.get()?.configFingerprint).toBe(CONFIG_SNAPSHOT.fingerprint);
     } finally { existing.close(); }
