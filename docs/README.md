@@ -33,6 +33,10 @@ The catalog section in [Stores](rebuild/reference/stores.md) is generated from [
 
 The [roadmap site](roadmap/index.html) is generated from [the roadmap source](roadmap/roadmap.md). Run `npm run roadmap`, then `npm run roadmap:check`.
 
+## Repository policy
+
+[Repository governance](repository-governance.md) lists branch protection checks and privacy-check scope.
+
 ## Evidence
 
 Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. Git worktrees live in its gitignored `.worktrees/<branch>/` folder. Selector manifests used by semantic registry tests live under [`tests/support/fixtures/ui/`](../tests/support/fixtures/ui/).
