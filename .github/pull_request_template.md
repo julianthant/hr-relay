@@ -16,5 +16,5 @@ Package ID / linked brief or issue:
 
 UI changes: attach synthetic screenshots.
 
-Dry-run evidence: link the private evidence location and summarize the stop points; confirm no
-UCPath submissions, Kuali finalization or other external writes. Do not attach private evidence here.
+Dry-run evidence: summarize the stop points and confirm no UCPath submissions, Kuali finalization
+or other external writes. Keep private evidence and its location outside the public PR.

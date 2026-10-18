@@ -6,11 +6,11 @@
     },
     {
       "path": "tests/support/fixtures/spreadsheet/color-filtered-roster.xlsx",
-      "sha256": "501ace4ab135aad65016e3327fe0a58fb45d79c931ab5b24202402643e9158c8"
+      "sha256": "84ef96f54f6a002ad220b76fbe1d00f5f6a8628436c2e765ca11f38e9b46af75"
     },
     {
       "path": "tests/support/helpers/dashboard/color-filtered-roster.xlsx",
-      "sha256": "501ace4ab135aad65016e3327fe0a58fb45d79c931ab5b24202402643e9158c8"
+      "sha256": "84ef96f54f6a002ad220b76fbe1d00f5f6a8628436c2e765ca11f38e9b46af75"
     }
   ],
   "sourcePaths": [
