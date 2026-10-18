@@ -15,7 +15,7 @@ it("keeps the private Inbox producer stable within a minute and exposes missing 
   const eventTimes = {};
   let value: NotificationsState | undefined;
   function Probe({ nowIso, available, unavailable }: { nowIso: string; available: boolean; unavailable?: string }) {
-    value = useWorkspaceNotifications("normal", { day: FIXTURE_DAY_WIRE.day, nowIso, rows: available ? rows : undefined, runs, workflowLabel, eventTimes, unavailable });
+    value = useWorkspaceNotifications("normal", { day: FIXTURE_DAY_WIRE.day, nowIso, anchorIso: "2026-08-03T12:00:00.000Z", rows: available ? rows : undefined, runs, workflowLabel, eventTimes, unavailable });
     return null;
   }
   const root = createRoot(document.createElement("div"));
