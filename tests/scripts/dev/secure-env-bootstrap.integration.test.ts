@@ -173,7 +173,9 @@ describe("secure environment bootstrap", () => {
   });
 
   it.each([
-    ["backup", "shared"], ["doctor", "shared"], ["transactions", "shared"],
+    // Stopped-authority backups require exclusive custody.
+    ["backup", "exclusive"], ["doctor", "shared"], ["transactions", "shared"],
+    ["help", "shared"], ["--help", "shared"], ["-h", "shared"],
     ["upgrade", "exclusive"], ["restore", "exclusive"], ["repair", "exclusive"],
   ] as const)("holds %s admission in %s mode for the full CLI lifetime", async (operation, expectedMode) => {
     let finish: (() => void) | undefined;
