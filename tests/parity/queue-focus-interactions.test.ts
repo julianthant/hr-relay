@@ -153,10 +153,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect(retriedRun.envelope.retryOf).toBe(authority.source.envelope.runId);
         expect(JSON.stringify(authority.h.fresh(authority.source))).toBe(originalBytes);
         const retried = page.locator(`[data-demo-row-id="${accepted.runId}"]`);
-        await expect(retried).toBeVisible(); await expect(retried).toContainText(`#${retriedRun.envelope.attempt}`);
+        await expect(retried).toBeVisible(); await expect(retried).toContainText('#2');
         await expect(original).toHaveCount(0);
         await retried.getByRole('button', { name: /^Attempts for/ }).click();
-        await expect(page.getByRole('menu', { name: /^Attempts for/ })).toContainText(`#${authority.source.envelope.attempt}`);
+        const attemptsMenu = page.getByRole('menu', { name: /^Attempts for/ });
+        await expect(attemptsMenu.getByRole('menuitemradio')).toHaveCount(2);
+        await expect(attemptsMenu.getByRole('menuitemradio').nth(0)).toContainText('#1');
+        await expect(attemptsMenu.getByRole('menuitemradio').nth(1)).toContainText('#2');
         await page.keyboard.press('Escape'); await retried.focus(); await page.keyboard.press('m');
         await expect(page.getByRole('menu')).toHaveCount(0);
         authority.h.world.probeResults.push(absentProbeEvidence(authority.h.clock.now().toISOString()));
