@@ -150,7 +150,8 @@ describe("Rerun source and provenance boundary", () => {
         copiedFrom: [{ nodeId: "submit-write", fieldPath: "output.value.transactionId", targetFieldPath: "eid" }] } }), /does not match/);
       assert.deepEqual(effects(), before, "every negative control leaves authority and publication unchanged");
       const changedDescriptor = { ...h.descriptor, contractFingerprint: FingerprintSchema.parse("f".repeat(64)) };
-      assert.throws(() => buildRerunPlan(h.database.authority, changedDescriptor, RerunSourceSchema.parse(request.rerunSource), []), /descriptor changed/);
+      assert.throws(() => buildRerunPlan(h.database.authority, changedDescriptor, RerunSourceSchema.parse(request.rerunSource), []),
+        /workflow runtime nodes require the exact object returned by defineWorkflowDescriptor/u);
       assert.deepEqual(h.fresh(source), source);
     } finally { h.dispose(); }
   });

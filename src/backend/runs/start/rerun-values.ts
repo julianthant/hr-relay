@@ -16,7 +16,7 @@ import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js
 import { RerunValueMappingsSchema } from "../../../models/workflow/rerun-values.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
-import { rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
+import { rerunInputFieldAccepts, rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };
@@ -45,8 +45,7 @@ function atPath(value: JsonValue, path: string): JsonValue | undefined {
   return current;
 }
 
-function validateCheckpoint(checkpoint: RunCheckpointRecord, node: RuntimeFlowNode, descriptor: AnyWorkflowDescriptor): void {
-  if (checkpoint.descriptorVersion !== descriptor.version || checkpoint.contractFingerprint !== descriptor.contractFingerprint) refuse("source-invalid");
+function validateCheckpoint(checkpoint: RunCheckpointRecord, node: RuntimeFlowNode): void {
   const schema = node.kind === "task" ? node.uses.output : node.kind === "transaction" ? TransactionOutcomeSchema : undefined;
   if (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output")
     || !schema.safeParse(checkpoint.output.value).success) refuse("source-invalid");
@@ -75,13 +74,13 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       if (run.envelope.runId !== request.runId) refuse("source-invalid");
       if (run.version !== request.expectedVersion) refuse("source-stale");
       const descriptor = deps.descriptors.resolve(run.envelope.workflow);
-      if (descriptor === undefined || descriptor.id !== run.envelope.workflow
-        || descriptor.version !== run.envelope.descriptorVersion
-        || descriptor.contractFingerprint !== run.envelope.contractFingerprint) refuse("descriptor-mismatch");
+      if (descriptor === undefined || descriptor.id !== run.envelope.workflow) refuse("descriptor-mismatch");
+      const older = descriptor.version !== run.envelope.descriptorVersion
+        || descriptor.contractFingerprint !== run.envelope.contractFingerprint;
       const { lifecycle } = run;
       if (lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(lifecycle.outcome)) refuse("source-ineligible");
-      if (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
-        || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success) refuse("source-invalid");
+      if (!older && (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
+        || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) refuse("source-invalid");
       const repositories = deps.database.authority;
       let workers;
       try { workers = rerunWorkers(repositories, run); }
@@ -99,15 +98,25 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         if (checkpoint.workflowId !== descriptor.id || checkpoint.itemId !== run.envelope.itemId
           || checkpoint.attempt > run.envelope.attempt
           || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > run.claimGeneration)) refuse("source-invalid");
+        if (checkpoint.descriptorVersion !== run.envelope.descriptorVersion
+          || checkpoint.contractFingerprint !== run.envelope.contractFingerprint) refuse("source-invalid");
         const node = nodeById.get(checkpoint.nodeId);
-        if (node === undefined) refuse("source-invalid");
-        validateCheckpoint(checkpoint, node, descriptor);
+        if (node === undefined) {
+          if (older && !TransactionOutcomeSchema.safeParse(checkpoint.output.value).success) continue;
+          refuse("source-invalid");
+        }
+        if (!older || node.kind === "transaction") validateCheckpoint(checkpoint, node);
         const previous = checkpoints.get(checkpoint.nodeId);
         if (previous === undefined || checkpoint.attempt > previous.attempt
           || (checkpoint.attempt === previous.attempt && checkpoint.claimGeneration !== undefined
             && (previous.claimGeneration === undefined || checkpoint.claimGeneration > previous.claimGeneration))) checkpoints.set(checkpoint.nodeId, checkpoint);
       }
-      const gates = repositories.gateResults.listByRun(request.runId);
+      const gates = repositories.gateResults.listByRun(request.runId).filter(gate => {
+        if (gate.runId !== request.runId) refuse("source-invalid");
+        const node = nodeById.get(gate.gateId);
+        return !older || (node?.kind === "gate" && gate.result.schemaHash === deriveSchemaHash(node.result, "output")
+          && node.result.safeParse(gate.result.value).success);
+      });
       for (const gate of gates) {
         const node = nodeById.get(gate.gateId);
         if (gate.runId !== request.runId || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
@@ -117,7 +126,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       const failure = lifecycle.failureId === undefined ? undefined : failures.find(({ failureId }) => failureId === lifecycle.failureId);
       if (lifecycle.failureId !== undefined && (failure === undefined || failure.runId !== request.runId
         || failure.workflowId !== descriptor.id || failure.attempt !== run.envelope.attempt)) refuse("source-invalid");
-      if (failure?.nodeId !== undefined && !nodeById.has(failure.nodeId)) refuse("source-invalid");
+      if (!older && failure?.nodeId !== undefined && !nodeById.has(failure.nodeId)) refuse("source-invalid");
       const executions = deps.executions?.(request.runId) ?? [];
       if (executions.some(({ attempt }) => !Number.isSafeInteger(attempt) || attempt < 1 || attempt > run.envelope.attempt)) refuse("source-invalid");
       const bindings = retainedRunProtectedBindings(run);
@@ -227,7 +236,8 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         const safe = atPath(valueFreeProtectedData(checkpoint.output.value, bindings), mapping.fieldPath);
         if (safe === undefined || canonicalJsonStringify(safe) !== canonicalJsonStringify(value) || containsProtected(value, privateValues))
           return { ...coordinates, state: "unavailable", reason: "protected" };
-        if (!rerunTargetAccepts(descriptor, mapping, value)) return { ...coordinates, state: "unavailable", reason: "target-invalid" };
+        if (!rerunTargetAccepts(descriptor, mapping, value)
+          || !rerunTargetAccepts({ input: descriptor.canonicalInput, stepOmissions: descriptor.stepOmissions }, mapping, value)) return { ...coordinates, state: "unavailable", reason: "target-invalid" };
         const provenance = [...checkpoint.provenance].filter(({ path }) => path === mapping.fieldPath || mapping.fieldPath.startsWith(`${path}.`))
           .sort((a, b) => b.path.length - a.path.length)[0];
         if (provenance === undefined) return { ...coordinates, state: "unavailable", reason: "provenance-unavailable" };
@@ -239,16 +249,40 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         const members = step.nodes.map(({ id }) => { const fact = facts.get(id); if (fact === undefined) refuse("source-invalid"); return fact; });
         const state = members.some(({ state }) => state === "failed") ? "failed"
           : members.every(({ state }) => state === "completed") ? "completed" : "unfinished";
-        return { key: step.key, state, nodes: members };
+        return older ? { key: step.key, state: "unfinished", nodes: members.map(member => ({
+          nodeId: member.nodeId, state: "unfinished", reason: "not-recorded",
+        })) } : { key: step.key, state, nodes: members };
       });
+      let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
+      if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
+        || containsProtected(run.input.parsed.value, privateValues)) sourceInput = { state: "unavailable", reason: "protected" };
+      else if (older && descriptor.surfaces.inputRun?.typedInput !== undefined) {
+        const input = run.input.parsed.value;
+        const parsed = descriptor.input.safeParse(input);
+        const canonical = descriptor.canonicalInput.safeParse(input);
+        if (!parsed.success || !canonical.success || canonicalJsonStringify(parsed.data) !== canonicalJsonStringify(input)
+          || canonicalJsonStringify(canonical.data) !== canonicalJsonStringify(input)) {
+          const declaration = descriptor.surfaces.inputRun.typedInput;
+          const mode = declaration.modes.find(mode => atPath(input, declaration.modeField) === mode.value);
+          const accepted: Record<string, JsonValue> = {};
+          if (mode !== undefined) for (const field of [declaration.modeField, ...mode.defaults.map(entry => entry.field), ...mode.identityFields]) {
+            const value = atPath(input, field);
+            if (value !== undefined && rerunInputFieldAccepts(descriptor.input, field, value)
+              && rerunInputFieldAccepts(descriptor.canonicalInput, field, value)) accepted[field] = value;
+          }
+          const identityCopied = mode !== undefined && mode.identityFields.every(field => atPath(input, field) === undefined || Object.hasOwn(accepted, field))
+            && (mode.parser.kind === "name-tuple" ? Object.hasOwn(accepted, mode.parser.familyName) && Object.hasOwn(accepted, mode.parser.givenName)
+              && mode.parser.identifiers.some(identifier => Object.hasOwn(accepted, identifier.field))
+              : mode.identityFields.some(field => Object.hasOwn(accepted, field)));
+          if (!identityCopied) for (const field of mode?.identityFields ?? []) delete accepted[field];
+          sourceInput = { state: "partial", value: accepted, identityCopied };
+        }
+      }
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
         workers,
-        sourceInput: canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
-          || containsProtected(run.input.parsed.value, privateValues)
-          ? { state: "unavailable", reason: "protected" }
-          : { state: "available", value: run.input.parsed.value },
+        sourceInput,
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
-          descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: lifecycle.outcome },
+          descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome },
         steps, values, transactions,
       } });
     });

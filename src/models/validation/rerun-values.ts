@@ -38,9 +38,12 @@ export function rerunTargetSchema(view: RerunMappingView, mapping: RerunValueMap
 
 /** A candidate is never coerced into a different value by this read. */
 export function rerunTargetAccepts(view: RerunMappingView, mapping: RerunValueMapping, value: JsonValue): boolean {
-  const schemas = leafSchemas(rerunTargetSchema(view, mapping), mapping.targetFieldPath.split("."));
-  if (schemas.length === 0) throw new Error("RERUN_MAPPING_TARGET_FIELD_MISSING");
-  return schemas.some((schema) => {
+  if (leafSchemas(rerunTargetSchema(view, mapping), mapping.targetFieldPath.split(".")).length === 0) throw new Error("RERUN_MAPPING_TARGET_FIELD_MISSING");
+  return rerunInputFieldAccepts(rerunTargetSchema(view, mapping), mapping.targetFieldPath, value);
+}
+
+export function rerunInputFieldAccepts(schema: z.ZodType, path: string, value: JsonValue): boolean {
+  return leafSchemas(schema, path.split(".")).some((schema) => {
     const parsed = z.core.safeParse(schema, value);
     return parsed.success && canonicalJsonStringify(parsed.data) === canonicalJsonStringify(value);
   });

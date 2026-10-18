@@ -12,15 +12,24 @@ import { sourceBoundHarness } from "./integration/source-bound-fixtures.js";
 import { sourceBoundReadContract as contract, sourceBoundReadDescriptor as original, sourceBoundReadStores } from "./source-bound-read-fixtures.js";
 
 export const eidMapping = { nodeId: "read", fieldPath: "eid", label: "Employee ID", targetFieldPath: "eid" };
-export function mappedReadDescriptor(mappings: readonly RerunValueMappingSpec[] = [eidMapping]) {
-  return defineWorkflowDescriptor({ id: original.id, version: original.version, contractFingerprint: original.contractFingerprint,
+export function mappedReadDescriptor(mappings: readonly RerunValueMappingSpec[] | undefined = undefined,
+  current: { version?: number; contractFingerprint?: string; canonicalInput?: typeof original.canonicalInput; stepKey?: string; nodeId?: "read" | "current-read"; gate?: boolean } = {}) {
+  const nodeId = current.nodeId ?? "read";
+  const readFlow = () => flow(contract.input).step(nodeId, contract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input });
+  const graphWithGate = readFlow().gate("approval", { dependsOn: [nodeId], label: "Approval", statusKey: "needsReview",
+    resolvedBy: "operator", result: z.strictObject({ approved: z.boolean() }) })
+    .build({ schema: contract.output, dependsOn: [nodeId], derive: ({ outputs }) => outputs[nodeId] });
+  const graphWithoutGate = readFlow().build({ schema: contract.output, dependsOn: [nodeId], derive: ({ outputs }) => outputs[nodeId] });
+  const descriptor = { id: original.id, version: current.version ?? original.version, contractFingerprint: current.contractFingerprint ?? original.contractFingerprint,
     code: original.code, label: original.label, icon: original.icon, category: original.category,
-    canonicalInput: original.canonicalInput, inputSubject: "eid", surface: original.surface, enqueue: original.enqueue,
-    actions: original.actions, surfaces: {}, details: [], identity: { matchKey: (input) => input.eid },
-    presentation: { title: (input) => input.eid }, scenarios: ["source-read/happy"], rerunValues: mappings,
-    flow: flow(contract.input).step("read", contract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
-      .build({ schema: contract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
-  });
+    canonicalInput: current.canonicalInput ?? original.canonicalInput, inputSubject: "eid", surface: original.surface, enqueue: original.enqueue,
+    actions: original.actions, surfaces: {}, details: [], identity: { matchKey: (input: { eid: string }) => input.eid },
+    presentation: { title: (input: { eid: string }) => input.eid }, scenarios: ["source-read/happy"], rerunValues: mappings ?? [{ ...eidMapping, nodeId }],
+    timeline: [{ key: current.stepKey ?? "read", label: "Read", nodes: current.gate ? [nodeId, "approval"] : [nodeId] }],
+  } as const;
+  return current.gate
+    ? defineWorkflowDescriptor({ ...descriptor, flow: graphWithGate })
+    : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
 export function rerunValuesHarness() { return sourceBoundHarness(mappedReadDescriptor(), sourceBoundReadStores); }
 export function rerunValuesDeps(h: ReturnType<typeof sourceBoundHarness>): RerunValuesDependencies {
