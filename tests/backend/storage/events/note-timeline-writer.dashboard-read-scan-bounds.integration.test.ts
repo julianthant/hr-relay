@@ -313,7 +313,7 @@ describe("a logs GET opens only its run partitions", () => {
     const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.rows?.map((row) => row.kind), ["note"]);
-    assert.equal(section.payload.notes[0]?.message, "Clicked ucpath person org search button");
+    assert.equal(section.payload.notes[0]?.message, "Click: Person Org Search button");
   });
 
   it("serves classified note values in Logs", () => {

@@ -290,6 +290,7 @@ it("retains a task screenshot association and native node without exposing raw a
   assert.ok(section.section === "logs");
   const row = section.payload.rows?.find(row => row.kind === "note");
   assert.ok(row?.kind === "note");
+  assert.equal(row.note.message, "Screenshot");
   assert.deepEqual(row.note.screenshot, { bundleId: UUID_4, artifactId: UUID_5, sessionId });
   assert.equal(row.native?.nodeId, "searching");
   assert.equal("action" in row.note, false);
@@ -318,6 +319,10 @@ it("serves registered operator labels for the normal legacy Person Lookup action
     { kind: "click", label: "Person Org Search button", system: "ucpath" },
     { kind: "read", label: "Person Org displayed name", system: "ucpath" },
   ]);
+  assert.deepEqual(rows.map(row => row.note.message), [
+    "Fill: Person Org EID input", "Click: Person Org Search button", "Read: Person Org displayed name",
+  ]);
+  assert.equal(new Set(rows.map(row => row.native?.eventId)).size, 3);
   assert.ok(rows.every(row => row.native?.nodeId === "searching"));
   assert.doesNotMatch(JSON.stringify(rows.map(row => Reflect.get(row.note, "operatorAction"))), /targetId|value|10000001|Quillan/u);
 });

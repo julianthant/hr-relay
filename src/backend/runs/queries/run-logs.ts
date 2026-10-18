@@ -411,7 +411,8 @@ function logRowOf(
         sequence,
         at: entry.note.ts,
         level: LEVEL_MAP[entry.note.level],
-        message: operatorAction?.label ?? entry.note.message,
+        message: operatorAction === undefined ? entry.note.message : operatorAction.kind === "screenshot"
+          ? "Screenshot" : `${{ fill: "Fill", click: "Click", read: "Read", action: "Action" }[operatorAction.kind]}: ${operatorAction.label}`,
         ...(operatorAction === undefined ? {} : { operatorAction }),
         ...(screenshot === undefined ? {} : { screenshot }),
         ...(entry.note.fields === undefined ? {} : { fields: entry.note.fields }),
