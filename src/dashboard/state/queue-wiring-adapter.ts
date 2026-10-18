@@ -31,18 +31,23 @@ export function useQueueWiring(input: Readonly<{
     runQueueAction } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (allRows === undefined) return [];
-    const canonical = new Map(allRows.map((surface) => [surface.runId, surface]));
-    const scoped = rows.flatMap((row) => {
+    const metadata = attemptHistory === undefined ? undefined : new Map(attemptHistory.map(entry => [entry.runId, entry]));
+    const canonical = new Map(allRows.map(surface => [surface.runId, surface]));
+    const visible = rows.flatMap(row => {
       const surface = canonical.get(row.runId);
-      if (surface === undefined || surface.workflowId !== activeWorkflowId) return [];
-      const actions = surface.actions.filter((action) => action.kind !== "command" || action.command !== "archive");
-      return [actions.length === surface.actions.length ? surface : { ...surface, actions }];
+      return surface === undefined ? [] : [surface];
     });
-    const visible = filterQueueSurfaces(scoped, filter);
-    if (attemptHistory === undefined || attemptHistory.length === 0) return visible;
-    const items = new Set(visible.map(surface => JSON.stringify([surface.workflowId, surface.itemId])));
-    return [...visible, ...attemptHistory.flatMap(({ surface }) =>
-      items.has(JSON.stringify([surface.workflowId, surface.itemId])) ? [surface] : [])];
+    const items = new Set(visible.map(row => JSON.stringify([row.workflowId, row.itemId])));
+    const candidates = metadata === undefined ? visible : allRows;
+    const scoped = candidates.flatMap((surface) => {
+      if (!items.has(JSON.stringify([surface.workflowId, surface.itemId])) || surface.workflowId !== activeWorkflowId) return [];
+      const timing = metadata?.get(surface.runId);
+      if (metadata !== undefined && timing === undefined) throw new Error("queue run has no selected-day attempt metadata");
+      const actions = surface.actions.filter((action) => action.kind !== "command" || action.command !== "archive");
+      if (timing === undefined && actions.length === surface.actions.length) return [surface];
+      return [{ ...surface, ...(timing === undefined ? {} : { startedAt: timing.startedAt, endedAt: timing.endedAt }), actions }];
+    });
+    return filterQueueSurfaces(scoped, filter);
   }, [allRows, attemptHistory, rows, activeWorkflowId, filter]);
 
   const outcomes = useMemo((): ReadonlyMap<string, QueueBusinessOutcome> => new Map(
@@ -79,7 +84,7 @@ export function useQueueWiring(input: Readonly<{
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
       onSetBatchGrouping: setBatchGrouping,
-      onSelect: runId => selectRun(runId, attemptHistory?.find(entry => entry.surface.runId === runId)?.partitionDay),
+      onSelect: runId => selectRun(runId),
       onExitSelection: exitQueueSelection,
       onAction: runQueueAction,
       onToggleWell: (runId) => {
@@ -106,7 +111,7 @@ export function useQueueWiring(input: Readonly<{
         selectRun(String(link.runId), link.partitionDay);
       },
     }),
-    [setBatchGrouping, selectRun, attemptHistory, runQueueAction, openWells, onWells, bulkIds, onBulkIds, allRows, setActiveWorkflowId, exitQueueSelection],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, allRows, setActiveWorkflowId, exitQueueSelection],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);

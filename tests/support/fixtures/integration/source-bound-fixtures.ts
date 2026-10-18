@@ -37,7 +37,8 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   initializeRuntime(database, clock);
   const activeConfig = database.authority.runtimeConfig.get();
   assert.ok(activeConfig);
-  const descriptors = { resolve: (workflow: string) => workflow === descriptor.id ? descriptor : undefined };
+  let registeredDescriptor = descriptor;
+  const descriptors = { resolve: (workflow: string) => workflow === registeredDescriptor.id ? registeredDescriptor : undefined };
   const ids = sequentialIdFactory("c");
   const planIds = sequentialIdFactory("b");
   const lifecycleIds = sequentialIdFactory("a");
@@ -99,12 +100,13 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
       workerId: slot.workerId, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
     assert.equal(claimed.envelope.runId, run.envelope.runId);
-    return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun({ ...common, descriptor, writeSequencer: sequencer }, {
+    return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun({ ...common, descriptor: registeredDescriptor, writeSequencer: sequencer }, {
       run: claimed, claim: { workerId: WorkerIdSchema.parse(slot.workerId), claimGeneration: claimed.claimGeneration }, signal: new AbortController().signal,
     }));
   }
   function fresh(run: RunRecord) { const value = database.authority.runs.get(run.envelope.runId); assert.ok(value); return value; }
-  return { authorityPath:join(root,"authority.sqlite"),database, descriptor, clock, ids, lifecycleIds, planIds, get queueRoots() {
+  return { authorityPath:join(root,"authority.sqlite"),database, get descriptor() { return registeredDescriptor; },
+    registerDescriptor(next: AnyWorkflowDescriptor) { registeredDescriptor = next; }, clock, ids, lifecycleIds, planIds, get queueRoots() {
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
   }, lifecycle, kernel, planner, world, stores, manager,

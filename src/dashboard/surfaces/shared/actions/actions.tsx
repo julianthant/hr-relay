@@ -14,6 +14,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { runDisplayId } from "../status/run-display-model.js";
 import { cn } from "../../../lib/utils.js";
 import { IconActionButton } from "./icon-action-button.js";
 import {
@@ -428,7 +429,7 @@ export function ConfirmCommandDialog({
             <span className="text-caption text-ui-muted">Selected run</span>
             <strong className="text-heading font-medium text-ui-primary">{pending.subject}</strong>
             <span className="text-body text-ui-secondary">{pending.workflowLabel}</span>
-            <span className="command-confirm-reference font-data text-caption text-ui-muted">{pending.traceId} · revision {pending.action.expectedVersion}</span>
+            <span className="command-confirm-reference font-data text-caption text-ui-muted">{pending.action.command === "delete" ? runDisplayId(pending.target.runId, pending.traceId) : pending.traceId} · revision {pending.action.expectedVersion}</span>
           </div>
           <DialogFooter>
             {/* The safe exit is `secondary` and it comes FIRST; the surface's one

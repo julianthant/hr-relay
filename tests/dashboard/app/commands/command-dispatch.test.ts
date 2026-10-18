@@ -378,7 +378,6 @@ function factsFor(status: Status, over: Partial<QueueRowActionFacts> = {}): Queu
     memberCount: 0,
     isMember: false,
     named: false,
-    workflowLabel: "Person Lookup",
     hasReviewPanel: false,
     ...over,
   };

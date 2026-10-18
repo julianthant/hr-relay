@@ -154,7 +154,6 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         // Every fixture row serves `displayName` absent (`:202`), so no reference
         // has ever photographed a named run — the label stays "Name this run…".
         named: false,
-        workflowLabel: personLookupDescriptor.label,
         hasReviewPanel: personLookupDescriptor.capabilities?.review ?? false,
       }),
       rowRevision: input.seed,

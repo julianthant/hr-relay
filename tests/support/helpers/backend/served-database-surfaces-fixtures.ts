@@ -12,7 +12,7 @@ export function summaryFixture() {
   const ledger = createTransactionHistory(f.db.authority);
   const descriptors = { resolve: () => undefined };
   const summaries: ServedSummaryQueries = {
-    itemAttempts: items => f.db.listQueueItemAttempts(items),
+    itemAttempts: (day, items) => f.db.listQueueItemAttempts(day, items),
     withSnapshot: read => f.db.withAuthorityReadSnapshot(read),
     queue: query => queryQueueSummaries(f.db, query),
     activity: (from, to) => queryActivitySummaries(f.db, { from, to, generatedAt: f.clock.now().toISOString() }, { descriptors, ledger }),

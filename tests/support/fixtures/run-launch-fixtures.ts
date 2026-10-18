@@ -1,3 +1,5 @@
+import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
+import { StepOmissionFormSchema } from "../../../src/models/workflow/step-omission.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
@@ -36,32 +38,43 @@ import { sourceBoundReadContract, sourceBoundReadStores } from "./source-bound-r
 import { WriteFixturePrepare, WriteFixtureCommit, buildWriteFixtureRegistry, absentProbeEvidence } from "./write-sequencer-fixtures.js";
 
 const Input = z.strictObject({ eid: EidSchema, memo: z.string().optional() });
-export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active") {
-  return defineWorkflowDescriptor({ id: "launch-proof", version: 1, contractFingerprint: "a".repeat(64), code: "lp",
+export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", current: { version?: number; fingerprint?: string; stepPrefix?: string; gateDependency?: boolean } = {}) {
+  const prefix = current.stepPrefix ?? "";
+  const readFlow = () => flow(Input)
+    .step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
+    .step("check", sourceBoundReadContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ input }) => input });
+  const graphWithGate = readFlow().gate("approval", { dependsOn: ["read"], label: "Approval", statusKey: "needsReview",
+    resolvedBy: "operator", result: z.strictObject({ approved: z.boolean() }) })
+    .transaction("submit-write", { dependsOn: ["read", "approval"],
+      prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
+      commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) },
+      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
+    }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read });
+  const graphWithoutGate = readFlow().transaction("submit-write", { dependsOn: ["read"],
+      prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
+      commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) },
+      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
+    }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read });
+  const descriptor = { id: "launch-proof", version: current.version ?? 1, contractFingerprint: current.fingerprint ?? "a".repeat(64), code: "lp",
     label: "Launch proof", icon: "Search", category: "operations", inputSubject: "eid", surface: { shape: "single" },
     canonicalInput: defineCanonicalInput(Input, Input, [{ eid: "10812345" }]), enqueue, actions: STANDARD_WORKFLOW_ACTIONS,
-    surfaces: { inputRun: { placeholder: "Employee ID", parser: { split: { kind: "delimited", delimiters: [",", "\n"] },
-      rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }] } } }, details: [],
-    identity: { matchKey: (input) => input.eid }, presentation: { title: (input) => input.eid }, scenarios: ["launch-proof/happy"],
+    surfaces: { inputRun: InputRunSurfaceSchema.parse({ placeholder: "Employee ID", parser: { split: { kind: "delimited", delimiters: [",", "\n"] },
+      rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }] } }) }, details: [],
+    identity: { matchKey: (input: { eid: string }) => input.eid }, presentation: { title: (input: { eid: string }) => input.eid }, scenarios: ["launch-proof/happy"],
     timeline: [
-      { key: "reading", label: "Read employee", nodes: ["read"] },
-      { key: "checking", label: "Check employee", nodes: ["check"], omission: { form: { fields: [{ key: "eid", label: "Checked employee ID", kind: "eid" }] }, produces: {} } },
-      { key: "filing", label: "File transaction", nodes: ["submit-write"], omission: { form: { fields: [] }, produces: {} } },
+      { key: `${prefix}reading`, label: "Read employee", nodes: ["read"] },
+      { key: `${prefix}checking`, label: "Check employee", nodes: ["check"], omission: { form: StepOmissionFormSchema.parse({ fields: [{ key: "eid", label: "Checked employee ID", kind: "eid" }] }), produces: {} } },
+      { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], omission: { form: StepOmissionFormSchema.parse({ fields: [] }), produces: {} } },
     ],
     rerunValues: [
       { nodeId: "read", fieldPath: "eid", targetFieldPath: "eid", label: "Employee ID" },
-      { nodeId: "check", fieldPath: "eid", targetFieldPath: "eid", targetStepKey: "checking", label: "Checked employee ID" },
+      { nodeId: "check", fieldPath: "eid", targetFieldPath: "eid", targetStepKey: `${prefix}checking`, label: "Checked employee ID" },
       { nodeId: "submit-write", fieldPath: "output.value.transactionId", targetFieldPath: "memo", label: "Previous transaction" },
     ],
-    flow: flow(Input)
-      .step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
-      .step("check", sourceBoundReadContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ input }) => input })
-      .transaction("submit-write", { dependsOn: ["read"],
-        prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
-        commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) },
-        dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
-      }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
-  });
+  } as const;
+  return current.gateDependency
+    ? defineWorkflowDescriptor({ ...descriptor, flow: graphWithGate })
+    : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
 export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>) {
   const h = sourceBoundHarness(selection?.descriptor ?? launchDescriptor(enqueue), (world) => {
@@ -72,10 +85,14 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
   }, initializeRuntime, selection?.protectedSecrets);
   const descriptor = h.descriptor;
   if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
-  const workflow: RunStartWorkflow = { workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category,
+  function currentWorkflow(): RunStartWorkflow {
+    const descriptor = h.descriptor;
+    if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
+    return { workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category,
     role: { kind: "standalone" }, enqueue: descriptor.enqueue, version: descriptor.version, spreadsheetIntake: false,
     inputRun: { state: "present", surface: descriptor.surfaces.inputRun },
     steps: projectStartSteps(descriptor).map((step) => ({ ...step, control: startStepWireControl(step.control) })) };
+  }
   const app: DashboardApp = new Hono();
   app.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
@@ -88,7 +105,7 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
     descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined } });
   registerQueueRoutes(app, { queue: { day: day => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(day); } }, startPlans: h.planner });
   app.get("/api/v1/runs/:id/rerun-values", (c) => {
-    const response = readRerunValues({ reader: h.lifecycle, database: h.database, descriptors: { resolve: () => descriptor } },
+    const response = readRerunValues({ reader: h.lifecycle, database: h.database, descriptors: { resolve: () => h.descriptor } },
       { runId: c.req.param("id"), expectedVersion: Number(c.req.query("expectedVersion")) });
     return c.json(response, response.state === "available" ? 200 : response.code === "target-deleted" ? 410 : response.code === "target-not-found" ? 404 : 409);
   });
@@ -123,7 +140,7 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
     dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request, day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
     selection: { route: { start: false }, workflowId: descriptor.id } };
   const binding: DashboardCommandBinding = { authority, executor, scope, feedback: () => undefined };
-  return { ...h, get queueRoots() { return h.queueRoots; }, workflow, app, client, launch, binding, submissions, finalCommands, loseResponse: () => { loseResponse = true; },
+  return { ...h, get queueRoots() { return h.queueRoots; }, get descriptor() { return h.descriptor; }, get workflow() { return currentWorkflow(); }, app, client, launch, binding, submissions, finalCommands, loseResponse: () => { loseResponse = true; },
     async completeSource() { const run = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
       const result = await h.execute(run); if (result.state !== "done") throw new Error(`source did not complete: ${result.state}`); return h.fresh(run); },
     authoritySnapshot() { return JSON.stringify({ generation: h.database.getMeta(), roots: h.queueRoots,

@@ -112,12 +112,13 @@ describe("Queue consumes the served day boundary", () => {
 
   it("renders one queue row for repeated item attempts and opens the exact selected run", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    const first = rowWhere((row) => row.surfaceKind === "single" && row.status === "failed");
+    const first = QueueSurfaceWireSchema.parse({ ...rowWhere((row) => row.surfaceKind === "single" && row.status === "failed"), attempt: 7, startedAt: "2026-08-03T16:00:00.000Z" });
     const newest = QueueSurfaceWireSchema.parse({
       ...first,
       runId: uuidOf(9710),
       itemId: first.itemId,
       attempt: first.attempt + 1,
+      startedAt: "2026-08-03T17:00:00.000Z",
       status: "done",
       endedAt: { state: "present", value: FIXTURE_NOW },
     });
@@ -141,11 +142,22 @@ describe("Queue consumes the served day boundary", () => {
       const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="Attempts for ${queueRowTitle(newest)}"]`);
       assert.ok(trigger);
       await act(async () => trigger.click());
-      const attempt = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(node => node.textContent?.includes(`#${first.attempt}`));
+      const attempt = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(node => node.textContent?.includes("#1"));
       assert.ok(attempt);
-      assert.match(attempt.textContent ?? "", new RegExp(`#${String(first.attempt)}.*Failed`, "u"));
+      assert.match(attempt.textContent ?? "", /#1.*Failed/u);
       await act(async () => attempt.click());
       assert.deepEqual(opened, [String(first.runId)]);
+      assert.equal(first.attempt, 7);
+      assert.equal(newest.attempt, 8);
+      await act(async () => root.render(createElement(QueuePanel, {
+        surfaces: [first, newest],
+        state: { nowIso: FIXTURE_NOW, selectedRunId: first.runId, openWells: new Set<string>(), panelWorkflowId: "person-lookup" },
+        handlers: { onSelect: (runId) => opened.push(runId) },
+        workflowLabelOf: () => "Person Lookup",
+        panelLabel: "Person Lookup",
+        day: FIXTURE_DAY,
+      })));
+      assert.equal(host.querySelector("button[title=\"Attempt 1\"]")?.textContent?.trim(), "#1");
       assert.deepEqual(groupQueueAttempts([first, newest])[0]?.attempts.map((entry) => entry.runId), [newest.runId, first.runId]);
     } finally {
       await act(async () => root.unmount());

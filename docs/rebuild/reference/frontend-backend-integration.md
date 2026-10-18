@@ -124,7 +124,14 @@ field membership and discriminated states. The client checks identity as well as
 
 `FrontendBootstrapWire` carries actor, server clock, descriptor/config identity, workflows,
 Settings sections, storage, and readiness. `DashboardDayWire` carries the selected day's queue,
-counts, workers/pools, notifications, and projection identity. Its separate `attemptHistory` carries earlier local-day attempts for visible workflow/item pairs, capped at the selected day’s maximum attempt. Queue joins these only for attempt selection; counts and worker/session populations use the selected-day rows. Cross-day item changes publish a fresh snapshot so historical revisions stay authoritative. `RunDetailWire` and section models
+counts, workers and pools, notifications, and projection identity. Its optional `attemptHistory`
+contains each queue run's `runId`, `startedAt`, and `endedAt` for that day, including runs in
+progress. When present, `DashboardDayWireSchema` requires exact run membership and matching
+timestamps with `queueSurfaces`. The Queue view model numbers each item's runs from 1 in ascending
+`startedAt` order, then ascending `runId` for ties. The latest run has the highest number. The
+attempts menu lists only runs on the selected day. Choosing a run changes the selected `runId`, not
+the day. The day number is a display label. Queue selection and commands keep each run's canonical
+`runId` and backend `attempt` identity. `RunDetailWire` and section models
 bind the exact run and section revision. `StartPlanWire` binds descriptor/config/input identity,
 accepted options, selected steps, and a plan token. A displayed preview does not certify these
 backend paths are connected to that preview.

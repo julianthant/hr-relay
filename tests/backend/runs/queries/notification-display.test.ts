@@ -16,7 +16,7 @@ const checkpoint = (overrides: Record<string, unknown> = {}) => RunCheckpointRec
   descriptorVersion: 1, contractFingerprint: HASH_A, implFingerprint: HASH_B, provenance: [],
   writtenAt: "2026-10-02T16:59:00.000Z", ...overrides,
 });
-const descriptor = { label: "Person lookup", contractFingerprint: HASH_A, subjectProjection: { nodeId: "identify", fieldPath: "person.name" } };
+const descriptor = { version: run.envelope.descriptorVersion, label: "Person lookup", contractFingerprint: HASH_A, subjectProjection: { nodeId: "identify", fieldPath: "person.name" } };
 const deps = (records: ReturnType<typeof checkpoint>[], current = descriptor) => {
   const world = makeWorld();
   worlds.push(world);
@@ -60,17 +60,43 @@ it("displays an older run's exact subject after a structurally compatible workfl
 });
 
 it.each([HASH_A, HASH_B])("withholds notification display when the run's checkpoint node is absent from the live timeline (%s)", fingerprint => {
-  const current = { ...descriptor, contractFingerprint: fingerprint,
+  const current = { ...descriptor, version: descriptor.version + 1, contractFingerprint: fingerprint,
     timeline: [{ key: "replacement", label: "Replacement", nodes: [{ id: "replacement", label: "Replacement" }] }] };
   const regular = deps([checkpoint()]);
   assert.deepEqual(notificationDisplayContext(row, { ...regular, descriptor: () => current }), { state: "unavailable" });
 });
 
 it("propagates evidence read failures instead of treating corruption as incompatible presentation", () => {
-  const current = { ...descriptor, timeline: [{ key: "identity", label: "Identity", nodes: [{ id: "identify", label: "Identify" }] }] };
+  const current = { ...descriptor, version: descriptor.version + 1, timeline: [{ key: "identity", label: "Identity", nodes: [{ id: "identify", label: "Identify" }] }] };
   const regular = deps([checkpoint()]);
   const failure = new Error("synthetic checkpoint read failure");
   assert.throws(() => notificationDisplayContext(row, { ...regular, descriptor: () => current,
     presentation: { ...regular.presentation, authority: { ...regular.presentation.authority, listCheckpoints: () => { throw failure; } } },
   }), error => error === failure);
+});
+
+it("does no compatibility evidence reads for a current-version notification while retaining its declared subject read", () => {
+  const regular = deps([checkpoint()]);
+  const current = { ...descriptor, timeline: [{ key: "replacement", label: "Replacement", nodes: [{ id: "replacement", label: "Replacement" }] }] };
+  let compatibilityCheckpointReads = 0;
+  let timelineReads = 0;
+  let subjectReads = 0;
+  const display = notificationDisplayContext(row, { ...regular, descriptor: () => current,
+    checkpoints: { listByAttempt: () => { subjectReads++; return [checkpoint()]; } },
+    presentation: {
+      timeline: { ...regular.presentation.timeline, page(input) { timelineReads++; return regular.presentation.timeline.page(input); } },
+      authority: { ...regular.presentation.authority, listCheckpoints: () => { compatibilityCheckpointReads++; return []; } },
+    },
+  });
+  assert.deepEqual(display, { state: "available", workflow: "Person lookup", subject: "Alice" });
+  assert.equal(compatibilityCheckpointReads, 0);
+  assert.equal(timelineReads, 0);
+  assert.equal(subjectReads, 1);
+});
+
+it("withholds a version-only older notification with an unmapped checkpoint node", () => {
+  const regular = deps([checkpoint()]);
+  const current = { ...descriptor, version: descriptor.version + 1,
+    timeline: [{ key: "replacement", label: "Replacement", nodes: [{ id: "replacement", label: "Replacement" }] }] };
+  assert.deepEqual(notificationDisplayContext(row, { ...regular, descriptor: () => current }), { state: "unavailable" });
 });

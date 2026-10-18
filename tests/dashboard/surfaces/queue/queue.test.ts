@@ -144,7 +144,7 @@ function render(surface: QueueSurfaceWire_m1, members: readonly MemberSurfaceWir
 describe_m1("approved mixed queue presentation", () => {
   it_m1("keeps mode hazards and the footer attempt while removing leading and info controls", () => {
     const base = single("done");
-    const row = QueueSurfaceWireSchema_m1.parse({ ...base, dryRun: true, resolvedInstances: base.resolvedInstances.map(instance => ({ ...instance, instance: "test" })) });
+    const row = QueueSurfaceWireSchema_m1.parse({ ...base, attempt: 7, dryRun: true, resolvedInstances: base.resolvedInstances.map(instance => ({ ...instance, instance: "test" })) });
     const host = render(row);
     const body = host.querySelector("[data-queue-body]");
     assert_m1.ok(body);
@@ -155,7 +155,7 @@ describe_m1("approved mixed queue presentation", () => {
     assert_m1.ok(host.textContent?.includes("Done"));
     assert_m1.equal(host.querySelector('[aria-label^="What is this row"]'), null);
     assert_m1.equal(body.querySelector('[aria-label^="Attempts for"]'), null);
-    assert_m1.equal(host.querySelector('[aria-label^="Attempts for"]')?.textContent, `#${row.attempt}`);
+    assert_m1.equal(host.querySelector('[aria-label^="Attempts for"]')?.textContent, "#1");
     const identity = [...host.querySelectorAll('span[title]')].find(element => element.getAttribute('title') === row.traceId);
     assert_m1.ok(identity);
     assert_m1.match(identity.textContent ?? "", /^[A-Z0-9]+\d{8}$/u);

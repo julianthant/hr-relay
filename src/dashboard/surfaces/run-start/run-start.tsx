@@ -10,7 +10,7 @@ import { RunWorkflowPicker } from "./run-start-picker.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import type { RerunWarningWire } from "../../../models/dashboard/rerun-warning.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
-import { candidateText, defaultRerunSteps, initialRerunValueDrafts, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
+import { candidateText, defaultRerunSteps, partialRerunTypedInput, rerunTypedSourceInput, initialRerunValueDrafts, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
 import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "./run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "./run-launch-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
@@ -379,13 +379,14 @@ export function RunStartDialog({
         setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection); setSnapshot(response.snapshot);
         setValueDrafts(initialRerunValueDrafts(response.snapshot, sourceWorkflow));
         if (sourceWorkflow.inputRun.state === "present" && sourceWorkflow.inputRun.surface.typedInput !== undefined) {
-          if (response.snapshot.sourceInput.state !== "available") throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text);
+          if (response.snapshot.sourceInput.state === "unavailable") throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text);
           const declaration = sourceWorkflow.inputRun.surface.typedInput;
           const input = response.snapshot.sourceInput.value;
-          const restored = restoreTypedInput(declaration, input);
+          const partial = response.snapshot.sourceInput.state === "partial" ? partialRerunTypedInput(declaration, response.snapshot.sourceInput) : undefined;
+          const restored = partial?.draft ?? restoreTypedInput(declaration, input);
           setTypedDraft(restored);
-          setText(typedInputText(declaration, input));
-          setSourceInputUnchanged(true);
+          setText(partial?.text ?? typedInputText(declaration, input));
+          setSourceInputUnchanged(partial === undefined || response.snapshot.sourceInput.state === "partial" && response.snapshot.sourceInput.identityCopied);
           setSelectedStepKeys(sourceWorkflow.steps.filter(step => step.control.state !== "selectable"
             || restored[step.control.inputField] === true).map(step => step.key));
           setValueDrafts({});
@@ -484,7 +485,7 @@ export function RunStartDialog({
 
   const preview = useMemo((): RunInputPreview => inputRun.state !== "present" ? { entries: [], submissions: [], problem: null }
     : previewRunInput(inputRun.surface, text, typedValues,
-      sourceInputUnchanged && snapshot?.source.runId === rerunSource?.runId && snapshot?.source.version === rerunSource?.expectedVersion && snapshot?.sourceInput.state === "available" ? snapshot.sourceInput.value : undefined),
+      sourceInputUnchanged && snapshot?.source.runId === rerunSource?.runId && snapshot?.source.version === rerunSource?.expectedVersion && snapshot !== null ? rerunTypedSourceInput(inputRun.surface.typedInput, snapshot.sourceInput) : undefined),
     [inputRun, text, typedValues, snapshot, rerunSource, sourceInputUnchanged]);
 
 

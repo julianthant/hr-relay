@@ -1993,15 +1993,16 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  listQueueItemAttempts(input: unknown): readonly RunRecord[] {
-    const items = z.array(z.strictObject({ workflowId: WorkflowIdSchema, itemId: ItemIdSchema, maxAttempt: z.number().int().positive() })).parse(input);
+  listQueueItemAttempts(day: string, input: unknown): readonly RunRecord[] {
+    const selectedDay = z.iso.date().parse(day);
+    const items = z.array(z.strictObject({ workflowId: WorkflowIdSchema, itemId: ItemIdSchema })).parse(input);
     return this.withAuthorityReadSnapshot(() => {
       this.#validateExternalQuerySources();
       return this.#database.prepare(`SELECT runs.* FROM json_each(?) selected
         JOIN runs ON runs.workflow=json_extract(selected.value,'$.workflowId')
           AND runs.item_id=json_extract(selected.value,'$.itemId')
-          AND runs.attempt<=json_extract(selected.value,'$.maxAttempt')
-        ORDER BY runs.workflow,runs.item_id,runs.attempt,runs.id`).all(JSON.stringify(items)).map(runRecordFromRow);
+          AND runs.local_day=?
+        ORDER BY runs.workflow,runs.item_id,runs.enqueued_at,runs.id`).all(JSON.stringify(items), selectedDay).map(runRecordFromRow);
     });
   }
 

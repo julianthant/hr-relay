@@ -370,11 +370,33 @@ fresh instead of replaying prior-run checkpoints. Its checkpoint and screenshot 
 the persisted run's authority-allocated attempt. Operator starts, Rerun, and preview fixtures keep
 their existing replay, freshness, and attempt rules.
 
-`src/backend/runs/start/rerun.ts` and `rerun-values.ts` own source-bound Rerun proposals and prefill.
-The source provides values, not checkpoint authority for the new run. The Run modal's submitted
-values and omission assertions form a new start plan. A selected completed transaction requires
-the retained acknowledgment and the separate repeated-submission protection described in
-[write safety](write-safety.md). Confirmation of a warning is not final plan consumption.
+`src/backend/runs/start/rerun.ts` and `rerun-values.ts` own dashboard Rerun prefill and warning
+planning. An eligible source with an earlier descriptor version or contract fingerprint can open the
+existing form without an extra notice when its retained data and warning evidence pass current checks.
+The form keeps current input defaults and offers a source value only when the current descriptor's
+value mapping, canonical input, and omission schemas accept it. For typed input, the full source value
+is restored only when the current input and canonical-input schemas accept it unchanged. If that parse
+fails for an unprotected source input, `readRerunValues` returns only mode, default, and identity fields
+accepted unchanged by both schemas. The form combines those fields with current defaults and restores
+identity text only when the current mode's identity requirements are complete. Otherwise, the text box
+is blank for operator re-entry. Rejected fields are not coerced. Submitted values go through
+`planStart` with the registered descriptor and its current input schemas.
+
+For an older descriptor version or fingerprint, `readRerunValues` reports every current step as
+unfinished, so `defaultRerunSteps` selects every current step. For a matching descriptor, it preserves
+the existing preselection based on source outcome and step completion, then applies current omission
+rules. Incompatible retained transaction-warning evidence still refuses Rerun.
+
+Rerun reads source checkpoints and gate results to build value offers and validate copied coordinates.
+Warning planning reads compatible transaction evidence and write intents to detect repeat submissions.
+It validates any gate result needed to build a selected transaction warning against the current gate
+schema. Unrelated older gate results do not block Rerun. The new run inherits no source checkpoint,
+gate decision, or write authority. A selected previously committed transaction retains the warning
+and required acknowledgment described in [write safety](write-safety.md). An UNKNOWN, attempting, or
+parked write refuses Rerun. Confirmation of a warning is not final plan consumption.
+
+Dashboard Rerun does not call `retrySource`. The separate Retry and Restart commands retain their
+existing descriptor checks and recovery rules.
 
 `src/backend/runtime/checkpoints/checkpoint-patch.ts` applies declared field patches and reparses
 the complete producing output. The envelope carries corrections with time and reason.
