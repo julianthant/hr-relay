@@ -58,8 +58,8 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
         : <ResultRow controlWidth="wide" label={label} description={description}
           value={<div className="flex flex-wrap items-center justify-end gap-2">
             {connected && plan !== "disabled" && <ButtonLink variant={plan === "limit-reached" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>}
-            {(!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined || account.state === "unavailable"} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>Continue with ChatGPT</Button>}
-            {connected && <Button variant="ghost" disabled={pending !== undefined || account.state === "unavailable"} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Sign out</Button>}
+            {(!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>Continue with ChatGPT</Button>}
+            {connected && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Sign out</Button>}
           </div>} />}
     </div></FormGroup>
   </BodySection>;

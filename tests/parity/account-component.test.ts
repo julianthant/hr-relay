@@ -49,7 +49,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const account = page.getByRole("group", { name: "ChatGPT account", exact: true });
       await expect(account).toBeVisible();
       if (entry.state === "loading") await expect(page.getByRole("status", { name: "Loading ChatGPT account", exact: true })).toBeVisible();
-      else if (entry.state === "unavailable") await expect(account).toContainText("ChatGPT account unavailable");
+      else if (entry.state === "unavailable") { await expect(page.getByText("ChatGPT account unavailable", { exact: true })).toBeVisible(); await expect(account.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toBeEnabled(); }
       else if (entry.state === "expired") await expect(account).toContainText("Your ChatGPT session expired.");
       else if (entry.state === "disabled") await expect(account).toContainText("ChatGPT plan access not enabled");
       else if (entry.state === "limit-reached") await expect(account).toContainText("Usage limit reached");
@@ -61,7 +61,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await page.keyboard.press("Enter");
           await expect(page.locator("body")).toHaveAttribute("data-action-calls", "1");
         } else {
-          await expect(account).toContainText("ChatGPT connection failed");
+          await expect(page.getByText("ChatGPT connection failed", { exact: true })).toBeVisible();
           await expect(account.getByRole("button", { name: entry.control, exact: true })).toBeEnabled();
           await expect(account).toContainText(entry.state === "enabled" ? "jordan.lee@example.com" : "Use your ChatGPT plan");
         }
