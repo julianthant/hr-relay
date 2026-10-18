@@ -57,28 +57,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run web:build
-      - id: native
-        run: |
-          telemetry="$RUNNER_TEMP/integration-telemetry.jsonl"
-          node --import tsx scripts/test/hosted-diagnostics.ts observe integration "$$" > "$telemetry" &
-          sampler_pid=$!
-          finish() {
-            native_status=$?
-            trap - EXIT
-            set +e
-            kill -TERM "$sampler_pid" 2>/dev/null
-            wait "$sampler_pid"
-            telemetry_status=$?
-            if ! cat "$telemetry"; then telemetry_status=1; fi
-            printf '{"kind":"native-diagnostic-boundary","nativeExit":%s,"telemetryExit":%s}\n' "$native_status" "$telemetry_status"
-            if [ "$native_status" -ne 0 ]; then exit "$native_status"; fi
-            exit "$telemetry_status"
-          }
-          trap finish EXIT
-          npm run test:integration
-      - name: Diagnose prior integration timeout files once
-        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
-        run: node --import tsx scripts/test/hosted-diagnostics.ts reproduce integration
+      - run: npm run test:integration
 
   architecture:
     name: architecture
@@ -90,28 +69,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - id: native
-        run: |
-          telemetry="$RUNNER_TEMP/architecture-telemetry.jsonl"
-          node --import tsx scripts/test/hosted-diagnostics.ts observe architecture "$$" > "$telemetry" &
-          sampler_pid=$!
-          finish() {
-            native_status=$?
-            trap - EXIT
-            set +e
-            kill -TERM "$sampler_pid" 2>/dev/null
-            wait "$sampler_pid"
-            telemetry_status=$?
-            if ! cat "$telemetry"; then telemetry_status=1; fi
-            printf '{"kind":"native-diagnostic-boundary","nativeExit":%s,"telemetryExit":%s}\n' "$native_status" "$telemetry_status"
-            if [ "$native_status" -ne 0 ]; then exit "$native_status"; fi
-            exit "$telemetry_status"
-          }
-          trap finish EXIT
-          npm run test:architecture
-      - name: Diagnose prior architecture timeout files once
-        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
-        run: node --import tsx scripts/test/hosted-diagnostics.ts reproduce architecture
+      - run: npm run test:architecture
 
   parity:
     name: parity
