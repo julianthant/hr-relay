@@ -10,7 +10,7 @@ export const ASSISTANT_MOCK_SOURCE = {
 
 export function assistantMockProposal(prompt = ASSISTANT_MOCK_PROMPT, revision = ASSISTANT_MOCK_REVISION, id = 'demo-plan-1'): AssistantMockProposal {
   return {
-    id, prompt, revision, workflow: { id: 'person-lookup', label: 'Person Lookup', version: 'demo-v1' },
+    id, prompt, revision, workflow: { id: 'demo-person-check', label: 'Person Lookup', version: 'demo-v1' },
     subjects: [{ id: 'DEMO-001', name: 'Avery Sample' }, { id: 'DEMO-002', name: 'Morgan Example' }],
     values: [{ label: 'Systems', value: 'UCPath and CRM' }, { label: 'Match', value: 'Exact synthetic subject IDs' }],
     mode: 'read-only', effects: ['Read identity and employment status for these two subjects.', 'Show the comparison in Queue and Logs.'],

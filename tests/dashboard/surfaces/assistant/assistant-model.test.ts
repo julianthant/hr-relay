@@ -7,7 +7,7 @@ describe('assistant mock proposal', () => {
   it('shows exact subjects, values, read-only mode, effects and stop points', () => {
     const proposal = assistantMockProposal();
     assert.deepEqual(proposal.subjects, [{ id: 'DEMO-001', name: 'Avery Sample' }, { id: 'DEMO-002', name: 'Morgan Example' }]);
-    assert.equal(proposal.workflow.id, 'person-lookup');
+    assert.equal(proposal.workflow.id, 'demo-person-check');
     assert.equal(proposal.mode, 'read-only');
     assert.equal(proposal.values[0].value, 'UCPath and CRM');
     assert.equal(proposal.effects.length, 2);

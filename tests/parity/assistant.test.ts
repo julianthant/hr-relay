@@ -94,7 +94,7 @@ test('assistant keyboard, cancellation, retry, citations and exact one-time mock
   expect(recorded).not.toBeNull();
   expect(JSON.parse(recorded!)).toEqual({
     id: 'demo-plan-3', revision: 'demo-context-7', prompt: 'Changed request',
-    workflow: { id: 'person-lookup', label: 'Person Lookup', version: 'demo-v1' },
+    workflow: { id: 'demo-person-check', label: 'Person Lookup', version: 'demo-v1' },
     subjects: [{ id: 'DEMO-001', name: 'Avery Sample' }, { id: 'DEMO-002', name: 'Morgan Example' }],
     values: [{ label: 'Systems', value: 'UCPath and CRM' }, { label: 'Match', value: 'Exact synthetic subject IDs' }],
     mode: 'read-only', effects: ['Read identity and employment status for these two subjects.', 'Show the comparison in Queue and Logs.'],
