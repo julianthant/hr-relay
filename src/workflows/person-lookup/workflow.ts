@@ -129,10 +129,14 @@ export const personLookupWorkflow = defineWorkflow({
           ...["cross-verify", "crm-selected-record", "crm-results"].map(nodeId => ({ nodeId, kind: "output" as const, fieldPath: `records.${path}` })),
           ...["crmIdentity", "crmRecord", "unselectedCrmRecords"].map(prefix => ({ nodeId: "crm-identity", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
         ] })),
+        { label: "CRM", example: "Found", sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "crmState" }] },
       ] }, [crossVerify, identity, selectedRecord, crmResults]],
       [{ key: "active-status", label: "Read employment status", description: "Determine employment status and read department and termination details when applicable.", system: "local", operatorFields: [
         ...[["state", "Employment status", "Active"], ["hdh", "HDH department", "Yes"], ["details.department", "Department", "CAMPUS DINING OPERATIONS"], ["details.endDate", "End date", "4/25/2031"], ["details.terminationReason", "Termination reason", "Appointment ended"]].map(([fieldPath, label, example]) => ({ label, example,
           sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
+        ...[["details.ucpath", "UCPath", "Found"], ["details.crm", "CRM", "Not checked"]].map(([fieldPath, label, example]) => ({ label, example,
+          sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
+        { label: "Status note", visibility: "logs", sources: [{ nodeId: "active-status", kind: "output", fieldPath: "reason" }] },
       ] }, [recovery, activeStatus]],
       [{ key: "crm-dates", label: "Read CRM dates", description: "Read employment and oath dates from the selected CRM record.", system: "crm", selection: { inputField: "includeCrmDates", selectedWhen: true }, operatorFields: [
         ...[["employmentDate", "Employment date", "3/14/2031"], ["oathDate", "Oath date", "3/10/2031"]].map(([fieldPath, label, example]) => ({ label, example,

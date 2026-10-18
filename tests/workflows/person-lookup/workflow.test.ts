@@ -21,6 +21,17 @@ describe("workflow definition public equivalence characterization", () => {
       ],
     });
   });
+  it("declares retained check states and status notes without exposing internal matching codes", () => {
+    const fields = personLookupDescriptor.timeline.flatMap(group => group.operatorFields ?? []);
+    for (const [label, nodeId, fieldPath] of [
+      ["CRM", "crm-identity", "crmState"],
+      ["UCPath", "active-status", "details.ucpath"],
+      ["CRM", "active-status", "details.crm"],
+      ["Status note", "active-status", "reason"],
+    ]) assert.ok(fields.some(field => field.label === label && field.sources.some(source =>
+      source.nodeId === nodeId && source.kind === "output" && source.fieldPath === fieldPath)), `${nodeId}.${fieldPath}`);
+    assert.equal(fields.some(field => field.sources.some(source => source.fieldPath === "method")), false);
+  });
   it("carries the complete typed input declaration through a JSON surface round trip", () => {
     const surface = personLookupDescriptor.surfaces.inputRun;
     assert.ok(surface?.typedInput);
