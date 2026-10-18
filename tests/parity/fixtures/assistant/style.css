@@ -1,0 +1,12 @@
+@import "../../../../src/dashboard/app/index.css";
+@source "../../../../src/dashboard";
+@source ".";
+
+.assistant-scene { min-height: 100vh; background: var(--ds-surface-page); color: var(--ds-fg); font-size: var(--ds-text-ui); }
+.assistant-scene-header { display: flex; gap: var(--ds-space-loose); padding: var(--ds-space-cozy) var(--ds-space-loose); border-bottom: 1px solid var(--ds-border); background: var(--ds-surface-1); }
+.assistant-scene-header span { color: var(--ds-fg-muted); }
+.assistant-scene-copy { width: min(560px, 45vw); padding: var(--ds-space-section) var(--ds-space-loose); line-height: 1.6; }
+.assistant-scene-copy h1 { font-size: var(--ds-text-display); font-weight: 600; }
+.assistant-scene-copy p { margin-block: var(--ds-space-cozy); color: var(--ds-fg-secondary); }
+.assistant-scene-copy nav, .assistant-scene-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-cozy); margin-block: var(--ds-space-loose); }
+.assistant-scene-copy a { color: var(--ds-fg-link); text-decoration: underline; }
