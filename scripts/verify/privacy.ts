@@ -49,11 +49,12 @@ export function inspectTrackedFile(path: string, content: Buffer): PrivacyFindin
   if (/(?:^|\/)\.local-private(?:\/|$)/u.test(path)) rules.add("private-directory");
   if (/(?:^|\/)\.env(?:\.[^/]*)?$/iu.test(path) && path !== ".env.example") rules.add("environment-file");
   if (/\.(?:xlsx?|csv|tsv|pdf)$/iu.test(path) && fixtureFiles.get(path) !== digest) rules.add("private-document");
-  if ((/(?:^|\/)(?:credentials?|secrets?|auth|tokens?)\.(?:json|ya?ml|toml)$|(?:^|\/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519|\.npmrc|\.pypirc|\.netrc|\.git-credentials|test-data\.local\.json)$|\.(?:pem|key|p12|pfx|jks)$/iu.test(path)
+  if ((/(?:^|\/)\.?(?:credentials?|secrets?|auth|tokens?)(?:\.(?:json|ya?ml|toml|txt|ini|conf|cfg|properties|env|csv|xml|db|sqlite3?))?$|(?:^|\/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519|\.npmrc|\.pypirc|\.netrc|\.git-credentials|test-data\.local\.json)$|\.(?:pem|key|p12|pfx|jks)$/iu.test(path)
     || /(?:^|\/)(?:credentials|\.ssh|\.aws|\.kube)\//iu.test(path)) && publicConfigFiles.get(path) !== digest) rules.add("credential-file");
   const binaryImage = (/\.png$/iu.test(path) && content.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
     || (/\.webp$/iu.test(path) && content.subarray(0, 4).equals(Buffer.from("RIFF")) && content.subarray(8, 12).equals(Buffer.from("WEBP")));
-  const texts = binaryImage || fixtureFiles.get(path) === digest ? [] : decodeText(content);
+  const texts = fixtureFiles.get(path) === digest ? []
+    : binaryImage ? [content.toString("utf8").replaceAll("\0", "")] : decodeText(content);
   if (!binaryImage && fixtureFiles.get(path) !== digest && !texts.length) rules.add("unsupported-text-encoding");
   for (const text of texts) {
     const credentialPattern = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}|AKIA[A-Z0-9]{16})\b/gu;

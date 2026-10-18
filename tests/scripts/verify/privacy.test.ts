@@ -40,6 +40,29 @@ describe("public repository privacy check", () => {
     assert.deepEqual(inspectTrackedFile("note.webp", Buffer.from([0xd2, 0xc9, 0xc6, 0xc6, 0, 0, 0, 0, 0xd7, 0xc5, 0xc2, 0xd0])), [{ path: "note.webp", rule: "unsupported-text-encoding" }]);
   });
 
+  it("checks embedded text in real images and image signatures followed by sensitive values", () => {
+    const labeledEid = ["92", "823", "741"].join("");
+    const credential = ["ghp_", "c".repeat(36)].join("");
+    const payload = text(`\n'eid': '${labeledEid}'\nSSN: ${unknownSsn}\n${credential}\0`);
+    for (const path of ["docs/images/relay-dashboard.png", "src/dashboard/assets/ocr/detect-test-1.webp"]) {
+      const asset = readFileSync(new URL(`../../../${path}`, import.meta.url));
+      for (const prefix of [asset, asset.subarray(0, path.endsWith(".png") ? 8 : 12)]) {
+        assert.deepEqual(inspectTrackedFile(path, Buffer.concat([prefix, payload])), [
+          { path, rule: "credential-value" }, { path, rule: "eid" }, { path, rule: "ssn" },
+        ]);
+      }
+    }
+  });
+
+  it("blocks standalone credential data files while admitting similarly named source modules", () => {
+    for (const path of ["credentials.txt", ".credentials", "config/secrets.ini", "config/.tokens", "auth.cfg", ".secrets.json", "credentials.xml"]) {
+      assert.deepEqual(inspectTrackedFile(path, text("")), [{ path, rule: "credential-file" }]);
+    }
+    for (const path of ["src/auth.ts", "src/secrets.ts", "src/credentials.ts", "docs/auth.md", "src/credential-store.ts"]) {
+      assert.deepEqual(inspectTrackedFile(path, text("")), []);
+    }
+  });
+
   it("pins public npm configuration and rejects a replacement at the same path", () => {
     assert.deepEqual(inspectTrackedFile(".npmrc", readFileSync(new URL("../../../.npmrc", import.meta.url))), []);
     assert.deepEqual(inspectTrackedFile(".npmrc", text("changed")), [{ path: ".npmrc", rule: "credential-file" }]);
