@@ -32,8 +32,6 @@ export interface QueueRowActionFacts {
   readonly isMember: boolean;
 
   readonly named: boolean;
-  /** the workflow's own label, for confirm copy that names what is about to run */
-  readonly workflowLabel: string;
   /** ref dashboard-surfaces's `has-review-panel` condition input */
   readonly hasReviewPanel: boolean;
 }
@@ -97,19 +95,6 @@ function cancelBody(facts: QueueRowActionFacts): string {
   return `${scope}Cancelling is final: a cancelled run is never resumed, only run again.`;
 }
 
-// Deleting a run does not delete its permanent external-write idempotency record.
-function deleteBody(facts: QueueRowActionFacts): string {
-  const scope = facts.memberCount > 0
-    ? "This removes the run and every row it owns from the database — results, checkpoints, receipts, "
-      + `diagnostics, and its write ledger — and its ${String(facts.memberCount)} delegated members with it. `
-    : "This removes the run and every row it owns from the database — results, checkpoints, receipts, "
-      + "diagnostics, and its write ledger. ";
-  return `${scope}If this run wrote to ${facts.workflowLabel}'s systems, the permanent idempotency key `
-    + "that stops the same write from being submitted twice is released with it. "
-    + "This is final; there is no undo.";
-}
-
-
 function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
   const placement = placementOf(command);
   const base = { command, expectedVersion: facts.rowRevision, kind: "command", placement } as const;
@@ -142,7 +127,6 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
         icon: "delete",
         confirm: {
           title: facts.memberCount > 0 ? "Delete this group" : "Delete this run",
-          body: deleteBody(facts),
           confirmLabel: "Delete",
           tone: "destructive",
         },

@@ -20,7 +20,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, dayWire: { ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === failed.runId ? { ...row, actions: [
       { key: 'rerun', kind: 'navigation', label: 'Retry', navigate: { kind: 'rerun', expectedVersion: row.rowRevision }, intent: 'neutral', icon: 'retry', placement: ['footer'] },
-      { key: 'delete', kind: 'command', command: 'delete', label: 'Delete', expectedVersion: row.rowRevision, intent: 'destructive', icon: 'delete', placement: ['footer'], confirm: { title: 'Delete this run?', body: 'Remove this run and its child rows.', confirmLabel: 'Delete run', tone: 'destructive' } },
+      { key: 'delete', kind: 'command', command: 'delete', label: 'Delete', expectedVersion: row.rowRevision, intent: 'destructive', icon: 'delete', placement: ['footer'], confirm: { title: 'Delete this run?', confirmLabel: 'Delete run', tone: 'destructive' } },
     ] } : row) } });
     try {
       const writes: string[] = [], errors: string[] = [];

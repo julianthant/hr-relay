@@ -23,7 +23,7 @@ export const ActionWriteTargetSchema = z.strictObject({
 export const ActionConfirmWireSchema = z.strictObject({
   title: z.string().min(1),
   /** names the casualties in the operator's own terms */
-  body: z.string().min(1),
+  body: z.string().min(1).optional(),
   confirmLabel: z.string().min(1),
   tone: z.enum(["destructive", "neutral"]),
 });

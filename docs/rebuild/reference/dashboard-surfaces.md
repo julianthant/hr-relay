@@ -102,7 +102,7 @@ The Queue displays selected workflow/day rows with title, status, outcome/warnin
 identity disclosure, and available actions. The focus toolbar sorts and filters the same row
 population. Focus mode and expanded wells are view coordinates; bulk selection is transient state.
 Escape exits selection. A row's `#N` footer is its attempt, followed by plain trace text and duration.
-The footer is one line. Creation provenance belongs in the information disclosure.
+The footer is one line. Delete confirms with the title, selected run, buttons, and the footer’s short run ID plus revision, without a description. Creation provenance belongs in the information disclosure.
 
 `QueuePanel` accepts `QueueSurfaceWire[]`, `QueueViewState`, `QueueHandlers`, action descriptors,
 workflow labels, parent identity, and filter scope. Its model distinguishes standalone,

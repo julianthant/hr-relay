@@ -218,7 +218,6 @@ function projectedRowCommands(): ReadonlySet<string> {
         memberCount: 0,
         isMember,
         named: false,
-        workflowLabel: "Person Lookup",
         hasReviewPanel: false,
       });
       for (const action of actions) if (action.kind === "command") commands.add(action.command);
@@ -361,7 +360,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       assert.ok(!projected.has(key), `retained command became directly projected: ${key}`);
     }
     const navigation = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {status:"failed",rowRevision:1,dryRun:false,isChild:false,
-      parkedWrite:false,memberCount:0,isMember:false,named:false,workflowLabel:"Fixture",hasReviewPanel:false});
+      parkedWrite:false,memberCount:0,isMember:false,named:false,hasReviewPanel:false});
     assert.ok(navigation.some(action => action.kind === "navigation" && action.navigate.kind === "rerun"));
     for (const key of actionKeys) {
       if (key === "archive" || projected.has(key) || RETAINED_UNPROJECTED_ACTIONS.has(key)) continue;

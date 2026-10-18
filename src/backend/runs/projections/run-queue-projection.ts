@@ -1227,7 +1227,6 @@ export class RunQueueProjection {
         isMember: shape === "operation-member",
         named: authority.displayName !== undefined,
 
-        workflowLabel: descriptor?.label ?? queued.workflow,
         hasReviewPanel: descriptor?.capabilities?.review ?? false,
       }),
       rowRevision: authority.version,
