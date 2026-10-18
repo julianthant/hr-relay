@@ -286,3 +286,64 @@ it("refuses an in-flight export after same-client authority replacement loads an
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
+
+it("retains a coherent completed report and browse across population refresh, failure and revisit, then promotes together", async () => {
+  const a = selection([{ status: "done", durationMs: 1000 }]);
+  const b = selection([{ status: "done", durationMs: 4300, title: "Refreshed person" }, { status: "failed" }]);
+  b.snapshot.token = "ap1.fixture.refreshed";
+  const client = clientOf(a);
+  const browse = { metric: "completed" as const, page: 0 };
+  const held = Promise.withResolvers<Awaited<ReturnType<ActivityClient["readActivityPopulation"]>>>();
+  client.activityPopulation = vi.fn().mockResolvedValueOnce(a).mockResolvedValue(b);
+  let bCalls = 0;
+  client.readActivityPopulation = vi.fn<ActivityClient["readActivityPopulation"]>(async input => input === a
+    ? { selection: a, browse: browseResult(a, browse) }
+    : ++bCalls === 1 ? held.promise : { selection: b, browse: browseResult(b, browse) });
+  const host = document.createElement("div"); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  function Probe() {
+    state = useActivityWiring(client, a.report, browse, sources, true);
+    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, blocked: !state.exportReady, notice: state.notice, selection: browse, onSelection: () => {}, range: a.report, today: a.report.to, period: "custom", onPreset: () => {}, onRange: () => {} });
+  }
+  const render = (show: boolean, nowIso = "2026-08-07T12:00:00.000Z") => createElement(DashboardClientProvider, { client: client as DashboardClient, children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso, children: show ? createElement(Probe) : null }) });
+  try {
+    await act(async () => root.render(render(true)));
+    const firstReport = state!.data, firstBrowse = state!.browse;
+    assert.equal(firstReport.state, "loaded"); assert.ok(firstBrowse?.state === "loaded");
+    const text = host.querySelector("table")?.textContent;
+    await act(async () => root.render(render(false)));
+    await act(async () => root.render(render(true)));
+    assert.equal(bCalls, 1);
+    assert.deepEqual(state!.data, firstReport); assert.deepEqual(state!.browse, firstBrowse);
+    assert.equal(host.querySelector("table")?.textContent, text);
+    assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+    assert.equal(state!.pending, true); assert.equal(state!.exportReady, false);
+    await assert.rejects(state!.exportCsv());
+    await act(async () => root.render(render(false)));
+    await act(async () => root.render(render(true)));
+    assert.equal(bCalls, 1);
+    assert.deepEqual(state!.data, firstReport); assert.deepEqual(state!.browse, firstBrowse);
+    assert.equal(host.querySelector("table")?.textContent, text);
+    assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+    await assert.rejects(state!.exportCsv());
+    await act(async () => held.reject(new Error("synthetic new snapshot browse failed")));
+    assert.deepEqual(state!.data, firstReport); assert.deepEqual(state!.browse, firstBrowse);
+    assert.equal(state!.notice, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
+    assert.equal(state!.pending, false); assert.equal(state!.exportReady, false);
+    assert.ok(host.querySelector('button[aria-label^="Open logs for"]:disabled'));
+    await act(async () => root.render(render(false)));
+    await act(async () => root.render(render(true)));
+    assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(b) });
+    assert.equal(state!.browse?.state, "loaded"); assert.match(host.textContent ?? "", /Refreshed person/);
+    assert.equal(state!.exportReady, true);
+    browse.page = -1;
+    await act(async () => root.render(render(true)));
+    assert.deepEqual(state!.browse, { state: "unavailable", reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text });
+    assert.equal(state!.exportReady, false);
+    browse.page = 0;
+    client.activityPopulation = vi.fn(() => new Promise<ActivityPopulationSelection>(() => {}));
+    await act(async () => root.render(render(true, "2026-08-07T12:01:00.000Z")));
+    assert.equal(state!.data.state, "loading"); assert.equal(state!.browse, undefined);
+    assert.doesNotMatch(host.textContent ?? "", /Person 1|Refreshed person/);
+  } finally { act(() => root.unmount()); }
+});

@@ -98,7 +98,10 @@ export function createDashboardTransport(input: Readonly<{
       : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") ? "DASHBOARD_READ_FAILED" : undefined;
     if (code === undefined) return sendUnbounded(path, init);
     return readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code,
-      route?.startsWith("/api/v1/settings/chatgpt-account/sign-in/") ? CHATGPT_COMPLETION_READ_DEADLINE_MS : route === "/api/v1/storage/doctor" ? STORAGE_DOCTOR_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS, init?.signal ?? undefined);
+      route?.startsWith("/api/v1/settings/chatgpt-account/sign-in/") ? CHATGPT_COMPLETION_READ_DEADLINE_MS : route === "/api/v1/storage/doctor" ? STORAGE_DOCTOR_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS, init?.signal ?? undefined).catch((error: unknown) => {
+        if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);
+        throw error;
+      });
   };
 
   return Object.freeze({

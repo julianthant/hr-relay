@@ -22,10 +22,10 @@ export function ActivityReport({ range, onRange, client, today: servedToday, sou
   const wire = useActivityWiring(client, resolved, selection, workflowSources, source === "served" && !resolved.refusal);
   const data = useMemo(() => source === "mock" ? resolved.refusal ? { state: "unavailable" as const, reason: resolved.refusal } : activitySample(resolved, scenario) : wire.data, [source, resolved, scenario, wire.data]);
   const onSelection = useCallback<ActivitySelectionHandler>((next, mode = 'push') => {
-    if (source === "served" && wire.pending && next?.run !== undefined) return;
+    if (source === "served" && !wire.exportReady && next?.run !== undefined) return;
     if (navigation) navigation.update({ activityBrowse: next }, mode);
     else setSelection(next);
-  }, [navigation, setSelection, source, wire.pending]);
+  }, [navigation, setSelection, source, wire.exportReady]);
   const onExport = (format: "csv" | "xlsx") => {
     if (source === "mock") { setNotice({ scope, text: "CSV export is unavailable in this preview." }); return; }
     if (format !== "csv") { setNotice({ scope, text: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); return; }
@@ -38,7 +38,7 @@ export function ActivityReport({ range, onRange, client, today: servedToday, sou
   if (resolved.refusal) return <section aria-label="Analytics report" className="settings-reference-page settings-data-section"><PageHeading title="Analytics" description="Report unavailable" /><p role="alert" className="text-body text-ui-danger">{resolved.refusal} Requested: {range}</p></section>;
   const period = choice?.range === range ? choice.value : activityPresetOf(resolved, today);
   return <ActivityView data={data} range={resolved} rangeRevision={rangeRevision} today={today} period={period}
-    selection={selection} onSelection={onSelection} browse={source === "served" ? wire.browse : undefined} pending={source === "served" && wire.pending}
+    selection={selection} onSelection={onSelection} browse={source === "served" ? wire.browse : undefined} pending={source === "served" && wire.pending} blocked={source === "served" && !wire.exportReady}
     onRange={next => { const value = activityRangeValue(next); setChoice({ range: value, value: "custom" }); setNotice(undefined); setSelection(null); onRange(value); }}
     onPreset={preset => { const value = preset === "custom" ? range : activityRangeValue(activityPresetRange(preset, today)); setChoice({ range: value, value: preset }); setNotice(undefined); if (preset !== "custom") { setSelection(null); setRangeRevision(current => current + 1); onRange(value); } }}
     onExport={source === "served" && !wire.exportReady ? undefined : onExport}

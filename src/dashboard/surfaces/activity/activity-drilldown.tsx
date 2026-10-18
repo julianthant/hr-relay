@@ -22,7 +22,7 @@ export function ActivityBreadcrumbs({ report, selection, onSelection, browse }: 
   return <PageBreadcrumbs label="Analytics breadcrumbs" items={breadcrumbs} />;
 }
 
-export function ActivityDrilldown({ report, selection, onSelection, browse, pending = false }: { report: ActivitySummary; selection: ActivityBrowse; onSelection: ActivitySelectionHandler; browse?: ActivityDrilldownData; pending?: boolean }) {
+export function ActivityDrilldown({ report, selection, onSelection, browse, pending = false, blocked = false }: { report: ActivitySummary; selection: ActivityBrowse; onSelection: ActivitySelectionHandler; browse?: ActivityDrilldownData; pending?: boolean; blocked?: boolean }) {
   const missing = pending && browse === undefined;
   const show = useDelayedLoading(missing);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -65,14 +65,14 @@ export function ActivityDrilldown({ report, selection, onSelection, browse, pend
             <colgroup><col />{showWorkflow && <col className="w-[27%]" />}{showStatus && <col className="w-[20%]" />}<col className="w-[18%]" /></colgroup>
             <thead className="bg-ui-table text-caption text-ui-secondary"><tr>{['Name', ...(showWorkflow ? ['Workflow'] : []), ...(showStatus ? ['Status'] : []), 'Duration'].map(label => <th key={label} scope="col" className="px-4 py-3 text-left font-normal last:text-right">{label}</th>)}</tr></thead>
             <tbody>{result.rows.map(run => <tr key={run.id} className="border-t border-ui-stroke even:bg-ui-table">
-              <td className="px-4 py-3"><button type="button" aria-label={`Open logs for ${run.subject}, ${run.displayId}`} disabled={pending} onClick={() => onSelection({ ...selection, run: run.id })} className={`block max-w-full rounded-sm text-left text-ui-info hover:underline ${dsFocus}`}><span className="block text-control">{run.subject}</span><span className="block text-caption tabular-nums text-ui-muted">{run.displayId}</span></button></td>
+              <td className="px-4 py-3"><button type="button" aria-label={`Open logs for ${run.subject}, ${run.displayId}`} disabled={pending || blocked} onClick={() => onSelection({ ...selection, run: run.id })} className={`block max-w-full rounded-sm text-left text-ui-info hover:underline ${dsFocus}`}><span className="block text-control">{run.subject}</span><span className="block text-caption tabular-nums text-ui-muted">{run.displayId}</span></button></td>
               {showWorkflow && <td className="px-4 py-3">{run.workflowLabel}</td>}{showStatus && <td className="px-4 py-3"><RunStatus run={run} /></td>}<td className="px-4 py-3 text-right tabular-nums">{activityDuration(run.seconds)}</td>
             </tr>)}</tbody>
           </table>
           {!result.rows.length && <p className="m-0 px-4 py-6 text-center text-body text-ui-secondary">{selection.query?.trim() ? 'No runs match your search.' : 'No matching runs in this period.'}</p>}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ui-stroke px-4 py-2 text-caption text-ui-muted">
             <span>{result.totalMatches ? `${result.start + 1}–${Math.min(result.totalMatches, result.start + ACTIVITY_RUN_PAGE_SIZE)} of ${result.totalMatches}` : '0 runs'}</span>
-            <span className="flex gap-2"><Button size="sm" variant="ghost" disabled={pending || selection.page === 0} onClick={() => onSelection({ ...selection, page: selection.page - 1 })}>Previous</Button><Button size="sm" variant="ghost" disabled={pending || result.start + ACTIVITY_RUN_PAGE_SIZE >= result.totalMatches} onClick={() => onSelection({ ...selection, page: selection.page + 1 })}>Next</Button></span>
+            <span className="flex gap-2"><Button size="sm" variant="ghost" disabled={pending || blocked || selection.page === 0} onClick={() => onSelection({ ...selection, page: selection.page - 1 })}>Previous</Button><Button size="sm" variant="ghost" disabled={pending || blocked || result.start + ACTIVITY_RUN_PAGE_SIZE >= result.totalMatches} onClick={() => onSelection({ ...selection, page: selection.page + 1 })}>Next</Button></span>
           </div>
         </div>
       </>}

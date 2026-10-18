@@ -114,7 +114,8 @@ describe("Settings read deadlines", () => {
       await vi.advanceTimersByTimeAsync(10_000); assert.ok(await reading instanceof DashboardClientError);
       const controller = new AbortController();
       const cancelled = transport.requestJson("/api/v1/settings/facts", { signal: controller.signal }).then(() => undefined, (error: unknown) => error);
-      const reason = new Error("synthetic cancellation"); controller.abort(reason); assert.equal(await cancelled, reason);
+      const reason = new Error("synthetic cancellation"); controller.abort(reason); const failure = await cancelled;
+      assert.ok(failure instanceof DashboardClientError); assert.equal(failure.kind, "network"); assert.equal(failure.retryable, true); assert.equal(failure.cause, reason);
     } finally { vi.useRealTimers(); }
   });
   it("gives doctor reads sixty seconds without bounding mutation requests", async () => {
@@ -143,4 +144,28 @@ it("keeps OAuth completion pending for its five-minute ceremony then bounds body
     await vi.advanceTimersByTimeAsync(10_000); const error = await result;
     assert.ok(error instanceof DashboardClientError); assert.equal(error.code, "CHATGPT_AUTH_UNAVAILABLE");
   } finally { vi.useRealTimers(); }
+});
+
+
+it("classifies caller cancellation during a hanging Settings body and rejects late replacement content", async () => {
+  const body = Promise.withResolvers<unknown>();
+  const response = new Response();
+  let entered = false, observed: AbortSignal | null | undefined;
+  response.json = () => { entered = true; return body.promise; };
+  const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: async (_url, init) => { observed = init?.signal; return response; } });
+  const controller = new AbortController(), reason = new Error("synthetic body cancellation");
+  const reading = transport.requestJson("/api/v1/settings/facts", { signal: controller.signal }).then(() => undefined, (error: unknown) => error);
+  await Promise.resolve(); await Promise.resolve(); assert.equal(entered, true);
+  controller.abort(reason);
+  const error = await reading;
+  assert.ok(error instanceof DashboardClientError); assert.equal(error.kind, "network"); assert.equal(error.retryable, true); assert.equal(error.cause, reason);
+  assert.equal(observed?.aborted, true); assert.equal(observed?.reason, reason);
+  body.resolve({ replacement: true }); await Promise.resolve(); assert.equal(await reading, error);
+});
+it("classifies a pre-aborted Settings read without dispatching fetch", async () => {
+  let calls = 0;
+  const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: async () => { calls++; return Response.json({}); } });
+  const controller = new AbortController(), reason = new Error("synthetic pre-abort"); controller.abort(reason);
+  await assert.rejects(transport.requestJson("/api/v1/settings/facts", { signal: controller.signal }), (error: unknown) => error instanceof DashboardClientError && error.kind === "network" && error.retryable && error.cause === reason);
+  assert.equal(calls, 0);
 });

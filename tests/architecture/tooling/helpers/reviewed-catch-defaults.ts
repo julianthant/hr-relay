@@ -18,9 +18,9 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/dashboard/surfaces/settings/editor/settings-editor-model.ts",
-    "sha256": "b7ef2840c0d853b8bf4b70328f13ebe8628c52dc6cd7c3a7dc033517575eb1cc",
-    "reason": "A refresh rejection publishes the read failure and still rejects with settings-read-unavailable; drafts are retained. Before-effect refusal clears the attempt, unconfirmed writes retain it."
-  },
+    "sha256": "23a6f94a1b8f6209dbe8fa3133aca38d66ee1c0f1da4df7c12bc606dd47c7319",
+    "reason": "Initial refresh publishes catalog failure; conflict and reload refresh rejections already publish readProblem with SETTINGS_REFRESH_UNAVAILABLE and retain the verified document and local drafts while admission stays blocked. SettingsReadSuperseded revokes obsolete observation settlement without publishing a current failure or accepting stale readback; command attempts and uncertainty are retained."
+},
   {
     "path": "src/dashboard/surfaces/settings/providers/settings-protected-model.ts",
     "sha256": "558f28727e4d9d0739fb2e2ed2052ae1ee08f96bfa834f7a33aaa34652037451",
@@ -105,5 +105,25 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
     "sha256": "839a651d275ebd4ddb441b4bc624c8aaaf1fa124f0d7216a9f36b7ae0ebbf03a",
     "reason": "Stall probes report explicit unknown codes (landing-probe-unavailable, duo-refusal-unproven); every stalled landing still throws BrowserLandingStallError or DuoTerminalRefusalError, the refusal, stale-request, and training-reminder observers leave observation timeout and diagnosis to the landing wait, and training-reminder click failures remain explicit BrowserLoginError failures. Initiated bound-element clicks drain before landing or cancellation settles; compound click, disposal, and landing failures retain their original causes."
-  }
+  },
+  {
+    "path": "src/dashboard/state/activity-wiring-adapter.ts",
+    "sha256": "eb13c5569e7fa09692b3093371ac4854f9bc36dbad99733f32dff3154530b007",
+    "reason": "The population observation consumes a rejection only after createSettingsRead publishes failed with its held selection. useActivityWiring exposes the catalog notice and revokes exports/navigation, preserving a coherent completed report and browse as history; superseded reads cannot publish or replace the current pair."
+},
+  {
+    "path": "src/dashboard/state/explorer-wiring-adapter.ts",
+    "sha256": "b9b41d1b15445acbb266b9dc7a19ea63f69942440f593cc6307bb42d2f5d451e",
+    "reason": "createSettingsRead publishes failed before its observation rejects. useExplorerWiring returns a catalog refusal and its exact retained projection; WorkflowExplorer renders the failure beside held timeline and sources. Superseded authority observations cannot restore old definitions."
+},
+  {
+    "path": "src/dashboard/surfaces/settings/editor/settings-facts-model.ts",
+    "sha256": "e9c2c3608b6b658b7002788795b478265e8211b3a82fd4f8d4ff96d20ad516b3",
+    "reason": "createSettingsRead publishes failed before the facts observation rejects. useSettingsFacts returns SETTINGS_INITIAL_READ_UNAVAILABLE with any held facts, and FactsPane renders the catalog failure beside those exact facts; superseded identity reads cannot publish."
+},
+  {
+    "path": "src/dashboard/surfaces/settings/storage/storage-settings-model.ts",
+    "sha256": "074755a01314e9e42d94c6798ba9fefa176b7c5737824154751ea634308fe9b8",
+    "reason": "Latest and full doctor read resources publish failed before observers consume rejection. useStorageDoctor exposes STORAGE_DOCTOR_FAILED with the exact held report; StorageSection renders that catalog failure and preserves diagnostic findings. Superseded observations cannot replace authority; stale-check marker prevents automatic retry after failure, while explicit operator retry remains available."
+}
 ] as const;

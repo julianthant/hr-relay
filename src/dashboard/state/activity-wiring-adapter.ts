@@ -86,6 +86,9 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const browseKey = canonicalJsonStringify(browse === null ? null : JSON.parse(JSON.stringify(browse)));
   const browseInput = useMemo(() => enabled && browseKey !== "null" ? ActivityPopulationBrowseSchema.safeParse(JSON.parse(browseKey)) : undefined, [enabled, browseKey]);
   const browseRequest = useMemo(() => ({ request, selection, browse: browseKey, sources }), [request, selection, browseKey, sources]);
+  const pairScope = canonicalJsonStringify([browse?.metric ?? null, browse?.workflow ?? null, browse?.run ?? null, sources]);
+  const pairResource = useSettingsRead<{ resource: typeof resource; selection: ActivityPopulationSelection; browse: Extract<ActivityDrilldownData, { state: "loaded" }> }>(client ?? unavailableActivityClient, `activity-pair:${range.from}:${range.to}:${pairScope}`);
+  const pair = useSyncExternalStore(pairResource.subscribe, pairResource.snapshot, pairResource.snapshot);
   const browseResource = useSettingsRead<ActivityDrilldownData>(client ?? unavailableActivityClient, `activity-browse:${selection?.snapshot.token ?? "none"}:${browseKey}:${canonicalJsonStringify(sources)}`);
   const cachedBrowse = useSyncExternalStore(browseResource.subscribe, browseResource.snapshot, browseResource.snapshot);
   const [observedBrowse, setSettled] = useState<{ request: typeof browseRequest; result?: ActivityDrilldownData; error?: unknown }>();
@@ -112,13 +115,21 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const retain = !current && settled?.result !== undefined && selection !== undefined && settled?.request.selection === selection && browse !== null && previousBrowse !== null
     && browse.run === undefined && previousBrowse.run === undefined && browse.metric === previousBrowse.metric && browse.workflow === previousBrowse.workflow;
   const invalidBrowse = browseInput?.success === false;
-  const pending = browse !== null && !invalidBrowse && (!current || cachedBrowse.state === "loading");
-  const projected = useMemo(() => selection === undefined ? undefined : projectActivityPopulation(selection), [selection]);
-  const data: ActivityViewState = selection === undefined && base.state === "failed" ? { state: "unavailable", reason: failureText(base.error) }
+  const pending = browse !== null && !invalidBrowse && (base.state === "loading" || cachedBrowse.state === "loading" || !current && cachedBrowse.state !== "failed");
+  const completed = useMemo(() => current && cachedBrowse.state === "loaded" && base.state === "loaded" && settled?.result?.state === "loaded" && selection !== undefined
+    ? { resource, selection, browse: settled.result } : undefined, [current, cachedBrowse.state, base.state, settled?.result, selection, resource]);
+  useEffect(() => {
+    const held = pairResource.snapshot().value;
+    if (completed !== undefined && (held?.selection !== completed.selection || held.browse !== completed.browse)) pairResource.accept(completed);
+  }, [completed, pairResource]);
+  const history = !invalidBrowse && completed === undefined && pair.value?.resource === resource ? pair.value : undefined;
+  const displayed = history?.selection ?? selection;
+  const projected = useMemo(() => displayed === undefined ? undefined : projectActivityPopulation(displayed), [displayed]);
+  const data: ActivityViewState = displayed === undefined && base.state === "failed" ? { state: "unavailable", reason: failureText(base.error) }
     : !enabled || client === undefined ? { state: "unavailable", reason: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }
     : projected === undefined ? { state: "loading" } : { state: "loaded", report: projected };
-  const browseData = invalidBrowse ? { state: "unavailable" as const, reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text } : current && "error" in settled ? cachedBrowse.value ?? { state: "unavailable" as const, reason: failureText(settled.error) } : current || retain ? settled?.result : undefined;
-  const blocked = base.state !== "loaded" || pending || invalidBrowse || current && "error" in settled;
+  const browseData = history?.browse ?? (invalidBrowse ? { state: "unavailable" as const, reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text } : current && "error" in settled ? cachedBrowse.value ?? { state: "unavailable" as const, reason: failureText(settled.error) } : current || retain ? settled?.result : undefined);
+  const blocked = base.state !== "loaded" || pending || invalidBrowse || cachedBrowse.state === "failed" || current && "error" in settled;
   const latest = useRef({ request, resource, selection, blocked }); latest.current = { request, resource, selection, blocked };
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -128,5 +139,5 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
     if (!mounted.current || latest.current.request !== request || latest.current.resource !== resource || latest.current.selection !== selection || latest.current.blocked || signal?.aborted) throw refused();
     return download;
   }, [client, request, resource, selection]);
-  return { data, browse: browseData, pending, exportReady: !blocked, notice: base.state === "failed" ? failureText(base.error) : cachedBrowse.state === "failed" ? failureText(cachedBrowse.error) : pending && retain ? "Refreshing Analytics selection…" : "", exportCsv };
+  return { data, browse: browseData, pending, exportReady: !blocked, notice: base.state === "failed" ? failureText(base.error) : cachedBrowse.state === "failed" ? failureText(cachedBrowse.error) : pending && (retain || history !== undefined) ? "Refreshing Analytics selection…" : "", exportCsv };
 }

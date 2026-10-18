@@ -22,7 +22,9 @@ it("propagates a locally cancelled Activity request without accepting a replacem
   controller.abort();
   await assert.rejects(request, (error: unknown) => error instanceof DashboardClientError
     && error.kind === "network" && error.retryable);
-  assert.equal(observedSignal, controller.signal);
+  assert.ok(observedSignal);
+  assert.equal(observedSignal.aborted, true);
+  assert.equal(observedSignal.reason, controller.signal.reason);
   assert.equal(controller.signal.aborted, true);
 });
 
@@ -36,7 +38,7 @@ it("reads the complete population, browses the selected snapshot and downloads b
   } }));
   const controller = new AbortController();
   const selection = await client.activityPopulation(DAY, DAY, controller.signal);
-  assert.equal(observedSignal, controller.signal);
+  assert.ok(observedSignal); assert.equal(observedSignal.aborted, false);
   assert.equal(selection.population.length, selection.report.totalRuns);
   assert.match(selection.snapshot.token, /^ap1\./u);
   const read = await client.readActivityPopulation(selection, undefined, controller.signal);
@@ -48,7 +50,7 @@ it("reads the complete population, browses the selected snapshot and downloads b
     const requested = new URL(paths.at(-1)!);
     const serialized = JSON.parse(requested.searchParams.get("browse")!) as Record<string, unknown>;
     assert.equal("query" in serialized, query !== undefined);
-    assert.equal(observedSignal, controller.signal);
+    assert.ok(observedSignal); assert.equal(observedSignal.aborted, false);
   }
   const download = await client.exportActivityPopulationCsv(selection, controller.signal);
   assert.equal(observedSignal, controller.signal);
@@ -112,12 +114,12 @@ it("refuses substituted population downloads and preserves caller cancellation f
   const corrupted = bytes.slice(0); new Uint8Array(corrupted)[0] ^= 1;
   const wrong = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: () => Promise.resolve(new Response(corrupted, { headers: real.headers })) }));
   await assert.rejects(wrong.exportActivityPopulationCsv(selection), /mismatch/u);
-  for (const action of [
+  for (const [index, action] of [
     (client: ReturnType<typeof createActivityQueries>, signal: AbortSignal) => client.activityPopulation(DAY, DAY, signal),
     (client: ReturnType<typeof createActivityQueries>, signal: AbortSignal) => client.readActivityPopulation(selection, undefined, signal),
     (client: ReturnType<typeof createActivityQueries>, signal: AbortSignal) => client.readActivityPopulation(selection, { metric: "completed", page: 0 }, signal),
     (client: ReturnType<typeof createActivityQueries>, signal: AbortSignal) => client.exportActivityPopulationCsv(selection, signal),
-  ]) {
+  ].entries()) {
     let observedSignal: AbortSignal | undefined;
     const client = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (_url, init) => new Promise<Response>((_resolve, reject) => {
       observedSignal = init?.signal ?? undefined;
@@ -126,7 +128,10 @@ it("refuses substituted population downloads and preserves caller cancellation f
     const controller = new AbortController();
     const request = action(client, controller.signal); controller.abort();
     await assert.rejects(request, (error: unknown) => error instanceof DashboardClientError && error.kind === "network" && error.retryable);
-    assert.equal(observedSignal, controller.signal);
+    assert.ok(observedSignal);
+    assert.equal(observedSignal.aborted, true);
+    assert.equal(observedSignal.reason, controller.signal.reason);
+    if (index === 3) assert.equal(observedSignal, controller.signal);
   }
 });
 
