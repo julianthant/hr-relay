@@ -7,7 +7,7 @@ import { useWorkspaceNotifications } from "../../../../src/dashboard/surfaces/no
 import type { NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { FIXTURE_DAY_WIRE } from "../../../support/fixtures/dashboard/fixture-queue.js";
 import { seedMockRuns } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import type { QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
+import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 it("keeps the private Inbox producer stable within a minute and exposes missing served authority", async () => {
@@ -36,8 +36,8 @@ it("preserves served ages, genuine future events and explicit mock event times",
   const runs = seedMockRuns();
   const workflowLabel = (id: string) => id;
   const source = FIXTURE_DAY_WIRE.queueSurfaces[0];
-  const rows: readonly QueueSurfaceWire[] = [{ ...source, status: "done", endedAt: { state: "present", value: "2026-08-03T11:59:00.000Z" } }];
-  const futureRows: readonly QueueSurfaceWire[] = [{ ...rows[0], endedAt: { state: "present", value: "2026-08-03T12:02:15.000Z" } }];
+  const rows = [QueueSurfaceWireSchema.parse({ ...source, status: "done", endedAt: { state: "present", value: "2026-08-03T11:59:00.000Z" } })];
+  const futureRows = [QueueSurfaceWireSchema.parse({ ...rows[0], endedAt: { state: "present", value: "2026-08-03T12:02:15.000Z" } })];
   const eventTimes = { "mock:emergency-contact:sample:ocr": "2026-08-03T12:01:45.000Z" };
   let value: NotificationsState | undefined;
   function Probe({ nowIso, rows, eventTimes }: { nowIso: string; rows: readonly QueueSurfaceWire[]; eventTimes?: Readonly<Record<string, string>> }) {
