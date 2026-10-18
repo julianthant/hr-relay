@@ -132,7 +132,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
 
         const arm = warningVerdict.kind === "present"
           ? "warnings"
-          : warningVerdict.kind === "none"
+          : warningVerdict.kind === "none" && row.receiptResult === "verified-done"
             ? "readBack"
             : "warningsUnknown";
         counts.completion[arm] += 1;
