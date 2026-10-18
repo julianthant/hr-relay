@@ -16,6 +16,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | Module | Concept |
 | --- | --- |
+| `fixtures/person-lookup-presentation.ts` | fictional served Person Lookup presentation evidence |
 | `fixtures/advisory-prompt-fixtures.ts` | advisory prompt fixtures |
 | `fixtures/cross-date-search-corpus.ts` | cross date search corpus |
 | `fixtures/dashboard/diagnostic-jpeg-fixture.ts` | diagnostic jpeg fixture |
