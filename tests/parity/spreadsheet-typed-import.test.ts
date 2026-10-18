@@ -5,7 +5,7 @@ import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
-for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
+for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920, 2560]) {
   const evidenceName = `typed-import-${theme.attribute}-${width}.a11y.yml`;
   test(`typed spreadsheet mapping and retained edits @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidenceName }] }, async ({ page }, info) => {
     ensureParityBundle();
@@ -39,6 +39,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const tree = await page.locator("body").ariaSnapshot();
       info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(tree).digest("hex") });
       await info.attach(evidenceName, { body: tree, contentType: 'text/yaml' });
+      await info.attach(`typed-import-${theme.attribute}-${width}.png`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
       await submit.click();
       const editor = page.getByRole('region', { name: 'Spreadsheet editor', exact: true });
       await expect(editor.getByRole('textbox', { name: 'A1', exact: true })).toHaveValue('Legal Name');
