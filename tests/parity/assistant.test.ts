@@ -110,18 +110,32 @@ test('assistant keyboard, cancellation, retry, citations and exact one-time mock
   await expect(message).toBeFocused();
   await page.keyboard.press('Escape'); await launcher.click();
   await expect(panel.getByText('Preparing a proposal…')).toBeVisible();
-  await panel.getByRole('button', { name: 'Cancel reply' }).click();
+  await panel.getByRole('button', { name: 'Cancel reply' }).focus(); await page.keyboard.press('Enter');
   await expect(panel.getByText(/Reply cancelled/)).toBeVisible();
+  await expect(message).toBeFocused();
   await expect(message).not.toHaveValue('');
   await expect(page.getByLabel('Mock callback count')).toHaveText('Mock confirmations: 0');
 
   await page.goto(`${baseUrl}/?scene=failed`);
-  await panel.getByRole('button', { name: 'Retry reply' }).click();
+  await panel.getByRole('button', { name: 'Retry reply' }).focus(); await page.keyboard.press('Enter');
+  await expect(message).toBeFocused();
+  await panel.getByRole('button', { name: 'Cancel reply' }).focus();
   await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
+  await expect(message).toBeFocused();
   await panel.getByRole('button', { name: 'Cancel', exact: true }).focus(); await page.keyboard.press('Enter');
   await expect(panel.getByText('Proposal cancelled. No run was started.')).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
+  await expect(message).toBeFocused();
   expect(outbound).toEqual([]);
+});
+
+test('assistant keeps the reader focus when a reply arrives elsewhere in the panel', async ({ page }) => {
+  await page.goto(`${baseUrl}/?scene=proposal`);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const transcript = page.getByRole('region', { name: 'Conversation' });
+  await transcript.focus();
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
+  await expect(transcript).toBeFocused();
 });
 
 for (const width of [1280, 1920, 2560]) {

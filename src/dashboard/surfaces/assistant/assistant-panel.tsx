@@ -28,10 +28,18 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
     node.scrollTop = node.scrollHeight;
     return () => observer.disconnect();
   }, [state.messages]);
+  const preserveActionFocus = useCallback((button: HTMLButtonElement | null) => {
+    if (!button) return;
+    return () => { if (document.activeElement === button) composer.current?.focus(); };
+  }, []);
+  function dispatchAndFocus(type: 'cancel' | 'retry' | 'confirm' | 'send') {
+    composer.current?.focus();
+    onAction({ type });
+  }
   function confirm() {
     if (turn.state !== 'proposal' || refusal || confirmed.current.has(turn.proposal.id)) return;
     confirmed.current.add(turn.proposal.id);
-    onAction({ type: 'confirm' });
+    dispatchAndFocus('confirm');
     onMockConfirm(turn.proposal);
   }
   return <Popover open={open} onOpenChange={setOpen}>
@@ -70,13 +78,13 @@ export function AssistantPanel({ state, revision, accountAvailable, onAction, on
                 </dl>
               </div>
               <p className={`assistant-notice ${dsText.meta}`} role="status">{refusal ?? 'Confirm records this proposal once in the mock. It starts no run.'}</p>
-              <div className="assistant-actions"><Button size="sm" disabled={turn.disposition === 'cancelled' || turn.disposition === 'confirmed'} onClick={() => onAction({ type: 'cancel' })}>Cancel</Button><Button size="sm" variant="primary" disabled={Boolean(refusal)} onClick={confirm}>Confirm</Button></div>
+              <div className="assistant-actions"><Button size="sm" disabled={turn.disposition === 'cancelled' || turn.disposition === 'confirmed'} onClick={() => dispatchAndFocus('cancel')}>Cancel</Button><Button size="sm" variant="primary" disabled={Boolean(refusal)} onClick={confirm}>Confirm</Button></div>
             </>}
-            {waiting && <div className="assistant-status"><span role="status"><Spinner label="Preparing a proposal" />Preparing a proposal…</span><Button size="sm" onClick={() => onAction({ type: 'cancel' })}>Cancel reply</Button></div>}
-            {turn.state === 'failed' && <div className="assistant-status"><p role="alert">Reply unavailable. Your request is kept.</p><Button size="sm" disabled={!accountAvailable || state.draft !== turn.prompt} onClick={() => onAction({ type: 'retry' })}>Retry reply</Button></div>}
+            {waiting && <div className="assistant-status"><span role="status"><Spinner label="Preparing a proposal" />Preparing a proposal…</span><Button ref={preserveActionFocus} size="sm" onClick={() => dispatchAndFocus('cancel')}>Cancel reply</Button></div>}
+            {turn.state === 'failed' && <div className="assistant-status"><p role="alert">Reply unavailable. Your request is kept.</p><Button ref={preserveActionFocus} size="sm" disabled={!accountAvailable || state.draft !== turn.prompt} onClick={() => dispatchAndFocus('retry')}>Retry reply</Button></div>}
             {turn.state === 'cancelled' && <p role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
           </div>
-          <form className="assistant-composer" onSubmit={event => { event.preventDefault(); if (accountAvailable && !waiting) onAction({ type: 'send' }); }}>
+          <form className="assistant-composer" onSubmit={event => { event.preventDefault(); if (accountAvailable && !waiting) dispatchAndFocus('send'); }}>
             {!accountAvailable && <p role="alert">ChatGPT account unavailable. Review the connection in Settings. This mock cannot sign in.</p>}
             <Field label="Message" description="Scripted demo: replies use fixed synthetic subjects."><Textarea ref={composer} rows={2} value={state.draft} onChange={event => onAction({ type: 'edit', value: event.target.value })} /></Field>
             <div className="assistant-send"><span className={dsText.meta}>Synthetic data only</span><Button type="submit" size="sm" icon={<ArrowUp aria-hidden className={dsIcon.md} />} disabled={!accountAvailable || waiting || !state.draft.trim()}>Send</Button></div>
