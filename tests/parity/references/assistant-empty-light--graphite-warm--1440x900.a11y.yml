@@ -1,0 +1,44 @@
+# assistant-empty-light--graphite-warm--1440x900
+# adapter: component-fixture
+# fixture: assistant-empty-light
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - region "Mock scene controls":
+    - text: Assistant design preview Scene
+    - combobox "Scene":
+      - option "proposal"
+      - option "dry-run"
+      - option "waiting"
+      - option "failed"
+      - option "unavailable"
+      - option "stale"
+      - option "empty" [selected]
+      - option "long"
+      - option "launcher-closed"
+    - button "Invalidate plan"
+    - link "Switch theme":
+      - /url: "?scene=empty&theme=dark"
+    - status "Mock callback count": "Mock confirmations: 0"
+  - button "Assistant" [expanded]
+- dialog "Relay assistant":
+  - banner:
+    - heading "Relay assistant" [level=2]
+    - paragraph: Mock preview
+    - button "New chat"
+    - button "Close assistant"
+  - region "Conversation":
+    - heading "How can I help you?" [level=3]
+    - paragraph: Ask a question or prepare a run to review.
+    - button "Check a person in Person Lookup (read-only)"
+    - button "Dry-run separations for 2 people"
+    - button "Explain what Emergency Contact does"
+    - list
+  - textbox "Message":
+    - /placeholder: Send a message…
+  - text: Enter to send · Shift+Enter for a new line
+  - button "Send" [disabled]
+  - paragraph: Scripted preview · Synthetic data · No runs start

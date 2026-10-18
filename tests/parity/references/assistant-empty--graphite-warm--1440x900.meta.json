@@ -1,9 +1,9 @@
 {
-  "stateId": "assistant-failed",
+  "stateId": "assistant-empty",
   "theme": "graphite-warm",
-  "viewport": "1440x810",
+  "viewport": "1440x900",
   "adapter": "component-fixture",
-  "fixtureId": "assistant-failed",
+  "fixtureId": "assistant-empty",
   "descriptorHash": "3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405",
   "appVersion": "0.1.0",
   "capturedAt": "2026-08-03",
