@@ -7,7 +7,7 @@ import { QueueSurfaceWireSchema } from "../../../../src/models/dashboard/project
 import { FIXTURE_DAY,FIXTURE_NOW } from "../../../parity/helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "../../../parity/helpers/fixture-queue.js";
 
-const input = { day: FIXTURE_DAY, nowIso: FIXTURE_NOW, rows: FIXTURE_DAY_WIRE.queueSurfaces, runs: seedMockRuns(), workflowLabel: () => "Person Lookup" };
+const input = { day: FIXTURE_DAY, nowIso: FIXTURE_NOW, anchorIso: FIXTURE_NOW, rows: FIXTURE_DAY_WIRE.queueSurfaces, runs: seedMockRuns(), workflowLabel: () => "Person Lookup" };
 function ready(state = notificationPreviewState("normal", input)) {
   if (state.state !== "ready") throw new Error("Expected ready notification preview");
   return state;

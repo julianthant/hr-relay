@@ -21,7 +21,7 @@ function Fixture() {
   if (surface === 'queue') {
     const runs = seedMockRuns().filter(run => run.workflowId === 'person-lookup');
     if (runs.length !== 8) throw new Error('lookup-fixture-missing');
-    const surfaces = mockQueueSurfaces(runs, '2026-08-03');
+    const surfaces = mockQueueSurfaces(runs, '2026-08-03T16:10:00.000Z');
     return <QueuePanel outcomes={mockQueueOutcomes(runs)} surfaces={surfaces} state={{ nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set() }} handlers={{ onSelect() {} }} workflowLabelOf={() => 'Person Lookup'} panelLabel="Person Lookup" day="2026-08-03" />;
   }
   if (surface === 'export') return <ActivityView data={activitySample(ACTIVITY_SAMPLE_RANGE, 'normal')} range={ACTIVITY_SAMPLE_RANGE} today={ACTIVITY_SAMPLE_TODAY} period="custom" onPreset={() => {}} onRange={() => {}} onExport={() => {

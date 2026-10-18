@@ -280,7 +280,7 @@ function resultFields(run: MockRun): readonly (readonly [string, string])[] {
   if (run.workflowId === "onbase") fields.push(["Combined PDFs", String(run.draft.files.length)]);
   return fields.filter(([label]) => !(run.draft.dryRun && ["HR ticket", "Signature date"].includes(label)) && !(label === "HR ticket" && !run.draft.selectedSteps.includes("submit")) && !(label === "Signature date" && !run.draft.selectedSteps.includes("transaction")) && !(run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only" && label === "Signers"));
 }
-export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; endTime: string } {
+export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; endTime: string; durationSeconds: number } {
   const pipeline = mockRunPipeline(run);
   let elapsed = 0;
   const clock = (seconds: number) => new Date(Date.UTC(2026, 7, 3, 9, 10, seconds)).toISOString().slice(11, 19);
@@ -301,7 +301,7 @@ export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline:
     const last = steps[steps.length - 1];
     steps[steps.length - 1] = { ...last, entries: [...last.entries, { kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: clock(elapsed), kind: "read", label, value })) }] };
   }
-  return { steps, timeline, endTime: clock(elapsed) };
+  return { steps, timeline, endTime: clock(elapsed), durationSeconds: elapsed };
 }
 
 export function mockOathDuplicate(runs: readonly MockRun[], draft: MockDraft): string | undefined {

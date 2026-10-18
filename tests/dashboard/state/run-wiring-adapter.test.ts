@@ -36,7 +36,7 @@ const RUN = "00000000-0000-4000-8000-000000000001";
 const OTHER = "00000000-0000-4000-8000-000000000002";
 const NOTE = "00000000-0000-4000-8000-000000000003";
 const AT = "2026-08-03T12:00:00.000Z";
-const selection = (runId = RUN): LogSelection => ({ row: { ...mockQueueSurface({ id: runId, workflowId: "person-lookup", title: "Served subject", subject: "Served subject", draft: initialMockDraft("person-lookup"), approved: true, seeded: true }, "2026-08-03"), runId: RunIdSchema.parse(runId) }, workflowLabel: "Person lookup" });
+const selection = (runId = RUN): LogSelection => ({ row: { ...mockQueueSurface({ id: runId, workflowId: "person-lookup", title: "Served subject", subject: "Served subject", draft: initialMockDraft("person-lookup"), approved: true, seeded: true }, "2026-08-03T16:10:00.000Z"), runId: RunIdSchema.parse(runId) }, workflowLabel: "Person lookup" });
 function detail(selected = selection()) {
   const row = selected.row;
   return RunDetailWireSchema.parse({ runId: row.runId, rowRevision: row.rowRevision, panelKind: "run",
