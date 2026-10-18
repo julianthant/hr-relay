@@ -18,8 +18,10 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
   notifications and Analytics. It is done after a dry run and operator sign-off.
 - The production codebase (`/Users/julianhein/Projects/hr-automation`) holds each workflow's complete
   behavior. Read it, and port by copying with the legacy commit and path recorded in the task's evidence folder.
-- A workflow is coded only against its operator-approved walkthrough: steps, sub-steps, log-panel
-  timeline, results and scenarios.
+- Approved workflow maps A and B, with their safety corrections, authorize workflow coding. They
+  own inputs, steps, sub-steps, log-panel timelines, results and scenarios. At morning review, the
+  operator reviews generated Explorer timelines and dry-run Logs. Activation remains sequential after a
+  dry run and operator sign-off, in the order under Git.
 - Each workflow switches from mock to served data through one static per-workflow switch. Never fall
   back from served to mock at runtime. A served failure shows its failure state.
 
@@ -67,13 +69,18 @@ The repository holds only the current version. No compatibility readers, old mig
 
 ## Backend
 
-- Only the operator, through the dashboard, uses the backend. No agent or external API access.
+- Only the operator, through the dashboard, uses the backend. The dashboard assistant may use
+  allowlisted reads and make proposals through the dashboard-owned typed client. Only explicit
+  operator confirmation dispatches a validated proposal through that client. The assistant has no
+  arbitrary backend, shell, HTTP or credential access. It cannot approve gates or bypass safety.
+  No other agent or external API access is allowed.
 - Build for one operator on one machine. Add nothing for several users, remote clients or hosting.
 - Keep every HR write protection: dry runs, write intents and parked writes, receipts and evidence,
   and never retrying an UNKNOWN submit.
-- The only AI is OCR through the operator's ChatGPT subscription, connected in Settings with OpenAI's
-  open-source "Sign in with ChatGPT" flow (OAuth with PKCE, loopback redirect, Responses API). Store
-  its tokens only in the local credential store. Add no other AI provider.
+- AI is limited to OCR and the dashboard assistant through the operator's ChatGPT subscription,
+  connected in Settings with OpenAI's open-source "Sign in with ChatGPT" flow (OAuth with PKCE,
+  loopback redirect, Responses API). Store its tokens only in the local credential store.
+  Add no other AI provider.
 - Every failure has a defined error code, and the dashboard shows the text mapped to that code. The
   browser-safe home for codes and text is `src/models/failures/error-catalog.ts`; add them together.
 - Use TypeScript, Hono, SQLite, HTTP and SSE. Keep HTTP parsing and app composition thin.
