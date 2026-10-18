@@ -94,9 +94,8 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             {flow.dryRun && <Checkbox label="Dry run" description="Stop before submission." checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} />}
             <Checkbox label="Capture screenshots" description="Keep browser captures." checked={draft.captures} onCheckedChange={value => patch({ captures: value === true })} />
           </>}>
-          {(workflowId === "onboarding" || workflowId === "old-kronos-reports" || (pdf && !uploadOnly) || draft.method === "typed") && <div className={cn("grid gap-4", workflowId === "onboarding" && "grid-cols-2")}>
-            {workflowId === "onboarding" && <SegmentedChoice label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} />}
-            {workflowId === "old-kronos-reports" ? <Field label="Workers"><Input type="number" min={1} step={1} value={draft.workers} onChange={event => patch({ workers: Number(event.target.value) })} /></Field> : (pdf && !uploadOnly) || draft.method === "typed" ? <ChoicePicker label="Workers" value={String(draft.workers)} options={[{ value: "auto", label: "Auto" }, ...Array.from({ length: 8 }, (_, number) => ({ value: String(number + 1), label: String(number + 1) }))]} onChange={workers => patch({ workers: workers === "auto" ? "auto" : Number(workers) })} /> : null}
+          {workflowId === "onboarding" && <div className="grid grid-cols-2 gap-4">
+            <SegmentedChoice label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} />
           </div>}
         </RunOptionsLayout>}
         {stage === "Steps" && <section aria-label="Steps" className="flex flex-col gap-[var(--ds-space-cozy)]"><h4 id="run-start-steps" className="sr-only">Steps</h4><RunStepsList>{planSteps.length ? planSteps.map(step => {

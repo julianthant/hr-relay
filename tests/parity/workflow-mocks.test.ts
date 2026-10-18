@@ -151,6 +151,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await attachScreenshotFile(page, info, `input-${flow.id}-${theme.attribute}-${width}.png`);
         await advance(dialog);
         await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
+        await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
         await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).toHaveCount(flow.dryRun ? 1 : 0);
         const flags = dialog.locator(".launch-flags"), controls = dialog.locator(".launch-options-grid");
         expect((await flags.boundingBox())!.y).toBeLessThan((await controls.boundingBox())!.y);
@@ -224,6 +226,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(rerun.getByRole("radio", { name: "Bulk", exact: true })).toBeChecked();
         await expect(rerun.getByRole("radio", { name: "Headless", exact: true })).toBeChecked();
         await expect(rerun.getByRole("checkbox", { name: "Capture screenshots", exact: true })).not.toBeChecked();
+        await expect(rerun.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
+        await expect(rerun.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
         if (flow.id === "onboarding") await attachScreenshotFile(page, info, "rerun-shared-options.png");
         await advance(rerun);
         await expect(rerun.getByText("Workflow plan", { exact: true })).toHaveCount(0);
@@ -288,7 +292,8 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await dialog.locator('input[type="file"]').setInputFiles(pdf);
     await expect(dialog.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true })).toBeVisible();
     await advance(dialog);
-    await expect(dialog.getByRole("button", { name: "Auto Workers", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
+    await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).not.toBeChecked();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Start a run", exact: true }).click();

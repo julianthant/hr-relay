@@ -90,8 +90,6 @@
     - definition: "Off"
     - term: Hire type
     - definition: New hire · UC_FULL_HIRE
-    - term: Workers
-    - definition: Auto
   - contentinfo:
     - text: 1 runOnboarding1 to create
     - button "Back"
