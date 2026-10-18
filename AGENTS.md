@@ -83,22 +83,27 @@ The repository holds only the current version. No compatibility readers, old mig
 
 ## Git
 
-- Never push without explicit instruction. Work on a dedicated branch, in a separate worktree for
-  concurrent work. Verify base, path and ownership before editing.
-- Worktrees live in the main checkout's gitignored `.worktrees/<branch>/` folder.
-- Stage exact paths and commit by logical category. Never switch, reset or repurpose another
-  checkout.
-- The operator launches every task and chooses every integration into `master`.
+- `master` is production: the released code, pushed to `origin/master`. `staging` is the
+  integration branch the operator previews. Each task works on `feature/<slug>` branched from
+  `staging`, in the main checkout's gitignored `.worktrees/<slug>/` folder.
+- The operator launches every task. A verified feature merges into `staging` on the operator's go.
+  The operator previews `staging` in the main checkout, which owns the store, credentials and ports:
+  stop the dashboard, switch to `staging`, start it. A rejected feature is reverted on `staging`.
+- After the operator signs off and the full checks pass on `staging`, `master` fast-forwards to it
+  and is pushed to `origin/master`, only on the operator's explicit go. Never push otherwise.
+- A `staging` with a store migration is previewed only after a verified `storage backup`.
+- Verify base, path and ownership before editing. Stage exact paths and commit by logical category.
+  Never switch, reset or repurpose another checkout.
 - Briefs, receipts and evidence live in the main checkout's gitignored `.work/` folder; worktrees
   write there by absolute path. Remove a task's evidence folder once nothing needs it.
-  Cleanup removes a worktree's registration and its folder, after its evidence and unknown files are
-  saved.
+- Once a feature reaches `master`, remove its worktree registration, folder and branch, after its
+  evidence and unknown files are saved.
 
 ## Checks
 
 - During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
   generated checks. Update tests when behavior changes, and say when none exist.
-- Before work is proposed for `master`: `npm run typecheck`, `npm run lint`, `npm run web:build`,
+- Before `staging` is promoted to `master`: `npm run typecheck`, `npm run lint`, `npm run web:build`,
   `npm run test:parity`, then `npm run test:coverage` alone, then `npm run test:perf`. Coverage selects
   the unit, integration and architecture suites without perf, so don't run those three separately.
 - A lint failure is a task failure. Keep assertions, test membership, isolation, coverage floors and

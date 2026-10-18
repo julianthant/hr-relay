@@ -254,7 +254,7 @@ When required, independent review runs against a stable candidate without implem
 Fix findings, obtain required renewed review and complete assigned checks, authorized integration and
 cleanup before marking completion. No historical lesson entries or routine delivery retrospectives.
 
-Sequential implementation uses a dedicated non-`master` branch in an exclusively available checkout;
+Sequential implementation uses a dedicated `feature/<slug>` branch in an exclusively available checkout;
 shared, dirty, uncertain or integration-only checkouts require an owned worktree instead. Preserve
 stricter phase isolation. Verify branch/path/base before edits and record a merge condition for both
 sequential and parallel work. Never switch another session's checkout or stash/reset its changes.
