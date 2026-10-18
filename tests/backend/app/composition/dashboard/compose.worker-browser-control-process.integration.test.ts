@@ -139,14 +139,23 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
         { openContexts: 0, failures: 0 });
       assert.equal(groupPids(child.pid).length, 0);
     }
+    const stoppedChildren = children.length;
     runtime=await boot();
+    assert.equal(children.length,stoppedChildren,"dashboard boot must not spawn standing workers");
     db=AuthorityDatabase.open({path:join(stateRoot,"state.db"),busyTimeoutMs:5000,migrationOwner:"control-process-proof-restarted"},systemClock); database=db;
     assert.equal((await reopen.send()).state,"already-applied");
+    assert.equal(children.length,stoppedChildren,"replaying a settled browser control must not spawn workers");
+    for (const index of [1,2]) {
+      const stopped = db.authority.workerLeases.get(worker(index)); assert.ok(stopped);
+      assert.equal(stopped.leaseGeneration,1); assert.equal(stopped.lifecycle.state,"stopped");
+      assert.equal((await post("spawn-worker",{workflowId:"person-lookup",expectedVersion:db.authority.workerPools.get("person-lookup")?.version},
+        {workerId:worker(index)})).result.state,"applied");
+    }
     await waitFor(() => [1,2].every(index => {
       const lease = db.authority.workerLeases.get(worker(index));
       return lease?.leaseGeneration === 2 && lease.lifecycle.state === "idle";
     }) && db.authority.workerSlots.recoveries("person-lookup").length === 0,
-    "standing recovery did not finalize exact browserless idle owners", diagnostics);
+    "explicit Spawn did not finalize exact browserless idle owners", diagnostics);
     assert.equal(target(1).controlBasis.leaseGeneration,2);
     assert.equal((await post("pause-worker",oldGeneration)).result.state,"conflict");
     const member = db.authority.workerSlots.get(worker(1)); assert.ok(member);
