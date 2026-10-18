@@ -381,9 +381,10 @@ Conflicts and uncertain saves retain the draft. Unsaved workbook drafts share Se
 CSV/XLSX parsing and export run in real workers. Import chooses the header row and kept sheets/columns,
 then optionally binds retained columns to known fields. Unbound columns and roster tracker fields keep
 their original values. Duplicate fields per sheet refuse. Canonical value issues show the original worksheet
-row and column without blocking library import; workflow Intake still refuses invalid execution rows. Confirmation physically removes preamble and excluded sheets/columns instead of merely
-hiding them. Source headers, source column coordinates, header-row provenance, suggestion/manual basis,
-and stable row identities survive. Imported rows retain their original worksheet row through sorting,
+row and column without blocking library import; workflow Intake still refuses invalid execution rows.
+Confirmation physically removes preamble and excluded sheets/columns instead of merely hiding them.
+Source headers, source column coordinates, header-row provenance, suggestion/manual basis, and stable
+row identities survive. Imported rows retain their original worksheet row through sorting,
 edits and library save/reopen; warnings use that location. Rows created without source provenance are
 labelled with their current row. Inserted columns have a null source coordinate.
 
@@ -391,9 +392,10 @@ Editable XLSX imports include hidden and filtered rows. Worksheet/table filter r
 Unsupported Excel table `colorFilter` metadata is removed only from a private parsing copy; original
 bytes stay unchanged. Standard worksheet dimensions retain selected trailing blank rows and columns;
 malformed ranges or worksheet references refuse, and declared extents count toward the workbook size limit.
-Values, supported fills, number formats, hyperlinks and rich-text runs survive
-save, reopen and XLSX export, while malformed table XML refuses import. Editing a cell clears its old
-rich text and hyperlink metadata. Formulas remain imported as their stored results.
+Values, supported fills, number formats, hyperlink URLs/text and rich-text runs survive library
+save, reopen and XLSX export, while malformed table XML refuses import. The ExcelJS importer drops
+hyperlink tooltips; XLSX export emits tooltips already stored in a workbook. Editing a cell clears
+its old rich text and hyperlink metadata. Formulas remain imported as their stored results.
 `spreadsheet-fields-model.ts` reuses canonical intake field IDs and namespaces roster-only IDs.
 Canonical value checks use the intake field coercers and schemas without rewriting stored values.
 Roster-only fields remain tracker text; workflow-specific transaction rules belong to execution admission.
