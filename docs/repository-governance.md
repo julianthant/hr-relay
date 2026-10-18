@@ -33,7 +33,9 @@ Private documents belong in ignored `.local-private/`. The scanner rejects roste
 environment files, credential paths and recognizable credential/employee ID/SSN patterns. The root
 `.env.example` may contain placeholders; credential-value checks still apply to it. Text checks cover
 UTF-8 (including NUL bytes) and UTF-16 in either byte order; unsupported text fails closed. PNG and
-WebP assets are recognized by extension and format signature. Document exceptions remain digest-pinned.
+WebP assets are recognized by extension and format signature; their bytes are still checked for
+recognizable embedded text. The check does not inspect image pixels. Document exceptions remain
+digest-pinned.
 
 `scripts/verify/privacy-synthetic.json` pins the paths and content digests of the three existing
 synthetic document fixtures, and names source paths containing schema examples, mock scenes or
