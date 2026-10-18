@@ -68,9 +68,10 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   });
 }
 
-export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string) {
+export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true) {
   const [launcherBottom, setLauncherBottom] = useState<string>();
   useLayoutEffect(() => {
+    if (!shellMounted) return;
     const panel = document.querySelector('[aria-label="Session Panel"]');
     const bar = panel?.querySelector('[aria-label="Session actions"]');
     if (!(panel instanceof HTMLElement) || !(bar instanceof HTMLElement)) throw new Error('ASSISTANT_UNAVAILABLE');
@@ -81,10 +82,10 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
     };
     const observer = new ResizeObserver(measure); observer.observe(panel); observer.observe(bar); measure();
     return () => observer.disconnect();
-  }, []);
+  }, [shellMounted]);
   const accountPort = useContext(ChatGptAccountContext);
   const account = useChatGptAccount(accountPort);
-  const bindingAuthority = useMemo(() => ({ authority, account }), [authority, account]);
+  const bindingAuthority = useMemo(() => ({ authority, account, shellMounted }), [authority, account, shellMounted]);
   const controller = useMemo(() => createAssistantController(client, { authority: undefined }), [client]);
   useLayoutEffect(() => {
     controller.bind({ authority: bindingAuthority, ...(subjectRef === undefined ? {} : { subjectRef }) });

@@ -672,7 +672,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   ), [filter, scopedStatusCounts, onFilter]);
 
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
-  const assistant = useAssistantController(client, authorityEpoch);
   const settingsResolution = resolveSettingsSection(buildSettingsNav(settingsSections), route.settings ?? "");
   const pageName = takeover === "settings" ? settingsResolution.state === "open" ? settingsResolution.entry.label : "Settings"
     : takeover === "archive" ? "Archive" : takeover === "activity" ? "Analytics" : takeover === "explore" ? "Explorer"
@@ -831,6 +830,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     : route.start && route.view?.launchSource && !mockLaunch?.source ? "The source run is no longer available."
     : route.start && route.view?.launchServed && !startWorkflows.some(flow => flow.workflowId === route.view?.launchServed) ? "This launch workflow is not served."
     : railRun && !mockRuns.some(run => run.id === railRun) && !deletedMockRuns.has(railRun) ? "This preview run is no longer available." : undefined;
+  const assistant = useAssistantController(client, authorityEpoch, undefined, !destinationError);
   if (destinationError) return <EmptyState title="Destination unavailable" description={destinationError} action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />;
 
   return (

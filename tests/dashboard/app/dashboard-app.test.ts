@@ -756,6 +756,10 @@ afterEach_m2(_afterEachFixture0);
     assert_m2.match(h.host.textContent ?? '', /Destination unavailable/u);
     assert_m2.match(h.host.textContent ?? '', /This launch workflow is not registered/u);
     assert_m2.equal(h.streams.length, 1);
+    const recover = [...h.host.querySelectorAll('button')].find(button => button.textContent === 'Open dashboard'); assert_m2(recover);
+    await act_m2(async () => recover.click());
+    assert_m2.equal(h.host.querySelectorAll('[aria-label="Session Panel"]').length, 1);
+    assert_m2.equal(h.host.querySelectorAll('button[aria-label="Assistant"]').length, 1);
   });
   it_m2('keeps slow bootstrap in loading geometry until a parsed response arrives', async () => {
     let resolve!: (response: Response) => void;
