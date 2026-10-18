@@ -64,7 +64,7 @@
   - region "Queue":
     - text: "Finished 1 08/03/2026: 1 verified"
     - button "48216 — done" [pressed]:
-      - text: 48216 Done 9:10 AM
+      - text: 48216 Done 9:59 AM
       - button "Attempts for 48216": "#1"
       - text: SP86524935 5m 28s
       - button "Retry"
@@ -368,7 +368,7 @@
         - definition: Jordan Lee
         - time: 09:15:28
         - term: Employee ID
-        - definition: "48216"
+        - definition: "10000001"
         - time: 09:15:28
         - term: Last day worked
         - definition: 08/02/2026
