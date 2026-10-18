@@ -100,6 +100,8 @@ it("keeps idle, loading, failure, successful refresh and failed refresh distinct
   assert.match(dom.textContent ?? "", /Running checks/u);
   await act(async () => { reject(new Error("Synthetic doctor unavailable")); });
   assert.match(dom.textContent ?? "", /Storage checks could not finishTry running the checks again/u);
+  assert.match(dom.textContent ?? "", /Recovery.*Not checked/su);
+  assert.equal(dom.querySelector('[data-slot="skeleton"]'), null);
   assert.doesNotMatch(dom.textContent ?? "", /Synthetic doctor unavailable/u);
   const failure = [...dom.querySelectorAll('[role="alert"]')].find(candidate => candidate.textContent?.includes('Storage checks could not finish') && candidate.querySelector('button'));
   assert.ok(failure);

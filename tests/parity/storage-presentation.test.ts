@@ -1,5 +1,7 @@
 
 import { expect, test } from "@playwright/test";
+import { attachShellA11y } from "./helpers/shell-proof.js";
+import { ERROR_CATALOG } from "../../src/models/failures/error-catalog.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -8,7 +10,8 @@ import { StorageDoctorWireSchema } from "../../src/models/dashboard/storage.js";
 import { ProtectedSettingsNameSchema } from "../../src/models/config/protected-settings.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Storage keeps its card layout without run history @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
+  const evidence = `storage-presentation-${theme.name}-${width}.a11y.yml`;
+  test(`Storage keeps its card layout without run history @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [];
@@ -21,6 +24,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     });
     const healthy = FIXTURE_STORAGE_DOCTOR;
     let requests = 0;
+    await page.route("**/api/v1/storage/doctor/latest", route => route.fulfill({ json: { state: "never-run" } }));
     await page.route("**/api/v1/storage/doctor", async route => {
       requests++;
       if (requests === 3) await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ state: "error", code: "synthetic-check-failed", message: "Synthetic check failure", retryable: true }) });
@@ -43,6 +47,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("group", { name: "Connections", exact: true })).toContainText("Not checked");
       await expect(surface.getByRole("button", { name: "Technical details", exact: true })).toHaveCount(0);
       await expect(surface.getByRole("group", { name: "Data store summary", exact: true })).toContainText("Not checked");
+      expect(requests).toBe(0);
       await run.click();
       await expect(recovery).toContainText("Interrupted");
       await expect(recovery).toContainText("An interrupted operation needs review before starting work.");
@@ -91,10 +96,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(stamp).toHaveAttribute("dateTime", healthy.checkedAt);
       await expect(run).toBeEnabled();
       await surface.getByRole("alert").getByRole("button", { name: "Diagnostic details", exact: true }).click();
-      await expect(surface.getByRole("region", { name: "Check error diagnostics", exact: true })).toContainText("Synthetic check failure");
+      await expect(surface.getByRole("region", { name: "Check error diagnostics", exact: true })).toHaveText(ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
       expect(await surface.innerText()).not.toMatch(/Run history|span_stream|record-digest/u);
       expect(requests).toBe(3);
       expect(errors).toEqual([]);
+      await attachShellA11y(page, info, evidence);
     } finally { await server.close(); }
   });
 }

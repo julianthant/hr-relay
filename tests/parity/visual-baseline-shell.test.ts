@@ -301,7 +301,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     try {
       await prepare(page, theme, width);
       let latest: "hold" | "failed" | "loaded" | "never" = "hold";
-      let doctor: "hold" | "failed" = "hold";
+      let doctor: "hold" | "failed" | "loaded" = "hold";
       let report: unknown = FIXTURE_STORAGE_DOCTOR;
       await page.route("**/api/v1/storage/doctor/latest", async route => {
         if (latest === "hold") await new Promise<void>(resolveLatest => { releaseLatest = resolveLatest; });
@@ -333,8 +333,9 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       latest = "failed"; await open();
       await expect(storage).toContainText("Storage checks could not finish");
 
-      latest = "loaded"; await open();
+      latest = "loaded"; doctor = "loaded"; await open();
       await expect(storage.getByRole("button", { name: "Run checks again", exact: true })).toBeEnabled();
+      await expect(storage.getByRole("alert")).toHaveCount(0);
       await capture(page, info, theme, width, "storage-loaded");
       doctor = "hold";
       await storage.getByRole("button", { name: "Run checks again", exact: true }).click();
@@ -344,6 +345,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(storage).toContainText("Storage checks could not finish");
       await expect(storage).toContainText("Stored data is readable.");
 
+      doctor = "loaded";
       report = { ...FIXTURE_STORAGE_DOCTOR,
         authority: { state: "degraded", cause: { code: "authority-unavailable", summary: "Saved data is unreadable in this fixture." } },
         recovery: { state: "unavailable", cause: { code: "authority-unavailable", summary: "Recovery evidence is unavailable." }, findings: [] },

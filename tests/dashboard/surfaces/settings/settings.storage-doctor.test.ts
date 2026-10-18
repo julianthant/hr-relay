@@ -173,3 +173,15 @@ it("keeps unobserved report values blank until the delay, and only says Not chec
 
 import { StorageSection } from "../../../../src/dashboard/surfaces/settings/storage/storage-settings.js";
 import { vi } from "vitest";
+
+it("keeps an unobserved latest-report failure distinct from a verified never-run report", async () => {
+  const client = { latestStorageDoctor: () => Promise.reject(new Error("Synthetic latest read failed")) } as unknown as DashboardClient;
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => {
+    root = createRoot(host!);
+    root.render(createElement(DashboardClientProvider, { client, children: createElement(StorageSection, { storage: STORAGE }) }));
+  });
+  assert.match(host.textContent ?? "", /Storage checks could not finish/);
+  assert.doesNotMatch(host.textContent ?? "", /Not checked|Synthetic latest read failed/);
+  assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+});

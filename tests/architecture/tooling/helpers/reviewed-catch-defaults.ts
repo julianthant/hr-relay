@@ -116,9 +116,5 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "sha256": "e9c2c3608b6b658b7002788795b478265e8211b3a82fd4f8d4ff96d20ad516b3",
     "reason": "createSettingsRead publishes failed before the facts observation rejects. useSettingsFacts returns SETTINGS_INITIAL_READ_UNAVAILABLE with any held facts, and FactsPane renders the catalog failure beside those exact facts; superseded identity reads cannot publish."
 },
-  {
-    "path": "src/dashboard/surfaces/settings/storage/storage-settings-model.ts",
-    "sha256": "074755a01314e9e42d94c6798ba9fefa176b7c5737824154751ea634308fe9b8",
-    "reason": "Latest and full doctor read resources publish failed before observers consume rejection. useStorageDoctor exposes STORAGE_DOCTOR_FAILED with the exact held report; StorageSection renders that catalog failure and preserves diagnostic findings. Superseded observations cannot replace authority; stale-check marker prevents automatic retry after failure, while explicit operator retry remains available."
-}
+
 ] as const;

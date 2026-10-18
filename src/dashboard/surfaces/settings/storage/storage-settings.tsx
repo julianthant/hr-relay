@@ -123,7 +123,7 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
   const { doctor, runDoctor } = useStorageDoctor();
   const show = useDelayedLoading(doctor.state === "reading");
   const report = doctor.state === "reading" ? undefined : doctor.report;
-  const pending = report === undefined && doctor.state !== "idle";
+  const pending = report === undefined && (doctor.state === "reading" || doctor.state === "running" || doctor.state === "failed" && !doctor.neverRun);
   const authority = storage.authority === "healthy" && report?.authority.state !== "degraded" ? "healthy" : "unavailable";
   const checks = [
     { name: "Stored data", description: "Readability of saved data.", result: authorityResult(report) },

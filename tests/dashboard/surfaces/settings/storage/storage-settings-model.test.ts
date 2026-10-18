@@ -41,7 +41,7 @@ it("distinguishes never-run, completed, degraded and failed doctor reads and ret
     await act(async () => state?.runDoctor()); assert.equal(doctor()?.state, "failed");
     const failedRead = doctor();
     if (failedRead?.state !== "failed") assert.fail("failed doctor reported success");
-    assert.equal(failedRead.report, report); assert.equal(failedRead.message, ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
+    assert.equal(failedRead.neverRun, false); assert.equal(failedRead.report, report); assert.equal(failedRead.message, ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
     const degraded = StorageDoctorWireSchema.parse({ ...report, authority: { state: "degraded", cause: { code: "authority-unavailable", summary: "Synthetic degraded authority" } } });
     await render({ ...client, latestStorageDoctor: () => Promise.resolve({ state: "completed", report: degraded }) });
     assert.equal(doctor()?.state, "loaded");
@@ -50,7 +50,7 @@ it("distinguishes never-run, completed, degraded and failed doctor reads and ret
     assert.equal(degradedRead.report.authority.state, "degraded");
     await render({ ...client, latestStorageDoctor: () => Promise.reject(new Error("Synthetic latest failure")) });
     const latestFailure = doctor(); assert.ok(latestFailure?.state === "failed");
-    assert.equal(latestFailure.message, ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
+    assert.equal(latestFailure.message, ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text); assert.equal(latestFailure.neverRun, false);
   } finally { act(() => root.unmount()); }
 });
 

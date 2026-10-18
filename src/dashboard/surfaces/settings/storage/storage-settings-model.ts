@@ -48,7 +48,7 @@ export type DoctorState =
   | { state: "reading"; report?: undefined }
   | { state: "running"; report?: StorageDoctorWire }
   | { state: "loaded"; report: StorageDoctorWire }
-  | { state: "failed"; message: string; report?: StorageDoctorWire };
+  | { state: "failed"; message: string; neverRun: boolean; report?: StorageDoctorWire };
 
 const STORAGE_DOCTOR_MAX_AGE_MS = 5 * 60_000;
 const staleChecks = new WeakMap<object, string>();
@@ -73,7 +73,7 @@ export function useStorageDoctor() {
     if (value?.state !== "completed") return;
     if (now.current - Date.parse(value.report.checkedAt) > STORAGE_DOCTOR_MAX_AGE_MS && staleChecks.get(checking) !== value.report.checkedAt) {
       staleChecks.set(checking, value.report.checkedAt);
-      void run().catch(() => undefined);
+      void run().catch(() => checking.snapshot());
     }
   }, [checking, run]);
   useEffect(() => {
@@ -86,17 +86,17 @@ export function useStorageDoctor() {
     }, "STORAGE_DOCTOR_FAILED").then(value => {
       if (current.current !== request || value.state !== "completed") return;
       checkStale(value);
-    }).catch(() => undefined);
+    }).catch(() => latest.snapshot());
   }, [client, latest, checking, request, checkStale]);
   const report = observed.value?.state === "completed" ? observed.value.report : undefined;
   const doctor: DoctorState = check.state === "loading" ? { state: "running", report }
-    : observed.state === "failed" || check.state === "failed" ? { state: "failed", report, message: ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text }
+    : observed.state === "failed" || check.state === "failed" ? { state: "failed", report, message: ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text, neverRun: observed.value?.state === "never-run" }
     : report !== undefined ? { state: "loaded", report }
     : observed.state === "idle" || observed.state === "loading" ? { state: "reading" }
     : { state: "idle" };
   const runDoctor = (): void => {
     if (current.current !== request || doctor.state === "running" || doctor.state === "reading") return;
-    void run().catch(() => undefined);
+    void run().catch(() => checking.snapshot());
   };
   return { doctor, runDoctor };
 }
