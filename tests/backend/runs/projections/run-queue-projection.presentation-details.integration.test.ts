@@ -71,6 +71,7 @@ it("reads declared node details only from this receipt's verified observation ID
   const output = receipt.output.find(fact => fact.id === deriveEvidenceEntryId(receipt.receiptId, "output", "activeStatus.details.name"));
   assert.ok(output?.state === "satisfied");
   const observation = { ...output, id: deriveEvidenceEntryId(receipt.receiptId, "observation", "active-status.details.name") };
+  receipt.output = [];
   receipt.observations.push(observation);
   receipt.verification.push({ id: deriveEvidenceEntryId(receipt.receiptId, "verification", "node.active-status"),
     obligation: "node.active-status", mandatory: true, verdict: "verified", evidence: [evidenceEntryRef(observation.id)] });
@@ -97,4 +98,19 @@ it("withholds DOB and SSN from Match Search details while keeping the name", () 
   assert.doesNotMatch(JSON.stringify(surface.facts), /2\/19\/2030|000112222/u);
   assert.equal(surface.facts.state, "present");
   if (surface.facts.state === "present") assert.equal(surface.facts.value.find(fact => fact.label === "Search")?.value, "Quillan, Petra A.");
+});
+
+it.each([
+  { empty: true, missing: false, reason: "this run's evidence receipt records no output fact" },
+  { empty: true, missing: true, reason: "this run's evidence receipt records no output fact" },
+  { empty: false, missing: false, reason: "this workflow declares no detail fields" },
+  { empty: false, missing: true, reason: "this workflow's detail declaration is unavailable" },
+])("explains absent details with empty output $empty and unavailable descriptor $missing", ({ empty, missing, reason }) => {
+  const descriptor = { ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined,
+    subtitleProjection: undefined, details: [] };
+  const w = world({ descriptors: { resolve: () => missing ? undefined : descriptor } });
+  const { row, run } = seedPersonLookupPresentation(w);
+  const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
+  if (empty) receipt.output = [];
+  assert.deepEqual(row()?.facts, { state: "absent", reason });
 });

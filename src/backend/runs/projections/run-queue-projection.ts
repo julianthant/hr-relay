@@ -1090,7 +1090,11 @@ export class RunQueueProjection {
   ): QueueSurfaceWire["facts"] {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
     if (receipt === undefined) return { state: "absent", reason: "no evidence receipt has been derived for this run, so its outputs are unknown" };
-    if (descriptor === undefined || descriptor.details.length === 0) return { state: "absent", reason: "this workflow declares no detail fields" };
+    if (descriptor === undefined || descriptor.details.length === 0) {
+      if (receipt.value.output.length === 0) return { state: "absent", reason: "this run's evidence receipt records no output fact" };
+      return { state: "absent", reason: descriptor === undefined
+        ? "this workflow's detail declaration is unavailable" : "this workflow declares no detail fields" };
+    }
     const value = receipt.value;
     const run = authority.envelope;
     if (value.runId !== run.runId || value.traceId !== run.traceId || value.attempt !== run.attempt
