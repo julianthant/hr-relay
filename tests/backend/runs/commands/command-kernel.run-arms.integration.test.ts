@@ -308,8 +308,11 @@ describe("protected subject recovery publication", () => {
           const day = world.projection.buildDashboardDayWire(localDatePart(harness.clock.now()));
           const row = day.queueSurfaces.find(row => row.runId === next.envelope.runId);
           assert.ok(row);
-          assert.equal(row.title, expectedTitle);
-          if (protection === "subject") assert.equal(JSON.stringify(day.queueSurfaces).includes(SYNTHETIC_EID), false);
+          assert.equal(row.title, protection === "subject" ? SYNTHETIC_EID : expectedTitle);
+          if (protection === "subject") {
+            for (const surface of day.queueSurfaces) assert.equal(surface.title, SYNTHETIC_EID);
+            assert.equal(JSON.stringify(day.queueSurfaces.map(({ title: _title, ...surface }) => surface)).includes(SYNTHETIC_EID), false);
+          }
         } finally { world.dispose(); }
       });
     }
@@ -348,7 +351,7 @@ describe("protected subject recovery publication", () => {
         const rows = world.projection.buildDashboardDayWire(localDatePart(harness.clock.now())).queueSurfaces;
         assert.equal(rows.length, 1);
         assert.equal(rows[0].runId, terminal.envelope.runId);
-        assert.equal(rows[0].title, "Protected test subject");
+        assert.equal(rows[0].title, SYNTHETIC_EID);
         assert.equal(JSON.stringify(rows).includes("synthetic-unmasked-subject-proof"), false);
       } finally { world.dispose(); }
     });

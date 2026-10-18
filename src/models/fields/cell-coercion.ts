@@ -70,8 +70,8 @@ function titleCaseTokens(value: string): string {
   return value.split(/\s+/).filter(Boolean).map(titleCasePersonToken).join(" ");
 }
 
-/** A display-name fold: title case, preserve an existing `Last, First` comma form, and drop a single trailing period left over from a middle initial. */
-export function displayPersonName(raw: string): string {
+/** Title case while preserving the comma form and initial periods. */
+export function titleCasePersonName(raw: string): string {
   const trimmed = collapseWhitespace(raw);
   if (trimmed.length === 0) return "";
   const commaIndex = trimmed.indexOf(",");
@@ -83,7 +83,11 @@ export function displayPersonName(raw: string): string {
       if (last.length === 0 || rest.length === 0) return trimmed;
       return `${titleCaseTokens(last)}, ${titleCaseTokens(rest)}`;
     })();
-  return cased.replace(/\.\s*$/, "").trim();
+  return cased;
+}
+
+export function displayPersonName(raw: string): string {
+  return titleCasePersonName(raw).replace(/\.\s*$/, "").trim();
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;

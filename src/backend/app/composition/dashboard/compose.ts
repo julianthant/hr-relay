@@ -625,7 +625,7 @@ async function composeDashboardRuntimeStartup(
 
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger, timeZone });
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
-  const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), summaries };
+  const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), withRunTreeSnapshot: lifecycle.withRunTreeSnapshot.bind(lifecycle), summaries };
   let ownsWorker: (lease: import("../../../../models/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
   const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: servedReader });
 

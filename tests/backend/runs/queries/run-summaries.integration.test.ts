@@ -94,8 +94,8 @@ try {
   const reader = new RunRecordService({ database: f.db, clock: f.clock, ids: { uuid: () => id(723) }, publishQueued: () => {} });
   const ledger = createTransactionHistory(f.db.authority);
   const descriptors = { resolve: (workflow: string) => workflow === 'person-lookup' ? subjectDescriptor : undefined };
-  const servedReader: Parameters<typeof createOperatorProjection>[0]["reader"] = { read: reader.read.bind(reader), list: reader.list.bind(reader),
-    summaries: { withSnapshot: work => f.db.withAuthorityReadSnapshot(work),
+  const servedReader: Parameters<typeof createOperatorProjection>[0]["reader"] = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader),
+    summaries: { itemAttempts: items => f.db.listQueueItemAttempts(items), withSnapshot: work => f.db.withAuthorityReadSnapshot(work),
       queue: query => queryQueueSummaries(f.db, query),
       activity: (from, to) => queryActivitySummaries(f.db, { from, to, generatedAt: NOW }, { ledger, descriptors }) },
   };
@@ -177,8 +177,8 @@ it("keeps JSON, CSV and XLSX write evidence through restart and terminal run del
       const descriptors = { resolve: () => undefined };
       return createOperatorProjection({ database: db, stateRoot: f.root, clock: f.clock, appVersion: "0.1.0",
         descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger, descriptors,
-        reader: { read: reader.read.bind(reader), list: reader.list.bind(reader),
-          summaries: { withSnapshot: work => db.withAuthorityReadSnapshot(work), queue: query => queryQueueSummaries(db, query),
+        reader: { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader),
+          summaries: { itemAttempts: items => db.listQueueItemAttempts(items), withSnapshot: work => db.withAuthorityReadSnapshot(work), queue: query => queryQueueSummaries(db, query),
             activity: (from, to) => queryActivitySummaries(db, { from, to, generatedAt: NOW }, { ledger, descriptors }) } },
       }).buildActivityReportWire("2026-01-01", "2026-09-30");
     };

@@ -172,10 +172,12 @@ describe("complete operation display action binding", () => {
     if (page.section !== "logs") throw new Error("expected action log page");
     assert.deepEqual(page.payload.rows?.map((row) => row.sequence), [0, 1, 2]);
     assert.deepEqual(page.payload.notes?.map((note) => note.message), [
-      "Typed into ucpath person org eid input",
-      "Clicked ucpath person org search button",
-      "Clicked ucpath person org search button",
+      "Fill: Person Org EID input",
+      "Click: Person Org Search button",
+      "Click: Person Org Search button",
     ]);
+    assert.equal(new Set(page.payload.rows?.map(row => row.native?.eventId)).size, 3);
+    assert.equal(new Set(page.payload.notes.map(note => note.noteId)).size, 3);
     if (page.payload.operationStructure?.state !== "observed") {
       throw new Error("complete action run did not retain an observed operation structure");
     }
@@ -199,6 +201,10 @@ describe("complete operation display action binding", () => {
       page.payload.operationStructure.observations[0]?.occurrence.value?.state,
       "redacted",
     );
+    assert.deepEqual(page.payload.operationStructure.observations.map(observation => observation.logId),
+      page.payload.notes.map(note => note.noteId));
+    assert.equal(new Set(page.payload.operationStructure.observations.map(({ occurrence }) =>
+      JSON.stringify([occurrence.invocationId, occurrence.logicalActionId, occurrence.occurrence]))).size, 3);
     const firstObservation = page.payload.operationStructure.observations[0];
     assert.ok(firstObservation);
     assert.equal(ObservedOperationStructureWireSchema.safeParse({

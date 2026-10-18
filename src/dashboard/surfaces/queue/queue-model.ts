@@ -73,7 +73,7 @@ function queueItemKey(surface: Pick<QueueSurfaceWire, "workflowId" | "itemId">):
   return JSON.stringify([surface.workflowId, surface.itemId]);
 }
 
-/** Keep the day's attempts under their served logical item identity. */
+/** Keep served attempts under their served logical item identity. */
 export function groupQueueAttempts(surfaces: readonly QueueSurfaceWire[]): readonly QueueItemGroup[] {
   const groups = new Map<string, QueueSurfaceWire[]>();
   for (const surface of surfaces) {
@@ -85,13 +85,13 @@ export function groupQueueAttempts(surfaces: readonly QueueSurfaceWire[]): reado
 
   return [...groups].map(([key, unsorted]) => {
     const attempts = [...unsorted].sort((left, right) =>
-      left.attempt - right.attempt || String(left.runId).localeCompare(String(right.runId)));
+      right.attempt - left.attempt || String(left.runId).localeCompare(String(right.runId)));
     for (let index = 1; index < attempts.length; index += 1) {
       if (attempts[index - 1]?.attempt === attempts[index]?.attempt) {
         throw new Error(`queue item has duplicate attempt: ${key}`);
       }
     }
-    const representative = attempts.at(-1);
+    const representative = attempts[0];
     if (representative === undefined) throw new Error(`queue item has no attempts: ${key}`);
     return { key, attempts, representative };
   });
@@ -345,7 +345,7 @@ export function visibleRunIds(
   const addAttempts = (surface: QueueSurfaceWire): void => {
     const item = itemByRunId.get(String(surface.runId));
     if (item === undefined) throw new Error(`queue keyboard order lost item ${String(surface.itemId)}`);
-    ids.push(...item.attempts.map((attempt) => String(attempt.runId)));
+    ids.push(...item.attempts.toReversed().map((attempt) => String(attempt.runId)));
   };
   for (const group of queueDisplayGroups(displayTop, sort, nowIso)) {
     const band = group.rows;
@@ -355,7 +355,7 @@ export function visibleRunIds(
       for (const member of orderMembers(memberGroups.map((group) => group.representative) as MemberSurfaceWire[])) {
         const item = memberGroups.find((group) => group.representative.runId === member.runId);
         if (item === undefined) throw new Error(`queue keyboard order lost member item ${String(member.itemId)}`);
-        ids.push(...item.attempts.map((attempt) => String(attempt.runId)));
+        ids.push(...item.attempts.toReversed().map((attempt) => String(attempt.runId)));
       }
     }
   }

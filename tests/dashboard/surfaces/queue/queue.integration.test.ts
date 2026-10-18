@@ -146,7 +146,7 @@ describe("Queue consumes the served day boundary", () => {
       assert.match(attempt.textContent ?? "", new RegExp(`#${String(first.attempt)}.*Failed`, "u"));
       await act(async () => attempt.click());
       assert.deepEqual(opened, [String(first.runId)]);
-      assert.deepEqual(groupQueueAttempts([first, newest])[0]?.attempts.map((entry) => entry.runId), [first.runId, newest.runId]);
+      assert.deepEqual(groupQueueAttempts([first, newest])[0]?.attempts.map((entry) => entry.runId), [newest.runId, first.runId]);
     } finally {
       await act(async () => root.unmount());
       host.remove();

@@ -1,3 +1,4 @@
+import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { displayScalar } from "../queries/data.js";
 import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
@@ -5,10 +6,10 @@ import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationDisplayContext } from "../queries/notification-display.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
-import { deriveEvidenceEntryId } from "../../../models/trust/evidence-identity.js";
+import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
 
 import { z } from "zod";
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import {
@@ -30,6 +31,7 @@ import {
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
 import {
   PositiveIntSchema,
+  LocalDateSchema,
   EidSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
@@ -53,7 +55,7 @@ import { isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker
 import type { RunSessionRecord } from "../../../models/run/session.js";
 import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
-import { resolveSubjectTitle } from "./run-subject-title.js";
+import { allowsSubjectIdentity, resolveResultTitle, verifiedResultDisplayValue, resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
@@ -120,12 +122,13 @@ export interface ServedSummaryQueries {
     items: readonly { runId: string; localDay: string; shape: string; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
     next: { localDay: string; runId: string } | null;
   };
+  itemAttempts(items: readonly { workflowId: string; itemId: string; maxAttempt: number }[]): readonly RunRecord[];
   activity(from: string, to: string): ActivityReportWire;
 }
 
 export interface RunQueueProjectionDeps {
   readonly timeline: TimelineRepository;
-  readonly reader: Pick<RunRecordService, "read" | "list"> & { readonly summaries?: ServedSummaryQueries };
+  readonly reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> & { readonly summaries?: ServedSummaryQueries };
   readonly stateRoot: string;
   readonly clock: Clock;
   readonly appVersion: string;
@@ -741,6 +744,10 @@ export class RunQueueProjection {
         batchPresentationChanged = true;
         snapshotNeeded = true;
       }
+      const crossDayItem = snapshot.runs.some(candidate => candidate.envelope.workflow === authority.envelope.workflow
+        && candidate.envelope.itemId === authority.envelope.itemId
+        && localDatePart(new Date(candidate.envelope.enqueuedAt)) !== day);
+      if (crossDayItem) { snapshotNeeded = true; continue; }
       const countNeutral = replacement.surfaceKind === "member"
         ? previousStatus !== undefined
         : previousStatus === replacement.status;
@@ -921,16 +928,10 @@ export class RunQueueProjection {
     );
   }
 
-  #resultSubtitle(run: RunRecord, receipt: ReceiptView | undefined, fieldPath: string): QueueSurfaceWire["subtitle"] {
+  #resultSubtitle(run: RunRecord, descriptor: AnyWorkflowDescriptor, receipt: ReceiptView | undefined, fieldPath: string): QueueSurfaceWire["subtitle"] {
     const absent = { state: "absent", reason: "this run has no resolved EID available for its subtitle" } as const;
-    if (receipt === undefined || retainedRunProtectedBindings(run).length > 0) return absent;
-    const value = receipt.value;
-    const fact = value.output.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "output", fieldPath));
-    if (fact?.state !== "satisfied" || fact.value.state === "redacted") return absent;
-    if (value.runId !== run.envelope.runId || value.attempt !== run.envelope.attempt
-      || value.workflowId !== run.envelope.workflow || value.descriptorFingerprint !== run.envelope.contractFingerprint
-      || value.configFingerprint !== run.envelope.configFingerprint) throw new ProjectionDegradedError("result-subtitle-receipt-identity-mismatch");
-    const raw = fact.value.rawValue ?? (fact.value.state === "allowed" ? fact.value.value : undefined);
+    if (receipt === undefined || !allowsSubjectIdentity(run, descriptor)) return absent;
+    const raw = verifiedResultDisplayValue(run, receipt.value, fieldPath, "subtitle");
     if (raw === undefined) return absent;
     const eid = EidSchema.nullable().parse(raw);
     return eid === null ? absent : { state: "present", value: eid };
@@ -1070,44 +1071,77 @@ export class RunQueueProjection {
     members: readonly RunRecord[],
   ): { state: "present"; value: string } | { state: "absent"; reason: string } {
     if (members.length === 0) return { state: "absent", reason: "this group has fanned out to no members yet" };
-    const shown = members.slice(0, MEMBER_PREVIEW_LIMIT).map((member) =>
-      this.#subjectTitle(member.envelope.workflow, member)
-        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId);
+    const shown = members.slice(0, MEMBER_PREVIEW_LIMIT).map((member) => {
+      const descriptor = this.#deps.descriptors.resolve(member.envelope.workflow);
+      const receipt = this.#deps.authority.getReceipt(member.envelope.runId);
+      return (descriptor === undefined ? undefined : resolveResultTitle(descriptor, member, receipt))
+        ?? this.#subjectTitle(member.envelope.workflow, member)
+        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId;
+    });
     const remaining = members.length - shown.length;
     return { state: "present", value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", ") };
   }
 
-  // Read receipts without deriving them; queue reads must not create authority.
   #facts(
+    authority: RunRecord,
+    descriptor: AnyWorkflowDescriptor | undefined,
     status: QueueSurfaceWire["status"],
     receipt: ReceiptView | undefined,
-  ): { state: "present"; value: readonly { label: string; value: string }[] } | { state: "absent"; reason: string } {
-    if (!TERMINAL_QUEUE_STATUSES.has(status)) {
-      return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
+  ): QueueSurfaceWire["facts"] {
+    if (!TERMINAL_QUEUE_STATUSES.has(status)) return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
+    if (receipt === undefined) return { state: "absent", reason: "no evidence receipt has been derived for this run, so its outputs are unknown" };
+    if (descriptor === undefined || descriptor.details.length === 0) {
+      if (receipt.value.output.length === 0) return { state: "absent", reason: "this run's evidence receipt records no output fact" };
+      return { state: "absent", reason: descriptor === undefined
+        ? "this workflow's detail declaration is unavailable" : "this workflow declares no detail fields" };
     }
-    if (receipt === undefined) {
-      return {
-        state: "absent",
-        reason: "no evidence receipt has been derived for this run, so its outputs are unknown",
-      };
-    }
-    if (receipt.value.output.length === 0) {
-      return { state: "absent", reason: "this run's evidence receipt records no output fact" };
-    }
+    const value = receipt.value;
+    const run = authority.envelope;
+    if (value.runId !== run.runId || value.traceId !== run.traceId || value.attempt !== run.attempt
+      || value.workflowId !== run.workflow || value.descriptorFingerprint !== run.contractFingerprint
+      || value.configFingerprint !== run.configFingerprint) throw new ProjectionDegradedError("detail-receipt-identity-mismatch");
+    const factValue = (source: Readonly<{ nodeId: string; fieldPath: string }> | Readonly<{ kind: "result"; fieldPath: string }>) => {
+      const node = "nodeId" in source;
+      const obligation = node ? `node.${source.nodeId}` : "completion.terminal-result";
+      const verification = value.verification.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "verification", obligation));
+      const factId = deriveEvidenceEntryId(value.receiptId, node ? "observation" : "output", node ? `${source.nodeId}.${source.fieldPath}` : source.fieldPath);
+      const fact = (node ? value.observations : value.output).find(entry => entry.id === factId);
+      if (verification?.obligation !== obligation || verification.verdict !== "verified" || !verification.evidence.includes(evidenceEntryRef(factId))
+        || fact?.state !== "satisfied" || fact.value.state !== "allowed") return undefined;
+      return fact.value.rawValue === undefined ? fact.value.value : fact.value.rawValue;
+    };
+    const inputValue = (path: string): unknown => {
+      let current: unknown = descriptor.canonicalInput.parse(authority.input.parsed.value);
+      for (const segment of path.split(".")) {
+        if (typeof current !== "object" || current === null || Array.isArray(current) || !Object.hasOwn(current, segment)) {
+          throw new ProjectionDegradedError("detail-input-condition-path-unavailable");
+        }
+        current = Reflect.get(current, segment);
+      }
+      return current;
+    };
     const chips: { label: string; value: string }[] = [];
-    for (const fact of receipt.value.output) {
-      if (fact.state !== "satisfied") continue;
-      const value = fact.value.rawValue !== undefined ? fact.value.rawValue : (fact.value.state === "redacted" ? undefined : fact.value.value);
-      if (value !== undefined) chips.push({ label: fact.field,
-        value: typeof value === "string" ? displayScalar(value) : JSON.stringify(value) });
+    for (const detail of descriptor.details) {
+      if (detail.display === "badge") continue;
+      if (detail.when !== undefined) {
+        const condition = detail.when.source.kind === "input" ? inputValue(detail.when.source.fieldPath)
+          : factValue({ kind: "result", fieldPath: detail.when.source.fieldPath });
+        if (condition === undefined) return { state: "absent", reason: `detail ${detail.key} has no verified condition value` };
+        if (condition !== detail.when.equals) continue;
+      }
+      const source = detail.source;
+      const resolved = "kind" in source && source.kind === "input-title"
+        ? workflowPlanning(descriptor).title(authority.input.parsed.value) : factValue(source);
+      if (resolved === undefined) return { state: "absent", reason: `detail ${detail.key} has no verified value` };
+      if (resolved === null || typeof resolved === "string" && resolved.trim() === "") continue;
+      if (detail.display === "person-name") {
+        if (typeof resolved !== "string") throw new ProjectionDegradedError("detail-person-name-invalid");
+        chips.push({ label: detail.label, value: titleCasePersonName(resolved) });
+        continue;
+      }
+      chips.push({ label: detail.label, value: typeof resolved === "object" ? JSON.stringify(resolved) : displayScalar(resolved) });
     }
-    if (chips.length === 0) {
-      return {
-        state: "absent",
-        reason: "this run's receipt retains no output values",
-      };
-    }
-    return { state: "present", value: chips };
+    return chips.length === 0 ? { state: "absent", reason: "this run has no applicable detail values" } : { state: "present", value: chips };
   }
 
   #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[]): SurfaceFold {
@@ -1157,20 +1191,21 @@ export class RunQueueProjection {
       session: this.#session(authority),
       containment: this.#containment(queued),
       linkedRuns: this.#linkedRuns(children),
-      facts: this.#facts(status, receipt),
       startedAt: queued.enqueuedAt,
       updatedAt: authority.updatedAt,
       endedAt: this.#endedAt(authority, status),
       gateOpenedAt: this.#gateOpenedAt(row, authority, status),
 
-      title: this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId,
+      title: (descriptor === undefined ? undefined : resolveResultTitle(descriptor, authority, receipt?.value))
+        ?? this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId,
       displayName,
-      subtitle: descriptor?.subtitleProjection !== undefined ? this.#resultSubtitle(authority, receipt, descriptor.subtitleProjection.fieldPath) : row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
+      subtitle: descriptor?.subtitleProjection !== undefined ? this.#resultSubtitle(authority, descriptor, receipt, descriptor.subtitleProjection.fieldPath) : row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
         && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
         && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
         ? { state: "absent", reason: "the start plan proposed no subtitle" }
         : { state: "present", value: row?.queued.subtitle },
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
+      facts: this.#facts(authority, descriptor, status, receipt),
       status,
       liveMessage: this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
@@ -1239,6 +1274,7 @@ export class RunQueueProjection {
     }
     const parsedDay = z.iso.date().parse(day);
     const surfaces: QueueSurfaceWire[] = [];
+    let fixtureRuns: readonly RunRecord[] | undefined;
     const monthPrefix = parsedDay.slice(0, 7);
     const monthCounts = new Map<string, number>();
     const summaries = this.#deps.reader.summaries;
@@ -1267,6 +1303,7 @@ export class RunQueueProjection {
     } else {
       // Explicit fixture-only compatibility. Production composition always supplies summaries.
       const runs = listCanonicalRuns(this.#deps.reader, "live");
+      fixtureRuns = runs;
       const children = canonicalRunChildren(runs);
       for (const authority of runs) {
         const row = this.#rows.get(authority.envelope.runId);
@@ -1278,6 +1315,42 @@ export class RunQueueProjection {
         surfaces.push(this.#surface(row, authority, children.get(authority.envelope.runId) ?? []));
       }
     }
+    const visibleItems = new Map<string, { workflowId: string; itemId: string; maxAttempt: number }>();
+    const itemKey = (workflowId: string, itemId: string) => JSON.stringify([workflowId, itemId]);
+    for (const surface of surfaces) {
+      const key = itemKey(surface.workflowId, surface.itemId);
+      const previous = visibleItems.get(key);
+      if (previous === undefined || surface.attempt > previous.maxAttempt) visibleItems.set(key,
+        { workflowId: surface.workflowId, itemId: surface.itemId, maxAttempt: surface.attempt });
+    }
+    const attempts = visibleItems.size === 0 ? [] : summaries === undefined ? fixtureRuns
+      : summaries.itemAttempts([...visibleItems.values()]);
+    if (attempts === undefined) throw new ProjectionDegradedError("queue-attempt-history-unavailable");
+    const attemptHistory: NonNullable<DashboardDayWire["attemptHistory"]>[number][] = [];
+    const historyIds = new Set<string>();
+    this.#deps.reader.withRunTreeSnapshot(attempts.filter(candidate => {
+      const item = visibleItems.get(itemKey(candidate.envelope.workflow, candidate.envelope.itemId));
+      return item !== undefined && candidate.envelope.attempt <= item.maxAttempt
+        && localDatePart(new Date(candidate.envelope.enqueuedAt)) < parsedDay;
+    }).map(candidate => candidate.envelope.runId), tree => {
+      const children = canonicalRunChildren(tree);
+      for (const candidate of attempts) {
+        const envelope = candidate.envelope;
+        const item = visibleItems.get(itemKey(envelope.workflow, envelope.itemId));
+        if (summaries === undefined && (item === undefined || envelope.attempt > item.maxAttempt)) continue;
+        if (item === undefined || envelope.attempt > item.maxAttempt || historyIds.has(envelope.runId)) {
+          throw new ProjectionDegradedError("queue-attempt-history-membership-mismatch");
+        }
+        historyIds.add(envelope.runId);
+        const partitionDay = localDatePart(new Date(envelope.enqueuedAt));
+        if (partitionDay >= parsedDay) continue;
+        const current = this.#deps.reader.read(envelope.runId);
+        if (current.state !== "present" || current.disposition !== "live" || current.run.version !== candidate.version
+          || current.run.envelope.workflow !== envelope.workflow || current.run.envelope.itemId !== envelope.itemId
+          || current.run.envelope.attempt !== envelope.attempt) throw new ProjectionDegradedError("queue-attempt-history-custody-mismatch");
+        attemptHistory.push({ partitionDay: LocalDateSchema.parse(partitionDay), surface: this.#surface(this.#rows.get(envelope.runId), current.run, children.get(envelope.runId) ?? []) });
+      }
+    });
     const priorityOrder = (priority: "interactive" | "bulk"): number => (priority === "interactive" ? 0 : 1);
     surfaces.sort((a, b) => priorityOrder(a.priority) - priorityOrder(b.priority) || a.startedAt.localeCompare(b.startedAt) || a.runId.localeCompare(b.runId));
 
@@ -1376,6 +1449,7 @@ export class RunQueueProjection {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([statusKey, count]) => ({ status: statusKey, count })),
       queueSurfaces: surfaces,
+      attemptHistory,
       workerCards,
       workerAuthority,
       workerOperations: workerOperations ?? [],

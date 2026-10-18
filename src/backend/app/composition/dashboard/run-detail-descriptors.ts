@@ -67,7 +67,7 @@ export function dataOriginViewsOf(module: {
     if (existing === undefined) declaredPaths.set(nodeId, new Set([fieldPath]));
     else existing.add(fieldPath);
   };
-  for (const detail of descriptor.details) declare(String(detail.source.nodeId), detail.source.fieldPath);
+  for (const detail of descriptor.details) if ("nodeId" in detail.source) declare(String(detail.source.nodeId), detail.source.fieldPath);
   if (typeof editData === "object") {
     for (const field of editData.fields) declare(String(field.nodeId), field.fieldPath);
   }
@@ -99,6 +99,8 @@ export function dataOriginViewsOf(module: {
         step: runtimeNodeLabel(node),
         taskId,
         role,
+        operatorFields: descriptor.timeline.flatMap(group => (group.operatorFields ?? []).flatMap(field =>
+          field.sources.filter(source => source.nodeId === node.id).map(source => ({ label: field.label, kind: source.kind, fieldPath: source.fieldPath })))),
         dir: contract.effect === "read" ? "read" as const : "write" as const,
         ...(systemByTaskId.has(taskId) ? { system: systemByTaskId.get(taskId) } : {}),
         ...(role === "task" && "freshness" in contract && paths !== undefined

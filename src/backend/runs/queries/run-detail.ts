@@ -179,6 +179,7 @@ function buildTimelineSteps(
     return TimelineStepWireSchema.parse({
       key: category.key,
       label: category.label,
+      ...(category.system === undefined ? {} : { system: category.system }),
       state: foldCategoryState(members.map((member) => member.state), runTerminal),
       ...(measured.length > 0 ? { durationSec: Math.round(totalMs / 1000) } : {}),
       ...(maxExecutions >= 2 ? { executions: maxExecutions } : {}),
@@ -346,6 +347,7 @@ export function buildRunDetail(
       ...(row === undefined ? {} : { actorId: row.queued.actorId }),
 
       title: (retainedRunProtectedBindings(authority).length > 0 ? undefined : authority.displayName)
+        ?? (descriptorView?.titleProjection === undefined ? undefined : deps.projection.queueSurface(runId)?.title)
         ?? resolveSubjectTitle(
           descriptorView?.subjectProjection,
           { workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId },

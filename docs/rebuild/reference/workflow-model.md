@@ -88,6 +88,22 @@ A copied descriptor cannot supply the sealed planning or terminal-result interfa
 The projection includes contracts, steps, gates, systems, requirements, timeline, node purposes,
 dry-run support, and graph coverage points.
 
+`details` declares the ordered operator fields. A source names a node output (`nodeId`,
+`fieldPath`), a terminal result (`kind: "result"`, `fieldPath`), or the canonical input's safe
+presentation (`kind: "input-title"`). Optional equality conditions name a validated canonical-input
+or terminal-result path. Queue text details require exact receipt identity and their source's
+verified evidence entry; null, blank and inapplicable values are omitted. Badge details remain
+separate from text facts. Input-title details use the factory's canonical-input presentation and
+never read retained search tuples.
+
+`titleProjection` optionally names a verified terminal-result person name. Until a verified name
+exists, its canonical input presentation supplies the name or employee ID typed. Names and detail fields declared with `display: "person-name"` use the
+shared token capitalization without removing initial periods. A declared `protectedInput: "eid"`
+allows only EID-bound test subjects (and non-subject timekeeper bindings) to show this safe identity
+and the verified EID subtitle. Other protected subject bindings retain their display restriction.
+Queue and run detail share the served title; immutable enqueue events retain their original
+protected display policy.
+
 `workflowExplorerDeclaration` derives ordered groups, entry kinds, node ids, task ids, and typed
 references from the compiled definition. `src/backend/runs/queries/explorer.ts` produces the
 Explorer declaration and explicit unavailable states. Definition previews grant no execution
@@ -452,3 +468,6 @@ The workflow has no transaction, gate, parallel, or delegation node. Its dry-run
 - The wiring base must consume served descriptor projections through existing dashboard components, retaining explicit loading, empty, failure, refusal, and uncertain states.
 - Each workflow needs an operator-approved walkthrough, served wiring across its required surfaces, a dry run where supported, and operator sign-off before its static switch changes.
 - A workflow that first needs child-run execution must supply the executor's admitted `ChildRunExecutor` and verify its durable fan-out and recovery behavior.
+
+
+Workflow timeline groups may declare a default `system` and ordered `operatorFields`. Each field owns its operator label, optional fictional display-string `example` and exact node/input-or-output path sources. An optional `visibility: "logs"` limits a field to retained observations, excluding it from Explorer examples. Groups may also declare operator `description` text. The compiler checks that every source belongs to the group and resolves through its task contract; collection paths address all members, without selecting a candidate. Logs preserves member order and keeps each member’s declared fields together. Logs uses these declarations to project classified observations and eligible frozen action values. Unlisted paths remain in Run data and diagnostics. Explorer projects declared fields and examples in group order, with explicit definition-preview copy; an undeclared example is reported as unavailable rather than replaced by a run value.

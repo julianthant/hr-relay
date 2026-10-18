@@ -1,3 +1,4 @@
+import { titleCasePersonName } from "../../fields/cell-coercion.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../failures/error-catalog.js";
 import { z } from "zod";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
@@ -82,7 +83,8 @@ export function parsePersonLookupRequest(text: string, options: Readonly<{
 }
 
 export function personLookupTitle(input: PersonLookupInputValue): string {
-  return input.mode === "match" ? `${input.lastName}, ${input.firstName}` : "emplId" in input ? input.emplId : input.name;
+  const title = input.mode === "match" ? `${input.lastName}, ${input.firstName}` : "emplId" in input ? input.emplId : input.name;
+  return titleCasePersonName(title);
 }
 
 export function personLookupSearchText(input: PersonLookupInputValue): string {

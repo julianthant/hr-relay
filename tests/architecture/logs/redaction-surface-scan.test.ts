@@ -69,6 +69,31 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
   });
 
+  it("pins history, operator observations and definition text origins and rejects their omission", () => {
+    const reviewed = [
+      ["wire/dashboard-day", "attemptHistory[].surface.title", "captured-hr-value"],
+      ["wire/stream-envelope", "payload.attemptHistory[].surface.facts.value[].value", "captured-hr-value"],
+      ["wire/run-logs-stream", "envelope.payload.rows[].displayFields[].value", "captured-hr-value"],
+      ["wire/run-detail-section", "payload.notes[].operatorAction.value", "captured-hr-value"],
+      ["wire/run-detail-section", "payload.rows[].displayFields[].label", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].timeline[].operatorFields[].example", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].definitionPreview.groups[].description", "repository-authored"],
+    ] as const;
+    for (const [surface, path, origin] of reviewed) {
+      const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path);
+      assert.ok(entry, `${surface}|${path}`);
+      assert.equal(entry.origin, origin);
+      const remaining = SURFACE_LEAF_ORIGINS.filter(candidate => candidate !== entry);
+      const violations = auditSurfaceOrigins(REDACTION_SURFACES, remaining);
+      assert.equal(violations.length, 1, `${surface}|${path}`);
+      assert.match(violations[0] ?? "", /carries no declared origin/u);
+      if (origin === "captured-hr-value") {
+        const moved = REDACTION_SURFACES.filter(candidate => candidate.id === surface).map(candidate => ({ ...candidate, egress: "os-notification" as const }));
+        assert.ok(auditSurfaceOrigins(moved, SURFACE_LEAF_ORIGINS).some(violation => violation.includes(path) && violation.includes("may not carry at all")));
+      }
+    }
+  });
+
   it("dispositions every served settings leaf as closed-literal or identifier-free", () => {
     const violations = auditD331ServedLeafDispositions(D331_SERVED_LEAF_DISPOSITIONS);
     assert.deepEqual(violations, [], `served-settings disposition audit:\n  ${violations.join("\n  ")}`);

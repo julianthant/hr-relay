@@ -94,6 +94,12 @@ describe("native Logs chronology and exact joins", () => {
         { eventId: second.eventId, logId: target.noteId, native: secondPublication.native }],
     }, client);
     assert.deepEqual(multiple.steps.find(step => step.id === target.noteId)?.entries.slice(1).map(entry => entry.id), [second.eventId, event.eventId]);
+    const entryIds = multiple.steps.flatMap(step => step.entries.map(entry => entry.id));
+    assert.equal(new Set(entryIds).size, entryIds.length);
+    assert.equal(entryIds.filter(id => id === target.noteId).length, 1);
+    for (const confirmation of [event, second]) assert.equal(entryIds.filter(id => id === confirmation.eventId).length, 1);
+    assert.equal(entryIds.includes(publication.noteId), false);
+    assert.equal(entryIds.includes(secondPublication.noteId), false);
     assert.throws(() => projectRunLogs({ ...complete, confirmedActionBindings: [{ ...complete.confirmedActionBindings[0], logId: base.logs.rows?.[0].logId }] } as RunLogSnapshot, client), /CONFIRMATION_TARGET_MISMATCH/);
   });
 

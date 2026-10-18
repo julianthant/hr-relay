@@ -1,7 +1,7 @@
 /** The plain-data presentation/policy vocabularies a descriptor carries; every one of these is a CLOSED union, never a free string. */
 import { z } from "zod";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
-import { NodeIdSchema, slugSchema, TaskIdSchema } from "../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, NodeIdSchema, slugSchema, TaskIdSchema } from "../../rules/identity/ids.js";
 
 /** Compile-time icon union; the dashboard's icon map is exhaustive, so a name added here without a component fails to compile rather than rendering a hole. */
 export const ICON_NAMES = [
@@ -111,17 +111,24 @@ export const WorkflowCapabilitiesSchema = z.strictObject({
 });
 export type WorkflowCapabilities = z.infer<typeof WorkflowCapabilitiesSchema>;
 
-/* ── projections over node outputs ───────────────────────────────────────── */
+/* ── presentation projections ────────────────────────────────────────────── */
 
-/** The declared patch set: every `SpanPatched` key is validated against this list, and the coverage guard proves every `fieldPath` exists in the producing node's own output schema. */
+const DetailConditionSchema = z.strictObject({
+  source: z.strictObject({ kind: z.enum(["input", "result"]), fieldPath: ContractFieldPathSchema }),
+  equals: z.union([z.string(), z.number(), z.boolean()]),
+});
+export type DetailCondition = z.input<typeof DetailConditionSchema>;
+
 export const DetailProjectionSpecRuntimeSchema = z.strictObject({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "detail key must be kebab-case"),
   label: z.string().min(1),
-  source: z.strictObject({
-    nodeId: NodeIdSchema,
-    fieldPath: ContractFieldPathSchema,
-  }),
-  display: z.enum(["text", "eid", "date", "count", "badge"]),
+  source: z.union([
+    z.strictObject({ nodeId: NodeIdSchema, fieldPath: ContractFieldPathSchema }),
+    z.strictObject({ kind: z.literal("result"), fieldPath: ContractFieldPathSchema }),
+    z.strictObject({ kind: z.literal("input-title") }),
+  ]),
+  display: z.enum(["text", "eid", "date", "count", "badge", "person-name"]),
+  when: DetailConditionSchema.optional(),
 });
 export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRuntimeSchema>;
 
@@ -131,6 +138,13 @@ export const SubjectProjectionSpecRuntimeSchema = z.strictObject({
   fieldPath: ContractFieldPathSchema,
 });
 export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecRuntimeSchema>;
+
+export const ResultTitleProjectionSchema = z.strictObject({
+  fieldPath: ContractFieldPathSchema,
+  display: z.literal("person-name"),
+  protectedInput: z.literal("eid").optional(),
+});
+export type ResultTitleProjection = z.input<typeof ResultTitleProjectionSchema>;
 
 export const ResultSubtitleProjectionSchema = z.strictObject({
   fieldPath: ContractFieldPathSchema,
@@ -171,10 +185,26 @@ export type WorkflowStepOf<Key extends string> = z.infer<ReturnType<typeof Workf
 
 export const StartStepSelectionSchema = z.strictObject({ inputField: z.string().regex(/^[a-z][A-Za-z0-9]*$/u), selectedWhen: z.boolean() });
 
+export interface WorkflowOperatorField {
+  readonly visibility?: "logs";
+  readonly example?: string;
+  readonly label: string;
+  readonly sources: readonly Readonly<{ nodeId: string; kind: "input" | "output"; fieldPath: string }>[];
+}
+export const WorkflowOperatorFieldSchema = z.strictObject({
+  visibility: z.literal("logs").optional(),
+  example: z.string().trim().min(1).optional(),
+  label: z.string().trim().min(1),
+  sources: z.array(z.strictObject({ nodeId: NodeIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema })).min(1),
+});
+
 export const TimelineCategorySpecSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),
   selection: StartStepSelectionSchema.optional(),
+  description: z.string().trim().min(1).optional(),
+  operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
+  system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
   nodes: z.array(NodeIdSchema).min(1),
 });
 export type TimelineCategorySpec = z.infer<typeof TimelineCategorySpecSchema>;
@@ -184,6 +214,9 @@ export const TimelineCategoryProjectionSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),
   selection: StartStepSelectionSchema.optional(),
+  description: z.string().trim().min(1).optional(),
+  operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
+  system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
   nodes: z.array(z.strictObject({ id: NodeIdSchema, label: z.string().min(1) })).min(1),
 });
 export type TimelineCategoryProjection = z.infer<typeof TimelineCategoryProjectionSchema>;

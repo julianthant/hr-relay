@@ -83,7 +83,7 @@ export interface ExplorerQueryDeps {
 const SCENARIO_DIRECTORY = "tests/scenario";
 
 
-const DetailDisplaySchema = z.enum(["text", "eid", "date", "count", "badge"]);
+const DetailDisplaySchema = z.enum(["text", "eid", "date", "count", "badge", "person-name"]);
 
 // Source evidence belongs to the executing module tree, not repoRoot, which may name a temporary runtime root.
 export const EXPLORER_SOURCE_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");
@@ -795,13 +795,12 @@ function workflowWire(
       shape: nodeShape(node),
       tasks: nodeTasks(node, context),
       details: descriptor.details
-        .filter((detail) => detail.source.nodeId === String(node.id))
-        .map((detail) => ({
+        .flatMap((detail) => "nodeId" in detail.source && detail.source.nodeId === String(node.id) ? [{
           key: detail.key,
           label: detail.label,
           fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
           display: DetailDisplaySchema.parse(detail.display),
-        })),
+        }] : []),
       editableFields: editDataFields
         .filter((field) => field.nodeId === String(node.id))
         .map((field) => ({
@@ -813,6 +812,9 @@ function workflowWire(
     timeline: descriptor.timeline.map((group) => ({
       key: group.key,
       label: group.label,
+      ...(group.description === undefined ? {} : { description: group.description }),
+      ...(group.system === undefined ? {} : { system: group.system }),
+      ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
       nodes: group.nodes.map((node) => node.id),
     })),
     edges: edgesOf(nodes),

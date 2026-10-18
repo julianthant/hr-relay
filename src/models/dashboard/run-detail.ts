@@ -180,6 +180,7 @@ export const TimelineStepMemberWireSchema = z.strictObject({
 
 /** The CATEGORICAL timeline step: one segment per descriptor-declared category (or per node for a workflow that declares nothing), never one per raw execution. */
 export const TimelineStepWireSchema = z.strictObject({
+  system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
   key: TimelineCategoryKeySchema.optional(),
   label: z.string().min(1),
   state: TimelineStepStateSchema,
@@ -306,6 +307,14 @@ export const NoteWireSchema = z.strictObject({
   level: z.enum(["info", "warning", "error"]),
   message: z.string().min(1),
   fields: z.array(NoteFieldWireSchema).optional(),
+  operatorAction: z.strictObject({
+    kind: z.enum(["click", "fill", "read", "action", "screenshot"]),
+    value: z.string().optional(),
+    label: z.string().min(1),
+    system: BrowserSystemIdSchema.optional(),
+    state: z.enum(["started", "completed", "failed", "not-run", "confirmed"]).optional(),
+    reason: z.enum(["condition-false", "dry-run", "cancelled", "callback-failed"]).optional(),
+  }).optional(),
   screenshot: z.strictObject({ bundleId: DiagnosticBundleIdSchema, artifactId: ArtifactIdSchema, sessionId: BrowserSessionIdSchema }).optional(),
 });
 
@@ -336,6 +345,7 @@ export const ObservedLogRowWireSchema = z.strictObject({
   ...LogSpanIdentityWireSchema.shape,
   producer: LogProducerWireSchema,
   points: z.array(ObservedDataPointWireSchema).min(1),
+  displayFields: z.array(z.strictObject({ direction: z.enum(["read", "write"]), label: z.string().min(1), value: z.string().min(1) })).optional(),
 });
 
 export const LogRowWireSchema = z.discriminatedUnion("kind", [
@@ -400,7 +410,8 @@ export const NotePageSchema = z.strictObject({
         && note.level === mirrored.level
         && (note.native === undefined ? mirrored.native === undefined : mirrored.native !== undefined
           && canonicalJsonStringify(note.native) === canonicalJsonStringify(mirrored.native))
-        && note.message === mirrored.message;
+        && note.message === mirrored.message
+        && canonicalJsonStringify(note.operatorAction ?? null) === canonicalJsonStringify(mirrored.operatorAction ?? null);
     });
     if (!sameNotes) {
       context.addIssue({ code: "custom", path: ["notes"], message: "notes must exactly mirror the note rows of this combined log page" });

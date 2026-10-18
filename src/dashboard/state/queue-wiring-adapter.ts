@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import type { QueueBusinessOutcome } from "../../models/dashboard/projection.js";
+import type { DashboardDayWire, QueueBusinessOutcome } from "../../models/dashboard/projection.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import { filterQueueSurfaces, type QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import type { QueueHandlers, QueueViewState } from "../surfaces/queue/queue.js";
@@ -8,6 +8,7 @@ import { dsStatusOf } from "../surfaces/shared/status/status-model.js";
 
 export function useQueueWiring(input: Readonly<{
   allRows: readonly QueueSurfaceWire[] | undefined;
+  attemptHistory?: DashboardDayWire["attemptHistory"];
   rows: readonly QueueSurfaceWire[];
   activeWorkflowId: string;
   filter: readonly StatusBucket[];
@@ -25,7 +26,7 @@ export function useQueueWiring(input: Readonly<{
   exitQueueSelection: () => void;
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
 }>) {
-  const { allRows, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
+  const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
     workflowLabelOf, selectRun, setActiveWorkflowId, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
     runQueueAction } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
@@ -37,8 +38,12 @@ export function useQueueWiring(input: Readonly<{
       const actions = surface.actions.filter((action) => action.kind !== "command" || action.command !== "archive");
       return [actions.length === surface.actions.length ? surface : { ...surface, actions }];
     });
-    return filterQueueSurfaces(scoped, filter);
-  }, [allRows, rows, activeWorkflowId, filter]);
+    const visible = filterQueueSurfaces(scoped, filter);
+    if (attemptHistory === undefined || attemptHistory.length === 0) return visible;
+    const items = new Set(visible.map(surface => JSON.stringify([surface.workflowId, surface.itemId])));
+    return [...visible, ...attemptHistory.flatMap(({ surface }) =>
+      items.has(JSON.stringify([surface.workflowId, surface.itemId])) ? [surface] : [])];
+  }, [allRows, attemptHistory, rows, activeWorkflowId, filter]);
 
   const outcomes = useMemo((): ReadonlyMap<string, QueueBusinessOutcome> => new Map(
     surfaces.flatMap(surface => surface.outcome === undefined ? [] : [[surface.runId, surface.outcome] as const]),
@@ -74,7 +79,7 @@ export function useQueueWiring(input: Readonly<{
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
       onSetBatchGrouping: setBatchGrouping,
-      onSelect: selectRun,
+      onSelect: runId => selectRun(runId, attemptHistory?.find(entry => entry.surface.runId === runId)?.partitionDay),
       onExitSelection: exitQueueSelection,
       onAction: runQueueAction,
       onToggleWell: (runId) => {
@@ -101,7 +106,7 @@ export function useQueueWiring(input: Readonly<{
         selectRun(String(link.runId), link.partitionDay);
       },
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, allRows, setActiveWorkflowId, exitQueueSelection],
+    [setBatchGrouping, selectRun, attemptHistory, runQueueAction, openWells, onWells, bulkIds, onBulkIds, allRows, setActiveWorkflowId, exitQueueSelection],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);

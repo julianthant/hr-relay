@@ -83,9 +83,11 @@ describe("Explorer registered projection", () => {
       const result = projectExplorerDefinition(workflow);
       assert.equal(result.state, "ready", result.state === "refused" ? String(result.evidence) : workflow.id);
       if (result.state !== "ready") continue;
-      assert.deepEqual(result.projection.steps.map(step => step.title), workflow.definitionPreview.groups.flatMap(group => group.entries.flatMap(entry => entry.nodeIds.map(id => workflow.nodes.find(node => node.id === id)!.label))));
+      assert.deepEqual(result.projection.steps.map(step => step.title), workflow.definitionPreview.groups.flatMap(group => group.operatorFields === undefined ? group.entries.flatMap(entry => entry.nodeIds.map(id => workflow.nodes.find(node => node.id === id)!.label)) : [group.label]));
       for (const step of result.projection.steps) for (const field of allFields(step.parts)) {
-        assert.equal(field.value, "Unavailable · no run value");
+        const declared = workflow.timeline.flatMap(group => group.operatorFields ?? []).find(declared => declared.label === field.label);
+        assert.ok(declared);
+        assert.equal(field.value, declared.example);
         assert.ok(result.projection.sources.has(field.source!));
         for (const read of result.projection.sources.get(field.source!)?.reads ?? []) assert.ok(result.projection.steps.some(step => step.number === read.step && allFields(step.parts).some(field => field.id === read.fieldId)));
       }
@@ -129,10 +131,9 @@ describe("Explorer registered projection", () => {
     const result = projectExplorerDefinition(workflow);
     assert.equal(result.state, "ready", result.state === "refused" ? String(result.evidence) : "");
     if (result.state === "ready") {
-      const parts = result.projection.steps.find(step => step.title === node.label)!.parts;
-      const detail = parts.find(part => part.kind === "detail");
-      assert.ok(detail?.kind === "detail");
-      assert.deepEqual(partText(detail.parts).filter(text => text.startsWith("first-action") || text.startsWith("second-action")), ["first-action · Read declared input · read-field", "second-action · Verify declared output · verify"]);
+      assert.ok(workflow.operationStructure.state === "declared");
+      assert.deepEqual(workflow.operationStructure.definition.invocations[0].operation.actions.map(action => action.label), ["Read declared input", "Verify declared output"]);
+      assert.doesNotMatch(result.projection.steps.flatMap(step => partText(step.parts)).join("\n"), /first-action|second-action|read-field|present-operation/u);
     }
     const wrongIdentity = structuredClone(workflow);
     if (wrongIdentity.operationStructure.state === "declared") wrongIdentity.operationStructure.definition.workflowId = workflow.nodes[0].id as unknown as typeof workflow.id;
@@ -187,19 +188,12 @@ it("mounts a served entry without a fictional preview through the injected-clien
       assert.equal(calls, 1);
       assert.ok(host.textContent?.includes("No run values are available."));
       assert.deepEqual([...host.querySelectorAll('[aria-label="Workflow steps"] h2')].map(node => node.textContent), served.nodes.map(node => node.label));
-      const structure = host.querySelector('[data-disclosure="1-declared-presentation"]');
-      assert.ok(structure instanceof HTMLDetailsElement);
-      await act(async () => { for (const detail of [structure, ...structure.querySelectorAll("details")]) detail.open = true; });
-      const outcome = [...structure.querySelectorAll("p")].find(node => node.textContent?.includes("Invocation outcome source-found · Source declared result"));
-      assert.ok(outcome, "nonempty invocation outcome renders in the mounted declaration");
-      for (let ancestor = outcome.parentElement; ancestor; ancestor = ancestor.parentElement) if (ancestor instanceof HTMLDetailsElement) assert.equal(ancestor.open, true);
-      const source = host.querySelector('[aria-label="Show source for input · direct"]');
-      assert.ok(source instanceof HTMLButtonElement);
-      await act(async () => source.click());
-      const disclosure = host.querySelector('[aria-label="input · direct source"]');
-      assert.ok(disclosure);
-      assert.ok(disclosure.textContent?.includes("Source contract"));
-      assert.ok(disclosure.textContent?.includes("Go to original field"));
+      assert.equal(host.querySelector('[data-disclosure="1-declared-presentation"]'), null);
+      assert.ok(host.textContent?.includes("Declared source purpose"));
+      assert.doesNotMatch(host.textContent ?? "", /source-node|destination-node|Invocation outcome|input ·|Unresolved source anchor/u);
+      assert.equal(host.querySelector('[aria-label="Show source for input · direct"]'), null);
+      assert.ok(served.operationStructure.state === "declared");
+      assert.equal(served.operationStructure.definition.invocations[0].outcomes[0].label, "Source declared result");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -254,9 +248,13 @@ describe("complete source and structure declarations", () => {
     assert.equal(result.state, "ready", result.state === "refused" ? String(result.evidence) : "");
     if (result.state !== "ready") return;
     const text = result.projection.steps.flatMap(step => partText(step.parts));
-    for (const expected of ["Parallel branches · join all-settled", "Branch left: source-node", "Branch right: destination-node", "Member of parallel parallel-owner, branch right", "runs when the run's input field run carries a value", "branch · parallel-presentation · node parallel-owner", "delegate · delegate-display · workflow scope · target person-lookup", "compute · transform-display · workflow scope · transform combine-values", "join · join-display · node parallel-owner", "No outcome is selected", "Declared children of action verify-output", "nested-read"]) assert.ok(text.some(text => text.includes(expected)), expected);
-    const operations = text.filter(text => text.startsWith("source-operation · node") || text.startsWith("destination-operation · node"));
-    assert.deepEqual(operations, ["source-operation · node source-node · task crm/source-value", "destination-operation · node destination-node · task crm/destination-value"]);
+    const workflow = lineageWorkflow();
+    assert.deepEqual(workflow.nodes[0].shape, { kind: "parallel", join: "all-settled", branches: [{ id: "left", nodes: ["source-node"] }, { id: "right", nodes: ["destination-node"] }] });
+    assert.ok(workflow.operationStructure.state === "declared");
+    const presentation = workflow.operationStructure.definition.presentation[0];
+    assert.deepEqual(presentation.children?.map(child => child.kind), ["operation", "operation", "delegate", "compute", "join"]);
+    assert.ok(text.some(text => text.includes("activities can run alongside")));
+    assert.doesNotMatch(text.join("\n"), /parallel-owner|source-node|destination-node|combine-values|Declared children|runs when the run/u);
   });
   it("refuses pending bindings and splits multi-system tasks in declaration order without Local", () => {
     const pending = lineageWorkflow();
@@ -282,7 +280,8 @@ describe("complete source and structure declarations", () => {
     assert.deepEqual(result.projection.steps.map(step => [step.number, step.title, step.system]), [
       [1, "Declared parallel", undefined], [2, "Declared source", "CRM"], [3, "Declared source", "Kuali"], [4, "Declared source", "CRM"], [5, "Declared destination", "CRM"],
     ]);
-    assert.deepEqual(result.projection.steps.flatMap(step => allFields(step.parts).map(field => field.id)), workflow.nodes.flatMap(node => node.tasks.flatMap(task => task.fields.map(field => `${node.id}:${task.arm}:${task.taskId}:${field.side}:${field.path}`))));
+    assert.deepEqual(result.projection.steps.flatMap(step => allFields(step.parts)), []);
+    assert.deepEqual([...result.projection.sources.keys()], workflow.nodes.flatMap(node => node.tasks.flatMap(task => task.fields.map(field => `${node.id}:${task.arm}:${task.taskId}:${field.side}:${field.path}`))));
     for (const step of result.projection.steps) for (const field of allFields(step.parts)) {
       assert.ok(step.system);
       assert.ok(result.projection.sources.has(field.id));
@@ -292,7 +291,7 @@ describe("complete source and structure declarations", () => {
     const direct = result.projection.sources.get("destination-node:task:crm/destination-value:input:direct");
     assert.equal(direct?.reads?.[0].step, 2);
     assert.equal(result.projection.sources.get("destination-node:task:crm/destination-value:input:derived")?.chain?.[0].step, 5);
-    assert.ok(partText(result.projection.steps[2].parts).join("\n").includes("Member of parallel parallel-owner, branch left"));
+    assert.doesNotMatch(partText(result.projection.steps[2].parts).join("\n"), /parallel-owner|branch left/u);
   });
   it("rethrows unrelated projection exceptions instead of classifying them as invalid definitions", () => {
     const workflow = lineageWorkflow();
@@ -308,7 +307,10 @@ describe("complete source and structure declarations", () => {
     workflow.definitionPreview.systemsFirstUse = [];
     const result = projectExplorerDefinition(workflow);
     assert.equal(result.state, "ready");
-    if (result.state === "ready") for (const step of result.projection.steps.filter(step => allFields(step.parts).length)) assert.equal(step.system, "Local");
+    if (result.state === "ready") {
+      assert.deepEqual(result.projection.steps.flatMap(step => allFields(step.parts)), []);
+      assert.equal(result.projection.steps.filter(step => step.system === "Local").length, 2);
+    }
   });
   it("names branch alternatives and membership without simulating all alternatives", () => {
     const workflow = lineageWorkflow();
@@ -322,9 +324,9 @@ describe("complete source and structure declarations", () => {
     assert.equal(result.state, "ready");
     if (result.state !== "ready") return;
     const text = result.projection.steps.flatMap(step => partText(step.parts)).join("\n");
-    assert.ok(text.includes("Alternative with-record: destination-node. Selection is unavailable without a run."));
-    assert.ok(text.includes("Alternative without-record: no members."));
-    assert.ok(text.includes("Member of source-node, alternative with-record. Other alternatives are not implied to execute."));
+    assert.deepEqual(branch.shape, { kind: "branch", cases: [{ name: "with-record", nodes: [workflow.nodes[2].id] }, { name: "without-record", nodes: [] }] });
+    assert.ok(text.includes("The workflow follows the applicable alternative. No alternative is selected in this definition preview."));
+    assert.doesNotMatch(text, /with-record|without-record|destination-node/u);
   });
   it("maps each declared action kind to its distinct existing action icon", () => {
     const workflow = lineageWorkflow();
@@ -337,7 +339,7 @@ describe("complete source and structure declarations", () => {
     assert.equal(result.state, "ready");
     if (result.state !== "ready") return;
     const actions = (parts: readonly import("../../../src/dashboard/surfaces/explorer/explorer-flow-model.js").FlowPart[]): Extract<typeof parts[number], { kind: "action" }>[] => parts.flatMap(part => part.kind === "detail" || part.kind === "form" ? actions(part.parts) : part.kind === "action" ? [part] : []);
-    const mapped = actions(result.projection.steps[0].parts).filter(action => action.text.startsWith("action-"));
+    const mapped = result.projection.steps.filter(step => step.title === "Declared source").flatMap(step => actions(step.parts));
     assert.equal(mapped.length, Object.keys(icons).length);
     assert.deepEqual(mapped.map(action => action.icon), Object.values(icons));
   });
@@ -439,8 +441,9 @@ describe("complete source and structure declarations", () => {
     assert.equal(result.state, "ready");
     if (result.state !== "ready") return;
     assert.equal(result.projection.steps[0].system, undefined);
-    const text = partText(result.projection.steps[0].parts).join("\n");
-    assert.ok(text.includes('Invocation outcome source-present · Source value is present: {"kind":"is-present","value":{"entryId":"source-node","kind":"task-output","path":"value"}} · continuation read-value. No outcome is selected.'));
+    const text = result.projection.steps.flatMap(step => partText(step.parts)).join("\n");
+    assert.deepEqual(workflow.operationStructure.definition.invocations[0].outcomes, [{ id: "source-present", label: "Source value is present", when: { kind: "is-present", value: { kind: "task-output", entryId: "source-node", path: "value" } }, continuation: "read-value" }]);
+    assert.doesNotMatch(text, /source-present|source-node|read-value|Invocation outcome/u);
   });
   it("reports missing transaction probe and verify contracts as unavailable before drawing a partial timeline", () => {
     const transaction = wire.workflows.flatMap(workflow => workflow.nodes).find(node => node.shape.kind === "transaction" && node.tasks.some(task => task.writeSafety?.verifyTaskId))!;
@@ -464,7 +467,12 @@ describe("complete source and structure declarations", () => {
       workflow.operationStructure.definition = redigest(workflow.operationStructure.definition);
       const result = projectExplorerDefinition(workflow);
       assert.equal(result.state, "unavailable");
-      if (result.state === "unavailable") assert.ok(result.reason.includes(`${role} task ${invocation.taskId}`));
+      if (result.state === "unavailable") {
+        assert.equal(result.reason, "Required transaction safety details are unavailable in this definition preview.");
+        assert.equal(result.reason.includes(invocation.taskId), false);
+        assert.equal(workflow.operationStructure.definition.invocations[0].contractRole, role);
+        assert.equal(workflow.operationStructure.definition.invocations[0].taskId, invocation.taskId);
+      }
       assert.equal("projection" in result, false);
     }
   });

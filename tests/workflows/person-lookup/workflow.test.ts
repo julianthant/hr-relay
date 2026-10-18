@@ -226,8 +226,8 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "active-state",
         "label": "Outcome",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "state"
+          "kind": "result",
+          "fieldPath": "activeStatus.state"
         },
         "display": "badge"
       },
@@ -235,8 +235,7 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "detail-search",
         "label": "Search",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.search"
+          "kind": "input-title"
         },
         "display": "text"
       },
@@ -244,17 +243,17 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "detail-name",
         "label": "Name",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.name"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.name"
         },
-        "display": "text"
+        "display": "person-name"
       },
       {
         "key": "detail-eid",
         "label": "EID",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.eid"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.eid"
         },
         "display": "text"
       },
@@ -262,8 +261,8 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "detail-department",
         "label": "Dept",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.department"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.department"
         },
         "display": "text"
       },
@@ -271,8 +270,8 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "detail-hr-status",
         "label": "HR Status",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.hrStatus"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.hrStatus"
         },
         "display": "text"
       },
@@ -280,8 +279,8 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "detail-ucpath",
         "label": "UCPath",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.ucpath"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.ucpath"
         },
         "display": "text"
       },
@@ -289,8 +288,8 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "detail-crm",
         "label": "CRM",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.crm"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.crm"
         },
         "display": "text"
       },
@@ -298,8 +297,8 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "detail-start-date",
         "label": "Start Date",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.startDate"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.startDate"
         },
         "display": "text"
       },
@@ -307,46 +306,81 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "detail-end-date",
         "label": "End Date",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.endDate"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.endDate"
         },
-        "display": "text"
+        "display": "text",
+        "when": {
+          "source": {
+            "kind": "result",
+            "fieldPath": "activeStatus.state"
+          },
+          "equals": "inactive"
+        }
       },
       {
         "key": "detail-termination-reason",
         "label": "Term Reason",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.terminationReason"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.terminationReason"
         },
-        "display": "text"
+        "display": "text",
+        "when": {
+          "source": {
+            "kind": "result",
+            "fieldPath": "activeStatus.state"
+          },
+          "equals": "inactive"
+        }
       },
       {
         "key": "detail-found-in-ucpath",
         "label": "Found in UCPath",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.foundInUcpath"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.foundInUcpath"
         },
-        "display": "text"
+        "display": "text",
+        "when": {
+          "source": {
+            "kind": "input",
+            "fieldPath": "mode"
+          },
+          "equals": "match"
+        }
       },
       {
         "key": "detail-matched-eid",
         "label": "Matched EID",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.matchedEid"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.matchedEid"
         },
-        "display": "text"
+        "display": "text",
+        "when": {
+          "source": {
+            "kind": "input",
+            "fieldPath": "mode"
+          },
+          "equals": "match"
+        }
       },
       {
         "key": "detail-matched-name",
         "label": "Matched Name",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.matchedName"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.matchedName"
         },
-        "display": "text"
+        "display": "person-name",
+        "when": {
+          "source": {
+            "kind": "input",
+            "fieldPath": "mode"
+          },
+          "equals": "match"
+        }
       }
     ],
     "timelineDeclared": true,

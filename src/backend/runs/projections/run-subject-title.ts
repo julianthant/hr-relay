@@ -1,3 +1,11 @@
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { workflowPlanning } from "../../../workflow-kit/workflow.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
+import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
+import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
+import { ProjectionDegradedError } from "../commands/refusals.js";
 
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
@@ -64,4 +72,34 @@ export function resolveSubjectTitle(
     );
   }
   return name;
+}
+
+export function allowsSubjectIdentity(run: RunRecord, descriptor: AnyWorkflowDescriptor): boolean {
+  return retainedRunProtectedBindings(run).every(binding => binding.inputPath === "timekeeperName"
+    || descriptor.titleProjection?.protectedInput === "eid" && binding.inputPath === "emplId");
+}
+
+export function verifiedResultDisplayValue(run: RunRecord, receipt: RunEvidenceReceipt, fieldPath: string, display: "title" | "subtitle"): unknown {
+  const envelope = run.envelope;
+  if (receipt.runId !== envelope.runId || receipt.traceId !== envelope.traceId || receipt.attempt !== envelope.attempt
+    || receipt.workflowId !== envelope.workflow || receipt.descriptorFingerprint !== envelope.contractFingerprint
+    || receipt.configFingerprint !== envelope.configFingerprint) throw new ProjectionDegradedError(`result-${display}-receipt-identity-mismatch`);
+  const verification = receipt.verification.find(entry => entry.id === deriveEvidenceEntryId(receipt.receiptId, "verification", "completion.terminal-result"));
+  const factId = deriveEvidenceEntryId(receipt.receiptId, "output", fieldPath);
+  const fact = receipt.output.find(entry => entry.id === factId);
+  if (verification?.obligation !== "completion.terminal-result" || verification.verdict !== "verified"
+    || !verification.evidence.includes(evidenceEntryRef(factId)) || fact?.state !== "satisfied" || fact.value.state === "redacted"
+    || fact.value.state !== "allowed" && (display !== "subtitle" || fact.value.rawValue === undefined)) return undefined;
+  return fact.value.rawValue === undefined ? fact.value.value : fact.value.rawValue;
+}
+
+export function resolveResultTitle(descriptor: AnyWorkflowDescriptor, run: RunRecord, receipt: RunEvidenceReceipt | undefined): string | undefined {
+  const projection = descriptor.titleProjection;
+  if (run.envelope.shape === "operation" || projection === undefined || !allowsSubjectIdentity(run, descriptor)) return undefined;
+  const inputTitle = workflowPlanning(descriptor).title(run.input.parsed.value);
+  if (receipt === undefined || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") return inputTitle;
+  const value = verifiedResultDisplayValue(run, receipt, projection.fieldPath, "title");
+  if (value === undefined || value === null) return inputTitle;
+  if (typeof value !== "string" || value.trim() === "") throw new ProjectionDegradedError("result-title-value-invalid");
+  return titleCasePersonName(value);
 }

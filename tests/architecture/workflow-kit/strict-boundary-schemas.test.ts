@@ -50,7 +50,7 @@ import { DataPointSchema, RecordedDataPointSchema, TaskExecutionIdentitySchema, 
 import { GraphCoveragePointSchema, ScenarioCoverageClaimSchema } from "../../../src/workflow-kit/validation/scenario-coverage.js";
 import { ApproveContextSchema, ApprovedDocumentSchema, CompletionConsumptionSpecSchema, CompletionProgramSampleSchema, ExtractedFieldSchema, MemberPlanEntrySchema, PreviewRecordSchema } from "../../../src/models/workflow/completion.js";
 import { FileAcceptSpecSchema, InputParserSpecSchema, ParsedInputEntrySchema, SurfaceFieldSchema, TextTemplateSchema, UploadFieldSpecSchema, UploadedFileSchema, WorkflowSurfacesSchema } from "../../../src/models/workflow/ingress.js";
-import { DetailProjectionSpecRuntimeSchema, DurableArtifactProjectionSpecRuntimeSchema, GateProjectionDefinitionSchema, StepProjectionSchema, SurfaceShapeSchema, VerdictDefinitionSchema, WorkflowActionPolicySchema, WorkflowCapabilitiesSchema } from "../../../src/models/workflow/presentation.js";
+import { ResultTitleProjectionSchema, DetailProjectionSpecRuntimeSchema, DurableArtifactProjectionSpecRuntimeSchema, GateProjectionDefinitionSchema, StepProjectionSchema, SurfaceShapeSchema, VerdictDefinitionSchema, WorkflowActionPolicySchema, WorkflowCapabilitiesSchema } from "../../../src/models/workflow/presentation.js";
 import { BUILD_MANIFEST, BuildManifestSchema, SourceHashSchema } from "../../../src/workflow-kit/validation/build-manifest.js";
 import { CheckpointExpectationSchema, CheckpointMissReasonSchema, FactProvenanceSchema, FreshnessOverrideSchema, RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { ChildVisibilitySchema, DelegationManifestRefSchema, DelegationPolicySchema, GraphNodeKindSchema, ParallelBranchSpecSchema, childRunOutcomeSchema } from "../../../src/models/workflow/graph.js";
@@ -742,7 +742,12 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { review: false, editData: true },
     { review: true, editData: true, delegationDisplay: "inline" },
   ] },
+  { name: "ResultTitleProjection", schema: ResultTitleProjectionSchema, fixtures: [
+    { fieldPath: "activeStatus.details.name", display: "person-name", protectedInput: "eid" },
+  ] },
   { name: "DetailProjectionSpecRuntime", schema: DetailProjectionSpecRuntimeSchema, fixtures: [
+    { key: "result-name", label: "Name", source: { kind: "result", fieldPath: "activeStatus.details.name" }, display: "text", when: { source: { kind: "input", fieldPath: "mode" }, equals: "match" } },
+    { key: "search", label: "Search", source: { kind: "input-title" }, display: "text" },
     { key: "resolved-eid", label: "EID", source: { nodeId: "searching", fieldPath: "selection.selected" }, display: "eid" },
   ] },
   { name: "DurableArtifactProjectionSpecRuntime", schema: DurableArtifactProjectionSpecRuntimeSchema, fixtures: [

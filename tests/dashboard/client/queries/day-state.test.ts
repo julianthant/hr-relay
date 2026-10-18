@@ -174,3 +174,14 @@ describe("applyDashboardDayPatch splices one row", () => {
     assert.equal(replayed.value.queueSurfaces[1].rowRevision, 9);
   });
 });
+
+it("removes historical attempts only when their selected-day item leaves the queue", () => {
+  const day = threeRowDay();
+  const row = day.queueSurfaces[0];
+  const history = { partitionDay: "2026-07-31", surface: { ...row, runId: "00000000-0000-4000-8000-000000008001", attempt: 1 } };
+  const held = DashboardDayWireSchema.parse({ ...day, queueSurfaces: [{ ...row, attempt: 2 }, ...day.queueSurfaces.slice(1).map(surface => ({ ...surface, itemId: surface.runId }))], attemptHistory: [history] });
+  const next = applyDashboardDayPatch(held, { operation: "remove-queue-surface", target: { runId: row.runId, rowRevision: row.rowRevision }, reason: "the run left this day" });
+  assert.deepEqual(next.attemptHistory, []);
+  const other = applyDashboardDayPatch(held, { operation: "remove-queue-surface", target: { runId: day.queueSurfaces[1].runId, rowRevision: day.queueSurfaces[1].rowRevision }, reason: "the run left this day" });
+  assert.equal(other.attemptHistory?.[0], held.attemptHistory?.[0]);
+});

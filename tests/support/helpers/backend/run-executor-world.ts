@@ -165,7 +165,10 @@ export function createRunExecutorTestWorld() {
         replay: "checkpoint",
       }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
       return {
-        steps: [[{ key: "search", label: "Search" }, [search]]],
+        steps: [[{ key: "search", label: "Search", operatorFields: [
+          { label: "Employee ID", sources: [{ nodeId: "search", kind: "input", fieldPath: "emplId" }] },
+          { label: "Selection", sources: [{ nodeId: "search", kind: "output", fieldPath: "selection.status" }] },
+        ] }, [search]]],
         result: result(SearchPersonOrgOutputSchema, [search], ({ outputs }) => outputs.search, [{ path: "selection.status", source: { kind: "task-output", entryId: "search", path: "selection.status" } },
           { path: "results", source: { kind: "derived", inputs: [
             { id: "selection", source: { kind: "task-output", entryId: "search", path: "selection.status" } },
