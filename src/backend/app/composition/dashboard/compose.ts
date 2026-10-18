@@ -2,7 +2,6 @@ import { createChatGptAccountService } from "../../../accounts/chatgpt-account-s
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
-import type { AnyWorkflowDescriptor } from "../../../../workflow-kit/workflow.js";
 import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
 import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
 import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
@@ -223,6 +222,11 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
           || active?.configSnapshotId !== record.lifecycle.operation.configSnapshotId || active.configFingerprint !== record.lifecycle.operation.configFingerprint) throw new WorkerControlRefusal("worker-retry-current-authority-changed");
         return;
       }
+      if (request.command === "spawn-worker") {
+        const lease = repositories.workerLeases.get(request.member.workerId);
+        if (lease !== undefined) input.database.assertRetainedWorkerDeath(request.member,
+          { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt }, lease.birthCommandId);
+      }
       if (input.clock.nowMs() >= Date.parse(record.expiresAt)) throw new WorkerControlRefusal("worker-control-expired-before-effect");
       if ("workerId" in record.request.target) {
         const lease = repositories.workerLeases.get(record.request.target.workerId);
@@ -327,40 +331,10 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   });
 }
 
-export function recoverStandingWorkers(input: Readonly<{
-  database: AuthorityDatabase; supervisor: DashboardWorkerProcessSupervisor; clock: Clock;
-  descriptors: Readonly<{ resolve(workflowId: string): AnyWorkflowDescriptor | undefined }>;
-  onUnavailable(error: Error): void;
-}>): void {
-  const workflows = new Set(input.database.authority.workerSlots.list().filter(slot => slot.retiredAt === null).map(slot => slot.workflow));
-  for (const workflow of workflows) {
-    const next = (): void => {
-      if (input.database.authority.workerControls.pending(`worker-pool:${workflow}`).length !== 0
-        || input.database.authority.workerSlots.recoveries(workflow).length !== 0
-        || input.database.authority.workerSlots.verifications(workflow).length !== 0) return;
-      const candidate = input.database.authority.workerSlots.list(workflow).find(slot => {
-        const lease = input.database.authority.workerLeases.get(slot.workerId);
-        return slot.retiredAt === null && lease?.lifecycle.state === "stopped"
-          && (lease.recoveryBasis?.state === "idle" || lease.recoveryBasis?.state === "paused");
-      });
-      if (candidate === undefined) return;
-      const descriptor = input.descriptors.resolve(workflow);
-      if (descriptor === undefined || input.supervisor.ownWorkerControl === undefined) {
-        input.onUnavailable(new Error("worker-standing-recovery-owner-unavailable"));
-        return;
-      }
-      try {
-        const grant = input.database.reserveStandingWorkerRecovery(candidate.workerId, descriptor, input.clock.now().toISOString());
-        input.supervisor.ownWorkerControl(grant.commandId, async () => {
-          await input.supervisor.restoreStandingWorker(grant.binding);
-          next();
-        });
-      } catch (error) {
-        if (!(error instanceof Error) || !error.message.startsWith("worker-")) throw error;
-        input.onUnavailable(error);
-      }
-    };
-    next();
+export function reconcileDeadWorkerLifetimes(database: AuthorityDatabase, clock: Clock, onUnavailable: (error: Error) => void): void {
+  for (const member of database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)) {
+    try { database.settleDeadWorkerLifetime(member.workerId, clock.now().toISOString()); }
+    catch (error) { onUnavailable(error instanceof Error ? error : new Error(String(error))); }
   }
 }
 
@@ -658,6 +632,7 @@ async function composeDashboardRuntimeStartup(
     runLogsHub.poll();
     // Lease transitions need authority polling because they need not emit spans.
     database.reconcileWorkerControlMilestones(clock.now().toISOString());
+    reconcileDeadWorkerLifetimes(database, clock, reportSupervisorFault);
     projection.reconcileWorkerAuthority();
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();
@@ -705,7 +680,7 @@ async function composeDashboardRuntimeStartup(
   });
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   database.reconcileWorkerControlMilestones(clock.now().toISOString());
-  recoverStandingWorkers({ database, supervisor: workerControl.supervisor, clock, descriptors, onUnavailable: reportSupervisorFault });
+  reconcileDeadWorkerLifetimes(database, clock, reportSupervisorFault);
   // Ref write-safety's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
 
@@ -756,7 +731,11 @@ async function composeDashboardRuntimeStartup(
   const commands = createDashboardCommandService({
     kernel,
     projection,
-    startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority }),
+    startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority,
+      reconcileWorker: workerId => {
+        const lease = database.settleDeadWorkerLifetime(workerId, clock.now().toISOString());
+        return lease !== undefined && isLiveWorker(lease);
+      } }),
   });
 
   const startPlans = createStartPlanService({

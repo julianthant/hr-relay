@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import type { AuthorityDatabase as PoolAuthorityDatabase } from "../admission-fixture.js";
 import { type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { type Clock } from "../../../../src/rules/time/clock.js";
@@ -110,6 +111,18 @@ export function createDashboardPoolTestWorld() {
     );
     seedSyntheticRuntimeConfig(database);
     openDatabases.push(database);
+    const nativeDeath = database.assertRetainedWorkerDeath.bind(database);
+    const death = vi.spyOn(database, "assertRetainedWorkerDeath").mockImplementation((member, lifetime, birth) => {
+      const lease = database.authority.workerLeases.get(member.workerId);
+      if (lease?.birthCommandId !== undefined) return nativeDeath(member, lifetime, birth);
+      assert.equal(lease?.lifecycle.state, "stopped");
+      assert.equal(lease?.leaseGeneration, lifetime.leaseGeneration);
+      assert.equal(lease?.processId, lifetime.processId);
+      assert.equal(lease?.lifecycle.startedAt, lifetime.startedAt);
+      database.assertWorkerLifecycleRelease(member.workerId);
+      assert.ok(database.authority.workerControls.browsers(member.workerId).every(browser => browser.health === "closed"));
+    });
+    cleanups.push(() => death.mockRestore());
     const scheduler = new ManualScheduler(clock, 0);
     const children: FakeWorkerChild[] = [];
     const spawnRequests: WorkerProcessSpawnRequest[] = [];
@@ -301,7 +314,11 @@ export function createDashboardPoolTestWorld() {
 
   function launchCommands(harness: ControlHarness) {
     return createDashboardCommandService({ kernel: harness.kernel, projection: { ingestFromTimeline: () => {}, refreshRun: () => {} },
-      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority }) });
+      startWorkerCapacity: createRunWorkerCapacity({ kernel: harness.kernel, authority: harness.database.authority,
+        reconcileWorker: workerId => {
+          const lease = harness.database.authority.workerLeases.get(workerId);
+          return lease !== undefined && lease.lifecycle.state !== "stopped";
+        } }) });
   }
 
   async function proveLaunchBirth(harness: ControlHarness) {

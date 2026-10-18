@@ -1,9 +1,10 @@
+import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operator-command-fixtures.js";
 import { createDashboardPoolTestWorld, type ControlHarness } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import { createOperatorCommandIngress } from "../../../../../src/backend/runs/commands/operator-command-ingress.js";
 import { deriveBulkChildCommandId } from "../../../../../src/rules/commands/command-groups.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { QUEUED_RUN, RUN_ID } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { FakeWorkerChild } from "../../../../support/helpers/backend/dashboard-pool-world.js";
@@ -335,9 +336,10 @@ describe("dashboard launch creates bounded worker capacity", () => {
     assert.equal(h.children.length, 1);
     assert.equal(JSON.stringify(h.database.authority.workerControls.list()), retained);
     const replacement = commands.submit(dashboardLaunch(h, "10203373").request);
+    await proveLaunchBirth(h);
     assert.equal((await replacement).state, "applied");
-    assert.equal(h.children.length, 1);
-    assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 1);
+    assert.equal(h.children.length, 2);
+    assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 2);
   });
 
   it("serializes concurrent launches so two queued runs share one cold worker", async () => {
@@ -501,6 +503,52 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
 
   afterEach(cleanup);
 
+  it("does not reserve recovery or launch a stopped standing worker at dashboard boot", async () => {
+    const repoRoot = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hrauto-no-boot-worker-")));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date(NOW));
+    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
+    mkdirSync(join(repoRoot, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
+    const database = AuthorityDatabase.open({ path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+    try {
+      seedSyntheticRuntimeConfig(database);
+      database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
+      const reservation = { commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+        family: "worker-browser", type: "plan-worker-count", target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 1 } };
+      database.authority.commands.insert(reservation);
+      database.authority.workerSlots.allocate({ workflow: WORKFLOW, poolIndex: 1, commandId: reservation.commandId, now: NOW });
+      const started = database.authority.workerLeases.start({ workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
+        processId: 7001, requestedBy: "local-operator", now: NOW });
+      assert.equal(started.state, "started");
+      database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
+        lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW }, now: NOW });
+      database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
+        lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "crashed" }, now: NOW });
+    } finally { database.close(); }
+    const admission = acquireEntrypointAdmission(repoRoot, "shared");
+    cleanups.push(() => admission.release());
+    const recovery = vi.spyOn(AdmittedAuthorityDatabase.prototype, "reserveStandingWorkerRecovery").mockImplementation(() => {
+      throw new Error("worker-boot-recovery-must-not-be-requested");
+    });
+    const children: FakeWorkerChild[] = [];
+    let runtime: DashboardRuntime | undefined;
+    try {
+      runtime = await composeDashboardRuntime({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
+        isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, clock, repoRoot,
+        workerProcess: { scheduler: new ManualScheduler(clock, 0), spawn: () => {
+          const child = new FakeWorkerChild(7002); children.push(child); return child;
+        }, birth: { pollMs: 250, timeoutMs: 10_000 }, faultSink: () => {} } });
+      assert.equal(recovery.mock.calls.length, 0, "dashboard boot must not request a worker launch reservation");
+      assert.equal(children.length, 0);
+    } finally {
+      recovery.mockRestore();
+      if (runtime !== undefined) { const stopping = runtime.stop(); for (const child of children) child.emitExit(0, null); await stopping; }
+    }
+  });
+
   it.each(["manual-worker", "dashboard-start"] as const)("%s writes a graceful stop, waits for the owned OS exit, then releases the server lock", async mode => {
     const repoRoot = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hrauto-shutdown-")));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
@@ -623,6 +671,14 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
             control: { directive: "pause", requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
         }
       } finally { blocked.close(); }
+      const descriptor = Object.getOwnPropertyDescriptor(AdmittedAuthorityDatabase.prototype, "settleDeadWorkerLifetime") as TypedPropertyDescriptor<AdmittedAuthorityDatabase["settleDeadWorkerLifetime"]>;
+      const nativeReconcile = descriptor.value; assert.ok(nativeReconcile);
+      const reconcile = vi.spyOn(AdmittedAuthorityDatabase.prototype, "settleDeadWorkerLifetime").mockImplementation(function (this: AdmittedAuthorityDatabase, workerId, now) {
+        const lease = this.authority.workerLeases.get(workerId);
+        if (lease?.birthCommandId === undefined && lease?.lifecycle.state === "starting" && lease.control.directive === "pause") return lease;
+        return nativeReconcile.call(this, workerId, now);
+      });
+      cleanups.push(() => reconcile.mockRestore());
       const nextPlanResponse = await fetch(`${origin}/api/v1/start-plans`, { method: "POST",
         headers: { "content-type": "application/json", origin },
         body: JSON.stringify({ workflowId: WORKFLOW, submissions: [{ emplId: "10203373" }], dryRun: false }) });

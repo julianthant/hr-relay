@@ -352,7 +352,8 @@ member and launch-command identity.
 
 Mutating controls require this supervisor's live child with matching member, PID, and lease start.
 External leases grant no control or adoption. Restart does not reconstruct ownership from PIDs.
-Crashed capacity stays unmet until explicit launch; there is no background restart.
+Crashed capacity stays unmet until Run, Rerun or Sessions explicitly launches a worker. Dashboard
+boot never launches a worker.
 
 `admitWorkerPoolRoster` selects retained slots in ordinal order and records the exact selected and
 excess roster. Scale-down stops each owned excess member through the bounded policy. Retirement
@@ -489,14 +490,19 @@ excludes run binding during controls and retains failed or uncertain health.
 ### 11.3 Capacity for a submitted start
 
 `src/backend/runs/commands/run-worker-capacity.ts` reads the stored start plan's `workers`
-choice. Auto uses the standing pool and adds one member only when the pool is empty. A number
-from 1 through 8 adds the shortfall to that count, capped by `plan.planned.length`. Every
-nonretired member counts, including paused and failed members. An overtarget pool stays intact.
+choice. Auto uses the live standing pool and starts one worker when none is live. A number from 1
+through 8 adds the shortfall to that count, capped by `plan.planned.length`. Only workers with verified
+live process custody count, including live paused members. An overtarget pool stays intact.
+A proved-dead lifetime is durably stopped with its observed crash reason after run, write, Duo and
+browser release is verified. Missing or uncertain custody refuses recovery. Capacity reuses stopped
+members through native Spawn before adding a shortfall; replacement preserves pool membership and
+rechecks exact old-lifetime death and release immediately before launch.
 Preview and zero-item plans create no worker effects.
 
 Capacity adds members through the native journaled Plan and Spawn path. The retained Plan roster
 fixes the new member identities, and each Spawn retains its command identity, actor, timestamp,
-and CAS basis. Capacity never restarts, stops, or removes an existing member. Free workers share
+and CAS basis. Capacity replaces a proved-dead member in place; it never stops a live member or removes
+membership. Free workers share
 the workflow's unclaimed items, including workers that become free or are added in Sessions later.
 Created workers remain in the pool, idle after their work finishes.
 

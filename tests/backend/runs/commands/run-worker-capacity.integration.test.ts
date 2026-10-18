@@ -70,7 +70,7 @@ describe("run worker choice admission", () => {
   it("caps by the stored accepted items even when the result also lists superseded runs", async () => {
     const h = openControlHarness(); const { request } = dashboardLaunch(h, "10873690", { workers: 8 });
     const result = h.kernel.execute(request); assert.ok(result.state === "applied");
-    const capacity = createRunWorkerCapacity({ kernel: h.kernel, authority: h.database.authority });
+    const capacity = createRunWorkerCapacity({ kernel: h.kernel, authority: h.database.authority, reconcileWorker: workerId => h.database.authority.workerLeases.get(workerId)?.lifecycle.state !== "stopped" });
     const command = CommandRequestSchema.parse(request); assert.ok(command.family === "start");
     const pending = capacity.ensure(command, { ...result, affectedTargets: [...result.affectedTargets,
       { family: "run", runId: RunIdSchema.parse(nextCommandId()) }, { family: "run", runId: RunIdSchema.parse(nextCommandId()) }] });
@@ -78,20 +78,20 @@ describe("run worker choice admission", () => {
     assert.equal(h.children.length, 1);
   });
 
-  it("creates only the shortfall beside a failed standing member", async () => {
+  it("reuses a failed standing member before adding the remaining shortfall", async () => {
     const h = openControlHarness();
     await spawnPoolWorker(h);
     h.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
       lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "crashed" }, now: NOW });
     h.children[0]?.emitExit(1, null);
-    const before = h.database.authority.workerLeases.get(WORKER_1);
     const { request } = dashboardLaunch(h, "10873690", { workers: 3, items: 2 });
     const pending = launchCommands(h).submit(request);
     await proveLaunchBirth(h);
+    await proveLaunchBirth(h);
     assert.equal((await pending).state, "applied");
-    assert.equal(h.children.length, 2);
+    assert.equal(h.children.length, 3);
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 2);
-    assert.deepEqual(h.database.authority.workerLeases.get(WORKER_1), before);
+    assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 2);
   });
 
   it.each(["refused", "uncertain"] as const)("retains a partial multi-spawn %s and never repeats either child", async outcome => {
@@ -136,6 +136,52 @@ describe("run worker choice admission", () => {
     assert.equal((await pending).state, "already-applied");
     await settleMicrotasks();
     assert.equal(h.children.length, 2);
+    assert.equal((await launchCommands(h).submit(request)).state, "already-applied");
+    assert.equal(h.children.length, 2);
+  });
+});
+
+
+describe("automatic Run capacity", () => {
+  it("starts exactly one worker for a run with no standing worker", async () => {
+    const h = openControlHarness();
+    const { request } = dashboardLaunch(h, "10873690", { items: 3 });
+    const pending = launchCommands(h).submit(request);
+    await proveLaunchBirth(h);
+    assert.equal((await pending).state, "applied");
+    assert.equal(h.children.length, 1);
+    assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
+    assert.equal((await launchCommands(h).submit(request)).state, "already-applied");
+    assert.equal(h.children.length, 1);
+  });
+
+  it("uses the live standing worker without adding another", async () => {
+    const h = openControlHarness();
+    await spawnPoolWorker(h);
+    const controls = h.database.authority.workerControls.list();
+    const { request } = dashboardLaunch(h);
+    assert.equal((await launchCommands(h).submit(request)).state, "applied");
+    assert.equal(h.children.length, 1);
+    assert.deepEqual(h.database.authority.workerControls.list(), controls);
+  });
+
+  it("replaces a dead sole member once and retains its stopped reason before replacement", async () => {
+    const h = openControlHarness();
+    await spawnPoolWorker(h);
+    h.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
+      lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: NOW, reason: "crashed" }, now: NOW });
+    h.children[0]?.emitExit(1, null);
+    const dead = h.database.authority.workerLeases.get(WORKER_1);
+    assert.ok(dead?.lifecycle.state === "stopped");
+    assert.equal(dead.lifecycle.reason, "crashed");
+    const { request } = dashboardLaunch(h);
+    const pending = launchCommands(h).submit(request);
+    await settleMicrotasks();
+    assert.equal(h.children.length, 2, "a dead retained slot must not satisfy Run capacity");
+    await proveLaunchBirth(h);
+    assert.equal((await pending).state, "applied");
+    assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
+    assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 2);
     assert.equal((await launchCommands(h).submit(request)).state, "already-applied");
     assert.equal(h.children.length, 2);
   });

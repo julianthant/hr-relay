@@ -5478,6 +5478,23 @@ export class AuthorityDatabase implements Disposable {
     if (this.authority.workerControls.browsers(member.workerId).some(value => value.health !== "closed")) throw new Error("worker-recovery-browser-closure-unproved");
   }
 
+  settleDeadWorkerLifetime(workerId: string, now: string): WorkerLeaseRecord | undefined {
+    return this.withAuthorityTransaction(() => {
+      const lease = this.#readWorkerLease(workerId);
+      if (lease === undefined || lease.lifecycle.state === "stopped") return lease;
+      const custody = this.workerLifetimeCustody(workerId);
+      if (custody.state === "alive") return lease;
+      if (custody.state !== "dead" && custody.state !== "released") throw new Error("worker-recovery-death-unproved");
+      this.assertWorkerLifecycleRelease(workerId);
+      if (this.authority.workerControls.browsers(workerId).some(browser => browser.health !== "closed")) throw new Error("worker-recovery-browser-closure-unproved");
+      const stopped = WorkerLeaseRecordSchema.parse({ ...lease, lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt,
+        stoppedAt: now, reason: "crashed" }, control: { ...lease.control, directive: "stop", requestedAt: now },
+        version: lease.version + 1, updatedAt: now });
+      this.#writeWorkerLease(stopped, "update");
+      return stopped;
+    });
+  }
+
   workerLifetimeCustody(workerId: string) {
     const lease = this.authority.workerLeases.get(workerId);
     const slot = this.authority.workerSlots.get(workerId);

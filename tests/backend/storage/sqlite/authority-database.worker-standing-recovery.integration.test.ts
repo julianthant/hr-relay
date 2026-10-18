@@ -6,7 +6,6 @@ import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/w
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { once } from "node:events";
-import { recoverStandingWorkers } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { initializeFailedWorkerReset } from "../../../../src/backend/app/composition/worker-compose.js";
 import { createWorkerPoolRuntimeExecutor } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { kernelOver } from "../../../support/helpers/backend/dashboard-pool-world.js";
@@ -133,7 +132,7 @@ describe("native standing lifetime recovery", () => {
     });
   }
 
-  it("keeps a dead replacement's original native grant reserved and never automatically spawns again", async () => {
+  it("keeps a dead replacement's original native grant reserved without a settled audit", async () => {
     const f = await fixture();
     try {
       f.observe("idle"); await f.shutdown();
@@ -148,12 +147,7 @@ describe("native standing lifetime recovery", () => {
       f.database.authority.workerLeases.reportLifecycle({ workerId: f.slot.workerId, leaseGeneration: born.lease.leaseGeneration, now: f.now,
         lifecycle: { state: "stopped", startedAt: born.lease.lifecycle.startedAt, stoppedAt: f.now, reason: "crashed" } });
       expect(() => f.database.completeStandingWorkerRecovery(grant.commandId, replacement.handle, personLookupDescriptor, f.now)).toThrow();
-      const actual = actualReplacement(f, grant.commandId), unavailable: Error[] = [];
-      const recover = () => recoverStandingWorkers({ database: f.database, supervisor: actual.supervisor, clock: f.clock,
-        descriptors: { resolve: () => personLookupDescriptor }, onUnavailable: error => { unavailable.push(error); } });
-      recover(); f.clock.advanceWall(86_400_000); recover();
-      expect(actual.spawns()).toBe(0);
-      expect(unavailable).toEqual([]);
+      f.clock.advanceWall(86_400_000);
       expect(f.database.authority.workerSlots.recovery(f.slot.workerId)?.command.commandId).toBe(grant.commandId);
       expect(f.database.authority.lifecycleJournal.findAuditByCommand(grant.commandId)).toBeUndefined();
       expect(f.database.authority.workerLeases.get(f.slot.workerId)?.birthCommandId).toBe(born.lease.birthCommandId);
@@ -161,7 +155,7 @@ describe("native standing lifetime recovery", () => {
     } finally { await f.dispose(); }
   });
 
-  it("does not respawn a retired member or a zero-size pool", async () => {
+  it("refuses native recovery for a retired member in a zero-size pool", async () => {
     const f = await fixture();
     try {
       f.observe("idle"); await f.shutdown();
@@ -175,11 +169,6 @@ describe("native standing lifetime recovery", () => {
         expect(repositories.workerPools.plan({ workflow: f.slot.workflow, desiredWorkers: 0, expectedVersion: pool.version,
           requestedBy: "local-operator", now: f.now }).state).toBe("applied");
       });
-      const actual = actualReplacement(f, randomUUID()), unavailable: Error[] = [];
-      recoverStandingWorkers({ database: f.database, supervisor: actual.supervisor, clock: f.clock,
-        descriptors: { resolve: () => personLookupDescriptor }, onUnavailable: error => { unavailable.push(error); } });
-      expect(actual.spawns()).toBe(0);
-      expect(unavailable).toEqual([]);
       expect(f.database.authority.workerPools.get(f.slot.workflow)?.desiredWorkers).toBe(0);
       expect(f.database.authority.workerSlots.get(f.slot.workerId)?.retiredAt).toBe(f.now);
       expect(() => f.database.reserveStandingWorkerRecovery(f.slot.workerId, personLookupDescriptor, f.now)).toThrow("standing-recovery-ineligible");
