@@ -101,17 +101,19 @@ it("keeps the last report visible only as history during a rerun and after trans
   assert.deepEqual(failed.lastCompleted, report);
 });
 
-it("overlapping refreshes retain the original unavailable reason and discard late observations", async () => {
+it("shares overlapping reads and retains the original reason while a newer rerun discards late observations", async () => {
   const first = Promise.withResolvers<Response>(), second = Promise.withResolvers<Response>();
   const previous = { state: "unavailable" as const, reason: "Settings changed; re-check readiness.", lastCompleted: report };
   let reads = 0;
-  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: () => {
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: url => {
+    if (url.endsWith("/preflight/rerun")) return Promise.resolve(response({ state: "completed", commandId: command.commandId, report }));
     reads += 1;
     return reads === 1 ? Promise.resolve(response(previous)) : reads === 2 ? first.promise : second.promise;
   } });
   const resource = createPreflightReadinessResource(client, identity);
   await resource.read();
-  const older = resource.read(), newer = resource.read();
+  const older = resource.read(); assert.equal(resource.read(), older);
+  const newer = resource.rerun(command);
   assert.deepEqual(resource.snapshot(), { state: "running", lastCompleted: report, previous });
   second.resolve(response({ state: "unavailable", reason: "New read failed" })); await newer;
   first.resolve(response({ state: "present", report })); await older;

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
@@ -129,7 +129,7 @@ for (const family of ["ordinary", "protected", "relocation"] as const) {
   });
 }
 
-it("retains old documents and drafts but blocks all writes when replacement reads fail", async () => {
+it("hides old authority and retains drafts while blocking writes when replacement reads fail", async () => {
   const h = await setup();
   await act(async () => {
     h.controller().update("actor.label", "Retained ordinary draft");
@@ -144,7 +144,8 @@ it("retains old documents and drafts but blocks all writes when replacement read
   assert.equal(h.controller().locked, true); assert.equal(h.controller().protectedEditor.locked, true);
   assert.equal(h.controller().relocationEditor.locked, true);
   await act(async () => { h.controller().submit(); h.controller().protectedEditor.submit(); h.controller().relocationEditor.submit(); });
-  const editor = h.controller().editor; assert.ok(editor.state === "loaded"); assert.deepEqual(editor.document, h.newer);
+  const editor = h.controller().editor; assert.equal(editor.state, "failed");
+  assert.equal(h.controller().relocationEditor.read.state, "unavailable");
   assert.deepEqual(h.controller().draft, draft); assert.deepEqual(h.controller().protectedEditor.draft, protectedDraft);
   assert.deepEqual(h.writes, []);
 });
@@ -162,4 +163,50 @@ it("refuses protected revision rollback independently of an unchanged ordinary r
   assert.equal(h.controller().locked, true); assert.equal(h.controller().protectedEditor.locked, true);
   const editor = h.controller().editor; assert.ok(editor.state === "loaded"); assert.deepEqual(editor.document, current);
   assert.deepEqual(h.writes, []);
+});
+
+it("reopens from the exact verified document while sharing a pending refresh and keeps writes locked until it settles", async () => {
+  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const original = authority.read();
+  const held = Promise.withResolvers<EditableSettingsWire>();
+  let calls = 0;
+  const client = { editableSettings: () => ++calls === 1 ? Promise.resolve(original) : held.promise,
+    storageRelocationPlans: () => Promise.resolve(FIXTURE_STORAGE_RELOCATION) } as unknown as DashboardClient;
+  let controller: ReturnType<typeof useEditableSettings> | undefined;
+  const seen: ReturnType<typeof useEditableSettings>["editor"][] = [];
+  function Probe() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); seen.push(controller.editor); return null; }
+  const host = document.createElement("div"), root = createRoot(host);
+  cleanups.push(() => { act(() => root.unmount()); });
+  const render = async (open: boolean) => { await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: open ? createElement(Probe) : null }) }))); };
+  await render(true); const verified = controller?.editor; assert.ok(verified?.state === "loaded");
+  await render(false); seen.length = 0; await render(true);
+  assert.equal(calls, 2); assert.ok(seen.every(state => state.state === "loaded" && state.document === verified.document));
+  assert.ok(controller); assert.equal(controller.locked, true);
+  await act(async () => controller?.reload()); assert.equal(calls, 2);
+  await act(async () => held.resolve(original)); assert.equal(controller.locked, false);
+});
+
+for (const outcome of ["success", "failure"] as const) it(`settles editable and relocation ${outcome} after the production StrictMode effect replay`, async () => {
+  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const client = { editableSettings: () => outcome === "success" ? Promise.resolve(authority.read()) : Promise.reject(new Error("synthetic editable unavailable")), storageRelocationPlans: () => outcome === "success" ? Promise.resolve(FIXTURE_STORAGE_RELOCATION) : Promise.reject(new Error("synthetic relocation unavailable")) } as unknown as DashboardClient;
+  let state: ReturnType<typeof useEditableSettings> | undefined;
+  function Probe() { state = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
+  const root = createRoot(document.createElement("div")); cleanups.push(() => { act(() => root.unmount()); });
+  await act(async () => root.render(createElement(StrictMode, { children: createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Probe) }) }) })));
+  assert.equal(state?.editor.state, outcome === "success" ? "loaded" : "failed");
+  assert.equal(state?.relocationEditor.read.state, outcome === "success" ? "available" : "unavailable");
+  if (state?.editor.state === "failed") assert.equal(state.editor.message, formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text);
+});
+
+it("does not let an older refresh poison a newer authoritative command readback", async () => {
+  const h = await setup();
+  await h.render({ ...h.client, executeCommand: (request: unknown) => Promise.resolve(h.authority.execute(request)) });
+  const old = Promise.withResolvers<EditableSettingsWire>(); let reads = 0;
+  h.setRead(() => ++reads === 1 ? old.promise : Promise.resolve(h.authority.read()));
+  await act(async () => h.controller().update("actor.label", "New authoritative value"));
+  await act(async () => { h.controller().submit(); h.controller().reload(); });
+  assert.equal(h.controller().save.state, "applied"); assert.equal(h.controller().readProblem, undefined);
+  await act(async () => old.resolve(h.newer));
+  assert.equal(h.controller().readProblem, undefined); assert.equal(h.controller().locked, false);
+  const editor = h.controller().editor; assert.ok(editor.state === "loaded"); assert.equal(editor.document.revision, h.authority.read().revision);
 });

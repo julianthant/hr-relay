@@ -1,6 +1,8 @@
+import { SettingsReadSuperseded, useSettingsRead } from "../../../state/settings-read-model.js";
+import { readWithDeadline } from "../../../client/read-deadline.js";
 import type { CommandExecutionOptions, CommandExecutionScope } from "../../../app/commands/command-executor.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import {
@@ -75,10 +77,19 @@ export function useStorageRelocation(input: Readonly<{ actorId: string; descript
   const request = useMemo(() => ({ client, scope: binding?.scope, actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint }), [client, binding?.scope, input.actorId, input.descriptorFingerprint]);
   const acceptedRequest = useRef<typeof request | undefined>(undefined);
   generation.current = request;
-  useEffect(() => () => { if (generation.current === request) generation.current = {}; }, [request]);
-  const [read, setRead] = useState<Read>({ state: "loading" });
+  useEffect(() => { generation.current = request; return () => { if (generation.current === request) generation.current = {}; }; }, [request]);
+  const resource = useSettingsRead<StorageRelocationPlanView>(client, "relocation", input);
+  const previousRead = useRef({ request, resource });
+  if (previousRead.current.request !== request) {
+    if (previousRead.current.resource === resource) resource.supersede();
+    previousRead.current = { request, resource };
+  }
+  const observation = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
+  const held = observation.value;
+  const [observed, setObserved] = useState<{ resource: typeof resource; read: Read }>({ resource, read: held === undefined ? { state: "loading" } : { state: "available", view: held } });
+  const read = useMemo<Read>(() => observed.resource === resource ? observed.read : held === undefined ? { state: "loading" } : { state: "available", view: held }, [observed, resource, held]);
+  const setRead = useCallback((read: Read): void => setObserved({ resource, read }), [resource]);
   const [reportedReadProblem, setReadProblem] = useState(false);
-  const lastVerified = useRef<StorageRelocationPlanView | undefined>(undefined);
   const [draft, setDraft] = useState<Draft>({});
   const [save, setSave] = useState<Save>({ state: "idle" });
   const attempt = useRef<StorageRelocationCommandRequest | undefined>(undefined);
@@ -88,31 +99,34 @@ export function useStorageRelocation(input: Readonly<{ actorId: string; descript
   if (attempt.current === undefined && retained?.request.family === "storage-relocation") attempt.current = retained.request;
   if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
   const readCurrent = useCallback(async (publish = true): Promise<StorageRelocationPlanView> => {
-    const view = StorageRelocationPlanViewSchema.parse(await client.storageRelocationPlans());
-    const previousRequest = acceptedRequest.current;
-    const previous = previousRequest?.client === client && previousRequest.actorId === request.actorId
-      && previousRequest.descriptorFingerprint === request.descriptorFingerprint && previousRequest.scope?.authority === request.scope?.authority ? lastVerified.current : undefined;
-    if (previous !== undefined && (view.installationId !== previous.installationId
-      || view.revision < previous.revision || view.sourceGeneration < previous.sourceGeneration
-      || (view.sourceGeneration === previous.sourceGeneration && (view.sourcePair.stateRoot !== previous.sourcePair.stateRoot
-        || view.sourcePair.artifactRoot !== previous.sourcePair.artifactRoot
-        || view.revision === previous.revision && canonicalJsonStringify(view) !== canonicalJsonStringify(previous))))) {
-      throw new Error("storage-relocation-readback-stale-or-divergent");
-    }
-    if (publish && generation.current === request) { acceptedRequest.current = request; lastVerified.current = view; setRead({ state: "available", view }); setReadProblem(false); }
+    const load = async (): Promise<StorageRelocationPlanView> => {
+      const view = StorageRelocationPlanViewSchema.parse(await client.storageRelocationPlans());
+      const previous = resource.snapshot().value;
+      if (previous !== undefined && (view.installationId !== previous.installationId
+        || view.revision < previous.revision || view.sourceGeneration < previous.sourceGeneration
+        || (view.sourceGeneration === previous.sourceGeneration && (view.sourcePair.stateRoot !== previous.sourcePair.stateRoot
+          || view.sourcePair.artifactRoot !== previous.sourcePair.artifactRoot
+          || view.revision === previous.revision && canonicalJsonStringify(view) !== canonicalJsonStringify(previous))))) {
+        throw new Error("storage-relocation-readback-stale-or-divergent");
+      }
+      return view;
+    };
+    const view = await (publish ? resource.read(load, "SETTINGS_INITIAL_READ_UNAVAILABLE") : readWithDeadline(load, "SETTINGS_INITIAL_READ_UNAVAILABLE"));
+    if (publish && generation.current === request) { acceptedRequest.current = request; resource.accept(view); setRead({ state: "available", view }); setReadProblem(false); }
     return view;
-  }, [client, request]);
-  const markReadUnavailable = useCallback((): void => { if (lastVerified.current === undefined) setRead({ state: "unavailable" }); else setReadProblem(true); }, []);
-  useEffect(() => { void readCurrent().catch(() => { if (generation.current === request) markReadUnavailable(); }); }, [readCurrent, markReadUnavailable, request]);
-  const readProblem = reportedReadProblem || read.state === "available" && acceptedRequest.current !== request;
+  }, [client, request, resource, setRead]);
+  const markReadUnavailable = useCallback((error?: unknown): void => { if (error instanceof SettingsReadSuperseded) return; if (resource.snapshot().value === undefined) setRead({ state: "unavailable" }); else setReadProblem(true); }, [resource, setRead]);
+  useEffect(() => { void readCurrent().catch((error: unknown) => { if (generation.current === request) markReadUnavailable(error); }); }, [readCurrent, markReadUnavailable, request]);
+  const readReady = acceptedRequest.current === request && observation.state === "loaded";
+  const readProblem = reportedReadProblem;
   const errors = relocationDraftErrors(draft);
-  const locked = busy.current || attempt.current !== undefined || read.state !== "available" || readProblem;
+  const locked = !readReady || save.state === "saving" || attempt.current !== undefined || read.state !== "available" || readProblem;
   const update = (field: Field, raw: string): void => {
-    if (locked) return;
+    if (locked || busy.current) return;
     setDraft(previous => ({ ...previous, [field]: raw })); setSave({ state: "idle" });
   };
   const reset = (field: Field): void => {
-    if (locked) return;
+    if (locked || busy.current) return;
     setDraft(previous => { const next = { ...previous }; delete next[field]; return next; }); setSave({ state: "idle" });
   };
   const discard = (): void => { if (busy.current) return; attempt.current = undefined; setDraft({}); setSave({ state: "idle" }); };
@@ -133,8 +147,8 @@ export function useStorageRelocation(input: Readonly<{ actorId: string; descript
       publish: outcome => {
         if (generation.current !== request) return;
         binding.feedback(outcome);
-        if (view !== undefined) { acceptedRequest.current = request; lastVerified.current = view; setRead({ state: "available", view }); setReadProblem(false); }
-        if (outcome.kind === "conflict") void readCurrent().catch(() => { if (generation.current === request) markReadUnavailable(); });
+        if (view !== undefined) { acceptedRequest.current = request; resource.accept(view); setRead({ state: "available", view }); setReadProblem(false); }
+        if (outcome.kind === "conflict") void readCurrent().catch((error: unknown) => { if (generation.current === request) markReadUnavailable(error); });
         if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) attempt.current = undefined;
         const saveState = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome);
         setSave(outcome.kind === "uncertain" && outcome.feedback.code === "COMMAND_OUTCOME_UNCERTAIN"
@@ -174,13 +188,13 @@ export function useStorageRelocation(input: Readonly<{ actorId: string; descript
   };
   const autosave = useEffectEvent(submit);
   useEffect(() => {
-    if (read.state !== "available" || readProblem || save.state !== "idle" || Object.keys(draft).length === 0 || Object.values(errors).some(Boolean)) return;
+    if (!readReady || read.state !== "available" || readProblem || save.state !== "idle" || Object.keys(draft).length === 0 || Object.values(errors).some(Boolean)) return;
     const timer = window.setTimeout(() => autosave(), 700);
     return () => window.clearTimeout(timer);
-  }, [draft, read, readProblem, errors, save.state]);
+  }, [draft, read, readProblem, readReady, errors, save.state]);
   const retry = (): void => { if (attempt.current !== undefined) void perform(attempt.current); };
-  const reload = (): void => { void readCurrent().catch(() => { if (generation.current === request) markReadUnavailable(); }); };
+  const reload = (): void => { void readCurrent().catch((error: unknown) => { if (generation.current === request) markReadUnavailable(error); }); };
   const visibleSave = attempt.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save;
-  return Object.freeze({ read, readProblem, draft, errors, save: visibleSave, locked, update, reset, discard, submit, cancel, retry, reload,
+  return Object.freeze({ read, refreshing: observation.state === "loading", readProblem, draft, errors, save: visibleSave, locked, update, reset, discard, submit, cancel, retry, reload,
     dirtyCount: Object.keys(draft).length, uncertain: visibleSave.state === "unconfirmed", saving: visibleSave.state === "saving" });
 }

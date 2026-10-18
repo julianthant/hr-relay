@@ -97,7 +97,7 @@ it("Setup and doctor subscribers show the same report and command readback, then
   host=document.createElement("div");document.body.append(host);
   await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:[createElement(Subscriber,{key:"setup"}),createElement(Subscriber,{key:"doctor"})]})}));});
   const sections=host.children;assert.equal(sections.length,2);assert.equal(sections[0].textContent,sections[1].textContent);assert.match(host.textContent??"",/Last checked/u);
-  const button=[...host.querySelectorAll("button")].find(candidate=>candidate.textContent==="Run preflight");assert.ok(button);await act(async()=>button.click());assert.equal(reruns,1);assert.ok(reads>=3);assert.equal(sections[0].textContent,sections[1].textContent);
+  const button=[...host.querySelectorAll("button")].find(candidate=>candidate.textContent==="Run preflight");assert.ok(button);await act(async()=>button.click());assert.equal(reruns,1);assert.equal(reads,2);assert.equal(sections[0].textContent,sections[1].textContent);
   unavailable=true;await act(async()=>{await vi.advanceTimersByTimeAsync(60_000);});
   assert.equal(sections[0].textContent,sections[1].textContent);assert.match(host.textContent??"",/Expired on server/u);assert.equal(host.querySelectorAll("time").length,2);
 });

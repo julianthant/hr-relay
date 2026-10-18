@@ -1,9 +1,10 @@
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 // @vitest-environment jsdom
 import { createSettingsStorageDoctorFixtures, MeasurementFreeResizeObserver } from "../../../support/helpers/settings-storage-doctor-fixtures.js";
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
-import { afterEach,it } from "vitest";
+import { afterEach,it,vi } from "vitest";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { PreflightActionsProvider } from "../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
@@ -30,6 +31,7 @@ let root: Root | undefined;
 let host: HTMLElement | undefined;
 
 afterEach(() => {
+  vi.useRealTimers();
   if (root !== undefined) act(() => { root?.unmount(); });
   host?.remove();
   root = undefined;
@@ -102,7 +104,8 @@ it("keeps idle, loading, failure, successful refresh and failed refresh distinct
   const failure = [...dom.querySelectorAll('[role="alert"]')].find(candidate => candidate.textContent?.includes('Storage checks could not finish') && candidate.querySelector('button'));
   assert.ok(failure);
   await openDisclosure(failure, "Diagnostic details");
-  assert.match(dom.querySelector('[aria-label="Check error diagnostics"]')?.textContent ?? "", /Synthetic doctor unavailable/u);
+  assert.equal(dom.querySelector('[aria-label="Check error diagnostics"]')?.textContent, ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
+  assert.doesNotMatch(dom.textContent ?? "", /Synthetic doctor unavailable/u);
   assert.equal(doctorButton(dom).disabled, false);
   await act(async () => { doctorButton(dom).click(); resolve(HEALTHY); });
   assert.match(dom.textContent ?? "", /Recovery.*Clear/su);
@@ -113,7 +116,8 @@ it("keeps idle, loading, failure, successful refresh and failed refresh distinct
   const refreshFailure = [...dom.querySelectorAll('[role="alert"]')].find(candidate => candidate.textContent?.includes('Storage checks could not finish') && candidate.querySelector('button'));
   assert.ok(refreshFailure);
   await openDisclosure(refreshFailure, "Diagnostic details");
-  assert.match(dom.textContent ?? "", /Synthetic refresh failed/u);
+  assert.ok(dom.textContent?.includes(ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text));
+  assert.doesNotMatch(dom.textContent ?? "", /Synthetic refresh failed/u);
   assert.match(dom.textContent ?? "", /Recovery.*Clear/su);
   assert.equal(calls, 3);
 });
@@ -190,7 +194,8 @@ it("shows every useful check before running and keeps Preflight separate", async
   assert.equal(doctorCalls, 0);
 });
 
-it("loads the last completed report on revisit without running the doctor, while current degradation stays prominent", async () => {
+it("loads a fresh last completed report on revisit without running the doctor, while current degradation stays prominent", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(Date.parse(HEALTHY.checkedAt) + 60_000);
   let runs = 0;
   const degraded = StorageHealthSummaryWireSchema.parse({ ...STORAGE, authority: "unavailable" });
   const dom = await mountDoctor(HEALTHY, () => { runs++; return Promise.resolve(HEALTHY); }, false, HEALTHY, degraded);

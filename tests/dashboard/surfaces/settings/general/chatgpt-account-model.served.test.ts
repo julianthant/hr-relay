@@ -66,10 +66,10 @@ it("refuses a blocked popup before dispatch and cancels once when navigation fai
 it("suppresses stale reads and completion settlements and resumes the original signing-in attempt", async () => {
   const old = Promise.withResolvers<ChatGptAccountView>(); let reads = 0;
   const stale = setup({ chatGptAccount: () => ++reads === 1 ? old.promise : Promise.resolve(account) });
-  try { const first = stale.port.refresh(); await stale.port.refresh(); old.resolve({ state: "signed-out" }); await first; assert.deepEqual(stale.port.getSnapshot(), account); } finally { stale.port.dispose(); }
+  try { const first = stale.port.refresh(); const second = stale.port.refresh(); assert.equal(first, second); old.resolve(account); await first; assert.deepEqual(stale.port.getSnapshot(), account); assert.equal(reads, 1); } finally { stale.port.dispose(); }
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   const resumed = setup({ chatGptAccount: async () => ({ state: "signing-in", attemptId, expiresAt: started.expiresAt, account: { state: "signed-out" } }), completeChatGptSignIn: id => { assert.equal(id, attemptId); return completion.promise; } });
-  const refreshing = resumed.port.refresh(); await Promise.resolve(); assert.deepEqual(resumed.port.getResource(), { state: "loading", attemptId });
+  const refreshing = resumed.port.refresh(); for (let tick = 0; tick < 4; tick++) await Promise.resolve(); assert.deepEqual(resumed.port.getResource(), { state: "loading", attemptId });
   resumed.port.dispose(); completion.resolve({ state: "completed", attemptId, account }); await refreshing;
   assert.deepEqual(resumed.port.getSnapshot(), { state: "loading" }); assert.equal(resumed.calls.includes("start"), false);
 });
@@ -92,4 +92,31 @@ it("closes its owned popup immediately on disposal while completion is pending",
   completion.resolve({ state: "completed", attemptId, account }); await signing;
   assert.equal(f.calls.filter(call => call === "close").length, 1);
   assert.deepEqual(f.port.getSnapshot(), { state: "signed-out" });
+});
+
+it("bounds account snapshots and retains the exact verified account on refresh failure", async () => {
+  vi.useFakeTimers();
+  let reads = 0;
+  const f = setup({ chatGptAccount: () => ++reads === 1 ? Promise.resolve(account) : new Promise(() => {}) });
+  try {
+    await f.port.refresh();
+    const first = f.port.refresh(), second = f.port.refresh(); assert.equal(first, second);
+    assert.deepEqual(f.port.getSnapshot(), account);
+    await vi.advanceTimersByTimeAsync(10_000); await first;
+    const resource = f.port.getResource(); assert.equal(resource.state, "failed");
+    assert.ok("account" in resource); assert.deepEqual(resource.account, account); assert.equal(reads, 2);
+  } finally { f.port.dispose(); vi.useRealTimers(); }
+});
+it("preserves the five-minute OAuth wait then settles a hung completion as uncertain without redispatch", async () => {
+  vi.useFakeTimers();
+  const f = setup({ completeChatGptSignIn: () => new Promise(() => {}) });
+  try {
+    await f.port.refresh();
+    let settled = false;
+    const signing = f.port.signIn({ usePlan: true }).then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(300_000); assert.equal(settled, false); assert.equal(f.calls.includes("close"), false);
+    await vi.advanceTimersByTimeAsync(10_000); await signing;
+    assert.equal(f.port.getResource().state, "uncertain"); assert.equal(f.calls.filter(call => call === "start").length, 1);
+    assert.equal(f.calls.filter(call => call === "read").length, 2); assert.equal(f.calls.filter(call => call === "close").length, 1);
+  } finally { f.port.dispose(); vi.useRealTimers(); }
 });

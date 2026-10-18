@@ -1,5 +1,7 @@
+import { SettingsReadSuperseded, useSettingsRead } from "../../../state/settings-read-model.js";
+import { readWithDeadline } from "../../../client/read-deadline.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import { SettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
@@ -29,9 +31,18 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const request = useMemo(() => ({ client, scope: binding?.scope, actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint }), [client, binding?.scope, input.actorId, input.descriptorFingerprint]);
   const acceptedRequest = useRef<typeof request | undefined>(undefined);
   generation.current = request;
-  useEffect(() => () => { if (generation.current === request) generation.current = {}; }, [request]);
-  const [editor, setEditor] = useState<EditableSettingsState>({ state: "loading" });
-  const current = useRef<EditableSettingsWire | undefined>(undefined);
+  useEffect(() => { generation.current = request; return () => { if (generation.current === request) generation.current = {}; }; }, [request]);
+  const resource = useSettingsRead<EditableSettingsWire>(client, "editor", input);
+  const previousRead = useRef({ request, resource });
+  if (previousRead.current.request !== request) {
+    if (previousRead.current.resource === resource) resource.supersede();
+    previousRead.current = { request, resource };
+  }
+  const observation = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
+  const held = observation.value;
+  const [observed, setObserved] = useState<{ resource: typeof resource; editor: EditableSettingsState }>({ resource, editor: held === undefined ? { state: "loading" } : { state: "loaded", document: held } });
+  const editor = useMemo<EditableSettingsState>(() => observed.resource === resource ? observed.editor : held === undefined ? { state: "loading" } : { state: "loaded", document: held }, [observed, resource, held]);
+  const setEditor = useCallback((editor: EditableSettingsState): void => setObserved({ resource, editor }), [resource]);
   const [reportedReadProblem, setReadProblem] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState<SettingsDraft>({});
   const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
@@ -42,37 +53,40 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     && attempt.request.family === "settings" && attempt.request.type === "apply-settings");
   if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-settings") pending.current = retained.request;
   if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
-  const readReady = acceptedRequest.current === request;
-  const readProblem = reportedReadProblem ?? (editor.state === "loaded" && !readReady ? formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_REFRESH_UNAVAILABLE", {})).text : undefined);
+  const readReady = acceptedRequest.current === request && observation.state === "loaded";
+  const readProblem = reportedReadProblem;
   const { preflight, rerunPreflight } = useSettingsPreflight(editor, input);
   const refresh = useCallback(async (publish = true): Promise<EditableSettingsWire> => {
     try {
-      const document = EditableSettingsWireSchema.parse(await client.editableSettings());
-      const previousRequest = acceptedRequest.current;
-      const previous = previousRequest?.client === client && previousRequest.actorId === request.actorId
-        && previousRequest.descriptorFingerprint === request.descriptorFingerprint && previousRequest.scope?.authority === request.scope?.authority ? current.current : undefined;
-      if (previous !== undefined && (previous.revision > document.revision
-        || previous.revision === document.revision && (previous.settingsFingerprint !== document.settingsFingerprint
-          || canonicalJsonStringify(settingsLeaves(previous).map(leaf => [leaf.path, leaf.settingsValue ?? null]))
-            !== canonicalJsonStringify(settingsLeaves(document).map(leaf => [leaf.path, leaf.settingsValue ?? null])))
-        || (previous.protectedSettings.state === "available" && document.protectedSettings.state === "available"
-          && (previous.protectedSettings.readback.revision > document.protectedSettings.readback.revision
-            || previous.protectedSettings.readback.revision === document.protectedSettings.readback.revision
-              && (canonicalJsonStringify(previous.protectedSettings.readback) !== canonicalJsonStringify(document.protectedSettings.readback)
-                || canonicalJsonStringify(previous.protectedSettings.entries) !== canonicalJsonStringify(document.protectedSettings.entries)))))) throw new Error("settings-readback-stale-or-divergent");
-      if (publish && generation.current === request) { acceptedRequest.current = request; current.current = document; setEditor({ state: "loaded", document }); setReadProblem(undefined); }
+      const read = async (): Promise<EditableSettingsWire> => {
+        const document = EditableSettingsWireSchema.parse(await client.editableSettings());
+        const previous = resource.snapshot().value;
+        if (previous !== undefined && (previous.revision > document.revision
+          || previous.revision === document.revision && (previous.settingsFingerprint !== document.settingsFingerprint
+            || canonicalJsonStringify(settingsLeaves(previous).map(leaf => [leaf.path, leaf.settingsValue ?? null]))
+              !== canonicalJsonStringify(settingsLeaves(document).map(leaf => [leaf.path, leaf.settingsValue ?? null])))
+          || (previous.protectedSettings.state === "available" && document.protectedSettings.state === "available"
+            && (previous.protectedSettings.readback.revision > document.protectedSettings.readback.revision
+              || previous.protectedSettings.readback.revision === document.protectedSettings.readback.revision
+                && (canonicalJsonStringify(previous.protectedSettings.readback) !== canonicalJsonStringify(document.protectedSettings.readback)
+                  || canonicalJsonStringify(previous.protectedSettings.entries) !== canonicalJsonStringify(document.protectedSettings.entries)))))) throw new Error("settings-readback-stale-or-divergent");
+        return document;
+      };
+      const document = await (publish ? resource.read(read, "SETTINGS_INITIAL_READ_UNAVAILABLE") : readWithDeadline(read, "SETTINGS_INITIAL_READ_UNAVAILABLE"));
+      if (publish && generation.current === request) { acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }
       return document;
-    } catch {
+    } catch (error) {
+      if (error instanceof SettingsReadSuperseded) throw error;
       if (publish && generation.current === request) setReadProblem(formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_REFRESH_UNAVAILABLE", {})).text);
-      throw new Error("settings-read-unavailable");
+      throw new Error("settings-read-unavailable", { cause: error });
     }
-  }, [client, request]);
+  }, [client, request, resource, setEditor]);
   useEffect(() => {
     let active = true;
-    void refresh().catch(() => { if (active && current.current === undefined) setEditor({ state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text }); });
+    void refresh().catch(() => { if (active && resource.snapshot().value === undefined) setEditor({ state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text }); });
     return () => { active = false; };
-  }, [refresh]);
-  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; current.current = document; setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
+  }, [refresh, resource, setEditor]);
+  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
   const relocationEditor = useStorageRelocation({ actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint, onSaved: input.onSaved });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
@@ -135,10 +149,10 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       publish: outcome => {
         if (generation.current !== request) return;
         binding.feedback(outcome);
-        if (outcome.kind === "conflict") void refresh().catch(() => undefined);
         if (readDocument !== undefined) {
-          acceptedRequest.current = request; current.current = readDocument; setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
+          acceptedRequest.current = request; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
         }
+        if (outcome.kind === "conflict") void refresh().catch(() => undefined);
         if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) pending.current = undefined;
         const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome);
         setSave(next);
@@ -157,7 +171,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   };
 
   const submit = (): void => {
-    if (editor.state !== "loaded" || busy.current || pending.current !== undefined || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined) || readProblem !== undefined) return;
+    if (!readReady || editor.state !== "loaded" || busy.current || pending.current !== undefined || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined) || readProblem !== undefined) return;
     if (binding === undefined) { setSave(commandSaveState(undefined)); return; }
     try {
       const patch = patchFromSettingsDraft(leaves, draft);
@@ -168,11 +182,11 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   };
   const autosave = useEffectEvent(submit);
   useEffect(() => {
-    if (editor.state !== "loaded" || save.state !== "idle" || readProblem !== undefined
+    if (!readReady || editor.state !== "loaded" || save.state !== "idle" || readProblem !== undefined
       || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;
     const timer = window.setTimeout(() => autosave(), 700);
     return () => window.clearTimeout(timer);
-  }, [draft, editor, errors, readProblem, save.state]);
+  }, [draft, editor, errors, readProblem, readReady, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
   const onFieldBlur = (event: SettingsBlurEvent): void => {
     const path = blurredSettingsPath(event);
@@ -183,7 +197,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   };
   const reload = (): void => { void refresh().catch(() => undefined); };
   const visibleSave = pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save;
-  return Object.freeze({ editor, draft, errors, save: visibleSave, preflight, protectedEditor, relocationEditor, leaves, readProblem,
+  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: visibleSave, preflight, protectedEditor, relocationEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined || save.state === "saving" || pending.current !== undefined,
     update, reset, clear, discard, submit, retry, reload, rerunPreflight, onFieldBlur });
 }

@@ -484,3 +484,24 @@ it("maps failed Explorer reads to the shared dashboard read catalog text", async
     }
   } finally { await act(async () => root.unmount()); }
 });
+
+it("revisits a served definition from its exact retained projection and exposes a failed refresh without replacing it", async () => {
+  let calls = 0;
+  const held = Promise.withResolvers<WorkflowExplorerWire>();
+  const client = { workflowExplorer: () => ++calls === 1 ? Promise.resolve(wire) : held.promise };
+  let state: ReturnType<typeof useExplorerWiring> | undefined;
+  const seen: ReturnType<typeof useExplorerWiring>[] = [];
+  function Probe() { state = useExplorerWiring(client, compiled.id); seen.push(state); return null; }
+  const current = () => seen.at(-1);
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    const loaded = state; assert.ok(loaded?.state === "ready");
+    await act(async () => root.render(null)); seen.length = 0;
+    await act(async () => root.render(createElement(Probe)));
+    assert.equal(calls, 2); assert.ok(seen.every(value => value.state === "ready"));
+    const revisited = seen.at(-1); assert.ok(revisited?.state === "ready"); assert.deepEqual(revisited.projection, loaded.projection);
+    await act(async () => held.reject(new Error("synthetic refresh rejected")));
+    const failed = current(); assert.ok(failed?.state === "refused"); assert.deepEqual(failed.previous, loaded.projection);
+  } finally { act(() => root.unmount()); }
+});

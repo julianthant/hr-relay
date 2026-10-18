@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import type { WorkflowExplorerWire } from "../../models/dashboard/explorer.js";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { ExplorerWorkflowWire, ExplorerNodeWire, ExplorerTaskWire, SourceLinkWire } from "../../models/dashboard/explorer.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import type { BrowserSystemId } from "../../rules/identity/ids.js";
@@ -8,14 +9,14 @@ import { describeNodeCondition } from "../../models/workflow/node-condition.js";
 import { requireWorkflowOperationDisplaySnapshot, WorkflowOperationDisplaySnapshotError, type WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
 import type { ExplorerQueries } from "../client/queries/explorer-queries.js";
 import type { FieldSource, FlowPart, FlowStep } from "../surfaces/explorer/explorer-flow-model.js";
-import { observeResource } from "./async-resource.js";
+import { useSettingsRead } from "./settings-read-model.js";
 
 export type ExplorerProjection = Readonly<{ steps: readonly FlowStep[]; sources: ReadonlyMap<string, FieldSource> }>;
 export type ExplorerWiringState =
   | Readonly<{ state: "idle" | "loading" }>
   | Readonly<{ state: "ready"; projection: ExplorerProjection }>
   | Readonly<{ state: "unavailable"; reason: string }>
-  | Readonly<{ state: "refused"; failure: ErrorCatalogFailure; evidence: unknown }>;
+  | Readonly<{ state: "refused"; failure: ErrorCatalogFailure; evidence: unknown; previous?: ExplorerProjection }>;
 
 const systems: Readonly<Record<BrowserSystemId | "local", NonNullable<FlowStep["system"]>>> = { ucpath: "UCPath", crm: "CRM", kuali: "Kuali", "new-kronos": "Kronos", "old-kronos": "Kronos", i9: "I-9", onbase: "OnBase", servicenow: "ServiceNow", sharepoint: "SharePoint", local: "Local" };
 const actionIcons: Readonly<Record<OperationActionKind, Extract<FlowPart, { kind: "action" }>["icon"]>> = {
@@ -203,21 +204,24 @@ export function projectExplorerDefinition(workflow: ExplorerWorkflowWire): Explo
   }
 }
 
+const unavailableExplorerClient = {};
 export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplorer"> | undefined, workflowId: string | undefined, version?: number): ExplorerWiringState {
-  const request = useMemo(() => ({ client, workflowId, version }), [client, workflowId, version]);
-  const [result, setResult] = useState<Readonly<{ request: typeof request; value: ExplorerWiringState }>>();
+  const resource = useSettingsRead<WorkflowExplorerWire>(client ?? unavailableExplorerClient, `explorer:${workflowId ?? "none"}:${version ?? "current"}`);
+  const result = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   useEffect(() => {
     if (workflowId === undefined || client === undefined) return;
-    return observeResource(() => client.workflowExplorer(), wire => {
-      const workflow = wire.workflows.find(workflow => workflow.id === workflowId);
-      let value: ExplorerWiringState;
-      if (!workflow) value = { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text };
-      else if (version !== undefined && workflow.version !== version) value = { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence: "explorer-catalog-version-mismatch" };
-      else value = projectExplorerDefinition(workflow);
-      setResult({ request, value });
-    }, evidence => setResult({ request, value: { state: "refused", failure: createErrorCatalogFailure("DASHBOARD_READ_FAILED", {}), evidence } }));
-  }, [client, workflowId, version, request]);
+    void resource.read(() => client.workflowExplorer(), "DASHBOARD_READ_FAILED").catch(() => undefined);
+  }, [client, workflowId, version, resource]);
+  const projected = useMemo((): ExplorerWiringState => {
+    const workflow = result.value?.workflows.find(workflow => workflow.id === workflowId);
+    if (result.value === undefined) return { state: "loading" };
+    if (!workflow) return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text };
+    if (version !== undefined && workflow.version !== version) return { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence: "explorer-catalog-version-mismatch" };
+    return projectExplorerDefinition(workflow);
+  }, [result.value, workflowId, version]);
   if (workflowId === undefined) return { state: "idle" };
   if (client === undefined) return { state: "unavailable", reason: "Registered workflow data is unavailable because the dashboard client is not connected." };
-  return result?.request === request ? result.value : { state: "loading" };
+  if (result.state === "failed" && result.value === undefined) return { state: "refused", failure: createErrorCatalogFailure("DASHBOARD_READ_FAILED", {}), evidence: result.error };
+  return result.state === "failed" && projected.state === "ready"
+    ? { state: "refused", failure: createErrorCatalogFailure("DASHBOARD_READ_FAILED", {}), evidence: result.error, previous: projected.projection } : projected;
 }

@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { STORAGE_DOCTOR_DEADLINE_MS } from "../../../client/read-deadline.js";
+import { useSettingsRead } from "../../../state/settings-read-model.js";
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { systemClock } from "../../../../rules/time/clock.js";
+import type { StorageDoctorLatestWire } from "../../../../models/dashboard/storage.js";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useStorageClient } from "./storage-client.js";
 import { z } from "zod";
@@ -40,42 +45,58 @@ export function storageNeedsAttention(storage: StorageHealthSummary): boolean {
 
 export type DoctorState =
   | { state: "idle"; report?: undefined }
-  | { state: "reading" }
+  | { state: "reading"; report?: undefined }
   | { state: "running"; report?: StorageDoctorWire }
   | { state: "loaded"; report: StorageDoctorWire }
   | { state: "failed"; message: string; report?: StorageDoctorWire };
 
+const STORAGE_DOCTOR_MAX_AGE_MS = 5 * 60_000;
+const staleChecks = new WeakMap<object, string>();
+
 export function useStorageDoctor() {
   const client = useStorageClient();
   const binding = useDashboardCommandBinding();
-  const request = useMemo(() => ({ client, authority: binding?.authority.epoch }), [client, binding?.authority.epoch]);
+  const latest = useSettingsRead<StorageDoctorLatestWire>(client, "doctor-latest");
+  const checking = useSettingsRead<StorageDoctorWire>(client, "doctor-check");
+  const observed = useSyncExternalStore(latest.subscribe, latest.snapshot, latest.snapshot);
+  const check = useSyncExternalStore(checking.subscribe, checking.snapshot, checking.snapshot);
+  const request = useMemo(() => ({ client, latest, checking }), [client, latest, checking]);
   const current = useRef(request);
   current.current = request;
-  const sequence = useRef(0);
-  const pending = useRef<typeof request | undefined>(undefined);
-  const [observed, setObserved] = useState<{ request: typeof request; doctor: DoctorState }>({ request, doctor: { state: "reading" } });
-  const doctor: DoctorState = observed.request === request ? observed.doctor : { state: "reading" };
+  const now = useRef(0);
+  now.current = binding === undefined ? systemClock.nowMs() : Date.parse(binding.authority.nowIso);
+  const run = useCallback((): Promise<StorageDoctorWire> => checking.read(() => client.storageDoctor(), "STORAGE_DOCTOR_FAILED", STORAGE_DOCTOR_DEADLINE_MS).then(report => {
+    latest.accept({ state: "completed", report });
+    return report;
+  }), [client, checking, latest]);
+  const checkStale = useCallback((value: StorageDoctorLatestWire | undefined): void => {
+    if (value?.state !== "completed") return;
+    if (now.current - Date.parse(value.report.checkedAt) > STORAGE_DOCTOR_MAX_AGE_MS && staleChecks.get(checking) !== value.report.checkedAt) {
+      staleChecks.set(checking, value.report.checkedAt);
+      void run().catch(() => undefined);
+    }
+  }, [checking, run]);
   useEffect(() => {
-    const started = ++sequence.current;
-    const publish = (doctor: DoctorState): void => {
-      if (current.current === request && sequence.current === started) setObserved({ request, doctor });
-    };
-    void client.latestStorageDoctor().then(
-      latest => publish(latest.state === "completed" ? { state: "loaded", report: latest.report } : { state: "idle" }),
-      (error: unknown) => publish({ state: "failed", message: error instanceof Error ? error.message : String(error) }),
-    );
-    return () => { sequence.current += 1; };
-  }, [client, request]);
+    checkStale(latest.snapshot().value);
+    void latest.read(async () => {
+      const value = await client.latestStorageDoctor();
+      const held = latest.snapshot().value;
+      if (held?.state === "completed" && (value.state === "never-run" || Date.parse(value.report.checkedAt) < Date.parse(held.report.checkedAt))) throw new Error(ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
+      return value;
+    }, "STORAGE_DOCTOR_FAILED").then(value => {
+      if (current.current !== request || value.state !== "completed") return;
+      checkStale(value);
+    }).catch(() => undefined);
+  }, [client, latest, checking, request, checkStale]);
+  const report = observed.value?.state === "completed" ? observed.value.report : undefined;
+  const doctor: DoctorState = check.state === "loading" ? { state: "running", report }
+    : observed.state === "failed" || check.state === "failed" ? { state: "failed", report, message: ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text }
+    : report !== undefined ? { state: "loaded", report }
+    : observed.state === "idle" || observed.state === "loading" ? { state: "reading" }
+    : { state: "idle" };
   const runDoctor = (): void => {
-    if (current.current !== request || pending.current === request || doctor.state === "running" || doctor.state === "reading") return;
-    const started = ++sequence.current;
-    pending.current = request;
-    const report = doctor.report;
-    setObserved({ request, doctor: { state: "running", report } });
-    void client.storageDoctor().then(
-      report => { if (current.current === request && sequence.current === started) { pending.current = undefined; setObserved({ request, doctor: { state: "loaded", report } }); } },
-      (error: unknown) => { if (current.current === request && sequence.current === started) { pending.current = undefined; setObserved({ request, doctor: { state: "failed", report, message: error instanceof Error ? error.message : String(error) } }); } },
-    );
+    if (current.current !== request || doctor.state === "running" || doctor.state === "reading") return;
+    void run().catch(() => undefined);
   };
   return { doctor, runDoctor };
 }

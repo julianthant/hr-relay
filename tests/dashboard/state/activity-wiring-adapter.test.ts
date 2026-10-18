@@ -207,3 +207,25 @@ it("never paints unknown or warning completion evidence as verified", async () =
     } finally { await act(async () => root.unmount()); host.remove(); }
   }
 });
+
+it("retains the exact served Analytics values on revisit and reports a failed refresh with export gated", async () => {
+  const selected = selection(), client = clientOf(selected);
+  const held = Promise.withResolvers<ActivityPopulationSelection>();
+  let state: ReturnType<typeof useActivityWiring> | undefined;
+  function Probe() { state = useActivityWiring(client, { from: selected.report.from, to: selected.report.to }, null, sources, true); return null; }
+  const current = () => state;
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    const first = current()?.data; assert.ok(first?.state === "loaded");
+    await act(async () => root.render(null));
+    vi.mocked(client.activityPopulation).mockImplementationOnce(() => held.promise);
+    await act(async () => root.render(createElement(Probe)));
+    const revisit = current()?.data; assert.ok(revisit?.state === "loaded"); assert.deepEqual(revisit.report, first.report);
+    assert.equal(vi.mocked(client.activityPopulation).mock.calls.length, 2);
+    await assert.rejects(current()!.exportCsv());
+    await act(async () => held.reject(new Error("synthetic offline")));
+    const failed = current()?.data; assert.ok(failed?.state === "loaded"); assert.deepEqual(failed.report, first.report);
+    assert.equal(current()?.notice, ERROR_CATALOG.DASHBOARD_READ_FAILED.text); await assert.rejects(current()!.exportCsv());
+  } finally { act(() => root.unmount()); }
+});

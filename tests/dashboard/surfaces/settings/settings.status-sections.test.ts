@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 // @vitest-environment jsdom
 import { MeasurementFreeResizeObserver } from "../../../support/helpers/settings-storage-doctor-fixtures.js";
 import { PreflightActionsProvider } from "../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
@@ -278,7 +279,8 @@ describe("the async arms", () => {
       () => Promise.reject(new Error("boom")),
     );
     assert.ok(text.includes("These facts could not be read"), text);
-    assert.ok(text.includes("boom"), text);
+    assert.ok(text.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text), text);
+    assert.ok(!text.includes("boom"), text);
     assert.ok(!text.includes("Where a dry run stops"), text);
     assert.equal(mounted().querySelectorAll('[role="alert"]').length, 1);
   });

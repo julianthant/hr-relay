@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import assert from 'node:assert/strict';
 import { describe, it, vi } from 'vitest';
 import { createSpreadsheetWiringAdapter } from '../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
@@ -50,8 +51,8 @@ describe('served workbook authority', () => {
     const edited = { ...adopted, name: 'Edited.xlsx' }; adapter.change(id, edited, false); assert.equal(adapter.draft(id)?.dirty, true); assert.equal(adapter.draft('generated'), adapter.draft(id));
   });
   it('retains stale list authority on read failure and ignores superseded lists', async () => {
-    const { client, adapter } = setup(); await adapter.list(); client.workbookList.mockRejectedValueOnce(new Error('offline')); await adapter.list(); assert.equal(adapter.snapshot().files.length, 1); assert.equal(adapter.snapshot().error, 'offline');
-    let resolve!: (records: SavedWorkbook[]) => void; client.workbookList.mockImplementationOnce(() => new Promise(done => { resolve = done; })); const earlier = adapter.list(); await adapter.list(); resolve([]); await earlier; assert.equal(adapter.snapshot().files.length, 1);
+    const { client, adapter } = setup(); await adapter.list(); client.workbookList.mockRejectedValueOnce(new Error('offline')); await adapter.list(); assert.equal(adapter.snapshot().files.length, 1); assert.equal(adapter.snapshot().error, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
+    let resolve!: (records: SavedWorkbook[]) => void; client.workbookList.mockImplementationOnce(() => new Promise(done => { resolve = done; })); const earlier = adapter.list(); const shared = adapter.list(); assert.equal(earlier, shared); adapter.discard(); await adapter.list(); resolve([]); await earlier; assert.equal(adapter.snapshot().files.length, 1);
   });
 });
 
@@ -94,7 +95,7 @@ it('does not let a superseded success overwrite the current open failure', async
   client.workbookOpen.mockImplementationOnce(() => new Promise(resolve => { settleOlder = resolve; }))
     .mockRejectedValueOnce(new Error('current open failed'));
   const older = adapter.open('saved'); await adapter.open('saved'); settleOlder(saved(1)); await older;
-  assert.equal(adapter.draft('saved'), undefined); assert.equal(adapter.snapshot().openError, 'current open failed');
+  assert.equal(adapter.draft('saved'), undefined); assert.equal(adapter.snapshot().openError, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
 });
 it('preserves the original UNKNOWN intent and actual readback error without resending', async () => {
   const { client, adapter } = setup(); await adapter.open('saved'); const draft = book(); adapter.change('saved', draft, true);
@@ -142,4 +143,35 @@ it('keeps a pending create and its UNKNOWN intent when discarding other ordinary
   adapter.discard(); assert.equal(adapter.draft(id)?.intent, intent);
   assert.equal((await adapter.save(id, original)).state, 'uncertain');
   assert.equal(adapter.draft(id)?.intent, intent); assert.equal(client.workbookCreate.mock.calls.length, 1);
+});
+
+it('retains the exact loaded library during a shared pending revisit and ends rejection in catalog failure', async () => {
+  const { client, adapter } = setup(); await adapter.list();
+  const files = adapter.snapshot().files;
+  const pending = Promise.withResolvers<SavedWorkbook[]>(); client.workbookList.mockImplementationOnce(() => pending.promise);
+  const first = adapter.list(), second = adapter.list(); assert.equal(first, second);
+  assert.equal(client.workbookList.mock.calls.length, 2); assert.equal(adapter.snapshot().files, files); assert.equal(adapter.snapshot().loading, false);
+  pending.reject(new Error('synthetic offline')); await first;
+  assert.equal(adapter.snapshot().files, files); assert.equal(adapter.snapshot().error, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
+});
+
+for (const operation of ['save', 'create'] as const) it(`keeps the exact UNKNOWN ${operation} reservation across read-authority replacement and refresh without redispatch`, async () => {
+  const { client, adapter } = setup();
+  const document = operation === 'save' ? book() : newEditableWorkbook();
+  let key: string;
+  if (operation === 'save') { await adapter.open('saved'); key = 'saved'; client.workbookSave.mockRejectedValue(new Error('lost save reply')); }
+  else { key = adapter.create(document); client.workbookCreate.mockRejectedValue(new Error('lost create reply')); }
+  assert.equal((await adapter.save(key, document)).state, 'uncertain');
+  const draft = adapter.draft(key), intent = draft?.intent; assert.ok(draft); assert.ok(intent);
+  const writes = client.workbookSave.mock.calls.length + client.workbookCreate.mock.calls.length;
+  adapter.setReadAuthority({}); assert.equal(adapter.snapshot().files.length, 0); assert.equal(adapter.draft(key), draft); assert.equal(adapter.draft(key)?.intent, intent);
+  await adapter.list(); assert.equal(adapter.draft(key), draft); assert.equal(adapter.draft(key)?.intent, intent);
+  assert.equal((await adapter.save(key, document)).state, 'uncertain');
+  assert.equal(client.workbookSave.mock.calls.length + client.workbookCreate.mock.calls.length, writes);
+  assert.equal(adapter.draft(key)?.intent, intent);
+});
+it('blocks a new save after read-authority replacement until current library data is read', async () => {
+  const { client, adapter } = setup(); await adapter.open('saved');
+  adapter.setReadAuthority({}); assert.equal((await adapter.save('saved', book())).state, 'refused'); assert.equal(client.workbookSave.mock.calls.length, 0);
+  await adapter.list(); client.workbookOpen.mockResolvedValueOnce(saved(4)); assert.equal((await adapter.save('saved', book())).state, 'confirmed'); assert.equal(client.workbookSave.mock.calls.length, 1);
 });

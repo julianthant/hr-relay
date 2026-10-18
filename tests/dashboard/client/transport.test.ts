@@ -91,3 +91,56 @@ describe("openStream endings", () => {
     assert.equal(await stream.done.then(() => "resolved", () => "rejected"), "resolved");
   });
 });
+
+describe("Settings read deadlines", () => {
+  it("bounds an unresolved fetch and ignores its late settlement", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const response = Promise.withResolvers<Response>();
+    let signal: AbortSignal | null | undefined;
+    const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: (_url, init) => { signal = init?.signal; return response.promise; } });
+    try {
+      const result = transport.requestJson("/api/v1/settings/editable").then(() => "loaded", (error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(10_000);
+      const failure = await result;
+      assert.ok(failure instanceof DashboardClientError); assert.equal(failure.code, "SETTINGS_INITIAL_READ_UNAVAILABLE"); assert.equal(signal?.aborted, true);
+      response.resolve(new Response("{}")); await Promise.resolve(); assert.equal(await result, failure);
+    } finally { vi.useRealTimers(); }
+  });
+  it("bounds body consumption and respects caller cancellation", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: async () => new Response(new ReadableStream({ start() {} })) });
+    try {
+      const reading = transport.requestJson("/api/v1/settings/facts").then(() => undefined, (error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(10_000); assert.ok(await reading instanceof DashboardClientError);
+      const controller = new AbortController();
+      const cancelled = transport.requestJson("/api/v1/settings/facts", { signal: controller.signal }).then(() => undefined, (error: unknown) => error);
+      const reason = new Error("synthetic cancellation"); controller.abort(reason); assert.equal(await cancelled, reason);
+    } finally { vi.useRealTimers(); }
+  });
+  it("gives doctor reads sixty seconds without bounding mutation requests", async () => {
+    const { vi } = await import("vitest"); vi.useFakeTimers();
+    const write = Promise.withResolvers<Response>();
+    const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: (_url, init) => init?.method === "POST" ? write.promise : new Promise(() => {}) });
+    try {
+      let wrote = false;
+      const writing = transport.requestJson("/api/v1/settings/editable", { method: "POST" }).then(() => { wrote = true; });
+      let settled = false;
+      const reading = transport.requestJson("/api/v1/storage/doctor").catch((error: unknown) => { settled = true; return error; });
+      await vi.advanceTimersByTimeAsync(59_999); assert.equal(settled, false); assert.equal(wrote, false);
+      await vi.advanceTimersByTimeAsync(1); assert.ok(await reading instanceof DashboardClientError); assert.equal(wrote, false);
+      write.resolve(new Response("{}")); await writing; assert.equal(wrote, true);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+it("keeps OAuth completion pending for its five-minute ceremony then bounds body delivery", async () => {
+  const { vi } = await import("vitest"); vi.useFakeTimers();
+  const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: async () => new Response(new ReadableStream({ start() {} })) });
+  try {
+    let settled = false;
+    const result = transport.requestJson("/api/v1/settings/chatgpt-account/sign-in/attempt").catch((error: unknown) => { settled = true; return error; });
+    await vi.advanceTimersByTimeAsync(300_000); assert.equal(settled, false);
+    await vi.advanceTimersByTimeAsync(10_000); const error = await result;
+    assert.ok(error instanceof DashboardClientError); assert.equal(error.code, "CHATGPT_AUTH_UNAVAILABLE");
+  } finally { vi.useRealTimers(); }
+});

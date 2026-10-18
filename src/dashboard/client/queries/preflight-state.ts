@@ -1,3 +1,4 @@
+import { readWithDeadline } from "../read-deadline.js";
 import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { PreflightRerunCommandRequestSchema, type PreflightReadinessWire, type PreflightSelection } from "../../../models/preflight/preflight-contract.js";
@@ -17,6 +18,7 @@ export function createPreflightReadinessResource(client: PreflightQueries, ident
   let state: PreflightReadinessState = { state: "idle" };
   let lastCompleted: Report | undefined;
   let epoch = 0;
+  let pending: Promise<void> | undefined;
   const listeners = new Set<() => void>();
   const publish = (next: PreflightReadinessState): void => { state = next; for (const listener of listeners) listener(); };
   const observe = async (read: (isCurrent: () => boolean) => Promise<PreflightReadinessWire>): Promise<void> => {
@@ -39,19 +41,27 @@ export function createPreflightReadinessResource(client: PreflightQueries, ident
   return Object.freeze({
     snapshot: (): PreflightReadinessState => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    invalidate() { epoch += 1; publish({ state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_RUNTIME_CHANGED.text, ...(lastCompleted === undefined ? {} : { lastCompleted }) }); },
-    read: () => observe(() => client.readPreflight(identity.selection)),
-    rerun: (request: unknown) => observe(async isCurrent => {
-      const command = PreflightRerunCommandRequestSchema.parse(request);
-      if (command.target.expectedConfigFingerprint !== identity.configFingerprint
-        || command.target.expectedDescriptorFingerprint !== identity.descriptorFingerprint
-        || canonicalJsonStringify(command.target.selection ?? null) !== canonicalJsonStringify(identity.selection ?? null)
-        || identity.actorId !== undefined && command.requestedBy !== identity.actorId) throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_RESULT_IDENTITY_MISMATCH", {})).text);
-      await client.rerunPreflight(command);
-      if (!isCurrent()) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_RUNTIME_CHANGED.text };
-      // Replay preserves the historical command result; only readback certifies current freshness.
-      return client.readPreflight(identity.selection);
-    }),
+    invalidate() { epoch += 1; pending = undefined; publish({ state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_RUNTIME_CHANGED.text, ...(lastCompleted === undefined ? {} : { lastCompleted }) }); },
+    read: () => {
+      if (pending !== undefined) return pending;
+      const reading = observe(() => readWithDeadline(() => client.readPreflight(identity.selection), "PREFLIGHT_READ_UNAVAILABLE")).finally(() => { if (pending === reading) pending = undefined; });
+      pending = reading;
+      return reading;
+    },
+    rerun: (request: unknown) => {
+      pending = undefined;
+      return observe(async isCurrent => {
+        const command = PreflightRerunCommandRequestSchema.parse(request);
+        if (command.target.expectedConfigFingerprint !== identity.configFingerprint
+          || command.target.expectedDescriptorFingerprint !== identity.descriptorFingerprint
+          || canonicalJsonStringify(command.target.selection ?? null) !== canonicalJsonStringify(identity.selection ?? null)
+          || identity.actorId !== undefined && command.requestedBy !== identity.actorId) throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_RESULT_IDENTITY_MISMATCH", {})).text);
+        await client.rerunPreflight(command);
+        if (!isCurrent()) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_RUNTIME_CHANGED.text };
+        // Replay preserves the historical command result; only readback certifies current freshness.
+        return readWithDeadline(() => client.readPreflight(identity.selection), "PREFLIGHT_READ_UNAVAILABLE");
+      });
+    },
   });
 }
 export type PreflightReadinessResource = ReturnType<typeof createPreflightReadinessResource>;
