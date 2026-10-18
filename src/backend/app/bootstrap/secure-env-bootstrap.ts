@@ -111,7 +111,7 @@ export async function runSecureEnvironmentBootstrap(
     parseDiagnosticArgs(entrypointArgs.slice(2));
   }
   const mode = bootDiagnostics || entrypoint === "cli" && entrypointArgs[0] === "storage"
-    && !["backup", "doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
+    && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
   let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
   let initialWorkerAuthorityPath: string | undefined;
