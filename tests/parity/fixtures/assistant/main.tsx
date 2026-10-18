@@ -27,17 +27,19 @@ function AssistantScene() {
     return () => clearTimeout(timer);
   }, [state.turn, revision]);
   return <main className="assistant-scene" data-mock-confirmations={receipts.length} data-last-mock-proposal={JSON.stringify(receipts.at(-1))}>
-    <header className="assistant-scene-header"><strong>Relay</strong><span>Assistant · Mock review</span></header>
-    <section className="assistant-scene-copy">
-      <h1>Review the assistant</h1>
-      <p>Open the bottom-right launcher to review a proposal, inspect its sources, or keep a conversation open while you work.</p>
-      <p>All subjects, replies, plans, and public source examples are synthetic. Confirm records one local callback. Nothing is sent to a backend.</p>
-      <nav aria-label="Mock scenes">{['proposal', 'dry-run', 'waiting', 'failed', 'unavailable', 'stale', 'empty', 'long'].map(name => <a key={name} href={`?scene=${name}&theme=${theme}`}>{name}</a>)}</nav>
-      <div className="assistant-scene-tools"><Button onClick={() => setRevision('demo-context-8')}>Invalidate plan</Button><a href={`?scene=${scene}&theme=${theme === 'dark' ? 'light' : 'dark'}`}>Switch theme</a></div>
-      <output aria-label="Mock callback count">Mock confirmations: {receipts.length}</output>
-      {receipts.length > 0 && <p>Recorded {receipts.at(-1)?.id}. No run was started.</p>}
+    <div className="assistant-scene-backdrop" aria-hidden="true">
+      <aside className="assistant-scene-sidebar"><strong>Relay</strong><span>WORKSPACE</span><b>Queue</b><p>Explorer</p><p>Records</p><p>Analytics</p><p className="assistant-scene-settings">Settings</p></aside>
+      <div className="assistant-scene-workspace"><header><span>Workspace</span><span>Local preview</span></header><section><div className="assistant-scene-title"><div><p>WORKFLOWS</p><h1>Queue</h1></div><span>3 synthetic runs</span></div><div className="assistant-scene-tabs"><b>All runs <small>3</small></b><span>Needs review</span><span>Completed</span></div><div className="assistant-scene-table"><div className="assistant-scene-table-head"><span>Subject</span><span>Workflow</span><span>Status</span></div>{[
+        ['Avery Sample', 'DEMO-001', 'Person Lookup', 'Read only'],
+        ['Morgan Example', 'DEMO-002', 'Person Lookup', 'Ready for review'],
+        ['Taylor Demo', 'DEMO-003', 'Emergency Contact', 'Draft'],
+      ].map(([name,id,workflow,status]) => <div key={id} className="assistant-scene-table-row"><div><strong>{name}</strong><small>{id}</small></div><span>{workflow}</span><span className="assistant-scene-row-status">{status}</span></div>)}</div><p className="assistant-scene-caption">Synthetic workspace · No connected systems</p></section></div>
+    </div>
+    <section className="assistant-scene-controls" aria-label="Mock scene controls">
+      <span>Assistant design preview</span><label>Scene<select value={scene} onChange={event => { location.search = `?scene=${event.target.value}&theme=${theme}`; }}>{['proposal','dry-run','waiting','failed','unavailable','stale','empty','long','launcher-closed'].map(name => <option key={name}>{name}</option>)}</select></label>
+      <Button size="sm" variant="ghost" onClick={() => setRevision('demo-context-8')}>Invalidate plan</Button><a href={`?scene=${scene}&theme=${theme === 'dark' ? 'light' : 'dark'}`}>Switch theme</a><output aria-label="Mock callback count">Mock confirmations: {receipts.length}</output>
     </section>
-    <AssistantPanel state={state} revision={revision} accountAvailable={scene !== 'unavailable'} onAction={dispatch} onMockConfirm={proposal => setReceipts(previous => [...previous, proposal])} defaultOpen={query.get('open') !== 'false'} />
+    <AssistantPanel state={state} revision={revision} accountAvailable={scene !== 'unavailable'} onAction={dispatch} onMockConfirm={proposal => setReceipts(previous => [...previous, proposal])} defaultOpen={scene !== 'launcher-closed' && query.get('open') !== 'false'} />
   </main>;
 }
 const root = document.getElementById('assistant-preview');

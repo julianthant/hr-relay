@@ -48,4 +48,14 @@ describe('assistant mock proposal', () => {
     const edited = assistantReducer(failed, { type: 'edit', value: 'Changed' });
     assert.equal(assistantReducer(edited, { type: 'retry' }), edited);
   });
+  it('starts a new chat without reusing a pending request identity', () => {
+    const waiting = assistantMockState('waiting');
+    const empty = assistantReducer(waiting, { type: 'new-chat' });
+    assert.deepEqual(empty, { draft: '', messages: [], sequence: 1, turn: { state: 'idle' } });
+    const next = assistantReducer(assistantReducer(empty, { type: 'edit', value: 'New question' }), { type: 'send' });
+    assert.equal(next.sequence, 2);
+    const late = { type: 'reply' as const, requestId: 1, proposal: assistantMockProposal(), message: { id: 'late', role: 'assistant' as const, text: 'Old reply' } };
+    assert.equal(assistantReducer(next, late), next);
+    assert.equal(assistantReducer(empty, late), empty);
+  });
 });

@@ -9,7 +9,7 @@ import { attachShellA11y } from './helpers/shell-proof.js';
 import { captureParityPair } from './helpers/capture.js';
 import { FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH, FIXTURE_DAY } from './helpers/fixture-identity.js';
 
-test.use({ viewport: { width: 1440, height: 810 } });
+test.use({ viewport: { width: 1440, height: 900 } });
 
 let server: PreviewServer;
 let output: string;
@@ -28,41 +28,62 @@ test.afterAll(async () => {
   if (output) await rm(output, { recursive: true, force: true });
 });
 
-for (const scene of ['proposal', 'dry-run', 'waiting', 'failed', 'unavailable', 'stale', 'empty', 'long']) {
+for (const scene of ['launcher-closed', 'proposal', 'dry-run', 'waiting', 'confirmed', 'failed', 'unavailable', 'stale', 'empty', 'long', 'empty-light', 'proposal-light']) {
   const evidence = `assistant-${scene}.a11y.yml`;
   test(`assistant ${scene}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
     const errors: string[] = [], requests: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (request.method() !== 'GET' || /\/api\/|\/events\b/.test(request.url())) requests.push(request.url()); });
+    const theme = scene.endsWith('-light') ? 'light' : 'dark';
+    const fixture = scene === 'confirmed' ? 'proposal' : scene.replace('-light', '');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto(`${baseUrl}/?scene=${scene}`);
+    await page.goto(`${baseUrl}/?scene=${fixture}&theme=${theme}`);
     const panel = page.getByRole('dialog', { name: 'Relay assistant' });
-    await expect(panel).toBeVisible();
-    await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeFocused();
-    if (['proposal', 'dry-run', 'long'].includes(scene)) {
-      await expect(panel.getByRole('button', { name: 'Source: Person Lookup · Read-only checks' }).last()).toBeInViewport();
-      const details = panel.getByRole('region', { name: 'Proposed run details' });
-      await expect(details).toContainText('Avery Sample DEMO-001');
-      await expect(details).toContainText('Morgan Example DEMO-002');
-      await expect(details).toContainText('UCPath and CRM');
-      await expect(details).toContainText('Any Save, Submit, or employee-record change.');
-      await expect(details).toContainText('Any identity ambiguity; ask the operator to resolve it.');
-      await expect(panel.getByText(scene === 'dry-run' ? 'Dry run' : 'Read only', { exact: true })).toBeVisible();
-      await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
+    if (scene === 'launcher-closed') {
+      await expect(panel).toHaveCount(0);
+      const launcher = page.getByRole('button', { name: 'Assistant', exact: true });
+      const bounds = await launcher.boundingBox();
+      expect(bounds?.width).toBe(48); expect(bounds?.height).toBe(48);
+      expect(await launcher.evaluate(node => getComputedStyle(node).borderRadius)).toBe('9999px');
+    } else {
+      await expect(panel).toBeVisible();
+      await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeFocused();
+      if (['proposal', 'dry-run', 'long', 'proposal-light', 'confirmed'].includes(scene)) {
+        const details = panel.getByRole('region', { name: 'Proposed run details' });
+        await expect(details).toContainText('Avery Sample DEMO-001');
+        await expect(details).toContainText('Morgan Example DEMO-002');
+        await expect(details).toContainText('UCPath and CRM');
+        await details.getByRole('button', { name: 'Effects and stop points' }).click();
+        await expect(details).toContainText('Any Save, Submit, or employee-record change.');
+        await expect(details).toContainText('Any identity ambiguity; ask the operator to resolve it.');
+        await expect(details).toContainText('demo-person-check');
+        await details.getByRole('button', { name: 'Effects and stop points' }).click();
+        await panel.getByRole('region', { name: 'Conversation' }).evaluate(node => { node.scrollTop = node.scrollHeight; });
+        await expect(panel.locator('.assistant-speaker').last()).toBeInViewport({ ratio: 1 });
+        await expect(panel.getByRole('button', { name: 'Source: Person Lookup · Read-only checks' }).last()).toBeInViewport();
+        await expect(panel.getByText(scene === 'dry-run' ? 'Dry run' : 'Read only', { exact: true })).toBeVisible();
+        await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
+      }
+      if (scene === 'confirmed') {
+        await panel.getByRole('button', { name: 'Confirm', exact: true }).click();
+        await expect(page.getByLabel('Mock callback count')).toHaveText('Mock confirmations: 1');
+        await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
+        await expect(panel.getByRole('status')).toContainText('No run was started.');
+      }
+      if (scene === 'long') await expect(panel.locator('.assistant-messages > li')).toHaveCount(21);
+      if (scene === 'waiting') { await expect(panel.getByText('Preparing a proposal…')).toBeVisible(); await expect(panel.getByRole('button', { name: 'Stop reply' })).toBeEnabled(); }
+      if (scene === 'failed') await expect(panel.getByRole('button', { name: 'Retry reply' })).toBeEnabled();
+      if (scene === 'unavailable' || scene === 'stale') await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
+      if (scene === 'unavailable') {
+        await expect(panel.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+        await expect(panel.getByRole('alert')).toContainText('This mock cannot sign in.');
+        await expect(panel.getByRole('button', { name: /sign in|connect/i })).toHaveCount(0);
+      }
+      if (scene === 'empty' || scene === 'empty-light') await expect(panel.getByText('How can I help you?')).toBeVisible();
     }
-    if (scene === 'long') await expect(panel.locator('.assistant-messages > li')).toHaveCount(21);
-    if (scene === 'waiting') { await expect(panel.getByText('Preparing a proposal…')).toBeVisible(); await expect(panel.getByRole('button', { name: 'Cancel reply' })).toBeEnabled(); }
-    if (scene === 'failed') await expect(panel.getByRole('button', { name: 'Retry reply' })).toBeEnabled();
-    if (scene === 'unavailable' || scene === 'stale') await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
-    if (scene === 'unavailable') {
-      await expect(panel.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-      await expect(panel.getByRole('alert')).toContainText('This mock cannot sign in.');
-      await expect(panel.getByRole('button', { name: /sign in|connect/i })).toHaveCount(0);
-    }
-    if (scene === 'empty') await expect(panel.getByText('What would you like to do?')).toBeVisible();
     await attachShellA11y(page, info, evidence);
     expect(errors).toEqual([]); expect(requests).toEqual([]);
-    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `assistant-${scene}`, theme: 'graphite-warm', viewport: '1440x810', adapter: 'component-fixture', fixtureId: `assistant-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
+    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `assistant-${scene}`, theme: 'graphite-warm', viewport: '1440x900', adapter: 'component-fixture', fixtureId: `assistant-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
   });
 }
 
@@ -112,7 +133,7 @@ test('assistant keyboard, cancellation, retry, citations and exact one-time mock
   await expect(message).toBeFocused();
   await page.keyboard.press('Escape'); await launcher.click();
   await expect(panel.getByText('Preparing a proposal…')).toBeVisible();
-  await panel.getByRole('button', { name: 'Cancel reply' }).focus(); await page.keyboard.press('Enter');
+  await panel.getByRole('button', { name: 'Stop reply' }).focus(); await page.keyboard.press('Enter');
   await expect(panel.getByText(/Reply cancelled/)).toBeVisible();
   await expect(message).toBeFocused();
   await expect(message).not.toHaveValue('');
@@ -121,7 +142,7 @@ test('assistant keyboard, cancellation, retry, citations and exact one-time mock
   await page.goto(`${baseUrl}/?scene=failed`);
   await panel.getByRole('button', { name: 'Retry reply' }).focus(); await page.keyboard.press('Enter');
   await expect(message).toBeFocused();
-  await panel.getByRole('button', { name: 'Cancel reply' }).focus();
+  await panel.getByRole('button', { name: 'Stop reply' }).focus();
   await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
   await expect(message).toBeFocused();
   await panel.getByRole('button', { name: 'Cancel', exact: true }).focus(); await page.keyboard.press('Enter');
@@ -143,7 +164,7 @@ test('assistant keeps the reader focus when a reply arrives elsewhere in the pan
 for (const width of [1440, 1920, 2560]) {
   for (const theme of ['dark', 'light']) {
     test(`assistant fits ${width} ${theme} with a scrollable long transcript`, async ({ page }) => {
-      await page.setViewportSize({ width, height: width === 1440 ? 810 : width === 1920 ? 1080 : 1440 });
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 });
       await page.goto(`${baseUrl}/?scene=long&theme=${theme}`);
       const panel = page.getByRole('dialog', { name: 'Relay assistant' });
       const bounds = await panel.boundingBox();
@@ -156,9 +177,64 @@ for (const width of [1440, 1920, 2560]) {
       await transcript.focus(); await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown');
       await expect(transcript).toBeFocused();
       const details = panel.getByRole('region', { name: 'Proposed run details' });
-      await details.evaluate(node => { node.scrollTop = node.scrollHeight; });
+      await details.getByRole('button', { name: 'Effects and stop points' }).click();
+      await details.getByText('Any identity ambiguity; ask the operator to resolve it.').scrollIntoViewIfNeeded();
       await expect(details.getByText('Any identity ambiguity; ask the operator to resolve it.')).toBeInViewport();
+      await panel.getByRole('button', { name: 'Confirm', exact: true }).scrollIntoViewIfNeeded();
       await expect(panel.getByRole('button', { name: 'Confirm', exact: true })).toBeInViewport();
     });
   }
 }
+
+test('assistant new chat, suggestions, Enter, Shift+Enter and IME preserve the mock contract', async ({ page }) => {
+  await page.goto(`${baseUrl}/?scene=empty`);
+  const message = page.getByRole('textbox', { name: 'Message', exact: true });
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(send).toBeDisabled();
+  await page.getByRole('button', { name: 'Check a person in Person Lookup (read-only)', exact: true }).click();
+  await expect(message).toBeFocused();
+  await expect(message).toHaveValue('Check a person in Person Lookup (read-only)');
+  await expect(page.getByText('Preparing a proposal…')).toHaveCount(0);
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(message).toBeFocused(); await expect(message).toHaveValue('');
+  await message.fill('First line'); await message.press('Shift+Enter'); await message.press('End'); await page.keyboard.type('Second line');
+  await expect(message).toHaveValue('First line\nSecond line');
+  await message.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', isComposing: true, bubbles: true });
+  await expect(page.getByText('Preparing a proposal…')).toHaveCount(0);
+  await message.press('Enter');
+  await expect(page.getByText('Preparing a proposal…')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
+  await expect(page.locator('.assistant-messages > li')).toHaveCount(2);
+  await expect(page.getByLabel('Mock callback count')).toHaveText('Mock confirmations: 0');
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByText('How can I help you?')).toBeVisible(); await expect(send).toBeDisabled();
+  await expect(page.locator('.assistant-messages > li')).toHaveCount(0);
+});
+
+test('assistant preserves the reading position on reply and jumps to the latest on request', async ({ page }) => {
+  await page.goto(`${baseUrl}/?scene=long`);
+  const transcript = page.getByRole('region', { name: 'Conversation' });
+  const message = page.getByRole('textbox', { name: 'Message', exact: true });
+  await message.fill('Another demo question'); await message.press('Enter');
+  await transcript.focus(); await transcript.evaluate(node => { node.scrollTop = 0; });
+  const latest = page.getByRole('button', { name: 'Jump to latest' });
+  await expect(latest).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
+  await expect(transcript).toBeFocused();
+  expect(await transcript.evaluate(node => node.scrollTop)).toBe(0);
+  await latest.click();
+  await expect(message).toBeFocused(); await expect(latest).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeInViewport();
+});
+
+test('assistant copies a reply and exposes clipboard refusal without losing focus', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto(`${baseUrl}/?scene=proposal`);
+  const copy = page.getByRole('button', { name: 'Copy reply', exact: true }).last();
+  await copy.click(); await expect(page.getByText('Copied', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Here is the exact read-only proposal. Check the subjects and stop points before confirming.');
+  await page.evaluate(() => { Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: () => Promise.reject(new Error('denied')) }); });
+  await copy.focus(); await page.keyboard.press('Enter');
+  await expect(page.getByText('Could not copy. Select the reply text.')).toBeVisible(); await expect(copy).toBeFocused();
+  await expect(page.getByLabel('Mock callback count')).toHaveText('Mock confirmations: 0');
+});

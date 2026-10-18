@@ -39,13 +39,15 @@ export interface AssistantState {
 
 export type AssistantAction =
   | { readonly type: 'edit'; readonly value: string }
-  | { readonly type: 'send' | 'retry' | 'cancel' | 'confirm' }
+  | { readonly type: 'send' | 'retry' | 'cancel' | 'confirm' | 'new-chat' }
   | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantMockProposal; readonly message: AssistantMessage }
   | { readonly type: 'fail'; readonly requestId: number };
 
 export function assistantReducer(state: AssistantState, action: AssistantAction): AssistantState {
   const turn = state.turn;
   switch (action.type) {
+    case 'new-chat':
+      return { draft: '', messages: [], sequence: state.sequence, turn: { state: 'idle' } };
     case 'edit':
       return { ...state, draft: action.value, turn: turn.state === 'waiting' ? { ...turn, state: 'cancelled' } : turn.state === 'proposal' && turn.disposition === 'review' ? { ...turn, disposition: 'edited' } : turn };
     case 'send': {
@@ -68,6 +70,12 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
       return turn.state === 'proposal' && turn.disposition === 'review' ? { ...state, turn: { ...turn, disposition: 'confirmed' } } : state;
   }
 }
+
+export const ASSISTANT_STARTERS = [
+  'Check a person in Person Lookup (read-only)',
+  'Dry-run separations for 2 people',
+  'Explain what Emergency Contact does',
+] as const;
 
 export function assistantConfirmRefusal(state: AssistantState, revision: string, accountAvailable: boolean): string | undefined {
   const turn = state.turn;
