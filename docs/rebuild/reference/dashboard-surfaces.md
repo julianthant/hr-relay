@@ -383,7 +383,9 @@ then optionally binds retained columns to known fields. Unbound columns and rost
 their original values. Duplicate fields per sheet refuse. Canonical value issues show the original worksheet
 row and column without blocking library import; workflow Intake still refuses invalid execution rows. Confirmation physically removes preamble and excluded sheets/columns instead of merely
 hiding them. Source headers, source column coordinates, header-row provenance, suggestion/manual basis,
-and stable row identities survive. Inserted columns have a null source coordinate.
+and stable row identities survive. Imported rows retain their original worksheet row through sorting,
+edits and library save/reopen; warnings use that location. Rows created without source provenance are
+labelled with their current row. Inserted columns have a null source coordinate.
 
 Editable XLSX imports include hidden and filtered rows. Worksheet/table filter rules are not imported.
 Unsupported Excel table `colorFilter` metadata is removed only from a private parsing copy; original

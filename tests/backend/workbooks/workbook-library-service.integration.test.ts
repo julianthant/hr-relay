@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 import { matchSpreadsheetTask } from '../../../src/backend/processing/roster/task-registry.js';
 import { ArtifactRefSchema } from '../../../src/models/artifacts/artifacts.js';
 import { MatchSpreadsheetInputSchema } from '../../../src/models/processing/roster/match-spreadsheet.js';
-import { importSpreadsheet, spreadsheetXlsx, editSpreadsheetCell, updateSpreadsheetFields } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { importSpreadsheet, spreadsheetXlsx, editSpreadsheetCell, updateSpreadsheetFields, sortSpreadsheet } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { prepareSpreadsheetColumns, selectSpreadsheetColumns, spreadsheetColumnErrors, spreadsheetColumnValueIssues } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
 import { CANONICAL_FIELDS } from '../../../src/models/fields/registry.js';
 import { defineIntakeProjection } from '../../../src/models/intake/projection.js';
@@ -248,4 +248,20 @@ it('roundtrips a wide multi-sheet roster as raw library data while execution rej
     ctx: { artifacts: { open: async () => Readable.from([Buffer.from(originalBytes)]) }, fail: (code: string) => { throw new Error(code); }, recordData: () => undefined, log: { info: () => undefined } } as never });
   expect(matched.matches.map(match => [match.matchedEid, match.mismatch])).toEqual([['10000002', 'none'], [null, 'name-eid-conflict'], [null, 'ambiguous']]);
   expect(result.rejected.map(row => [row.sourceRow, 'field' in row ? row.field : undefined])).toEqual([[2, 'eid'], [3, 'email'], [4, 'hireDate']]);
+});
+
+
+it('retains original worksheet row locations after sorting and save/reopen', async () => {
+  const csv = 'Synthetic roster,\n,\n,\n,\nLegal Name,UCPath ID\nZed Mercer,10000001\nAmy Morrow,Pending';
+  const imported = await importSpreadsheet('Synthetic.csv', new TextEncoder().encode(csv).buffer);
+  const selected = selectSpreadsheetColumns(prepareSpreadsheetColumns(imported));
+  const sheet = sortSpreadsheet(selected.sheets[0], 0, 'asc');
+  expect(sheet.rows.slice(1).map(row => row.sourceRow)).toEqual([7, 6]);
+  const sorted = { ...selected, sheets: [sheet] };
+  expect(spreadsheetColumnValueIssues(sorted)).toEqual(['Sheet 1, row 7, column B: does not match Employee ID.']);
+  const f = fixture(), created = f.service.create(sorted);
+  const saved = f.service.save(created.libraryId, 1, created.workbook);
+  const reopened = f.service.read(saved.libraryId);
+  expect(reopened.workbook.sheets[0].rows.slice(1).map(row => row.sourceRow)).toEqual([7, 6]);
+  expect(spreadsheetColumnValueIssues(reopened.workbook)).toEqual(spreadsheetColumnValueIssues(sorted));
 });

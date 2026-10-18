@@ -26,6 +26,9 @@ it('keeps original cell metadata closed and bound to its displayed text', () => 
   const invalid = structuredClone(document);
   Reflect.set(invalid.sheets[0].rows[0].cells[1].richText![0].font!, 'unsupported', true);
   assert.equal(EditableWorkbookSchema.safeParse(invalid).success, false);
+  const badRow = structuredClone(document);
+  Reflect.set(badRow.sheets[0].rows[0], 'sourceRow', 0);
+  assert.equal(EditableWorkbookSchema.safeParse(badRow).success, false);
   const stale = structuredClone(document);
   stale.sheets[0].rows[0].cells[1].value = 'Changed';
   assert.equal(EditableWorkbookSchema.safeParse(stale).success, false);

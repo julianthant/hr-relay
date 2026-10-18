@@ -6,7 +6,7 @@ import type { SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
 import { spreadsheetField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
 
 export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: Fill; background?: string; numFmt?: string; richText?: RichText[]; hyperlink?: string; tooltip?: string }>;
-export type SheetRow = Readonly<{ id: string; cells: readonly SheetCell[] }>;
+export type SheetRow = Readonly<{ id: string; sourceRow?: number; cells: readonly SheetCell[] }>;
 export type EditableSheet = Readonly<{ id: string; name: string; rows: readonly SheetRow[]; width: number; hidden: readonly number[]; headerRow?: number; sourceHeaderRow?: number; columnBindings?: readonly SpreadsheetColumnBinding[] }>;
 export type EditableWorkbook = Readonly<{ name: string; libraryId?: string; sheets: readonly EditableSheet[]; themes: LibraryWorkbook['themes']; hasFormulas: boolean }>;
 const MAX_CELLS = 100_000;
@@ -158,7 +158,7 @@ export async function importSpreadsheet(name: string, data: ArrayBuffer): Promis
     const values = parse(new TextDecoder().decode(data), { bom: true, relax_column_count: true, skip_empty_lines: false });
     const width = values.reduce((max, row) => Math.max(max, row.length), 1);
     if (!values.length || values.length * width > MAX_CELLS) throw new Error('SPREADSHEET_SIZE_UNSUPPORTED: use a nonempty file with at most 100,000 cells.');
-    return { name, themes: [], hasFormulas: false, sheets: [{ id: 'csv', name: 'Sheet 1', width, hidden: [], rows: values.map((row, index) => ({ id: `row-${index}`, cells: Array.from({ length: width }, (_, column) => ({ value: row[column] ?? '' })) })) }] };
+    return { name, themes: [], hasFormulas: false, sheets: [{ id: 'csv', name: 'Sheet 1', width, hidden: [], rows: values.map((row, index) => ({ id: `row-${index}`, sourceRow: index + 1, cells: Array.from({ length: width }, (_, column) => ({ value: row[column] ?? '' })) })) }] };
   }
   if (!/\.xlsx$/i.test(name)) throw new Error('SPREADSHEET_FORMAT_UNSUPPORTED: choose XLSX or CSV.');
   const Excel = (await import('exceljs')).default;
@@ -170,7 +170,7 @@ export async function importSpreadsheet(name: string, data: ArrayBuffer): Promis
     const width = Math.max(1, sheet.columnCount), height = Math.max(1, sheet.rowCount);
     total += width * height;
     if (total > MAX_CELLS) throw new Error('SPREADSHEET_SIZE_UNSUPPORTED: maximum workbook size is 100,000 cells.');
-    const rows = Array.from({ length: height }, (_, rowIndex) => ({ id: `${sheet.id}-${rowIndex}`, cells: Array.from({ length: width }, (_, columnIndex): SheetCell => {
+    const rows = Array.from({ length: height }, (_, rowIndex) => ({ id: `${sheet.id}-${rowIndex}`, sourceRow: rowIndex + 1, cells: Array.from({ length: width }, (_, columnIndex): SheetCell => {
       const cell = sheet.getCell(rowIndex + 1, columnIndex + 1);
       let value = cell.value;
       const richText = value && typeof value === 'object' && 'richText' in value ? structuredClone(value.richText) : undefined;

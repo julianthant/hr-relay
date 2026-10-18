@@ -59,7 +59,7 @@ export function spreadsheetColumnValueIssues(document: EditableWorkbook): readon
     if (sheet.hidden.includes(column) || !binding.fieldId) return [];
     const field = spreadsheetField(binding.fieldId);
     return sheet.rows.slice(spreadsheetHeaderRow(sheet)).flatMap((row, index) => spreadsheetValueMatches(field.id, cellText(row.cells[column])) ? []
-      : [`${sheet.name}, row ${(sheet.sourceHeaderRow ?? spreadsheetHeaderRow(sheet)) + index + 1}, column ${columnName(binding.sourceColumn ?? column)}: does not match ${field.label}.`]);
+      : [`${sheet.name}, ${row.sourceRow === undefined ? 'current row' : 'row'} ${row.sourceRow ?? spreadsheetHeaderRow(sheet) + index + 1}, column ${columnName(binding.sourceColumn ?? column)}: does not match ${field.label}.`]);
   }) ?? []);
 }
 export function selectSpreadsheetColumns(document: EditableWorkbook): EditableWorkbook {
