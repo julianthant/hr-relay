@@ -279,7 +279,7 @@ export const ExplorerNodeWireSchema = z.strictObject({
     key: z.string().min(1),
     label: z.string().min(1),
     fieldPath: ContractFieldPathSchema,
-    display: z.enum(["text", "eid", "date", "count", "badge"]),
+    display: z.enum(["text", "eid", "date", "count", "badge", "person-name"]),
   })),
   /** Descriptor-allowlisted Edit Data fields sourced from this node (ref data-intake-and-edit-data ). */
   editableFields: z.array(z.strictObject({

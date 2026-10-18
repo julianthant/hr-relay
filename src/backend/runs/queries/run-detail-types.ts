@@ -65,6 +65,7 @@ export interface RunDetailDescriptorView {
   readonly contractFingerprint?: string;
   /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  readonly titleProjection?: AnyWorkflowDescriptor["titleProjection"];
 
   readonly timeline?: readonly Readonly<{
     key?: string;

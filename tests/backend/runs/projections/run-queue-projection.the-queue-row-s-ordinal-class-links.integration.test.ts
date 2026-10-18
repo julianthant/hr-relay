@@ -22,8 +22,8 @@ function verifyOutputs(receipt: ReturnType<typeof receiptWithOutputOf>) {
 
 
 describe("the queue row's ordinal, class, links and outcome", () => {
-  it("keeps the Person Lookup input title and binds its EID subtitle to the exact receipt output", () => {
-    const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  it("keeps the input title and binds its EID subtitle to the exact verified receipt output", () => {
+    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, details: [] }) } });
     for (const seed of [50, 51, 52, 54, 55]) {
       terminalDone(w, seed, { title: "Example, Person" });
       const receipt = receiptWithOutputOf({ seed, outputs: [{ field: "eid", value: seed === 51 ? null : "10000001", ...(seed === 54 ? { redact: "drop" as const } : {}) }] });
@@ -37,6 +37,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
         const fact = receipt.output[0]; assert.ok(fact.state === "satisfied");
         fact.value = { key: "activeStatus.details.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "0001" };
       }
+      receipt.verification = [{ id: deriveEvidenceEntryId(receipt.receiptId, "verification", "completion.terminal-result"),
+        obligation: "completion.terminal-result", mandatory: true, verdict: "verified", evidence: [evidenceEntryRef(receipt.output[0].id)] }];
       w.authority.receipts.set(uuidOf(seed), receipt);
     }
     const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
@@ -50,7 +52,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
   it("projects a declared result subtitle for an arbitrary workflow identity and result field", () => {
     const workflow = "fixture-result-subtitle";
     const fieldPath = "activeStatus.details.matchedEid";
-    const descriptor = { ...personLookupDescriptor, details: [], id: WorkflowIdSchema.parse(workflow), subtitleProjection: { fieldPath, display: "eid" as const } };
+    const descriptor = { ...personLookupDescriptor, titleProjection: undefined, details: [], id: WorkflowIdSchema.parse(workflow), subtitleProjection: { fieldPath, display: "eid" as const } };
     const w = world({ descriptors: { resolve: () => descriptor } });
     const seed = 53;
     queuedEventOf(w, { seed, workflow }); claimEventOf(w, seed); runEndedEventOf(w, seed, "done", { workflow });
@@ -58,6 +60,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     const receipt = receiptWithOutputOf({ seed, workflow, outputs: [{ field: "matchedEid", value: "10000002" }] });
     receipt.configFingerprint = runRecordOf({ seed, workflow }).envelope.configFingerprint;
     receipt.output[0].id = deriveEvidenceEntryId(receipt.receiptId, "output", fieldPath);
+    receipt.verification = [{ id: deriveEvidenceEntryId(receipt.receiptId, "verification", "completion.terminal-result"),
+      obligation: "completion.terminal-result", mandatory: true, verdict: "verified", evidence: [evidenceEntryRef(receipt.output[0].id)] }];
     w.authority.receipts.set(uuidOf(seed), receipt);
     assert.deepEqual(w.projection.buildDashboardDayWire(DAY).queueSurfaces.find(row => row.runId === uuidOf(seed))?.subtitle, { state: "present", value: "10000002" });
   });
@@ -126,7 +130,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
 
   it("classifies containment from shape and lineage, and chips only the linked children", () => {
 
-    const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined }) } });
     queuedEventOf(w, { seed: 1, shape: "operation" });
     queuedEventOf(w, { seed: 2, shape: "operation-member", parentSeed: 1, title: "Ada Lovelace" });
     queuedEventOf(w, { seed: 3, shape: "operation-member", parentSeed: 1, title: "Grace Hopper" });
@@ -182,7 +186,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
   });
 
   it("omits a satisfied empty-string declared detail without rejecting the feed", () => {
-    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, outcomeProjection: undefined, subtitleProjection: undefined, details: [{ key: "reason", label: "Reason", source: { kind: "result", fieldPath: "reason" }, display: "text" }] }) } });
+    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined, details: [{ key: "reason", label: "Reason", source: { kind: "result", fieldPath: "reason" }, display: "text" }] }) } });
     terminalDone(w, 6);
     const receipt = receiptWithOutputOf({ seed: 6, outputs: [{ field: "reason", value: "" }] });
     verifyOutputs(receipt);
@@ -193,7 +197,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
   });
 
   it("chips only declared verified outputs and keeps unknown authority explicit", () => {
-    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, outcomeProjection: undefined, subtitleProjection: undefined,
+    const w = world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined,
       details: ["displayedName", "hdh", "records"].map(field => ({ key: field === "displayedName" ? "name" : field, label: field, source: { kind: "result", fieldPath: field }, display: "text" })) }) } });
     // 1 — in flight: no terminal result exists to have facts about.
     queuedEventOf(w, { seed: 1 });

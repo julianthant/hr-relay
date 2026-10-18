@@ -1,3 +1,4 @@
+import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { displayScalar } from "../queries/data.js";
 import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
@@ -53,7 +54,7 @@ import { isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker
 import type { RunSessionRecord } from "../../../models/run/session.js";
 import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
-import { resolveSubjectTitle } from "./run-subject-title.js";
+import { allowsSubjectIdentity, resolveResultTitle, verifiedResultDisplayValue, resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
@@ -921,16 +922,10 @@ export class RunQueueProjection {
     );
   }
 
-  #resultSubtitle(run: RunRecord, receipt: ReceiptView | undefined, fieldPath: string): QueueSurfaceWire["subtitle"] {
+  #resultSubtitle(run: RunRecord, descriptor: AnyWorkflowDescriptor, receipt: ReceiptView | undefined, fieldPath: string): QueueSurfaceWire["subtitle"] {
     const absent = { state: "absent", reason: "this run has no resolved EID available for its subtitle" } as const;
-    if (receipt === undefined || retainedRunProtectedBindings(run).length > 0) return absent;
-    const value = receipt.value;
-    const fact = value.output.find(entry => entry.id === deriveEvidenceEntryId(value.receiptId, "output", fieldPath));
-    if (fact?.state !== "satisfied" || fact.value.state === "redacted") return absent;
-    if (value.runId !== run.envelope.runId || value.attempt !== run.envelope.attempt
-      || value.workflowId !== run.envelope.workflow || value.descriptorFingerprint !== run.envelope.contractFingerprint
-      || value.configFingerprint !== run.envelope.configFingerprint) throw new ProjectionDegradedError("result-subtitle-receipt-identity-mismatch");
-    const raw = fact.value.rawValue ?? (fact.value.state === "allowed" ? fact.value.value : undefined);
+    if (receipt === undefined || !allowsSubjectIdentity(run, descriptor)) return absent;
+    const raw = verifiedResultDisplayValue(run, receipt.value, fieldPath, "subtitle");
     if (raw === undefined) return absent;
     const eid = EidSchema.nullable().parse(raw);
     return eid === null ? absent : { state: "present", value: eid };
@@ -1070,9 +1065,13 @@ export class RunQueueProjection {
     members: readonly RunRecord[],
   ): { state: "present"; value: string } | { state: "absent"; reason: string } {
     if (members.length === 0) return { state: "absent", reason: "this group has fanned out to no members yet" };
-    const shown = members.slice(0, MEMBER_PREVIEW_LIMIT).map((member) =>
-      this.#subjectTitle(member.envelope.workflow, member)
-        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId);
+    const shown = members.slice(0, MEMBER_PREVIEW_LIMIT).map((member) => {
+      const descriptor = this.#deps.descriptors.resolve(member.envelope.workflow);
+      const receipt = this.#deps.authority.getReceipt(member.envelope.runId);
+      return (descriptor === undefined ? undefined : resolveResultTitle(descriptor, member, receipt))
+        ?? this.#subjectTitle(member.envelope.workflow, member)
+        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId;
+    });
     const remaining = members.length - shown.length;
     return { state: "present", value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", ") };
   }
@@ -1125,6 +1124,11 @@ export class RunQueueProjection {
         ? workflowPlanning(descriptor).title(authority.input.parsed.value) : factValue(source);
       if (resolved === undefined) return { state: "absent", reason: `detail ${detail.key} has no verified value` };
       if (resolved === null || typeof resolved === "string" && resolved.trim() === "") continue;
+      if (detail.display === "person-name") {
+        if (typeof resolved !== "string") throw new ProjectionDegradedError("detail-person-name-invalid");
+        chips.push({ label: detail.label, value: titleCasePersonName(resolved) });
+        continue;
+      }
       chips.push({ label: detail.label, value: typeof resolved === "object" ? JSON.stringify(resolved) : displayScalar(resolved) });
     }
     return chips.length === 0 ? { state: "absent", reason: "this run has no applicable detail values" } : { state: "present", value: chips };
@@ -1182,9 +1186,10 @@ export class RunQueueProjection {
       endedAt: this.#endedAt(authority, status),
       gateOpenedAt: this.#gateOpenedAt(row, authority, status),
 
-      title: this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId,
+      title: (descriptor === undefined ? undefined : resolveResultTitle(descriptor, authority, receipt?.value))
+        ?? this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId,
       displayName,
-      subtitle: descriptor?.subtitleProjection !== undefined ? this.#resultSubtitle(authority, receipt, descriptor.subtitleProjection.fieldPath) : row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
+      subtitle: descriptor?.subtitleProjection !== undefined ? this.#resultSubtitle(authority, descriptor, receipt, descriptor.subtitleProjection.fieldPath) : row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
         && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
         && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
         ? { state: "absent", reason: "the start plan proposed no subtitle" }

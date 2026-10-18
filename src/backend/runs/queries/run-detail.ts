@@ -346,6 +346,7 @@ export function buildRunDetail(
       ...(row === undefined ? {} : { actorId: row.queued.actorId }),
 
       title: (retainedRunProtectedBindings(authority).length > 0 ? undefined : authority.displayName)
+        ?? (descriptorView?.titleProjection === undefined ? undefined : deps.projection.queueSurface(runId)?.title)
         ?? resolveSubjectTitle(
           descriptorView?.subjectProjection,
           { workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId },

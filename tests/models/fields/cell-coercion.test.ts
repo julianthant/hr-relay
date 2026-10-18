@@ -1,3 +1,4 @@
+import { titleCasePersonName } from "../../../src/models/fields/cell-coercion.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
@@ -103,6 +104,8 @@ describe("ref data-intake-and-edit-data §2.4 per-cell coercion", () => {
   });
 
   it("title-cases names and keeps the Last, First comma form", () => {
+    assert.equal(titleCasePersonName("  QUILLAN,  PETRA A. "), "Quillan, Petra A.");
+    assert.equal(titleCasePersonName("MARY-JANE O'BRIEN"), "Mary-Jane O'Brien");
     assert.equal(displayPersonName("  battistessa,  johnnie r. "), "Battistessa, Johnnie R");
     assert.equal(displayPersonName("MARY-JANE o'brien"), "Mary-Jane O'Brien");
     assert.equal(coerceAndParse("fullName", "johnnie battistessa"), "Johnnie Battistessa");

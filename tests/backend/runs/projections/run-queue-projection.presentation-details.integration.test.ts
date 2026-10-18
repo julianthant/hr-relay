@@ -63,7 +63,7 @@ it("honors declared mode and termination conditions even when unrelated values a
 });
 
 it("reads declared node details only from this receipt's verified observation IDs", () => {
-  const descriptor = { ...personLookupDescriptor, outcomeProjection: undefined, subtitleProjection: undefined,
+  const descriptor = { ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined,
     details: [{ key: "name", label: "Name", source: { nodeId: "active-status", fieldPath: "details.name" }, display: "text" as const }] };
   const w = world({ descriptors: { resolve: () => descriptor } });
   const { row, run } = seedPersonLookupPresentation(w);
@@ -80,7 +80,7 @@ it("reads declared node details only from this receipt's verified observation ID
 });
 
 it("refuses foreign receipt identity independently of outcome and subtitle projections", () => {
-  const descriptor = { ...personLookupDescriptor, outcomeProjection: undefined, subtitleProjection: undefined,
+  const descriptor = { ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined,
     details: [{ key: "name", label: "Name", source: { kind: "result" as const, fieldPath: "activeStatus.details.name" }, display: "text" as const }] };
   const w = world({ descriptors: { resolve: () => descriptor } });
   const { row, run } = seedPersonLookupPresentation(w);

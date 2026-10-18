@@ -68,6 +68,8 @@ import {
   SubjectProjectionSpecRuntimeSchema,
   OutcomeProjectionSchema,
   type OutcomeProjection,
+  ResultTitleProjectionSchema,
+  type ResultTitleProjection,
   ResultSubtitleProjectionSchema,
   type ResultSubtitleProjection,
   SurfaceShapeSchema,
@@ -119,7 +121,7 @@ export interface DetailProjectionSpec<S> {
   readonly source: Readonly<{ nodeId: keyof S & string; fieldPath: string }>
     | Readonly<{ kind: "result"; fieldPath: string }> | Readonly<{ kind: "input-title" }>;
   readonly when?: DetailCondition;
-  readonly display: "text" | "eid" | "date" | "count" | "badge";
+  readonly display: "text" | "eid" | "date" | "count" | "badge" | "person-name";
 }
 
 // Resolves the subject's display name; the factory proves the path is offered.
@@ -218,6 +220,7 @@ export interface WorkflowDescriptor<
   readonly details: readonly DetailProjectionSpec<S>[];
   /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
+  readonly titleProjection?: ResultTitleProjection;
   readonly subtitleProjection?: ResultSubtitleProjection;
   readonly outcomeProjection?: OutcomeProjection;
    /** The run-detail timeline's categorical shape, DERIVED by the factory: the declared
@@ -270,6 +273,7 @@ export interface AnyWorkflowDescriptor {
    /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
     * functions of the exact input type). The run/queue projection reads it. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  readonly titleProjection?: ResultTitleProjection;
   readonly subtitleProjection?: ResultSubtitleProjection;
   readonly outcomeProjection?: OutcomeProjection;
   /** Plain data like `subjectProjection`, so it rides the broad view. */
@@ -930,6 +934,12 @@ export function defineWorkflowDescriptor<
     if (vocabulary !== undefined && projection.cases.some(entry => !vocabulary.includes(entry.value))) {
       throw new Error(`${owner} contains a value outside the result field vocabulary`);
     }
+  }
+  if (spec.titleProjection !== undefined) {
+    ResultTitleProjectionSchema.parse(spec.titleProjection);
+    assertSchemaOwnsPath(spec.flow.result.schema, spec.titleProjection.fieldPath, `${id}: result title projection`);
+    const leaf = contractSchemaLeaves(spec.flow.result.schema).find(entry => entry.path === spec.titleProjection?.fieldPath);
+    if (leaf === undefined || leaf.kind !== "string") throw new Error(`${id}: result title projection must name a string field`);
   }
   if (spec.subtitleProjection !== undefined) {
     ResultSubtitleProjectionSchema.parse(spec.subtitleProjection);

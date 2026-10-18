@@ -42,6 +42,7 @@ export const personLookupWorkflow = defineWorkflow({
       { value: "not-found-in-ucpath", label: "Not found in UCPath", tone: "neutral" },
     ],
   },
+  titleProjection: { fieldPath: "activeStatus.details.name", display: "person-name", protectedInput: "eid" },
   subtitleProjection: { fieldPath: "activeStatus.details.eid", display: "eid" },
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   capabilities: { review: false, editData: { fields: [
@@ -79,7 +80,7 @@ export const personLookupWorkflow = defineWorkflow({
       ["name", "Name"], ["eid", "EID"], ["department", "Dept"], ["hrStatus", "HR Status"],
       ["ucpath", "UCPath"], ["crm", "CRM"], ["startDate", "Start Date"],
     ].map(([field, label]) => ({ key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
-      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: "text" as const })),
+      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: field === "name" ? "person-name" as const : "text" as const })),
     ...[["endDate", "End Date"], ["terminationReason", "Term Reason"]].map(([field, label]) => ({
       key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
       source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: "text" as const,
@@ -87,7 +88,7 @@ export const personLookupWorkflow = defineWorkflow({
     })),
     ...[["foundInUcpath", "Found in UCPath"], ["matchedEid", "Matched EID"], ["matchedName", "Matched Name"]].map(([field, label]) => ({
       key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
-      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: "text" as const,
+      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: field === "matchedName" ? "person-name" as const : "text" as const,
       when: { source: { kind: "input" as const, fieldPath: "mode" }, equals: "match" },
     })),
   ],

@@ -83,7 +83,7 @@ export interface ExplorerQueryDeps {
 const SCENARIO_DIRECTORY = "tests/scenario";
 
 
-const DetailDisplaySchema = z.enum(["text", "eid", "date", "count", "badge"]);
+const DetailDisplaySchema = z.enum(["text", "eid", "date", "count", "badge", "person-name"]);
 
 // Source evidence belongs to the executing module tree, not repoRoot, which may name a temporary runtime root.
 export const EXPLORER_SOURCE_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");

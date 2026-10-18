@@ -127,7 +127,7 @@ export const DetailProjectionSpecRuntimeSchema = z.strictObject({
     z.strictObject({ kind: z.literal("result"), fieldPath: ContractFieldPathSchema }),
     z.strictObject({ kind: z.literal("input-title") }),
   ]),
-  display: z.enum(["text", "eid", "date", "count", "badge"]),
+  display: z.enum(["text", "eid", "date", "count", "badge", "person-name"]),
   when: DetailConditionSchema.optional(),
 });
 export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRuntimeSchema>;
@@ -138,6 +138,13 @@ export const SubjectProjectionSpecRuntimeSchema = z.strictObject({
   fieldPath: ContractFieldPathSchema,
 });
 export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecRuntimeSchema>;
+
+export const ResultTitleProjectionSchema = z.strictObject({
+  fieldPath: ContractFieldPathSchema,
+  display: z.literal("person-name"),
+  protectedInput: z.literal("eid").optional(),
+});
+export type ResultTitleProjection = z.input<typeof ResultTitleProjectionSchema>;
 
 export const ResultSubtitleProjectionSchema = z.strictObject({
   fieldPath: ContractFieldPathSchema,
