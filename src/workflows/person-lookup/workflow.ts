@@ -75,22 +75,7 @@ export const personLookupWorkflow = defineWorkflow({
   }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }] } },
   details: [
     { key: "active-state", label: "Outcome", source: { kind: "result", fieldPath: "activeStatus.state" }, display: "badge" },
-    { key: "detail-search", label: "Search", source: { kind: "input-title" }, display: "text" },
-    ...[
-      ["name", "Name"], ["eid", "EID"], ["department", "Dept"], ["hrStatus", "HR Status"],
-      ["ucpath", "UCPath"], ["crm", "CRM"], ["startDate", "Start Date"],
-    ].map(([field, label]) => ({ key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
-      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: field === "name" ? "person-name" as const : "text" as const })),
-    ...[["endDate", "End Date"], ["terminationReason", "Term Reason"]].map(([field, label]) => ({
-      key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
-      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: "text" as const,
-      when: { source: { kind: "result" as const, fieldPath: "activeStatus.state" }, equals: "inactive" },
-    })),
-    ...[["foundInUcpath", "Found in UCPath"], ["matchedEid", "Matched EID"], ["matchedName", "Matched Name"]].map(([field, label]) => ({
-      key: `detail-${field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`, label,
-      source: { kind: "result" as const, fieldPath: `activeStatus.details.${field}` }, display: field === "matchedName" ? "person-name" as const : "text" as const,
-      when: { source: { kind: "input" as const, fieldPath: "mode" }, equals: "match" },
-    })),
+    { key: "detail-eid", label: "EID", source: { kind: "result", fieldPath: "activeStatus.details.eid" }, display: "text" },
   ],
   identity: { matchKey: (input) => input.mode === "match" ? ["match", sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.dob, input.ssn]))].join(":") : "emplId" in input ? `eid:${input.emplId}` : `name:${input.name.toLowerCase()}` },
   presentation: { title: personLookupTitle, subtitle: () => "Person Lookup" },

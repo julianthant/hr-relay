@@ -9,7 +9,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "7aadc961550d25fe27f7120ef59340ca72bea4241f6577c8b16f0cfe4c6f9824",
+      "fingerprint": "b42b23ee7bca6be3d380d85285189baa1ad884c23f8f5e8a51915c61d0b70d9e",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -381,7 +381,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/person-lookup/workflow.ts",
-          "sha256": "4f94f2cb816cddd6f888ef6d575fad5f4dbc1a455982f3458f6ee65918c37977"
+          "sha256": "4dd723461538371b46da263614fc02be6f4f575ebf729c7e26036392aae12bd6"
         }
       ],
       "id": "person-lookup"
