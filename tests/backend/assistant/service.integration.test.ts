@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
 import { it, vi } from "vitest";
-import { createAssistantContext, PUBLIC_ASSISTANT_SOURCE } from "../../../src/backend/assistant/context.js";
+import { createAssistantContext, PUBLIC_ASSISTANT_REPOSITORY_ID } from "../../../src/backend/assistant/context.js";
 import { createAssistantService } from "../../../src/backend/assistant/service.js";
 import type { AssistantPlanningContext } from "../../../src/backend/assistant/proposal.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -10,6 +10,7 @@ import { HASH_A, UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
 
+const PUBLIC_ASSISTANT_SOURCE = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision: "9af76694409eeff5e0ac954fc9501bc69991643a" };
 const file = { path: "docs/rebuild/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
 const bytes = Buffer.from(JSON.stringify({ ...PUBLIC_ASSISTANT_SOURCE, files: [file] }));
 const context = createAssistantContext(bytes, { ...PUBLIC_ASSISTANT_SOURCE, exportSha256: "13b64308f627d12991b2c68f1ee59211763f37393b93fc01f4d5b59a561bab26" });
@@ -28,7 +29,7 @@ function fixture() {
     assertCurrent() {},
     assertSubjectBinding(input) { assert.equal(Reflect.get(input.value as object, "eid"), selected.employeeId); },
   };
-  const options = { context, clock, runtime: () => runtime,
+  const options = { context, clock, runtime: () => runtime, isModelPolicyCurrent: () => true,
     modelPolicy: { model: "synthetic-model", eligible: true as const, consented: true as const, billing: "chatgpt-plan" as const, verifiedUntil: "2026-10-19T00:00:00Z" },
     account: { async inferAssistant(input: { model: string; input: string }) { payloads.push(input.input); calls++; return replies.shift(); } },
     subjects: { async search() { return records; }, async resolve() { resolved++; return selected; } },
@@ -149,4 +150,37 @@ it("refuses a trusted adapter whose canonical submission is not the resolved sub
     request: { ...f.planning.request, submissions: [{ eid: "10899999" }] } }) } });
   const result = await service.respond({ message: "x", subjectRef: selected.subjectRef }, new AbortController().signal);
   assert.equal(result.state, "refused");
+});
+it("requires literal current policy authority before any inference", async () => {
+  const f = fixture();
+  const invalid: (() => unknown)[] = [() => false, () => undefined, () => "true", () => 1, () => Promise.resolve(true), async () => { throw new Error("private async policy reason"); }, () => { throw new Error("private policy reason"); }];
+  for (const authority of invalid) {
+    const result = await createAssistantService({ ...f.options, isModelPolicyCurrent: authority as () => boolean }).respond({ message: "x" }, new AbortController().signal);
+    assert.equal(result.state, "refused"); if (result.state === "refused") assert.equal(result.code, "ASSISTANT_MODEL_UNVERIFIED");
+    assert.equal(JSON.stringify(result).includes("private policy reason"), false);
+  }
+  Reflect.deleteProperty(f.options, "isModelPolicyCurrent");
+  assert.equal((await f.service().respond({ message: "x" }, new AbortController().signal)).state, "refused");
+  assert.equal(f.calls(), 0);
+});
+it("account authority changes during inference or broker await prevent answers, reads and proposals", async () => {
+  for (const reply of [answer, propose]) {
+    const f = fixture(); let current = true;
+    const service = createAssistantService({ ...f.options, isModelPolicyCurrent: () => current, account: { async inferAssistant() { current = false; return reply; } } });
+    const result = await service.respond({ message: "x", subjectRef: selected.subjectRef }, new AbortController().signal);
+    assert.equal(result.state, "refused"); if (result.state === "refused") assert.equal(result.code, "ASSISTANT_MODEL_UNVERIFIED"); assert.equal(f.planned(), 0);
+  }
+  const f = fixture(); let current = true; f.replies([{ action: "read-subjects", query: "Synthetic" }]);
+  const service = createAssistantService({ ...f.options, isModelPolicyCurrent: () => current, subjects: { ...f.options.subjects,
+    async search() { current = false; return [selected, { ...selected, subjectRef: "subject-two" }]; } } });
+  const result = await service.respond({ message: "x" }, new AbortController().signal);
+  assert.equal(result.state, "refused"); if (result.state === "refused") assert.equal(result.code, "ASSISTANT_MODEL_UNVERIFIED");
+});
+it("rechecks current policy after synchronous planner authority validation", async () => {
+  const f = fixture(); let current = true; f.replies([propose]);
+  const service = createAssistantService({ ...f.options, isModelPolicyCurrent: () => current, planner: {
+    context() { current = false; return f.planning; },
+  } });
+  const result = await service.respond({ message: "x", subjectRef: selected.subjectRef }, new AbortController().signal);
+  assert.equal(result.state, "refused"); if (result.state === "refused") assert.equal(result.code, "ASSISTANT_MODEL_UNVERIFIED");
 });

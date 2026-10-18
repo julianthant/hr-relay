@@ -22,10 +22,12 @@ export interface AssistantServiceOptions {
   readonly context: AssistantContext;
   readonly runtime: () => Readonly<{ repositoryId: string; revision: string }>;
   readonly modelPolicy: AssistantModelPolicy | undefined;
+  readonly isModelPolicyCurrent: () => boolean;
   readonly clock: Clock;
   readonly subjects: AssistantSubjectBroker;
   readonly planner: AssistantPlanner;
 }
+class AssistantModelPolicyError extends Error {}
 const SubjectProjectionSchema = z.object(AssistantSubjectSchema.shape);
 const PolicySchema = z.strictObject({ model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u), eligible: z.literal(true), consented: z.literal(true),
   billing: z.literal("chatgpt-plan"), verifiedUntil: z.string().datetime() });
@@ -35,6 +37,17 @@ function projectSubject(input: unknown): AssistantSubject { return SubjectProjec
 export function createAssistantService(options: AssistantServiceOptions) {
   // Policy is installed by trusted composition, never by a request or model.
   const policy = PolicySchema.safeParse(options.modelPolicy);
+  function modelPolicyCurrent(): boolean {
+    if (!policy.success || Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return false;
+    try {
+      const current: unknown = options.isModelPolicyCurrent();
+      if (current instanceof Promise) {
+        // Async checks are refused; drain rejection without logging.
+        void current.catch(() => {}); return false;
+      }
+      return current === true;
+    } catch { throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED"); }
+  }
   return Object.freeze({
     async respond(input: unknown, signal: AbortSignal): Promise<AssistantResult> {
       let stage: "inference" | "broker" | "planner" = "inference";
@@ -42,7 +55,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const request = AssistantRequestSchema.safeParse(input);
         if (!request.success) return refused("ASSISTANT_INVALID");
         if (signal.aborted) return refused("ASSISTANT_CANCELLED");
-        if (!policy.success || Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return refused("ASSISTANT_MODEL_UNVERIFIED");
+        if (!policy.success || !modelPolicyCurrent()) return refused("ASSISTANT_MODEL_UNVERIFIED");
         options.context.assertRuntime(options.runtime());
         const history: unknown[] = [];
         let selected: AssistantSubject | undefined;
@@ -55,7 +68,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         for (let step = 0; step < 4; step++) {
           if (signal.aborted) return refused("ASSISTANT_CANCELLED");
           options.context.assertRuntime(options.runtime());
-          if (Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return refused("ASSISTANT_MODEL_UNVERIFIED");
+          if (!modelPolicyCurrent()) return refused("ASSISTANT_MODEL_UNVERIFIED");
           const payload = JSON.stringify({ protocolVersion: 1, message: request.data.message, selectedSubject: selected,
             reference: options.context.reference, history });
           if (payload.length > 80_000) return refused("ASSISTANT_LIMIT");
@@ -63,7 +76,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           const turn = AssistantTurnSchema.parse(await options.account.inferAssistant({ model: policy.data.model, input: payload }, signal));
           if (signal.aborted) return refused("ASSISTANT_CANCELLED");
           options.context.assertRuntime(options.runtime());
-          if (Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return refused("ASSISTANT_MODEL_UNVERIFIED");
+          if (!modelPolicyCurrent()) return refused("ASSISTANT_MODEL_UNVERIFIED");
           if (turn.action === "answer") return { state: "answered", text: turn.text, citations: turn.citations.map(citation => options.context.citation(citation)) };
           if (turn.action === "propose") {
             if (selected === undefined) return refused("ASSISTANT_SUBJECT_REQUIRED");
@@ -72,9 +85,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
             if (JSON.stringify(current) !== JSON.stringify(selected)) return refused("ASSISTANT_SUBJECT_REQUIRED");
             if (signal.aborted) return refused("ASSISTANT_CANCELLED");
             options.context.assertRuntime(options.runtime());
-            if (Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return refused("ASSISTANT_MODEL_UNVERIFIED");
+            if (!modelPolicyCurrent()) return refused("ASSISTANT_MODEL_UNVERIFIED");
             stage = "planner";
             const proposal = prepareAssistantProposal(options.planner, turn.workflowId, current);
+            options.context.assertRuntime(options.runtime());
+            if (!modelPolicyCurrent()) return refused("ASSISTANT_MODEL_UNVERIFIED");
             return { state: "proposal", proposal };
           }
           const key = JSON.stringify(turn);
@@ -84,7 +99,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           const raw = await options.subjects.search(turn.query, signal);
           if (signal.aborted) return refused("ASSISTANT_CANCELLED");
           options.context.assertRuntime(options.runtime());
-          if (Date.parse(policy.data.verifiedUntil) <= options.clock.nowMs()) return refused("ASSISTANT_MODEL_UNVERIFIED");
+          if (!modelPolicyCurrent()) return refused("ASSISTANT_MODEL_UNVERIFIED");
           if (raw.length > 20) return refused("ASSISTANT_LIMIT");
           const candidates = raw.map(projectSubject);
           if (new Set(candidates.map(subject => subject.subjectRef)).size !== candidates.length) return refused("ASSISTANT_INVALID");
@@ -94,6 +109,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         return refused("ASSISTANT_LIMIT");
       } catch (error) {
         if (signal.aborted) return refused("ASSISTANT_CANCELLED");
+        if (error instanceof AssistantModelPolicyError) return refused("ASSISTANT_MODEL_UNVERIFIED");
         if (error instanceof ChatGptAccountError) {
           if (error.code === "CHATGPT_USAGE_LIMIT") return refused("ASSISTANT_USAGE_LIMIT");
           if (error.code === "CHATGPT_PLAN_DISABLED") return refused("ASSISTANT_PLAN_DISABLED");

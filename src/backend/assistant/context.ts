@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { AssistantCitationSchema } from "../../models/dashboard/assistant.js";
 
-export const PUBLIC_ASSISTANT_SOURCE = Object.freeze({ repositoryId: "R_kgDOVOf3Cg", revision: "9af76694409eeff5e0ac954fc9501bc69991643a" });
+export const PUBLIC_ASSISTANT_REPOSITORY_ID = "R_kgDOVOf3Cg";
 const PathSchema = z.string().max(200).regex(/^(?:src\/(?:models|workflow-kit|workflows)\/|docs\/rebuild\/)[A-Za-z0-9_/-]+\.(?:ts|md)$/u)
   .refine(path => !path.split("/").some(part => part === ".." || part === "." || part === "") && !/(?:credential|secret|private|fixture|artifact)/iu.test(path));
 const ExportSchema = z.strictObject({ repositoryId: z.string(), revision: z.string(), files: z.array(z.strictObject({
@@ -14,7 +14,7 @@ export class AssistantContextError extends Error {
 }
 export function createAssistantContext(bytes: Uint8Array, policy: AssistantContextPolicy) {
   const fail = () => new AssistantContextError("ASSISTANT_CONTEXT_UNAVAILABLE");
-  if (policy.repositoryId !== PUBLIC_ASSISTANT_SOURCE.repositoryId || policy.revision !== PUBLIC_ASSISTANT_SOURCE.revision
+  if (policy.repositoryId !== PUBLIC_ASSISTANT_REPOSITORY_ID || !/^[a-f0-9]{40}$/u.test(policy.revision)
     || !/^[a-f0-9]{64}$/u.test(policy.exportSha256) || bytes.length > 100_000
     || createHash("sha256").update(bytes).digest("hex") !== policy.exportSha256) throw fail();
   let data: z.infer<typeof ExportSchema>;
