@@ -13,7 +13,7 @@ import { readRunLogs, projectRunLogs } from "./run-wiring-adapter.js";
 
 export type ActivityClient = Pick<DashboardClient, "activityPopulation" | "readActivityPopulation" | "exportActivityPopulationCsv" | "dashboardDay" | "runDetail" | "runSection" | "artifactUrl">;
 const outstanding = new Set(["queued", "running", "cancelling", "blocked", "awaiting-approval"]);
-function failureText(error: unknown): string {
+export function activityFailureText(error: unknown): string {
   const code = ErrorCatalogCodeSchema.safeParse(error instanceof DashboardClientError ? error.code : undefined);
   return ERROR_CATALOG[code.success ? code.data : "DASHBOARD_READ_FAILED"].text;
 }
@@ -125,10 +125,10 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const history = !invalidBrowse && completed === undefined && pair.value?.resource === resource ? pair.value : undefined;
   const displayed = history?.selection ?? selection;
   const projected = useMemo(() => displayed === undefined ? undefined : projectActivityPopulation(displayed), [displayed]);
-  const data: ActivityViewState = displayed === undefined && base.state === "failed" ? { state: "unavailable", reason: failureText(base.error) }
+  const data: ActivityViewState = displayed === undefined && base.state === "failed" ? { state: "unavailable", reason: activityFailureText(base.error) }
     : !enabled || client === undefined ? { state: "unavailable", reason: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }
     : projected === undefined ? { state: "loading" } : { state: "loaded", report: projected };
-  const browseData = history?.browse ?? (invalidBrowse ? { state: "unavailable" as const, reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text } : current && "error" in settled ? cachedBrowse.value ?? { state: "unavailable" as const, reason: failureText(settled.error) } : current || retain ? settled?.result : undefined);
+  const browseData = history?.browse ?? (invalidBrowse ? { state: "unavailable" as const, reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text } : current && "error" in settled ? cachedBrowse.value ?? { state: "unavailable" as const, reason: activityFailureText(settled.error) } : current || retain ? settled?.result : undefined);
   const blocked = base.state !== "loaded" || pending || invalidBrowse || cachedBrowse.state === "failed" || current && "error" in settled;
   const latest = useRef({ request, resource, selection, blocked }); latest.current = { request, resource, selection, blocked };
   const mounted = useRef(true);
@@ -139,5 +139,5 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
     if (!mounted.current || latest.current.request !== request || latest.current.resource !== resource || latest.current.selection !== selection || latest.current.blocked || signal?.aborted) throw refused();
     return download;
   }, [client, request, resource, selection]);
-  return { data, browse: browseData, pending, exportReady: !blocked, notice: base.state === "failed" ? failureText(base.error) : cachedBrowse.state === "failed" ? failureText(cachedBrowse.error) : pending && (retain || history !== undefined) ? "Refreshing Analytics selection…" : "", exportCsv };
+  return { data, browse: browseData, pending, exportReady: !blocked, notice: base.state === "failed" ? activityFailureText(base.error) : cachedBrowse.state === "failed" ? activityFailureText(cachedBrowse.error) : pending && (retain || history !== undefined) ? "Refreshing Analytics selection…" : "", exportCsv };
 }

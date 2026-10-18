@@ -1,4 +1,4 @@
-import { useActivityWiring, type ActivityClient } from "../../state/activity-wiring-adapter.js";
+import { activityFailureText, useActivityWiring, type ActivityClient } from "../../state/activity-wiring-adapter.js";
 import { WORKFLOW_SOURCES, type WorkflowSource, type WorkflowSourcePolicy } from "../../app/workflow-sources.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { useCallback, useMemo, useState } from "react";
@@ -33,7 +33,7 @@ export function ActivityReport({ range, onRange, client, today: servedToday, sou
       const url = URL.createObjectURL(new Blob([download.bytes], { type: download.mediaType }));
       const link = document.createElement("a"); link.href = url; link.download = download.filename;
       link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, () => setNotice({ scope, text: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }));
+    }, error => setNotice({ scope, text: activityFailureText(error) }));
   };
   if (resolved.refusal) return <section aria-label="Analytics report" className="settings-reference-page settings-data-section"><PageHeading title="Analytics" description="Report unavailable" /><p role="alert" className="text-body text-ui-danger">{resolved.refusal} Requested: {range}</p></section>;
   const period = choice?.range === range ? choice.value : activityPresetOf(resolved, today);
