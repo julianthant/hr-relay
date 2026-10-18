@@ -90,15 +90,16 @@ export function createDashboardTransport(input: Readonly<{
   const send = (path: string, init?: RequestInit): Promise<JsonResponse> => {
     const method = init?.method?.toUpperCase() ?? "GET";
     const route = path.split("?")[0];
+    const accountCompletion = method === "GET" && /^\/api\/v1\/settings\/chatgpt-account\/sign-in\/[^/]+$/u.test(route ?? "");
     const code: ErrorCatalogCode | undefined = method !== "GET" ? undefined
       : route === "/api/v1/storage/doctor" || route === "/api/v1/storage/doctor/latest" ? "STORAGE_DOCTOR_FAILED"
-      : route === "/api/v1/settings/chatgpt-account" || /^\/api\/v1\/settings\/chatgpt-account\/sign-in\/[^/]+$/u.test(route ?? "") ? "CHATGPT_AUTH_UNAVAILABLE"
+      : route === "/api/v1/settings/chatgpt-account" || accountCompletion ? "CHATGPT_AUTH_UNAVAILABLE"
       : route === "/api/v1/preflight" ? "PREFLIGHT_READ_UNAVAILABLE"
       : route === "/api/v1/settings/editable" || route === "/api/v1/settings/storage-relocation" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
       : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") ? "DASHBOARD_READ_FAILED" : undefined;
-    if (code === undefined) return sendUnbounded(path, init);
+    if (code === undefined || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
     return readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code,
-      route?.startsWith("/api/v1/settings/chatgpt-account/sign-in/") ? CHATGPT_COMPLETION_READ_DEADLINE_MS : route === "/api/v1/storage/doctor" ? STORAGE_DOCTOR_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS, init?.signal ?? undefined).catch((error: unknown) => {
+      accountCompletion ? CHATGPT_COMPLETION_READ_DEADLINE_MS : route === "/api/v1/storage/doctor" ? STORAGE_DOCTOR_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS, init?.signal ?? undefined).catch((error: unknown) => {
         if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);
         throw error;
       });
