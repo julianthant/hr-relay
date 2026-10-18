@@ -18,6 +18,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunCompletionSchema } from "../../../../src/models/run/completion.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
+import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 
 const range = { from: "2026-10-01", to: "2026-10-01" };
 const at = "2026-10-01T12:00:00.000Z";
@@ -167,16 +168,33 @@ describe("selected Analytics population", () => {
     expect(() => f.service.exportSelected(range, selected.snapshot.token)).toThrow("The selected Analytics population has changed");
   });
 
-  it("preserves verified, warning and absent receipt evidence", () => {
+  it("keeps summary, workflow, population and export readback counts bound to verified receipts", () => {
     const f = fixture();
-    for (let seed = 1; seed <= 3; seed++) f.add(seed, { lifecycle: done(1000) });
-    for (const receipt of [cleanReceiptOf({ seed: 1 }), receiptWithWarningsOf({ seed: 2, summaries: ["Synthetic warning"] })]) {
+    for (let seed = 1; seed <= 4; seed++) f.add(seed, { lifecycle: done(1000) });
+    const partial = RunEvidenceReceiptSchema.parse({ ...cleanReceiptOf({ seed: 4 }), confidence: "partial", result: "partial" });
+    for (const receipt of [cleanReceiptOf({ seed: 1 }), receiptWithWarningsOf({ seed: 2, summaries: ["Synthetic warning"] }), partial]) {
       f.raw.prepare("INSERT INTO run_receipts(id,run_id,workflow,attempt,result,confidence,failure_id,payload_json,created_at) VALUES(?,?,?,?,?,?,NULL,?,?)")
         .run(receipt.receiptId, receipt.runId, receipt.workflowId, receipt.attempt, receipt.result, receipt.confidence, canonicalJsonStringify(receipt), receipt.generatedAt);
     }
     f.publish();
     const selected = f.service.read(range);
-    expect(selected.population.map(row => [row.readback, row.receiptResult, row.warningCount])).toEqual([[true, "verified-done", 0], [false, "done-with-warnings", 1], [null, null, null]]);
+    expect(selected.population.map(row => [row.readback, row.receiptResult, row.warningCount])).toEqual([[true, "verified-done", 0], [false, "done-with-warnings", 1], [null, null, null], [false, "partial", 0]]);
+    const completion = { readBack: 1, warnings: 1, warningsUnknown: 2 };
+    expect(selected.report.completion).toEqual(completion);
+    expect(selected.report.workflows).toHaveLength(1);
+    expect(selected.report.workflows[0]?.completion).toEqual(completion);
+    expect(selected.report.completion.readBack).toBe(selected.population.filter(row => row.status === "done" && row.readback === true).length);
+    const exported = f.service.exportSelected(range, selected.snapshot.token);
+    expect(exported.selection).toEqual(selected);
+    const rows: string[][] = parse(exported.csv, { relax_column_count: true, skip_empty_lines: true });
+    expect(rows.find(row => row[0] === "Read back")).toEqual(["Read back", "1"]);
+    expect(rows.find(row => row[0] === "Warnings")).toEqual(["Warnings", "1"]);
+    expect(rows.find(row => row[0] === "Warnings unread")).toEqual(["Warnings unread", "2"]);
+    expect(rows.find(row => row[0] === "person-lookup")?.slice(4, 8)).toEqual(["4", "1", "1", "2"]);
+    expect(rows.filter(row => selected.population.some(run => run.runId === row[0])).map(row => [row[0], row[8], row[11], row[12]])).toEqual([
+      [uuidOf(1), "true", "verified-done", "0"], [uuidOf(2), "false", "done-with-warnings", "1"],
+      [uuidOf(3), "Unavailable", "Unavailable", "Unavailable"], [uuidOf(4), "false", "partial", "0"],
+    ]);
   });
 
   it("keeps independently confirmed production and test transactions separate from runs", () => {
