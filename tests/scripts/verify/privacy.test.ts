@@ -33,6 +33,13 @@ describe("public repository privacy check", () => {
     assert.deepEqual(inspectTrackedFile(".env.example", text("placeholder")), []);
   });
 
+  it("recognizes current PNG and WebP assets by signature", () => {
+    for (const path of ["docs/images/relay-dashboard.png", "src/dashboard/assets/ocr/detect-test-1.webp"]) {
+      assert.deepEqual(inspectTrackedFile(path, readFileSync(new URL(`../../../${path}`, import.meta.url))), []);
+    }
+    assert.deepEqual(inspectTrackedFile("note.webp", Buffer.from([0xd2, 0xc9, 0xc6, 0xc6, 0, 0, 0, 0, 0xd7, 0xc5, 0xc2, 0xd0])), [{ path: "note.webp", rule: "unsupported-text-encoding" }]);
+  });
+
   it("pins public npm configuration and rejects a replacement at the same path", () => {
     assert.deepEqual(inspectTrackedFile(".npmrc", readFileSync(new URL("../../../.npmrc", import.meta.url))), []);
     assert.deepEqual(inspectTrackedFile(".npmrc", text("changed")), [{ path: ".npmrc", rule: "credential-file" }]);
@@ -45,6 +52,42 @@ describe("public repository privacy check", () => {
     assert.deepEqual(inspectTrackedFile("note.txt", text(unknownEid)), [{ path: "note.txt", rule: "eid" }]);
     for (const value of [unknownSsn, `ssn: "${unknownSsn.replaceAll("-", "")}"`, `Social Security Number: ${unknownSsn.replaceAll("-", "")}`]) {
       assert.deepEqual(inspectTrackedFile("note.txt", text(value)), [{ path: "note.txt", rule: "ssn" }]);
+    }
+  });
+
+  it("detects quoted and adjacent HTML labels independently of the bare UCPath pattern", () => {
+    const labeledEid = ["92", "823", "741"].join("");
+    for (const label of ["EID", "employeeId", "employee_id", "employee ID", "Empl ID", "emplid"]) {
+      for (const value of [`${label}: '${labeledEid}'`, `"${label}": "${labeledEid}"`, `'${label}': '${labeledEid}'`, `<td>${label}</td><td>${labeledEid}</td>`, `<th>${label}</th>\n<td class="value">${labeledEid}</td>`]) {
+        assert.deepEqual(inspectTrackedFile("note.txt", text(value)), [{ path: "note.txt", rule: "eid" }]);
+      }
+    }
+    assert.deepEqual(inspectTrackedFile("note.txt", text(labeledEid)), []);
+    for (const value of [`'ssn': '${unknownSsn.replaceAll("-", "")}'`, `<td>SSN</td><td>${unknownSsn.replaceAll("-", "")}</td>`]) {
+      assert.deepEqual(inspectTrackedFile("note.txt", text(value)), [{ path: "note.txt", rule: "ssn" }]);
+    }
+  });
+
+  it("checks UTF-8 with NUL and UTF-16 in either byte order for identifiers and credentials", () => {
+    const labeledEid = ["92", "823", "741"].join("");
+    const credential = ["ghp_", "b".repeat(36)].join("");
+    const note = `Employee ID: ${labeledEid}\nSSN: ${unknownSsn}\n${credential}\nRésumé`;
+    const littleEndian = Buffer.from(note, "utf16le");
+    const bigEndian = Buffer.from(littleEndian).swap16();
+    for (const content of [
+      text(note), text(`${note}\0`), text(note.replaceAll("", "\0")),
+      littleEndian, bigEndian,
+      Buffer.concat([Buffer.from([0xff, 0xfe]), littleEndian]),
+      Buffer.concat([Buffer.from([0xfe, 0xff]), bigEndian]),
+    ]) {
+      for (const path of ["note.txt", "note.png", "note.webp"]) {
+        assert.deepEqual(inspectTrackedFile(path, content), [
+          { path, rule: "credential-value" }, { path, rule: "eid" }, { path, rule: "ssn" },
+        ]);
+      }
+    }
+    for (const content of [Buffer.from([0xff, 0x81, 0x80]), Buffer.from([0xff, 0xfe, 0x00])]) {
+      assert.deepEqual(inspectTrackedFile("note.txt", content), [{ path: "note.txt", rule: "unsupported-text-encoding" }]);
     }
   });
 

@@ -6,7 +6,8 @@ The [root Git instructions](../AGENTS.md#git) own branch and release policy.
 
 Protect `staging` and `main`: require pull requests, one independent approving review, dismissal of
 stale approvals, resolved conversations and passing required checks. Block force pushes and branch
-deletion. Enable merge commits; disable squash and rebase merging. Do not require linear history.
+deletion. For both branches, enable "Require branches to be up to date before merging" so required
+checks validate the current target base. Enable merge commits; disable squash and rebase merging. Do not require linear history.
 
 | Branch | Required CI check names |
 | --- | --- |
@@ -30,7 +31,9 @@ commit through its index. Findings contain only paths and rule names.
 
 Private documents belong in ignored `.local-private/`. The scanner rejects roster formats, PDFs,
 environment files, credential paths and recognizable credential/employee ID/SSN patterns. The root
-`.env.example` may contain placeholders; credential-value checks still apply to it.
+`.env.example` may contain placeholders; credential-value checks still apply to it. Text checks cover
+UTF-8 (including NUL bytes) and UTF-16 in either byte order; unsupported text fails closed. PNG and
+WebP assets are recognized by extension and format signature. Document exceptions remain digest-pinned.
 
 `scripts/verify/privacy-synthetic.json` pins the paths and content digests of the three existing
 synthetic document fixtures, and names source paths containing schema examples, mock scenes or
