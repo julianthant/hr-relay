@@ -22,7 +22,6 @@ import {
   BrowserPresentationModeSchema,
   InstanceSelectionSchema,
   RunPrioritySchema,
-  RunWorkersSchema,
   RunShapeSchema,
   RunRecoveryModeSchema,
 } from "./envelope.js";
@@ -75,7 +74,6 @@ export const StartPlanRecordSchema = z.strictObject({
   priority: RunPrioritySchema,
   dryRun: z.boolean(),
   recovery: RunRecoveryModeSchema.optional(),
-  workers: RunWorkersSchema,
   browserMode: BrowserPresentationModeSchema.optional(),
   captureBrowserScreenshots: z.boolean().optional(),
     /** Omitted steps with their typed facts; copied unchanged onto every run this plan starts. */

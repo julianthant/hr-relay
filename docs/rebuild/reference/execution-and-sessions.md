@@ -489,10 +489,10 @@ excludes run binding during controls and retains failed or uncertain health.
 
 ### 11.3 Capacity for a submitted start
 
-`src/backend/runs/commands/run-worker-capacity.ts` reads the stored start plan's `workers`
-choice. Auto uses the live standing pool and starts one worker when none is live. A number from 1
-through 8 adds the shortfall to that count, capped by `plan.planned.length`. Only workers with verified
-live process custody count, including live paused members. An overtarget pool stays intact.
+Run and Rerun have no worker choice. `src/backend/runs/commands/run-worker-capacity.ts` uses the
+workflow's live standing workers, including live paused members, and starts exactly one when none
+has verified live process custody. Only Sessions Add workers expands the pool. An overtarget pool
+stays intact.
 A proved-dead lifetime is durably stopped with its observed crash reason after run, write, Duo and
 browser release is verified. Missing or uncertain custody refuses recovery. Capacity reuses stopped
 members through native Spawn before adding a shortfall; replacement preserves pool membership and

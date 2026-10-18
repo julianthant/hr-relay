@@ -217,15 +217,15 @@ it("plan service selects the active snapshot inside its write boundary after boo
 });
 
 
-describe("start plan workers", () => {
-  it.each([undefined, "auto", 1, 8] as const)("persists and returns %s with omitted starts selecting Auto", workers => {
+describe("start plans have no worker choice", () => {
+  it("omits workers from the stored plan and response", () => {
     const h = harnessFor(omissionAssertingDescriptor);
-    const wire = h.service.plan(request(h.descriptor, workers === undefined ? {} : { workers }));
-    assert.equal(wire.workers, workers ?? "auto");
-    assert.equal(h.database.authority.startPlans.get(wire.startPlanId)?.workers, workers ?? "auto");
+    const wire = h.service.plan(request(h.descriptor, {}));
+    assert.equal(Object.hasOwn(wire, "workers"), false);
+    assert.equal(Object.hasOwn(h.database.authority.startPlans.get(wire.startPlanId) ?? {}, "workers"), false);
     assert.equal(h.database.authority.workerSlots.list().length, 0);
   });
-  it.each([0, 9, 1.5, "1", null])("rejects invalid workers %s before writing a plan", workers => {
+  it.each(["auto", 1, 8, 0, 9, 1.5, "1", null])("rejects removed workers %s before writing a plan", workers => {
     const h = harnessFor(omissionAssertingDescriptor);
     assert.throws(() => h.service.plan(request(h.descriptor, { workers })));
     assert.equal(h.transactions(), 0);

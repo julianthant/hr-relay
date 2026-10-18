@@ -383,7 +383,6 @@ const DOCUMENT = "4502";
 function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
   return StartPlanResponseSchema.parse({
     wireVersion: 1,
-    workers: "auto",
     startPlanId: "5a000000-0000-4000-8000-000000000009",
     workflowId: "separations",
     expectedVersion: 4,

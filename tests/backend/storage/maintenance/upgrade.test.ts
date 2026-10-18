@@ -14,7 +14,7 @@ describe("native authority backup", () => {
     const root=realpathSync(mkdtempSync(join(tmpdir(),"relay-native-upgrade-"))),path=join(root,"state.db");
     cleanups.push(()=>rmSync(root,{recursive:true,force:true}));const admission=RuntimeAdmission.syntheticFixture(path),processLockRoot=join(root,"locks"),clock=capturedInstantClock(NOW);
     mkdirSync(processLockRoot,{mode:0o700});
-    await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:true},clock)).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:5});
+    await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:true},clock)).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:6});
     expect(()=>readFileSync(path)).toThrow();
     await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:false},clock)).resolves.toMatchObject({state:"initialized"});
     expect(inspectAuthorityBackupReadOnly(admission,path).tables).toHaveLength(36);

@@ -183,7 +183,7 @@ export function createDashboardPoolTestWorld() {
         } },
       })) },
       clock,
-      ids: sequentialIdFactory("d"),
+      ids: sequentialIdFactory("b"),
       descriptors: {
         resolve: (workflowId) => DESCRIPTORS.find((descriptor) => String(descriptor.id) === workflowId),
       },
@@ -298,13 +298,13 @@ export function createDashboardPoolTestWorld() {
     return held.workerId;
   }
 
-  function dashboardLaunch(harness: ControlHarness, eid = "10873698", options: { workers?: "auto" | number; items?: number } = {}) {
+  function dashboardLaunch(harness: ControlHarness, eid = "10873698", options: { items?: number } = {}) {
     if (harness.database.authority.runtimeConfig.get() === undefined) seedSyntheticRuntimeConfig(harness.database);
     const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
     const planner = createStartPlanService({ authority: harness.database, authorityRead: harness.database,
       descriptors: { resolve: workflowId => DESCRIPTORS.find(descriptor => descriptor.id === workflowId) }, clock: harness.clock,
       ids: { uuid: nextCommandId }, planTtlMs: 600_000, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
-    const plan = planner.plan({ workflowId: WORKFLOW, submissions: Array.from({ length: options.items ?? 1 }, (_, index) => ({ emplId: String(Number(eid) + index) })), dryRun: false, ...(options.workers === undefined ? {} : { workers: options.workers }) });
+    const plan = planner.plan({ workflowId: WORKFLOW, submissions: Array.from({ length: options.items ?? 1 }, (_, index) => ({ emplId: String(Number(eid) + index) })), dryRun: false });
     assert.deepEqual(plan.refused, []);
     assert.equal(plan.planned.length, options.items ?? 1);
     const request = { commandId: nextCommandId(), requestedAt: harness.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",

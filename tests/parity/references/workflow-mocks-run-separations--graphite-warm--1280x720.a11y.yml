@@ -77,9 +77,7 @@
     - checkbox "Dry run"
     - text: Dry run Stop before submission.
     - checkbox "Capture screenshots" [checked]
-    - text: Capture screenshots Keep browser captures. Workers
-    - button "Auto Workers": Auto
-    - text: Workbook · Optional
+    - text: Capture screenshots Keep browser captures. Workbook · Optional
     - button "None Workbook · Optional": None
     - paragraph: Choose an already imported workbook for reference or results.
     - group "Priority":

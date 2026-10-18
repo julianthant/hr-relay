@@ -1,5 +1,4 @@
 import type { RunRecord } from "../../../models/run/record.js";
-import type { RunWorkers } from "../../../models/run/envelope.js";
 import type { RerunPlanRefusalCode } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
@@ -23,13 +22,13 @@ export class RerunRefusedError extends Error {
 }
 
 
-export function rerunWorkers(repositories: AuthorityRepositories, run: RunRecord): RunWorkers {
-  if (run.sessionId === undefined) return "auto";
+export function validateRerunSourcePlan(repositories: AuthorityRepositories, run: RunRecord): void {
+  if (run.sessionId === undefined) return;
   const session = repositories.runSessions.get(run.sessionId);
   if (session === undefined || session.workflow !== run.envelope.workflow) {
     throw new RerunRefusedError("schema-mismatch", "Rerun source session is missing or mismatched");
   }
-  if (session.origin.kind !== "start-plan") return "auto";
+  if (session.origin.kind !== "start-plan") return;
   const plan = repositories.startPlans.get(session.origin.startPlanId);
   if (plan === undefined || plan.workflowId !== run.envelope.workflow || plan.plannedBy !== session.origin.actorId
     || plan.descriptorVersion !== run.envelope.descriptorVersion || plan.descriptorFingerprint !== run.envelope.contractFingerprint
@@ -38,7 +37,6 @@ export function rerunWorkers(repositories: AuthorityRepositories, run: RunRecord
     || !plan.planned.some(entry => entry.itemId === run.envelope.itemId)) {
     throw new RerunRefusedError("schema-mismatch", "Rerun source start plan is missing or mismatched");
   }
-  return plan.workers;
 }
 
 

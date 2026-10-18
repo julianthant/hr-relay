@@ -1,4 +1,3 @@
-import type { RunWorkers } from "../../../models/run/envelope.js";
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import {
   stepOmissionFactsSchema,
@@ -212,7 +211,6 @@ export interface StartRequestShape {
   workflowId: string;
   text: string;
   dryRun: boolean;
-  workers: RunWorkers;
   browserMode: BrowserMode;
   captureBrowserScreenshots: boolean;
   priority: StartPriority;
@@ -227,7 +225,6 @@ export function startRequestFingerprint(request: StartRequestShape): string {
     request.workflowId,
     request.text,
     request.dryRun,
-    request.workers,
     request.browserMode,
     request.captureBrowserScreenshots,
     request.priority,

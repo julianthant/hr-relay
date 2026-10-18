@@ -301,3 +301,6 @@ wired to that workflow.
   planned work.
 - Kuali document advancement controls such as Send Back and Mark Complete are not exposed by its
   current commit path.
+
+Start plans retain accepted run input and options without a worker count. Schema 6 removes the
+`workers` field through stopped upgrade; Sessions owns explicit additions to the standing pool.

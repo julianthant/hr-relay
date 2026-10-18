@@ -27,7 +27,7 @@ export function createRunWorkerCapacity(deps: { kernel: CommandKernel; authority
       const startPlan = deps.authority.startPlans.get(request.target.startPlanId);
       if (startPlan === undefined || startPlan.workflowId !== workflowId) return fail("start plan is missing or mismatched");
       if (startPlan.shape === "preview" || startPlan.planned.length === 0) return;
-      const wanted = Math.min(startPlan.workers === "auto" ? 1 : startPlan.workers, startPlan.planned.length);
+      const wanted = 1;
       const slots = deps.authority.workerSlots.list(workflowId);
       const read = (type: "plan-worker-count" | "spawn-worker", index: number) => {
         const id = runCapacityCommandId(request.commandId, type, index);

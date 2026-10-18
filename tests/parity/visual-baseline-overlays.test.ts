@@ -37,7 +37,7 @@ test("mounted launch pickers and queue overlays", async ({ page }, info) => {
     await dialog.locator('input[type="file"]').setInputFiles({ name: "fixture.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF") });
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
-    await menu(page, info, /Workers$/u, "run-workers-menu");
+    await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "OnBase", exact: true }).click();
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
