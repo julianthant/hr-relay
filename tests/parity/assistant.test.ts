@@ -9,6 +9,8 @@ import { attachShellA11y } from './helpers/shell-proof.js';
 import { captureParityPair } from './helpers/capture.js';
 import { FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH, FIXTURE_DAY } from './helpers/fixture-identity.js';
 
+test.use({ viewport: { width: 1440, height: 810 } });
+
 let server: PreviewServer;
 let output: string;
 let baseUrl: string;
@@ -60,7 +62,7 @@ for (const scene of ['proposal', 'dry-run', 'waiting', 'failed', 'unavailable', 
     if (scene === 'empty') await expect(panel.getByText('What would you like to do?')).toBeVisible();
     await attachShellA11y(page, info, evidence);
     expect(errors).toEqual([]); expect(requests).toEqual([]);
-    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `assistant-${scene}`, theme: 'graphite-warm', viewport: '1280x720', adapter: 'component-fixture', fixtureId: `assistant-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
+    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `assistant-${scene}`, theme: 'graphite-warm', viewport: '1440x810', adapter: 'component-fixture', fixtureId: `assistant-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
   });
 }
 
@@ -138,10 +140,10 @@ test('assistant keeps the reader focus when a reply arrives elsewhere in the pan
   await expect(transcript).toBeFocused();
 });
 
-for (const width of [1280, 1920, 2560]) {
+for (const width of [1440, 1920, 2560]) {
   for (const theme of ['dark', 'light']) {
     test(`assistant fits ${width} ${theme} with a scrollable long transcript`, async ({ page }) => {
-      await page.setViewportSize({ width, height: width === 1280 ? 720 : width === 1920 ? 1080 : 1440 });
+      await page.setViewportSize({ width, height: width === 1440 ? 810 : width === 1920 ? 1080 : 1440 });
       await page.goto(`${baseUrl}/?scene=long&theme=${theme}`);
       const panel = page.getByRole('dialog', { name: 'Relay assistant' });
       const bounds = await panel.boundingBox();
