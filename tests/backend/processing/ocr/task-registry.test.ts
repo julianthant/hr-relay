@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
+import { OCR_EXTRACTION_RESPONSE_HASH } from "../../../../src/models/processing/ocr/extract-form-page.js";
 import { extractFormPageTask } from "../../../../src/backend/processing/ocr/task-registry.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { AdmittedExtractionSchema,type AdmittedExtraction } from "../../../../src/models/ocr/extraction.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 
 const PAGE_SHA = sha256Hex("fixture-oath-page");
@@ -14,7 +14,7 @@ const PAGE = ArtifactRefSchema.parse({
   bytes: 4096,
   mediaType: "image/png",
 });
-const RESPONSE_HASH = deriveSchemaHash(z.unknown(), "output");
+const RESPONSE_HASH = OCR_EXTRACTION_RESPONSE_HASH;
 const OcrProviderRequestSchema = z.strictObject({
   schemaHash: z.string().min(1),
   value: z.strictObject({
@@ -31,7 +31,7 @@ type TaskResult<Output, Metadata extends object> =
 function completeAnswers() {
   return {
     formType: "oath",
-    source: { kind: "provider", providerId: "deterministic", modelId: "fixture-1" },
+    source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "fixture-1" },
     readAt: "2026-08-06T09:00:00.000Z",
     sourceSha256: PAGE_SHA,
     sourcePage: 4,
@@ -128,7 +128,7 @@ describe("OCR provider task wrapper", () => {
     });
     if (incomplete.outcome !== "failure") throw new Error("expected incomplete-extraction refusal");
     assert.equal(incomplete.failure.code, "incomplete-extraction");
-    assert.match(incomplete.failure.message, /signatureDate not answered/u);
+    assert.match(incomplete.failure.message, /every declared field/u);
     assert.deepEqual(incomplete.recorded, []);
   });
 });
@@ -137,6 +137,18 @@ it("propagates the disconnected OCR result through the extraction task without e
   const result = await run({ state: "unavailable", reason: { code: "adapter-unavailable", message: "OCR provider not connected" } });
   assert.equal(result.outcome, "failure");
   if (result.outcome !== "failure") throw new Error("expected disconnected extraction");
-  assert.deepEqual(result.failure, { code: "ocr-provider-not-connected", message: "OCR provider not connected" });
+  assert.deepEqual(result.failure, { code: "provider-unavailable", message: "the ocr.extract provider is unavailable (adapter-unavailable): OCR provider not connected" });
   assert.deepEqual(result.recorded, []);
+});
+
+for (const field of ["formType", "sourcePage", "sourceSha256", "source", "schemaHash"] as const) it(`refuses a provider result with a different ${field}`, async () => {
+  const candidate = completeAnswers();
+  const value = field === "formType" ? { ...candidate, formType: "emergency-contact", pageKind: "blank", record: null }
+    : field === "sourcePage" ? { ...candidate, sourcePage: 1 }
+    : field === "sourceSha256" ? { ...candidate, sourceSha256: "b".repeat(64) }
+    : field === "source" ? { ...candidate, source: { kind: "provider", providerId: "other", modelId: "other" } } : candidate;
+  const result = await run({ state: "produced", value: { schemaHash: field === "schemaHash" ? "b".repeat(64) : RESPONSE_HASH, value } });
+  assert.equal(result.outcome, "failure");
+  if (result.outcome !== "failure") throw new Error("expected identity refusal");
+  assert.equal(result.failure.code, "unreadable-page"); assert.deepEqual(result.recorded, []);
 });

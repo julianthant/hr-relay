@@ -70,10 +70,10 @@ it("suppresses stale reads and completion settlements and resumes the original s
   const stale = setup({ chatGptAccount: () => ++reads === 1 ? old.promise : Promise.resolve(account) });
   try { const first = stale.port.refresh(); const second = stale.port.refresh(); assert.equal(first, second); old.resolve(account); await first; assert.deepEqual(stale.port.getSnapshot(), account); assert.equal(reads, 1); } finally { stale.port.dispose(); }
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
-  const resumed = setup({ chatGptAccount: async () => ({ state: "signing-in", attemptId, expiresAt: started.expiresAt, account: { state: "signed-out" } }), completeChatGptSignIn: id => { assert.equal(id, attemptId); return completion.promise; } });
+  const resumed = setup({ chatGptAccount: async () => ({ state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } }), completeChatGptSignIn: id => { assert.equal(id, attemptId); return completion.promise; } });
   const refreshing = resumed.port.refresh(); for (let tick = 0; tick < 4; tick++) await Promise.resolve(); assert.deepEqual(resumed.port.getResource(), { state: "loading", attemptId });
   const pendingSnapshot = resumed.port.getSnapshot();
-  assert.deepEqual(pendingSnapshot, { state: "signing-in", attemptId, expiresAt: started.expiresAt });
+  assert.deepEqual(pendingSnapshot, { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl });
   resumed.port.dispose(); completion.resolve({ state: "completed", attemptId, account }); await refreshing;
   assert.deepEqual(resumed.port.getSnapshot(), pendingSnapshot); assert.equal(resumed.calls.includes("start"), false);
 });
@@ -222,7 +222,7 @@ it("bounds a hung Cancel, keeps its outcome uncertain, and expires the original 
   vi.useFakeTimers();
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let reads = 0;
-  const pending = { state: "signing-in" as const, attemptId, expiresAt: started.expiresAt, account: { state: "signed-out" as const } };
+  const pending = { state: "signing-in" as const, attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" as const } };
   const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : pending,
     completeChatGptSignIn: () => completion.promise, cancelChatGptSignIn: () => new Promise(() => {}) });
   try {
@@ -271,7 +271,7 @@ it("expires a new pending attempt observed after confirmed cancellation", async 
   vi.useFakeTimers();
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let reads = 0;
-  const next = { state: "signing-in" as const, attemptId: "00000000-0000-4000-8000-000000000002", expiresAt: started.expiresAt, account: { state: "signed-out" as const } };
+  const next = { state: "signing-in" as const, attemptId: "00000000-0000-4000-8000-000000000002", expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" as const } };
   const f = setup({ chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : next, completeChatGptSignIn: () => completion.promise });
   try {
     await f.port.refresh();

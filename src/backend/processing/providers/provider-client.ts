@@ -7,7 +7,10 @@ import { providerInvocationConfig } from "../../../models/config/schema.js";
 import { ProviderAdapterOutcomeSchema, ProviderExecutionIdentitySchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../models/providers/providers.js";
 import type { Clock } from "../../../rules/time/clock.js";
 
-export type ProviderAdapterRegistry = Readonly<{ [C in ProviderCapabilityId]?: ProviderAdapter<C> }>;
+export type ChatGptOcrAdapter = ProviderAdapter<"ocr.extract"> & Readonly<{
+  policy: Readonly<{ kind: "chatgpt-subscription-only"; timeoutMs: number }>;
+}>;
+export type ProviderAdapterRegistry = Readonly<{ [C in Exclude<ProviderCapabilityId, "ocr.extract">]?: ProviderAdapter<C> } & { "ocr.extract"?: ChatGptOcrAdapter }>;
 export interface ProviderRequestIdFactory { next(): string }
 export interface ProviderClientDependencies {
   readonly execution: z.input<typeof ProviderExecutionIdentitySchema>;
@@ -30,7 +33,11 @@ export function createProviderClient<C extends ProviderCapabilityId>(capabilityI
     || snapshot.fingerprint !== FingerprintSchema.parse(deps.configFingerprint)) {
     throw new Error(`provider client ${capability} received an internally inconsistent config snapshot`);
   }
-  if (capability === "ocr.extract" && deps.adapters[capability] !== undefined) throw new Error("OCR provider policy not connected");
+  const ocrPolicy = deps.adapters["ocr.extract"]?.policy;
+  if (capability === "ocr.extract" && deps.adapters["ocr.extract"] !== undefined) {
+    const policy = z.strictObject({ kind: z.literal("chatgpt-subscription-only"), timeoutMs: z.number().int().positive().max(120_000) }).safeParse(ocrPolicy);
+    if (!policy.success) throw new Error("OCR provider policy not connected");
+  }
   const usedIds = new Set<string>();
   return Object.freeze({
     capability: capabilityInput,
@@ -38,7 +45,7 @@ export function createProviderClient<C extends ProviderCapabilityId>(capabilityI
       const request = ProviderRequestEnvelopeSchema.parse({ capability, payload });
       const unavailable = (code: "aborted" | "timeout" | "adapter-unavailable", message: string) =>
         ProviderResponseEnvelopeSchema.parse({ state: "unavailable", reason: { code, message } });
-      if (capability === "ocr.extract") return unavailable("adapter-unavailable", "OCR provider not connected");
+      if (capability === "ocr.extract" && ocrPolicy === undefined) return unavailable("adapter-unavailable", "OCR provider not connected");
       const requestId = z.uuid().parse(deps.idFactory.next());
       if (usedIds.has(requestId)) throw new Error("provider-request-identity-reused");
       usedIds.add(requestId);
@@ -50,7 +57,7 @@ export function createProviderClient<C extends ProviderCapabilityId>(capabilityI
       const adapter = deps.adapters[capability];
       if (adapter === undefined) return publish(unavailable("adapter-unavailable", "Provider adapter is unavailable."));
       if (adapter.capability !== capability) throw new Error("provider-adapter-capability-mismatch");
-      const deadlineMonotonicMs = deps.clock.monotonicMs() + providerInvocationConfig(snapshot.config, capability).timeoutMs;
+      const deadlineMonotonicMs = deps.clock.monotonicMs() + (capability === "ocr.extract" ? z.number().int().positive().parse(ocrPolicy?.timeoutMs) : providerInvocationConfig(snapshot.config, capability).timeoutMs);
       const controller = new AbortController();
       let interrupt: (code: "aborted" | "timeout") => void = () => { throw new Error("provider-interruption-uninitialized"); };
       const interrupted = new Promise<z.output<typeof ProviderResponseEnvelopeSchema>>(resolve => {

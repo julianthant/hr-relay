@@ -14,9 +14,9 @@ export function chatGptFixture() {
   let nonce = "", count = 0;
   const calls: { url: string; init: RequestInit }[] = [];
   let claimsPatch: { [key: string]: unknown } = {}, grantedScopes = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
-  let sse = 'data: {"type":"response.output_text.delta","delta":"Synthetic form"}\n\ndata: {"type":"response.completed"}\n\n';
+  let sse = completedOcrStream("Synthetic form");
   let revocationStatus = 200, discoveryPatch: { [key: string]: unknown } = {};
-  let tokenHook: (() => Promise<void>) | undefined, tokenPatch: { [key: string]: unknown } = {}, tokenStatus = 200, tamperSignature = false;
+  let tokenHook: (() => Promise<void>) | undefined, tokenPatch: { [key: string]: unknown } = {}, tokenStatus = 200, tokenError = "invalid_grant", tamperSignature = false;
   let responseHook: ((init: RequestInit) => Response) | undefined;
   function idToken() {
     const header = Buffer.from(JSON.stringify({ alg: "RS256", kid: "fixture-key" })).toString("base64url");
@@ -31,7 +31,7 @@ export function chatGptFixture() {
     if (url.endsWith("/jwks")) return Response.json({ keys: [jwk] });
     if (url.endsWith("/oauth/token")) {
       await tokenHook?.(); count++;
-      if (tokenStatus !== 200) return Response.json({ error: "invalid_grant" }, { status: tokenStatus });
+      if (tokenStatus !== 200) return Response.json({ error: tokenError }, { status: tokenStatus });
       return Response.json({ access_token: `synthetic-access-${String(count)}`, refresh_token: `synthetic-refresh-${String(count)}`, id_token: idToken(),
         token_type: "Bearer", expires_in: 3600, scope: grantedScopes, ...tokenPatch });
     }
@@ -56,7 +56,11 @@ export function chatGptFixture() {
     setRevocation(status: number) { revocationStatus = status; }, setDiscovery(patch: { [key: string]: unknown }) { discoveryPatch = patch; },
     setTokenHook(hook: () => Promise<void>) { tokenHook = hook; },
     setToken(patch: { [key: string]: unknown }) { tokenPatch = patch; },
-    setTokenStatus(status: number) { tokenStatus = status; }, tamperSignature() { tamperSignature = true; },
+    setTokenStatus(status: number, error = "invalid_grant") { tokenStatus = status; tokenError = error; }, tamperSignature() { tamperSignature = true; },
     setResponse(hook: (init: RequestInit) => Response) { responseHook = hook; },
   };
+}
+
+export function completedOcrStream(text: string, model = "gpt-6.1-sol"): string {
+  return `data: ${JSON.stringify({ type: "response.output_text.delta", delta: text, output_index: 0, content_index: 0 })}\n\ndata: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }] } })}\n\n`;
 }

@@ -97,6 +97,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   const requests = new Set<AbortController>();
   const accesses = new Set<Promise<ChatGptCredentialRecord>>();
   let closed = false, generation = 0;
+  let rejectedSessionRevision: number | undefined;
+  let planFailureRevision: number | undefined;
   let pending: { cancel(): Promise<void> } | undefined;
   function active(): void { if (closed) throw fault("CHATGPT_SERVICE_CLOSED"); options.admission.assertLive(); }
   async function request(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
@@ -149,7 +151,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   }
   async function token(form: URLSearchParams, clientId: string, usePlan: boolean, nonce?: string, signal?: AbortSignal) {
     const response = await request(`${AUTH}/api/accounts/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form }, signal);
-    if (response.status === 400 || response.status === 401) { await response.body?.cancel(); throw fault("CHATGPT_ACCOUNT_EXPIRED"); }
+    if (response.status === 400 || response.status === 401) {
+      const error = z.object({ error: z.string() }).safeParse(await boundedJson(new Response(response.body, { status: 200 })));
+      throw fault(error.success && ["invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated"].includes(error.data.error)
+        ? "CHATGPT_ACCOUNT_EXPIRED" : "CHATGPT_AUTH_UNAVAILABLE");
+    }
     const parsed = TokenSchema.safeParse(await boundedJson(response)); if (!parsed.success) throw fault("CHATGPT_AUTH_INVALID");
     const claims = await verifiedClaims(parsed.data.id_token, clientId, nonce, signal);
     return { registration: { subject: claims.sub, name: claims.name, email: claims.email }, session: {
@@ -160,7 +166,13 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   }
   function readAccount(): ChatGptAccountState {
     active();
-    try { return publicState(repository.read(), clock.nowMs()); }
+    try {
+      const record = repository.read();
+      if (record?.session != null && record.revision === rejectedSessionRevision) return { state: "expired" };
+      if (record?.session != null && record.revision === planFailureRevision)
+        return { state: "unavailable", code: "CHATGPT_PLAN_DISABLED", message: ERROR_CATALOG.CHATGPT_PLAN_DISABLED.text };
+      return publicState(record, clock.nowMs());
+    }
     catch (error) {
       if (error instanceof ChatGptCredentialError) return { state: "unavailable", code: error.code, message: error.message };
       throw error;
@@ -250,6 +262,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         for (const [key, value] of Object.entries(parameters)) url.searchParams.set(key, value);
         if (record.clientId === null) url.searchParams.set("agent_name_hint", "Relay");
         if (record.registration !== null) url.searchParams.set("login_hint", record.registration.email);
+        if (input.usePlan && record.session !== null && (!record.session.usePlan || !PLAN_SCOPES.every(scope => record.session?.scopes.includes(scope))))
+          url.searchParams.set("prompt", "consent");
         startupComplete = true;
         return { authorizationUrl: url.href, expiresAt, get completion() {
           if (completion === undefined) completion = completionOutcome.then(outcome => {
@@ -288,10 +302,16 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     const operation = repository.withLock(async transaction => {
       let current = transaction.read();
       if (current?.session == null || current.registration === null || current.clientId === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
-      if (Date.parse(current.session.expiresAt) <= clock.nowMs() + 60_000) {
+      if (current.revision === rejectedSessionRevision || Date.parse(current.session.expiresAt) <= clock.nowMs() + 60_000) {
         if (current.session.refreshToken === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
         if (current.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < current.session.earliestRefreshAt) throw fault("CHATGPT_ACCOUNT_EXPIRED");
-        const result = await token(new URLSearchParams({ grant_type: "refresh_token", client_id: current.clientId, refresh_token: current.session.refreshToken, resource: RESOURCE }), current.clientId, current.session.usePlan, undefined, signal);
+        let result;
+        try { result = await token(new URLSearchParams({ grant_type: "refresh_token", client_id: current.clientId, refresh_token: current.session.refreshToken, resource: RESOURCE }), current.clientId, current.session.usePlan, undefined, signal); }
+        catch (error) {
+          if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED" && epoch === generation && !closed)
+            transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
+          throw error;
+        }
         if (epoch !== generation || closed) throw fault("CHATGPT_OCR_CANCELLED");
         if (result.session.refreshToken === null) throw fault("CHATGPT_AUTH_INVALID");
         if (result.registration.subject !== current.registration.subject) throw fault("CHATGPT_AUTH_INVALID");
@@ -302,7 +322,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     accesses.add(operation);
     try { return await operation; } finally { accesses.delete(operation); }
   }
-  async function extractText(input: ChatGptOcrRequest, signal?: AbortSignal): Promise<{ readonly text: string }> {
+  async function extractText(input: ChatGptOcrRequest, signal?: AbortSignal): Promise<{ readonly text: string; readonly model: string; readonly responseId: string }> {
     const cancelled = () => signal?.aborted === true;
     active(); if (cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
     const parsed = ChatGptOcrRequestSchema.safeParse(input); if (!parsed.success) throw fault("CHATGPT_OCR_INVALID");
@@ -311,13 +331,41 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     const epoch = generation, credentials = await access(signal), session = credentials.session;
     if (session === null || !session.usePlan || !PLAN_SCOPES.every(scope => session.scopes.includes(scope))) throw fault("CHATGPT_PLAN_DISABLED");
     if (epoch !== generation || closed) throw fault("CHATGPT_OCR_CANCELLED");
+    const invokedAccessToken = session.accessToken;
+    async function persistUsage(usage: "available" | "limit-reached" | "unavailable") {
+      await repository.withLock(async transaction => {
+        const current = transaction.read();
+        if (current?.session != null && current.clientId === credentials.clientId && epoch === generation
+          && privateEqual(current.session.accessToken, invokedAccessToken) && current.session.usage !== usage)
+          transaction.replace({ ...current, revision: current.revision + 1, session: { ...current.session, usage } }, current.revision);
+      });
+    }
     const content = document.kind === "image" ? { type: "input_image", image_url: `data:${document.mediaType};base64,${document.base64}`, detail: "high" }
       : { type: "input_file", filename: document.filename, file_data: `data:application/pdf;base64,${document.base64}` };
     const response = await request(`${RESOURCE}/responses`, { method: "POST", headers: { Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: parsed.data.model, store: false, stream: true, input: [{ role: "user", content: [{ type: "input_text", text: parsed.data.instruction }, content] }] }) }, signal);
-    if (!response.ok || response.body === null || !response.headers.get("content-type")?.startsWith("text/event-stream")) { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
+    if (!response.ok) {
+      let code: string | undefined;
+      try {
+        const body = z.object({ detail: z.union([z.string(), z.object({ code: z.string() })]).optional(), error: z.object({ code: z.string() }).optional() })
+          .parse(await boundedJson(new Response(response.body, { status: 200 })));
+        code = body.error?.code;
+      } catch { throw fault("CHATGPT_OCR_FAILED"); }
+      if (code === "subscription_sharing_usage_limit_exceeded") { await persistUsage("limit-reached"); throw fault("CHATGPT_USAGE_LIMIT"); }
+      if (code === "subscription_sharing_usage_unavailable") { await persistUsage("unavailable"); throw fault("CHATGPT_USAGE_UNAVAILABLE"); }
+      if (response.status === 401) { rejectedSessionRevision = credentials.revision; throw fault("CHATGPT_ACCOUNT_EXPIRED"); }
+      if (response.status === 403 && (code === undefined || ["subscription_sharing_user_not_eligible", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context"].includes(code))) {
+        planFailureRevision = credentials.revision; throw fault("CHATGPT_PLAN_DISABLED");
+      }
+      if (response.status === 503) throw fault("CHATGPT_USAGE_UNAVAILABLE");
+      if (code === "subscription_sharing_unsupported_capability") throw fault("CHATGPT_OCR_INVALID");
+      throw fault("CHATGPT_OCR_FAILED");
+    }
+    if (response.body === null || !response.headers.get("content-type")?.startsWith("text/event-stream")) { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
     const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
     let buffer = "", output = "", completed = false, total = 0;
+    let textOutputIndex: number | undefined;
+    let result: { text: string; model: string; responseId: string } | undefined;
     try {
       for (;;) {
         const chunk = await reader.read(); if (chunk.done) break;
@@ -329,17 +377,39 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
           const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
           const data = frame.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
           if (data !== "" && data !== "[DONE]") {
-            const event = z.object({ type: z.string(), delta: z.string().optional(), response: z.object({ error: z.object({ code: z.string() }).nullish() }).optional() }).parse(JSON.parse(data));
+            const event = z.object({ type: z.string(), delta: z.string().optional(), output_index: z.number().optional(), content_index: z.number().optional(),
+              response: z.object({ error: z.object({ code: z.string() }).nullish() }).passthrough().optional() }).parse(JSON.parse(data));
             if (completed) throw fault("CHATGPT_OCR_INCOMPLETE");
-            if (event.type === "response.output_text.delta") { if (event.delta === undefined) throw fault("CHATGPT_OCR_INCOMPLETE"); output += event.delta; }
-            if (event.type === "response.completed") completed = true;
+            if (event.type === "error" || event.type.includes("refusal")) throw fault("CHATGPT_OCR_FAILED");
+            if (event.type === "response.output_text.delta") {
+              if (event.delta === undefined || event.output_index !== undefined && (!Number.isInteger(event.output_index) || event.output_index < 0
+                  || textOutputIndex !== undefined && event.output_index !== textOutputIndex)
+                || event.content_index !== undefined && event.content_index !== 0) throw fault("CHATGPT_OCR_INCOMPLETE");
+              textOutputIndex ??= event.output_index;
+              output += event.delta;
+            }
+            if (event.type === "response.completed") {
+              const terminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
+                status: z.literal("completed"), error: z.null().optional(), incomplete_details: z.null().optional(),
+                output: z.array(z.discriminatedUnion("type", [
+                  z.object({ type: z.literal("reasoning"), id: z.string().min(1), status: z.literal("completed").optional(),
+                    summary: z.array(z.object({ type: z.literal("summary_text"), text: z.string() })) }),
+                  z.object({ type: z.literal("message"), role: z.literal("assistant"), status: z.literal("completed"),
+                    content: z.tuple([z.object({ type: z.literal("output_text"), text: z.string().min(1) })]) }),
+                ])).min(1).max(32),
+              }).parse(event.response);
+              const messages = terminal.output.filter(item => item.type === "message");
+              if (messages.length !== 1) throw fault("CHATGPT_OCR_INCOMPLETE");
+              const message = messages[0];
+              const text = message.content[0].text;
+              if (output !== "" && output !== text || textOutputIndex !== undefined && terminal.output.indexOf(message) !== textOutputIndex)
+                throw fault("CHATGPT_OCR_INCOMPLETE");
+              result = { text, model: terminal.model, responseId: terminal.id }; completed = true;
+            }
             if (event.type === "response.failed" || event.type === "response.incomplete") {
               const code = event.response?.error?.code;
               if (code === "subscription_sharing_usage_limit_exceeded" || code === "subscription_sharing_usage_unavailable") {
-                await repository.withLock(async transaction => { const current = transaction.read();
-                  if (current?.session !== null && current?.session !== undefined && current.clientId === credentials.clientId && epoch === generation)
-                    transaction.replace({ ...current, revision: current.revision + 1, session: { ...current.session, usage: code === "subscription_sharing_usage_limit_exceeded" ? "limit-reached" : "unavailable" } }, current.revision);
-                });
+                await persistUsage(code === "subscription_sharing_usage_limit_exceeded" ? "limit-reached" : "unavailable");
                 throw fault(code === "subscription_sharing_usage_limit_exceeded" ? "CHATGPT_USAGE_LIMIT" : "CHATGPT_USAGE_UNAVAILABLE");
               }
               throw fault(event.type === "response.failed" ? "CHATGPT_OCR_FAILED" : "CHATGPT_OCR_INCOMPLETE");
@@ -349,8 +419,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         }
       }
       decoder.decode();
-      if (!completed || buffer.trim() !== "" || output.length === 0 || epoch !== generation) throw fault("CHATGPT_OCR_INCOMPLETE");
-      return { text: output };
+      if (!completed || result === undefined || buffer.trim() !== "" || epoch !== generation) throw fault("CHATGPT_OCR_INCOMPLETE");
+      await persistUsage("available");
+      if (epoch !== generation || closed || cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
+      if (credentials.revision === planFailureRevision) planFailureRevision = undefined;
+      return result;
     } catch (error) { if (error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError) throw error; throw fault(cancelled() ? "CHATGPT_OCR_CANCELLED" : "CHATGPT_OCR_INCOMPLETE"); }
     finally { await reader.cancel(); reader.releaseLock(); }
   }

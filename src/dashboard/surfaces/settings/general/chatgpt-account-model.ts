@@ -151,7 +151,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       if (!current(request)) return;
       loaded = true;
       if (account.state === "signing-in") {
-        const authorizationUrl = snapshot.state === "signing-in" && snapshot.attemptId === account.attemptId ? snapshot.authorizationUrl : undefined;
+        const authorizationUrl = account.authorizationUrl;
         signingIn({ attemptId: account.attemptId, expiresAt: account.expiresAt, ...(authorizationUrl === undefined ? {} : { authorizationUrl }) }, request);
         await complete(account.attemptId, account.expiresAt, request);
       } else accept(account);

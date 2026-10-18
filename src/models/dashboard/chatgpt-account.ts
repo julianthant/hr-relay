@@ -26,7 +26,7 @@ export const ChatGptAuthorizationUrlSchema = z.url().refine(value => {
 export const ChatGptSignInStartSchema = z.strictObject({ state: z.literal("started"), attemptId: ChatGptAttemptIdSchema,
   authorizationUrl: ChatGptAuthorizationUrlSchema, expiresAt: IsoInstantSchema });
 export const ChatGptAccountViewSchema = z.union([ChatGptAccountStateSchema,
-  z.strictObject({ state: z.literal("signing-in"), attemptId: ChatGptAttemptIdSchema, expiresAt: IsoInstantSchema, account: ChatGptAccountStateSchema }),
+  z.strictObject({ state: z.literal("signing-in"), attemptId: ChatGptAttemptIdSchema, expiresAt: IsoInstantSchema, authorizationUrl: ChatGptAuthorizationUrlSchema, account: ChatGptAccountStateSchema }),
 ]);
 const RefusedSchema = z.strictObject({ state: z.literal("refused"), ...FailureSchema.shape }).refine(fixedFailure);
 const UncertainSchema = z.strictObject({ state: z.literal("uncertain"), ...FailureSchema.shape }).refine(fixedFailure);
@@ -49,3 +49,7 @@ export const ChatGptSignOutResultSchema = z.union([
 export type ChatGptSignInStart = z.infer<typeof ChatGptSignInStartSchema>;
 export type ChatGptAccountView = z.infer<typeof ChatGptAccountViewSchema>;
 export type ChatGptSignInCompletion = z.infer<typeof ChatGptSignInCompletionSchema>;
+
+export const ChatGptOcrTestResultSchema = z.union([
+  z.strictObject({ state: z.literal("completed"), model: z.string().min(1).max(128) }), RefusedSchema, UncertainSchema,
+]);

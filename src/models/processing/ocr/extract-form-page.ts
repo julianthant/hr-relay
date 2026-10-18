@@ -1,7 +1,8 @@
 /** `ocr/extract-form-page`: a peer of the CLI that builds the same generated instruction and runs the answer through the same admission gate, so there is no second "provider result" shape. */
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
-import { AdmittedExtractionSchema } from "../../ocr/extraction.js";
+import { deriveSchemaHash } from "../../validation/schema-bound-value.js";
+import { AdmittedExtractionSchema, SubmittedExtractionSchema } from "../../ocr/extraction.js";
 import { OcrFormTypeSchema } from "../../ocr/form-registry.js";
 import { taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
@@ -14,6 +15,10 @@ export const ExtractFormPageInputSchema = z.strictObject({
   sourcePage: z.number().int().positive(),
 });
 
+export const OcrExtractionRequestSchema = ExtractFormPageInputSchema.extend({ instruction: z.string().min(1) });
+export const OCR_EXTRACTION_REQUEST_HASH = deriveSchemaHash(OcrExtractionRequestSchema, "input");
+export const OCR_EXTRACTION_RESPONSE_HASH = deriveSchemaHash(SubmittedExtractionSchema, "output");
+
 export const ExtractFormPage = defineTaskContract({
   id: taskId("ocr/extract-form-page"),
   title: "Reading form page",
@@ -21,7 +26,6 @@ export const ExtractFormPage = defineTaskContract({
   input: ExtractFormPageInputSchema,
   output: AdmittedExtractionSchema,
   errorCodes: [
-    "ocr-provider-not-connected",
     "provider-unavailable",
     "incomplete-extraction",
     "unreadable-page",
@@ -47,7 +51,7 @@ export const ExtractFormPage = defineTaskContract({
   ],
   example: {
     formType: "oath",
-    source: { kind: "provider", providerId: "deterministic", modelId: "fixture-1" },
+    source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "fixture-1" },
     readAt: "2026-08-06T09:00:00.000Z",
     sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
     sourcePage: 1,

@@ -1,30 +1,17 @@
 
-import { z } from "zod";
 import { defineTask } from "../../../../workflow-kit/task.js";
-import { ArtifactRefSchema } from "../../../../models/artifacts/artifacts.js";
-import { ExtractFormPage } from "../../../../models/processing/ocr/extract-form-page.js";
+import { ExtractFormPage, OCR_EXTRACTION_REQUEST_HASH, OCR_EXTRACTION_RESPONSE_HASH } from "../../../../models/processing/ocr/extract-form-page.js";
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
-import { OcrFormTypeSchema } from "../../../../models/ocr/form-registry.js";
 import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
-import { deriveSchemaHash } from "../../../../models/validation/schema-bound-value.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 
-
-const ExtractionRequestSchema = z.strictObject({
-  formType: OcrFormTypeSchema,
-  instruction: z.string().min(1),
-  page: ArtifactRefSchema,
-  sourcePage: z.number().int().positive(),
-});
-
-const REQUEST_SCHEMA_HASH = deriveSchemaHash(ExtractionRequestSchema, "input");
 
 export const extractFormPageTask = defineTask(ExtractFormPage, {
   sessions: [],
   async run({ input, ctx }) {
     const instruction = buildExtractionInstruction(input.formType);
     const response = await ctx.providers["ocr.extract"].call({
-      schemaHash: REQUEST_SCHEMA_HASH,
+      schemaHash: OCR_EXTRACTION_REQUEST_HASH,
       value: {
         formType: input.formType,
         instruction,
@@ -34,10 +21,6 @@ export const extractFormPageTask = defineTask(ExtractFormPage, {
     });
 
     if (response.state === "unavailable") {
-      if (response.reason.code === "adapter-unavailable") {
-        return ctx.fail("ocr-provider-not-connected", "OCR provider not connected");
-      }
-
       const { code, message } = response.reason;
       return ctx.fail(
         "provider-unavailable",
@@ -46,20 +29,24 @@ export const extractFormPageTask = defineTask(ExtractFormPage, {
     }
     if (response.state === "invalid-response") {
 
-      return ctx.fail("unreadable-page", `the ocr.extract provider returned an unusable response: ${response.reason}`);
+      return ctx.fail("unreadable-page", "The OCR provider returned an unusable response.");
     }
 
+    if (response.value.schemaHash !== OCR_EXTRACTION_RESPONSE_HASH) return ctx.fail("unreadable-page", "The OCR response contract does not match.");
     const admission = admitOcrExtraction(JsonValueSchema.parse(response.value.value));
     if (!admission.admitted) {
 
       return ctx.fail(
         "incomplete-extraction",
-        `the ocr.extract provider did not answer the ${input.formType} form as declared:\n`
-          + admission.problems.map((problem) => `  - ${problem}`).join("\n"),
+        "The OCR provider did not answer every declared field.",
       );
     }
 
     const { extraction } = admission;
+    if (extraction.formType !== input.formType || extraction.sourcePage !== input.sourcePage
+      || extraction.sourceSha256 !== input.page.sha256 || extraction.source.kind !== "provider" || extraction.source.providerId !== "chatgpt-subscription") {
+      return ctx.fail("unreadable-page", "The extracted page does not match the requested source.");
+    }
     ctx.recordData([
       { direction: "read", field: "formType", value: extraction.formType },
       { direction: "read", field: "sourcePage", value: extraction.sourcePage },

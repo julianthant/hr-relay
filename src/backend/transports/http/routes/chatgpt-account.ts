@@ -1,13 +1,15 @@
+import type { ChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
 import { randomUUID } from "node:crypto";
 import { ChatGptAccountError, type ChatGptAccountService, type ChatGptAuthorization } from "../../../accounts/chatgpt-account-service.js";
 import { ChatGptCredentialError } from "../../../storage/configuration/credential-store.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { ChatGptAccountViewSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
-  ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema,
+  ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema,
   type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
+import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
 import type { DashboardApp } from "./api-types.js";
 
-export interface ChatGptAccountRouteDeps { readonly chatGptAccount?: Pick<ChatGptAccountService, "readAccount" | "signIn" | "signOut"> }
+export interface ChatGptAccountRouteDeps { readonly chatGptAccount?: Pick<ChatGptAccountService, "readAccount" | "signIn" | "signOut">; readonly chatGptOcrTest?: ChatGptOcrTestService }
 function failure(error: unknown, dispatched = false) {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : "CHATGPT_AUTH_UNAVAILABLE";
@@ -29,7 +31,7 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     try {
       const account = service().readAccount();
       return c.json(ChatGptAccountViewSchema.parse(latest?.pending === true
-        ? { state: "signing-in", attemptId: latest.id, expiresAt: latest.authorization.expiresAt, account } : account));
+        ? { state: "signing-in", attemptId: latest.id, expiresAt: latest.authorization.expiresAt, authorizationUrl: latest.authorization.authorizationUrl, account } : account));
     } catch (error) {
       const result = failure(error);
       return c.json(ChatGptAccountViewSchema.parse({ state: "unavailable", code: result.code, message: result.message }));
@@ -73,6 +75,14 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
       await current.authorization.cancel();
       return c.json(ChatGptCancelResultSchema.parse({ state: "cancelled", attemptId: current.id }));
     } catch (error) { return c.json(ChatGptCancelResultSchema.parse(failure(error, dispatched))); }
+  });
+  app.post("/api/v1/settings/chatgpt-account/test-ocr", operatorMutationIngressGuard, async c => {
+    c.header("Cache-Control", "no-store");
+    try {
+      if (!ChatGptEmptyRequestSchema.safeParse(await c.req.json()).success) throw new ChatGptAccountError("CHATGPT_OCR_INVALID");
+      if (deps.chatGptOcrTest === undefined) throw new ChatGptAccountError("CHATGPT_AUTH_UNAVAILABLE");
+      return c.json(ChatGptOcrTestResultSchema.parse(await deps.chatGptOcrTest.testOcr(c.req.raw.signal)));
+    } catch (error) { return c.json(ChatGptOcrTestResultSchema.parse(failure(error))); }
   });
   app.post("/api/v1/settings/chatgpt-account/sign-out", async c => {
     c.header("Cache-Control", "no-store");

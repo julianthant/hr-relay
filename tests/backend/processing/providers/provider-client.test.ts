@@ -104,6 +104,6 @@ for (const kind of ["abort", "deadline"] as const) it(`propagates ${kind} during
 it("keeps OCR disconnected and never invokes an injected OCR adapter", async () => {
   const f = fixture();
   assert.equal((await createProviderClient("ocr.extract", { ...f.deps, adapters: {} }).call(payload)).state, "unavailable");
-  assert.throws(() => createProviderClient("ocr.extract", { ...f.deps, adapters: { "ocr.extract": { capability: "ocr.extract", invoke: async () => produced } } }), /OCR provider policy not connected/u);
+  assert.throws(() => createProviderClient("ocr.extract", { ...f.deps, adapters: { "ocr.extract": { capability: "ocr.extract", invoke: async () => produced } } as never }), /OCR provider policy not connected/u);
 });
 }

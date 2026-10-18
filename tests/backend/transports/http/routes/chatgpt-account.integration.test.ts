@@ -24,7 +24,9 @@ it("serves token-free account lifecycle with original PKCE, state and nonce bind
     assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
     const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
     assert.notEqual(started.attemptId, new URL(started.authorizationUrl).searchParams.get("state"));
-    assert.equal((await (await f.request()).json() as { state: string }).state, "signing-in");
+    const pending = await (await f.request()).json() as { state: string; authorizationUrl: string; expiresAt: string };
+    assert.equal(pending.state, "signing-in"); assert.equal(pending.authorizationUrl, started.authorizationUrl);
+    assert.equal(pending.expiresAt, started.expiresAt);
     assert.equal((await f.callback(f.authorization(), { state: "wrong" })).status, 400);
     await f.callback(f.authorization());
     const completion = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
