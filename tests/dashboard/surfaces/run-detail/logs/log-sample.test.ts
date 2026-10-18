@@ -17,7 +17,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('compact run headers', () => {
   it('does not attach queue facts to an unrelated standalone log scenario', () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
-    const row = mockQueueSurface(run, '2026-08-03');
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
     const locationBefore = window.location.href;
     try {
       window.history.replaceState(null, '', '/?logPreview=separation');

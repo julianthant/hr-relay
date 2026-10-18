@@ -12,7 +12,7 @@ import type { StatusBucket, StatusCountWire, WorkflowCountWire } from "../../she
 import type { QueueSortKey } from "../../queue/queue-model.js";
 import { reviewCanApprove, reviewName, reviewRecords, reviewValue, seedReviewRecords, mockInputRecord, type ReviewRecord } from "./workflow-review-model.js";
 import { mockDetailEntries } from "./workflow-result-model.js";
-import { mockOperationEntries, mockOperationSubsteps, mockOperationDuration } from "./workflow-operation-model.js";
+import { mockOperationEntries, mockOperationSubsteps, mockOperationDuration, mockOperationValue } from "./workflow-operation-model.js";
 import { OCR_DOCUMENT_FIXTURES, mockDocumentFixture } from "./workflow-document-model.js";
 
 export type MockFile = Readonly<{ name: string; size: number; digest: string }>;
@@ -274,13 +274,13 @@ function resultFields(run: MockRun): readonly (readonly [string, string])[] {
   if (run.role === "preparation" && run.workflowId !== "oath-upload") return [["Source PDF", run.draft.files.map(file => file.name).join(", ")], ["Completed people", String(run.approvedCount ?? 0)]];
   const record = mockInputRecord(run);
   const edited: Readonly<Record<string, string>> = run.role === "person" ? { "Employee": reviewName(record), "Employee ID": reviewValue(record, "employeeId"), "UCPath ID": reviewValue(record, "employeeId"), "Contact": reviewValue(record, "contactName"), "Relationship": reviewValue(record, "relationship"), "Contact phone": reviewValue(record, "cellPhone"), "Source page": String(record.page) } : {};
-  const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, manualFact(run.workflowId, run.draft, label) ?? (edited[label] || (label === "Document type" && run.workflowId === "onbase" ? run.draft.documentType : label === "Kuali ID" || label === "Email" || (label === "Employee ID" && /^\d{5,}$/u.test(run.subject)) ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : label === "Effective date" && run.workflowId === "work-study" ? displayExtractedDate(run.draft.effectiveDate) : value))] as const);
+  const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, manualFact(run.workflowId, run.draft, label) ?? (edited[label] || (label === "Document type" && run.workflowId === "onbase" ? run.draft.documentType : label === "Employee ID" ? mockOperationValue(run, "$employeeId") : label === "Kuali ID" || label === "Email" ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : label === "Effective date" && run.workflowId === "work-study" ? displayExtractedDate(run.draft.effectiveDate) : value))] as const);
   if (run.workflowId === "i9-check" && run.role === "person") fields.push(["Hire date", "08/03/2026"], ["Separation date", "Not separated"], ["Retention tracker", "Appended"]);
   if (run.workflowId === "old-kronos-reports") fields.push(["Report start", displayExtractedDate(run.draft.startDate)], ["Report end", displayExtractedDate(run.draft.endDate)]);
   if (run.workflowId === "onbase") fields.push(["Combined PDFs", String(run.draft.files.length)]);
   return fields.filter(([label]) => !(run.draft.dryRun && ["HR ticket", "Signature date"].includes(label)) && !(label === "HR ticket" && !run.draft.selectedSteps.includes("submit")) && !(label === "Signature date" && !run.draft.selectedSteps.includes("transaction")) && !(run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only" && label === "Signers"));
 }
-export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; endTime: string } {
+export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; endTime: string; durationSeconds: number } {
   const pipeline = mockRunPipeline(run);
   let elapsed = 0;
   const clock = (seconds: number) => new Date(Date.UTC(2026, 7, 3, 9, 10, seconds)).toISOString().slice(11, 19);
@@ -301,7 +301,7 @@ export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline:
     const last = steps[steps.length - 1];
     steps[steps.length - 1] = { ...last, entries: [...last.entries, { kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: clock(elapsed), kind: "read", label, value })) }] };
   }
-  return { steps, timeline, endTime: clock(elapsed) };
+  return { steps, timeline, endTime: clock(elapsed), durationSeconds: elapsed };
 }
 
 export function mockOathDuplicate(runs: readonly MockRun[], draft: MockDraft): string | undefined {

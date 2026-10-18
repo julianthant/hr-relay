@@ -67,35 +67,35 @@
           - button "single-oath.pdf"
           - paragraph: Records ready for approval
           - paragraph: 1 of 1 records ready for approval
-          - text: OCR 53 min ago
+          - text: OCR Just now
           - 'button "Mark unread: Records ready for approval"'
           - button "Review records"
         - listitem:
           - button "multiple-oath.pdf"
           - paragraph: Records ready for approval
           - paragraph: 4 of 4 records ready for approval
-          - text: OCR 53 min ago
+          - text: OCR Just now
           - 'button "Mark unread: Records ready for approval"'
           - button "Review records"
         - listitem:
           - button "emergency-contacts.pdf"
           - paragraph: Records ready for approval
           - paragraph: 3 of 3 records ready for approval
-          - text: OCR 53 min ago
+          - text: OCR Just now
           - 'button "Mark read: Records ready for approval"'
           - button "Review records"
         - listitem:
           - button "detect-test.pdf"
           - paragraph: Records ready for approval
           - paragraph: 3 of 4 records ready for approval
-          - text: OCR 52 min ago
+          - text: OCR Just now
           - 'button "Mark unread: Records ready for approval"'
           - button "Review records"
         - listitem:
           - button "i9.pdf"
           - paragraph: Records ready for approval
           - paragraph: 2 of 2 records ready for approval
-          - text: OCR 53 min ago
+          - text: OCR Just now
           - 'button "Mark unread: Records ready for approval"'
           - button "Review records"
         - listitem:
