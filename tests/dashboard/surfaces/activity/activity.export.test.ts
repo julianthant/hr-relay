@@ -7,10 +7,14 @@ import { ActivityReport } from "../../../../src/dashboard/surfaces/activity/acti
 import type { ActivityClient } from "../../../../src/dashboard/state/activity-wiring-adapter.js";
 import { ActivityPopulationSelectionSchema } from "../../../../src/models/dashboard/activity-population.js";
 import { buildActivityVolumeBoundarySkeleton } from "../../../../src/models/dashboard/activity-volume.js";
+import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { createActivityReportFixtures } from "../../../support/helpers/dashboard/activity-report-fixtures.js";
 
-it("keeps the served CSV control pending until its exact snapshot download settles", async () => {
+it.each([
+  ["unknown failure", new Error("Synthetic export refusal"), ERROR_CATALOG.DASHBOARD_READ_FAILED.text],
+  ["stale selection", new DashboardClientError({ kind: "http", status: 409, code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH", message: ERROR_CATALOG.ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH.text }), ERROR_CATALOG.ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH.text],
+] as const)("keeps CSV pending until its exact snapshot settles and preserves %s recovery", async (_name, refusal, expectedMessage) => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -46,8 +50,8 @@ it("keeps the served CSV control pending until its exact snapshot download settl
     await act(async () => { vi.advanceTimersByTime(1000); }); assert.deepEqual(revokeUrl.mock.calls, [["blob:synthetic-csv"]]);
     download = Promise.withResolvers();
     await act(async () => button().click()); assert.equal(button().disabled, true);
-    await act(async () => download.reject(new Error("Synthetic export refusal")));
-    assert.equal(button().disabled, false); assert(host.textContent?.includes(ERROR_CATALOG.DASHBOARD_READ_FAILED.text)); assert.equal(click.mock.calls.length, 1);
+    await act(async () => download.reject(refusal));
+    assert.equal(button().disabled, false); assert(host.textContent?.includes(expectedMessage)); assert.equal(click.mock.calls.length, 1);
   } finally {
     await act(async () => root.unmount()); host.remove(); click.mockRestore(); vi.unstubAllGlobals(); vi.clearAllTimers(); vi.useRealTimers();
     if (createDescriptor) Object.defineProperty(URL, "createObjectURL", createDescriptor); else Reflect.deleteProperty(URL, "createObjectURL");
