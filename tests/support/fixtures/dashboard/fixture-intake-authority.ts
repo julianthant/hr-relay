@@ -81,6 +81,8 @@ export function createIntakeAuthority() {
       ledger: createTransactionHistory(database.authority),
       authority: {
         listNotifications: () => [], listNotificationCheckpoints: () => [],
+        listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
+        listGateResults: runId => database.authority.gateResults.listByRun(runId),
         listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
         getWorkerLease: workerId => database.authority.workerLeases.get(workerId),
         listWorkerPools: () => database.authority.workerPools.list(),

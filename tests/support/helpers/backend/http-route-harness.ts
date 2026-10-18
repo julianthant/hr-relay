@@ -230,6 +230,8 @@ export function harness(options: {
     authority: {
       listNotifications: () => [],
       listNotificationCheckpoints: () => [],
+      listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
+      listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),

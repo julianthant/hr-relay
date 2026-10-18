@@ -297,6 +297,8 @@ function rebuildStagedProjections(
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
           latestNotificationSource: (notificationId) => staged.authority.notificationPublications.latest(notificationId),
           listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => staged.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
+          listCheckpoints: (workflowId, itemId) => staged.authority.runCheckpoints.listByItem(workflowId, itemId),
+          listGateResults: runId => staged.authority.gateResults.listByRun(runId),
           listLiveWorkerLeases: () => staged.authority.workerLeases.listLive(),
           getWorkerLease: (workerId) => staged.authority.workerLeases.get(workerId),
           listWorkerPools: () => staged.authority.workerPools.list(),

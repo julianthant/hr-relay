@@ -5,6 +5,7 @@ import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../mod
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationDisplayContext } from "../queries/notification-display.js";
+import type { RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
 
@@ -144,6 +145,8 @@ export interface RunQueueProjectionDeps {
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
+    listCheckpoints: RunTimelineEvidenceSource["authority"]["listCheckpoints"];
+    listGateResults: RunTimelineEvidenceSource["authority"]["listGateResults"];
 
     listWorkerSlots?(): readonly WorkerSlotRecord[];
     listWorkerRuns?(workerId: string): readonly RunRecord[];
@@ -1465,6 +1468,7 @@ export class RunQueueProjection {
         .map((record) => notificationWireOf(record, this.#deps.clock.nowMs(), notificationDisplayContext(record, {
           read: id => this.#deps.reader.read(id),
           descriptor: id => this.#deps.descriptors.resolve(id),
+          presentation: this.#deps,
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
         }), notificationSourceEventOf(record, this.#deps.authority.latestNotificationSource?.(record.notificationId))))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),

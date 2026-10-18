@@ -134,6 +134,8 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       authority: {
         listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
         listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
+        listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
+        listGateResults: runId => database.authority.gateResults.listByRun(runId),
         listWorkerSlots: () => database.authority.workerSlots.list(),
         listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
         workerOwnerAlive: lease => database.workerLifetimeCustody(lease.workerId).state === "alive",
