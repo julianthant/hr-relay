@@ -25,7 +25,7 @@ export const SPREADSHEET_FIELDS: readonly SpreadsheetField[] = [
     const type: SpreadsheetFieldType = DATE_FIELDS.has(id) ? 'date' : NAME_FIELDS.has(id) ? 'name' : /email/i.test(id) ? 'email' : /phone/i.test(id) ? 'phone' : IDENTIFIER_FIELDS.has(id) ? 'identifier' : 'text';
     return { id, label: LABELS[id] ?? CANONICAL_FIELDS[id].label, type,
       aliases: [...CANONICAL_FIELDS[id].aliases, ...(EXTRA_ALIASES[id] ?? [])],
-      format: id === 'eid' ? '8 digits, starting with 10' : id === 'ssn' ? '9 digits' : type === 'date' ? 'MM/DD/YYYY or YYYY-MM-DD' : type === 'email' ? 'Email address' : type === 'phone' ? '7–15 digits' : type === 'identifier' ? 'Identifier stored as text' : 'Text',
+      format: id === 'eid' ? '8 digits, starting with 10' : id === 'ssn' ? '9 digits' : id === 'transactionNumber' ? 'Starts with T' : type === 'date' ? 'MM/DD/YYYY or YYYY-MM-DD' : type === 'email' ? 'Email address' : type === 'phone' ? '7–15 digits' : type === 'identifier' ? 'Identifier stored as text' : 'Text',
     };
   }),
   extra('i9ProfileId', 'I-9 profile ID', 'identifier', ['I9 profile', 'I-9 profile', 'I9 profile number', 'I-9 profile number', 'I9 ID', 'I9 profile ID'], '6 or 7 digits'),

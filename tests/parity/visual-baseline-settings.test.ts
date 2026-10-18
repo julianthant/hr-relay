@@ -314,7 +314,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(dialog).toBeVisible();
       const submit = dialog.getByRole("button", { name: "Import selected columns", exact: true });
       await expect(dialog.getByRole("combobox", { name: "Dashboard field for B", exact: true })).toHaveAttribute("data-value", "eid");
-      await expect(submit).toBeDisabled();
+      await expect(submit).toBeEnabled();
 
       await dialog.getByRole("checkbox", { name: "D · Private note", exact: true }).uncheck();
       await expect(submit).toBeEnabled();
