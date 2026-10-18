@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname,join,resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 import { describe,it } from "vitest";
 import { acquireSuiteLock,hasTestFilter,reapTestRuns,runTestProcess } from "../../../scripts/test/runner.js";
 
@@ -235,17 +236,26 @@ const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 describe("architecture project empty collection", () => {
 
-  it("makes the public architecture command exit nonzero when its project collects no tests", () => {
+  it.each(["0", "1"])("makes the empty architecture command fail with FORCE_COLOR=%s", (forceColor) => {
     const result = spawnSync(
       "npm",
       [
         "run", "test:architecture", "--",
         "tests/architecture/fixtures/does-not-exist.test.ts",
       ],
-      { cwd: REPO_ROOT, encoding: "utf8" },
+      {
+        cwd: REPO_ROOT, encoding: "utf8",
+        env: {
+          ...process.env, FORCE_COLOR: forceColor, NO_COLOR: forceColor === "0" ? "1" : undefined, TERM: "xterm",
+          // Vitest disables colors when std-env detects an agent.
+          CODEX_SANDBOX: undefined, CODEX_THREAD_ID: undefined, AI_AGENT: undefined, CURSOR_AGENT: undefined,
+        },
+      },
     );
-    const output = `${result.stdout}\n${result.stderr}`;
-    assert.equal(result.status, 1, output);
+    const rawOutput = `${result.stdout}\n${result.stderr}`;
+    const output = stripVTControlCharacters(rawOutput);
+    assert.equal(result.status, 1, rawOutput);
+    assert.equal(rawOutput !== output, forceColor === "1", rawOutput);
     assert.match(output, /No test files found, exiting with code 1/);
     assert.match(output, /projects: architecture/);
     assert.match(output, /filter: tests\/architecture\/fixtures\/does-not-exist\.test\.ts/);

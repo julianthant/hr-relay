@@ -1,7 +1,8 @@
 # Workflow authoring
 
 Start with the assigned brief, its README and the [codebase map](../reference/codebase-structure.md).
-The approved walkthrough owns workflow inputs, steps, log timeline, results and scenarios.
+Use the approved workflow maps and review policy in the [root instructions](../../../AGENTS.md#what-to-build)
+for coding authority and operator acceptance.
 
 Read [workflow-model](../reference/workflow-model.md),
 [task-contract](../reference/task-contract.md), [write-safety](../reference/write-safety.md) and
