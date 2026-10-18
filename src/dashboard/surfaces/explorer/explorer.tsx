@@ -1,7 +1,7 @@
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { useMemo, useState } from "react";
-import { Button, EmptyState } from "../../ds/ui.js";
+import { Banner, Button, EmptyState } from "../../ds/ui.js";
 import { ExplorerTimeline } from "./explorer-flow.js";
 import { buildExplorerPreview, previewFieldSource } from "./explorer-fixture.js";
 import { blockedAfter, DEFAULT_SCENARIO, type PreviewScenario } from "./explorer-flow-model.js";
@@ -33,9 +33,10 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
   }, [workflowId, mockScenario, scenario]);
   if (!workflow || (!served && !id)) return <EmptyState title="Workflow unavailable" description="Choose a registered workflow to inspect its steps." action={<Button onClick={() => setWorkflowId(explorerRecoveryWorkflow(catalog))}>Open Separations</Button>} />;
   if (served) {
-    const steps = resource.state === "ready" ? resource.projection.steps : [{ number: 1, title: served.label, parts: [{ kind: "note" as const, text: resource.state === "loading" ? "Loading workflow definition" : resource.state === "unavailable" ? resource.reason : resource.state === "refused" ? formatErrorCatalogFailure(resource.failure).text : "Workflow unavailable" }] }];
-    return <ExplorerTimeline key={identity.epoch} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} title={served.label} steps={steps} scenario={scenario} onScenario={setScenario} onMockChoice={() => undefined}
-      sourceFor={field => resource.state === "ready" ? resource.projection.sources.get(field.source ?? "") : undefined} summary="Registered workflow definition" completion="No run values are available." path={{ step: 1, control: "explorer-step-1" }} />;
+    const projection = resource.state === "ready" ? resource.projection : resource.state === "refused" ? resource.previous : undefined;
+    const steps = projection !== undefined ? projection.steps : [{ number: 1, title: served.label, parts: [{ kind: "note" as const, text: resource.state === "loading" ? "Loading workflow definition" : resource.state === "unavailable" ? resource.reason : resource.state === "refused" ? formatErrorCatalogFailure(resource.failure).text : "Workflow unavailable" }] }];
+    return <>{resource.state === "refused" && projection !== undefined && <Banner tone="warning" title="Workflow definition unavailable">{formatErrorCatalogFailure(resource.failure).text}</Banner>}<ExplorerTimeline key={identity.epoch} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} title={served.label} steps={steps} scenario={scenario} onScenario={setScenario} onMockChoice={() => undefined}
+      sourceFor={field => projection?.sources.get(field.source ?? "")} summary="Registered workflow definition" completion="No run values are available." path={{ step: 1, control: "explorer-step-1" }} /></>;
   }
   if (!id) throw new Error(`explorer-mock-workflow-unknown: ${workflowId}`);
   const activeFlow = ["fixture-separations", "fixture-onboarding", "fixture-emergency-contact"].includes(workflowId) ? flow : buildWorkflowMock(id, choices);

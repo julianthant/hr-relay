@@ -1,3 +1,4 @@
+import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
 import { ShieldAlert } from "lucide-react";
@@ -29,14 +30,14 @@ type CheckTone = "pass" | "attention" | "unavailable" | "neutral";
 interface CheckResult { tone: CheckTone; value: string; summary?: string; overview?: ReactNode; evidence?: string; detail?: string }
 const NOT_CHECKED: CheckResult = { tone: "neutral", value: "Not checked" };
 
-function CheckRow({ name, description, result, findings = false, loading = false }: { name: string; description: string; result: CheckResult; findings?: boolean; loading?: boolean }) {
+function CheckRow({ name, description, result, findings = false, pending = false, loading = false }: { name: string; description: string; result: CheckResult; findings?: boolean; pending?: boolean; loading?: boolean }) {
   const status = result.tone === "pass"
     ? <span className="diagnostic-check-status"><StatusDot status="verifiedDone" />{result.value}</span>
     : result.tone === "neutral"
       ? <span className="diagnostic-check-status diagnostic-check-status-neutral">{result.value}</span>
       : <Badge tone={result.tone === "attention" ? "warning" : "danger"}>{result.value}</Badge>;
   return <div className="diagnostic-check-entry" role="listitem">
-    <ResultRow label={name} description={result.summary ?? description} value={loading ? <SkeletonText className="w-20" /> : status} />
+    <ResultRow label={name} description={result.summary ?? description} value={pending ? loading && <SkeletonText className="w-20" /> : status} />
     {(result.overview !== undefined || (findings && result.detail !== undefined)) && <div className="diagnostic-check-detail diagnostic-storage-detail">
       {result.overview}
       {findings && <DiagnosticFindings name={name} result={result} />}
@@ -120,7 +121,9 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
 
 export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
   const { doctor, runDoctor } = useStorageDoctor();
+  const show = useDelayedLoading(doctor.state === "reading");
   const report = doctor.state === "reading" ? undefined : doctor.report;
+  const pending = report === undefined && doctor.state !== "idle";
   const authority = storage.authority === "healthy" && report?.authority.state !== "degraded" ? "healthy" : "unavailable";
   const checks = [
     { name: "Stored data", description: "Readability of saved data.", result: authorityResult(report) },
@@ -140,7 +143,7 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         ? <FormGroup label="Data store summary" className="diagnostic-summary">
           <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label"><StatusDot status="verifiedDone" />Data store available</span>}
             value={<span className="diagnostic-summary-meta diagnostic-storage-summary-meta">
-              {doctor.state === "reading" ? <SkeletonText className="w-40" /> : report === undefined ? <span>Not checked</span> : <span>Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></span>}
+              {pending ? show && <SkeletonText className="w-40" /> : report === undefined ? <span>Not checked</span> : <span>Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></span>}
             </span>} />
         </FormGroup>
         : <Banner tone="danger" title="Data store unavailable">{ERROR_CATALOG.STORAGE_DATA_UNAVAILABLE.text}</Banner>}
@@ -151,15 +154,15 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
       </Banner>}
       <BodySection title="Data store and recovery">
         <FormGroup label="Storage health checks"><div role="list">
-        {checks.map(check => <CheckRow loading={doctor.state === "reading"} findings key={check.name} {...check} />)}
+        {checks.map(check => <CheckRow pending={pending} loading={show} findings key={check.name} {...check} />)}
         </div></FormGroup>
       </BodySection>
       <CheckGroup title="Work in progress" subtitle="Work waiting, assigned or awaiting confirmation. Counts can be normal while tasks are running.">
-        {COUNT_CHECKS.map(check => <CheckRow loading={doctor.state === "reading"} key={check.key} name={check.name} description={check.description} result={countResult(report, check.key)} />)}
+        {COUNT_CHECKS.map(check => <CheckRow pending={pending} loading={show} key={check.key} name={check.name} description={check.description} result={countResult(report, check.key)} />)}
         {report?.counts.state === "unavailable" && <div className="diagnostic-check-detail"><DiagnosticFindings name="Work in progress" result={{ tone: "unavailable", value: "Unavailable", detail: report.counts.cause.summary }} /></div>}
       </CheckGroup>
       <CheckGroup title="Connections" subtitle="Saved credentials and connection settings. Missing values affect only the workflows that use them.">
-        {CREDENTIAL_CHECKS.map(check => <CheckRow loading={doctor.state === "reading"} key={check.key} name={check.name} description={check.description} result={credentialResult(report, check.key)} />)}
+        {CREDENTIAL_CHECKS.map(check => <CheckRow pending={pending} loading={show} key={check.key} name={check.name} description={check.description} result={credentialResult(report, check.key)} />)}
         {report?.protectedSettings.state === "unavailable" && <div className="diagnostic-check-detail"><DiagnosticFindings name="Connections" result={{ tone: "unavailable", value: "Unavailable", detail: report.protectedSettings.cause.summary }} /></div>}
       </CheckGroup>
   </section>;

@@ -1,3 +1,5 @@
+import { useDelayedLoading } from "../../shared/loading/loading-model.js";
+import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import type { ReactNode } from "react";
 import { Form } from "@heroui/react";
@@ -6,7 +8,7 @@ import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHe
 import { formatSetting, settingInput, type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
-import { settingNote, settingTitle } from "../settings-presentation.js";
+import { settingNote, settingTitle, settingPlaceholderCopy } from "../settings-presentation.js";
 import { StorageRelocationRows } from "./settings-relocation.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
@@ -83,18 +85,21 @@ function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
 }
 
 function PathsContent({ editor }: { editor: Editor }) {
+  const loaded = editor.editor.state === "loaded";
+  const show = useDelayedLoading(editor.editor.state === "loading");
+  const paths = (fields: readonly NativePathField[]) => loaded
+    ? fields.map(field => <PathRow key={field} editor={editor} field={field} />)
+    : show ? <LoadingRegion label="Loading workflow paths" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={fields.length} wide copy={fields.map(settingPlaceholderCopy)} /></LoadingRegion> : null;
   return <>
     <BodySection title="Runtime locations"><FormGroup label="Runtime locations">
       <StorageRelocationRows editor={editor.relocationEditor} />
-      <PathRow editor={editor} field="paths.browserProfileRoot" />
-      <PathRow editor={editor} field="paths.duoCredential" />
-      <PathRow editor={editor} field="paths.duoExtensionDir" />
+      {paths(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"])}
     </FormGroup></BodySection>
     <BodySection title="Generated files"><FormGroup label="Generated files">
-      {(["paths.reportsDir", "paths.downloadsDir"] as const).map(path => <PathRow key={path} editor={editor} field={path} />)}
+      {paths(["paths.reportsDir", "paths.downloadsDir"])}
     </FormGroup></BodySection>
     <BodySection title="Workflow documents"><FormGroup label="Workflow documents">
-      {(["paths.onboardingDocsDir", "paths.i9CheckTrackerPath"] as const).map(path => <PathRow key={path} editor={editor} field={path} />)}
+      {paths(["paths.onboardingDocsDir", "paths.i9CheckTrackerPath"])}
     </FormGroup></BodySection>
   </>;
 }
@@ -104,7 +109,10 @@ export function CompactSettingsSection({ editor, sectionId, appearance }: { edit
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and browser preferences." : "Workflow files and runtime locations."} />
     {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
-    {editor.editor.state === "loading" ? <SettingsSectionSkeleton section={sectionId} contentOnly /> : editor.editor.state === "failed" ? <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner> : <CompactSettingsForm editor={editor} sectionId={sectionId} />}
+    {editor.editor.state === "failed" && <Banner tone="danger" title="Editable settings could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>}
+    {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
+      : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>
+      : editor.editor.state === "loading" && <SettingsSectionSkeleton section={sectionId} contentOnly />}
   </section>;
 }
 

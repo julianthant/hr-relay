@@ -1,3 +1,4 @@
+import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { ReactNode } from "react";
 import { CapabilitiesSection } from "./settings-capabilities.js";
@@ -95,7 +96,7 @@ function SettingsPreflightCheck({ check, protectedSettings }: { check: Preflight
   </div>;
 }
 
-function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, children }: { title: string; subtitle?: string; checks: readonly PreflightCheckWire[]; children?: ReactNode; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
+function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, children, pending = false }: { pending?: boolean; title: string; subtitle?: string; checks: readonly PreflightCheckWire[]; children?: ReactNode; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   return <BodySection title={title} description={subtitle}>
     {children ? <div role="group" aria-label={title} className="preflight-readiness-content">
       {checks.length > 0 && <div className="workflow-readiness-requirements"><h3 className="workflow-readiness-subheading">Requirements</h3><FormGroup label="Workflow requirements"><div role="list">
@@ -104,7 +105,7 @@ function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, ch
       {children}
     </div> : <FormGroup label={title}><div role="list">
       {checks.length === 0
-        ? <div className="diagnostic-empty-group">No checks were returned for this group.</div>
+        ? !pending && <div className="diagnostic-empty-group">No checks were returned for this group.</div>
         : checks.map(check => <SettingsPreflightCheck key={check.id} check={check} protectedSettings={protectedSettings} />)}
     </div></FormGroup>}
   </BodySection>;
@@ -113,6 +114,7 @@ function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, ch
 function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workflowLabels }: { workflowLabels?: ReadonlyMap<string, string>; preflight: PreflightRerunState; onRerun: () => void; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const scope = usePreflightScope();
   const displayed = preflight.state === "completed" || preflight.state === "historical" || preflight.state === "refreshing" ? preflight : undefined;
+  const show = useDelayedLoading(displayed === undefined && preflight.state !== "refused");
   const busy = preflight.state === "running" || preflight.state === "refreshing";
   const previousMessage = preflight.state === "historical" ? preflight.message : preflight.state === "refreshing" ? preflight.previousMessage : undefined;
   const historical = previousMessage !== undefined;
@@ -134,7 +136,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
     <BodySection title="Status">
     {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
     {historical && <Banner tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
-    {preflight.state !== "refused" && (displayed === undefined ? <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">
+    {preflight.state !== "refused" && (displayed === undefined ? show && <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">
       <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label">
         <StatusDot status={busy ? "running" : historical ? "queued" : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />
         {busy ? "Checking readiness…" : historical ? "Previous check" : attentionCount === 0 ? "Ready to run" : `${attentionCount} ${attentionCount === 1 ? "check needs" : "checks need"} attention`}
@@ -148,11 +150,11 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
       </SettingsPreflightGroup>
       <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} protectedSettings={historical ? undefined : protectedSettings} />
     </>}
-    {displayed === undefined && preflight.state !== "refused" && <>
-      <SettingsPreflightGroup title="Workflow readiness" checks={[]}>
+    {displayed === undefined && <>
+      <SettingsPreflightGroup title="Workflow readiness" checks={[]} pending>
         {workflowLabels && <CapabilitiesSection integrated workflowLabels={workflowLabels} workflowId={scope.selected === "dashboard" ? undefined : scope.selected} />}
       </SettingsPreflightGroup>
-      <BodySection title="Runtime" description="Compatibility, browser tools, storage, and local resources."><LoadingRegion label="Loading readiness checks"><FormGroup label="Runtime checks loading"><SettingsRowsSkeleton rows={6} presentation="result" copy={["runtime.compatibility", "browser.assets", "config.valid", "filesystem.health", "authority.health", "ports.available"].map(id => ({ label: CHECK_COPY[id].name, description: CHECK_COPY[id].description }))} /></FormGroup></LoadingRegion></BodySection>
+      {preflight.state !== "refused" && <BodySection title="Runtime" description="Compatibility, browser tools, storage, and local resources.">{show && <LoadingRegion label="Loading readiness checks"><FormGroup label="Runtime checks loading"><SettingsRowsSkeleton rows={6} presentation="result" copy={["runtime.compatibility", "browser.assets", "config.valid", "filesystem.health", "authority.health", "ports.available"].map(id => ({ label: CHECK_COPY[id].name, description: CHECK_COPY[id].description }))} /></FormGroup></LoadingRegion>}</BodySection>}
     </>}
   </section>;
 }

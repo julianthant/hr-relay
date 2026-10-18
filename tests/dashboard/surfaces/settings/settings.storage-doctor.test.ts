@@ -27,6 +27,7 @@ afterEach(() => {
   host?.remove();
   root = undefined;
   host = undefined;
+  vi.useRealTimers();
 });
 
 async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
@@ -147,3 +148,28 @@ describe("loaded Settings storage doctor", () => {
     assert.match(dom.textContent ?? "", /Stored data.*Passed.*Recovery.*Clear.*Storage updates.*No history/su);
   });
 });
+
+it("keeps unobserved report values blank until the delay, and only says Not checked after never-run", async () => {
+  vi.useFakeTimers();
+  const held = Promise.withResolvers<{ state: "never-run" }>();
+  const client = { latestStorageDoctor: () => held.promise } as unknown as DashboardClient;
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => {
+    root = createRoot(host!);
+    root.render(createElement(DashboardClientProvider, { client, children: createElement(StorageSection, { storage: STORAGE }) }));
+  });
+  assert.doesNotMatch(host.textContent ?? "", /Not checked/);
+  assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+  await act(async () => { await vi.advanceTimersByTimeAsync(149); });
+  assert.doesNotMatch(host.textContent ?? "", /Not checked/);
+  assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  assert.ok(host.querySelector('[data-slot="skeleton"]'));
+  assert.doesNotMatch(host.textContent ?? "", /Not checked/);
+  await act(async () => held.resolve({ state: "never-run" }));
+  assert.match(host.textContent ?? "", /Not checked/);
+  assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+});
+
+import { StorageSection } from "../../../../src/dashboard/surfaces/settings/storage/storage-settings.js";
+import { vi } from "vitest";

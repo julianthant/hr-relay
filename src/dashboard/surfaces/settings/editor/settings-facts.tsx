@@ -1,3 +1,4 @@
+import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { type ReactNode } from "react";
 import {
 type SettingsFactsWire
@@ -7,10 +8,6 @@ import { useSettingsFacts } from "./settings-facts-model.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 
 
-/** ── the two served status sections ─────────────────────────────────────── */
-
-/** The async half of both sections, drawn rather than hidden.
- * A refusal is NOT an empty table. "No test host is configured" and "we could */
 export function FactsPane({
   facts,
   children,
@@ -20,13 +17,14 @@ export function FactsPane({
   children: (loaded: SettingsFactsWire) => ReactNode;
   loading?: ReactNode;
 }) {
+  const show = useDelayedLoading(facts.state === "loading");
   if (facts.state === "loading") {
+    if (!show) return null;
     return loading ?? <LoadingRegion label="Loading deployment facts"><SettingsRowsSkeleton rows={4} wide presentation="result" /></LoadingRegion>;
   }
   if (facts.state === "failed") {
-    return (
-            // No inner `role="alert"`: a `danger` Banner already carries one
-      // (`primitives-layout.tsx`), and nesting a second is the defect.
+    return (<>
+      {facts.facts !== undefined && children(facts.facts)}
       <Banner
         className="m-[var(--ds-space-cozy)]"
         tone="danger"
@@ -36,7 +34,7 @@ export function FactsPane({
           <span>{facts.message}</span>
         </span>
       </Banner>
-    );
+    </>);
   }
   return <>{children(facts.facts)}</>;
 }

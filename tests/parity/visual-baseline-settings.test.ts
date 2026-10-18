@@ -532,3 +532,62 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     } finally { gate.resolve(); await server.close(); }
   });
 }
+
+test("Settings missing parts delay skeletons and retain independent Paths rows", { annotation: [{ type: "required-a11y-evidence", description: "settings-independent-paths.a11y.yml" }] }, async ({ page }, info) => {
+  const server = await setup(page, PARITY_THEMES[0], 1280);
+  const gate = Promise.withResolvers<void>();
+  let reached = 0;
+  await page.route("**/api/v1/settings/editable", async route => { reached++; await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "SETTINGS_INITIAL_READ_UNAVAILABLE", message: "Synthetic read failure", retryable: true } }); });
+  try {
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "paths" });
+    await expect(page.getByRole("button", { name: "Change Runtime state folder", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Change Artifact folder", exact: true })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Loading workflow paths", exact: true }).first()).toBeVisible();
+    expect(reached).toBe(1);
+    gate.resolve();
+    await expect(page.getByText("Editable settings could not be read", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Change Runtime state folder", exact: true })).toBeVisible();
+    await expect(page.locator('.settings-tab-body [data-slot="skeleton"]')).toHaveCount(0);
+    await attachTree(page, info, "settings-independent-paths.a11y.yml");
+  } finally { gate.resolve(); await server.close(); }
+});
+
+test("Settings fast reads never mount a skeleton and a revisit keeps the exact editable value", { annotation: [{ type: "required-a11y-evidence", description: "settings-retained-editable.a11y.yml" }] }, async ({ page }, info) => {
+  const server = await setup(page, PARITY_THEMES[0], 1280);
+  const gate = Promise.withResolvers<void>();
+  let calls = 0;
+  const fast = Promise.withResolvers<void>();
+  await page.clock.install({ time: new Date(FIXTURE_NOW) });
+  await page.clock.pauseAt(new Date(new Date(FIXTURE_NOW).valueOf() + 1000));
+  await page.addInitScript(() => {
+    Reflect.set(window, "settingsSkeletonSeen", false);
+    new MutationObserver(() => { if (document.querySelector('[data-settings-loading]')) Reflect.set(window, "settingsSkeletonSeen", true); }).observe(document, { childList: true, subtree: true, attributes: true });
+  });
+  await page.route("**/api/v1/settings/editable", async route => {
+    calls++;
+    if (calls === 1) { await fast.promise; await route.fulfill({ json: fixtureSettingsDocument() }); }
+    else { await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "SETTINGS_INITIAL_READ_UNAVAILABLE", message: "Synthetic read failure", retryable: true } }); }
+  });
+  try {
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=performance`);
+    await expect.poll(() => calls).toBe(1);
+    await page.clock.runFor(80);
+    fast.resolve();
+    const field = page.locator('[data-settings-path="timeouts.navigationMs"] input').first();
+    await expect(field).toBeVisible();
+    const value = await field.inputValue();
+    expect(await page.evaluate(() => Reflect.get(window, "settingsSkeletonSeen") === true)).toBe(false);
+    await page.clock.resume();
+    await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
+    await page.locator("#settings-gear").click();
+    await page.locator("a[href='?settings=performance']").first().click();
+    await expect.poll(() => calls).toBe(2);
+    await expect(field).toHaveValue(value);
+    await expect(page.locator('[data-settings-loading]')).toHaveCount(0);
+    gate.resolve();
+    await expect(page.getByText("Current settings unavailable", { exact: true })).toBeVisible();
+    await expect(field).toHaveValue(value);
+    await expect(page.locator('[data-settings-loading]')).toHaveCount(0);
+    await attachTree(page, info, "settings-retained-editable.a11y.yml");
+  } finally { fast.resolve(); gate.resolve(); await server.close(); }
+});

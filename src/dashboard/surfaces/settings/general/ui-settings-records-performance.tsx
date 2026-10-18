@@ -54,7 +54,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
 export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="performance" />;
-  if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
+  if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "performance");
   if (section === undefined) return <Banner tone="danger" title="Performance unavailable">The settings document did not include Performance.</Banner>;

@@ -41,7 +41,7 @@ export function ActivityReport({ range, onRange, client, today: servedToday, sou
     selection={selection} onSelection={onSelection} browse={source === "served" ? wire.browse : undefined} pending={source === "served" && wire.pending}
     onRange={next => { const value = activityRangeValue(next); setChoice({ range: value, value: "custom" }); setNotice(undefined); setSelection(null); onRange(value); }}
     onPreset={preset => { const value = preset === "custom" ? range : activityRangeValue(activityPresetRange(preset, today)); setChoice({ range: value, value: preset }); setNotice(undefined); if (preset !== "custom") { setSelection(null); setRangeRevision(current => current + 1); onRange(value); } }}
-    onExport={onExport}
+    onExport={source === "served" && !wire.exportReady ? undefined : onExport}
     notice={notice?.scope === scope ? notice.text : source === "served" ? wire.notice : ""}
   />;
 }

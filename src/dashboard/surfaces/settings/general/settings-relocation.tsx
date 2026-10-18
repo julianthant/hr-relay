@@ -1,3 +1,4 @@
+import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 import { useEffect, useRef, useState } from "react";
 import { Copy } from "lucide-react";
@@ -52,7 +53,8 @@ function RuntimePathRow({ editor, name, value, title, description }: {
 }
 
 export function StorageRelocationRows({ editor }: { editor: Editor }) {
-  if (editor.read.state === "loading") return <LoadingRegion label="Loading runtime locations" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={2} wide /></LoadingRegion>;
+  const show = useDelayedLoading(editor.read.state === "loading");
+  if (editor.read.state === "loading") return !show ? null : <LoadingRegion label="Loading runtime locations" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={2} wide /></LoadingRegion>;
   if (editor.read.state === "unavailable") return <Banner tone="warning" title="Runtime locations unavailable">
     The active paths and relocation plan could not be verified. Editing is unavailable. <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
   </Banner>;

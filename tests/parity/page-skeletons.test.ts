@@ -33,7 +33,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         try {
           await page.goto(`${server.baseUrl}/?settings=${section}`);
           const body = page.locator(".settings-tab-body");
-          const loading = body.locator(`[data-settings-loading="${section}"]`);
+          const loading = section === "paths" ? body.getByRole("status", { name: "Loading workflow paths", exact: true }).first() : body.locator(`[data-settings-loading="${section}"]`);
           await expect(loading).toBeVisible();
           await expect(loading.locator('[data-slot="skeleton"]').first()).toBeVisible();
           expect(await loading.locator('[data-slot="skeleton"]').evaluateAll(nodes => nodes.every(node => node.getAttribute("aria-hidden") === "true" && getComputedStyle(node).animationName === "none"))).toBe(true);

@@ -19,7 +19,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="routes" />;
-  if (editor.editor.state === "failed") return <Banner tone="danger" title="Routes could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
+  if (editor.editor.state === "failed") return <Banner tone="danger" title="Routes could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "routes");
   if (section === undefined) return <Banner tone="danger" title="Routes unavailable">The settings document did not include Routes.</Banner>;

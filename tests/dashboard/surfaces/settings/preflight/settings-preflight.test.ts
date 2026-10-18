@@ -109,3 +109,35 @@ it("Settings directs missing SharePoint roster configuration to Routes",async()=
   const configure=[...host.querySelectorAll("button")].find(button=>button.textContent==="Configure SharePoint route");
   assert.ok(configure);await act(async()=>configure.click());assert.equal(destination,"routes");
 });
+
+it("keeps independent workflow operations when readiness cannot be read", async () => {
+  const client = { preflightScopes: () => Promise.resolve([]), settingsFacts: () => Promise.resolve(FIXTURE_SETTINGS_FACTS) } as unknown as DashboardClient;
+  host = document.createElement("div"); document.body.append(host);
+  const actions = { actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings() {}, showSessions() {} };
+  await act(async () => {
+    root = createRoot(host!);
+    root.render(createElement(DashboardClientProvider, { client, children: createElement(PreflightActionsProvider, { actions, children: createElement(PreflightReportContent, {
+      presentation: "settings", preflight: { state: "refused", message: "Readiness unavailable" }, onRerun() {}, workflowLabels: new Map([["person-lookup", "Person lookup"]]),
+    }) }) }));
+  });
+  assert.match(host.textContent ?? "", /Readiness unavailable/);
+  assert.match(host.textContent ?? "", /Workflow readiness/);
+  assert.ok(host.querySelector(".workflow-operations-card"));
+  assert.match(host.textContent ?? "", /Supported operations/);
+  assert.equal(host.querySelector('[aria-label="Loading readiness checks"]'), null);
+});
+
+import { FIXTURE_SETTINGS_FACTS } from "../../../../parity/helpers/fixture-settings.js";
+
+it("does not claim an empty readiness group before any report has been observed", async () => {
+  const client = { preflightScopes: () => Promise.resolve([]) } as unknown as DashboardClient;
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => {
+    root = createRoot(host!);
+    root.render(createElement(DashboardClientProvider, { client, children: createElement(PreflightActionsProvider, { actions: { actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings() {}, showSessions() {} }, children: createElement(PreflightReportContent, {
+      presentation: "settings", preflight: { state: "idle" }, onRerun() {},
+    }) }) }));
+  });
+  assert.doesNotMatch(host.textContent ?? "", /No checks were returned|Not checked/);
+  assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+});

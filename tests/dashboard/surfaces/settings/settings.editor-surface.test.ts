@@ -282,3 +282,21 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   assert.deepEqual(current().draft, retained);
   assert.equal(current().dirtyCount, 1);
 });
+
+for (const section of ["general", "paths", "routes", "performance"]) for (const mode of ["failed", "hung"]) {
+  it(`renders the catalog body in the ${section} failed part after a ${mode} initial read`, async () => {
+    vi.useFakeTimers();
+    const client = { editableSettings: () => mode === "hung" ? new Promise(() => {}) : Promise.reject(new Error("private fixture error")),
+      storageRelocationPlans: () => Promise.resolve(FIXTURE_STORAGE_RELOCATION),
+    } as unknown as DashboardClient;
+    const dom = await mountSettingsPage(client, section);
+    if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    const title = section === "routes" ? "Routes could not be read" : "Editable settings could not be read";
+    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes(title));
+    assert.ok(failure);
+    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text));
+    assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
+  });
+}
+
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";

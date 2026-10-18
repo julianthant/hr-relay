@@ -116,17 +116,17 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const projected = useMemo(() => selection === undefined ? undefined : projectActivityPopulation(selection), [selection]);
   const data: ActivityViewState = selection === undefined && base.state === "failed" ? { state: "unavailable", reason: failureText(base.error) }
     : !enabled || client === undefined ? { state: "unavailable", reason: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }
-    : projected === undefined || pending && !retain && !current ? { state: "loading" } : { state: "loaded", report: projected };
+    : projected === undefined ? { state: "loading" } : { state: "loaded", report: projected };
   const browseData = invalidBrowse ? { state: "unavailable" as const, reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text } : current && "error" in settled ? cachedBrowse.value ?? { state: "unavailable" as const, reason: failureText(settled.error) } : current || retain ? settled?.result : undefined;
   const blocked = base.state !== "loaded" || pending || invalidBrowse || current && "error" in settled;
-  const latest = useRef({ request, blocked }); latest.current = { request, blocked };
+  const latest = useRef({ request, resource, selection, blocked }); latest.current = { request, resource, selection, blocked };
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const exportCsv = useCallback(async (signal?: AbortSignal) => {
-    if (selection === undefined || client === undefined || !mounted.current || latest.current.request !== request || latest.current.blocked) throw refused();
+    if (selection === undefined || client === undefined || !mounted.current || latest.current.request !== request || latest.current.resource !== resource || latest.current.selection !== selection || latest.current.blocked) throw refused();
     const download = await client.exportActivityPopulationCsv(selection, signal);
-    if (!mounted.current || latest.current.request !== request || latest.current.blocked || signal?.aborted) throw refused();
+    if (!mounted.current || latest.current.request !== request || latest.current.resource !== resource || latest.current.selection !== selection || latest.current.blocked || signal?.aborted) throw refused();
     return download;
-  }, [client, request, selection]);
-  return { data, browse: browseData, pending, notice: base.state === "failed" ? failureText(base.error) : cachedBrowse.state === "failed" ? failureText(cachedBrowse.error) : pending && retain ? "Refreshing Analytics selection…" : "", exportCsv };
+  }, [client, request, resource, selection]);
+  return { data, browse: browseData, pending, exportReady: !blocked, notice: base.state === "failed" ? failureText(base.error) : cachedBrowse.state === "failed" ? failureText(cachedBrowse.error) : pending && retain ? "Refreshing Analytics selection…" : "", exportCsv };
 }

@@ -229,3 +229,60 @@ it("retains the exact served Analytics values on revisit and reports a failed re
     assert.equal(current()?.notice, ERROR_CATALOG.DASHBOARD_READ_FAILED.text); await assert.rejects(current()!.exportCsv());
   } finally { act(() => root.unmount()); }
 });
+
+it("keeps the exact report rendered while the first browse is held and gates export", async () => {
+  const selected = selection([{ status: "done", durationMs: 2300 }]);
+  const client = clientOf(selected);
+  const held = Promise.withResolvers<Awaited<ReturnType<ActivityClient["readActivityPopulation"]>>>();
+  client.readActivityPopulation = vi.fn(() => held.promise);
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  function Scene() {
+    state = useActivityWiring(client, selected.report, { metric: "completed", page: 0 }, sources, true);
+    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, notice: state.notice, selection: { metric: "completed", page: 0 }, onSelection: () => {}, range: selected.report, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {} });
+  }
+  try {
+    await act(async () => root.render(createElement(Scene)));
+    assert.equal(vi.mocked(client.readActivityPopulation).mock.calls.length, 1);
+    assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(selected) });
+    assert.ok(host.querySelector('section[aria-label="Analytics runs"]'));
+    assert.equal(host.querySelector('button[aria-label^="Open logs for"]'), null);
+    assert.equal(state!.pending, true); assert.equal(state!.browse, undefined); assert.equal(state!.exportReady, false);
+    await assert.rejects(state!.exportCsv());
+    await act(async () => held.resolve({ selection: selected, browse: browseResult(selected, { metric: "completed", page: 0 }) }));
+    assert.equal(state!.pending, false); assert.equal(state!.exportReady, true);
+    await state!.exportCsv();
+  } finally { act(() => root.unmount()); host.remove(); }
+});
+
+it("refuses an in-flight export after same-client authority replacement loads another snapshot", async () => {
+  const a = selection([{ status: "done", durationMs: 1000 }]);
+  const b = selection([{ status: "done", durationMs: 4300 }, { status: "failed" }]);
+  const client = clientOf(a);
+  const held = Promise.withResolvers<Awaited<ReturnType<ActivityClient["exportActivityPopulationCsv"]>>>();
+  client.exportActivityPopulationCsv = vi.fn(() => held.promise);
+  const root = createRoot(document.createElement("div"));
+  let state: ReturnType<typeof useActivityWiring>;
+  function Probe() { state = useActivityWiring(client, a.report, null, sources, true); return null; }
+  const render = (nowIso: string) => createElement(DashboardClientProvider, { client: client as DashboardClient, children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso, children: createElement(Probe) }) });
+  try {
+    await act(async () => root.render(render("2026-08-07T12:00:00.000Z")));
+    assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(a) });
+    const exportingA = state!.exportCsv();
+    const outcome = exportingA.then(() => undefined, (error: unknown) => error);
+    vi.mocked(client.activityPopulation).mockResolvedValueOnce(b);
+    await act(async () => root.render(render("2026-08-07T12:01:00.000Z")));
+    assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(b) });
+    assert.equal(vi.mocked(client.activityPopulation).mock.calls.length, 2);
+    await act(async () => held.resolve({ bytes: new ArrayBuffer(0), filename: "old-a.csv", mediaType: "text/csv" }));
+    const error = await outcome;
+    assert.ok(error instanceof DashboardClientError);
+    assert.equal(error.code, "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH");
+    assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 1);
+    assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls[0]?.[0], a);
+  } finally { act(() => root.unmount()); }
+});
+
+import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";

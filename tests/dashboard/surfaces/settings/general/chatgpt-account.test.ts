@@ -1,3 +1,4 @@
+import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
@@ -27,10 +28,19 @@ describe("General ChatGPT account", () => {
     assert.doesNotMatch(html, /Preview|Jordan Lee/u);
   });
 
+  it("retains the exact verified account while a refresh is unavailable and blocks account commands", () => {
+    const port = controlledPort({ state: "unavailable", message: "Account read failed", account: { state: "connected", name: "Held operator", email: "held@example.com", expiresAt: IsoInstantSchema.parse("2099-01-01T00:00:00.000Z"), planUsage: "enabled" } });
+    const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port }));
+    assert.match(html, /Held operator.*held@example\.com/u);
+    assert.match(html, /ChatGPT account unavailable.*Account read failed/u);
+    assert.match(html, /disabled=""[^>]*>Sign out/u);
+    assert.doesNotMatch(html, /Continue with ChatGPT/u);
+  });
+
   it("renders loading, expired, unavailable and usage-limit states distinctly", () => {
     const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
     const loading = render({ state: "loading" });
-    assert.match(loading, /Loading ChatGPT account/u);
+    assert.doesNotMatch(loading, /aria-busy="true"/u);
     assert.doesNotMatch(loading, /Continue with ChatGPT/u);
     assert.match(render({ state: "expired" }), /Your ChatGPT session expired/u);
     assert.match(render({ state: "unavailable", message: "Account read failed" }), /ChatGPT account unavailable.*Account read failed/u);
