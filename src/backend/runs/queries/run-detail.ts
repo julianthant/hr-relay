@@ -223,12 +223,18 @@ export function buildRunDetail(
       return latestByNode.get(nodeId);
     },
   };
-  const nativeRecords = descriptorView?.timeline === undefined && row !== undefined && row.taskSpans.length === 0 && row.openGates.length === 0 && row.resolvedGates.length === 0
+  if (descriptorView?.timeline?.some(category => category.key === undefined)) {
+    throw new LogIdentityRefusedError("timeline category identity is missing");
+  }
+  const olderDescriptor = descriptorView?.version !== authority.envelope.descriptorVersion
+    || descriptorView?.contractFingerprint !== authority.envelope.contractFingerprint;
+  const skipTimeline = row !== undefined && row.taskSpans.length === 0 && row.openGates.length === 0 && row.resolvedGates.length === 0;
+  const nativeRecords = skipTimeline
     ? []
     : readTimelineRecords(deps.timeline, 0, runId).records;
-  assertRunTimelineCompatible(authority, descriptorView?.timeline, {
+  if (olderDescriptor) assertRunTimelineCompatible(authority, descriptorView?.timeline, {
     timeline: deps.timeline, authority: { listCheckpoints: readCheckpoints, listGateResults: id => deps.authority.listGateResults(id) },
-  }, row, nativeRecords);
+  }, row, skipTimeline ? undefined : nativeRecords);
   const nativeOf = (record: (typeof nativeRecords)[number], nodeId?: string): NativeRunEventWire => {
     if (record.payload.kind !== "span" || !("runId" in record.payload.event)) throw new LogIdentityRefusedError("timeline event has no run identity");
     const event = record.payload.event;

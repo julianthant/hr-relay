@@ -67,6 +67,7 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
 it.each([false, true])("refuses a recorded task absent from the current timeline (changed fingerprint %s)", changed => {
   const { w, run, descriptor, deps } = fixture();
   if (changed) descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
+  else descriptor.version++;
   taskEventsOf(w, 81, "searching", "done");
   descriptor.timeline[0].nodes = descriptor.timeline[0].nodes.filter(node => node.id !== "searching");
   assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
@@ -83,6 +84,7 @@ it.each([false, true])("still refuses a current timeline category without a key 
 
 it("refuses an unmapped checkpoint-only node when no task span exists", () => {
   const { w, run, descriptor, deps } = fixture();
+  descriptor.version++;
   const at = w.clock.now().toISOString();
   const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
     nodeId: "removed-node", attempt: 1, claimGeneration: 1, runId: run.envelope.runId,
@@ -96,7 +98,8 @@ it("refuses an unmapped checkpoint-only node when no task span exists", () => {
 });
 
 it.each([false, true])("refuses an unmapped action-only node (declared operation %s)", declared => {
-  const { w, run, deps } = fixture();
+  const { w, run, descriptor, deps } = fixture();
+  descriptor.version++;
   const at = w.clock.now().toISOString();
   w.timeline.append(TimelineAppendSchema.parse({ schemaVersion: 1, eventId: uuidOf(901), workflow: run.envelope.workflow,
     scope: { kind: "run", runId: run.envelope.runId }, occurredAt: at, recordedAt: at, retentionDate: at.slice(0, 10),
@@ -113,6 +116,7 @@ it.each([false, true])("refuses an unmapped action-only node (declared operation
 it("refuses ambiguous recorded membership while preserving the explicit no-timeline mode", () => {
   const { w, run, descriptor, deps } = fixture();
   taskEventsOf(w, 81, "searching", "done");
+  descriptor.version++;
   descriptor.timeline.push({ ...descriptor.timeline[0], key: "duplicate" });
   assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
   const detail = buildRunDetail({ ...deps, descriptors: { resolve: () => undefined } }, run.envelope.runId);
@@ -198,4 +202,40 @@ it("validates replayed checkpoint references without importing unrelated item at
       checkpoint: { workflowId: checkpoint.workflowId, itemId: checkpoint.itemId, nodeId: checkpoint.nodeId,
         runId: checkpoint.runId, attempt: 1, claimGeneration: 1, outputDigest: HASH_B, writtenAt: at } } });
   assert.throws(() => assertRunTimelineCompatible(run, descriptor.timeline, deps, undefined, [record]), LogIdentityRefusedError);
+});
+
+it("loads a current-version run with a recorded checkpoint node outside the live timeline", () => {
+  const { w, run, deps } = fixture();
+  const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
+    nodeId: "outside-timeline", attempt: 1, claimGeneration: 1, runId: run.envelope.runId,
+    output: { schemaHash: HASH_B, value: {} }, descriptorVersion: run.envelope.descriptorVersion,
+    contractFingerprint: run.envelope.contractFingerprint, implFingerprint: HASH_B, provenance: [],
+    writtenAt: w.clock.now().toISOString() });
+  w.authority.putCheckpoint(checkpoint);
+  assert.equal(w.database.authority.runCheckpoints.insert(checkpoint).state, "inserted");
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  assert.equal(detail.runId, run.envelope.runId);
+});
+
+it.each(["version", "fingerprint", "missing-version", "missing-fingerprint"] as const)("checks an older run's empty fold with one timeline read after %s drift", drift => {
+  const { w, run, descriptor, deps } = fixture();
+  if (drift === "version") descriptor.version++;
+  else if (drift === "fingerprint") descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
+  const { version, contractFingerprint, ...presentation } = descriptor;
+  const current = drift === "missing-version" ? { ...presentation, contractFingerprint }
+    : drift === "missing-fingerprint" ? { ...presentation, version } : descriptor;
+  const at = w.clock.now().toISOString();
+  w.timeline.append(TimelineAppendSchema.parse({ schemaVersion: 1, eventId: uuidOf(909), workflow: run.envelope.workflow,
+    scope: { kind: "run", runId: run.envelope.runId }, occurredAt: at, recordedAt: at, retentionDate: at.slice(0, 10),
+    source: { kind: "native" }, payload: { kind: "span", event: { t: "data.observed", pid: 4242, ts: at,
+      workflow: run.envelope.workflow, runId: run.envelope.runId, attempt: 1, traceId: run.envelope.traceId,
+      spanPath: run.envelope.traceId, observedAt: at, nodeId: "outside-timeline", taskId: "ucpath/search-person-org",
+      points: [{ direction: "read", field: "results", values: [{ key: "results", state: "allowed",
+        classification: "safe-diagnostic", transform: "allow", value: [] }] }] } } }));
+  let timelineReads = 0;
+  assert.throws(() => buildRunDetail({ ...deps, descriptors: { resolve: () => current }, timeline: { ...deps.timeline, page(input) {
+    timelineReads++;
+    return deps.timeline.page(input);
+  } } }, run.envelope.runId), LogIdentityRefusedError);
+  assert.equal(timelineReads, 1);
 });

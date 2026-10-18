@@ -9,7 +9,7 @@ import { LogIdentityRefusedError } from "../commands/refusals.js";
 
 export function notificationDisplayContext(record: NotificationRecord, deps: {
   read(id: string): RunExistence;
-  descriptor(workflowId: string): { label: string; contractFingerprint: string; subjectProjection?: { nodeId: string; fieldPath: string }; timeline?: RunDetailDescriptorView["timeline"] } | undefined;
+  descriptor(workflowId: string): { version: number; label: string; contractFingerprint: string; subjectProjection?: { nodeId: string; fieldPath: string }; timeline?: RunDetailDescriptorView["timeline"] } | undefined;
   checkpoints: { listByAttempt(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[] };
   presentation: RunTimelineEvidenceSource;
 }): NotificationDisplayContext {
@@ -19,12 +19,15 @@ export function notificationDisplayContext(record: NotificationRecord, deps: {
   if (current.state !== "present") return { state: "unavailable" };
   const { workflow, itemId } = current.run.envelope;
   const descriptor = deps.descriptor(workflow);
-  if (descriptor === undefined || descriptor.timeline === undefined && descriptor.contractFingerprint !== current.run.envelope.contractFingerprint) return { state: "unavailable" };
-  try {
-    assertRunTimelineCompatible(current.run, descriptor.timeline, deps.presentation);
-  } catch (error) {
-    if (error instanceof LogIdentityRefusedError) return { state: "unavailable" };
-    throw error;
+  if (descriptor === undefined) return { state: "unavailable" };
+  if (descriptor.version !== current.run.envelope.descriptorVersion || descriptor.contractFingerprint !== current.run.envelope.contractFingerprint) {
+    if (descriptor.timeline === undefined) return { state: "unavailable" };
+    try {
+      assertRunTimelineCompatible(current.run, descriptor.timeline, deps.presentation);
+    } catch (error) {
+      if (error instanceof LogIdentityRefusedError) return { state: "unavailable" };
+      throw error;
+    }
   }
   const subject = resolveSubjectTitle(descriptor.subjectProjection, { workflowId: workflow, itemId }, {
     latestCheckpoint: (workflowId, item, nodeId) => deps.checkpoints.listByAttempt(workflowId, item, nodeId, current.run.envelope.attempt)
