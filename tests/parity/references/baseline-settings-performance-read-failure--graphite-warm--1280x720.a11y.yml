@@ -18,7 +18,7 @@
         - button "Clear search"
       - status: Settings fields unavailable
     - alert:
-      - text: Editable settings could not be read
+      - text: Editable settings could not be read Settings could not be read. Try again.
       - button "Try again"
 - region "Session Panel":
   - group "Session actions":

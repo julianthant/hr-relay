@@ -20,8 +20,22 @@
     - heading "Paths" [level=1]
     - paragraph: Workflow files and runtime locations.
     - alert:
-      - text: Editable settings could not be read
+      - text: Editable settings could not be read Settings could not be read. Try again.
       - button "Try again"
+    - heading "Runtime locations" [level=2]
+    - group "Runtime locations":
+      - text: Runtime state folder
+      - paragraph: Persistent settings and run data.
+      - text: /tmp/settings-fixture/state
+      - button "Change Runtime state folder": Change
+      - text: Artifact folder
+      - paragraph: Run evidence and generated artifacts.
+      - text: /tmp/settings-fixture/artifacts
+      - button "Change Artifact folder": Change
+    - heading "Generated files" [level=2]
+    - group "Generated files"
+    - heading "Workflow documents" [level=2]
+    - group "Workflow documents"
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
