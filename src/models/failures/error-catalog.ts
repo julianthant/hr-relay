@@ -226,7 +226,7 @@ export const ERROR_CATALOG = Object.freeze({
     z.strictObject({ source: BoundarySourceSchema }),
   ),
   RERUN_SOURCE_INPUT_PROTECTED: catalogEntry(
-    "The source input is protected and cannot be copied into a rerun.",
+    "The source input is protected and cannot be copied into a rerun. Start a new run and enter the values again.",
     EmptyParametersSchema,
   ),
   TASK_UNHANDLED_FAILURE: catalogEntry(

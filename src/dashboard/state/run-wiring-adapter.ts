@@ -362,25 +362,6 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     } else grouped.push({ ...step, title: category?.label ?? step.title, ...(system === undefined ? {} : { system }) });
     previousKey = key;
   }
-  const observedIds = new Set<string>(logRowsOf(logs, "field-presentation").filter(row => row.kind === "observed").map(row => row.logId));
-  for (const [index, step] of grouped.entries()) {
-    const seen = new Set<string>();
-    const entries = step.entries.flatMap<LogEntry>(entry => {
-      if (entry.kind !== "fields" || !observedIds.has(entry.id)) return [entry];
-      const fields = entry.fields.filter(field => {
-        const key = JSON.stringify([field.label, field.value]);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      if (fields.length > 0) return [{ ...entry, fields }];
-      return entry.screenshots === undefined || entry.screenshots.length === 0 ? [] : [{
-        kind: "decision", id: `${entry.id}:captures`, time: entry.fields[0].time,
-        decision: { title: "Screenshot", state: "recorded", screenshots: entry.screenshots },
-      }];
-    });
-    grouped[index] = { ...step, entries };
-  }
   for (const [index, step] of grouped.entries()) if (step.entries.length === 0) grouped[index] = { ...step,
     entries: [{ kind: "note", id: step.id, time: step.time, message: `${step.title} completed.` }] };
   const timeline: LogTimelineStage[] = categories.map(category => {
