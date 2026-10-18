@@ -12,11 +12,12 @@ export function summaryFixture() {
   const ledger = createTransactionHistory(f.db.authority);
   const descriptors = { resolve: () => undefined };
   const summaries: ServedSummaryQueries = {
+    itemAttempts: items => f.db.listQueueItemAttempts(items),
     withSnapshot: read => f.db.withAuthorityReadSnapshot(read),
     queue: query => queryQueueSummaries(f.db, query),
     activity: (from, to) => queryActivitySummaries(f.db, { from, to, generatedAt: f.clock.now().toISOString() }, { descriptors, ledger }),
   };
-  const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), summaries };
+  const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries };
   const projection = createOperatorProjection({ database: f.db, stateRoot: f.root, clock: f.clock,
     appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse(HASH), ledger, descriptors, reader: servedReader });
   return { ...f, reader, servedReader, projection, summaries, ledger };

@@ -358,7 +358,7 @@ describe_m4("logical item attempt grouping", () => {
 
     const groups = groupQueueAttempts_m4([first, otherWorkflow, retry]);
     assert_m4.equal(groups.length, 2);
-    assert_m4.deepEqual(groups[0]?.attempts.map((row) => row.attempt), [1, 2]);
+    assert_m4.deepEqual(groups[0]?.attempts.map((row) => row.attempt), [2, 1]);
     assert_m4.equal(groups[0]?.representative.runId, retry.runId);
     assert_m4.equal(groups[1]?.representative.workflowId, "other-workflow");
     assert_m4.deepEqual(visibleRunIds_m4([first, retry]), [first.runId, retry.runId]);

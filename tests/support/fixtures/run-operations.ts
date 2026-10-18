@@ -48,7 +48,7 @@ export function installRunOperationsRoutes(app: DashboardApp, setup: Awaited<Ret
   queueApp.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
   const projection = createOperatorProjection({ database, clock, stateRoot: setup.fixture.stateRoot, appVersion: "0.1.0",
     descriptorSetHash: FIXTURE_DESCRIPTOR_HASH, ledger: createTransactionHistory(database.authority), descriptors,
-    reader: { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle),
+    reader: { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), withRunTreeSnapshot: lifecycle.withRunTreeSnapshot.bind(lifecycle),
       summaries: { ...composeQueueSummaries(database), activity: unexpected } } });
   registerQueueRoutes(queueApp, { startPlans: plans, queue: { day: day => {
     projection.rebuildFromTimeline();

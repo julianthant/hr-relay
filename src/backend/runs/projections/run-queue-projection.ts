@@ -31,6 +31,7 @@ import {
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
 import {
   PositiveIntSchema,
+  LocalDateSchema,
   EidSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
@@ -121,12 +122,13 @@ export interface ServedSummaryQueries {
     items: readonly { runId: string; localDay: string; shape: string; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
     next: { localDay: string; runId: string } | null;
   };
+  itemAttempts(items: readonly { workflowId: string; itemId: string; maxAttempt: number }[]): readonly RunRecord[];
   activity(from: string, to: string): ActivityReportWire;
 }
 
 export interface RunQueueProjectionDeps {
   readonly timeline: TimelineRepository;
-  readonly reader: Pick<RunRecordService, "read" | "list"> & { readonly summaries?: ServedSummaryQueries };
+  readonly reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> & { readonly summaries?: ServedSummaryQueries };
   readonly stateRoot: string;
   readonly clock: Clock;
   readonly appVersion: string;
@@ -742,6 +744,10 @@ export class RunQueueProjection {
         batchPresentationChanged = true;
         snapshotNeeded = true;
       }
+      const crossDayItem = snapshot.runs.some(candidate => candidate.envelope.workflow === authority.envelope.workflow
+        && candidate.envelope.itemId === authority.envelope.itemId
+        && localDatePart(new Date(candidate.envelope.enqueuedAt)) !== day);
+      if (crossDayItem) { snapshotNeeded = true; continue; }
       const countNeutral = replacement.surfaceKind === "member"
         ? previousStatus !== undefined
         : previousStatus === replacement.status;
@@ -1264,6 +1270,7 @@ export class RunQueueProjection {
     }
     const parsedDay = z.iso.date().parse(day);
     const surfaces: QueueSurfaceWire[] = [];
+    let fixtureRuns: readonly RunRecord[] | undefined;
     const monthPrefix = parsedDay.slice(0, 7);
     const monthCounts = new Map<string, number>();
     const summaries = this.#deps.reader.summaries;
@@ -1292,6 +1299,7 @@ export class RunQueueProjection {
     } else {
       // Explicit fixture-only compatibility. Production composition always supplies summaries.
       const runs = listCanonicalRuns(this.#deps.reader, "live");
+      fixtureRuns = runs;
       const children = canonicalRunChildren(runs);
       for (const authority of runs) {
         const row = this.#rows.get(authority.envelope.runId);
@@ -1303,6 +1311,42 @@ export class RunQueueProjection {
         surfaces.push(this.#surface(row, authority, children.get(authority.envelope.runId) ?? []));
       }
     }
+    const visibleItems = new Map<string, { workflowId: string; itemId: string; maxAttempt: number }>();
+    const itemKey = (workflowId: string, itemId: string) => JSON.stringify([workflowId, itemId]);
+    for (const surface of surfaces) {
+      const key = itemKey(surface.workflowId, surface.itemId);
+      const previous = visibleItems.get(key);
+      if (previous === undefined || surface.attempt > previous.maxAttempt) visibleItems.set(key,
+        { workflowId: surface.workflowId, itemId: surface.itemId, maxAttempt: surface.attempt });
+    }
+    const attempts = visibleItems.size === 0 ? [] : summaries === undefined ? fixtureRuns
+      : summaries.itemAttempts([...visibleItems.values()]);
+    if (attempts === undefined) throw new ProjectionDegradedError("queue-attempt-history-unavailable");
+    const attemptHistory: NonNullable<DashboardDayWire["attemptHistory"]>[number][] = [];
+    const historyIds = new Set<string>();
+    this.#deps.reader.withRunTreeSnapshot(attempts.filter(candidate => {
+      const item = visibleItems.get(itemKey(candidate.envelope.workflow, candidate.envelope.itemId));
+      return item !== undefined && candidate.envelope.attempt <= item.maxAttempt
+        && localDatePart(new Date(candidate.envelope.enqueuedAt)) < parsedDay;
+    }).map(candidate => candidate.envelope.runId), tree => {
+      const children = canonicalRunChildren(tree);
+      for (const candidate of attempts) {
+        const envelope = candidate.envelope;
+        const item = visibleItems.get(itemKey(envelope.workflow, envelope.itemId));
+        if (summaries === undefined && (item === undefined || envelope.attempt > item.maxAttempt)) continue;
+        if (item === undefined || envelope.attempt > item.maxAttempt || historyIds.has(envelope.runId)) {
+          throw new ProjectionDegradedError("queue-attempt-history-membership-mismatch");
+        }
+        historyIds.add(envelope.runId);
+        const partitionDay = localDatePart(new Date(envelope.enqueuedAt));
+        if (partitionDay >= parsedDay) continue;
+        const current = this.#deps.reader.read(envelope.runId);
+        if (current.state !== "present" || current.disposition !== "live" || current.run.version !== candidate.version
+          || current.run.envelope.workflow !== envelope.workflow || current.run.envelope.itemId !== envelope.itemId
+          || current.run.envelope.attempt !== envelope.attempt) throw new ProjectionDegradedError("queue-attempt-history-custody-mismatch");
+        attemptHistory.push({ partitionDay: LocalDateSchema.parse(partitionDay), surface: this.#surface(this.#rows.get(envelope.runId), current.run, children.get(envelope.runId) ?? []) });
+      }
+    });
     const priorityOrder = (priority: "interactive" | "bulk"): number => (priority === "interactive" ? 0 : 1);
     surfaces.sort((a, b) => priorityOrder(a.priority) - priorityOrder(b.priority) || a.startedAt.localeCompare(b.startedAt) || a.runId.localeCompare(b.runId));
 
@@ -1401,6 +1445,7 @@ export class RunQueueProjection {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([statusKey, count]) => ({ status: statusKey, count })),
       queueSurfaces: surfaces,
+      attemptHistory,
       workerCards,
       workerAuthority,
       workerOperations: workerOperations ?? [],

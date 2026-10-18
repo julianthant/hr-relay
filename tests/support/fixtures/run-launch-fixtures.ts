@@ -81,7 +81,7 @@ export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initiali
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
   app.use("/api/v1/commands", operatorMutationIngressGuard);
-  const reader = { read: h.lifecycle.read.bind(h.lifecycle), list: h.lifecycle.list.bind(h.lifecycle),
+  const reader = { read: h.lifecycle.read.bind(h.lifecycle), list: h.lifecycle.list.bind(h.lifecycle), withRunTreeSnapshot: h.lifecycle.withRunTreeSnapshot.bind(h.lifecycle),
     summaries: { ...composeQueueSummaries(h.database), activity: () => { throw new Error("unrequested fixture activity"); } } };
   const projection = createOperatorProjection({ database: h.database, reader, stateRoot: dirname(h.authorityPath), clock: h.clock,
     appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(h.database.authority),

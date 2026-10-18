@@ -596,7 +596,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     });
   }, [onSelectMode, onBulkIds]);
   const { surfaces, outcomes, parentOf, viewState, queueHandlers, actionsOf } = useQueueWiring({
-    allRows: dayWire?.queueSurfaces, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
+    allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
     openWells, selectMode, bulkIds, nowIso, workflowLabelOf, selectRun, setActiveWorkflowId, onWells, onBulkIds,
     setBatchGrouping, exitQueueSelection, runQueueAction,
   });

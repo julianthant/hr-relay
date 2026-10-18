@@ -605,6 +605,7 @@ export const DashboardDayWireSchema = z.strictObject({
   workflowCounts: z.array(WorkflowCountWireSchema),
   statusCounts: z.array(StatusCountWireSchema),
   queueSurfaces: z.array(QueueSurfaceWireSchema),
+  attemptHistory: z.array(z.strictObject({ partitionDay: LocalDateSchema, surface: QueueSurfaceWireSchema })).optional(),
   workerOperations: z.array(WorkerControlRecordSchema),
   workerCards: z.array(WorkerCardWireSchema),
   workerAuthority: z.discriminatedUnion("state", [
@@ -619,6 +620,14 @@ export const DashboardDayWireSchema = z.strictObject({
   requireUnique(day.workflowCounts.map(({ workflowId }) => workflowId), "workflowCounts", context);
   requireUnique(day.statusCounts.map(({ status }) => status), "statusCounts", context);
   requireUnique(day.queueSurfaces.map(({ runId }) => runId), "queueSurfaces", context);
+  requireUnique((day.attemptHistory ?? []).map(entry => entry.surface.runId), "attemptHistory", context);
+  for (const [index, entry] of (day.attemptHistory ?? []).entries()) {
+    const matches = day.queueSurfaces.filter(row => row.workflowId === entry.surface.workflowId && row.itemId === entry.surface.itemId);
+    if (entry.partitionDay >= day.day || matches.length === 0 || entry.surface.attempt > Math.max(...matches.map(row => row.attempt))
+      || day.queueSurfaces.some(row => row.runId === entry.surface.runId)) {
+      context.addIssue({ code: "custom", path: ["attemptHistory", index], message: "attempt history must belong to an earlier partition of a visible item" });
+    }
+  }
   requireUnique(day.workerCards.map(({ workerId }) => workerId), "workerCards", context);
   requireUnique(day.workerAuthority.members.map(({ workerId }) => workerId), "workerAuthority", context);
   requireUnique(day.workerOperations.map(({ commandId }) => commandId), "workerOperations", context);

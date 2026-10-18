@@ -15,9 +15,11 @@ export function applyDashboardDayPatch(day: DashboardDayWire, patch: DashboardDa
     if (index === -1) {
       throw protocolError(`patch removes run ${parsed.target.runId}, which this snapshot does not hold`);
     }
+    const queueSurfaces = day.queueSurfaces.filter((surface) => surface.runId !== parsed.target.runId);
     return {
-      ...day,
-      queueSurfaces: day.queueSurfaces.filter((surface) => surface.runId !== parsed.target.runId),
+      ...day, queueSurfaces,
+      ...(day.attemptHistory === undefined ? {} : { attemptHistory: day.attemptHistory.filter(entry =>
+        queueSurfaces.some(surface => surface.workflowId === entry.surface.workflowId && surface.itemId === entry.surface.itemId && surface.attempt >= entry.surface.attempt)) }),
     };
   }
 
