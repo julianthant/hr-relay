@@ -17,7 +17,7 @@ export function useWorkspaceNotifications(scenario: string, input: PreviewInput)
   const { day, nowIso, anchorIso, rows, runs, workflowLabel, eventTimes, unavailable } = input;
   const minute = Math.floor(Date.parse(nowIso) / 60000);
   return useMemo(() => notificationPreviewState(scenario, {
-    day, anchorIso, nowIso: new Date(Math.max(minute * 60000, ...Object.values(eventTimes ?? {}).map(Date.parse))).toISOString(),
+    day, anchorIso, nowIso: new Date(Math.max(minute * 60000, Date.parse(anchorIso), ...Object.values(eventTimes ?? {}).map(Date.parse))).toISOString(),
     rows, runs, workflowLabel, eventTimes, unavailable,
   }), [scenario, day, anchorIso, minute, rows, runs, workflowLabel, eventTimes, unavailable]);
 }
