@@ -24,7 +24,7 @@ it('keeps original cell metadata closed and bound to its displayed text', () => 
   ] }] }] };
   assert.deepEqual(decodeEditableWorkbook(JSON.parse(JSON.stringify(encodeEditableWorkbook(document)))), document);
   const invalid = structuredClone(document);
-  Reflect.set(invalid.sheets[0].rows[0].cells[1].richText![0].font!, 'unsupported', true);
+  Reflect.set(invalid.sheets[0].rows[0].cells[1].richText![0].font, 'unsupported', true);
   assert.equal(EditableWorkbookSchema.safeParse(invalid).success, false);
   const badRow = structuredClone(document);
   Reflect.set(badRow.sheets[0].rows[0], 'sourceRow', 0);
