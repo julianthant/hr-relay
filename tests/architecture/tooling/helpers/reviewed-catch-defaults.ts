@@ -112,11 +112,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "The population observation consumes a rejection only after createSettingsRead publishes failed with its held selection. useActivityWiring exposes the catalog notice and revokes exports/navigation, preserving a coherent completed report and browse as history; superseded reads cannot publish or replace the current pair."
 },
   {
-    "path": "src/dashboard/state/explorer-wiring-adapter.ts",
-    "sha256": "b9b41d1b15445acbb266b9dc7a19ea63f69942440f593cc6307bb42d2f5d451e",
-    "reason": "createSettingsRead publishes failed before its observation rejects. useExplorerWiring returns a catalog refusal and its exact retained projection; WorkflowExplorer renders the failure beside held timeline and sources. Superseded authority observations cannot restore old definitions."
-},
-  {
     "path": "src/dashboard/surfaces/settings/editor/settings-facts-model.ts",
     "sha256": "e9c2c3608b6b658b7002788795b478265e8211b3a82fd4f8d4ff96d20ad516b3",
     "reason": "createSettingsRead publishes failed before the facts observation rejects. useSettingsFacts returns SETTINGS_INITIAL_READ_UNAVAILABLE with any held facts, and FactsPane renders the catalog failure beside those exact facts; superseded identity reads cannot publish."

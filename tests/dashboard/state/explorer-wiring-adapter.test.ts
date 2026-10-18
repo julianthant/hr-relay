@@ -480,7 +480,8 @@ describe("complete source and structure declarations", () => {
 
 it("maps failed Explorer reads to the shared dashboard read catalog text", async () => {
   const root = createRoot(document.createElement("div"));
-  const client = { workflowExplorer: async () => { throw new Error("fixture read failed"); } };
+  const evidence = new Error("fixture read failed");
+  const client = { workflowExplorer: async () => { throw evidence; } };
   let result: ReturnType<typeof useExplorerWiring> | undefined;
   function Probe() { result = useExplorerWiring(client, compiled.id); return null; }
   try {
@@ -488,6 +489,7 @@ it("maps failed Explorer reads to the shared dashboard read catalog text", async
     assert.equal(result?.state, "refused");
     if (result?.state === "refused") {
       assert.equal(result.failure.code, "DASHBOARD_READ_FAILED");
+      assert.equal(result.evidence, evidence);
       assert.equal(formatErrorCatalogFailure(result.failure).text, "The dashboard could not load this from the local service. Try again.");
     }
   } finally { await act(async () => root.unmount()); }
@@ -509,7 +511,8 @@ it("revisits a served definition from its exact retained projection and exposes 
     await act(async () => root.render(createElement(Probe)));
     assert.equal(calls, 2); assert.ok(seen.every(value => value.state === "ready"));
     const revisited = seen.at(-1); assert.ok(revisited?.state === "ready"); assert.deepEqual(revisited.projection, loaded.projection);
-    await act(async () => held.reject(new Error("synthetic refresh rejected")));
-    const failed = current(); assert.ok(failed?.state === "refused"); assert.deepEqual(failed.previous, loaded.projection);
+    const evidence = new Error("synthetic refresh rejected");
+    await act(async () => held.reject(evidence));
+    const failed = current(); assert.ok(failed?.state === "refused"); assert.deepEqual(failed.previous, loaded.projection); assert.equal(failed.evidence, evidence);
   } finally { act(() => root.unmount()); }
 });
