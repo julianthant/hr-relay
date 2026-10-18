@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
+import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 import { act, createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, it, vi } from 'vitest';
@@ -109,7 +110,7 @@ it('discards ordinary edits and rereads the saved workbook on explicit reopen', 
 });
 it('shows failed library authority without a mock list or a definitive empty result', async () => {
   const client = createDashboardClient({ baseUrl: 'http://spreadsheets.test', fetchImpl: async () => { throw new Error('offline'); } }); await page(client);
-  assert.match(document.body.textContent, /Spreadsheet unavailable/); assert.match(document.body.textContent, /offline/); assert.doesNotMatch(document.body.textContent, /No spreadsheets match|Student applicants/);
+  assert.match(document.body.textContent, /Spreadsheet unavailable/); assert(document.body.textContent?.includes(ERROR_CATALOG.DASHBOARD_READ_FAILED.text)); assert.doesNotMatch(document.body.textContent, /No spreadsheets match|Student applicants/);
 });
 it('distinguishes a pending library from a verified empty library', async () => {
   let settle!: (response: Response) => void;
@@ -162,7 +163,8 @@ for (const operation of ['list', 'open'] as const) it(`shows ${operation} loadin
   assert.doesNotMatch(document.body.textContent, /Spreadsheet unavailable/);
   await act(async () => { (operation === 'list' ? list : open).reject(new Error('Synthetic read failed')); });
   const danger = [...document.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes('Spreadsheet unavailable'));
-  assert(danger); assert.match(danger.textContent, /Synthetic read failed/);
+  assert(danger); assert(danger.textContent?.includes(ERROR_CATALOG.DASHBOARD_READ_FAILED.text));
+  assert.doesNotMatch(document.body.textContent, /No spreadsheets match|Synthetic read failed/);
   assert(![...document.querySelectorAll('[role="status"]')].some(node => node.textContent === loading));
 });
 
