@@ -29,7 +29,7 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.clock.install({ time: new Date(FIXTURE_NOW) });
     await page.route("**/api/v1/settings/chatgpt-account", route => resumed
-      ? route.fulfill({ json: { state: "signing-in", attemptId, expiresAt, account: { state: "signed-out" } } })
+      ? route.fulfill({ json: { state: "signing-in", attemptId, authorizationUrl, expiresAt, account: { state: "signed-out" } } })
       : route.continue());
     await page.route("**/api/v1/settings/chatgpt-account/sign-in", route => route.fulfill({ json: { state: "started", attemptId, authorizationUrl, expiresAt } }));
     await page.route(`**/api/v1/settings/chatgpt-account/sign-in/${attemptId}`, async route => {
@@ -57,7 +57,8 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
     await page.reload();
     await expect(account).toContainText("Waiting for you to finish signing in in your browser");
     await expect(cancel).toBeEnabled();
-    await expect(reopen).toHaveCount(0);
+    await expect(reopen).toHaveAttribute("href", authorizationUrl);
+    await expect(reopen).toHaveAttribute("rel", "noopener noreferrer");
     await shot(page, info, `signing-in-reloaded-${width}`);
     await cancel.press("Enter");
     await expect(account.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toBeEnabled();
