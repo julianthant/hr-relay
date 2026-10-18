@@ -280,6 +280,25 @@ describe("a logs GET opens only its run partitions", () => {
 
 
 
+  it("serves a span-owned browser action without inventing a node identity", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const authority = w.authority.getRun(uuidOf(1));
+    assert.ok(authority);
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
+    notes.emitRunAction({ workflow: "person-lookup",
+      address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
+      action: { kind: "clicked", targetId: "ucpath.person-org.search-button", at: w.clock.now().toISOString() },
+    }, authority);
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(section.section, "logs");
+    const native = section.payload.notes[0]?.native;
+    assert.ok(native);
+    assert.equal(native.spanPath, traceOf(1));
+    assert.equal(Object.hasOwn(native, "nodeId"), false);
+    assert.deepEqual(section.payload.rows?.map(row => row.native), [native]);
+  });
+
   it("serves a completed browser action as a concise Logs line", () => {
     const w = world();
     terminalDone(w, 1);

@@ -382,9 +382,12 @@ function logRowOf(
 ): unknown {
   const logId = logIdOf(entry);
   const identity = entry.kind === "note" ? entry.note : entry.event;
+  const nodeId = entry.kind !== "note" ? entry.producer.nodeId
+    : entry.note.action?.operation?.nodeId ?? entry.note.confirmedAction?.action.nodeId
+      ?? (entry.note.action === undefined ? undefined : nodeIdOfTaskSpanPath(entry.note.spanPath));
   const native = { eventId: entry.line.file.path.replace(/^timeline:/u, ""), order: entry.line.lineNumber,
     runId: identity.runId, attempt: identity.attempt, traceId: identity.traceId, spanPath: identity.spanPath,
-    ...(entry.kind === "note" ? (entry.note.action?.operation === undefined && entry.note.confirmedAction === undefined && entry.note.action === undefined ? {} : { nodeId: entry.note.action?.operation?.nodeId ?? entry.note.confirmedAction?.action.nodeId ?? nodeIdOfTaskSpanPath(entry.note.spanPath) }) : { nodeId: entry.producer.nodeId }) };
+    ...(nodeId === undefined ? {} : { nodeId }) };
   if (entry.kind === "note") {
     const operatorAction = operatorActionOf(entry.note, authority, descriptor);
     let screenshot;
