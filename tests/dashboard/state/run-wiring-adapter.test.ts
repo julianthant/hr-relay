@@ -802,7 +802,7 @@ it("joins task screenshots by exact bundle, artifact, node, attempt and browser 
   const snapshot = { detail: detail(), logs, sections: [captures], actionEvidence: { state: "available" as const, events: [], missingPages: [] }, unavailableEvidence: [] };
   const client = { artifactUrl: (id: string) => `/authority/${id}` };
   const projected = projectRunLogs(snapshot, client);
-  assert.equal(projected.steps[0].title, "Screenshot");
+  assert.equal(projected.steps[0].title, "first");
   const entry = projected.steps[0].entries.find(entry => entry.kind === "decision");
   assert.ok(entry?.kind === "decision");
   assert.deepEqual(entry.decision.screenshots?.map(shot => [shot.src, shot.width, shot.height]), [[`/authority/${OTHER}`, 1280, 720]]);

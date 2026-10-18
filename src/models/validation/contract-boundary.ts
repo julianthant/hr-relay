@@ -86,6 +86,7 @@ function schemaOwnsPath(
   schema: z.core.$ZodType,
   parts: readonly string[],
   unionRule: "every" | "some" = "every",
+  collections = false,
 ): boolean {
   const ancestry = new WeakMap<object, Set<string>>();
   function visit(current: z.core.$ZodType, remaining: readonly string[]): boolean {
@@ -105,6 +106,7 @@ function schemaOwnsPath(
         const shape = definition.shape as { readonly [key: string]: z.core.$ZodType };
         return Object.hasOwn(shape, head) && visit(shape[head], tail);
       }
+      if (type === "array" && collections) return visit(definition.element as z.core.$ZodType, remaining);
       if (type === "union") {
         const options = definition.options as z.core.$ZodType[];
         return unionRule === "every"
@@ -137,6 +139,11 @@ export function assertSchemaOffersPath(schema: z.core.$ZodType, path: string, ow
   if (!schemaOwnsPath(schema, path.split("."), "some")) {
     throw new Error(`${owner} references unknown schema field ${path}`);
   }
+}
+
+/** Operator collection paths address every array member without selecting a candidate. */
+export function assertSchemaOffersCollectionPath(schema: z.core.$ZodType, path: string, owner: string): void {
+  if (!schemaOwnsPath(schema, path.split("."), "some", true)) throw new Error(`${owner} references unknown schema field ${path}`);
 }
 
 export function assertBooleanSelectionField(schema: z.core.$ZodType, field: string, owner: string): void {

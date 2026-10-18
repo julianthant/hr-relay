@@ -18,7 +18,7 @@ import type { TaskLogger } from "../../../workflow-kit/task.js";
 import { ConfirmedActionEventSchema, type ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
 import { registeredUiSensitivity } from "../../systems/browser-shared/semantic-ui-effect.js";
 
-function isLocalActionValueEligible(
+export function isLocalActionValueEligible(
   action: ConfirmedActionEvent["action"],
   authority: RunRecord,
   source: ConfirmedActionEvent["source"],

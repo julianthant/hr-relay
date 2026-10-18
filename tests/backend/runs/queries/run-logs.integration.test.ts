@@ -1,3 +1,4 @@
+import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import type { LogRowWire } from "../../../../src/models/dashboard/run-detail.js";
 import { createConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
@@ -292,4 +293,54 @@ it("retains a task screenshot association and native node without exposing raw a
   assert.deepEqual(row.note.screenshot, { bundleId: UUID_4, artifactId: UUID_5, sessionId });
   assert.equal(row.native?.nodeId, "searching");
   assert.equal("action" in row.note, false);
+});
+
+it("serves registered operator labels for the normal legacy Person Lookup actions without raw targets or values", () => {
+  const harness = executorHarness();
+  const { database, clock } = harness.authority;
+  const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+  assert.equal(claimed.run.envelope.operationDisplaySnapshot, undefined);
+  const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  const address = { runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt, traceId: claimed.run.envelope.traceId,
+    spanPath: taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("searching"), 1, claimed.claim.claimGeneration) };
+  for (const action of [{ kind: "typed" as const, targetId: "ucpath.person-org.eid-input", value: "10000001" },
+    { kind: "clicked" as const, targetId: "ucpath.person-org.search-button" },
+    { kind: "read" as const, targetId: "ucpath.person-org.name-display", value: "Quillan, Petra A." }]) {
+    notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action: { ...action, at: clock.now().toISOString() } }, claimed.run);
+  }
+  const deps = { timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps;
+  const section = buildRunLogsSection(deps, claimed.run.envelope.runId, undefined, claimed.run);
+  assert.ok(section.section === "logs");
+  const rows = section.payload.rows?.filter(row => row.kind === "note") ?? [];
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map(row => Reflect.get(row.note, "operatorAction")), [
+    { kind: "fill", label: "Person Org EID input", system: "ucpath" },
+    { kind: "click", label: "Person Org Search button", system: "ucpath" },
+    { kind: "read", label: "Person Org displayed name", system: "ucpath" },
+  ]);
+  assert.ok(rows.every(row => row.native?.nodeId === "searching"));
+  assert.doesNotMatch(JSON.stringify(rows.map(row => Reflect.get(row.note, "operatorAction"))), /targetId|value|10000001|Quillan/u);
+});
+
+it("projects retained classified Fill and Read values only through their frozen declared field bindings", async () => {
+  const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor, sessions: actionBindingSessions({ lifecycle: true }) });
+  const { database, clock } = harness.authority;
+  const queued = actionBindingQueuedRun(clock.now().toISOString(), { protectedValue: false });
+  const claimed = enqueueAndClaim(database, RunRecordSchema.parse({ ...queued, input: { ...queued.input,
+    raw: { emplId: "10000001" }, parsed: { ...queued.input.parsed, value: { emplId: "10000001" } } } }), clock.now().toISOString(), ACTION_BINDING_WORKFLOW_ID);
+  const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  assert.equal((await executeClaimedRun({ ...harness.deps, taskNotes: notes }, { ...claimed, signal: SIGNAL })).state, "done");
+  const run = database.authority.runs.get(claimed.run.envelope.runId); assert.ok(run);
+  const origins = dataOriginViewsOf({ descriptor: actionBindingCompiled.descriptor, stores: taskStoreRegistry.stores });
+  const deps = { timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) },
+    descriptors: { resolve: () => ({ dataOrigins: origins }) } } as unknown as RunDetailQueryDeps;
+  const section = buildRunLogsSection(deps, run.envelope.runId, undefined, run); assert.ok(section.section === "logs");
+  const actions = section.payload.notes.flatMap(note => note.operatorAction?.state === "completed" ? [note.operatorAction] : []);
+  assert.deepEqual(actions.map(action => [action.kind, action.label, action.value]), [
+    ["fill", "Employee ID", "10000001"], ["click", "Person Org Search button", undefined], ["read", "Selection", "resolved"],
+  ]);
+  const undeclared = buildRunLogsSection({ ...deps, descriptors: { resolve: () => ({ dataOrigins: origins.map(origin => ({ ...origin, operatorFields: [] })) }) } }, run.envelope.runId, undefined, run);
+  assert.ok(undeclared.section === "logs");
+  assert.ok(undeclared.payload.notes.every(note => note.operatorAction?.value === undefined));
+  assert.equal(section.payload.operationStructure?.state, "observed");
 });

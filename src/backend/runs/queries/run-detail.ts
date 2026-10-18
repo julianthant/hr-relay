@@ -179,6 +179,7 @@ function buildTimelineSteps(
     return TimelineStepWireSchema.parse({
       key: category.key,
       label: category.label,
+      ...(category.system === undefined ? {} : { system: category.system }),
       state: foldCategoryState(members.map((member) => member.state), runTerminal),
       ...(measured.length > 0 ? { durationSec: Math.round(totalMs / 1000) } : {}),
       ...(maxExecutions >= 2 ? { executions: maxExecutions } : {}),

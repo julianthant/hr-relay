@@ -56,6 +56,7 @@ export interface RunDetailDataOriginView {
     override: "forbidden" | "audited";
   }>[];
   /** Commit nodes this node's facts can statically reach (ref workflow-model ). */
+  readonly operatorFields?: readonly Readonly<{ label: string; kind: "input" | "output"; fieldPath: string }>[];
   readonly feeds: readonly Readonly<{ nodeId: string; label: string }>[];
 }
 
@@ -68,6 +69,7 @@ export interface RunDetailDescriptorView {
   readonly titleProjection?: AnyWorkflowDescriptor["titleProjection"];
 
   readonly timeline?: readonly Readonly<{
+    system?: string;
     key?: string;
     label: string;
     nodes: readonly Readonly<{ id: string; label: string }>[];

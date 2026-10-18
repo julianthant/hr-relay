@@ -468,3 +468,6 @@ The workflow has no transaction, gate, parallel, or delegation node. Its dry-run
 - The wiring base must consume served descriptor projections through existing dashboard components, retaining explicit loading, empty, failure, refusal, and uncertain states.
 - Each workflow needs an operator-approved walkthrough, served wiring across its required surfaces, a dry run where supported, and operator sign-off before its static switch changes.
 - A workflow that first needs child-run execution must supply the executor's admitted `ChildRunExecutor` and verify its durable fan-out and recovery behavior.
+
+
+Workflow timeline groups may declare a default `system` and ordered `operatorFields`. Each field owns its operator label and exact node/input-or-output path sources. The compiler checks that every source belongs to the group and resolves through its task contract; collection paths address all members, without selecting a candidate. Logs uses these declarations to project classified observations and eligible frozen action values. Unlisted paths remain in Run data and diagnostics.

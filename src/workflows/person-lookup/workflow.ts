@@ -130,10 +130,28 @@ export const personLookupWorkflow = defineWorkflow({
     const activeStatus = task({ id: "active-status", contract: ReadActiveStatus, replay: "always-rerun", when: { kind: "equals", of: { from: "input", path: "mode" }, value: "search" } }, [initial, identity, recovery, selectedRecord, crmResults], ({ input, outputs }) => ({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], verifiedCrm: outputs["crm-selected-record"], recovered: outputs["crm-only-recovery"] }));
     const crmDates = task({ id: "crm-dates", contract: CrmReadOnboardingDates, replay: "checkpoint", when: { kind: "is-present", of: { from: "node", nodeId: "active-status", path: "datesEid" } } }, [activeStatus], ({ outputs }) => ({ eid: requireFact(outputs["active-status"]?.details.eid, "active-status", "details.eid"), ...(outputs["active-status"]?.details.name == null ? {} : { name: outputs["active-status"].details.name }) }));
     return { steps: [
-      [{ key: "searching", label: "Search for person" }, [searching, matching, initial]],
-      [{ key: "cross-verify", label: "Cross-check identity", selection: { inputField: "crmCheck", selectedWhen: true } }, [crossVerify, identity, selectedRecord, crmResults]],
-      [{ key: "active-status", label: "Read employment status" }, [recovery, activeStatus]],
-      [{ key: "crm-dates", label: "Read CRM dates", selection: { inputField: "includeCrmDates", selectedWhen: true } }, [crmDates]],
+      [{ key: "searching", label: "Search for person", system: "ucpath", operatorFields: [
+        ...[["emplId", "Employee ID"], ["name", "Name"], ["department", "Department"], ["jobTitle", "Job title"], ["hrStatus", "HR status"]].map(([path, label]) => ({ label, sources: [
+          ...(["emplId", "name"].includes(path) ? [{ nodeId: "searching", kind: "input" as const, fieldPath: path }] : []),
+          ...["results", "selection.selected"].map(prefix => ({ nodeId: "searching", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
+          { nodeId: "search-identity", kind: "output" as const, fieldPath: `selected.${path}` },
+          ...(["emplId", "name"].includes(path) ? [{ nodeId: "matching", kind: "output" as const, fieldPath: `confirmed.${path}` }] : []),
+        ] })),
+      ] }, [searching, matching, initial]],
+      [{ key: "cross-verify", label: "Cross-check identity", system: "crm", selection: { inputField: "crmCheck", selectedWhen: true }, operatorFields: [
+        ...[["name", "Name"], ["department", "Department"], ["emplId", "Employee ID"], ["firstDayOfService", "Start date"]].map(([path, label]) => ({ label, sources: [
+          ...["cross-verify", "crm-selected-record", "crm-results"].map(nodeId => ({ nodeId, kind: "output" as const, fieldPath: `records.${path}` })),
+          ...["crmIdentity", "crmRecord", "unselectedCrmRecords"].map(prefix => ({ nodeId: "crm-identity", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
+        ] })),
+      ] }, [crossVerify, identity, selectedRecord, crmResults]],
+      [{ key: "active-status", label: "Read employment status", system: "local", operatorFields: [
+        ...[["state", "Employment status"], ["hdh", "HDH department"], ["details.department", "Department"], ["details.endDate", "End date"], ["details.terminationReason", "Termination reason"]].map(([fieldPath, label]) => ({ label,
+          sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
+      ] }, [recovery, activeStatus]],
+      [{ key: "crm-dates", label: "Read CRM dates", system: "crm", selection: { inputField: "includeCrmDates", selectedWhen: true }, operatorFields: [
+        ...[["employmentDate", "Employment date"], ["oathDate", "Oath date"]].map(([fieldPath, label]) => ({ label,
+          sources: [{ nodeId: "crm-dates", kind: "output" as const, fieldPath }] })),
+      ] }, [crmDates]],
     ], result: result(PersonLookupResultSchema, [initial, identity, matching, selectedRecord, crmResults, activeStatus, crmDates], ({ input, outputs }) => ({
       activeStatus: outputs["active-status"] ?? derivePersonLookupOutcome({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], match: outputs.matching, verifiedCrm: outputs["crm-selected-record"] }),
       crmDates: outputs["crm-dates"] === undefined ? { state: "not-requested" as const } : { state: "included" as const, dates: outputs["crm-dates"] },

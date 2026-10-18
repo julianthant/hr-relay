@@ -144,7 +144,7 @@ describe("a logs GET opens only its run partitions", () => {
     });
   }
 
-  it("serves observations in Run data while Logs keeps the durable fence", () => {
+  it("serves declared operator observations in Logs while Run data retains the complete evidence", () => {
     const w = world();
     terminalDone(w, 1);
     const first = instantOffsetOf(0, 10);
@@ -153,11 +153,11 @@ describe("a logs GET opens only its run partitions", () => {
     observedEvent(w, { at: first });
     fencedEvent(w, fence);
     observedEvent(w, { at: last });
-    const deps = observedDepsOf(w, [SEARCH_ORIGIN]);
+    const deps = observedDepsOf(w, [{ ...SEARCH_ORIGIN, operatorFields: [{ label: "Selection", kind: "output", fieldPath: "selection.status" }] }]);
     const section = buildRunSection(deps, uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.ok(section.payload.rows !== undefined);
-    assert.deepEqual(section.payload.rows.map((row) => row.kind), ["transaction-fenced"]);
+    assert.deepEqual(section.payload.rows.map((row) => row.kind), ["observed", "transaction-fenced", "observed"]);
     const data = buildRunSection(deps, uuidOf(1), "context-data");
     assert.equal(data.section, "context-data");
     assert.equal(data.payload.observations?.length, 2);
@@ -169,7 +169,7 @@ describe("a logs GET opens only its run partitions", () => {
     assert.deepEqual(observed.producer, SEARCH_ORIGIN);
     assert.equal(observed.points[0]?.direction, "read");
     assert.equal(observed.points[0]?.values[0]?.transform, "allow");
-    const fenced = section.payload.rows[0];
+    const fenced = section.payload.rows[1];
     assert.ok(fenced !== undefined && fenced.kind === "transaction-fenced");
     assert.equal(fenced.at, fence);
     assert.deepEqual(fenced.producer, SEARCH_ORIGIN);

@@ -41,6 +41,7 @@ export function observedDepsOf(
       step: string;
       taskId: string;
       system?: string;
+      operatorFields?: import("../../../../src/backend/runs/queries/run-detail-types.js").RunDetailDataOriginView["operatorFields"];
     }>[],
   ): RunDetailQueryDeps {
     return { timeline: w.timeline, runReader: w.runReader,

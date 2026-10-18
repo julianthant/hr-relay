@@ -1,3 +1,5 @@
+import { isLocalActionValueEligible } from "../../storage/events/note-timeline-writer.js";
+import { buildUiTaskLinks } from "../../systems/ui-task-links.js";
 import { LogIdentityRefusedError } from "../commands/refusals.js";
 import { readTimelineRecords, timelineNoteLocation } from "../../storage/events/timeline-reader.js";
 import { RedactedFieldSchema } from "../../../rules/redaction/redaction.js";
@@ -24,11 +26,13 @@ import {
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { DeclaredActionOccurrenceSchema } from "../../../rules/workflow/task-provenance.js";
 import { DeclaredActionIdentitySchema } from "../../../models/workflow/operation-action-identity.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
+import type { RunDetailQueryDeps, RunDetailDescriptorView, RunDetailDataOriginView } from "./run-detail-types.js";
 
 const LOGS_PAGE_SIZE = 200;
+const UI_LABELS = new Map(buildUiTaskLinks().map(entry => [entry.id, entry]));
 
 const LEVEL_MAP = { error: "error", warn: "warning", waiting: "warning", step: "info", success: "info", debug: "info" } as const;
 
@@ -46,7 +50,7 @@ type RunAtRestNote = Readonly<{
   confirmedAction?: z.infer<typeof NoteAtRestSchema>["confirmedAction"];
 }>;
 
-type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string }>;
+type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string; operatorFields?: RunDetailDataOriginView["operatorFields"] }>;
 
 export type RunLogScanEntry =
   | Readonly<{ kind: "note"; line: TimelineLine; note: RunAtRestNote }>
@@ -199,6 +203,7 @@ function producerOf(
     nodeId: origin.nodeId,
     step: origin.step,
     taskId: origin.taskId,
+    ...(origin.operatorFields === undefined ? {} : { operatorFields: origin.operatorFields }),
     ...(origin.system === undefined ? {} : { system: origin.system }),
   };
 }
@@ -248,7 +253,14 @@ function logLinesForRun(
     }
     const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
     for (const { line, event } of deps.projection.runLogSnapshot(runId).entries) {
-      if (event.t !== "transaction.fenced") continue;
+      if (event.t === "data.observed") {
+        assertScopedSpanWorkflow(event, line);
+        assertRunLogIdentity("span", event, line, runId, row, authority);
+        const producer = producerOf(descriptor, event, line);
+        const entry = { kind: "observed" as const, line, event, producer };
+        if (operatorFieldsOf(entry).length > 0) matches.push(entry);
+        continue;
+      }
       assertScopedSpanWorkflow(event, line);
       assertRunLogIdentity("span", event, line, runId, row, authority);
       matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line) });
@@ -258,7 +270,7 @@ function logLinesForRun(
   return scan();
 }
 
-/** The durable observations are Run data. Logs reads only action notes and fence beats. */
+/** Run data retains every classified observation; Logs selects declared operator fields. */
 export function runDataObservationsForRun(
   deps: RunDetailQueryDeps,
   authority: RunRecord,
@@ -291,16 +303,83 @@ function logIdOf(entry: RunLogScanEntry): string {
   return deterministicUuid(`log:${entry.line.file.path}:${String(entry.line.lineNumber)}`);
 }
 
+function operatorFieldsOf(entry: Extract<RunLogScanEntry, { kind: "observed" }>) {
+  const atPath = (value: unknown, path: readonly string[]): readonly unknown[] => {
+    if (Array.isArray(value)) return value.flatMap(member => atPath(member, path));
+    if (path.length === 0) return [value];
+    const [head, ...tail] = path;
+    return head !== undefined && value !== null && typeof value === "object" && Object.hasOwn(value, head)
+      ? atPath(Reflect.get(value, head), tail) : [];
+  };
+  return entry.event.points.flatMap(point => point.values.flatMap(value =>
+    (entry.producer.operatorFields ?? []).filter(field => field.kind === "output" &&
+      (field.fieldPath === value.key || field.fieldPath.startsWith(`${value.key}.`))).flatMap(field => {
+      const retained = value.state === "allowed" ? value.value : undefined;
+      const values = value.state === "allowed" ? atPath(retained, field.fieldPath === value.key ? [] : field.fieldPath.slice(value.key.length + 1).split("."))
+        : value.state === "redacted" && field.fieldPath === value.key ? ["Redacted"] : [];
+      return values.flatMap(observed => !["string", "number", "boolean"].includes(typeof observed) || String(observed).trim().length === 0
+        ? [] : [{ direction: point.direction, label: field.label, value: String(observed),
+          point: { direction: point.direction, field: field.fieldPath, values: [value.state === "allowed"
+            ? { ...value, key: field.fieldPath, value: observed, rawValue: undefined }
+            : { ...value, key: field.fieldPath, rawValue: undefined }] } }]);
+    })));
+}
+
+function operatorActionOf(note: RunAtRestNote, authority: RunRecord | undefined, descriptor: RunDetailDescriptorView | undefined) {
+  const action = note.action;
+  if (action === undefined) return undefined;
+  const registered = UI_LABELS.get(action.targetId);
+  const occurrence = action.operation;
+  const definition = authority?.envelope.operationDisplaySnapshot;
+  const invocation = occurrence === undefined ? undefined : definition?.invocations.find(candidate =>
+    candidate.id === occurrence.invocationId && candidate.entryId === occurrence.nodeId && candidate.taskId === occurrence.taskId
+    && canonicalJsonStringify(candidate.occurrencePath) === canonicalJsonStringify(occurrence.occurrencePath));
+  type Action = NonNullable<typeof invocation>["operation"]["actions"][number];
+  const find = (actions: readonly Action[]): Action | undefined => {
+    for (const candidate of actions) {
+      if (candidate.id === occurrence?.logicalActionId) return candidate;
+      const nested = find(candidate.children ?? []);
+      if (nested !== undefined) return nested;
+    }
+    return undefined;
+  };
+  const declared = invocation === undefined ? undefined : find(invocation.operation.actions);
+  const kind = action.kind === "screenshot" ? "screenshot" as const
+    : ["typed", "selected", "set", "cleared"].includes(action.kind) ? "fill" as const
+      : ["read", "checked", "verified"].includes(action.kind) ? "read" as const
+        : ["clicked", "pressed", "opened"].includes(action.kind) ? "click" as const : "action" as const;
+  const slot = invocation?.operation.values.find(slot => slot.id === declared?.valueSlot);
+  const field = occurrence === undefined || slot === undefined ? undefined : descriptor?.dataOrigins?.find(origin =>
+    origin.nodeId === occurrence.nodeId && origin.taskId === occurrence.taskId)?.operatorFields?.find(field =>
+      field.fieldPath === slot.source.path && (field.kind === "input" ? slot.source.kind === "contract-input" : slot.source.kind === "contract-output"));
+  const source = invocation?.operation.session.kind === "browser" && invocation.operation.session.system !== undefined
+    ? { kind: "browser" as const, system: invocation.operation.session.system }
+    : { kind: "headless" as const, system: "workflow" as const };
+  const retained = field !== undefined && occurrence !== undefined && authority !== undefined && slot?.presentation === "local-operator"
+    && isLocalActionValueEligible(DeclaredActionOccurrenceSchema.parse(occurrence), authority, source) && occurrence.value?.consumed.state === "observed"
+    ? occurrence.value.consumed.value : undefined;
+  return { kind, label: kind === "screenshot" ? "Screenshot" : field?.label ?? declared?.label ?? registered?.label ?? "Action label unavailable",
+    ...(["string", "number", "boolean"].includes(typeof retained) ? { value: String(retained) } : {}),
+    ...(registered === undefined ? {} : { system: registered.system }),
+    ...(occurrence?.state === undefined ? {} : { state: occurrence.state }),
+    ...(occurrence?.reason === undefined ? {} : { reason: occurrence.reason }),
+  };
+}
+
 function logRowOf(
   entry: RunLogScanEntry,
   sequence: number,
+  authority?: RunRecord,
+  operatorOnly = false,
+  descriptor?: RunDetailDescriptorView,
 ): unknown {
   const logId = logIdOf(entry);
   const identity = entry.kind === "note" ? entry.note : entry.event;
   const native = { eventId: entry.line.file.path.replace(/^timeline:/u, ""), order: entry.line.lineNumber,
     runId: identity.runId, attempt: identity.attempt, traceId: identity.traceId, spanPath: identity.spanPath,
-    ...(entry.kind === "note" ? (entry.note.action?.operation === undefined && entry.note.confirmedAction === undefined && entry.note.action?.kind !== "screenshot" ? {} : { nodeId: entry.note.action?.operation?.nodeId ?? entry.note.confirmedAction?.action.nodeId ?? nodeIdOfTaskSpanPath(entry.note.spanPath) }) : { nodeId: entry.producer.nodeId }) };
+    ...(entry.kind === "note" ? (entry.note.action?.operation === undefined && entry.note.confirmedAction === undefined && entry.note.action === undefined ? {} : { nodeId: entry.note.action?.operation?.nodeId ?? entry.note.confirmedAction?.action.nodeId ?? nodeIdOfTaskSpanPath(entry.note.spanPath) }) : { nodeId: entry.producer.nodeId }) };
   if (entry.kind === "note") {
+    const operatorAction = operatorActionOf(entry.note, authority, descriptor);
     let screenshot;
     if (entry.note.action?.kind === "screenshot" && entry.note.action.targetId.endsWith(".task-capture")) {
       const association = z.templateLiteral([z.uuid(), ":", z.uuid()]).safeParse(entry.note.action.value);
@@ -322,12 +401,14 @@ function logRowOf(
         sequence,
         at: entry.note.ts,
         level: LEVEL_MAP[entry.note.level],
-        message: entry.note.message,
+        message: operatorAction?.label ?? entry.note.message,
+        ...(operatorAction === undefined ? {} : { operatorAction }),
         ...(screenshot === undefined ? {} : { screenshot }),
         ...(entry.note.fields === undefined ? {} : { fields: entry.note.fields }),
       },
     };
   }
+  const { operatorFields: _operatorFields, ...producer } = entry.producer;
   if (entry.kind === "observed") {
     return {
       kind: "observed",
@@ -338,8 +419,9 @@ function logRowOf(
       attempt: entry.event.attempt,
       traceId: entry.event.traceId,
       spanPath: entry.event.spanPath,
-      producer: entry.producer,
-      points: entry.event.points,
+      producer,
+      points: operatorOnly ? operatorFieldsOf(entry).map(field => field.point) : entry.event.points,
+      displayFields: operatorFieldsOf(entry).map(({ point: _point, ...field }) => field),
     };
   }
   return {
@@ -351,7 +433,7 @@ function logRowOf(
     attempt: entry.event.attempt,
     traceId: entry.event.traceId,
     spanPath: entry.event.spanPath,
-    producer: entry.producer,
+    producer,
   };
 }
 
@@ -473,6 +555,9 @@ export function buildRunLogsSection(
   const rows = page.map((entry, index) => LogRowWireSchema.parse(logRowOf(
     entry,
     offset + index,
+    authority,
+    true,
+    deps.descriptors.resolve(authority.envelope.workflow),
   )));
   return RunDetailSectionResponseSchema.parse({
     section,

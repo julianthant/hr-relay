@@ -128,10 +128,12 @@ when a later producer introduces paging.
 
 ## Logs and timeline
 
+Served Logs combines action notes, declared operator observations, fences and decisions in native ingestion order. Contiguous actions nest under their registered timeline group and system; helper completions do not create their own headings. Unknown field paths remain in Run data instead of becoming operator labels. Browser action labels come from exact frozen declarations or the UI registry. Values appear only through declared fields and existing frozen classification; legacy unbound gesture values remain explicitly unavailable. Captures join exact bundle, artifact, node, attempt and physical session metadata while their labels stay operator text.
+
 Selecting a run opens Logs beside Queue. No selection shows No run open; a run missing from the
-loaded day shows Run unavailable. Current workflow previews mount `WorkflowMockLog`. The
-day-backed branch mounts `LogSample`, which builds local selected-run presentation. The retained
-`useRunDetail` and section queries are not the product's current Logs producer.
+loaded day shows Run unavailable. Explicit workflow previews mount `WorkflowMockLog`. The
+served branch mounts `LogSample`, which reads exact run detail, immutable log pages and capture
+sections through the dashboard client. Failed served reads retain their unavailable or refused state.
 
 `LogPanel` receives a compact `RunHeaderContext`, ordered `LogStep[]`, timeline stages, status,
 and decision callbacks. The header repeats the selected row's status treatment and supplies the

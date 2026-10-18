@@ -9,7 +9,7 @@ import type {
   AnyReadTaskContract,
 } from "../models/task/task-contract.js";
 import type { IntakeProjection } from "../models/intake/projection.js";
-import { DelegationEdgeIdSchema, WorkflowIdSchema } from "../rules/identity/ids.js";
+import { BrowserSystemIdSchema, DelegationEdgeIdSchema, WorkflowIdSchema } from "../rules/identity/ids.js";
 import type { ItemId } from "../rules/identity/ids.js";
 import type { NodeConditionSpec } from "../models/workflow/node-condition.js";
 import type { CompletionProgram } from "../models/workflow/completion.js";
@@ -28,6 +28,7 @@ import type { WorkflowModuleRole } from "./validation/module-role.js";
 import { WorkflowModuleRoleSchema } from "./validation/module-role.js";
 import {
   TimelineCategoryKeySchema,
+  type WorkflowOperatorField,
   WorkflowStepSchema,
 } from "../models/workflow/presentation.js";
 import type { StepOmissionDeclaration } from "../models/workflow/step-omission.js";
@@ -54,6 +55,8 @@ export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "tra
 const GROUP_OWNER = Symbol("workflow-group-owner");
 
 export interface WorkflowTimelineGroup {
+  readonly operatorFields?: readonly WorkflowOperatorField[];
+  readonly system?: z.input<typeof BrowserSystemIdSchema> | "local";
   readonly key: string;
   readonly label: string;
   readonly omission?: StepOmissionDeclaration;
@@ -1130,13 +1133,15 @@ export function compileWorkflow<
   const timeline = steps.map(([group, entries]) => ({
     key: group.key,
     label: group.label,
+    ...(group.system === undefined ? {} : { system: group.system }),
     nodes: entries.flatMap(entryNodeIds),
+    ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
     ...(group.selection === undefined ? {} : { selection: group.selection }),
     ...(group.omission === undefined ? {} : { omission: group.omission }),
   }));
   const usesDefaultTimeline = steps.every(([group, entries]) => {
     const [entry] = entries as readonly RuntimeEntry[];
-    if (entry === undefined || entries.length !== 1 || group.omission !== undefined || group.selection !== undefined) return false;
+    if (entry === undefined || entries.length !== 1 || group.omission !== undefined || group.selection !== undefined || group.operatorFields !== undefined || group.system !== undefined) return false;
     const label = defaultEntryLabel(entry);
     return label !== undefined && group.key === entry.id && group.label === label;
   });

@@ -13,7 +13,7 @@ import { DeclaredActionIdentitySchema } from "../../models/workflow/operation-ac
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
 import type { ConfirmedActionBindingWire, NativeRunEventWire, IdentityGateDetailWire, RunDetailSectionResponse, RunDetailWire } from "../../models/dashboard/run-detail.js";
-import { appendLogPage, logPillsOf, logRowsOf, type NotePage } from "../surfaces/run-detail/logs-model.js";
+import { appendLogPage, logRowsOf, type NotePage } from "../surfaces/run-detail/logs-model.js";
 import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/logs/log-feed-model.js";
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
@@ -196,10 +196,24 @@ const TIMELINE_STATE: Record<RunDetailWire["timeline"]["events"][number]["state"
   pending: "pending", active: "active", done: "completed", failed: "failed", blocked: "waiting", cancelled: "cancelled", skipped: "skipped",
 };
 
+function operatorActionReason(reason: string): string {
+  switch (reason) {
+    case "condition-false": return "Not needed for this run";
+    case "branch-not-selected": return "Another path was selected";
+    case "operator-asserted": return "Supplied by the operator";
+    case "step-omitted": return "Step omitted";
+    case "dry-run": return "Dry run";
+    case "cancelled": return "Cancelled";
+    case "callback-failed": return "Action failed";
+    default: return "Details retained in diagnostics";
+  }
+}
+
 export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardClient, "artifactUrl">): Readonly<{ steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] }> {
   validateRunLogSnapshot(snapshot);
   const { detail, logs, sections } = snapshot;
   const order = new Map<string, number>();
+  const groupable = new Set<string>();
   const node = new Map<string, string | undefined>();
   const bindings = snapshot.confirmedActionBindings ?? [];
   const confirmationNotes = new Set(bindings.map(binding => binding.native.eventId));
@@ -223,9 +237,9 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         });
       });
       if (matches.length !== 1) throw new RunLogIdentityError("RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH");
-      const { artifact, origin, capturedAt } = matches[0];
+      const { artifact, capturedAt } = matches[0];
       return [{ src: client.artifactUrl(artifact.artifactId), alt: "Browser capture", time: fmtActionClock(capturedAt),
-        width: artifact.width, height: artifact.height, label: origin.bundleId, kind: "browser" }];
+        width: artifact.width, height: artifact.height, kind: "browser" }];
     }
     const observation = logs.operationStructure?.state === "observed" ? logs.operationStructure.observations.find(row => row.logId === logId) : undefined;
     if (captures?.section !== "captures" || observation === undefined) return [];
@@ -237,40 +251,58 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       return capture.origins.flatMap(origin =>
       origin.operation !== undefined && origin.capturedAt !== undefined && canonicalJsonStringify(origin.operation) === identity
         ? [{ src: client.artifactUrl(artifact.artifactId), alt: `${origin.originKind} capture`, time: fmtActionClock(origin.capturedAt),
-          width: artifact.width, height: artifact.height, label: origin.bundleId }] : []);
+          width: artifact.width, height: artifact.height }] : []);
     });
   };
   const steps = logRowsOf(logs, "projection").filter(row => !confirmationNotes.has(requireNative(row.native).eventId) || bindings.some(binding => binding.logId === row.logId)).map((row): LogStep => {
+    if (row.kind !== "transaction-fenced") groupable.add(row.logId);
     order.set(row.logId, requireNative(row.native).order);
     node.set(row.logId, requireNative(row.native).nodeId);
     const at = row.kind === "note" ? row.note.at : row.at;
     const time = fmtActionClock(at);
     const screenshots = screenshotsOf(row);
-    let entry: LogEntry;
-    if (row.kind === "observed") entry = { kind: "fields", id: row.logId, fields: logPillsOf(row).map((pill, index) => ({
-      id: `${row.logId}:${index}`, time, kind: pill.direction === "read" ? "read" : "fill", label: pill.label, value: pill.value,
-    })), screenshots };
+    let entry: LogEntry | undefined;
+    if (row.kind === "observed") entry = row.displayFields === undefined || row.displayFields.length === 0
+      ? { kind: "note", id: row.logId, time, message: "Observed values have no declared operator labels; retained in run data." }
+      : { kind: "fields", id: row.logId, fields: row.displayFields.map((field, index) => ({
+        id: `${row.logId}:${index}`, time, kind: field.direction === "read" ? "read" : "fill", label: field.label, value: field.value,
+      })), screenshots };
     else if (row.kind === "transaction-fenced") entry = { kind: "note", id: row.logId, time, message: "Write fenced; submission is not confirmed." };
-    else entry = { kind: "note", id: row.logId, time, message: row.note.message, ...(row.note.level === "error" ? { tone: "danger" } : {}) };
-    const entries: LogEntry[] = [entry];
+    else if (row.note.screenshot !== undefined) entry = undefined;
+    else if (row.note.operatorAction !== undefined) {
+      const action = row.note.operatorAction;
+      if (action.state === "failed" || action.state === "not-run" || action.state === "started") {
+        const state = action.state === "failed" ? "Failed" : action.state === "not-run" ? "Skipped" : "Started";
+        entry = { kind: "note", id: row.logId, time, message: `${state}: ${action.label}${action.reason === undefined ? "" : ` · ${operatorActionReason(action.reason)}`}`,
+          ...(action.state === "failed" ? { tone: "danger" } : {}) };
+      } else if (action.kind === "click") entry = { kind: "click", id: row.logId, time, label: action.label };
+      else if (action.kind === "fill" || action.kind === "read") entry = action.value === undefined
+        ? { kind: "note", id: row.logId, time, message: `${action.kind === "fill" ? "Fill" : "Read"}: ${action.label}. Value not retained.` }
+        : { kind: "fields", id: row.logId, fields: [{ id: row.logId, time, kind: action.kind, label: action.label, value: action.value }] };
+      else entry = { kind: "note", id: row.logId, time, message: action.kind === "screenshot"
+        ? "Screenshot unavailable: no verified capture association." : action.label };
+    } else entry = { kind: "note", id: row.logId, time, message: row.note.message, ...(row.note.level === "error" ? { tone: "danger" } : {}) };
+    const entries: LogEntry[] = entry === undefined ? [] : [entry];
     for (const binding of bindings.filter(binding => binding.logId === row.logId).toSorted((left, right) => left.native.order - right.native.order)) {
       const event = confirmedActions.find(event => event.eventId === binding.eventId);
       if (event === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_BINDING_MISSING");
-      const message = event.kind === "fact" ? `${event.meaning} confirmed` : `${event.state}${event.reason === undefined ? "" : ` · ${event.reason}`}`;
+      const message = event.kind === "fact" ? `${event.meaning} confirmed`
+        : `${{ started: "Action started", completed: "Action completed", failed: "Action failed", "not-run": "Action skipped" }[event.state]}${event.reason === undefined ? "" : ` · ${operatorActionReason(event.reason)}`}`;
       entries.push({ kind: "note", id: event.eventId,
         time: fmtActionClock(event.kind === "fact" ? event.confirmedAt : event.occurredAt), message,
         ...(event.kind === "trace" && event.state === "failed" ? { tone: "danger" } : {}) });
     }
     if (row.kind !== "observed" && screenshots.length > 0) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
-      decision: { title: "Capture", state: "recorded", screenshots } });
+      decision: { title: "Screenshot", state: "recorded", screenshots } });
     return { id: row.logId, time, title: row.kind === "note" ? row.note.screenshot === undefined ? "Run note" : "Screenshot" : row.producer.step,
-      ...(row.kind !== "note" && row.producer.system !== undefined ? { system: row.producer.system } : {}), entries };
+      ...(row.kind !== "note" && row.producer.system !== undefined ? { system: row.producer.system }
+        : row.kind === "note" && row.note.operatorAction?.system !== undefined ? { system: row.note.operatorAction.system } : {}), entries };
   });
   for (const section of sections) {
     if (section.section === "parked-write") {
       const write = section.payload;
       order.set(write.writeIntentId, requireNative(write.native).order); node.set(write.writeIntentId, requireNative(write.native).nodeId);
-      steps.push({ id: write.writeIntentId, time: fmtActionClock(write.parkedAt), title: write.taskId, system: write.system,
+      steps.push({ id: write.writeIntentId, time: fmtActionClock(write.parkedAt), title: "Write parked", system: write.system,
         entries: [{ kind: "decision", id: write.writeIntentId, time: fmtActionClock(write.parkedAt), decision: { title: "Write parked", state: "parked",
           message: write.parkedMessage, footer: "Resolution unavailable: this panel cannot collect the required write proof." } }] });
     } else if (section.section === "failure" && section.payload.state === "available") {
@@ -300,9 +332,11 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   for (const event of detail.timeline.events) {
     if (decisionEvents.has(requireNative(event.native).eventId)) continue;
     const time = fmtActionClock(event.at);
+    groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
-    steps.push({ id: event.noteId, time, title: event.label, entries: [{ kind: "note", id: event.noteId, time,
-      message: `${event.state}${event.notRun.state === "present" ? ` · ${event.notRun.reason}` : ""}` }] });
+    const state = { pending: "Pending", active: "In progress", done: "Completed", failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
+    steps.push({ id: event.noteId, time, title: event.label, entries: event.state === "done" ? [] : [{ kind: "note", id: event.noteId, time,
+      message: `${state}${event.notRun.state === "present" ? ` · ${operatorActionReason(event.notRun.reason)}` : ""}` }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
   const orderOf = (id: string): number => {
@@ -313,9 +347,26 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   steps.sort((left, right) => orderOf(left.id) - orderOf(right.id));
   const categories = detail.timeline.steps;
   if (categories === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
+  const categoryOf = new Map<string | undefined, (typeof categories)[number]>(categories.flatMap(category => category.members.map(member => [member.nodeId, category] as const)));
+  const systemOf = new Map(steps.flatMap(step => step.system === undefined || node.get(step.id) === undefined ? [] : [[node.get(step.id), step.system] as const]));
+  const grouped: LogStep[] = [];
+  let previousKey: string | undefined;
+  for (const step of steps) {
+    const nodeId = node.get(step.id);
+    const category = categoryOf.get(nodeId);
+    const system = step.system ?? category?.system ?? systemOf.get(nodeId);
+    const key = JSON.stringify([category?.key ?? step.id, system]);
+    const previous = grouped.at(-1);
+    if (previous !== undefined && key === previousKey && groupable.has(previous.id) && groupable.has(step.id)) {
+      grouped[grouped.length - 1] = { ...previous, entries: [...previous.entries, ...step.entries] };
+    } else grouped.push({ ...step, title: category?.label ?? step.title, ...(system === undefined ? {} : { system }) });
+    previousKey = key;
+  }
+  for (const [index, step] of grouped.entries()) if (step.entries.length === 0) grouped[index] = { ...step,
+    entries: [{ kind: "note", id: step.id, time: step.time, message: `${step.title} completed.` }] };
   const timeline: LogTimelineStage[] = categories.map(category => {
     const members = new Set<string | undefined>(category.members.map(member => member.nodeId));
-    const first = steps.find(step => members.has(node.get(step.id)));
+    const first = grouped.find(step => members.has(node.get(step.id)));
     if (category.key === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
     return { id: category.key, label: category.label, state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
       ...(first === undefined ? {} : { stepId: first.id, time: first.time }),
@@ -326,7 +377,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         state: member.state === "replayed" ? "completed" : TIMELINE_STATE[member.state],
         ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
   });
-  return { steps, timeline };
+  return { steps: grouped, timeline };
 }
 
 export function gateLogActions(gate: IdentityGateDetailWire): readonly LogDecisionAction[] {
