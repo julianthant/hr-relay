@@ -71,8 +71,8 @@ describe("redaction surface scan — the declaration audit", () => {
 
   it("pins history, operator observations and definition text origins and rejects their omission", () => {
     const reviewed = [
-      ["wire/dashboard-day", "attemptHistory[].surface.title", "captured-hr-value"],
-      ["wire/stream-envelope", "payload.attemptHistory[].surface.facts.value[].value", "captured-hr-value"],
+      ["wire/dashboard-day", "attemptHistory[].endedAt.reason", "repository-authored"],
+      ["wire/stream-envelope", "payload.attemptHistory[].endedAt.reason", "repository-authored"],
       ["wire/run-logs-stream", "envelope.payload.rows[].displayFields[].value", "captured-hr-value"],
       ["wire/run-detail-section", "payload.notes[].operatorAction.value", "captured-hr-value"],
       ["wire/run-detail-section", "payload.rows[].displayFields[].label", "repository-authored"],

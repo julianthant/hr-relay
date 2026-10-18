@@ -33,7 +33,6 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
   }
   if (surface.liveMessage.state === "absent") absent("Live message", surface.liveMessage.reason);
   if (surface.runNumber.state === "absent") absent("Run number", surface.runNumber.reason);
-  /** PRESENT — the workflow ordinal left the footer too. The footer's `#N` chip is the ATTEMPT */
   if (surface.runNumber.state === "present") {
     facts.push({ label: "Run number", state: "present", text: `#${String(surface.runNumber.value)} of this workflow` });
   }
@@ -67,6 +66,7 @@ export interface QueueItemGroup {
   readonly key: string;
   readonly attempts: readonly QueueSurfaceWire[];
   readonly representative: QueueSurfaceWire;
+  readonly dayNumberByRunId: ReadonlyMap<string, number>;
 }
 
 function queueItemKey(surface: Pick<QueueSurfaceWire, "workflowId" | "itemId">): string {
@@ -84,16 +84,19 @@ export function groupQueueAttempts(surfaces: readonly QueueSurfaceWire[]): reado
   }
 
   return [...groups].map(([key, unsorted]) => {
-    const attempts = [...unsorted].sort((left, right) =>
-      right.attempt - left.attempt || String(left.runId).localeCompare(String(right.runId)));
-    for (let index = 1; index < attempts.length; index += 1) {
-      if (attempts[index - 1]?.attempt === attempts[index]?.attempt) {
-        throw new Error(`queue item has duplicate attempt: ${key}`);
-      }
+    const backendAttempts = new Set<number>();
+    for (const surface of unsorted) {
+      if (!Number.isFinite(Date.parse(surface.startedAt))) throw new Error(`queue run has no valid start time: ${surface.runId}`);
+      if (backendAttempts.has(surface.attempt)) throw new Error(`queue item has duplicate attempt: ${key}`);
+      backendAttempts.add(surface.attempt);
     }
+    const chronological = [...unsorted].sort((left, right) =>
+      Date.parse(left.startedAt) - Date.parse(right.startedAt) || (left.runId < right.runId ? -1 : left.runId > right.runId ? 1 : 0));
+    const dayNumberByRunId = new Map(chronological.map((surface, index) => [String(surface.runId), index + 1]));
+    const attempts = chronological.toReversed();
     const representative = attempts[0];
     if (representative === undefined) throw new Error(`queue item has no attempts: ${key}`);
-    return { key, attempts, representative };
+    return { key, attempts, representative, dayNumberByRunId };
   });
 }
 

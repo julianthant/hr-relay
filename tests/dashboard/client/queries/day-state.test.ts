@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { applyDashboardDayPatch,type DashboardDayPatch } from "../../../../src/dashboard/client/queries/day-state.js";
-import { DashboardDayWireSchema,type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema,type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 
 const DAY = "2026-08-03";
 const HASH_D = "d".repeat(64);
@@ -175,13 +175,19 @@ describe("applyDashboardDayPatch splices one row", () => {
   });
 });
 
-it("removes historical attempts only when their selected-day item leaves the queue", () => {
+it("keeps selected-day metadata synchronized when a run ends or leaves the queue", () => {
   const day = threeRowDay();
-  const row = day.queueSurfaces[0];
-  const history = { partitionDay: "2026-07-31", surface: { ...row, runId: "00000000-0000-4000-8000-000000008001", attempt: 1 } };
-  const held = DashboardDayWireSchema.parse({ ...day, queueSurfaces: [{ ...row, attempt: 2 }, ...day.queueSurfaces.slice(1).map(surface => ({ ...surface, itemId: surface.runId }))], attemptHistory: [history] });
-  const next = applyDashboardDayPatch(held, { operation: "remove-queue-surface", target: { runId: row.runId, rowRevision: row.rowRevision }, reason: "the run left this day" });
-  assert.deepEqual(next.attemptHistory, []);
-  const other = applyDashboardDayPatch(held, { operation: "remove-queue-surface", target: { runId: day.queueSurfaces[1].runId, rowRevision: day.queueSurfaces[1].rowRevision }, reason: "the run left this day" });
-  assert.equal(other.attemptHistory?.[0], held.attemptHistory?.[0]);
+  const held = DashboardDayWireSchema.parse({ ...day, attemptHistory: day.queueSurfaces.map(row => ({ runId: row.runId, startedAt: row.startedAt, endedAt: row.endedAt })) });
+  const row = held.queueSurfaces[0];
+  const replacement = QueueSurfaceWireSchema.parse({ ...row, rowRevision: row.rowRevision + 1, status: "done" as const,
+    endedAt: { state: "present" as const, value: "2026-08-03T18:00:00.000Z" } });
+  const ended = applyDashboardDayPatch(held, { operation: "replace-queue-surface", target: { runId: row.runId, rowRevision: replacement.rowRevision }, replacement });
+  assert.deepEqual(ended.attemptHistory?.[0]?.endedAt, replacement.endedAt);
+  assert.ok(DashboardDayWireSchema.safeParse(ended).success);
+  const next = applyDashboardDayPatch(ended, { operation: "remove-queue-surface", target: { runId: row.runId, rowRevision: replacement.rowRevision }, reason: "the run left this day" });
+  assert.deepEqual(next.attemptHistory?.map(entry => entry.runId), day.queueSurfaces.slice(1).map(row => row.runId));
+  assert.ok(DashboardDayWireSchema.safeParse(next).success);
+  assert.equal(next.attemptHistory?.[0], held.attemptHistory?.[1]);
+  assert.equal(DashboardDayWireSchema.safeParse({ ...held, attemptHistory: [] }).success, false);
+  assert.equal(DashboardDayWireSchema.safeParse({ ...held, attemptHistory: [{ ...held.attemptHistory?.[0], startedAt: "2026-07-31T18:00:00.000Z" }, ...held.attemptHistory?.slice(1) ?? []] }).success, false);
 });
