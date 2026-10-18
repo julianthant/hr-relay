@@ -1,9 +1,9 @@
-# assistant-proposal--graphite-warm--1280x720
+# assistant-unavailable--graphite-warm--1440x810
 # adapter: component-fixture
-# fixture: assistant-proposal
+# fixture: assistant-unavailable
 # descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
-# viewport: 1280x720  theme: graphite-warm  variant: default
+# viewport: 1440x810  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
 - main:
@@ -31,7 +31,7 @@
       - /url: "?scene=long&theme=dark"
   - button "Invalidate plan"
   - link "Switch theme":
-    - /url: "?scene=proposal&theme=light"
+    - /url: "?scene=unavailable&theme=light"
   - status "Mock callback count": "Mock confirmations: 0"
   - button "Assistant" [expanded]
 - dialog "Relay assistant":
@@ -72,11 +72,12 @@
       - list:
         - listitem: Any Save, Submit, or employee-record change.
         - listitem: Any identity ambiguity; ask the operator to resolve it.
-  - status: Confirm records this proposal once in the mock. It starts no run.
+  - status: ChatGPT account unavailable. Confirmation is disabled.
   - button "Cancel"
-  - button "Confirm"
+  - button "Confirm" [disabled]
+  - alert: ChatGPT account unavailable. Review the connection in Settings. This mock cannot sign in.
   - text: Message
   - textbox "Message": Check Avery Sample and Morgan Example in Person Lookup. Read only; stop before any changes.
   - paragraph: "Scripted demo: replies use fixed synthetic subjects."
   - text: Synthetic data only
-  - button "Send"
+  - button "Send" [disabled]

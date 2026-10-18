@@ -1,9 +1,9 @@
-# assistant-dry-run--graphite-warm--1280x720
+# assistant-proposal--graphite-warm--1440x810
 # adapter: component-fixture
-# fixture: assistant-dry-run
+# fixture: assistant-proposal
 # descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
-# viewport: 1280x720  theme: graphite-warm  variant: default
+# viewport: 1440x810  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
 - main:
@@ -31,7 +31,7 @@
       - /url: "?scene=long&theme=dark"
   - button "Invalidate plan"
   - link "Switch theme":
-    - /url: "?scene=dry-run&theme=light"
+    - /url: "?scene=proposal&theme=light"
   - status "Mock callback count": "Mock confirmations: 0"
   - button "Assistant" [expanded]
 - dialog "Relay assistant":
@@ -52,7 +52,7 @@
         - paragraph: Here is the exact read-only proposal. Check the subjects and stop points before confirming.
         - 'button "Source: Person Lookup · Read-only checks"'
   - heading "Proposed run" [level=3]
-  - text: Dry run
+  - text: Read only
   - region "Proposed run details":
     - term: Workflow
     - definition: Person Lookup · demo-v1 demo-person-check

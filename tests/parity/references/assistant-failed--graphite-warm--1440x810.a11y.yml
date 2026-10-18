@@ -1,9 +1,9 @@
-# assistant-stale--graphite-warm--1280x720
+# assistant-failed--graphite-warm--1440x810
 # adapter: component-fixture
-# fixture: assistant-stale
+# fixture: assistant-failed
 # descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
-# viewport: 1280x720  theme: graphite-warm  variant: default
+# viewport: 1440x810  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
 - main:
@@ -31,7 +31,7 @@
       - /url: "?scene=long&theme=dark"
   - button "Invalidate plan"
   - link "Switch theme":
-    - /url: "?scene=stale&theme=light"
+    - /url: "?scene=failed&theme=light"
   - status "Mock callback count": "Mock confirmations: 0"
   - button "Assistant" [expanded]
 - dialog "Relay assistant":
@@ -47,34 +47,8 @@
       - listitem:
         - paragraph: You
         - paragraph: Check Avery Sample and Morgan Example in Person Lookup. Read only; stop before any changes.
-      - listitem:
-        - paragraph: Assistant
-        - paragraph: Here is the exact read-only proposal. Check the subjects and stop points before confirming.
-        - 'button "Source: Person Lookup · Read-only checks"'
-  - heading "Proposed run" [level=3]
-  - text: Read only
-  - region "Proposed run details":
-    - term: Workflow
-    - definition: Person Lookup · demo-v1 demo-person-check
-    - term: Subjects
-    - definition: Avery Sample DEMO-001 Morgan Example DEMO-002
-    - term: Systems
-    - definition: UCPath and CRM
-    - term: Match
-    - definition: Exact synthetic subject IDs
-    - term: Effects
-    - definition:
-      - list:
-        - listitem: Read identity and employment status for these two subjects.
-        - listitem: Show the comparison in Queue and Logs.
-    - term: Stop before
-    - definition:
-      - list:
-        - listitem: Any Save, Submit, or employee-record change.
-        - listitem: Any identity ambiguity; ask the operator to resolve it.
-  - status: Plan out of date. Send the request again to refresh it.
-  - button "Cancel"
-  - button "Confirm" [disabled]
+  - alert: Reply unavailable. Your request is kept.
+  - button "Retry reply"
   - text: Message
   - textbox "Message": Check Avery Sample and Morgan Example in Person Lookup. Read only; stop before any changes.
   - paragraph: "Scripted demo: replies use fixed synthetic subjects."
