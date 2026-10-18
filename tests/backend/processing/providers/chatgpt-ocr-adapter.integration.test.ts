@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { afterEach, it } from "vitest";
 import { z } from "zod";
@@ -133,3 +134,19 @@ it("runs the actual extraction task through the subscription adapter and admits 
     assert.equal(deadline, f.clock.monotonicMs() + 120_000);
   } finally { await f.cleanup(); }
 });
+
+for (const [filename, pageCount] of [["synthetic-sample.pdf", 1], ["synthetic-two-pages.pdf", 2]] as const)
+  it(`requires a singleton PDF before subscription extraction: ${pageCount} pages`, async () => {
+    const f = chatGptFixture(); try {
+      await f.connected();
+      const documentBytes = readFileSync(new URL(`../../../support/fixtures/documents/${filename}`, import.meta.url));
+      const sourceSha256 = createHash("sha256").update(documentBytes).digest("hex");
+      const document = ArtifactRefSchema.parse({ ...page, sha256: sourceSha256, bytes: documentBytes.byteLength, mediaType: "application/pdf" });
+      f.setSse(completedOcrStream(JSON.stringify({ ...submission(f.clock.now().toISOString()), sourceSha256 })));
+      const adapter = createChatGptOcrAdapter({ account: f.service, clock: f.clock, model: "gpt-6.1-sol", artifacts: { open: async () => Readable.from([documentBytes]) } });
+      const original = request();
+      const result = await adapter.invoke({ ...original, payload: { ...original.payload, value: { ...original.payload.value, page: document } } }, options());
+      assert.equal(result.response.state, pageCount === 1 ? "produced" : "invalid-response");
+      assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, pageCount === 1 ? 1 : 0);
+    } finally { await f.cleanup(); }
+  });

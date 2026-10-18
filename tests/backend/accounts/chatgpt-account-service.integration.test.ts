@@ -318,3 +318,36 @@ it("does not return success when cancellation races successful usage recovery pe
     finally { await service.close(); }
   } finally { await f.cleanup(); }
 });
+
+for (const status of [401, 403] as const) it(`keeps HTTP ${status} refusal bound to the token during a concurrent quota metadata update`, async () => {
+  const f = chatGptFixture();
+  let release = () => {};
+  try {
+    await f.connected(); let entered = () => {}; let calls = 0;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    f.setResponse(() => {
+      if (++calls === 1) return new Response(new ReadableStream<Uint8Array>({
+        async start(controller) {
+          entered(); await held;
+          controller.enqueue(new TextEncoder().encode(JSON.stringify(status === 401
+            ? { detail: "synthetic refusal" } : { error: { code: "subscription_sharing_user_not_eligible" } })));
+          controller.close();
+        },
+      }), { status, headers: { "Content-Type": "application/json" } });
+      return Response.json({ error: { code: "subscription_sharing_usage_limit_exceeded" } }, { status: 429 });
+    });
+    const first = f.service.extractText(image);
+    const refused = assert.rejects(first, { code: status === 401 ? "CHATGPT_ACCOUNT_EXPIRED" : "CHATGPT_PLAN_DISABLED" });
+    await started;
+    await assert.rejects(f.service.extractText(image), { code: "CHATGPT_USAGE_LIMIT" });
+    release(); await refused;
+    const state = f.service.readAccount(); assert.equal(state.state, status === 401 ? "expired" : "unavailable");
+    if (status === 403 && state.state === "unavailable") assert.equal(state.code, "CHATGPT_PLAN_DISABLED");
+    f.setResponse(() => new Response(completedOcrStream("Synthetic form"), { headers: { "Content-Type": "text/event-stream" } }));
+    assert.equal((await f.service.extractText(image)).text, "Synthetic form");
+    assert.equal(f.calls.filter(call => call.url.endsWith("/oauth/token")).length, status === 401 ? 2 : 1);
+    const recovered = f.service.readAccount(); assert.equal(recovered.state, "connected");
+    if (recovered.state === "connected") assert.equal(recovered.planUsage, "enabled");
+  } finally { release(); await f.cleanup(); }
+});

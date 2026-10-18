@@ -18,7 +18,9 @@ it("Test OCR dispatches exactly one stored synthetic page and exposes only safe 
       const chunks: Buffer[] = [];
       for await (const chunk of await artifacts.open(input.page)) { assert.ok(chunk instanceof Uint8Array); chunks.push(Buffer.from(chunk)); }
       const bytes = Buffer.concat(chunks); assert.equal(bytes.byteLength, input.page.bytes);
-      assert.equal(input.page.mediaType, "application/pdf"); assert.equal((await pdf(bytes, { scale: 1 })).length, 1);
+      assert.equal(input.page.mediaType, "application/pdf");
+      const document = await pdf(bytes, { scale: 1 });
+      try { assert.equal(document.length, 1); } finally { await document.destroy(); }
       const admitted = admitOcrExtraction({ formType: input.formType, sourcePage: input.sourcePage, sourceSha256: input.page.sha256,
         source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "gpt-6.1-sol" }, readAt: f.clock.now().toISOString(), pageKind: "oath", record: { answers: {
           printedName: { state: "read", raw: "Example, Avery", confidence: 1 }, employeeId: { state: "read", raw: "10800000", confidence: 1 },
@@ -60,5 +62,30 @@ it("Test OCR rejects a provider that always classifies the known-text form as bl
       if (!admitted.admitted) throw new Error("fixture admission failed"); return admitted.extraction;
     } });
     await assert.rejects(service.testOcr(new AbortController().signal), { code: "CHATGPT_OCR_INVALID" });
+  } finally { await f.cleanup(); }
+});
+
+it("Test OCR cancellation during artifact persistence stops before dispatch", async () => {
+  const f = chatGptFixture(); try {
+    const artifacts = createContentAddressedArtifactWriter({ admission: f.admission }); const controller = new AbortController(); let calls = 0;
+    const service = createChatGptOcrTestService({ artifacts: { put: async (bytes, metadata) => {
+      const page = await artifacts.put(bytes, metadata); controller.abort(); return page;
+    } }, dispatch: async () => { calls++; return {}; } });
+    await assert.rejects(service.testOcr(controller.signal), { code: "CHATGPT_OCR_CANCELLED" }); assert.equal(calls, 0);
+  } finally { await f.cleanup(); }
+});
+it("Test OCR cancellation during dispatch cannot return completed", async () => {
+  const f = chatGptFixture(); try {
+    const artifacts = createContentAddressedArtifactWriter({ admission: f.admission }); const controller = new AbortController(); let calls = 0;
+    const service = createChatGptOcrTestService({ artifacts, dispatch: async input => {
+      const admitted = admitOcrExtraction({ formType: input.formType, sourcePage: input.sourcePage, sourceSha256: input.page.sha256,
+        source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "gpt-6.1-sol" }, readAt: f.clock.now().toISOString(), pageKind: "oath", record: { answers: {
+          printedName: { state: "read", raw: "Example, Avery", confidence: 1 }, employeeId: { state: "read", raw: "10800000", confidence: 1 },
+          signatureDate: { state: "read", raw: "07/21/2026", confidence: 1 }, employeeSigned: { state: "read", raw: "yes", confidence: 1 }, officerSigned: { state: "read", raw: "yes", confidence: 1 },
+        } } });
+      if (!admitted.admitted) throw new Error("fixture admission failed");
+      calls++; await Promise.resolve(); controller.abort(); return admitted.extraction;
+    } });
+    await assert.rejects(service.testOcr(controller.signal), { code: "CHATGPT_OCR_CANCELLED" }); assert.equal(calls, 1);
   } finally { await f.cleanup(); }
 });

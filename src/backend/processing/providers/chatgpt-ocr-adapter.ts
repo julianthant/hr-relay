@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pdf } from "pdf-to-img";
 import { createHash } from "node:crypto";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { ProviderCallOptions } from "../../../workflow-kit/providers.js";
@@ -44,6 +45,12 @@ export function createChatGptOcrAdapter(deps: {
         const bytes = Buffer.concat(chunks);
         if (size !== input.page.bytes || createHash("sha256").update(bytes).digest("hex") !== input.page.sha256)
           throw new ChatGptAccountError("CHATGPT_OCR_INVALID");
+        if (mediaType === "application/pdf") {
+          const document = await pdf(bytes);
+          try {
+            if (document.length !== 1) return outcome({ state: "invalid-response", reason: "OCR requires exactly one PDF page." });
+          } finally { await document.destroy(); }
+        }
         const metadata = { formType: input.formType, sourceSha256: input.page.sha256, sourcePage: input.sourcePage,
           source: { kind: "provider" as const, providerId: CHATGPT_OCR_PROVIDER_ID, modelId: deps.model }, readAt: capturedAt };
         const result = await deps.account.extractText({ model: deps.model,

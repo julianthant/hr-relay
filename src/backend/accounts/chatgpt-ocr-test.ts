@@ -13,8 +13,11 @@ export function createChatGptOcrTestService(deps: {
     async testOcr(signal: AbortSignal) {
       if (signal.aborted) throw new ChatGptAccountError("CHATGPT_OCR_CANCELLED");
       const page = await deps.artifacts.put(SYNTHETIC_PAGE, { mediaType: "application/pdf" });
+      if (signal.aborted) throw new ChatGptAccountError("CHATGPT_OCR_CANCELLED");
       const input = ExtractFormPageInputSchema.parse({ formType: "oath", page, sourcePage: 1 });
-      const output = AdmittedExtractionSchema.parse(await deps.dispatch(input, signal));
+      const result = await deps.dispatch(input, signal);
+      if (signal.aborted) throw new ChatGptAccountError("CHATGPT_OCR_CANCELLED");
+      const output = AdmittedExtractionSchema.parse(result);
       if (output.formType !== input.formType || output.sourcePage !== 1 || output.sourceSha256 !== page.sha256
         || output.source.kind !== "provider" || output.source.providerId !== "chatgpt-subscription" || output.pageKind !== "oath" || output.record === null)
         throw new ChatGptAccountError("CHATGPT_OCR_INVALID");

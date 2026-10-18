@@ -97,8 +97,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   const requests = new Set<AbortController>();
   const accesses = new Set<Promise<ChatGptCredentialRecord>>();
   let closed = false, generation = 0;
-  let rejectedSessionRevision: number | undefined;
-  let planFailureRevision: number | undefined;
+  let rejectedSessionToken: string | undefined;
+  let planFailureToken: string | undefined;
   let pending: { cancel(): Promise<void> } | undefined;
   function active(): void { if (closed) throw fault("CHATGPT_SERVICE_CLOSED"); options.admission.assertLive(); }
   async function request(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
@@ -168,8 +168,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     active();
     try {
       const record = repository.read();
-      if (record?.session != null && record.revision === rejectedSessionRevision) return { state: "expired" };
-      if (record?.session != null && record.revision === planFailureRevision)
+      if (record?.session != null && rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)) return { state: "expired" };
+      if (record?.session != null && planFailureToken !== undefined && privateEqual(record.session.accessToken, planFailureToken))
         return { state: "unavailable", code: "CHATGPT_PLAN_DISABLED", message: ERROR_CATALOG.CHATGPT_PLAN_DISABLED.text };
       return publicState(record, clock.nowMs());
     }
@@ -279,7 +279,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }
   }
   async function signOut(): Promise<ChatGptSignedOut> {
-    active(); const attempt = pending; ++generation; await attempt?.cancel(); if (pending === attempt) pending = undefined;
+    active(); const attempt = pending; ++generation; rejectedSessionToken = undefined; planFailureToken = undefined; await attempt?.cancel(); if (pending === attempt) pending = undefined;
     for (const controller of requests) controller.abort();
     await Promise.allSettled([...accesses]);
     return repository.withLock(async transaction => {
@@ -302,7 +302,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     const operation = repository.withLock(async transaction => {
       let current = transaction.read();
       if (current?.session == null || current.registration === null || current.clientId === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
-      if (current.revision === rejectedSessionRevision || Date.parse(current.session.expiresAt) <= clock.nowMs() + 60_000) {
+      if (rejectedSessionToken !== undefined && privateEqual(current.session.accessToken, rejectedSessionToken) || Date.parse(current.session.expiresAt) <= clock.nowMs() + 60_000) {
         if (current.session.refreshToken === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
         if (current.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < current.session.earliestRefreshAt) throw fault("CHATGPT_ACCOUNT_EXPIRED");
         let result;
@@ -353,9 +353,9 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       } catch { throw fault("CHATGPT_OCR_FAILED"); }
       if (code === "subscription_sharing_usage_limit_exceeded") { await persistUsage("limit-reached"); throw fault("CHATGPT_USAGE_LIMIT"); }
       if (code === "subscription_sharing_usage_unavailable") { await persistUsage("unavailable"); throw fault("CHATGPT_USAGE_UNAVAILABLE"); }
-      if (response.status === 401) { rejectedSessionRevision = credentials.revision; throw fault("CHATGPT_ACCOUNT_EXPIRED"); }
+      if (response.status === 401) { rejectedSessionToken = invokedAccessToken; throw fault("CHATGPT_ACCOUNT_EXPIRED"); }
       if (response.status === 403 && (code === undefined || ["subscription_sharing_user_not_eligible", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context"].includes(code))) {
-        planFailureRevision = credentials.revision; throw fault("CHATGPT_PLAN_DISABLED");
+        planFailureToken = invokedAccessToken; throw fault("CHATGPT_PLAN_DISABLED");
       }
       if (response.status === 503) throw fault("CHATGPT_USAGE_UNAVAILABLE");
       if (code === "subscription_sharing_unsupported_capability") throw fault("CHATGPT_OCR_INVALID");
@@ -422,13 +422,13 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       if (!completed || result === undefined || buffer.trim() !== "" || epoch !== generation) throw fault("CHATGPT_OCR_INCOMPLETE");
       await persistUsage("available");
       if (epoch !== generation || closed || cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
-      if (credentials.revision === planFailureRevision) planFailureRevision = undefined;
+      if (planFailureToken !== undefined && privateEqual(invokedAccessToken, planFailureToken)) planFailureToken = undefined;
       return result;
     } catch (error) { if (error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError) throw error; throw fault(cancelled() ? "CHATGPT_OCR_CANCELLED" : "CHATGPT_OCR_INCOMPLETE"); }
     finally { await reader.cancel(); reader.releaseLock(); }
   }
   async function close(): Promise<void> {
-    const attempt = pending; closed = true; ++generation; await attempt?.cancel(); if (pending === attempt) pending = undefined;
+    const attempt = pending; closed = true; ++generation; rejectedSessionToken = undefined; planFailureToken = undefined; await attempt?.cancel(); if (pending === attempt) pending = undefined;
     for (const controller of requests) controller.abort(); await Promise.allSettled([...accesses]);
   }
   return Object.freeze({ readAccount, signIn, signOut, extractText, close });
