@@ -1,0 +1,50 @@
+# assistant-empty--graphite-warm--1280x720
+# adapter: component-fixture
+# fixture: assistant-empty
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- main:
+  - strong: Relay
+  - text: Assistant · Mock review
+  - heading "Review the assistant" [level=1]
+  - paragraph: Open the bottom-right launcher to review a proposal, inspect its sources, or keep a conversation open while you work.
+  - paragraph: All subjects, replies, plans, and public source examples are synthetic. Confirm records one local callback. Nothing is sent to a backend.
+  - navigation "Mock scenes":
+    - link "proposal":
+      - /url: "?scene=proposal&theme=dark"
+    - link "dry-run":
+      - /url: "?scene=dry-run&theme=dark"
+    - link "waiting":
+      - /url: "?scene=waiting&theme=dark"
+    - link "failed":
+      - /url: "?scene=failed&theme=dark"
+    - link "unavailable":
+      - /url: "?scene=unavailable&theme=dark"
+    - link "stale":
+      - /url: "?scene=stale&theme=dark"
+    - link "empty":
+      - /url: "?scene=empty&theme=dark"
+    - link "long":
+      - /url: "?scene=long&theme=dark"
+  - button "Invalidate plan"
+  - link "Switch theme":
+    - /url: "?scene=empty&theme=light"
+  - status "Mock callback count": "Mock confirmations: 0"
+  - button "Assistant" [expanded]
+- dialog "Relay assistant":
+  - banner:
+    - heading "Relay assistant" [level=2]
+    - paragraph: Mock preview · Nothing runs from this panel
+    - button "Close assistant"
+  - region "Conversation":
+    - heading "What would you like to do?" [level=3]
+    - paragraph: Ask about a workflow or prepare a run to review.
+    - list
+  - text: Message
+  - textbox "Message"
+  - paragraph: "Scripted demo: replies use fixed synthetic subjects."
+  - text: Synthetic data only
+  - button "Send" [disabled]
