@@ -91,6 +91,19 @@ describe("automatic worker admission and retained capacity commands", () => {
     assert.equal(h.children.length, 2);
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
     assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.leaseGeneration, 2);
+    const lease = h.database.authority.workerLeases.get(WORKER_1); assert.ok(lease);
+    assert.notEqual(lease.lifecycle.state, "stopped");
+    assert.equal(lease.processId, h.children[1]?.pid);
+    assert.notEqual(lease.processId, h.children[0]?.pid);
+    const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
+    const lifecycle = new RunRecordService({ database: h.database, clock: h.clock, ids: sequentialIdFactory("c"), publishQueued: () => {} });
+    const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: WORKER_1,
+      runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
+        settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
+    assert.ok(claimed.lifecycle.state === "claimed");
+    assert.equal(claimed.lifecycle.workerId, WORKER_1);
+    assert.equal(claimed.claimGeneration, 1);
+    assert.equal(h.database.authority.runs.get(claimed.envelope.runId)?.lifecycle.state, "claimed");
   });
 
   it.each(["refused", "uncertain"] as const)("retains a partial multi-spawn %s and never repeats either child", async outcome => {
