@@ -3,6 +3,8 @@ import { describe, it } from "vitest";
 import { projectRunLogs, type RunLogSnapshot } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { NativeRunEventWireSchema, NotePageSchema, RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
+import { freezeWorkflowOperationDisplaySnapshot } from "../../../src/models/workflow/operation-display-snapshot.js";
+import { plan1Leaf } from "../../support/fixtures/plan1-operation-workflows.js";
 import { browserActionMessage } from "../../../src/models/events/types.js";
 
 const RUN = "00000000-0000-4000-8000-000000000080", TRACE = "pl-100000-0080", AT = "2026-08-03T17:00:00.000Z";
@@ -47,6 +49,69 @@ describe("served Person Lookup Logs operator presentation", () => {
     assert.equal(entries[1].kind === "click" && entries[1].label, "Person Org Search button");
     const capture = entries[3]; assert.ok(capture.kind === "decision");
     assert.deepEqual(capture.decision.screenshots?.map(shot => [shot.src, shot.width, shot.height]), [[`/artifacts/${id(501)}`, 1280, 720]]);
+  });
+  it("shows an identical field from several observation sources once and retains its first time", () => {
+    const original = snapshot();
+    const source = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
+    assert.ok(source?.kind === "observed");
+    const repeated = { ...source, native: native(6), logId: id(106), sequence: 6, at: "2026-08-03T17:01:00.000Z",
+      points: [{ ...source.points[0], field: "selection.selected.name" }] };
+    const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []), repeated] });
+    const fields = projectRunLogs({ ...original, logs }, client).steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
+    assert.deepEqual(fields.filter(field => field.label === "Name").map(field => [field.id, field.time, field.value]),
+      [[`${id(104)}:0`, "10:00:00", "Quillan, Petra A."]]);
+    assert.equal(logs.rows?.filter(row => row.kind === "observed").length, 3);
+    assert.deepEqual(logs.rows?.at(-1), repeated);
+  });
+  it("keeps different values within a step and the same field in another step", () => {
+    const original = snapshot();
+    const source = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
+    assert.ok(source?.kind === "observed");
+    const different = { ...source, native: native(6), logId: id(106), sequence: 6,
+      displayFields: [{ direction: "read", label: "Name", value: "Fable, Rowan B." }] };
+    const otherStep = { ...source, native: native(7, "cross-verify"), logId: id(107), sequence: 7,
+      spanPath: `${TRACE}/cross-verify#1`, producer: { ...source.producer, nodeId: "cross-verify", step: "Cross-check identity", system: "crm" } };
+    const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []), different, otherStep] });
+    const detail = RunDetailWireSchema.parse({ ...original.detail, timeline: { ...original.detail.timeline,
+      steps: [...(original.detail.timeline.steps ?? []), { key: "cross-verify", label: "Cross-check identity", state: "done",
+        members: [{ nodeId: "cross-verify", categoryKey: "cross-verify", label: "Cross-check identity", state: "done" }] }] } });
+    const projected = projectRunLogs({ ...original, detail, logs }, client);
+    assert.deepEqual(projected.steps.map(step => [step.title, step.entries.flatMap(entry => entry.kind === "fields"
+      ? entry.fields.filter(field => field.label === "Name").map(field => field.value) : [])]),
+      [["Search for person", ["Quillan, Petra A.", "Fable, Rowan B."]], ["Cross-check identity", ["Quillan, Petra A."]]]);
+  });
+  it("retains a verified screenshot when all fields in its observation collapse", () => {
+    const original = snapshot();
+    const source = original.logs.rows?.find(row => row.kind === "observed" && row.sequence === 4);
+    assert.ok(source?.kind === "observed");
+    const definition = freezeWorkflowOperationDisplaySnapshot({ display: plan1Leaf.descriptor.operationDisplay,
+      workflowId: plan1Leaf.descriptor.id, definitionFingerprint: plan1Leaf.descriptor.contractFingerprint });
+    assert.ok(definition);
+    const occurrence = { runId: RUN, attempt: 1, claimGeneration: 1, taskAttempt: 1, definitionFingerprint: definition.definitionFingerprint,
+      invocationId: "first-operation", occurrencePath: ["first"], nodeId: "first", taskId: "ocr/extract-form-page",
+      logicalActionId: "consume-text", logicalSessionId: "plan1-local", occurrence: 1, state: "completed" };
+    const repeated = { ...source, native: native(6, "first"), logId: id(106), sequence: 6, at: "2026-08-03T17:01:00.000Z", spanPath: `${TRACE}/first#1`,
+      producer: { ...source.producer, nodeId: "first", taskId: "ocr/extract-form-page" } };
+    const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []), repeated],
+      operationStructure: { state: "observed", runId: RUN, definition,
+        observations: [{ logId: repeated.logId, at: AT, action: "read", targetId: "consume-text", occurrence: { ...occurrence, value: { slot: "text", fieldPath: "text",
+          producer: { kind: "run-input", path: "text" }, state: "observed", classification: "local-operator", value: "same" } } }] } });
+    const category = original.detail.timeline.steps?.[0]; assert.ok(category);
+    const detail = RunDetailWireSchema.parse({ ...original.detail, timeline: { ...original.detail.timeline,
+      steps: [{ ...category, members: [...category.members, { nodeId: "first", categoryKey: "searching", label: "Read", state: "done" }] }] } });
+    const capture = original.sections[0]; assert.ok(capture.section === "captures");
+    const captures = RunDetailSectionResponseSchema.parse({ ...capture, payload: { ...capture.payload,
+      artifacts: capture.payload.artifacts.map(artifact => ({ ...artifact,
+        origins: artifact.origins.map(origin => ({ ...origin, operation: occurrence })) })) } });
+    const projected = projectRunLogs({ ...original, detail, logs, sections: [captures] }, client);
+    const entries = projected.steps.flatMap(step => step.entries);
+    assert.equal(entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []).filter(field => field.label === "Name").length, 1);
+    const screenshot = entries.find(entry => entry.id === `${repeated.logId}:captures`);
+    assert.ok(screenshot?.kind === "decision");
+    assert.equal(screenshot.time, "10:01:00");
+    assert.deepEqual(screenshot.decision.screenshots?.map(shot => [shot.src, shot.time, shot.width, shot.height]),
+      [[`/artifacts/${id(501)}`, "10:00:00", 1280, 720]]);
+    assert.equal(entries.filter(entry => entry.kind === "click").length, 1);
   });
   it("keeps an unassociated screenshot explicitly unavailable", () => {
     const original = snapshot();
