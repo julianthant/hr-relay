@@ -611,16 +611,22 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
   onSelect: (runId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const attempts = item?.attempts ?? [surface];
+  const group = item ?? groupQueueAttempts([surface])[0];
+  const attempts = group.attempts;
+  const dayNumber = (runId: string): number => {
+    const number = group.dayNumberByRunId.get(runId);
+    if (number === undefined) throw new Error(`queue run has no day number: ${runId}`);
+    return number;
+  };
   return <DropdownMenu open={open} onOpenChange={setOpen}>
-    <DropdownMenuTrigger asChild><BareButton type="button" aria-label={`Attempts for ${title}`} title={`Attempt ${surface.attempt}`} onClick={event => event.stopPropagation()}
+    <DropdownMenuTrigger asChild><BareButton type="button" aria-label={`Attempts for ${title}`} title={`Attempt ${dayNumber(surface.runId)}`} onClick={event => event.stopPropagation()}
       className={cn("inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-caption text-ui-muted hover:bg-ui-hover hover:text-ui-primary", dsFocus)}>
-      #{surface.attempt}<ChevronDown aria-hidden className="size-3" />
+      #{dayNumber(surface.runId)}<ChevronDown aria-hidden className="size-3" />
     </BareButton></DropdownMenuTrigger>
     <DropdownMenuContent aria-label={`Attempts for ${title}`} className="w-56" onClick={event => event.stopPropagation()}>
       <DropdownMenuRadioGroup value={selectedRunId ?? String(surface.runId)} onValueChange={id => { onSelect(id); setOpen(false); }}>
         {[...attempts].reverse().map(attempt => <DropdownMenuRadioItem key={attempt.runId} value={String(attempt.runId)}>
-          <span className="text-caption tabular-nums text-ui-muted">#{attempt.attempt}</span><StatusBadge status={dsStatusOf(attempt.status)} presentation="queue" />
+          <span className="text-caption tabular-nums text-ui-muted">#{dayNumber(attempt.runId)}</span><StatusBadge status={dsStatusOf(attempt.status)} presentation="queue" />
         </DropdownMenuRadioItem>)}
       </DropdownMenuRadioGroup>
     </DropdownMenuContent>

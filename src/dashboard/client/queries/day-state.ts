@@ -18,8 +18,7 @@ export function applyDashboardDayPatch(day: DashboardDayWire, patch: DashboardDa
     const queueSurfaces = day.queueSurfaces.filter((surface) => surface.runId !== parsed.target.runId);
     return {
       ...day, queueSurfaces,
-      ...(day.attemptHistory === undefined ? {} : { attemptHistory: day.attemptHistory.filter(entry =>
-        queueSurfaces.some(surface => surface.workflowId === entry.surface.workflowId && surface.itemId === entry.surface.itemId && surface.attempt >= entry.surface.attempt)) }),
+      ...(day.attemptHistory === undefined ? {} : { attemptHistory: day.attemptHistory.filter(entry => entry.runId !== parsed.target.runId) }),
     };
   }
 
@@ -33,5 +32,8 @@ export function applyDashboardDayPatch(day: DashboardDayWire, patch: DashboardDa
   }
   const queueSurfaces = [...day.queueSurfaces];
   queueSurfaces[index] = parsed.replacement;
-  return { ...day, queueSurfaces };
+  return { ...day, queueSurfaces,
+    ...(day.attemptHistory === undefined ? {} : { attemptHistory: day.attemptHistory.map(entry => entry.runId === parsed.target.runId
+      ? { runId: parsed.replacement.runId, startedAt: parsed.replacement.startedAt, endedAt: parsed.replacement.endedAt } : entry) }),
+  };
 }

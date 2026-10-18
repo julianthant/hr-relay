@@ -12,7 +12,7 @@ import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 const { world, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
-it("presents every served same-person attempt across days as one row with an ascending menu", () => {
+it("presents only the selected day’s same-person attempts as one row with an ascending menu", () => {
   const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
   for (let attempt = 1; attempt <= 7; attempt++) seedPersonLookupPresentation(w, {
     seed: 80 + attempt, attempt, itemId: uuidOf(5081),
@@ -20,18 +20,21 @@ it("presents every served same-person attempt across days as one row with an asc
   });
   const day = w.projection.buildDashboardDayWire("2026-08-03");
   assert.equal(day.queueSurfaces.length, 5);
-  assert.deepEqual(day.attemptHistory?.map(entry => entry.partitionDay), ["2026-07-31", "2026-07-31"]);
+  assert.deepEqual(day.attemptHistory?.map(entry => entry.runId), day.queueSurfaces.map(row => row.runId));
   assert.ok(day.attemptHistory);
-  const rows = [...day.queueSurfaces, ...day.attemptHistory.map(entry => entry.surface)];
-  assert.equal(rows.length, 7);
+  const rows = day.queueSurfaces;
+  assert.equal(rows.length, 5);
   const groups = groupQueueAttempts(rows);
   assert.equal(groups.length, 1);
   assert.equal(groups[0].representative.attempt, 7);
-  assert.deepEqual(groups[0].attempts.toReversed().map(row => row.attempt), [1, 2, 3, 4, 5, 6, 7]);
-  assert.deepEqual(groups[0].attempts.filter(row => row.attempt <= 2).map(row => row.startedAt.slice(0, 10)), ["2026-07-31", "2026-07-31"]);
+  assert.deepEqual(groups[0].attempts.toReversed().map(row => row.attempt), [3, 4, 5, 6, 7]);
+  assert.deepEqual([...groups[0].dayNumberByRunId.values()], [1, 2, 3, 4, 5]);
+  const earlier = groupQueueAttempts(w.projection.buildDashboardDayWire("2026-07-31").queueSurfaces);
+  assert.deepEqual([...earlier[0].dayNumberByRunId.values()], [1, 2]);
+  assert.deepEqual(groups[0].attempts.filter(row => row.attempt <= 2).map(row => row.startedAt.slice(0, 10)), []);
 });
 
-it("acquires scoped cross-month history through the production batch summary port without whole-history reads", () => {
+it("acquires scoped selected-day metadata through the production batch summary port without whole-history reads", () => {
   const f = summaryFixture();
   try {
     const item = uuidOf(5500);
@@ -49,21 +52,20 @@ it("acquires scoped cross-month history through the production batch summary por
       }));
     }
     const port = composeQueueSummaries(f.db);
-    assert.deepEqual(port.itemAttempts([{ workflowId: "person-lookup", itemId: item, maxAttempt: 2 },
-      { workflowId: "separations", itemId: item, maxAttempt: 1 }]).map(run => run.envelope.runId),
-    [uuidOf(5511), uuidOf(5512), uuidOf(5515)]);
+    assert.deepEqual(port.itemAttempts("2026-08-03", [{ workflowId: "person-lookup", itemId: item }]).map(run => run.envelope.runId),
+    [uuidOf(5512)]);
     f.servedReader.list = () => { throw new Error("whole-history-read-forbidden"); };
     const day = f.projection.buildDashboardDayWire("2026-08-03");
     assert.deepEqual(day.queueSurfaces.map(row => row.runId), [uuidOf(5512)]);
-    assert.deepEqual(day.attemptHistory?.map(entry => [entry.surface.runId, entry.partitionDay]), [[uuidOf(5511), "2026-07-31"]]);
+    assert.deepEqual(day.attemptHistory?.map(entry => [entry.runId, entry.startedAt, entry.endedAt.state]), [[uuidOf(5512), "2026-08-03T17:00:00.000Z", "absent"]]);
     assert.equal(day.workflowCounts.find(count => count.workflowId === "person-lookup")?.count, 1);
-    assert.deepEqual(f.projection.buildDashboardDayWire("2026-07-31").attemptHistory, []);
+    assert.equal(f.projection.buildDashboardDayWire("2026-07-31").attemptHistory?.length, 4);
     f.summaries.itemAttempts = () => { throw new Error("synthetic-history-read-failed"); };
     assert.throws(() => f.projection.buildDashboardDayWire("2026-08-03"), /synthetic-history-read-failed/u);
   } finally { f.dispose(); }
 });
 
-it("refreshes later-day history after an earlier attempt changes without changing selected-day counts", async () => {
+it("keeps later-day metadata isolated after an earlier attempt changes without changing selected-day counts", async () => {
   const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
   const first = seedPersonLookupPresentation(w, { seed: 611, itemId: uuidOf(5600), enqueuedAt: "2026-07-31T17:00:00.000Z" });
   seedPersonLookupPresentation(w, { seed: 612, attempt: 2, itemId: uuidOf(5600), enqueuedAt: "2026-08-03T17:00:00.000Z" });
@@ -80,12 +82,11 @@ it("refreshes later-day history after an earlier attempt changes without changin
     assert.equal(connection.pending, 1);
     const publication = await connection.next();
     assert.ok(publication?.type === "snapshot" && publication.topic === "dashboard-day");
-    assert.equal(publication.payload.attemptHistory?.[0]?.surface.status, "cancelled");
-    assert.equal(publication.payload.attemptHistory?.[0]?.surface.rowRevision, first.run.version + 1);
+    assert.deepEqual(publication.payload.attemptHistory, before.attemptHistory);
     assert.equal(publication.payload.projectionGeneration, w.projection.generation());
     assert.equal(publication.cursor, w.projection.cursor());
     const next = w.projection.buildDashboardDayWire("2026-08-03");
-    assert.equal(next.attemptHistory?.[0]?.surface.status, "cancelled");
+    assert.deepEqual(next.attemptHistory, before.attemptHistory);
     assert.deepEqual(next.workflowCounts, before.workflowCounts);
     assert.deepEqual(next.monthCounts, before.monthCounts);
     assert.deepEqual(next.queueSurfaces, before.queueSurfaces);

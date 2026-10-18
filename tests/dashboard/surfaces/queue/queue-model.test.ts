@@ -364,6 +364,30 @@ describe_m4("logical item attempt grouping", () => {
     assert_m4.deepEqual(visibleRunIds_m4([first, retry]), [first.runId, retry.runId]);
   });
 
+  it_m4("numbers the day's runs by start time, including a run in progress", () => {
+    const first = settled({ runId: runId(1), itemId: runId(8), attempt: 7, status: "failed", startedAt: "2026-08-14T16:00:00.000Z" });
+    const second = settled({ runId: runId(2), itemId: runId(8), attempt: 4, status: "done", startedAt: "2026-08-14T16:10:00.000Z" });
+    const running = surface({ runId: runId(3), itemId: runId(8), attempt: 9, startedAt: "2026-08-14T16:20:00.000Z", status: "running" });
+    const [group] = groupQueueAttempts_m4([second, running, first]);
+    assert_m4.deepEqual([...group.dayNumberByRunId], [[first.runId, 1], [second.runId, 2], [running.runId, 3]]);
+    assert_m4.deepEqual(group.attempts.map(row => row.runId), [running.runId, second.runId, first.runId]);
+    assert_m4.equal(group.representative.runId, running.runId);
+    assert_m4.equal(running.endedAt.state, "absent");
+  });
+
+  it_m4("breaks equal start times by ascending runId", () => {
+    const first = settled({ runId: runId(1), itemId: runId(8), attempt: 9, status: "failed" });
+    const second = settled({ runId: runId(2), itemId: runId(8), attempt: 7, status: "done" });
+    const [group] = groupQueueAttempts_m4([second, first]);
+    assert_m4.deepEqual([...group.dayNumberByRunId], [[first.runId, 1], [second.runId, 2]]);
+  });
+
+  it_m4("refuses a run without a start time", () => {
+    const row = settled({ runId: runId(1), itemId: runId(8), status: "done" });
+    Reflect.deleteProperty(row, "startedAt");
+    assert_m4.throws(() => groupQueueAttempts_m4([row]), /start time/u);
+  });
+
   it_m4("refuses two served run identities for the same workflow item attempt", () => {
     const first = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
     const duplicate = settled({ runId: runId(2), itemId: runId(8), attempt: 1, status: "done" });
