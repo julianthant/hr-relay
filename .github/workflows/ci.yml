@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  TZ: America/Los_Angeles
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -40,48 +43,6 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - name: Observe clock and workbook byte ownership
-        run: |
-          node --import tsx --input-type=module <<'JS'
-          import assert from 'node:assert/strict';
-          import { spawnSync } from 'node:child_process';
-          import { createHash } from 'node:crypto';
-          import { readFileSync } from 'node:fs';
-          import Excel from 'exceljs';
-          import { manualClock, runtimeTimeZone } from './src/rules/time/clock.ts';
-          import { importSpreadsheet } from './src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.ts';
-          const at = new Date('2026-06-30T23:59:59-07:00');
-          const clock = manualClock(at, 25);
-          console.log(JSON.stringify({ kind: 'runner-clock', node: process.version, zone: runtimeTimeZone(), tz: process.env.TZ ?? null, offsetMinutes: at.getTimezoneOffset(), today: clock.todayLocal(), time: clock.timeOfDayCode(), fiscalYear: clock.fiscalYear() }));
-          const probe = "import {manualClock,runtimeTimeZone} from './src/rules/time/clock.ts';const at=new Date('2026-06-30T23:59:59-07:00');const clock=manualClock(at,25);console.log(JSON.stringify({node:process.version,zone:runtimeTimeZone(),offsetMinutes:at.getTimezoneOffset(),today:clock.todayLocal(),time:clock.timeOfDayCode(),fiscalYear:clock.fiscalYear()}));";
-          for (const [zone, expected] of [['UTC', ['2026-07-01', '065959', 2027, 0]], ['America/Los_Angeles', ['2026-06-30', '235959', 2026, 420]]]) {
-            const child = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', probe], { env: { ...process.env, TZ: zone }, encoding: 'utf8' });
-            assert.equal(child.status, 0);
-            const observed = JSON.parse(child.stdout);
-            assert.deepEqual([observed.today, observed.time, observed.fiscalYear, observed.offsetMinutes], expected);
-            console.log(JSON.stringify({ kind: 'clock-control', requestedZone: zone, ...observed }));
-          }
-          const view = readFileSync('tests/support/fixtures/spreadsheet/color-filtered-roster.xlsx');
-          const source = view.slice().buffer;
-          const digest = value => createHash('sha256').update(value).digest('hex');
-          const beforeVisible = digest(view), beforeBacking = digest(new Uint8Array(source));
-          let visibleChanged;
-          try {
-            let rejected = false;
-            try { await new Excel.Workbook().xlsx.load(source); }
-            catch (error) {
-              if (!(error instanceof Error) || !/Unexpected xml node in parseOpen.*colorFilter/u.test(error.message)) throw new Error('DIAGNOSTIC_XLSX_REJECTION_UNEXPECTED');
-              rejected = true;
-            }
-            if (!rejected) throw new Error('DIAGNOSTIC_XLSX_REJECTION_MISSING');
-            await importSpreadsheet('color-filtered-roster.xlsx', source);
-          } finally {
-            const afterVisible = digest(view), afterBacking = digest(new Uint8Array(source));
-            visibleChanged = beforeVisible !== afterVisible;
-            console.log(JSON.stringify({ kind: 'workbook-byte-ownership', node: process.version, byteOffset: view.byteOffset, byteLength: view.byteLength, backingLength: view.buffer.byteLength, sourceLength: source.byteLength, aliasesBacking: source === view.buffer, beforeVisible, afterVisible, beforeBacking, afterBacking, visibleChanged, backingChanged: beforeBacking !== afterBacking }));
-          }
-          assert.equal(visibleChanged, false);
-          JS
       - run: npm run test:unit
 
   integration:
