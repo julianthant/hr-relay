@@ -17,14 +17,15 @@ export function mockRunDisplayId(run: Pick<MockRun, "id" | "workflowId">): strin
   return runDisplayId(mockQueueId(run.id), workflowDisplayCode(mockWorkflow(run.workflowId).label));
 }
 
-export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
+export function mockQueueSurface(run: MockRun, anchorIso: string): QueueSurfaceWire {
   const review = mockNeedsReview(run);
   const records = reviewRecords(run);
   const warnings = records.flatMap(record => record.warnings);
-  const { timeline, endTime } = mockRunLog(run);
+  const { timeline, durationSeconds } = mockRunLog(run);
   const currentStep = timeline.find(stage => stage.state === "active" || stage.state === "waiting");
-  const endClock = endTime;
-  const end = `${day}T${String(Number(endClock.slice(0, 2)) + 7).padStart(2, "0")}${endClock.slice(2)}.000Z`;
+  const anchor = Date.parse(anchorIso);
+  const end = new Date(anchor).toISOString();
+  const start = new Date(anchor - durationSeconds * 1000).toISOString();
   const absent = (reason: string) => ({ state: "absent" as const, reason });
   return QueueSurfaceWireSchema.parse({
     surfaceKind: "single", runId: mockQueueId(run.id), itemId: mockQueueId(run.id), workflowId: run.workflowId,
@@ -39,7 +40,7 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
     facts: absent("Results appear in Logs"), title: run.subject,
     displayName: absent("Use the input subject"), subtitle: absent("The panel names the workflow"),
     status: mockQueueStatus(run),
-    startedAt: `${day}T16:10:00.000Z`, updatedAt: end,
+    startedAt: start, updatedAt: end,
     endedAt: review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
     gateOpenedAt: review ? { state: "present", value: end } : absent("No open approval"),
     liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : currentStep ? { state: "present", value: currentStep.label } : absent("No active step"),
@@ -53,8 +54,8 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
   });
 }
 
-export function mockQueueSurfaces(runs: readonly MockRun[], day: string): readonly QueueSurfaceWire[] {
-  const surfaces = runs.map(run => mockQueueSurface(run, day));
+export function mockQueueSurfaces(runs: readonly MockRun[], anchorIso: string): readonly QueueSurfaceWire[] {
+  const surfaces = runs.map(run => mockQueueSurface(run, anchorIso));
   if (new Set(surfaces.map(surface => surface.runId)).size !== runs.length) throw new Error("MOCK_QUEUE_ID_COLLISION");
   return surfaces;
 }

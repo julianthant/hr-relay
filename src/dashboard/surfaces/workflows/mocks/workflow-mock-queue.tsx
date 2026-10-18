@@ -19,16 +19,16 @@ import { mockDeletionCopy, mockDeletionIds } from "./workflow-mock-model.js";
 
 const mockWorkflowLabelOf = (workflowId: string): string => mockWorkflow(workflowId).label;
 
-export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, day, nowIso, sort, filter }: {
+export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, day, nowIso, anchorIso, sort, filter }: {
   label: string; runs: readonly MockRun[]; selected?: string; onSelect: (id: string) => void;
-  day: string; nowIso: string; sort: QueueSortKey; filter?: QueueFilterScope;
+  day: string; nowIso: string; anchorIso: string; sort: QueueSortKey; filter?: QueueFilterScope;
   allRuns: readonly MockRun[]; onRetry: (id: string) => void; onDelete: (ids: readonly string[]) => void;
 }) {
   const [pendingDelete, setPendingDelete] = useState<MockRun>();
   const queueRoot = useRef<HTMLDivElement>(null);
   const deleted = useRef(false);
   const deleteLauncher = useRef<HTMLElement | null>(null);
-  const surfaces = useMemo(() => mockQueueSurfaces(runs, day), [runs, day]);
+  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso), [runs, anchorIso]);
   const outcomes = useMemo(() => mockQueueOutcomes(runs), [runs]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
   const queueState = useMemo(() => ({
@@ -72,11 +72,11 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   </div>;
 }
 
-export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange, day, nowIso }: {
+export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange, nowIso, anchorIso }: {
   run: MockRun; runs: readonly MockRun[]; onRerun: () => void; onApprove: () => void;
   onChange: (records: readonly ReviewRecord[]) => void; onDiscard: () => void; onRestore: () => void; onSelect: (id: string) => void;
   reviewOpen?: boolean; onReviewOpenChange?: (open: boolean) => void;
-  day: string; nowIso: string;
+  nowIso: string; anchorIso: string;
 }) {
   const [localReviewOpen, setLocalReviewOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
@@ -92,7 +92,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); };
   }, [recordsVisible]);
   const { workflowId, draft } = run;
-  const surface = useMemo(() => mockQueueSurface(run, day), [run, day]);
+  const surface = useMemo(() => mockQueueSurface(run, anchorIso), [run, anchorIso]);
   const sourcePages = useMemo(() => {
     if (!hasRecords) return {};
     const originals = seedReviewRecords({ workflowId, draft });

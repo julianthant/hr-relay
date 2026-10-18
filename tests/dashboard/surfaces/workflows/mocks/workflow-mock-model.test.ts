@@ -93,7 +93,7 @@ describe_m1("document-complete OCR previews", () => {
     expect_m1(() => mockDeletionIds_m1(runs, "missing")).toThrow("MOCK_DELETE_TARGET_MISSING");
   });
   it_m1("uses stable uppercase workflow aliases with eight decimal digits without changing command IDs", () => {
-    const rows = seedMockRuns_m1().map(run => mockQueueSurface_m1(run, "2026-08-03"));
+    const rows = seedMockRuns_m1().map(run => mockQueueSurface_m1(run, "2026-08-03T16:10:00.000Z"));
     const aliases = rows.map(row => runDisplayId_m1(row.runId, row.traceId));
     expect_m1(aliases.every(alias => /^[A-Z0-9]{1,4}\d{8}$/u.test(alias))).toBe(true);
     expect_m1(new Set(aliases).size).toBe(rows.length);

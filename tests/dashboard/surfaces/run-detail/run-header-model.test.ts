@@ -19,8 +19,8 @@ describe('compact run headers', () => {
   it('keeps running and finished timing honest and exposes the selected attempt', () => {
     const draft = initialMockDraft('person-lookup');
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: { ...draft, method: 'typed', text: 'Jordan' }, approved: true, seeded: true };
-    const row = mockQueueSurface(run, '2026-08-03');
-    const context = queueRunHeader({ ...row, attempt: 3, status: 'running', endedAt: { state: 'absent', reason: 'Still running' } }, 'Person lookup', '2026-08-03T16:12:00.000Z');
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const context = queueRunHeader({ ...row, startedAt: '2026-08-03T16:10:00.000Z', attempt: 3, status: 'running', endedAt: { state: 'absent', reason: 'Still running' } }, 'Person lookup', '2026-08-03T16:12:00.000Z');
     assert.match(context.displayId, /^PL\d{8}$/); assert.equal(context.attempt, 3); assert.equal(context.timing?.text, '2m 0s');
     assert.equal(queueRunHeader({ ...row, status: 'queued' }, 'Person lookup', row.updatedAt).timing, undefined);
     const missing = queueRunHeader({ ...row, status: 'done', endedAt: { state: 'absent', reason: 'No retained finish' } }, 'Person lookup', row.updatedAt);

@@ -8,18 +8,18 @@ import { notificationsSample } from "./notifications-fixture.js";
 import type { NotificationDestination, NotificationItem, NotificationsState } from "./notifications-view-model.js";
 
 type PreviewInput = Readonly<{
-  day: string; nowIso: string; rows?: readonly QueueSurfaceWire[]; runs: readonly MockRun[];
+  day: string; nowIso: string; anchorIso: string; rows?: readonly QueueSurfaceWire[]; runs: readonly MockRun[];
   workflowLabel: (id: string) => string; unavailable?: string;
   eventTimes?: Readonly<Record<string, string>>;
 }>;
 
 export function useWorkspaceNotifications(scenario: string, input: PreviewInput): NotificationsState {
-  const { day, nowIso, rows, runs, workflowLabel, eventTimes, unavailable } = input;
+  const { day, nowIso, anchorIso, rows, runs, workflowLabel, eventTimes, unavailable } = input;
   const minute = Math.floor(Date.parse(nowIso) / 60000);
   return useMemo(() => notificationPreviewState(scenario, {
-    day, nowIso: new Date(Math.max(minute * 60000, ...Object.values(eventTimes ?? {}).map(Date.parse))).toISOString(),
+    day, anchorIso, nowIso: new Date(Math.max(minute * 60000, ...Object.values(eventTimes ?? {}).map(Date.parse))).toISOString(),
     rows, runs, workflowLabel, eventTimes, unavailable,
-  }), [scenario, day, minute, rows, runs, workflowLabel, eventTimes, unavailable]);
+  }), [scenario, day, anchorIso, minute, rows, runs, workflowLabel, eventTimes, unavailable]);
 }
 
 function age(instant: string, nowIso: string): string {
@@ -47,7 +47,7 @@ function mockItem(run: MockRun, read: boolean, input: PreviewInput): Notificatio
   const records = run.workflowId === "ocr";
   const waiting = mockNeedsReview(run);
   const count = records ? reviewRecords(run).length : 0;
-  const row = mockQueueSurfaces([run], input.day)[0];
+  const row = mockQueueSurfaces([run], input.anchorIso)[0];
   const instant = input.eventTimes?.[run.id] ?? (waiting && row.gateOpenedAt.state === "present" ? row.gateOpenedAt.value : row.endedAt.state === "present" ? row.endedAt.value : undefined);
   return { id: `preview:${input.day}:${run.id}`, subject: row.title, workflow: mockWorkflow(run.workflowId).label, read,
     title: waiting ? "Records ready for approval" : run.discarded ? "Records discarded" : records ? "Records approved" : "Run completed",
