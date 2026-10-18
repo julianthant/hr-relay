@@ -685,3 +685,21 @@ describe_m6("OCR source comparison and corrected handoff", () => {
   });
 });
 }
+
+describe_m0("mock final employee identity", () => {
+  it_m0("keeps the resolved employee ID distinct from the separation Kuali input", () => {
+    const run = mockRunsForDraft_m0("separations", { ...initialMockDraft_m0("separations"), text: "48216" }, 0)[0];
+    const steps = mockRunLog_m0(run).steps;
+    const fields = steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
+    expect_m0(fields.filter(field => field.label === "Employee ID").map(field => field.value)).toEqual(expect_m0.arrayContaining(["10000001"]));
+    expect_m0(fields.filter(field => field.label === "Employee ID").every(field => field.value === "10000001")).toBe(true);
+    expect_m0(fields.find(field => field.id === `${run.id}:field:0`)).toMatchObject({ label: "Kuali ID", value: "48216" });
+    expect_m0(fields.find(field => field.id === `${run.id}:field:2`)).toMatchObject({ label: "Employee ID", value: "10000001" });
+  });
+  it_m0("retains an eight-digit employee input in earlier steps and final readback", () => {
+    const run = mockRunsForDraft_m0("work-study", { ...initialMockDraft_m0("work-study"), text: "10000009" }, 0)[0];
+    const fields = mockRunLog_m0(run).steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
+    expect_m0(fields.filter(field => field.label === "Employee ID").every(field => field.value === "10000009")).toBe(true);
+    expect_m0(fields.find(field => field.id === `${run.id}:field:1`)).toMatchObject({ label: "Employee ID", value: "10000009" });
+  });
+});
