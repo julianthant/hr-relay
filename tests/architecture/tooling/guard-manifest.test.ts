@@ -1,3 +1,4 @@
+import { spreadsheetValueMatches } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js";
 import { REVIEWED_CATCH_DEFAULTS } from "./helpers/reviewed-catch-defaults.js";
 import { createHash } from "node:crypto";
 import { existsSync, globSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -447,6 +448,12 @@ describe("reviewed architecture guard manifest", () => {
         rmSync(root, { recursive: true, force: true });
       }
     }
+  });
+
+  it("keeps reviewed spreadsheet validation failures distinct from missing field definitions", () => {
+    assert.equal(spreadsheetValueMatches("personalEmail", "invalid@"), false);
+    assert.equal(spreadsheetValueMatches("personalEmail", ""), true);
+    assert.throws(() => spreadsheetValueMatches("unregistered-field", "value"), /SPREADSHEET_FIELD_NOT_FOUND/u);
   });
 
   it("pins reviewed catch behavior and rejects any changed source with the original scanner",()=>{

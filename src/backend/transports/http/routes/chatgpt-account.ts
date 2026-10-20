@@ -76,7 +76,8 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
       return c.json(ChatGptCancelResultSchema.parse({ state: "cancelled", attemptId: current.id }));
     } catch (error) { return c.json(ChatGptCancelResultSchema.parse(failure(error, dispatched))); }
   });
-  app.post("/api/v1/settings/chatgpt-account/test-ocr", operatorMutationIngressGuard, async c => {
+  app.use("/api/v1/settings/chatgpt-account/test-ocr", operatorMutationIngressGuard);
+  app.post("/api/v1/settings/chatgpt-account/test-ocr", async c => {
     c.header("Cache-Control", "no-store");
     try {
       if (!ChatGptEmptyRequestSchema.safeParse(await c.req.json()).success) throw new ChatGptAccountError("CHATGPT_OCR_INVALID");

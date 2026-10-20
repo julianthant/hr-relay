@@ -108,7 +108,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/dashboard/state/activity-wiring-adapter.ts",
-    "sha256": "eb13c5569e7fa09692b3093371ac4854f9bc36dbad99733f32dff3154530b007",
+    "sha256": "bc18bae15b37e0f39a3fb62d52c402b7084c4a4b3ac4e8fbac891acdeaf7eb48",
     "reason": "The population observation consumes a rejection only after createSettingsRead publishes failed with its held selection. useActivityWiring exposes the catalog notice and revokes exports/navigation, preserving a coherent completed report and browse as history; superseded reads cannot publish or replace the current pair."
 },
   {
@@ -116,5 +116,9 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "sha256": "e9c2c3608b6b658b7002788795b478265e8211b3a82fd4f8d4ff96d20ad516b3",
     "reason": "createSettingsRead publishes failed before the facts observation rejects. useSettingsFacts returns SETTINGS_INITIAL_READ_UNAVAILABLE with any held facts, and FactsPane renders the catalog failure beside those exact facts; superseded identity reads cannot publish."
 },
-
+  {
+    "path": "src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.ts",
+    "sha256": "d514cc6f756dde3823fe115093cf1c38fd7266b1525383f6777156e2a9f3d340",
+    "reason": "Only CellCoercionError or ZodError makes the field-validation predicate false; the caller marks the supplied value invalid. Unknown field IDs and unexpected errors throw. Blank cells are explicitly optional and never substituted."
+  },
 ] as const;

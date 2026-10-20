@@ -169,12 +169,13 @@ describe("provider capability boundary", () => {
     assert.deepEqual(
       gitVisibleFiles(["src/backend/processing/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
       [
+        "src/backend/processing/providers/chatgpt-ocr-adapter.ts",
         "src/backend/processing/providers/deterministic-provider.ts",
         "src/backend/processing/providers/geocode-adapters.ts",
         "src/backend/processing/providers/nominatim-owner.ts",
         "src/backend/processing/providers/provider-client.ts",
       ].sort(),
-      "the deterministic harness and Census/Nominatim adapters are the complete provider modules",
+      "the subscription OCR adapter, deterministic harness and Census/Nominatim adapters are the complete provider modules",
     );
     assert.deepEqual(
       gitVisibleFiles(["src/backend/app/host/local-vite-probe.ts"])

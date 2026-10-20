@@ -24,6 +24,9 @@ import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import { ALL_CANARY_NAMES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
 import { EditableWorkbookSchema, WorkbookCreateRequestSchema, decodeEditableWorkbook, encodeEditableWorkbook, decodeSavedWorkbook, encodeSavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { createTaskProvenanceCollector } from "../../../src/backend/runs/provenance/task-provenance.js";
+import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
+import type { RecordedDataPoint } from "../../../src/rules/workflow/task-provenance.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
@@ -67,6 +70,93 @@ describe("redaction surface scan — the declaration audit", () => {
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
+  });
+
+  it("pins each current provenance and display origin and refuses captured addresses outside local custody", () => {
+    const reviewed: { surface: string; path: string; origin: string }[] = [];
+    for (const [surface, prefix] of [
+      ["wire/run-logs-stream", "envelope.payload.rows[]"],
+      ["wire/stream-envelope", "payload.rows[]"],
+      ["wire/run-detail-section", "payload.rows[]"],
+      ["wire/run-detail-section", "payload.observations[]"],
+    ] as const) {
+      for (const [suffix, origin] of [
+        ["displayFields[].causal.declaration", "repository-authored"],
+        ["displayFields[].causal.origin.path[]", "captured-hr-value"],
+        ["displayFields[].causal.origin.spanPath", "repository-authored"],
+        ["points[].origins[].origin.path[]", "captured-hr-value"],
+        ["points[].origins[].origin.spanPath", "repository-authored"],
+        ["points[].origins[].path[]", "captured-hr-value"],
+      ] as const) reviewed.push({ surface, path: `${prefix}.${suffix}`, origin });
+    }
+    for (const prefix of ["workflows[].definitionPreview.groups[]", "workflows[].timeline[]"]) {
+      for (const leaf of ["text", "value"]) reviewed.push({ surface: "wire/workflow-explorer", path: `${prefix}.operatorFields[].display.cases[].${leaf}`, origin: "repository-authored" });
+    }
+    assert.equal(reviewed.length, 28);
+    for (const expected of reviewed) {
+      const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === expected.surface && entry.path === expected.path);
+      assert.ok(entry, `${expected.surface}|${expected.path}`);
+      assert.equal(entry.origin, expected.origin);
+      assert.equal(auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS.filter(candidate => candidate !== entry)).length, 1);
+      if (entry.origin === "captured-hr-value") {
+        for (const egress of ["process-egress", "os-notification"] as const) {
+          const surfaces: readonly RedactionSurface[] = REDACTION_SURFACES.filter(surface => surface.id === entry.surface).map(surface => ({ ...surface, egress }));
+          assert.ok(auditSurfaceOrigins(surfaces, SURFACE_LEAF_ORIGINS).some(problem => problem.includes(entry.path) && problem.includes("may not carry at all")));
+        }
+      }
+    }
+    for (const group of personLookupDescriptor.timeline) for (const field of group.operatorFields ?? []) {
+      if (field.display !== undefined) assert.deepEqual(canariesIn(JSON.stringify(field.display)), []);
+    }
+  });
+
+  it("retains observed object keys in real collector addresses without treating them as authored text", () => {
+    const points: RecordedDataPoint[] = [];
+    const execution = { runId: UUID_1, traceId: "pl-180000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: SearchPersonOrg.id };
+    const collector = createTaskProvenanceCollector({ descriptor: personLookupDescriptor, execution,
+      observationSpanPath: "pl-180000-aaaa/searching#2.3", upstreamEvidence: { checkpoints: [] },
+      clock: manualClock(new Date(NOW)), onRecord: batch => points.push(...batch.points) });
+    const key = REDACTION_CANARIES.personName;
+    collector.recordData({ direction: "read", field: "results", value: [{ [key]: "captured" }] });
+    assert.equal(points.length, 1);
+    assert.ok(points[0]?.origins?.some(entry => entry.path.includes(key) && entry.origin.path.includes(key)));
+  });
+
+  it("covers the actual assistant and OCR loopback boundaries and rejects each missing origin", () => {
+    const ids = ["request/assistant", "wire/assistant", "wire/chatgpt-ocr-test"];
+    const surfaces = REDACTION_SURFACES.filter(surface => ids.includes(surface.id));
+    assert.deepEqual(surfaces.map(surface => surface.id).sort(), ids.sort());
+    const origins = SURFACE_LEAF_ORIGINS.filter(entry => ids.includes(entry.surface));
+    const expectedOrigins = [
+      "request/assistant|message|operator-authored",
+      "wire/assistant|text|external-text",
+      "wire/assistant|message|repository-authored",
+      "wire/assistant|citations[].path|repository-authored",
+      "wire/assistant|citations[].quote|repository-authored",
+      "wire/assistant|proposal.workflowId|repository-authored",
+      "wire/assistant|proposal.descriptorFingerprint|repository-authored",
+      "wire/assistant|proposal.configSnapshotId|repository-authored",
+      "wire/assistant|proposal.configFingerprint|repository-authored",
+      "wire/assistant|proposal.inputFingerprint|repository-authored",
+      "wire/assistant|proposal.optionsFingerprint|repository-authored",
+      "wire/assistant|proposal.stopBefore.nodeId|repository-authored",
+      "wire/assistant|proposal.stopBefore.afterPrepareTaskId|repository-authored",
+      "wire/assistant|proposal.stopBefore.commitTaskId|repository-authored",
+      "wire/assistant|proposal.subject.displayName|captured-hr-value",
+      "wire/assistant|candidates[].displayName|captured-hr-value",
+      "wire/chatgpt-ocr-test|model|external-text",
+      "wire/chatgpt-ocr-test|message|repository-authored",
+    ];
+    assert.deepEqual(origins.map(entry => `${entry.surface}|${entry.path}|${entry.origin}`).sort(), expectedOrigins.sort());
+    for (const entry of origins) {
+      assert.equal(auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS.filter(candidate => candidate !== entry)).length, 1);
+      if (entry.origin !== "repository-authored") {
+        for (const egress of ["process-egress", "os-notification"] as const) {
+          assert.ok(auditSurfaceOrigins(surfaces.map(surface => ({ ...surface, egress })), origins)
+            .some(problem => problem.startsWith(`${entry.surface} (${egress}) leaf "${entry.path}"`) && problem.includes("may not carry at all")));
+        }
+      }
+    }
   });
 
   it("pins history, operator observations and definition text origins and rejects their omission", () => {
