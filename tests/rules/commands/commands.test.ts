@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
 BulkRunCommandRequestSchema,
+COMMAND_EFFECT_BY_ACTION,
 COMMAND_FAMILY_REGISTRY,
 CommandActionSchema,
 CommandAuditRecordSchema,
+CommandEffectClassSchema,
 CommandFamilyRegistrySchema,
 CommandRequestSchema,
 CommandResultSchema,
 RunDisplayNameSchema,
+commandEffectClass,
 } from "../../../src/rules/commands/commands.js";
 import { COMMAND_FIXTURES,HASH_A,NOW,UUID_1,UUID_2,UUID_3 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -56,6 +59,64 @@ describe("authority classification and command families", () => {
     assert.equal(CommandFamilyRegistrySchema.safeParse(COMMAND_FAMILY_REGISTRY.map((entry) => (
       entry.family === "run" ? { ...entry, actions: [...entry.actions, "plan-version-bump"] } : entry
     ))).success, false);
+  });
+
+  it("assigns every command action one class from the closed effect set", () => {
+    assert.deepEqual(
+      [...CommandEffectClassSchema.options],
+      ["read", "local-write", "destructive", "external-submit"],
+    );
+    const expected = {
+      "annotate-failure": "local-write",
+      "set-batch-grouping": "local-write",
+      "start-run": "external-submit",
+      "inspect-intake": "local-write",
+      "confirm-intake-mapping": "local-write",
+      "correct-intake-row": "local-write",
+      "exclude-intake-row": "local-write",
+      "validate-intake": "local-write",
+      "enqueue-intake-manifest": "external-submit",
+      "plan-worker-count": "destructive",
+      "spawn-worker": "external-submit",
+      "stop-worker": "destructive",
+      "remove-worker": "destructive",
+      "retry-worker": "external-submit",
+      "pause-worker": "local-write",
+      "resume-worker": "external-submit",
+      "refresh-browser": "local-write",
+      "reopen-browser": "local-write",
+      "apply-settings": "local-write",
+      "apply-protected-settings": "destructive",
+      "plan-storage-relocation": "local-write",
+      "cancel-storage-relocation": "local-write",
+      retry: "external-submit",
+      restart: "external-submit",
+      cancel: "destructive",
+      bump: "local-write",
+      rename: "local-write",
+      delete: "destructive",
+      "resolve-write-present": "external-submit",
+      "resolve-write-absent": "external-submit",
+      "resolve-gate": "external-submit",
+      "notification-read": "local-write",
+      "notification-unread": "local-write",
+      "notification-snooze": "local-write",
+      "notification-unsnooze": "local-write",
+      "apply-explorer-edit": "local-write",
+    };
+    assert.deepEqual(COMMAND_EFFECT_BY_ACTION, expected);
+    assert.deepEqual([...CommandActionSchema.options].sort(), Object.keys(expected).sort());
+    const covered = COMMAND_FAMILY_REGISTRY.flatMap((entry) => entry.actions.map((action, index) => {
+      assert.equal(entry.effects[index], expected[action]);
+      return action;
+    }));
+    assert.deepEqual([...covered].sort(), Object.keys(expected).sort());
+    assert.equal(new Set(covered).size, covered.length);
+    const enqueue = CURRENT_COMMAND_FIXTURES.find((fixture) => (fixture as { readonly type: string }).type === "enqueue-intake-manifest");
+    const start = CURRENT_COMMAND_FIXTURES.find((fixture) => (fixture as { readonly type: string }).type === "start-run");
+    assert.equal(commandEffectClass(CommandRequestSchema.parse(enqueue)), "external-submit");
+    assert.equal(commandEffectClass(CommandRequestSchema.parse({ ...(enqueue as object), payload: { dryRun: true } })), "local-write");
+    assert.equal(commandEffectClass(CommandRequestSchema.parse(start)), "external-submit");
   });
 
   it("keeps priority bump and rename structurally distinct", () => {
