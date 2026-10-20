@@ -58,7 +58,7 @@ it("explains with byte-verified citations and prepares a bound dry proposal thro
 });
 it("projects actual synthetic workbook credential cells before the inference/read loop", async () => {
   const f = fixture(), account = chatGptFixture();
-  const canaries = ["CANARY_WORKBOOK_PASSWORD", "CANARY_TRACKER_NOTE", "123-45-6789"];
+  const canaries = ["CANARY_WORKBOOK_PASSWORD", "CANARY_TRACKER_NOTE", "902-48-1357"];
   const workbook = new ExcelJS.Workbook(), sheet = workbook.addWorksheet("Synthetic");
   sheet.addRow(["subjectRef", "displayName", "employeeId", "password", "trackerNote", "ssn"]);
   sheet.addRow([selected.subjectRef, selected.displayName, selected.employeeId, ...canaries]);

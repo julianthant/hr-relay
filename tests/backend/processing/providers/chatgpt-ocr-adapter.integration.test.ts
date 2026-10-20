@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { afterEach, it } from "vitest";
 import { z } from "zod";
+import { pdf } from "pdf-to-img";
 import { chatGptFixture, completedOcrStream } from "../../../support/helpers/chatgpt-account-fixtures.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
@@ -135,11 +136,37 @@ it("runs the actual extraction task through the subscription adapter and admits 
   } finally { await f.cleanup(); }
 });
 
-for (const [filename, pageCount] of [["synthetic-sample.pdf", 1], ["synthetic-two-pages.pdf", 2]] as const)
+function buildTwoPagePdf(): Buffer {
+  const stream = "BT /F1 16 Tf 72 700 Td (Synthetic page) Tj ET";
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+  ];
+  let document = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(document.length);
+    document += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = document.length;
+  document += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) document += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(document, "latin1");
+}
+
+for (const pageCount of [1, 2] as const)
   it(`requires a singleton PDF before subscription extraction: ${pageCount} pages`, async () => {
     const f = chatGptFixture(); try {
       await f.connected();
-      const documentBytes = readFileSync(new URL(`../../../support/fixtures/documents/${filename}`, import.meta.url));
+      const documentBytes = pageCount === 1
+        ? readFileSync(new URL("../../../support/fixtures/documents/synthetic-sample.pdf", import.meta.url)) : buildTwoPagePdf();
+      const parsed = await pdf(documentBytes, { scale: 1 });
+      try { assert.equal(parsed.length, pageCount); } finally { await parsed.destroy(); }
       const sourceSha256 = createHash("sha256").update(documentBytes).digest("hex");
       const document = ArtifactRefSchema.parse({ ...page, sha256: sourceSha256, bytes: documentBytes.byteLength, mediaType: "application/pdf" });
       f.setSse(completedOcrStream(JSON.stringify({ ...submission(f.clock.now().toISOString()), sourceSha256 })));

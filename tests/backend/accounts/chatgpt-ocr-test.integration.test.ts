@@ -18,6 +18,7 @@ it("Test OCR dispatches exactly one stored synthetic page and exposes only safe 
       const chunks: Buffer[] = [];
       for await (const chunk of await artifacts.open(input.page)) { assert.ok(chunk instanceof Uint8Array); chunks.push(Buffer.from(chunk)); }
       const bytes = Buffer.concat(chunks); assert.equal(bytes.byteLength, input.page.bytes);
+      assert.equal(bytes.toString("latin1").includes("Employee ID: 10800000"), true);
       assert.equal(input.page.mediaType, "application/pdf");
       const document = await pdf(bytes, { scale: 1 });
       try { assert.equal(document.length, 1); } finally { await document.destroy(); }
@@ -89,3 +90,21 @@ it("Test OCR cancellation during dispatch cannot return completed", async () => 
     await assert.rejects(service.testOcr(controller.signal), { code: "CHATGPT_OCR_CANCELLED" }); assert.equal(calls, 1);
   } finally { await f.cleanup(); }
 });
+
+for (const [employeeId, accepted] of [["10800001", false], ["10-800-000", true]] as const)
+  it(`Test OCR ${accepted ? "accepts the normalized right" : "refuses a different valid"} employee ID`, async () => {
+    const f = chatGptFixture(); try {
+      const artifacts = createContentAddressedArtifactWriter({ admission: f.admission });
+      const service = createChatGptOcrTestService({ artifacts, dispatch: async input => {
+        const admitted = admitOcrExtraction({ formType: input.formType, sourcePage: input.sourcePage, sourceSha256: input.page.sha256,
+          source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "gpt-6.1-sol" }, readAt: f.clock.now().toISOString(), pageKind: "oath", record: { answers: {
+            printedName: { state: "read", raw: "Example, Avery", confidence: 1 }, employeeId: { state: "read", raw: employeeId, confidence: 1 },
+            signatureDate: { state: "read", raw: "07/21/2026", confidence: 1 }, employeeSigned: { state: "read", raw: "yes", confidence: 1 }, officerSigned: { state: "read", raw: "yes", confidence: 1 },
+          } } });
+        assert.equal(admitted.admitted, true); if (!admitted.admitted) throw new Error("fixture admission failed");
+        return admitted.extraction;
+      } });
+      if (accepted) assert.deepEqual(await service.testOcr(new AbortController().signal), { state: "completed", model: "gpt-6.1-sol" });
+      else await assert.rejects(service.testOcr(new AbortController().signal), { code: "CHATGPT_OCR_INVALID" });
+    } finally { await f.cleanup(); }
+  });

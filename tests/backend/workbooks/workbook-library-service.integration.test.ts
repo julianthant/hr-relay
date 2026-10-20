@@ -194,12 +194,27 @@ it("preserves the actual theme object emitted by ExcelJS XLSX imports", async ()
 
 it('roundtrips a wide multi-sheet roster as raw library data while execution rejects invalid canonical rows', async () => {
   const source = new Excel.Workbook();
+  const rosterEids = [
+    ['10800000', '10800001', '10873698'],
+    ['10000001', '10456712', '10101010'],
+    ['10899999', '10867890', '10770001'],
+    ['10000000', '10800002', '10800003'],
+    ['10800004', '10203373', '10203372'],
+    ['10000002', '10812345', '10777777'],
+    ['10401814', '10998801', '10111111'],
+    ['10456799', '10456700', '10873690'],
+    ['10123456', '10854321', '10812346'],
+  ];
   for (let sheet = 0; sheet < 9; sheet++) {
     const target = source.addWorksheet(`Synthetic ${sheet + 1}`);
     target.getCell('A1').value = 'Synthetic roster';
     const width = sheet === 0 ? 32 : 31;
     target.getRow(5).values = ['Legal Name', 'Lived Name', 'UCPath ID', 'Email', 'Start date', 'Entered in UCPath', 'Date background entered', ...Array.from({ length: width - 7 }, (_, column) => `Custom ${column}`)];
-    for (let row = 6; row <= 9; row++) target.getRow(row).values = ['Morrow, Bea', 'Morrow, Bee', row === 7 ? 'Pending' : sheet === 1 && row === 6 ? '10-000-106' : `10${String(sheet * 100 + row).padStart(6, '0')}`, row === 8 ? 'invalid@' : 'bea@example.com', row === 9 ? '02/30/2026' : new Date('2026-10-19T00:00:00Z'), 'JZ 05/29/26', '6.16.26 KM', '  untouched  '];
+    for (let row = 6; row <= 9; row++) {
+      const eid = row === 7 ? 'Pending' : rosterEids[sheet][row === 6 ? 0 : row - 7];
+      const rawEid = sheet === 1 && row === 6 ? eid.replace(/^(\d{2})(\d{3})(\d{3})$/u, '$1-$2-$3') : eid;
+      target.getRow(row).values = ['Morrow, Bea', 'Morrow, Bee', rawEid, row === 8 ? 'invalid@' : 'bea@example.com', row === 9 ? '02/30/2026' : new Date('2026-10-19T00:00:00Z'), 'JZ 05/29/26', '6.16.26 KM', '  untouched  '];
+    }
     target.getCell('A6').value = { richText: [{ text: 'Morrow, ', font: { bold: true, color: { argb: 'FF112233' } } }, { text: 'Bea', font: { italic: true } }] };
     target.getCell('D6').value = { text: 'bea@example.com', hyperlink: 'mailto:bea@example.com', tooltip: 'Email' };
     target.getCell('C6').numFmt = '00000000';
@@ -245,9 +260,9 @@ it('roundtrips a wide multi-sheet roster as raw library data while execution rej
     columns: rosterColumns.map(({ samples: _samples, ...column }) => column),
     bindings: [['eid', 2], ['fullName', 0]].map(([field, column]) => ({ canonicalFieldId: field, targetFieldId: field, sourceColumnId: rosterColumns[Number(column)].sourceColumnId, confirmedAt: saved.savedAt })) });
   const matched = await matchSpreadsheetTask.impl.run({ input: MatchSpreadsheetInputSchema.parse({ rosterFileRef: ArtifactRefSchema.parse({ id: '11111111-2222-4333-8444-555555555555', sha256: 'ab'.repeat(32), bytes: originalBytes.byteLength, mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), sheet: 'Synthetic 2', mapping: rosterMapping, readAt: saved.savedAt,
-    subjects: [{ subjectId: '11111111-2222-4333-8444-555555555555', eid: '10000002', name: 'Bea Morrow' }, { subjectId: '11111111-2222-4333-8444-555555555556', eid: '10000002', name: 'Rick Roe' }, { subjectId: '11111111-2222-4333-8444-555555555557', name: 'Bea Morrow' }] }),
+    subjects: [{ subjectId: '11111111-2222-4333-8444-555555555555', eid: '10000001', name: 'Bea Morrow' }, { subjectId: '11111111-2222-4333-8444-555555555556', eid: '10000001', name: 'Rick Roe' }, { subjectId: '11111111-2222-4333-8444-555555555557', name: 'Bea Morrow' }] }),
     ctx: { artifacts: { open: async () => Readable.from([Buffer.from(originalBytes)]) }, fail: (code: string) => { throw new Error(code); }, recordData: () => undefined, log: { info: () => undefined } } as never });
-  expect(matched.matches.map(match => [match.matchedEid, match.mismatch])).toEqual([['10000002', 'none'], [null, 'name-eid-conflict'], [null, 'ambiguous']]);
+  expect(matched.matches.map(match => [match.matchedEid, match.mismatch])).toEqual([['10000001', 'none'], [null, 'name-eid-conflict'], [null, 'ambiguous']]);
   expect(result.rejected.map(row => [row.sourceRow, 'field' in row ? row.field : undefined])).toEqual([[2, 'eid'], [3, 'email'], [4, 'hireDate']]);
 });
 
