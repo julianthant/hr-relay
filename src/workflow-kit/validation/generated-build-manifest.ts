@@ -9,7 +9,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "c4393d158ebefa3f74b8fe28709e88276ac5ef39e7de1038377d11b2ebff735b",
+      "fingerprint": "eaec4d1a1251120c11708b7b25fad33d3d6a1013b0da51eaa458098919f30fbe",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -385,7 +385,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/person-lookup/workflow.ts",
-          "sha256": "0283afa3c2f75302b22d68ad65165cdfe1dda6459ce8e12390186fd4f0036282"
+          "sha256": "b29f628521e8cc66d3521896a562575173afbea9fb3d8440fe96f2146b00f3c6"
         }
       ],
       "id": "person-lookup"
@@ -8477,11 +8477,11 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "normalization/read-contact-advice"
     },
     {
-      "fingerprint": "b98832a0ba329be269e678176054583bf615927992b55b8cdb76eaf73a4c1a6d",
+      "fingerprint": "bcd477aa39eb431512da44a435f00775f34892eead4062c7cc42dcc2d260e7fd",
       "sources": [
         {
           "path": "src/backend/processing/ocr/tasks/extract-form-page.ts",
-          "sha256": "da0a37e85409e7e48717094a124d5eba6dddc83cdbcc39963eee350eb5e25832"
+          "sha256": "12b2c13bbf7d8e84f52f0f5c73a59961f2fc98a8dff8443ff383ab3e295a05b4"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",

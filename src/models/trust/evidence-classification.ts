@@ -604,6 +604,14 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...sweepProofLeaves(writeProof("ucpath/delete-pending-terminations"), ""),
   ...savedFinalizationLeaves(writeProof("kuali/save-separation-finalization"), ""),
 
+  ...open(OCR_FORM_PAGE, "formType", "source.kind", "source.providerId", "readAt",
+    "sourceSha256", "sourcePage", "pageKind", "pageFingerprint", "hasRecord",
+    "record", "record.answersFingerprint"),
+  ...population(OCR_FORM_PAGE, "record.blockingPaths"),
+  ...["record.answers", "source.modelId"].map((path) => ({
+    scope: OCR_FORM_PAGE, path, classification: "sensitive-hr", transform: "drop",
+  })),
+
     /* The executor's own fixture contracts: test-local shapes that must name a manifest-known task, DECLARED rather than exempted, so the undeclared-leaf refusal stays exercised by a composed run. */
   ...person(OCR_FORM_PAGE, "subject", "eid"),
   ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes"),

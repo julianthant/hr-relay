@@ -62,6 +62,15 @@ describe("served Person Lookup Explorer operator presentation", () => {
     assert.equal(allFields(result.projection.steps[0].parts).some(field => field.label === "Employee ID"), false);
     assert.match(textOf(result.projection.steps[0].parts).join(" "), /Some example values are not declared/u);
   });
+  it("retains matching methods and system check states only for Logs", () => {
+    const wire = workflowWire();
+    assert.deepEqual(wire.timeline.map(group => (group.operatorFields ?? []).filter(field => field.visibility === "logs").map(field => [field.label, field.sources])), [
+      [["Drop reason", [{ nodeId: "matching", kind: "output", fieldPath: "dropped.reason" }]], ["How found", [{ nodeId: "search-identity", kind: "output", fieldPath: "method" }]]],
+      [["CRM", [{ nodeId: "crm-identity", kind: "output", fieldPath: "crmState" }]], ["How found", [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }]]],
+      [["UCPath", [{ nodeId: "active-status", kind: "output", fieldPath: "details.ucpath" }]], ["CRM", [{ nodeId: "active-status", kind: "output", fieldPath: "details.crm" }]], ["Status note", [{ nodeId: "active-status", kind: "output", fieldPath: "reason" }]]],
+      [],
+    ]);
+  });
   it.each([
     ["Search for person", ["Employee ID", "Name", "Department", "Job title", "HR status"]],
     ["Cross-check identity", ["Name", "Department", "Employee ID", "Start date"]],

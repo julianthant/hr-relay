@@ -6,6 +6,7 @@ import { extractFormPageTask } from "../../../../src/backend/processing/ocr/task
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { AdmittedExtractionSchema,type AdmittedExtraction } from "../../../../src/models/ocr/extraction.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { OCR_FORM_TYPES, fieldOnPageKind, ocrForm, type OcrFormType } from "../../../../src/models/ocr/form-registry.js";
 
 const PAGE_SHA = sha256Hex("fixture-oath-page");
 const PAGE = ArtifactRefSchema.parse({
@@ -66,12 +67,12 @@ function taskCtx(response: unknown, sent: unknown[], recorded: unknown[]) {
   };
 }
 
-async function run(response: unknown): Promise<TaskResult<AdmittedExtraction, Readonly<{ sent: unknown[]; recorded: unknown[] }>>> {
+async function run(response: unknown, formType: OcrFormType = "oath"): Promise<TaskResult<AdmittedExtraction, Readonly<{ sent: unknown[]; recorded: unknown[] }>>> {
   const sent: unknown[] = [];
   const recorded: unknown[] = [];
   try {
     const output = AdmittedExtractionSchema.parse(await extractFormPageTask.impl.run({
-      input: { formType: "oath", page: PAGE, sourcePage: 4 },
+      input: { formType, page: PAGE, sourcePage: 4 },
       ctx: taskCtx(response, sent, recorded) as never,
     }));
     return { outcome: "success" as const, output, sent, recorded };
@@ -106,7 +107,10 @@ describe("OCR provider task wrapper", () => {
       { direction: "read", field: "sourcePage", value: 4 },
       { direction: "read", field: "pageKind", value: "oath" },
       { direction: "read", field: "pageFingerprint", value: result.output.pageFingerprint },
-      { direction: "read", field: "hasRecord", value: true },
+      { direction: "read", field: "record", value: result.output.record },
+      { direction: "read", field: "source", value: result.output.source },
+      { direction: "read", field: "readAt", value: result.output.readAt },
+      { direction: "read", field: "sourceSha256", value: result.output.sourceSha256 },
     ]]);
   });
 
@@ -132,6 +136,30 @@ describe("OCR provider task wrapper", () => {
     assert.deepEqual(incomplete.recorded, []);
   });
 });
+
+for (const formType of OCR_FORM_TYPES) {
+  const form = ocrForm(formType);
+  for (const pageKind of [...form.pageKinds, "boilerplate", "unrelated", "blank"] as const) {
+    it(`records the complete admitted ${formType}/${pageKind} output`, async () => {
+      const result = await run({
+        state: "produced",
+        value: { schemaHash: RESPONSE_HASH, value: {
+          ...completeAnswers(), formType, pageKind,
+          record: form.pageKinds.includes(pageKind) ? { answers: Object.fromEntries(form.fields.map(field => [field.path,
+            { state: "absent", reason: fieldOnPageKind(field, pageKind) ? "blank" : "not-on-form" },
+          ])) } : null,
+        } },
+      }, formType);
+      assert.equal(result.outcome, "success");
+      if (result.outcome !== "success") throw new Error("expected admitted form page");
+      assert.equal(result.output.formType, formType);
+      assert.equal(result.output.pageKind, pageKind);
+      assert.equal(result.output.record === null, !form.pageKinds.includes(pageKind));
+      const fields = ["formType", "sourcePage", "pageKind", "pageFingerprint", "record", "source", "readAt", "sourceSha256"] as const;
+      assert.deepEqual(result.recorded, [fields.map(field => ({ direction: "read", field, value: result.output[field] }))]);
+    });
+  }
+}
 
 it("propagates the disconnected OCR result through the extraction task without evidence", async () => {
   const result = await run({ state: "unavailable", reason: { code: "adapter-unavailable", message: "OCR provider not connected" } });

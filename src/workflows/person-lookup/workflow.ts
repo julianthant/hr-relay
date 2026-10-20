@@ -129,15 +129,15 @@ export const personLookupWorkflow = defineWorkflow({
           ...(["emplId", "name"].includes(path) ? ["hits", "confirmed", "dropped"].map(prefix => ({ nodeId: "matching", kind: "output" as const, fieldPath: `${prefix}.${path}` })) : []),
         ] })),
         { label: "Drop reason", visibility: "logs", sources: [{ nodeId: "matching", kind: "output", fieldPath: "dropped.reason" }] },
-        { label: "How found", display: lookupMethodDisplay, sources: [{ nodeId: "search-identity", kind: "output", fieldPath: "method" }] },
+        { label: "How found", visibility: "logs", display: lookupMethodDisplay, sources: [{ nodeId: "search-identity", kind: "output", fieldPath: "method" }] },
       ] }, [searching, matching, initial]],
       [{ key: "cross-verify", label: "Cross-check identity", description: "Compare the person’s name, department and employee ID with CRM records.", system: "crm", selection: { inputField: "crmCheck", selectedWhen: true }, operatorFields: [
         ...[["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["emplId", "Employee ID", "10000001"], ["firstDayOfService", "Start date", "3/14/2031"]].map(([path, label, example]) => ({ label, example, sources: [
           ...["cross-verify", "crm-selected-record", "crm-results"].map(nodeId => ({ nodeId, kind: "output" as const, fieldPath: `records.${path}` })),
           ...["crmIdentity", "crmRecord", "unselectedCrmRecords"].map(prefix => ({ nodeId: "crm-identity", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
         ] })),
-        { label: "CRM", example: "Found", sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "crmState" }] },
-        { label: "How found", display: lookupMethodDisplay, sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }] },
+        { label: "CRM", visibility: "logs", example: "Found", sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "crmState" }] },
+        { label: "How found", visibility: "logs", display: lookupMethodDisplay, sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }] },
       ] }, [crossVerify, identity, selectedRecord, crmResults]],
       [{ key: "active-status", label: "Read employment status", description: "Determine employment status and read department and termination details when applicable.", system: "local", operatorFields: [
         { label: "Employment status", example: "Active", display: { cases: [
@@ -148,7 +148,7 @@ export const personLookupWorkflow = defineWorkflow({
         { label: "HDH department", example: "Yes", display: { cases: [{ value: true, text: "Yes" }, { value: false, text: "No" }] }, sources: [{ nodeId: "active-status", kind: "output", fieldPath: "hdh" }] },
         ...[["details.department", "Department", "CAMPUS DINING OPERATIONS"], ["details.endDate", "End date", "4/25/2031"], ["details.terminationReason", "Termination reason", "Appointment ended"]].map(([fieldPath, label, example]) => ({ label, example,
           sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
-        ...[["details.ucpath", "UCPath", "Found"], ["details.crm", "CRM", "Not checked"]].map(([fieldPath, label, example]) => ({ label, example,
+        ...[["details.ucpath", "UCPath", "Found"], ["details.crm", "CRM", "Not checked"]].map(([fieldPath, label, example]) => ({ label, example, visibility: "logs" as const,
           sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
         { label: "Status note", visibility: "logs", sources: [{ nodeId: "active-status", kind: "output", fieldPath: "reason" }] },
       ] }, [recovery, activeStatus]],

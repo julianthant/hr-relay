@@ -2,9 +2,13 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import type { AnyTaskContract } from "../../../src/models/task/task-contract.js";
+import { admitOcrExtraction } from "../../../src/models/ocr/extraction.js";
+import { OCR_FORM_TYPES, fieldOnPageKind, ocrForm } from "../../../src/models/ocr/form-registry.js";
+import { ExtractFormPage } from "../../../src/models/processing/ocr/extract-form-page.js";
 import {
 classifyEvidenceLeaf,
 evidenceLeaves,
+EvidenceFieldClassificationSchema,
 } from "../../../src/models/trust/evidence-classification.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
@@ -76,5 +80,56 @@ describe("the write-proof redaction table (declared, never guessed)", () => {
       ),
       /no declared evidence classification for write-proof:kuali\/save-separation-finalization/u,
     );
+  });
+});
+
+describe("OCR task evidence declarations", () => {
+  const scope = { kind: "task-output", taskId: ExtractFormPage.id } as const;
+  const metadataPaths = ["formType", "pageFingerprint", "pageKind", "readAt",
+    "source.kind", "source.modelId", "source.providerId", "sourcePage", "sourceSha256"];
+
+  for (const formType of OCR_FORM_TYPES) {
+    const form = ocrForm(formType);
+    for (const pageKind of [...form.pageKinds, "boilerplate", "unrelated", "blank"] as const) {
+      it(`classifies every admitted ${formType}/${pageKind} leaf and recorded point`, () => {
+        const dataBearing = form.pageKinds.includes(pageKind);
+        const admission = admitOcrExtraction({
+          formType, pageKind,
+          source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "fixture" },
+          readAt: "2026-08-06T09:00:00.000Z", sourcePage: 1, sourceSha256: "a".repeat(64),
+          record: dataBearing ? { answers: Object.fromEntries(form.fields.map((field) => [field.path,
+            { state: "absent", reason: fieldOnPageKind(field, pageKind) ? "blank" : "not-on-form" },
+          ])) } : null,
+        });
+        assert.equal(admission.admitted, true);
+        if (!admission.admitted) throw new Error("fixture extraction must be admitted");
+        const leaves = evidenceLeaves(admission.extraction);
+        assert.deepEqual(leaves.map(({ path }) => path), [...metadataPaths, ...(dataBearing
+          ? ["record.answers", "record.answersFingerprint", "record.blockingPaths"] : ["record"])].sort());
+        for (const leaf of leaves) classifyEvidenceLeaf(scope, leaf.path);
+        for (const path of ["formType", "sourcePage", "pageKind", "pageFingerprint", "readAt", "sourceSha256"]) {
+          assert.equal(classifyEvidenceLeaf(scope, path).classification, "safe-diagnostic");
+        }
+      });
+    }
+  }
+
+  it("refuses undeclared OCR leaves and does not lend declarations to other tasks", () => {
+    for (const path of ["unexpected", "record.unexpected", "record.answers.raw", "source.actorId"]) {
+      assert.throws(() => classifyEvidenceLeaf(scope, path), /no declared evidence classification/u);
+    }
+    assert.throws(() => classifyEvidenceLeaf({ kind: "task-output", taskId: WriteFixtureCommit.id }, "formType"),
+      /no declared evidence classification/u);
+  });
+
+  it("keeps captured answers and free provider metadata under restrictive transforms", () => {
+    assert.equal(classifyEvidenceLeaf(scope, "hasRecord").classification, "safe-diagnostic");
+    for (const path of ["record.answers", "source.modelId"]) {
+      const declaration = classifyEvidenceLeaf(scope, path);
+      assert.equal(declaration.classification, "sensitive-hr");
+      assert.equal(declaration.transform, "drop");
+      assert.equal(EvidenceFieldClassificationSchema.safeParse({ ...declaration, transform: "allow" }).success, false);
+    }
+    assert.equal(classifyEvidenceLeaf(scope, "record.blockingPaths").transform, "count");
   });
 });

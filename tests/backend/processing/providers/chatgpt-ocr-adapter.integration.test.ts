@@ -13,12 +13,18 @@ import { createProviderClient } from "../../../../src/backend/processing/provide
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { extractFormPageTask } from "../../../../src/backend/processing/ocr/tasks/extract-form-page.js";
 import { ExtractFormPage, OCR_EXTRACTION_REQUEST_HASH } from "../../../../src/models/processing/ocr/extract-form-page.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { ConfigSchema } from "../../../../src/models/config/schema.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-paths.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { DataPointSchema } from "../../../../src/rules/workflow/task-provenance.js";
+import { admitOcrExtraction, AdmittedExtractionSchema } from "../../../../src/models/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../../../src/models/ocr/instruction.js";
+import { OCR_FORMS, fieldOnPageKind } from "../../../../src/models/ocr/form-registry.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { evidenceLeaves, redactEvidenceLeaf } from "../../../../src/models/trust/evidence-classification.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
@@ -41,23 +47,55 @@ function request() { return { capability: "ocr.extract" as const, payload: { sch
   value: { formType: "oath", sourcePage: 4, page, instruction: buildExtractionInstruction("oath") } } }; }
 function options() { return { signal: new AbortController().signal, requestId: randomUUID(), deadlineMonotonicMs: 120_000 }; }
 
-it("identifies the real runner evidence-classification blocker after subscription transport", async () => {
+for (const [formType, pageKind, control] of [
+  ["oath", "oath", "valid"],
+  ["emergency-contact", "emergency-contact", "valid"],
+  ["i9", "i9-section1", "valid"],
+  ["i9", "i9-section2", "valid"],
+  ["oath", "boilerplate", "valid"],
+  ["oath", "unrelated", "valid"],
+  ["oath", "blank", "valid"],
+  ["oath", "oath", "undeclared"],
+  ["oath", "oath", "inconsistent"],
+] as const) it(control === "undeclared" ? "refuses a genuinely undeclared OCR observation before checkpoint completion"
+  : control === "inconsistent" ? "refuses an OCR observation that contradicts its returned value before checkpoint completion"
+  : `persists an admitted ${formType}/${pageKind} checkpoint after subscription transport`, async () => {
   const f = chatGptFixture();
   try {
     await f.connected();
     const artifacts = createContentAddressedArtifactWriter({ admission: f.admission });
     const stored = await artifacts.put(bytes, { mediaType: "image/png" });
     assert.equal(stored.sha256, page.sha256);
-    const answer = submission(f.clock.now().toISOString());
+    const form = OCR_FORMS[formType];
+    const answer = formType === "oath" && pageKind === "oath" ? submission(f.clock.now().toISOString()) : {
+      ...submission(f.clock.now().toISOString()), formType, pageKind,
+      record: form.pageKinds.includes(pageKind) ? { answers: Object.fromEntries(form.fields.map((field) => [field.path,
+        { state: "absent", reason: fieldOnPageKind(field, pageKind) ? "blank" : "not-on-form" },
+      ])) } : null,
+    };
     f.setSse(completedOcrStream(JSON.stringify(answer)));
     const base = world.fixtureDescriptor("ocr-account-proof", "oc", world.providersOnlyContract);
     const descriptor = defineWorkflowDescriptor({ id: base.id, version: base.version, contractFingerprint: base.contractFingerprint,
       code: base.code, label: base.label, icon: base.icon, category: base.category, canonicalInput: base.canonicalInput,
       inputSubject: "name", surface: base.surface, enqueue: base.enqueue, actions: base.actions, surfaces: {}, details: [],
       identity: base.identity, presentation: base.presentation, scenarios: base.scenarios, flow: flow(base.canonicalInput)
-      .step("extract", ExtractFormPage, { dependsOn: [], replay: "checkpoint", bind: () => ({ formType: "oath" as const, page: stored, sourcePage: 4 }) })
+      .step("extract", ExtractFormPage, { dependsOn: [], replay: "checkpoint", bind: () => ({ formType, page: stored, sourcePage: 4 }) })
       .build({ schema: z.strictObject({ done: z.boolean() }), dependsOn: ["extract"], derive: () => ({ done: true }) }) });
-    const stores = defineTaskStoreRegistry([defineServiceStore("ocr", { extract: extractFormPageTask })], {
+    const task = control !== "valid" ? defineTask(ExtractFormPage, {
+      sessions: [],
+      async run({ input, ctx }) {
+        return extractFormPageTask.impl.run({ input, ctx: { ...ctx, recordData(points) {
+          if (control === "undeclared") {
+            ctx.recordData({ direction: "read", field: "undeclaredOcrLeaf", value: true });
+            ctx.recordData(points);
+          } else {
+            const batch = z.array(DataPointSchema).parse(points);
+            ctx.recordData(batch.map(point => point.field === "sourcePage" ? { ...point, value: 5 } : point));
+          }
+        } } });
+      },
+    }) : extractFormPageTask;
+    const stores = defineTaskStoreRegistry([defineServiceStore("ocr", { extract: task })], {
       scenarioIds: ExtractFormPage.scenarios, tasks: [{ id: ExtractFormPage.id, effect: ExtractFormPage.effect }],
     });
     const harness = world.wiringHarness(descriptor, stores, { artifacts });
@@ -70,9 +108,69 @@ it("identifies the real runner evidence-classification blocker after subscriptio
     const run = harness.authority.database.authority.runs.get(claimed.run.envelope.runId);
     const failureId = run?.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
     const failure = failureId === undefined ? undefined : harness.authority.database.authority.failures.get(failureId);
-    assert.equal(outcome.state, "failed");
-    assert.ok(failure); assert.match(failure.summary, /no declared evidence classification.*formType/su);
-    assert.equal(harness.authority.database.authority.runCheckpoints.latest(descriptor.id, claimed.run.envelope.itemId, "extract"), undefined);
+    const checkpoint = harness.authority.database.authority.runCheckpoints.latest(descriptor.id, claimed.run.envelope.itemId, "extract");
+    const observations = harness.emitter.events().flatMap((event) => event.t === "data.observed" ? event.points : []);
+    if (control !== "valid") {
+      assert.equal(outcome.state, "failed");
+      assert.ok(failure);
+      assert.equal(checkpoint, undefined);
+      if (control === "undeclared") {
+        assert.match(failure.summary, /no declared evidence classification.*undeclaredOcrLeaf/su);
+        assert.deepEqual(observations, []);
+      } else {
+        assert.match(failure.summary, /recorded value for sourcePage contradicts its parsed output/u);
+        assert.deepEqual(observations.find(point => point.field === "sourcePage")?.values.map(value => {
+          assert.ok(value.state === "allowed");
+          return value.value;
+        }), [5]);
+      }
+    } else {
+      assert.equal(outcome.state, "done", failure?.summary ?? "composed extraction must finish");
+      assert.equal(failure, undefined);
+      assert.ok(checkpoint);
+      const admission = admitOcrExtraction(answer);
+      assert.equal(admission.admitted, true);
+      if (!admission.admitted) throw new Error("fixture extraction must be admitted");
+      const extraction = AdmittedExtractionSchema.parse(checkpoint.output.value);
+      assert.deepEqual(extraction, admission.extraction);
+      assert.equal(checkpoint.output.schemaHash, deriveSchemaHash(ExtractFormPage.output, "output"));
+      assert.equal(checkpoint.runId, claimed.run.envelope.runId);
+      assert.equal(checkpoint.claimGeneration, claimed.claim.claimGeneration);
+      assert.equal(checkpoint.attempt, claimed.run.envelope.attempt);
+      assert.equal(checkpoint.workflowId, descriptor.id);
+      assert.equal(checkpoint.itemId, claimed.run.envelope.itemId);
+      assert.equal(checkpoint.nodeId, "extract");
+      assert.equal(checkpoint.contractFingerprint, descriptor.contractFingerprint);
+      assert.equal(checkpoint.descriptorVersion, descriptor.version);
+      assert.equal(extraction.sourceSha256, stored.sha256);
+      assert.equal(extraction.sourcePage, 4);
+      assert.deepEqual(extraction.source, answer.source);
+      assert.equal(extraction.readAt, answer.readAt);
+      const fields = ["formType", "sourcePage", "pageKind", "pageFingerprint", "record", "source", "readAt", "sourceSha256"] as const;
+      assert.deepEqual(observations.map(({ field }) => field), fields);
+      const scope = { kind: "task-output", taskId: ExtractFormPage.id } as const;
+      assert.deepEqual(observations.map(({ direction, field, values }) => ({ direction, field, values })),
+        fields.map(field => ({ direction: "read", field,
+          values: evidenceLeaves(extraction[field], field).map(leaf => redactEvidenceLeaf(scope, leaf)),
+        })));
+      assert.deepEqual(checkpoint.provenance.map(({ path }) => path).sort(), evidenceLeaves(extraction).map(({ path }) => path));
+      for (const fact of checkpoint.provenance) {
+        assert.equal(fact.source, "live");
+        assert.equal(fact.originalObservedAt, fact.observedAt);
+      }
+      assert.ok(checkpoint.observationOrigins?.length);
+      for (const { origin } of checkpoint.observationOrigins) {
+        assert.equal(origin.runId, claimed.run.envelope.runId);
+        assert.equal(origin.attempt, claimed.run.envelope.attempt);
+        assert.equal(origin.nodeId, "extract");
+        assert.equal(origin.taskId, ExtractFormPage.id);
+      }
+      for (const leaf of evidenceLeaves(extraction)) {
+        const local = redactEvidenceLeaf({ kind: "task-output", taskId: ExtractFormPage.id }, leaf);
+        assert.ok(local.state === "allowed");
+        assert.deepEqual(local.value, leaf.value);
+      }
+    }
     const call = f.calls.find(call => call.url.endsWith("/responses")); assert.ok(call);
     assert.ok(typeof call.init.body === "string");
     assert.ok(call.init.body.includes(bytes.toString("base64")));

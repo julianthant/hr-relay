@@ -83,9 +83,12 @@ describe("Explorer registered projection", () => {
       const result = projectExplorerDefinition(workflow);
       assert.equal(result.state, "ready", result.state === "refused" ? String(result.evidence) : workflow.id);
       if (result.state !== "ready") continue;
-      assert.deepEqual(result.projection.steps.map(step => step.title), workflow.definitionPreview.groups.flatMap(group => group.operatorFields === undefined ? group.entries.flatMap(entry => entry.nodeIds.map(id => workflow.nodes.find(node => node.id === id)!.label)) : [group.label]));
-      for (const step of result.projection.steps) for (const field of allFields(step.parts)) {
-        const declared = workflow.timeline.flatMap(group => group.operatorFields ?? []).find(declared => declared.label === field.label);
+      const expectedSteps = workflow.definitionPreview.groups.flatMap(group => group.operatorFields === undefined
+        ? group.entries.flatMap(entry => entry.nodeIds.map(id => ({ title: workflow.nodes.find(node => node.id === id)!.label, operatorFields: group.operatorFields })))
+        : [{ title: group.label, operatorFields: group.operatorFields }]);
+      assert.deepEqual(result.projection.steps.map(step => step.title), expectedSteps.map(step => step.title));
+      for (const [index, step] of result.projection.steps.entries()) for (const field of allFields(step.parts)) {
+        const declared = expectedSteps[index].operatorFields?.find(declared => declared.visibility !== "logs" && declared.label === field.label);
         assert.ok(declared);
         assert.equal(field.value, declared.example);
         assert.ok(result.projection.sources.has(field.source!));
