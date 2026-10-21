@@ -299,6 +299,19 @@ Browser requirements describe stable declared slots independently of observed op
 An unopened requirement has no session ID, age, or health. Do not derive an empty requirement set
 from an empty open-session list. Actual worker-service wiring replaces both producer and port.
 
+## Assistant
+
+The HUB shell is the single mounted assistant. Product chats retain C1 controller state per chat and
+send through the typed assistant client. Account changes and authority refreshes invalidate pending
+replies and proposals; switching chats cancels a pending reply while preserving each draft and transcript.
+Answers retain source quotations and revisions. Proposals show their subject, fingerprints, expiry,
+effects and stop point. Confirmation remains unavailable and starts no run.
+
+Chat files retains its composer and uses version-bound workbook registration and reads. Model, effort,
+approval and voice controls have no served capability and remain unavailable. The explicit parity
+composition supplies approved mock conversations and sample workflow scenes; product failures never
+select those producers. Chat titles and drafts are local to the mounted shell.
+
 ## Settings
 
 Settings is a full-height takeover with its own navigation rail, search, guarded Back to dashboard,
@@ -322,6 +335,10 @@ An unknown section shows No such settings section. An unrendered served section 
 renderer. Archive and UI catalog requests show removal notices, with a guarded return to dashboard.
 
 ### General and ChatGPT account
+
+Assistant permission remains unavailable in product until the settings authority supplies it. Browser
+dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
+draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
 General composes appearance, ordinary General fields, annual dates, and ChatGPT account.
 Shared date controls display `MM/DD/YYYY` and preserve partial input during unrelated renders.

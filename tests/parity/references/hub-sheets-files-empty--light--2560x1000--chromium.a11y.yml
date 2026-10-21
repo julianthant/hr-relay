@@ -1,0 +1,16 @@
+# hub-sheets-files-empty--light--2560x1000--chromium
+# adapter: fixture
+# fixture: hub-sheets-components
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 2560x1000  theme: light  variant: chromium
+# capturedAt: 2026-08-03
+
+- main:
+  - region "Chat files":
+    - heading "Chat files" [level=3]
+    - paragraph: Files shared in this conversation
+    - heading "No files yet" [level=4]
+    - paragraph: Attach a file with the + button in chat. You'll find it here after you send it.
+    - button "Back to chat"
+- region "Notifications"

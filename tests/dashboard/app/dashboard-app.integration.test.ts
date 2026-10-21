@@ -129,7 +129,9 @@ try {
   let uploads = 0;
   await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
   await click(button("Start a run"));
-  assert_m0.equal(document.querySelectorAll('input[type="file"]').length, 0);
+  const launch = document.querySelector('[role="dialog"]'); assert_m0.ok(launch);
+  assert_m0.equal(launch.querySelectorAll('input[type="file"]').length, 0);
+  assert_m0.equal(document.querySelectorAll('#hub-panel-assistant input[type="file"]').length, 1);
   await key("Escape"); assert_m0.ok(document.activeElement === button("Start a run"));
   await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
@@ -263,13 +265,13 @@ afterEach_m1(_afterEachFixture0);
     const row = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(item => item.status === "done"); assert_m1.ok(row);
     const linkedDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
       queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(item => item === row ? { ...item, workflowId: "separations", title } : item) });
-    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&settings=performance`, {
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&settings=general`, {
       subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { close() {} }; },
     }, "sidebar", workflows => {
       const composition = PARITY_WORKFLOW_COMPOSITION_m1(workflows);
       return { ...composition, dataSources: { ...composition.dataSources, separations: "served" } };
     });
-    await editNavigationTimeout();
+    await editHeadlessPreference();
     if (surface === "search") await click(button("Search runs"));
     else {
       const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);
@@ -286,7 +288,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
     assert_m1.equal(location.search, before);
     assert_m1.equal(localStorage.getItem("hr-dashboard.selected-workflow"), preference);
-    assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value, "111");
+    assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked, false);
     if (surface === "notification") {
       const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);
       await click(notifications);
@@ -325,30 +327,27 @@ afterEach_m1(_afterEachFixture0);
   });
 });
 
-async function editNavigationTimeout() {
-  const field = document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]'); assert_m1.ok(field);
-  await act_m1(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set?.call(field,"111");
-    field.dispatchEvent(new Event("input",{bubbles:true}));
-  });
+async function editHeadlessPreference() {
+  const control = document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] .ds-switch-control'); assert_m1.ok(control);
+  await act_m1(async () => control.click());
 }
 it_m1("keeps the Settings editor and draft across ordinary-section native history", async () => {
 try {
 
 
-  await mount("?settings=performance");
-  await editNavigationTimeout();
-  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "General"); assert_m1.ok(general);
+  await mount("?settings=general");
+  await editHeadlessPreference();
+  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Paths"); assert_m1.ok(general);
   await click(general);
   await historyMove("back");
-  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
+  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked,false);
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
   const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert_m1.ok(analytics);
   await click(analytics);
   assert_m1.equal(document.querySelector("h1")?.textContent, "Analytics");
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
   await historyMove("back");
-  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
+  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked,false);
   await click(button("Settings"));
   await click(button("Discard changes"));
   assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
@@ -365,7 +364,7 @@ try {
   assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
   assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
-  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 11);
+  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 10);
   await click(button("Return to dashboard"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
@@ -553,17 +552,13 @@ try {
     },
   });
   await click(button("Settings"));
-  const performance = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Performance"); assert_m1.ok(performance);
-  await click(performance);
-  const width = document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]'); assert_m1.ok(width);
-  await act_m1(async () => {
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value"); if (descriptor?.set === undefined) throw new Error("input value setter missing");
-    descriptor.set.call(width, "1777"); width.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await editHeadlessPreference();
+  const paths = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Paths"); assert_m1.ok(paths);
+  await click(paths);
   await historyMove("back"); // Settings root retains its editor.
   await historyMove("back");
   await click(button("Keep editing"));
-  assert_m1.equal(width.value, "1777");
+  assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked, false);
   assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
   await historyMove("back"); await click(button("Discard changes")); await settle();
   assert_m1.equal(new URLSearchParams(location.search).get("day"), "2026-08-02");

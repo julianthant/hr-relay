@@ -1,0 +1,67 @@
+.hub-icon { width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:999px;background:transparent;color:var(--ui-secondary);flex:none;padding:0; }
+.hub-icon svg { width:16px;height:16px; }
+.hub-icon:hover,.hub-chat-title:hover { background:var(--ui-hover);color:var(--ui-primary); }
+.hub-icon:active,.hub-btn:active { transform:translateY(1px); }
+.hub-btn { min-height:32px;padding:5px 12px;border:1px solid var(--ui-stroke);border-radius:8px;background:var(--ui-panel);color:var(--ui-primary);font-size:12px;font-weight:500;white-space:nowrap; }
+.hub-btn:hover { background:var(--ui-hover); }
+.hub-btn.primary { background:var(--hub-primary);color:var(--hub-primary-ink);border-color:var(--ui-stroke-control); }
+.hub-btn.danger { background:var(--ui-danger);color:var(--ui-panel); }
+.hub-field { width:100%;height:34px;padding:6px 10px;border:1px solid var(--ui-stroke-control);border-radius:8px;background:var(--ui-field);font-size:13px;color:var(--ui-primary); }
+.hub-field::placeholder { color:var(--ui-muted); }
+.hub-slot { position:fixed;right:32px;bottom:132px;width:420px;max-width:calc(100vw - 32px);height:min(700px,calc(100dvh - 180px));max-height:calc(100dvh - 70px);border:1px solid var(--ui-stroke);border-radius:12px;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);box-shadow:var(--hub-panel-shadow);z-index:var(--hub-panel-layer);transform-origin:bottom right; }
+.hub-slot[hidden] { display:none; }
+.hub-slot-header { display:flex;padding:10px 12px;min-height:52px;align-items:center;border-bottom:1px solid var(--ui-stroke);gap:8px; }
+.hub-slot-title { min-width:0;flex:1;display:flex;overflow:hidden;font-size:14px;line-height:20px; }
+.hub-chat-title { display:inline-flex;width:fit-content;max-width:100%;font-weight:600;padding:4px 6px;min-height:30px;line-height:20px;border:0;background:transparent;border-radius:8px;text-align:left; }
+.hub-chat-title > span { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.hub-header-actions { display:flex;gap:2px;flex:none; }
+.hub-assistant-slot { flex:1;min-height:0; }
+.hub-assistant-launcher { position:fixed;right:32px;bottom:76px;width:48px;height:48px;display:grid;place-items:center;padding:0;border:1px solid var(--ui-stroke-control);border-radius:999px;background:var(--ui-panel);color:var(--ui-primary);box-shadow:var(--hub-launcher-shadow);z-index:var(--hub-panel-layer); }
+.hub-assistant-launcher:hover { background:var(--ui-table); }
+.hub-assistant-launcher svg { width:22px;height:22px; }
+.hub-transcript { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 16px;scrollbar-width:thin;font-size:13px;line-height:1.65; }
+.hub-chat-search { position:relative;margin-bottom:12px; }
+.hub-chat-search input { padding-left:30px; }
+.hub-chat-search svg { position:absolute;left:10px;top:10px;width:14px;height:14px; }
+.hub-chat-group h3 { color:var(--ui-muted);font-weight:500;font-size:11px;margin:8px 8px 5px; }
+.hub-chat-row { display:flex;align-items:center;gap:3px;border:0;border-radius:10px;padding:8px 5px;margin-bottom:3px; }
+.hub-chat-row:is(:hover,[data-current="true"]) { background:var(--ui-table); }
+.hub-chat-row button { border:0;background:transparent; }
+.hub-chat-row .hub-icon { width:32px;height:32px;min-width:32px; }
+.hub-chat-row .hub-icon:hover { background:var(--ui-hover); }
+.hub-chat-row .hub-icon svg { width:18px;height:18px; }
+.hub-chat-open { flex:1;min-width:0;padding:5px 8px;display:grid;gap:2px;border-radius:6px;text-align:left; }
+.hub-chat-open strong { font-size:12px;font-weight:500;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.hub-chat-open small { font-size:11px;color:var(--ui-muted); }
+.hub-empty { padding:50px 16px;text-align:center;color:var(--ui-muted); }
+.hub-empty strong { display:block;color:var(--ui-primary);font-size:15px;margin-bottom:7px; }
+.hub-modal { width:440px;max-width:calc(100vw - 48px);padding:24px;border:1px solid var(--ui-stroke);border-radius:14px;background:var(--ui-panel);color:var(--ui-primary);box-shadow:var(--hub-dialog-shadow);font-size:13px;overscroll-behavior:contain; }
+.hub-modal > header { padding:0;border:0; }
+.hub-modal > header > div { gap:6px; }
+.hub-modal h2 { font-size:18px;line-height:26px;font-weight:600;margin:0; }
+.hub-modal > header p { font-size:13px;line-height:21px;color:var(--ui-muted);margin:0 0 20px;overflow-wrap:anywhere; }
+.hub-modal > form { display:block; }
+.hub-modal > footer,.hub-modal > form > footer { display:flex;justify-content:flex-end;gap:8px;margin-top:22px;padding:0;border:0; }
+.hub-slot :is(button,a),.hub-assistant-launcher,.hub-chat-row,.hub-logout { transition:background-color var(--hub-dur-hover) ease,color var(--hub-dur-hover) ease,border-color var(--hub-dur-hover) ease,opacity var(--hub-dur-hover) ease; }
+.hub-slot { transition:opacity 200ms var(--hub-ease),transform 200ms var(--hub-ease),display 200ms allow-discrete; }
+.hub-slot[hidden] { opacity:0;transform:translateY(4px);transition-duration:120ms; }
+@starting-style { .hub-slot:not([hidden]) { opacity:0;transform:translateY(4px); } }
+.hub-slot-header { cursor:grab;touch-action:none;user-select:none; }
+.hub-slot-header:active { cursor:grabbing; }
+.hub-assistant-launcher { touch-action:none; }
+.hub-slot .hub-icon:disabled { opacity:1;cursor:default; }
+
+.hub-slot-title { font-weight:600; }
+.hub-modal>footer,.hub-modal>form>footer { background:transparent;border-radius:0; }
+.hub-modal>footer>span,.hub-modal>form>footer>span { gap:8px; }
+.hub-modal:not(:has(input))>header p { margin-bottom:0; }
+.hub-modal .hub-btn.primary { border-color:var(--hub-primary-border); }
+.hub-modal h2 { letter-spacing:normal; }
+
+html[data-hub] .workspace-rail-header button:not([aria-pressed="true"]):hover { background:transparent; }
+
+.hub-assistant-slot[hidden] { display:none; }
+.hub-assistant-slot > #hub-panel-assistant { border:0;box-shadow:none;width:100%; }
+.hub-slot .hub-panel-header { cursor:grab;touch-action:none;user-select:none; }
+.hub-files-slot { display:flex;flex:1;min-height:0;overflow:auto; }
+.hub-assistant-launcher[hidden] { display:none; }

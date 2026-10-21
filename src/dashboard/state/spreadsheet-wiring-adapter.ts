@@ -9,13 +9,13 @@ import { cellText, spreadsheetSaveMatches, type EditableWorkbook, type Spreadshe
 import { NOT_MAPPED, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-mock-model.js';
 import { spreadsheetField } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
 
-type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookCreate' | 'workbookSave'>;
+type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'>;
 type SaveIntent = { draft: EditableWorkbook; expectedVersion: number; libraryId?: string; error?: unknown };
 type Draft = { document: EditableWorkbook; dirty: boolean; opened?: SavedWorkbook; intent?: SaveIntent; saving?: Promise<SpreadsheetSaveResult> };
 type Snapshot = { files: readonly RegisteredSpreadsheet[]; loading: boolean; refreshing: boolean; opening?: string; openError: string; error: string };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
-function libraryRow(id: string, document: EditableWorkbook, addedAt?: string): RegisteredSpreadsheet {
-  return { id, name: document.name, typeId: 'local', addedAt, sheets: document.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? sheet.headerRow ?? 1,
+function libraryRow(id: string, document: EditableWorkbook, addedAt?: string, version?: number): RegisteredSpreadsheet {
+  return { id, name: document.name, typeId: 'local', addedAt, version, rowCount: document.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0), status: version !== undefined && version > 1 ? 'Updated' : undefined, sheets: document.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? sheet.headerRow ?? 1,
     columns: sheet.rows[(sheet.headerRow ?? 1) - 1].cells.map(cellText), mapping: sheet.columnBindings?.map(binding => binding.fieldId ? spreadsheetField(binding.fieldId).label : NOT_MAPPED) ?? [], bindings: sheet.columnBindings })) };
 }
 
@@ -24,6 +24,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
   const listeners = new Set<() => void>();
   const drafts = new Map<string, Draft>();
   const aliases = new Map<string, string>();
+  const origins = new Map<string, { version: number; status: "Attached" | "Generated" | "Updated" }>();
   let readAuthority: object = client;
   let readReady = true;
   let listing = 0;
@@ -32,7 +33,11 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
   let opening = 0;
   const publish = (patch: Partial<Snapshot> = {}) => { snapshot = { ...snapshot, ...patch }; for (const listener of listeners) listener(); };
   const keyFor = (id: string) => aliases.get(id) ?? id;
-  const rowFor = (key: string, draft: Draft) => libraryRow(key, draft.document, draft.opened?.createdAt);
+  const withOrigin = (row: RegisteredSpreadsheet, libraryId: string) => {
+    const origin = origins.get(libraryId);
+    return origin && origin.version === row.version ? { ...row, status: origin.status } : row;
+  };
+  const rowFor = (key: string, draft: Draft) => withOrigin(libraryRow(key, draft.document, draft.opened?.createdAt, draft.opened?.version), draft.opened?.libraryId ?? key);
   const updateRow = (key: string, draft: Draft) => { const row = rowFor(key, draft); publish({ files: snapshot.files.some(file => file.id === key) ? snapshot.files.map(file => file.id === key ? row : file) : [row, ...snapshot.files] }); };
   const adapter = {
     subscribe(this: void, listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -52,7 +57,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         try {
           const records = await readWithDeadline(() => client.workbookList(), "DASHBOARD_READ_FAILED");
           if (request !== listing) return;
-          const files = records.map(record => { const key = keyFor(record.libraryId); const draft = drafts.get(key); return draft ? rowFor(key, draft) : libraryRow(key, record.workbook, record.createdAt); });
+          const files = records.map(record => { const key = keyFor(record.libraryId); const draft = drafts.get(key); return draft ? rowFor(key, draft) : withOrigin(libraryRow(key, record.workbook, record.createdAt, record.version), record.libraryId); });
           for (const [key, draft] of drafts) if (!files.some(file => file.id === key)) files.unshift(rowFor(key, draft));
           listed = true; readReady = true; publish({ files, loading: false, refreshing: false });
         } catch { if (request === listing) publish({ loading: false, refreshing: false, error: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); }
@@ -73,6 +78,24 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         if (!drafts.has(key)) { drafts.set(key, { document: opened.workbook, dirty: false, opened }); publish({ openError: '', opening: undefined }); }
       } catch { if (request === opening) publish({ openError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text, opening: undefined }); }
     },
+    async history(id: string) {
+      const draft = drafts.get(keyFor(id));
+      const libraryId = draft?.opened?.libraryId ?? id;
+      return readWithDeadline(() => client.workbookHistory(libraryId), "DASHBOARD_READ_FAILED");
+    },
+    async readVersion(libraryId: string, version: number) {
+      const current = await readWithDeadline(() => client.workbookOpen(libraryId), "DASHBOARD_READ_FAILED");
+      if (current.version === version) return current;
+      const history = await adapter.history(libraryId);
+      const record = history.find(record => record.version === version);
+      if (!record) throw new Error("SPREADSHEET_VERSION_UNAVAILABLE");
+      return record;
+    },
+    markRegistered(id: string, version: number, status: "Attached" | "Generated" | "Updated") {
+      const key = keyFor(id), draft = drafts.get(key);
+      if (!draft || draft.opened?.version !== version || draft.dirty) throw new Error("SPREADSHEET_REGISTRATION_UNCONFIRMED");
+      origins.set(draft.opened.libraryId, { version, status }); updateRow(key, draft);
+    },
     close(id: string) {
       const key = keyFor(id), draft = drafts.get(key);
       if (!draft || draft.intent || draft.saving) return;
@@ -80,7 +103,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       const opened = draft.opened;
       if (opened) {
         aliases.delete(opened.libraryId);
-        publish({ files: snapshot.files.map(file => file.id === key ? libraryRow(opened.libraryId, opened.workbook, opened.createdAt) : file) });
+        publish({ files: snapshot.files.map(file => file.id === key ? withOrigin(libraryRow(opened.libraryId, opened.workbook, opened.createdAt, opened.version), opened.libraryId) : file) });
       } else publish({ files: snapshot.files.filter(file => file.id !== key) });
     },
     discard() {

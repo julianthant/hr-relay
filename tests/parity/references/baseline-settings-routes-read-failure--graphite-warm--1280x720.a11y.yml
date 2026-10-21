@@ -20,10 +20,12 @@
     - alert:
       - text: Routes could not be read Settings could not be read. Try again.
       - button "Try again"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings" [pressed]
+    - button "Log out"
 - region "Notifications"

@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { afterEach, it } from 'vitest';
+import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
+import { createSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
+import { createSpreadsheetChatRegistrationPort } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-chat-registration-model.js';
+import { createChatFilesPort } from '../../../../src/dashboard/surfaces/shell/chat-files-model.js';
+import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { disposeHttpRouteHarness, harness } from '../../../support/helpers/backend/http-route-harness.js';
+afterEach(disposeHttpRouteHarness);
+it('registers attachments and versioned updates through the existing HTTP routes and SQLite library', async () => {
+  const h = harness(), writes: string[] = [];
+  const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async (url, init) => {
+    if (init?.method === 'POST') writes.push(new URL(String(url)).pathname);
+    return h.app.request(String(url), { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), host: 'localhost', origin: 'http://localhost' } });
+  } });
+  const adapter = createSpreadsheetWiringAdapter(client), port = createSpreadsheetChatRegistrationPort(adapter);
+  const files = createChatFilesPort(port);
+  const workbook = { ...newEditableWorkbook(), name: 'Autumn onboarding.csv' };
+  const attached = await files.registerSpreadsheet({ operationId: 'attached', status: 'Attached', workbook });
+  assert.equal(attached.state, 'confirmed'); if (attached.state !== 'confirmed') throw new Error('missing attachment');
+  const first = await client.workbookOpen(attached.file.libraryId);
+  const updateRequest = { operationId: 'updated', status: 'Updated', workbook: { ...first.workbook, name: 'Autumn onboarding-updated.csv' }, base: { libraryId: first.libraryId, version: first.version } } as const;
+  const updated = await files.registerSpreadsheet(updateRequest);
+  assert.equal(updated.state, 'confirmed'); if (updated.state !== 'confirmed') throw new Error('missing update');
+  assert.equal(updated.file.version, 2); assert.equal((await port.open(updated.file)).name, 'Autumn onboarding-updated.csv');
+  assert.equal((await port.open(attached.file)).name, 'Autumn onboarding.csv');
+  assert.deepEqual((await client.workbookHistory(first.libraryId)).map(record => record.version), [1, 2]);
+  assert.equal((await files.registerSpreadsheet(updateRequest)).state, 'confirmed');
+  const generated = await files.registerSpreadsheet({ operationId: 'generated', status: 'Generated', workbook: { ...newEditableWorkbook(), name: 'Onboarding results.csv' } });
+  assert.equal(generated.state, 'confirmed');
+  assert.deepEqual(files.snapshot().map(file => file.kind === 'workbook' ? [file.name, file.reference.version, file.reference.status] : null), [['Autumn onboarding.csv', 1, 'Attached'], ['Autumn onboarding-updated.csv', 2, 'Updated'], ['Onboarding results.csv', 1, 'Generated']]);
+  assert.equal(new Set(files.snapshot().map(file => file.id)).size, 3);
+  assert.deepEqual(writes, ['/api/v1/workbooks', `/api/v1/workbooks/${first.libraryId}/save`, '/api/v1/workbooks']);
+  adapter.close(first.libraryId); await adapter.list();
+  assert.equal(adapter.snapshot().files.find(file => file.id === first.libraryId)?.status, 'Updated'); assert.equal(adapter.snapshot().files.find(file => file.id === first.libraryId)?.version, 2);
+});

@@ -8,7 +8,7 @@ import { exportSheetInWorker, exportSpreadsheetInWorker } from "./spreadsheet-im
 import { EMPTY_WORKBOOK_HISTORY, recordWorkbookEdit, stepWorkbookHistory, type WorkbookHistory } from './spreadsheet-history-model.js';
 import './spreadsheet-editor.css';
 
-export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported, onSave, exportKeepsDirty = false }: { document: EditableWorkbook; dirty: boolean; exportKeepsDirty?: boolean; onSave?: (draft: EditableWorkbook) => Promise<SpreadsheetSaveResult>; onExported?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
+export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported, onSave, onHistory, exportKeepsDirty = false }: { document: EditableWorkbook; dirty: boolean; exportKeepsDirty?: boolean; onSave?: (draft: EditableWorkbook) => Promise<SpreadsheetSaveResult>; onExported?: () => void; onHistory?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
   const [save, setSave] = useState<{ document: EditableWorkbook; result: SpreadsheetSaveResult | { state: 'pending' } }>();
   const saveRequest = useRef<object | undefined>(undefined);
   const latestDocument = useRef(document); latestDocument.current = document;
@@ -110,6 +110,7 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
   }} onBlur={event => { if (event.target.classList.contains('spreadsheet-cell-input')) { editGroup.current = undefined; setHistory(current => ({ ...current, group: undefined })); } }}>
     <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: () => dirty ? setCloseOpen(true) : onDocument(null, false) }, { label: document.name }]} />
     <PageHeading title={document.name} description={`${document.sheets.length} ${document.sheets.length === 1 ? 'sheet' : 'sheets'} · ${dirty ? 'Edited copy' : 'Saved copy'}`} actionAlignment="title" actions={<>
+      {onHistory && <Button variant="secondary" disabled={busy} onClick={onHistory}>Versions</Button>}
       <Button variant="secondary" aria-busy={!!saveRequest.current || undefined} disabled={busy || !!saveRequest.current || !onSave} icon={saveRequest.current ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void saveDocument()}>Save</Button>
       <DropdownMenu><DropdownMenuTrigger asChild><Button variant="secondary" disabled={busy || !sheet} icon={<Download className="size-3.5" />}>Export copy</Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Export spreadsheet" align="end" className="w-52"><DropdownMenuItem onSelect={() => void exportFile('xlsx')}>Excel workbook (.xlsx)</DropdownMenuItem><DropdownMenuItem onSelect={() => void exportFile('csv')}>Current sheet (.csv)</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       {onMapping && <DropdownMenu><DropdownMenuTrigger asChild><IconButton variant="ghost" label="Workbook actions" disabled={busy} icon={<MoreHorizontal className="size-4" />} /></DropdownMenuTrigger><DropdownMenuContent aria-label="Workbook actions" align="end"><DropdownMenuItem onSelect={onMapping}>Edit column mappings</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}

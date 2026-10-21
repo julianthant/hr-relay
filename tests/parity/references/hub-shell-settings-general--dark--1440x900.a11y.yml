@@ -1,0 +1,84 @@
+# hub-shell-settings-general--dark--1440x900
+# adapter: fixture
+# fixture: hub-mock-ports-served-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: dark  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - heading "General" [level=1]
+    - paragraph: ChatGPT account, appearance, and browser preferences.
+    - heading "ChatGPT account" [level=2]
+    - group "ChatGPT account":
+      - text: Use your ChatGPT plan
+      - paragraph: Not connected. Connect your ChatGPT account to Relay.
+      - button "Connect ChatGPT"
+    - heading "Appearance" [level=2]
+    - group "Appearance":
+      - switch "Dark theme Dashboard appearance on this browser." [checked]
+      - text: Dark theme Dashboard appearance on this browser.
+      - switch "Animations Subtle motion. Your reduced-motion preference takes priority."
+      - text: Animations Subtle motion. Your reduced-motion preference takes priority.
+    - group "Assistant permission":
+      - text: Assistant permission Choose when Relay asks before taking an action.
+      - button "Ask only before submits"
+    - heading "Employment" [level=2]
+    - group "Employment":
+      - text: Job end date (required)
+      - paragraph: Default end date for job records.
+      - text: Job end date*
+      - group "Job end date*":
+        - spinbutton "month, Job end date*": mm
+        - spinbutton "day, Job end date*": dd
+        - spinbutton "year, Job end date*": yyyy
+        - button "Choose job end date Job end date*"
+    - heading "Browser" [level=2]
+    - group "Browser":
+      - switch "Run without a browser window Use headless browser sessions." [checked]
+      - text: Run without a browser window Use headless browser sessions. Browser window
+      - paragraph: Size used when Relay opens a browser.
+      - spinbutton "Browser window width": "1440"
+      - spinbutton "Browser window height": "1000"
+- status
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+    - button "Log out"
+- region "Notifications"

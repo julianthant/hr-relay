@@ -71,7 +71,7 @@ test("Settings account command uncertainty uses the section slot", { annotation:
   await page.route("**/api/v1/settings/chatgpt-account/sign-in", route => route.abort("failed"));
   try {
     await page.goto(`${server.baseUrl}/?settings=general`);
-    await page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
+    await page.getByRole("button", { name: "Connect ChatGPT", exact: true }).click();
     await sectionWarning(page, "ChatGPT account unavailable", "ChatGPT account");
     await attach(page, info, "settings-warning-account-action.a11y.yml");
   } finally { await server.close(); }

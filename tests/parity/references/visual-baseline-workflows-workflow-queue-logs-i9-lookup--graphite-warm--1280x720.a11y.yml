@@ -62,9 +62,9 @@
 - main:
   - heading "I-9 Lookup queue" [level=1]
   - region "Queue":
-    - text: "Finished 1 08/03/2026: 1 verified"
+    - text: "Finished 1 08/03/2026: 1 completed"
     - button "Lee, Jordan — done" [pressed]:
-      - text: Lee, Jordan Done 9:10 AM
+      - text: Lee, Jordan Done 10:04 AM
       - button "Attempts for Lee, Jordan": "#1"
       - text: I9L23406114 36s
       - button "Retry"
@@ -133,10 +133,13 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
+- button "Assistant"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

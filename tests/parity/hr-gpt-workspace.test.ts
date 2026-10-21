@@ -97,15 +97,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(queue).toHaveCount(0); await expect(rail).toBeHidden();
       const settings = page.getByRole('region', { name: 'Settings', exact: true });
       const nav = settings.getByRole('navigation', { name: 'Settings sections', exact: true });
-      expect((await nav.boundingBox())!.x).toBe(0); expect((await nav.boundingBox())!.width).toBe(264);
+      expect((await nav.boundingBox())!.x).toBe(0); expect((await nav.boundingBox())!.width).toBe(width === 1024 ? 210 : 244);
       await expect(nav.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
       const titleBox = (await nav.locator('.settings-nav-header').boundingBox())!;
       const searchBox = (await nav.locator('.settings-nav-search').boundingBox())!;
       const personalBox = (await nav.locator('.settings-nav-group > span').first().boundingBox())!;
-      expect(searchBox.y - titleBox.y - titleBox.height).toBe(16);
-      expect(personalBox.y - searchBox.y - searchBox.height).toBe(16);
+      expect(searchBox.y - titleBox.y - titleBox.height).toBe(15);
+      expect(personalBox.y - searchBox.y - searchBox.height).toBe(15);
       await expect(nav.getByRole('button', { name: /^Notifications,|^Search runs$/u })).toHaveCount(0);
-      const choosePage = async (name: string) => { await nav.getByRole('link', { name, exact: true }).click(); };
+      const choosePage = async (name: string) => { await nav.getByRole('link', { name: name === 'Storage checks' ? 'Storage' : name, exact: true }).click(); };
       await nav.getByRole('searchbox', { name: 'Search settings', exact: true }).fill('sheet');
       await expect(nav.getByRole('link')).toHaveCount(2);
       await expect(nav.getByRole('link', { name: 'Spreadsheets Data', exact: true })).toBeVisible();
@@ -151,7 +151,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const gaps = await storage.evaluate(node => Array.from(node.children).slice(1).map(child => getComputedStyle(child).marginTop));
       expect(gaps[0]).toBe('16px');
       expect(new Set(gaps.slice(1)).size).toBe(1);
-      expect(gaps[1]).toBe('32.4px');
+      expect(gaps[1]).toBe('28px');
       const summaryFont = await settings.getByRole('group', { name: 'Data store summary', exact: true }).getByText('Not checked', { exact: true }).evaluate(node => getComputedStyle(node).fontSize);
       for (const value of await settings.getByText('Not checked', { exact: true }).all()) expect(await value.evaluate(node => getComputedStyle(node).fontSize)).toBe(summaryFont);
       await choosePage('Preflight'); await expect(settings.getByRole('heading', { name: 'Preflight', exact: true })).toBeVisible(); await expect(settings.getByRole('heading', { name: 'Workflow capabilities', exact: true })).toHaveCount(0);
@@ -207,10 +207,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await choosePage('Spreadsheets');
       const library = settings.getByRole('table', { name: 'Registered spreadsheets', exact: true });
-      await expect(library.getByRole('columnheader', { name: 'Date added', exact: true })).toBeVisible();
+      await expect(library.getByRole('columnheader')).toHaveText(['Spreadsheet', 'Type', 'Rows', 'Actions']);
+      await expect(library.getByRole('columnheader', { name: 'Date added', exact: true })).toHaveCount(0);
       await expect(library.getByRole('button', { name: /^Open / })).toHaveCount(0);
       await expect(settings.getByText('Drop an XLSX or CSV file here', { exact: true })).toHaveCount(0);
-      await library.getByRole('row').nth(1).getByRole('cell').nth(2).click();
+      await library.getByRole('button', { name: '26–27 Student applicants.xlsx', exact: true }).click();
       await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toBeVisible();
       await expect(settings.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toContainText('26–27 Student applicants.xlsx');
       await settings.getByRole('navigation', { name: 'Breadcrumb', exact: true }).getByRole('button', { name: 'Spreadsheets', exact: true }).click();

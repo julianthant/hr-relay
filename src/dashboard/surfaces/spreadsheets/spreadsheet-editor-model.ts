@@ -80,8 +80,8 @@ export function newEditableWorkbook(): EditableWorkbook {
 export function addSpreadsheetColumn(sheet: EditableSheet, title: string): EditableSheet {
   if (!title.trim()) throw new Error('SPREADSHEET_COLUMN_TITLE_REQUIRED');
   return { ...sheet, width: sheet.width + 1,
-    columnBindings: sheet.columnBindings ? [...sheet.columnBindings, { id: crypto.randomUUID(), sourceColumn: null, sourceHeader: title.trim(), fieldId: null, basis: 'unmapped' }] : undefined,
-    rows: sheet.rows.map((row, index) => ({ ...row, cells: [...row.cells, { value: index === 0 ? title.trim() : '' }] })),
+    ...(sheet.columnBindings ? { columnBindings: [...sheet.columnBindings, { id: crypto.randomUUID(), sourceColumn: null, sourceHeader: title.trim(), fieldId: null, basis: 'unmapped' as const }] } : {}),
+    rows: sheet.rows.map((row, index) => ({ ...row, cells: [...row.cells, ...Array.from({ length: sheet.width - row.cells.length }, () => ({ value: null })), { value: index === (sheet.headerRow ?? 1) - 1 ? title.trim() : '' }] })),
   };
 }
 function spreadsheetFieldColumn(sheet: EditableSheet, fieldId: string): number {

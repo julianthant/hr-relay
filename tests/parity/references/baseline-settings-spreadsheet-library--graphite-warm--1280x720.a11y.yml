@@ -21,8 +21,6 @@
       - link "Credentials":
         - /url: "?settings=credentials"
       - text: Advanced
-      - link "Performance":
-        - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
       - link "Routes":
@@ -35,7 +33,7 @@
       - link "Analytics":
         - /url: "?settings=activity"
       - text: Status
-      - link "Storage checks":
+      - link "Storage":
         - /url: "?settings=storage"
       - link "Preflight":
         - /url: "?settings=preflight"
@@ -45,53 +43,50 @@
     - region "Spreadsheets":
       - button "Open XLSX or CSV"
       - heading "Spreadsheets" [level=1]
-      - paragraph: Manage files and reusable spreadsheet types.
-      - button "New spreadsheet"
+      - paragraph: Choose, import, and organize your spreadsheet data.
       - button "Import spreadsheet"
-      - tablist "Spreadsheet settings":
-        - tab "Registered spreadsheets 3" [selected]
-        - tab "Spreadsheet types 1"
-      - tabpanel "Registered spreadsheets 3":
-        - group:
-          - searchbox "Find a spreadsheet"
-        - text: 3 registered spreadsheets
-        - table "Registered spreadsheets":
-          - rowgroup:
-            - row "Spreadsheet Type Sheets Mapped fields Date added":
-              - columnheader "Spreadsheet"
-              - columnheader "Type"
-              - columnheader "Sheets"
-              - columnheader "Mapped fields"
-              - columnheader "Date added"
-          - rowgroup:
-            - row "26–27 Student applicants.xlsx Roster 7 All 30 mapped fields 10/01/2026":
-              - cell "26–27 Student applicants.xlsx":
-                - button "26–27 Student applicants.xlsx"
-              - cell "Roster"
-              - cell "7"
-              - cell "All 30 mapped fields"
-              - cell "10/01/2026":
-                - time: 10/01/2026
-            - row "25–26 Student applicants.xlsx Roster 7 All 30 mapped fields 10/01/2026":
-              - cell "25–26 Student applicants.xlsx":
-                - button "25–26 Student applicants.xlsx"
-              - cell "Roster"
-              - cell "7"
-              - cell "All 30 mapped fields"
-              - cell "10/01/2026":
-                - time: 10/01/2026
-            - row "Summer student roster.xlsx Roster 3 All 29 mapped fields 10/01/2026":
-              - cell "Summer student roster.xlsx":
-                - button "Summer student roster.xlsx"
-              - cell "Roster"
-              - cell "3"
-              - cell "All 29 mapped fields"
-              - cell "10/01/2026":
-                - time: 10/01/2026
+      - button "Create type"
+      - table "Registered spreadsheets":
+        - rowgroup:
+          - row "Spreadsheet Type Rows Actions":
+            - columnheader "Spreadsheet"
+            - columnheader "Type"
+            - columnheader "Rows"
+            - columnheader "Actions"
+        - rowgroup:
+          - row "26–27 Student applicants.xlsx Roster 21 26–27 Student applicants.xlsx":
+            - cell "26–27 Student applicants.xlsx"
+            - cell "Roster"
+            - cell "21"
+            - cell "26–27 Student applicants.xlsx":
+              - button "26–27 Student applicants.xlsx": Open
+          - row "25–26 Student applicants.xlsx Roster 21 25–26 Student applicants.xlsx":
+            - cell "25–26 Student applicants.xlsx"
+            - cell "Roster"
+            - cell "21"
+            - cell "25–26 Student applicants.xlsx":
+              - button "25–26 Student applicants.xlsx": Open
+          - row "Summer student roster.xlsx Roster 9 Summer student roster.xlsx":
+            - cell "Summer student roster.xlsx"
+            - cell "Roster"
+            - cell "9"
+            - cell "Summer student roster.xlsx":
+              - button "Summer student roster.xlsx": Open
+      - heading "Spreadsheet types" [level=2]
+      - text: Roster Define which columns belong to this type.
+      - button "Edit Roster": Edit
+      - heading "Kronos reports" [level=2]
+      - text: Start date Default start date for Kronos reports.
+      - textbox "Kronos report start date" [disabled]
+      - text: End date Default end date for Kronos reports.
+      - textbox "Kronos report end date" [disabled]
+      - status: Kronos report dates are unavailable.
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings" [pressed]
+    - button "Log out"
 - region "Notifications"

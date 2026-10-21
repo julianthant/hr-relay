@@ -3,6 +3,7 @@ import { attachShellA11y } from "./helpers/shell-proof.js";
 import { expect, test } from '@playwright/test';
 
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
+import { moveAssistantLauncherAboveFooter } from './helpers/app-driver.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
@@ -23,6 +24,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       for (const [seed, label] of [[5, 'Review'], [6, 'Resolve'], [4, 'View failure']] as const) {
         const run = `00000000-${String(seed).padStart(4, '0')}-4000-8000-${String(seed).padStart(12, '0')}`;
         await page.goto(`${server.baseUrl}/?day=2026-08-03&run=${run}&section=logs`);
+        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
         const panel = page.getByRole('region', { name: 'Selected run logs', exact: true }); await expect(panel).toBeVisible();
         const jump = panel.getByRole('button', { name: label, exact: true }).first(); await expect(jump).toBeVisible();
         const header = panel.locator('header').first(); const before = await header.boundingBox(); expect(before).not.toBeNull();
@@ -40,7 +42,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
             && bounds.top >= viewport.top && bounds.top < viewport.bottom && getComputedStyle(target).outlineStyle === 'solid';
         })).toBe(true);
         if (seed === 5) await captureSemanticEvidence('review-jump');
-        await panel.getByRole('button', { name: 'Go to latest action', exact: true }).click();
+        await moveAssistantLauncherAboveFooter(page);
+        const latest = panel.getByRole('button', { name: 'Go to latest action', exact: true });
+        await latest.click();
+        expect(await page.evaluate(() => window.scrollY)).toBe(0); await expect(header).toBeVisible();
+        await expect.poll(() => logViewport.evaluate(element => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(1);
+        await jump.click();
+        await latest.focus(); await latest.press('Enter');
         expect(await page.evaluate(() => window.scrollY)).toBe(0); await expect(header).toBeVisible();
         await expect.poll(() => logViewport.evaluate(element => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(1);
         await jump.click();
@@ -63,7 +71,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goto(`${server.baseUrl}/?settings=general`);
       expect(writes).toEqual([]);
       const signInWrite = { method: 'POST', url: `${server.baseUrl}/api/v1/settings/chatgpt-account/sign-in` };
-      await page.getByRole('button', { name: 'Continue with ChatGPT', exact: true }).click();
+      await page.getByRole('button', { name: 'Connect ChatGPT', exact: true }).click();
       const account = page.getByRole('group', { name: 'ChatGPT account', exact: true }); await expect(account).toContainText('jordan.lee@example.com');
       expect(writes).toEqual([signInWrite]);
       await expect(account).not.toContainText('Using ChatGPT plan'); await expect(account).not.toContainText('Preview');

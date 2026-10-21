@@ -1,5 +1,11 @@
-import { AssistantPanel } from "../surfaces/assistant/assistant-panel.js";
-import { useAssistantController } from "../surfaces/assistant/assistant-controller-model.js";
+import { HubPreferencesPreviewContext } from "../surfaces/settings/general/hub-preferences-model.js";
+import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
+import { Onboarding } from "../surfaces/shell/onboarding.js";
+import { prepareHubWorkflow } from "../surfaces/shell/hub-assistant-model.js";
+import type { AssistantPorts } from "../surfaces/shell/assistant-panel-model.js";
+import { HubShell } from "../surfaces/shell/hub-shell.js";
+import { useHubMotion } from "../ds/theme/motion.js";
+import "../ds/theme/hub-theme.css";
 import { commandSaveState, settingsSaveProblem } from "../surfaces/settings/editor/settings-attempt-model.js";
 import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
@@ -120,6 +126,7 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
 export function DashboardApp({ workflowComposition = productWorkflowComposition }: { workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
+  useHubMotion();
   const bootstrap = useBootstrap();
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
@@ -149,7 +156,13 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition 
     >
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
-      {route.viewInvalid ? <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} /> : boot === undefined ? (
+      {route.viewInvalid ? (
+        <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />
+      ) : route.onboardingSetup !== undefined ? (
+        <OnboardingSetup page={route.onboardingSetup} />
+      ) : route.onboarding !== undefined ? (
+        <Onboarding step={route.onboarding} onStep={onboarding => setRoute({ start: false, onboarding })} onDashboard={() => setRoute({ start: false })} />
+      ) : boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
       ) : (
         <ViewNavigationProvider route={route} setRoute={setRoute}><LoadedApp
@@ -701,6 +714,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     setLaunchOpen(false);
     toast({ tone: "success", title: sourceId ? "Rerun created" : "Run started", description: `${created.filter(run => !run.parentId).length} ${mockWorkflow(id).label} ${created.filter(run => !run.parentId).length === 1 ? "run" : "runs"} created.` });
   }, [mockRuns.length, setLaunchOpen, setRoute, toast]);
+  const runAssistantWorkflow = useCallback<NonNullable<AssistantPorts["onRunWorkflow"]>>(async request => {
+    try {
+      const prepared = prepareHubWorkflow(request, workflowComposition, mockRuns.length);
+      setMockRuns(previous => [...prepared.runs, ...previous]);
+      setMockNotificationTimes(previous => ({ ...previous, ...Object.fromEntries(prepared.runs.map(run => [run.id, servedNowRef.current])) }));
+      return prepared.result;
+    } catch (error) { return { state: "failed", message: error instanceof Error ? error.message : String(error) }; }
+  }, [workflowComposition, mockRuns.length]);
   const onRailSelect = useCallback((id: string) => { if (selectWorkflow(id)) setRailPreview(null); }, [selectWorkflow, setRailPreview]);
   const onRailPreview = useCallback((id: string) => {
     const runs = mockRuns.filter(run => run.workflowId === id);
@@ -830,10 +851,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     : route.start && route.view?.launchSource && !mockLaunch?.source ? "The source run is no longer available."
     : route.start && route.view?.launchServed && !startWorkflows.some(flow => flow.workflowId === route.view?.launchServed) ? "This launch workflow is not served."
     : railRun && !mockRuns.some(run => run.id === railRun) && !deletedMockRuns.has(railRun) ? "This preview run is no longer available." : undefined;
-  const assistant = useAssistantController(client, authorityEpoch, undefined, !destinationError);
   if (destinationError) return <EmptyState title="Destination unavailable" description={destinationError} action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />;
 
   return (
+    <HubPreferencesPreviewContext.Provider value={workflowComposition.assistant === "mock"}>
     <DashboardCommandBindingProvider binding={commandBinding}>
     <PreflightActionsProvider actions={{ actorId: authority.epoch.bootstrap.actor.id, descriptorFingerprint: authority.epoch.bootstrap.descriptorHash,
       showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
@@ -975,7 +996,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
-      <AssistantPanel {...assistant} onOpenSettings={openSettings} />
+      <HubShell source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} onLogout={() => leaveSettings(() => setRoute({ start: false, onboarding: "login" }))} />
       <SessionPanel
         source={workflowComposition.sessions ?? "served"}
         binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
@@ -1054,5 +1075,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     </div>
     </PreflightActionsProvider>
     </DashboardCommandBindingProvider>
+    </HubPreferencesPreviewContext.Provider>
   );
 }

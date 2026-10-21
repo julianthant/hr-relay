@@ -17,6 +17,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(new URL(request.url()).pathname); });
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&sessionsPreview=empty`);
+    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     await expect(rail.getByRole("button")).toHaveCount(15);
     const labels = await rail.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")));

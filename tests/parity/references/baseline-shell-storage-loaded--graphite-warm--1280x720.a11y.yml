@@ -21,8 +21,6 @@
       - link "Credentials":
         - /url: "?settings=credentials"
       - text: Advanced
-      - link "Performance":
-        - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
       - link "Routes":
@@ -35,7 +33,7 @@
       - link "Analytics":
         - /url: "?settings=activity"
       - text: Status
-      - link "Storage checks":
+      - link "Storage":
         - /url: "?settings=storage"
       - link "Preflight":
         - /url: "?settings=preflight"
@@ -117,10 +115,12 @@
             - paragraph: Identifier used in activity records.
             - text: Unavailable
           - button "Diagnostic details"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings" [pressed]
+    - button "Log out"
 - region "Notifications"

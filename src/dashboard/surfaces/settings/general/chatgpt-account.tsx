@@ -66,7 +66,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const description = connected ? <><span className="block break-all">{displayed.email}</span>{plan !== "enabled" && <span className="block">{plan === "limit-reached" ? "Usage limit reached" : "ChatGPT plan access not enabled"}</span>}</>
     : signingIn ? "Waiting for you to finish signing in in your browser"
       : signInExpired ? "Your sign-in attempt expired. Sign in to try again."
-        : displayed.state === "expired" ? "Your ChatGPT session expired." : "Sign in to use your plan for OCR.";
+        : displayed.state === "expired" ? "Your ChatGPT session expired. Reconnect to continue." : "Not connected. Connect your ChatGPT account to Relay.";
   return <BodySection title="ChatGPT account">
       {account.state === "unavailable" && <Banner className="mb-[var(--ds-space-heading-content)]" tone="warning" title="ChatGPT account unavailable">{account.message}</Banner>}
       {error !== undefined && <Banner className="mb-[var(--ds-space-heading-content)]" tone="danger" title="ChatGPT connection failed">{error}</Banner>}
@@ -79,8 +79,8 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
               {"authorizationUrl" in displayed && displayed.authorizationUrl !== undefined && <ButtonLink variant="secondary" href={displayed.authorizationUrl} target="_blank" rel="noopener noreferrer">Reopen sign-in page</ButtonLink>}
               <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
             </>}
-            {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Continue with ChatGPT"}</Button>}
-            {connected && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Sign out</Button>}
+            {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : displayed.state === "expired" ? "Reconnect" : "Connect ChatGPT"}</Button>}
+            {connected && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Disconnect</Button>}
           </div>} />}
     </div></FormGroup>
   </BodySection>;

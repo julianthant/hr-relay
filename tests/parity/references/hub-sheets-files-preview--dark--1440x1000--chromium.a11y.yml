@@ -1,0 +1,34 @@
+# hub-sheets-files-preview--dark--1440x1000--chromium
+# adapter: fixture
+# fixture: hub-sheets-components
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x1000  theme: dark  variant: chromium
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Autumn onboarding-updated.csv":
+  - banner:
+    - heading "Autumn onboarding-updated.csv" [level=2]
+    - button "Close"
+  - heading "People" [level=3]
+  - table "People preview":
+    - rowgroup:
+      - row "First name Last name Employee ID":
+        - columnheader "First name"
+        - columnheader "Last name"
+        - columnheader "Employee ID"
+    - rowgroup:
+      - row "Alex Rivera 10000001":
+        - cell "Alex"
+        - cell "Rivera"
+        - cell "10000001"
+      - row "Morgan Vega 10000002":
+        - cell "Morgan"
+        - cell "Vega"
+        - cell "10000002"
+  - contentinfo:
+    - button "Close"
+    - button "Download"
+    - button "Attach to chat"
+    - button "Open spreadsheet"

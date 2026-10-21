@@ -135,7 +135,7 @@
       - text: PL61636475
       - button "Run next"
       - button "Cancel run"
-    - text: "Finished today 6 Today: 2 verified 2 with warnings 1 failed 1 cancelled"
+    - text: "Finished today 6 Today: 2 completed 2 with warnings 1 failed 1 cancelled"
     - button "EID 10555001 — failed":
       - text: EID 10555001 Failed 9:33 AM
       - button "Attempts for EID 10555001": "#1"
@@ -301,10 +301,44 @@
         - spinbutton "year, Dashboard date*": "2026"
         - button "Choose date Dashboard date*"
   - text: No run open Select a run from the queue to open its logs.
+- region "Assistant panel":
+  - region "Relay assistant":
+    - button "Update Alex Rivera work email"
+    - button "Chat files"
+    - button "Chats"
+    - button "New chat"
+    - button "Close assistant"
+    - log "Assistant conversation":
+      - text: Update Alex Rivera’s work email. I found the record. Review the change before I save it.
+      - article "Save to UCPath":
+        - heading "Save to UCPath" [level=3]
+        - term: Person
+        - definition: Alex Rivera
+        - term: Work email
+        - definition:
+          - strong: alex.rivera@example.edu
+        - text: Ready to save
+        - button "Not now"
+        - button "Approve"
+      - status: ChatGPT is unavailable. Open Settings to review your account.
+    - group "Message composer":
+      - text: Message Relay
+      - textbox "Message Relay" [disabled]:
+        - /placeholder: Ask Relay…
+      - group "Message controls":
+        - button "Add files" [disabled]
+        - button "Ask only before submits" [disabled]
+        - 'button "Model: GPT-6.1 Sol" [disabled]': GPT-6.1 Sol
+        - 'button "Thinking effort: Medium" [disabled]': Medium
+        - button "Voice input" [disabled]
+        - button "Send message" [disabled]
+- button "Assistant" [expanded]
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

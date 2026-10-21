@@ -10,7 +10,13 @@ import "../../src/dashboard/app/index.css";
 const container = document.getElementById("root");
 if (container === null) throw new Error("parity dashboard root missing");
 const client = createDashboardClient({ baseUrl: window.location.origin });
+const fixture = new URLSearchParams(location.search).get("fixture");
+const composition = fixture === "hub-served"
+  ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), assistant: "served" as const })
+  : fixture === "hub-integration"
+  ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), spreadsheets: "served" as const })
+  : PARITY_WORKFLOW_COMPOSITION;
 const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
 createRoot(container).render(<StrictMode><DashboardClientProvider client={client}>
-  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={PARITY_WORKFLOW_COMPOSITION} /></ChatGptAccountContext.Provider>
+  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} /></ChatGptAccountContext.Provider>
 </DashboardClientProvider></StrictMode>);

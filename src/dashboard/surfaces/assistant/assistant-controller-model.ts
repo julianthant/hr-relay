@@ -68,7 +68,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   });
 }
 
-export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true) {
+export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default") {
   const [launcherBottom, setLauncherBottom] = useState<string>();
   useLayoutEffect(() => {
     if (!shellMounted) return;
@@ -86,13 +86,20 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const accountPort = useContext(ChatGptAccountContext);
   const account = useChatGptAccount(accountPort);
   const bindingAuthority = useMemo(() => ({ authority, account, shellMounted }), [authority, account, shellMounted]);
-  const controller = useMemo(() => createAssistantController(client, { authority: undefined }), [client]);
+  const sessions = useMemo(() => ({ client, controllers: new Map<string, ReturnType<typeof createAssistantController>>() }), [client]);
+  const controllers = sessions.controllers;
+  const controller = useMemo(() => {
+    let current = controllers.get(chatId);
+    if (!current) { current = createAssistantController(sessions.client, { authority: undefined }); controllers.set(chatId, current); }
+    return current;
+  }, [controllers, sessions, chatId]);
   useLayoutEffect(() => {
-    controller.bind({ authority: bindingAuthority, ...(subjectRef === undefined ? {} : { subjectRef }) });
-  }, [controller, bindingAuthority, subjectRef]);
-  useEffect(() => () => controller.abort(), [controller]);
+    for (const current of controllers.values()) current.bind({ authority: bindingAuthority, ...(subjectRef === undefined ? {} : { subjectRef }) });
+  }, [controller, controllers, bindingAuthority, subjectRef]);
+  useEffect(() => () => { if (controller.snapshot().turn.state === 'waiting') controller.action({ type: 'cancel' }); else controller.abort(); }, [controller]);
+  useEffect(() => () => { for (const current of controllers.values()) current.abort(); }, [controllers]);
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot);
-  return { state, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  return { state, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.abort(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable: accountPort.mode === 'live' && account.state === 'connected' && account.planUsage === 'enabled',
     accountHeading: account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable',
     accountNotice: account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED, confirmRefusal: ASSISTANT_CONFIRM_HOLD,

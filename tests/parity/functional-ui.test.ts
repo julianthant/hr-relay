@@ -43,7 +43,7 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
     });
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "general" });
     const account = page.getByRole("group", { name: "ChatGPT account", exact: true });
-    await account.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
+    await account.getByRole("button", { name: "Connect ChatGPT", exact: true }).click();
     await expect(account).toContainText("Waiting for you to finish signing in in your browser");
     await expect(page.getByRole("status", { name: "Loading ChatGPT account", exact: true })).toHaveCount(0);
     const reopen = account.getByRole("link", { name: "Reopen sign-in page", exact: true });
@@ -61,7 +61,7 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
     await expect(reopen).toHaveAttribute("rel", "noopener noreferrer");
     await shot(page, info, `signing-in-reloaded-${width}`);
     await cancel.press("Enter");
-    await expect(account.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toBeEnabled();
+    await expect(account.getByRole("button", { name: "Connect ChatGPT", exact: true })).toBeEnabled();
     expect(cancelled).toEqual([`/api/v1/settings/chatgpt-account/sign-in/${attemptId}/cancel`]);
     completion.resolve();
     await expect(account).not.toContainText("Waiting for you");
@@ -73,7 +73,7 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
       await route.abort();
     });
     try {
-      await account.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
+      await account.getByRole("button", { name: "Connect ChatGPT", exact: true }).click();
       await expect(cancel).toBeEnabled();
       await cancel.focus();
       await page.clock.fastForward(600_000);
@@ -87,13 +87,17 @@ for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, 
     for (const section of ["spreadsheets", "general", "performance", "paths", "routes", "credentials", "keyboard"]) {
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=${section}`);
       const nav = page.getByRole("navigation", { name: "Settings sections", exact: true });
-      await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
-      await expect(nav.locator('[aria-current="page"]')).toHaveAttribute("href", `?settings=${section}`);
+      const current = nav.locator(`[aria-current="${section === "performance" ? "location" : "page"}"]`);
+      if (section === "performance") await nav.getByRole("searchbox", { name: "Search settings", exact: true }).fill("Performance");
+      await expect(current).toHaveCount(1);
+      await expect(current).toHaveAttribute("href", `?settings=${section}`);
       const heading = section === "keyboard" ? "Keyboard shortcuts" : section[0].toUpperCase() + section.slice(1);
       await expect(page.getByRole("heading", { name: heading, level: 1, exact: true })).toBeVisible();
       await page.reload();
       await expect(page.getByRole("heading", { name: heading, level: 1, exact: true })).toBeVisible();
-      await expect(nav.locator('[aria-current="page"]')).toHaveAttribute("href", `?settings=${section}`);
+      if (section === "performance") await nav.getByRole("searchbox", { name: "Search settings", exact: true }).fill("Performance");
+      await expect(current).toHaveCount(1);
+      await expect(current).toHaveAttribute("href", `?settings=${section}`);
     }
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=general`);
     await expect(page.getByRole("heading", { name: "General", exact: true })).toBeVisible();

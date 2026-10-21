@@ -166,6 +166,7 @@ async function mountSurface(client: DashboardClient_m1, children: ReactNode_m1):
 function appClient(): DashboardClient_m1 {
   const served = {
     bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
+    chatGptAccount: () => Promise.resolve({ state: "signed-out" }),
     subscribeDay: (input: Parameters<DashboardClient_m1["subscribeDay"]>[0]) => {
       input.onDay(APP_DAY);
       input.onState({ state: "live" });

@@ -197,3 +197,7 @@ export {
   RankedList,
 } from "./primitives/primitives-data.js";
 export type { DsRankedItem, DsSortDirection, DsStep, DsStepState } from "./primitives/primitives-data.js";
+
+export { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton } from './primitives/input-group.js';
+export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel,
+  DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator } from './primitives/dropdown-menu.js';

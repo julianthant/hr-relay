@@ -24,6 +24,7 @@ export interface WorkflowComposition {
   readonly inbox: WorkflowSource;
   readonly search: WorkflowSource;
   readonly spreadsheets?: WorkflowSource;
+  readonly assistant?: WorkflowSource;
   readonly sourceForRoute: (id: string, requestedPreview: boolean) => WorkflowSource;
 }
 

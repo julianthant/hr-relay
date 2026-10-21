@@ -1,0 +1,29 @@
+# hub-shell-duo-both--dark--1440x900
+# adapter: fixture
+# fixture: hub-mock-ports-served-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: dark  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#onboarding-main"
+- text: Relay
+- main:
+  - list "Profile setup progress":
+    - listitem:
+      - button "Your details"
+    - listitem:
+      - button "Duo setup"
+    - listitem:
+      - button "Ready"
+  - heading "Duo setup is complete" [level=1]
+  - paragraph: Security key and Touch ID are confirmed. You can finish your profile.
+  - text: Security key confirmed Touch ID confirmed
+  - region "Next action":
+    - heading "Ready to finish" [level=2]
+    - paragraph: Both methods are registered in Duo.
+  - status: Security key and Touch ID ready
+  - button "Finish setup"
+- paragraph: UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.
+- region "Notifications"

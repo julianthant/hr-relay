@@ -7,23 +7,12 @@
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Add spreadsheet type":
+- dialog "Create spreadsheet type":
   - banner:
-    - heading "Add spreadsheet type" [level=2]
-    - paragraph: Create a reusable set of named columns.
-    - button "Close"
+    - heading "Create spreadsheet type" [level=2]
   - text: Type name
-  - textbox "Type name":
-    - /placeholder: For example, Employee directory
-  - heading "Fields" [level=3]
-  - button "Add field"
-  - combobox "Dashboard field 1": Legal name
-  - button "Remove field 1"
-  - combobox "Dashboard field 2": Employee ID
-  - button "Remove field 2"
-  - combobox "Dashboard field 3": Email
-  - button "Remove field 3"
-  - paragraph: All mapped fields can be searched. Reference data and updated copies are available automatically.
+  - textbox "Type name"
+  - paragraph: "Columns: First name, Last name, Employee ID"
   - contentinfo:
     - button "Cancel"
-    - button "Add type"
+    - button "Save type" [disabled]

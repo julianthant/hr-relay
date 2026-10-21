@@ -64,9 +64,9 @@
   - region "Queue":
     - text: Active 1
     - button "i9.pdf — running" [pressed]:
-      - text: i9.pdf Running Read I-9 forms 0 / 3 steps 9:10 AM
+      - text: i9.pdf Running Read I-9 forms 0 / 3 steps 10:05 AM
       - button "Attempts for i9.pdf": "#1"
-      - text: I9C88738508 55m 0s
+      - text: I9C88738508 0s
       - button "Retry"
       - button "Delete"
   - region "Action panel":
@@ -119,10 +119,13 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
+- button "Assistant"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

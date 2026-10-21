@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { editSpreadsheetCell,newEditableWorkbook } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js";
 import { ROSTER_FIELDS } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-data.js";
-import { addMockSpreadsheetType,initialSpreadsheetSheets,NOT_MAPPED,registeredSpreadsheetWorkbook,registerLocalSpreadsheet,registerMockSpreadsheet,resetSpreadsheetMocks,retainSpreadsheetCopy,searchMockSpreadsheet,spreadsheetMappingErrors,WORKBOOK_ONLY,type SpreadsheetType } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
+import { addMockSpreadsheetType,renameMockSpreadsheetType,initialSpreadsheetSheets,NOT_MAPPED,registeredSpreadsheetWorkbook,registerLocalSpreadsheet,registerMockSpreadsheet,resetSpreadsheetMocks,retainSpreadsheetCopy,searchMockSpreadsheet,spreadsheetMappingErrors,WORKBOOK_ONLY,type SpreadsheetType } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 const roster: SpreadsheetType = { id: "roster", name: "Roster", fields: ROSTER_FIELDS };
 const file = () => registerMockSpreadsheet({ name: "Fictional roster.xlsx", typeId: "roster", sheets: initialSpreadsheetSheets(roster) });
@@ -80,4 +80,15 @@ it("stamps registrations from injected time and retains original timestamps on r
   assert.equal(registerLocalSpreadsheet({ ...newEditableWorkbook(), name: "Renamed local.xlsx" }, local.id, clock).addedAt, local.addedAt);
   const supplied = registerMockSpreadsheet({ name: "Supplied.xlsx", typeId: "roster", sheets: first.sheets, addedAt: "2026-01-01T00:00:00Z" }, undefined, clock);
   assert.equal(supplied.addedAt, "2026-01-01T00:00:00Z");
+});
+
+it("renames a type without changing its identity, columns or existing workbook association", () => {
+  const type = addMockSpreadsheetType("Contact list", ["Legal name", "Email"]);
+  const registered = registerMockSpreadsheet({ name: "Contacts.xlsx", typeId: type.id, sheets: initialSpreadsheetSheets(type) });
+  const renamed = renameMockSpreadsheetType(type.id, "  Contact roster  ");
+  assert.deepEqual(renamed, { ...type, name: "Contact roster" });
+  assert.equal(registered.typeId, renamed.id);
+  assert.throws(() => renameMockSpreadsheetType(type.id, " roster "), /already exists/u);
+  assert.throws(() => renameMockSpreadsheetType(type.id, " "), /Enter a type name/u);
+  assert.throws(() => renameMockSpreadsheetType("missing", "Name"), /TYPE_NOT_FOUND/u);
 });

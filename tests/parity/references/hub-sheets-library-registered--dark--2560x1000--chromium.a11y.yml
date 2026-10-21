@@ -1,0 +1,62 @@
+# hub-sheets-library-registered--dark--2560x1000--chromium
+# adapter: fixture
+# fixture: hub-sheets-components
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 2560x1000  theme: dark  variant: chromium
+# capturedAt: 2026-08-03
+
+- main:
+  - heading "Spreadsheets" [level=1]
+  - paragraph: Choose, import, and organize your spreadsheet data.
+  - button "Import spreadsheet"
+  - button "Create type"
+  - table "Registered spreadsheets":
+    - rowgroup:
+      - row "Spreadsheet Type Rows Actions":
+        - columnheader "Spreadsheet"
+        - columnheader "Type"
+        - columnheader "Rows"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "Autumn onboarding.xlsx Onboarding roster 17 Autumn onboarding.xlsx":
+        - cell "Autumn onboarding.xlsx"
+        - cell "Onboarding roster"
+        - cell "17"
+        - cell "Autumn onboarding.xlsx":
+          - button "Autumn onboarding.xlsx": Open
+      - row "Employment check.xlsx Employment records 24 Employment check.xlsx":
+        - cell "Employment check.xlsx"
+        - cell "Employment records"
+        - cell "24"
+        - cell "Employment check.xlsx":
+          - button "Employment check.xlsx": Open
+      - row "Autumn onboarding.csv Attached CSV 2 Autumn onboarding.csv":
+        - cell "Autumn onboarding.csv Attached"
+        - cell "CSV"
+        - cell "2"
+        - cell "Autumn onboarding.csv":
+          - button "Autumn onboarding.csv": Open
+      - row "Autumn onboarding-updated.csv Updated CSV 2 Autumn onboarding-updated.csv":
+        - cell "Autumn onboarding-updated.csv Updated"
+        - cell "CSV"
+        - cell "2"
+        - cell "Autumn onboarding-updated.csv":
+          - button "Autumn onboarding-updated.csv": Open
+      - row "Onboarding results.csv Generated CSV 2 Onboarding results.csv":
+        - cell "Onboarding results.csv Generated"
+        - cell "CSV"
+        - cell "2"
+        - cell "Onboarding results.csv":
+          - button "Onboarding results.csv": Open
+  - heading "Spreadsheet types" [level=2]
+  - text: Onboarding roster Define which columns belong to this type.
+  - button "Edit Onboarding roster": Edit
+  - text: Employment records Define which columns belong to this type.
+  - button "Edit Employment records": Edit
+  - heading "Kronos reports" [level=2]
+  - text: Start date Default start date for Kronos reports.
+  - textbox "Kronos report start date": 2026-10-01
+  - text: End date Default end date for Kronos reports.
+  - textbox "Kronos report end date": 2026-10-31
+- region "Notifications"

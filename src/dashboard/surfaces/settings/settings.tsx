@@ -2,10 +2,11 @@ import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adap
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import type { EditableWorkbook } from "../spreadsheets/spreadsheet-editor-model.js";
 import "./settings-data.css";
+import "./hub-settings.css";
 import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
-import { ArrowLeft, BarChart3, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, CircleAlert, Database, Folder, Gauge, Hand, History, MessagesSquare, Monitor, Search, Settings as SettingsIcon, Sparkles, Table2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
@@ -38,19 +39,20 @@ const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
 
 
 const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
-  general: SlidersHorizontal,
+  general: Sparkles,
+  credentials: Hand,
   display: Monitor,
   performance: Gauge,
-  paths: FolderOpen,
-  storage: Database,
-  preflight: ClipboardCheck,
-  routes: Link2,
+  paths: Folder,
+  storage: Folder,
+  preflight: Check,
+  routes: ArrowUp,
   capabilities: Table2,
-  keyboard: KeyboardIcon,
+  keyboard: MessagesSquare,
   unrendered: CircleAlert,
-  spreadsheets: Table2,
-  explorer: Workflow,
-  activity: BarChart3,
+  spreadsheets: Folder,
+  explorer: Search,
+  activity: History,
 };
 
 
@@ -66,7 +68,7 @@ function SectionButton({
 }) {
   const Icon = NAV_ICON[entry.icon];
   return (
-    <a
+    <a tabIndex={0}
             // A real href — not a `button` — so middle-click and Cmd/Ctrl-click work as usual.
       // new tab" all work the way any other in-page navigation does.
       href={`?settings=${encodeURIComponent(entry.id)}`}
@@ -96,7 +98,7 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
   const Icon = NAV_ICON[result.entry.icon];
   const params = new URLSearchParams({ settings: result.entry.id });
   if (result.target !== undefined) params.set("settingsTarget", result.target);
-  return <a href={`?${params.toString()}`} aria-current={active ? "location" : undefined}
+  return <a tabIndex={0} href={`?${params.toString()}`} aria-current={active ? "location" : undefined}
     className={cn("settings-search-result", dsFocus, active && "settings-search-result-active")}
     onClick={event => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -215,7 +217,7 @@ export function SettingsPage({
   }, [activeId, searchTarget, searchVisit]);
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
-  const activeSettingsEditorSection = activeId !== undefined && settingsEntries.some(entry => entry.id === activeId);
+  const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
   const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.relocationEditor.dirtyCount;
   const relocationUncertain = editor.relocationEditor.uncertain;
   const hasDirtyDraft = totalDirty > 0 || relocationUncertain;

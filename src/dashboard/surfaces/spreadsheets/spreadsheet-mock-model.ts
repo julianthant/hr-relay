@@ -7,7 +7,7 @@ import { setSpreadsheetHeaderRow } from './spreadsheet-column-import-model.js';
 
 export interface SpreadsheetType { readonly id: string; readonly name: string; readonly fields: readonly string[] }
 export interface SpreadsheetSheet { readonly name: string; readonly headerRow: number; readonly columns: readonly string[]; readonly mapping: readonly string[]; readonly bindings?: readonly SpreadsheetColumnBinding[] }
-export interface RegisteredSpreadsheet { readonly id: string; readonly name: string; readonly typeId: string; readonly sheets: readonly SpreadsheetSheet[]; readonly addedAt?: string }
+export interface RegisteredSpreadsheet { readonly id: string; readonly name: string; readonly typeId: string; readonly sheets: readonly SpreadsheetSheet[]; readonly addedAt?: string; readonly rowCount?: number; readonly version?: number; readonly status?: "Attached" | "Generated" | "Updated" }
 export interface SpreadsheetMockState { readonly types: readonly SpreadsheetType[]; readonly files: readonly RegisteredSpreadsheet[] }
 export const WORKBOOK_ONLY = "Keep in workbook only";
 export const NOT_MAPPED = "Not used";
@@ -69,6 +69,16 @@ export function addMockSpreadsheetType(name: string, fields: readonly string[]):
   if (new Set(fields.map(field => fieldForSpreadsheetHeader(field)!.id)).size !== fields.length) throw new Error('Use a different name for each field.');
   const type = { id: `mock-type-${state.types.length + 1}`, name, fields };
   publish({ ...state, types: [...state.types, type] });
+  return type;
+}
+export function renameMockSpreadsheetType(id: string, name: string): SpreadsheetType {
+  const existing = state.types.find(type => type.id === id);
+  if (!existing) throw new Error('SPREADSHEET_TYPE_NOT_FOUND');
+  name = name.trim();
+  if (!name) throw new Error('Enter a type name.');
+  if (state.types.some(type => type.id !== id && normalize(type.name) === normalize(name))) throw new Error('A spreadsheet type with this name already exists.');
+  const type = { ...existing, name };
+  publish({ ...state, types: state.types.map(entry => entry.id === id ? type : entry) });
   return type;
 }
 export function searchMockSpreadsheet(file: RegisteredSpreadsheet, sheetName: string, query: string): readonly Readonly<Record<string, string>>[] {

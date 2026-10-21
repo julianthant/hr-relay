@@ -23,6 +23,7 @@ async function openReview(page: Page, viewport: (typeof VIEWPORTS)[number]): Pro
     day: FIXTURE_DAY,
     intake: FIXTURE_INTAKE_IDS.validated,
   });
+  await page.getByRole("button", { name: "Close assistant", exact: true }).click();
   await page.mouse.click(viewport.width / 2, 100);
   await expect(page.getByRole("table", { name: "Rejected rows" })).toBeVisible();
 }

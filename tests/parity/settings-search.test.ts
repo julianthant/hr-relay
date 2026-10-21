@@ -69,7 +69,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await clear.click();
       await expect(search).toHaveValue("");
       await expect(search).toBeFocused();
-      await expect(page.locator('.settings-nav-group a')).toHaveCount(11);
+      await expect(page.locator('.settings-nav-group a')).toHaveCount(10);
       await expect(clear).toHaveCount(0);
 
       await search.fill("Dark theme");
@@ -91,7 +91,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       for (const [section, label, value] of [
         ["routes", "Find a system or route", "CRM"], ["keyboard", "Search shortcuts", "search"],
-        ["spreadsheets", "Find a spreadsheet", "student"],
+
       ]) {
         await page.goto(`${server.baseUrl}/?settings=${section}`);
         const field = page.getByLabel(label, { exact: true });
@@ -106,6 +106,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(field).toBeFocused();
         await expect(button).toHaveCount(0);
       }
+      await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
+      await expect(page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true })).toHaveCount(0);
+      const libraryOpen = page.getByRole("button", { name: "26–27 Student applicants.xlsx", exact: true });
+      await libraryOpen.focus(); await libraryOpen.press("Enter");
+      await expect(page.getByRole("region", { name: "Spreadsheet editor", exact: true })).toBeVisible();
+      await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "Spreadsheets", exact: true }).click();
+      await expect(libraryOpen).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]);
       expect(writes).toEqual([]);

@@ -75,10 +75,10 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     const server = await setup(page, theme, width);
     try {
       await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "general" });
-      await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Connect ChatGPT", exact: true })).toBeVisible();
       await capture(page, info, theme, width, "general-signed-out");
-      await page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Connect ChatGPT", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Disconnect", exact: true })).toBeVisible();
 
       const search = page.getByRole("searchbox", { name: "Search settings", exact: true });
       await search.fill("zz-no-setting");
@@ -233,27 +233,40 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await open();
       await expect(page.getByRole("table", { name: "Registered spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
       await capture(page, info, theme, width, "spreadsheet-library");
-      await page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true }).fill("zz-unmatched-file");
-      await expect(page.getByText("No spreadsheets match your search.", { exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "spreadsheet-library-empty-search");
+      await expect(page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true })).toHaveCount(0);
+      const file = page.getByRole("button", { name: "26–27 Student applicants.xlsx", exact: true });
+      await file.focus(); await file.press("Enter");
+      await expect(page.getByRole("region", { name: "Spreadsheet editor", exact: true })).toBeVisible();
+      await capture(page, info, theme, width, "spreadsheet-library-open");
+      await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "Spreadsheets", exact: true }).click();
+      await expect(file).toBeFocused();
       await open({ spreadsheet: "missing-baseline-file" });
       await expect(page.getByText("This file is no longer registered.", { exact: true })).toBeVisible();
       await capture(page, info, theme, width, "spreadsheet-missing-file");
       await open({ spreadsheetImport: true, spreadsheetImportView: "columns" });
       await expect(page.getByRole("dialog", { name: "Import unavailable", exact: true })).toBeVisible();
       await capture(page, info, theme, width, "spreadsheet-lost-import");
-      await open({ spreadsheetTab: "types" });
-      await expect(page.getByRole("button", { name: "Add spreadsheet type", exact: true })).toBeVisible();
+      await open();
+      await expect(page.getByRole("tablist", { name: "Spreadsheet settings", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Spreadsheet types", exact: true })).toBeVisible();
       await capture(page, info, theme, width, "spreadsheet-types");
-      await page.getByRole("button", { name: "View fields", exact: true }).first().click();
-      await expect(page.getByRole("dialog")).toBeVisible();
+      const editType = page.getByRole("button", { name: "Edit Roster", exact: true });
+      await editType.click();
+      const typeFields = page.getByRole("dialog", { name: "Edit spreadsheet type", exact: true });
+      await expect(typeFields.getByRole("textbox", { name: "Type name", exact: true })).toHaveValue("Roster");
+      await expect(typeFields.getByText(/^Columns:/u)).toBeVisible();
       await capture(page, info, theme, width, "spreadsheet-type-fields");
-      await page.getByRole("dialog").locator("footer").getByRole("button", { name: "Close", exact: true }).click();
-      await page.getByRole("button", { name: "Add spreadsheet type", exact: true }).click();
-      await expect(page.getByRole("dialog", { name: "Add spreadsheet type", exact: true })).toBeVisible();
+      await typeFields.getByRole("button", { name: "Cancel", exact: true }).click(); await expect(editType).toBeFocused();
+      const createType = page.getByRole("button", { name: "Create type", exact: true });
+      await createType.click();
+      const addType = page.getByRole("dialog", { name: "Create spreadsheet type", exact: true });
+      await expect(addType).toBeVisible();
       await capture(page, info, theme, width, "spreadsheet-type-add");
-      await page.getByRole("button", { name: "Add type", exact: true }).click();
-      await expect(page.getByText("Check spreadsheet type", { exact: true })).toBeVisible();
+      await expect(addType.getByRole("button", { name: "Save type", exact: true })).toBeDisabled();
+      await addType.getByRole("textbox", { name: "Type name", exact: true }).fill("Roster");
+      await addType.getByRole("button", { name: "Save type", exact: true }).click();
+      await expect(addType.getByRole("alert")).toContainText("already exists");
+      await page.keyboard.press("Escape"); await expect(createType).toBeFocused();
 
       await open({ spreadsheetImport: true, spreadsheetImportView: "mapping" }, "&spreadsheetPreviewOutcome=failure");
       await page.evaluate(() => {
@@ -580,7 +593,9 @@ test("Settings fast reads never mount a skeleton and a revisit keeps the exact e
     await page.clock.resume();
     await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
     await page.locator("#settings-gear").click();
-    await page.locator("a[href='?settings=performance']").first().click();
+    await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("backoff");
+    await page.getByRole("link", { name: "Backoff base Performance", exact: true }).click();
+    await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("");
     await expect.poll(() => calls).toBe(2);
     await expect(field).toHaveValue(value);
     await expect(page.locator('[data-settings-loading]')).toHaveCount(0);

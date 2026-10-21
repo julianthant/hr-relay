@@ -62,9 +62,9 @@
 - main:
   - heading "Onboarding queue" [level=1]
   - region "Queue":
-    - text: "Finished 1 08/03/2026: 1 verified"
+    - text: "Finished 1 08/03/2026: 1 completed"
     - button "jordan.lee@example.com — done" [pressed]:
-      - text: jordan.lee@example.com Done 9:10 AM
+      - text: jordan.lee@example.com Done 9:51 AM
       - button "Attempts for jordan.lee@example.com": "#1"
       - text: ONB74536255 13m 44s
       - button "Retry"
@@ -466,10 +466,13 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
+- button "Assistant"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

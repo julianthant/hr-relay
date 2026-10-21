@@ -62,9 +62,9 @@
 - main:
   - heading "SharePoint Download queue" [level=1]
   - region "Queue":
-    - text: "Finished 1 08/03/2026: 1 verified"
+    - text: "Finished 1 08/03/2026: 1 completed"
     - button "Onboarding Roster — done" [pressed]:
-      - text: Onboarding Roster Done 9:10 AM
+      - text: Onboarding Roster Done 10:04 AM
       - button "Attempts for Onboarding Roster": "#1"
       - text: SD40731962 56s
       - button "Retry"
@@ -150,10 +150,13 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
+- button "Assistant"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

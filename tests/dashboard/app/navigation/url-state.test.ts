@@ -528,3 +528,16 @@ afterEach_m8(_afterEachFixture0);
 
 });
 }
+
+it_m0("round trips HUB onboarding and mock setup through the one URL owner", () => {
+  for (const onboarding of ["login", "signup", "duo", "ready"] as const) {
+    const route = { start: false, onboarding };
+    assert_m0.deepEqual(parseRoute_m0(routeToSearch_m0(route)), route);
+  }
+  for (const onboardingSetup of ["fast", "duo"] as const) {
+    const route = { start: false, onboardingSetup };
+    assert_m0.deepEqual(parseRoute_m0(routeToSearch_m0(route)), route);
+  }
+  assert_m0.equal(parseRoute_m0("?onboarding=unknown").viewInvalid, true);
+  assert_m0.equal(parseRoute_m0("?onboardingSetup=unknown").viewInvalid, true);
+});

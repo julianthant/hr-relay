@@ -89,7 +89,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(saved.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
       await saved.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
       await page.getByRole("link", { name: "Routes", exact: true }).click();
-      await page.getByRole("link", { name: "Performance", exact: true }).click();
+      await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("backoff");
+      await page.getByRole("link", { name: "Backoff base Performance", exact: true }).click();
+      await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("");
       await expect(toasts).toHaveCount(0); await expect(page.getByText("Saved", { exact: true })).toBeVisible();
       await page.route("**/api/v1/commands", route => route.abort("failed"), { times: 1 });
       await task.fill("240"); await expect(page.getByText("Settings write unconfirmed", { exact: true })).toBeVisible();

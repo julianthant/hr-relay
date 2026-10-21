@@ -63,34 +63,34 @@
   - heading "OCR queue" [level=1]
   - region "Queue":
     - text: Needs you 5
-    - button "single-oath.pdf — review · 53m 48s" [pressed]:
-      - text: single-oath.pdf Review 1 of 1 records ready for approval 9:10 AM
+    - button "single-oath.pdf — review · 0s" [pressed]:
+      - text: single-oath.pdf Review 1 of 1 records ready for approval 10:03 AM
       - button "Attempts for single-oath.pdf": "#1"
-      - text: OCR01566240 55m 0s
+      - text: OCR01566240 1m 12s
       - button "Retry"
       - button "Delete"
-    - button "multiple-oath.pdf — review · 53m 48s":
-      - text: multiple-oath.pdf Review 4 of 4 records ready for approval 9:10 AM
+    - button "multiple-oath.pdf — review · 0s":
+      - text: multiple-oath.pdf Review 4 of 4 records ready for approval 10:03 AM
       - button "Attempts for multiple-oath.pdf": "#1"
-      - text: OCR04609235 55m 0s
+      - text: OCR04609235 1m 12s
       - button "Retry"
       - button "Delete"
-    - button "emergency-contacts.pdf — review · 53m 48s":
-      - text: emergency-contacts.pdf Review 3 of 3 records ready for approval 9:10 AM
+    - button "emergency-contacts.pdf — review · 0s":
+      - text: emergency-contacts.pdf Review 3 of 3 records ready for approval 10:03 AM
       - button "Attempts for emergency-contacts.pdf": "#1"
-      - text: OCR63559370 55m 0s
+      - text: OCR63559370 1m 12s
       - button "Retry"
       - button "Delete"
-    - button "detect-test.pdf — review · 52m 52s":
-      - text: detect-test.pdf 1 Review 3 of 4 records ready for approval 9:10 AM
-      - button "Attempts for detect-test.pdf": "#1"
-      - text: OCR28298759 55m 0s
-      - button "Retry"
-      - button "Delete"
-    - button "i9.pdf — review · 53m 48s":
-      - text: i9.pdf Review 2 of 2 records ready for approval 9:10 AM
+    - button "i9.pdf — review · 0s":
+      - text: i9.pdf Review 2 of 2 records ready for approval 10:03 AM
       - button "Attempts for i9.pdf": "#1"
-      - text: OCR61877231 55m 0s
+      - text: OCR61877231 1m 12s
+      - button "Retry"
+      - button "Delete"
+    - button "detect-test.pdf — review · 0s":
+      - text: detect-test.pdf 1 Review 3 of 4 records ready for approval 10:02 AM
+      - button "Attempts for detect-test.pdf": "#1"
+      - text: OCR28298759 2m 8s
       - button "Retry"
       - button "Delete"
   - region "Action panel":
@@ -259,10 +259,13 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
+- button "Assistant"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

@@ -85,8 +85,16 @@ it('retains UNKNOWN through edits and remount and repeated Save clicks only read
   await edit('Grace'); await p.remount(); assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="A2"]')?.value, 'Grace'); await click('Save'); await click('Save');
   assert.equal(w.calls.filter(call => call.method === 'POST').length, 1); assert(p.latest().dirty); assert.match(document.body.textContent, /Save uncertain/);
 });
-it('keeps New local until Save, adopts the generated ID and preserves local undo/redo', async () => {
-  const w = world(); const p = await page(w.client); await click('New spreadsheet'); assert.equal(w.calls.filter(call => call.method === 'POST').length, 0); assert.equal(p.latest().book?.libraryId, undefined);
+async function importDraft() {
+  vi.mocked(importSpreadsheetInWorker).mockResolvedValue(newEditableWorkbook());
+  const input = document.querySelector<HTMLInputElement>('input[type=file]'); assert(input);
+  const file = new File(['fixture'], 'Untitled.xlsx'); Object.defineProperty(file, 'arrayBuffer', { value: async () => new ArrayBuffer(0) });
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
+  await click('Import selected columns');
+}
+it('keeps an imported draft local until Save, adopts the generated ID and preserves local undo/redo', async () => {
+  const w = world(); const p = await page(w.client); await importDraft(); assert.equal(w.calls.filter(call => call.method === 'POST').length, 0); assert.equal(p.latest().book?.libraryId, undefined);
   await edit('Ada'); await click('Save'); assert.match(document.body.textContent, /Saved · version 1/); assert.equal(p.latest().book?.libraryId, 'generated'); assert.equal(p.view().spreadsheet, 'generated'); assert.equal(w.calls.filter(call => call.method === 'POST').length, 1);
   await click('Undo spreadsheet edit'); assert.equal(p.latest().book?.libraryId, 'generated'); assert(p.latest().dirty); await click('Redo spreadsheet edit'); assert.equal(p.latest().book?.libraryId, 'generated');
 });
@@ -98,7 +106,7 @@ it('imports reviewed columns into an editable draft without creating a library r
   await click('Save'); assert.match(document.body.textContent, /Saved · version 1/); assert.equal(p.latest().book?.libraryId, 'generated');
 });
 it('adopts a delayed create identity into newer edits and their history before the next CAS Save', async () => {
-  const w = world(); const p = await page(w.client); await click('New spreadsheet'); await edit('Ada');
+  const w = world(); const p = await page(w.client); await importDraft(); await edit('Ada');
   const release = w.pausePosts(); await click('Save'); await edit('Grace'); await act(async () => release());
   assert.equal(p.latest().book?.libraryId, 'generated'); assert.equal(p.view().spreadsheet, 'generated'); assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="A2"]')?.value, 'Grace'); assert(p.latest().dirty); assert.doesNotMatch(document.body.textContent, /Saved · version/);
   await click('Undo spreadsheet edit'); assert.equal(p.latest().book?.libraryId, 'generated'); await click('Redo spreadsheet edit'); await click('Save');
@@ -115,11 +123,11 @@ it('shows failed library authority without a mock list or a definitive empty res
 it('distinguishes a pending library from a verified empty library', async () => {
   let settle!: (response: Response) => void;
   const client = createDashboardClient({ baseUrl: 'http://spreadsheets.test', fetchImpl: () => new Promise(resolve => { settle = resolve; }) }); await page(client);
-  assert.match(document.body.textContent, /Loading spreadsheets/); assert.doesNotMatch(document.body.textContent, /No spreadsheets match/);
-  await act(async () => settle(Response.json([]))); assert.match(document.body.textContent, /No spreadsheets match/); assert.doesNotMatch(document.body.textContent, /Loading spreadsheets/);
+  assert.match(document.body.textContent, /Loading spreadsheets/); assert.doesNotMatch(document.body.textContent, /No spreadsheets yet/);
+  await act(async () => settle(Response.json([]))); assert.match(document.body.textContent, /No spreadsheets yet/); assert.doesNotMatch(document.body.textContent, /Loading spreadsheets/);
 });
 it('reopens a verified first create through its durable route with a fresh client', async () => {
-  const w = world(); const p = await page(w.client); await click('New spreadsheet'); await edit('Ada'); await click('Save');
+  const w = world(); const p = await page(w.client); await importDraft(); await edit('Ada'); await click('Save');
   assert.equal(p.view().spreadsheet, 'generated'); assert.match(document.body.textContent, /Saved · version 1/);
   const route = JSON.parse(JSON.stringify(p.view())) as ViewRoute;
   await act(async () => root?.unmount()); document.body.replaceChildren();
@@ -215,4 +223,17 @@ it.each(['pending', 'unknown'] as const)('Settings Discard keeps %s Save custody
   assert.equal(w.calls.filter(call => call.method === 'POST').length, 1);
   assert.equal(adapter.draft('served-book')?.intent, intent);
   assert.match(document.body.textContent, /Save uncertain/);
+});
+
+it('opens the selected type through the mounted route and restores its trigger', async () => {
+  const w = world(), p = await page(w.client), editType = button('Edit Roster');
+  await act(async () => { editType.focus(); editType.click(); });
+  assert.equal(p.view().spreadsheetType, 'roster');
+  assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /Edit spreadsheet type/);
+  assert.equal(document.querySelector<HTMLInputElement>('input[name="spreadsheet-type-name"]')?.value, 'Roster');
+  await click('Cancel'); await vi.waitFor(() => assert.equal(document.activeElement === editType, true));
+  await click('Create type'); assert.equal(p.view().spreadsheetType, null);
+  assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /Create spreadsheet type/);
+  assert.equal(document.querySelector<HTMLInputElement>('input[name="spreadsheet-type-name"]')?.value, '');
+  assert.equal(w.calls.filter(call => call.method === 'POST').length, 0);
 });

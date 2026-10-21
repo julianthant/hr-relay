@@ -28,7 +28,9 @@ describe("Settings field search", () => {
 
   it("searches descriptions, normalizes whitespace/case, and ranks exact names first", () => {
     assert.equal(searchSettings(index, "  DARK  THEME ")[0]?.target, "appearance.theme");
-    assert.ok(searchSettings(index, "capture diagnostic").some(result => result.target === "features.debugScreenshots"));
+    assert.deepEqual(searchSettings(index, "capture diagnostic"), []);
+    assert.equal(searchSettings(index, "animations")[0]?.target, "appearance.animations");
+    assert.equal(searchSettings(index, "browser window")[0]?.target, "browser.window");
     assert.deepEqual(searchSettings(index, "   "), []);
     assert.deepEqual(searchSettings(index, "this setting does not exist"), []);
   });

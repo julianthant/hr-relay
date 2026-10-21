@@ -1,0 +1,29 @@
+# hub-shell-duo-waiting--dark--1440x900
+# adapter: fixture
+# fixture: hub-mock-ports-served-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: dark  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#onboarding-main"
+- text: Relay
+- main:
+  - list "Profile setup progress":
+    - listitem:
+      - button "Your details"
+    - listitem:
+      - button "Duo setup"
+    - listitem:
+      - button "Ready" [disabled]
+  - heading "Set up your sign-in methods" [level=1]
+  - paragraph: Add your security key and Touch ID in the setup tabs.
+  - text: Security key Touch ID
+  - region "Next action":
+    - heading "Start with a security key" [level=2]
+    - paragraph: In the setup browser, follow Fast Duo’s security key instructions. You can add the methods in either order.
+  - status: Security key and Touch ID not added
+  - button "Show setup browser"
+- paragraph: UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.
+- region "Notifications"

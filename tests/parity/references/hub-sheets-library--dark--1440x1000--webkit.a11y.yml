@@ -1,0 +1,44 @@
+# hub-sheets-library--dark--1440x1000--webkit
+# adapter: fixture
+# fixture: hub-sheets-components
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x1000  theme: dark  variant: webkit
+# capturedAt: 2026-08-03
+
+- main:
+  - heading "Spreadsheets" [level=1]
+  - paragraph: Choose, import, and organize your spreadsheet data.
+  - button "Import spreadsheet"
+  - button "Create type"
+  - table "Registered spreadsheets":
+    - rowgroup:
+      - row "Spreadsheet Type Rows Actions":
+        - columnheader "Spreadsheet"
+        - columnheader "Type"
+        - columnheader "Rows"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "Autumn onboarding.xlsx Onboarding roster 17 Autumn onboarding.xlsx":
+        - cell "Autumn onboarding.xlsx"
+        - cell "Onboarding roster"
+        - cell "17"
+        - cell "Autumn onboarding.xlsx":
+          - button "Autumn onboarding.xlsx": Open
+      - row "Employment check.xlsx Employment records 24 Employment check.xlsx":
+        - cell "Employment check.xlsx"
+        - cell "Employment records"
+        - cell "24"
+        - cell "Employment check.xlsx":
+          - button "Employment check.xlsx": Open
+  - heading "Spreadsheet types" [level=2]
+  - text: Onboarding roster Define which columns belong to this type.
+  - button "Edit Onboarding roster": Edit
+  - text: Employment records Define which columns belong to this type.
+  - button "Edit Employment records": Edit
+  - heading "Kronos reports" [level=2]
+  - text: Start date Default start date for Kronos reports.
+  - textbox "Kronos report start date": 2026-10-01
+  - text: End date Default end date for Kronos reports.
+  - textbox "Kronos report end date": 2026-10-31
+- region "Notifications"
