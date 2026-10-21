@@ -7,6 +7,7 @@ import {
   formatErrorCatalogFailure,
   resolveErrorCatalogFailure,
 } from "../../../src/models/failures/error-catalog.js";
+import { AssistantRefusalCodeSchema } from "../../../src/models/profiles/assistant-permissions.js";
 
 describe("error catalog", () => {
   it("registers Person Lookup and shared sign-in codes with fixed sentence-case text", () => {
@@ -226,6 +227,27 @@ describe("error catalog", () => {
     assert.equal(result.catalogFault.text, ERROR_CATALOG.ERROR_CATALOG_FORMAT_FAILED.text);
     assert.equal(result.catalogFault.cause instanceof Error, true);
     assert.notEqual(result.catalogFault.text.includes("private formatter detail"), true);
+  });
+  it("registers every assistant refusal code with fixed operator text", () => {
+    const expected = {
+      ASSISTANT_AUTHORITY_INVALID: "The assistant permission could not be read. No action was taken.",
+      ASSISTANT_GRANT_REQUIRED: "The assistant has no operator grant. No action was taken.",
+      ASSISTANT_MODEL_PROPOSAL_REFUSED: "The assistant proposal was refused. No action was taken.",
+      ASSISTANT_PROPOSAL_MISMATCH: "The assistant proposal does not match this command. No action was taken.",
+      ASSISTANT_UNCLASSIFIED: "This command is not classified for the assistant. No action was taken.",
+      ASSISTANT_OPTIONS_UNBOUND: "This command's options cannot be bound exactly. No action was taken.",
+      ASSISTANT_SUBJECT_MISMATCH: "This command's subject does not match its classification. No action was taken.",
+      ASSISTANT_BINDING_STALE: "The assistant approval no longer matches this command. No action was taken.",
+      ASSISTANT_UNKNOWN_NOT_REPLAYABLE: "An uncertain assistant result cannot be replayed. Check its result before taking further action.",
+      ASSISTANT_EFFECT_UNDERSTATED: "This command does more than its assistant classification says. No action was taken.",
+    } as const;
+    assert.deepEqual([...AssistantRefusalCodeSchema.options].sort(), Object.keys(expected).sort());
+    for (const code of AssistantRefusalCodeSchema.options) {
+      const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+      assert.equal(message.code, code);
+      assert.equal(message.text, expected[code]);
+      assert.equal(ERROR_CATALOG[code].parameters.safeParse({ extra: true }).success, false);
+    }
   });
 });
 

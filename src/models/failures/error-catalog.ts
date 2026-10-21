@@ -597,6 +597,46 @@ export const ERROR_CATALOG = Object.freeze({
     "The selected Analytics report has changed. Select the period again.",
     EmptyParametersSchema,
   ),
+  ASSISTANT_AUTHORITY_INVALID: catalogEntry(
+    "The assistant permission could not be read. No action was taken.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_GRANT_REQUIRED: catalogEntry(
+    "The assistant has no operator grant. No action was taken.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_MODEL_PROPOSAL_REFUSED: catalogEntry(
+    "The assistant proposal was refused. No action was taken.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_PROPOSAL_MISMATCH: catalogEntry(
+    "The assistant proposal does not match this command. No action was taken.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_UNCLASSIFIED: catalogEntry(
+    "This command is not classified for the assistant. No action was taken.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_OPTIONS_UNBOUND: catalogEntry(
+    "This command's options cannot be bound exactly. No action was taken.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_SUBJECT_MISMATCH: catalogEntry(
+    "This command's subject does not match its classification. No action was taken.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_BINDING_STALE: catalogEntry(
+    "The assistant approval no longer matches this command. No action was taken.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_UNKNOWN_NOT_REPLAYABLE: catalogEntry(
+    "An uncertain assistant result cannot be replayed. Check its result before taking further action.",
+    EmptyParametersSchema,
+  ),
+  ASSISTANT_EFFECT_UNDERSTATED: catalogEntry(
+    "This command does more than its assistant classification says. No action was taken.",
+    EmptyParametersSchema,
+  ),
 });
 
 export type ErrorCatalogCode = keyof typeof ERROR_CATALOG;
