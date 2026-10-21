@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import type { RuntimeAdmission } from "../storage/admission/admission.js";
+import { join } from "node:path";
 import { z } from "zod";
 import {
   CREDENTIAL_DIRECTORY_MODE,
@@ -10,55 +9,28 @@ import {
   removeExactPath,
   ensureChildDirectory,
   fsyncPath,
-  replacePrivateFile,
   statDirectory,
-  writePrivateStage,
   type DirectoryIdentity,
 } from "../storage/configuration/credential-safe-file.js";
 import {
   ProfileRegistryDocumentSchema,
   ProfileRegistryRowSchema,
-  deriveProfileNames,
   type ProfileRegistryDocument,
   type ProfileRegistryRow,
 } from "../../models/profiles/profile.js";
+import { SignUpOperationSchema, type SignUpOperation } from "../../models/profiles/profile.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { systemClock } from "../../rules/time/clock.js";
 import { observeProcessIdentity } from "../storage/sqlite/runtime-process-locks.js";
+import { createCredentialStore, captureCommittedCredentialReplay } from "../storage/configuration/credential-store.js";
+import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../models/config/protected-settings.js";
 import { encodePrivate } from "../../rules/validation/private-equal.js";
 
-export interface CreateProfileInput {
-  readonly firstName: string;
-  readonly lastName: string;
-  readonly createdAt: string;
-  readonly profileId?: string;
-  readonly migratedFromLegacy?: true;
-}
 
-function registryPath(machineRoot: string): { readonly directory: string; readonly path: string } {
-  const directory = join(machineRoot, "machine");
-  return { directory, path: join(directory, "profiles.json") };
-}
-
-const RegistryVersionSchema = z.strictObject({ schemaVersion: z.literal(2) });
 
 export class ProfileRegistryAuthorityError extends Error {
   readonly code = "PROFILE_AUTHORITY_UNAVAILABLE";
-  constructor() { super("profile registry authority is unavailable"); this.name = "ProfileRegistryAuthorityError"; }
-}
-
-function readRegistry(path: string): ProfileRegistryDocument {
-  try {
-    noSymlinkAncestry(dirname(path), new Map());
-    const version = readPrivateFile(join(dirname(path), "profile-registry-version.json"), { label: "lock", maxBytes: 128 });
-    if (version === undefined) throw new ProfileRegistryAuthorityError();
-    RegistryVersionSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(version.bytes)));
-    const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
-    if (file === undefined) throw new Error("profile registry is missing");
-    const parsed = ProfileRegistryDocumentSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
-    return parsed;
-  } catch {
-    throw new ProfileRegistryAuthorityError();
-  }
+  constructor(cause?: unknown) { super("profile registry authority is unavailable", { cause }); this.name = "ProfileRegistryAuthorityError"; }
 }
 
 function ensureProfileRoot(root: string, profileId: string): string {
@@ -68,15 +40,6 @@ function ensureProfileRoot(root: string, profileId: string): string {
   ensureChildDirectory(profilesDirectory, profileRoot, "profile root", CREDENTIAL_DIRECTORY_MODE, CREDENTIAL_DIRECTORY_MODE);
   statDirectory(profileRoot, "profile root", CREDENTIAL_DIRECTORY_MODE);
   return profileRoot;
-}
-
-function writeRegistry(machineRoot: string, document: ProfileRegistryDocument): void {
-  const { directory, path } = registryPath(machineRoot);
-  ensureChildDirectory(machineRoot, directory, "profile registry", CREDENTIAL_DIRECTORY_MODE, CREDENTIAL_DIRECTORY_MODE);
-  const stage = join(directory, `.profiles.${randomUUID()}.tmp`);
-  writePrivateStage(stage, encodePrivate(ProfileRegistryDocumentSchema.parse(document)));
-  replacePrivateFile(stage, path);
-  fsyncPath(directory);
 }
 
 const ProfileOpLockSchema = z.strictObject({
@@ -154,61 +117,42 @@ export function withProfileLock<T>(machineRoot: string, body: () => T, name: ".p
   return outcome.value;
 }
 
-export function createProfileRegistry(machineRoot: string) {
-  const root = z.string().min(1).parse(machineRoot);
-  mkdirSync(root, { recursive: true, mode: 0o700 });
-  chmodSync(root, 0o700);
-  withProfileLock(root, () => {
-    const { path, directory } = registryPath(root);
-    try {
-      const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
-      const versionPath = join(directory, "profile-registry-version.json");
-      const version = readPrivateFile(versionPath, { label: "lock", maxBytes: 128 });
-      if (version !== undefined) {
-        RegistryVersionSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(version.bytes)));
-        readRegistry(path);
-        return;
-      }
-      let current: ProfileRegistryDocument;
-      if (file === undefined) {
-        if ((existsSync(join(root, "profiles")) && readdirSync(join(root, "profiles")).length > 0)
-          || existsSync(join(root, "machine", "profile-verifiers.json"))
-          || existsSync(join(root, "machine", "operations"))) throw new ProfileRegistryAuthorityError();
-        current = { schemaVersion: 2, profiles: [], activeProfileId: null, sessionGeneration: 0 };
-      } else {
-        const prior = z.strictObject({ schemaVersion: z.literal(1), profiles: z.array(ProfileRegistryRowSchema) })
-          .parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
-        current = { schemaVersion: 2, profiles: prior.profiles, activeProfileId: null, sessionGeneration: 0 };
-      }
-      writePrivateStage(versionPath, encodePrivate({ schemaVersion: 2 }));
-      fsyncPath(directory);
-      writeRegistry(root, current);
-    } catch { throw new ProfileRegistryAuthorityError(); }
-  }, ".profile-registry.lock");
+export function createProfileRegistry(admission: RuntimeAdmission) {
+  const root = admission.stateRoot;
+  const read = () => {
+    try { return admission.readProfileRegistry(); }
+    catch (error) { throw new ProfileRegistryAuthorityError(error); }
+  };
+  read();
+  const write = (document: ProfileRegistryDocument) => admission.publishProfileRegistry(read(), document);
   return Object.freeze({
-    read(): ProfileRegistryDocument {
-      return readRegistry(registryPath(root).path);
+    settlementClaim(operationId: string) { return admission.issueProfileSettlementClaim(operationId); },
+    storageClaim(profileId: string) {
+      return admission.issueRegisteredProfileClaim(profileId);
     },
-    create(input: CreateProfileInput): ProfileRegistryRow {
+    read(): ProfileRegistryDocument {
+      return read();
+    },
+    publishSignUp(operation: SignUpOperation, request: unknown): ProfileRegistryRow {
       return withProfileLock(root, () => {
-        const names = deriveProfileNames(input.firstName, input.lastName);
-        const profileId = z.uuid().parse(input.profileId ?? randomUUID());
-        const current = readRegistry(registryPath(root).path);
-        if (current.profiles.some((row) => row.profileId === profileId)) {
-          throw new Error("profile registry already contains that profile");
-        }
-        const row = ProfileRegistryRowSchema.parse({
-          profileId,
-          ...names,
-          createdAt: input.createdAt,
-          lastSignedInAt: input.createdAt,
-          credentialState: "saved",
-          duoState: "not-set-up",
-          lifecycle: "ready",
-          ...(input.migratedFromLegacy === true ? { migratedFromLegacy: true } : {}),
-        });
-        writeRegistry(root, { ...current, profiles: [...current.profiles, row] });
-        ensureProfileRoot(root, profileId);
+        read();
+        const file = readPrivateFile(join(root, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+        if (file === undefined) throw new ProfileRegistryAuthorityError();
+        const pending = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+        if (canonicalJsonStringify(pending) !== canonicalJsonStringify(operation)) throw new Error("profile-signup-intent-mismatch");
+        const parsed = ProtectedSettingsApplyInputSchema.parse(request);
+        if (parsed.commandId !== pending.commandId || parsed.writeId !== pending.writeId || parsed.commandFingerprint !== pending.commandFingerprint
+          || parsed.expectedRevision !== pending.expectedRevision || parsed.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH
+          || parsed.updatedAt !== pending.createdAt) throw new Error("profile-signup-receipt-mismatch");
+        const capability = admission.admitProfile(this.storageClaim(pending.profileId));
+        try {
+          const store = createCredentialStore({ admission: capability, stateRoot: capability.stateRoot, erasureJournalAdmission: admission,
+            erasureJournalPath: join(root, "machine", "erasures", `${pending.profileId}.json`) });
+          const witness = captureCommittedCredentialReplay(store, parsed);
+          admission.publishProfileRegistration(pending, witness);
+        } finally { capability.release(); }
+        const row = read().profiles.find(entry => entry.profileId === pending.profileId);
+        if (row === undefined) throw new ProfileRegistryAuthorityError();
         return row;
       }, ".profile-registry.lock");
     },
@@ -218,23 +162,23 @@ export function createProfileRegistry(machineRoot: string) {
     update(profileId: string, patch: Partial<Pick<ProfileRegistryRow, "credentialState" | "duoState" | "lastSignedInAt" | "lifecycle">>): ProfileRegistryRow {
       return withProfileLock(root, () => {
         const id = z.uuid().parse(profileId);
-        const current = readRegistry(registryPath(root).path);
+        const current = read();
         const index = current.profiles.findIndex((row) => row.profileId === id);
         const existing = current.profiles[index];
         if (existing === undefined) throw new Error("profile registry does not contain that profile");
         const row = ProfileRegistryRowSchema.parse({ ...existing, ...patch });
         const profiles = current.profiles.slice();
         profiles[index] = row;
-        writeRegistry(root, { ...current, profiles });
+        write({ ...current, profiles });
         return row;
       }, ".profile-registry.lock");
     },
     advanceSession(profileId: string | null): number {
       return withProfileLock(root, () => {
-        const current = readRegistry(registryPath(root).path);
+        const current = read();
         if (profileId !== null && !current.profiles.some(row => row.profileId === profileId)) throw new Error("profile selection is unavailable");
         const next = ProfileRegistryDocumentSchema.parse({ ...current, activeProfileId: profileId, sessionGeneration: current.sessionGeneration + 1 });
-        writeRegistry(root, next);
+        write(next);
         return next.sessionGeneration;
       }, ".profile-registry.lock");
     },

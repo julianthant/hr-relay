@@ -1,15 +1,18 @@
+import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
   createCredentialStore,
+  readForErasure,
   CredentialErasureAuthorityError,
   CredentialStoreCommitUncertainError,
   RESTORE_ADMISSION_REQUEST,
   type CredentialStoreHooks,
 } from "../storage/configuration/credential-store.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedSettingsApplyInputSchema,
@@ -18,18 +21,13 @@ import { CredentialEraseInputSchema } from "../../models/config/credential-store
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { deriveProfileNames, ProfileNameValidationError, ProfileAuthoritySnapshotSchema, type ProfileAuthoritySnapshot } from "../../models/profiles/profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
-import { encodePrivate } from "../../rules/validation/private-equal.js";
 import {
-  CREDENTIAL_DIRECTORY_MODE,
-  ensureChildDirectory,
-  fsyncPath,
   noSymlinkAncestry,
   type DirectoryIdentity,
-  replacePrivateFile,
-  writePrivateStage,
 } from "../storage/configuration/credential-safe-file.js";
 import { assessCredentialInventory, type CredentialInventory } from "./credential-inventory.js";
 import { createProfileRegistry, withProfileLock, ProfileRegistryAuthorityError } from "./registry.js";
+import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../models/profiles/profile.js";
 import { createProfileVerifiers } from "./verifier-store.js";
 
 import type { ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
@@ -67,37 +65,6 @@ export interface ProfileCancelling {
   readonly operationId?: string;
 }
 
-const SignUpOperationSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  kind: z.literal("sign-up"),
-  operationId: z.uuid(),
-  profileId: z.uuid(),
-  commandId: z.uuid(),
-  writeId: z.uuid(),
-  emailKey: z.string().regex(/^[0-9a-f]{64}$/u),
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  createdAt: IsoInstantSchema,
-  commandFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-  expectedRevision: z.number().int().positive().optional(),
-  phase: z.enum(["applying", "publishing"]),
-});
-
-const LogoutOperationSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  kind: z.literal("logout"),
-  operationId: z.uuid(),
-  profileId: z.uuid(),
-  at: IsoInstantSchema,
-  phase: z.enum(["admitted", "cancelling", "erasing", "incomplete", "complete"]),
-  commandId: z.uuid().optional(),
-  writeId: z.uuid().optional(),
-  expectedRevision: z.number().int().positive().optional(),
-});
-
-type SignUpOperation = z.infer<typeof SignUpOperationSchema>;
-type LogoutOperation = z.infer<typeof LogoutOperationSchema>;
-type ProfileOperation = SignUpOperation | LogoutOperation;
 
 function refusal(code: ErrorCatalogCode, operationId?: string): ProfileRefusal {
   return { state: "refused", code, message: operatorFailureSentence(code), ...(operationId === undefined ? {} : { operationId }) };
@@ -141,7 +108,6 @@ function journalOutsideProfile(profileRoot: string, journalPath: string): boolea
 export function createProfileSession(input: {
   readonly machineRoot: string;
   readonly admission: RuntimeAdmission;
-  readonly profileAdmission: (profileId: string) => RuntimeAdmission;
   readonly account?: Pick<ChatGptAccountService, "readAuthority" | "revalidateAuthority">;
   readonly settings?: { read(): SettingsRuntimeSnapshot };
   readonly activity?: ProfileActivity;
@@ -155,31 +121,18 @@ export function createProfileSession(input: {
   if (admission.stateRoot !== resolve(input.machineRoot)) throw new Error("profile machine root differs from admission");
   mkdirSync(input.machineRoot, { recursive: true, mode: 0o700 });
   const machineRoot = realpathSync(input.machineRoot);
-  const registry = createProfileRegistry(machineRoot);
+  const registry = createProfileRegistry(admission);
   const verifiers = createProfileVerifiers(machineRoot);
   const sessions = new Map<string, { readonly profileId: string; readonly epoch: number; readonly admission: RuntimeAdmission }>();
+  const storageAdmissions = new Map<string, RuntimeAdmission>();
   const authoritySnapshots = new WeakSet<ProfileAuthoritySnapshot>();
 
-  function operationsDirectory(): string {
-    const directory = join(machineRoot, "machine", "operations");
-    ensureChildDirectory(join(machineRoot, "machine"), directory, "profile operations", CREDENTIAL_DIRECTORY_MODE, CREDENTIAL_DIRECTORY_MODE);
-    return directory;
-  }
-
   function writeOperation(operation: ProfileOperation): void {
-    const directory = operationsDirectory();
-    const path = join(directory, `${operation.operationId}.json`);
-    const stage = join(directory, `.op.${randomUUID()}.tmp`);
-    try {
-      writePrivateStage(stage, encodePrivate(operation));
-      replacePrivateFile(stage, path);
-      fsyncPath(directory);
-    } finally {
-      if (existsSync(stage)) rmSync(stage);
-    }
+    admission.publishProfileOperation(operation);
   }
 
   function readOperations(): ProfileOperation[] {
+    registry.read();
     const directory = join(machineRoot, "machine", "operations");
     if (!existsSync(directory)) return [];
     const operations: ProfileOperation[] = [];
@@ -196,13 +149,7 @@ export function createProfileSession(input: {
   }
 
   function deleteOperation(operationId: string): void {
-    const directory = operationsDirectory();
-    const path = join(directory, `${operationId}.json`);
-    const info = lstatSync(path, { throwIfNoEntry: false });
-    if (info === undefined) return;
-    if (!info.isFile() || info.isSymbolicLink()) throw new Error("profile operation is malformed");
-    rmSync(path);
-    fsyncPath(directory);
+    admission.publishProfileOperation(operationId);
   }
 
   function journalPath(profileId: string): string {
@@ -223,7 +170,13 @@ export function createProfileSession(input: {
   function admittedProfile(profileId: string): RuntimeAdmission {
     admission.assertLive();
     admission.assertStateRoot(machineRoot);
-    const capability = requireRuntimeAdmission(input.profileAdmission(profileId));
+    let capability = storageAdmissions.get(profileId);
+    if (capability === undefined) {
+      const claim = registry.storageClaim(profileId);
+      capability = admission.admitProfile(claim);
+      if (claim.phase === "setup" && !existsSync(join(capability.stateRoot, "state.db"))) AuthorityDatabase.initializeProfile(capability);
+      storageAdmissions.set(profileId, capability);
+    }
     if (capability.stateRoot !== registry.profileRoot(profileId)) throw new Error("profile root differs from admission");
     capability.assertStateRoot(capability.stateRoot);
     return capability;
@@ -321,16 +274,21 @@ export function createProfileSession(input: {
 
   function publishSignUp(operation: SignUpOperation, fields: { readonly email: string; readonly password: string }): ActiveProfileSession {
     admission.assertWritable();
+    operation = { ...operation, phase: "publishing" };
+    writeOperation(operation);
     admittedProfile(operation.profileId).assertWritable();
     if (verifiers.identify(fields.email) === "unknown") verifiers.save(operation.profileId, fields.email, fields.password);
     if (!registry.read().profiles.some((row) => row.profileId === operation.profileId)) {
-      registry.create({
-        firstName: operation.firstName,
-        lastName: operation.lastName,
-        createdAt: operation.createdAt,
-        profileId: operation.profileId,
-      });
+      const names = deriveProfileNames(operation.firstName, operation.lastName);
+      registry.publishSignUp(operation, ProtectedSettingsApplyInputSchema.parse({
+        commandId: operation.commandId, commandFingerprint: operation.commandFingerprint,
+        expectedRevision: operation.expectedRevision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+        writeId: operation.writeId, updatedAt: operation.createdAt,
+        entries: { ucpathUserId: { set: fields.email }, ucpathPassword: { set: fields.password }, timekeeperName: { set: names.timekeeperName } },
+      }));
     }
+    storageAdmissions.get(operation.profileId)?.release();
+    storageAdmissions.delete(operation.profileId);
     deleteOperation(operation.operationId);
     return activate(operation.profileId);
   }
@@ -352,21 +310,9 @@ export function createProfileSession(input: {
     }
     let operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.emailKey === emailKey);
     if (operation === undefined) {
-      operation = SignUpOperationSchema.parse({
-        schemaVersion: 1,
-        kind: "sign-up",
-        operationId: randomUUID(),
-        profileId: randomUUID(),
-        commandId: randomUUID(),
-        writeId: randomUUID(),
-        emailKey,
-        firstName: names.firstName,
-        lastName: names.lastName,
-        createdAt: fields.createdAt,
-        commandFingerprint: "a".repeat(64),
-        phase: "applying",
+      operation = admission.beginProfileSignUp({
+        emailKey, firstName: names.firstName, lastName: names.lastName, createdAt: IsoInstantSchema.parse(fields.createdAt), commandFingerprint: "a".repeat(64),
       });
-      writeOperation(operation);
     }
     if (operation.firstName !== names.firstName || operation.lastName !== names.lastName) return refusal("PROFILE_SIGN_IN_REFUSED");
     registry.ensureRoot(operation.profileId);
@@ -435,8 +381,10 @@ export function createProfileSession(input: {
       writeOperation({ ...operation, phase: "incomplete" });
       return restoreAdmission(operation.operationId);
     }
+    storageAdmissions.get(profileId)?.release();
+    storageAdmissions.set(profileId, admission.admitProfile(registry.settlementClaim(operation.operationId)));
     const store = storeFor(profileId);
-    const before = store.read();
+    const before = readForErasure(store, operation.operationId);
     const capturedSecrets = [before.entries.ucpathUserId?.value, before.entries.ucpathPassword?.value]
       .filter((value): value is string => value !== undefined);
     let command = operation;
@@ -456,7 +404,7 @@ export function createProfileSession(input: {
     const writeId = command.writeId;
     const expectedRevision = command.expectedRevision;
     if (commandId === undefined || writeId === undefined || expectedRevision === undefined) return cancelling(command.operationId);
-    if (!store.ownsCommandId(commandId)) {
+    {
       try {
         const erased = store.erase(CredentialEraseInputSchema.parse({
           commandId,
@@ -485,7 +433,7 @@ export function createProfileSession(input: {
         }
       }
     }
-    const record = store.read();
+    const record = readForErasure(store, operation.operationId);
     const inventory = assessCredentialInventory({
       profileRoot,
       entriesAbsent: record.entries.ucpathUserId === undefined && record.entries.ucpathPassword === undefined,
@@ -498,6 +446,8 @@ export function createProfileSession(input: {
       return { ...refusal("PROFILE_LOGOUT_INVENTORY_BLOCKED", command.operationId), inventory };
     }
     registry.update(profileId, { credentialState: "wiped", lifecycle: "ready" });
+    storageAdmissions.get(profileId)?.release();
+    storageAdmissions.delete(profileId);
     deleteOperation(command.operationId);
     return { state: "wiped", inventory };
   }
@@ -547,15 +497,28 @@ export function createProfileSession(input: {
           return refusal("PROFILE_TRANSITION_BLOCKED");
         }
         const names = deriveProfileNames(row.firstName, row.lastName);
-        const store = storeFor(row.profileId);
+        let operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.phase === "applying");
+        if (operation === undefined) {
+          operation = SignUpOperationSchema.parse({ schemaVersion: 1, kind: "sign-up", operationId: randomUUID(), profileId: row.profileId,
+            commandId: randomUUID(), writeId: randomUUID(), emailKey: verifiers.emailKeyFor(fields.email), firstName: names.firstName,
+            lastName: names.lastName, createdAt: at, commandFingerprint: "c".repeat(64), phase: "applying" });
+          writeOperation(operation);
+        }
+        storageAdmissions.get(row.profileId)?.release();
+        storageAdmissions.delete(row.profileId);
+        let store = storeFor(row.profileId);
+        let replacementRevision: number | undefined;
         const holdsSupplied = (): boolean => {
           const current = store.read().entries;
           return current.ucpathUserId?.value === fields.email
             && current.ucpathPassword?.value === fields.password
             && current.timekeeperName?.value === names.timekeeperName;
         };
-        let operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.phase === "applying");
+
         if (operation !== undefined && store.ownsCommandId(operation.commandId) && !holdsSupplied()) {
+          replacementRevision = store.read().revision;
+          storageAdmissions.get(row.profileId)?.release();
+          storageAdmissions.delete(row.profileId);
           deleteOperation(operation.operationId);
           operation = undefined;
         }
@@ -572,9 +535,14 @@ export function createProfileSession(input: {
             lastName: names.lastName,
             createdAt: at,
             commandFingerprint: "c".repeat(64),
-            expectedRevision: store.read().revision,
+            expectedRevision: replacementRevision ?? store.read().revision,
             phase: "applying",
           });
+          writeOperation(operation);
+          store = storeFor(row.profileId);
+        }
+        if (operation.expectedRevision === undefined) {
+          operation = { ...operation, expectedRevision: store.read().revision };
           writeOperation(operation);
         }
         const commandId = operation.commandId;
@@ -607,6 +575,8 @@ export function createProfileSession(input: {
         if (!holdsSupplied()) return refusal("PROFILE_SIGN_IN_REFUSED");
         verifiers.clearFailures(row.profileId);
         registry.update(row.profileId, { lastSignedInAt: at, credentialState: "saved", lifecycle: "ready" });
+        storageAdmissions.get(row.profileId)?.release();
+        storageAdmissions.delete(row.profileId);
         deleteOperation(operation.operationId);
         return activate(row.profileId);
       });

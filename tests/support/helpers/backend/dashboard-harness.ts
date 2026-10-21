@@ -1,3 +1,4 @@
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../src/models/run/worker-slot.js";
 import type { WorkerControlRecord } from "../../../../src/models/run/worker-control.js";
 import { AuthorityDatabase } from "../synthetic-database-admission.js";
@@ -9,9 +10,6 @@ import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js"
 import { inMemoryRunReaderFake, type CanonicalRunReader, type InMemoryRunReaderState } from "../canonical-run-reader.js";
 import { type RunSessionRecord } from "../../../../src/models/run/session.js";
 
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { localDatePart, manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
@@ -217,10 +215,11 @@ export function makeWorld(input?: Readonly<{
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 }>): DashboardWorld {
-  const stateRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-dashboard-"));
+  const fixture = createBoundProfileFixture();
+  const stateRoot = fixture.stateRoot;
   const clock = manualClock(AT);
   const authority = authorityFake();
-  const database = AuthorityDatabase.open({ path: join(stateRoot, "authority.db"), busyTimeoutMs: 500, migrationOwner: "history-dashboard-fixture" }, clock);
+  const database = AuthorityDatabase.open({ path: fixture.path, busyTimeoutMs: 500, migrationOwner: "history-dashboard-fixture" }, clock);
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const synchronizeOwner = (runId: string, visiting = new Set<string>()): void => {
     if(visiting.has(runId))throw new Error("fixture run ownership cycle");
@@ -243,7 +242,7 @@ export function makeWorld(input?: Readonly<{
       ...(run.runNumber === undefined ? {} : { runNumber: run.runNumber }),
       ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
     });
-    const row = runRecordColumns(owner), columns = Object.keys(row), raw = new DatabaseSync(join(stateRoot,"authority.db"));
+    const row = runRecordColumns(owner), columns = Object.keys(row), raw = new DatabaseSync(fixture.path);
     try {
       const search = createRunSearchIndex(raw);
       search.installTracking();
@@ -319,7 +318,7 @@ export function makeWorld(input?: Readonly<{
     writer,
     changes,
     scheduledRebuilds,
-    dispose: () => { database.close(); rmSync(stateRoot, { recursive: true, force: true }); },
+    dispose: () => { database.close(); fixture.close(); },
   };
 }
 

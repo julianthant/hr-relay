@@ -19,9 +19,9 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
-import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
-import { AuthorityDatabase } from "./authority-database.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly } from "./backup-inspection.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import {
   AuthorityBackupManifestSchema,
   AuthorityBackupManifestV3Schema,
@@ -37,7 +37,7 @@ export const AuthorityBackupServiceOptionsSchema = z.strictObject({
 });
 
 type AuthorityBackupSource = Pick<
-  AuthorityDatabase,
+  AuthorityBackupSourceReadOnly,
   "getMeta" | "getSourceDatabaseIdentity" | "onlineBackupTo"
 >;
 
@@ -121,7 +121,7 @@ export async function verifyBackupManifestAtPath(
   try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, backupPath, manifest.schemaVersion); }
   finally { copyAdmission.release(); }
   removeReadOnlyInspectionCompanions(backupPath);
-  for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
+  for (const field of ["applicationId", "schemaVersion", "installationId", "profileId", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (inspection[field] !== manifest[field]) {
       throw new Error(`backup file ${manifest.backupFileName} ${field} does not match its manifest`);
     }
@@ -239,6 +239,8 @@ export class AuthorityBackupService {
         observedAt: this.#clock.now().toISOString(),
         applicationId: inspection.applicationId,
         schemaVersion: inspection.schemaVersion,
+        ...(inspection.installationId === undefined ? {} : { installationId: inspection.installationId }),
+        ...(inspection.profileId === undefined ? {} : { profileId: inspection.profileId }),
         pageCount: inspection.pageCount,
         authorityGeneration: inspection.authorityGeneration,
         authorityContentFingerprint: inspection.authorityContentFingerprint,
@@ -254,6 +256,8 @@ export class AuthorityBackupService {
         sourceDatabaseIdentity: this.#source.getSourceDatabaseIdentity(),
         applicationId: inspection.applicationId,
         schemaVersion: inspection.schemaVersion,
+        ...(inspection.installationId === undefined ? {} : { installationId: inspection.installationId }),
+        ...(inspection.profileId === undefined ? {} : { profileId: inspection.profileId }),
         pageCount: inspection.pageCount,
         authorityGeneration: inspection.authorityGeneration,
         authorityContentFingerprint: inspection.authorityContentFingerprint,

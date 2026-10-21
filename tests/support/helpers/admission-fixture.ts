@@ -1,4 +1,9 @@
-import { mkdirSync } from "node:fs";
+import { createProfileVerifiers } from "../../../src/backend/profiles/verifier-store.js";
+import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
+import { tmpdir } from "node:os";
+import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -7,6 +12,28 @@ import { AuthorityDatabase as ProductionAuthorityDatabase, AuthorityDatabaseOpti
 import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const admissions = new Map<string, RuntimeAdmission>();
+const boundProfiles = new Map<string, RuntimeAdmission>();
+
+export function findProfileFixtureAdmission(stateRoot: string): RuntimeAdmission | undefined {
+  const admission = boundProfiles.get(resolve(stateRoot));
+  admission?.assertLive();
+  return admission;
+}
+
+export function profileFixtureStorageAdmission(path: string): RuntimeAdmission {
+  const canonical = resolve(path);
+  const admission = boundProfiles.get(dirname(canonical));
+  if (admission === undefined || canonical !== join(admission.stateRoot, "state.db")) throw new Error("fixture-bound-profile-path-required");
+  admission.assertLive();
+  return admission;
+}
+
+export function boundProfileAdmission(path: string): RuntimeAdmission {
+  const admission = profileFixtureStorageAdmission(path);
+  admission.assertProfileRuntime();
+  return admission;
+}
+
 export function initializeAdmissionFixture(root: string): void {
   const canonical = resolve(root);
   if (admissions.has(canonical)) throw new Error("fixture installation already initialized");
@@ -42,6 +69,8 @@ export function releaseAdmissionFixtures(): void {
   for (const root of [...admissions.keys()]) releaseAdmissionFixture(root);
 }
 function admissionForStateRoot(root: string): RuntimeAdmission {
+  const bound = boundProfiles.get(resolve(root));
+  if (bound !== undefined) { bound.assertLive(); return bound; }
   for (const workspace of admissions.keys()) if (join(workspace, rebuildRuntimeIsolation.stateRoot) === resolve(root)) return fixtureAdmission(workspace);
   return RuntimeAdmission.syntheticRoots(resolve(root), join(resolve(root), "artifacts"));
 }
@@ -59,4 +88,31 @@ export const AuthorityDatabase = new Proxy(ProductionAuthorityDatabase, {
 };
 export function createCredentialStore(input: Omit<Parameters<typeof productionCredentialStore>[0], "admission">) {
   return productionCredentialStore({ ...input, admission: admissionForStateRoot(input.stateRoot) });
+}
+
+export function createBoundProfileFixture(options: { pending?: true } = {}) {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")));
+  const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  try {
+    const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@example.edu",
+      password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
+    const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot,
+      activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
+    const operation = machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
+      createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),
+      commandFingerprint: "a".repeat(64) });
+    let admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+    const stateRoot = admission.stateRoot;
+    boundProfiles.set(stateRoot, admission);
+    const finish = () => {
+      const active = session.signUp(fields);
+      if (active.state !== "active" || active.profileId !== operation.profileId) throw new Error("bound profile fixture signup refused");
+      admission.release();
+      admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+      boundProfiles.set(stateRoot, admission);
+    };
+    if (options.pending !== true) finish();
+    return { workspace, machine, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish,
+      close() { boundProfiles.delete(stateRoot); admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
+  } catch (error) { machine.release(); rmSync(workspace, { recursive: true, force: true }); throw error; }
 }

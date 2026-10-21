@@ -1,3 +1,4 @@
+import { createBoundProfileFixture } from "./admission-fixture.js";
 import assert from "node:assert/strict";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
@@ -5,9 +6,6 @@ import { ExecutorSpanEventSchema } from "../../../src/backend/logs/span-emitter.
 import type { ProtectedInputBinding } from "../../../src/models/write-safety/protected-input.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { BrowserDriver, TaskLogger } from "../../../src/workflow-kit/task.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import type { TestClock } from "../../../src/rules/time/clock.js";
@@ -63,8 +61,8 @@ export interface AuthorityHarness {
 
 export function openAuthorityHarness(): AuthorityHarness {
   const clock = manualClock(new Date(EXECUTOR_NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-1f-executor-"));
-  const path = join(root, "authority.sqlite");
+  const fixture = createBoundProfileFixture();
+  const root = fixture.stateRoot, path = fixture.path;
   const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
@@ -79,7 +77,7 @@ export function openAuthorityHarness(): AuthorityHarness {
     stateRoot: root,
     dispose: (): void => {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      fixture.close();
     },
   };
 }

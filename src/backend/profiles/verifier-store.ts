@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { ProfileIdSchema } from "../../models/profiles/profile.js";
+import { ProfileVerifierDocumentSchema } from "../../models/profiles/profile.js";
 import { encodePrivate } from "../../rules/validation/private-equal.js";
 import {
   CREDENTIAL_DIRECTORY_MODE,
@@ -20,21 +20,8 @@ import {
   type SyntheticVerifier,
 } from "./synthetic-verifier.js";
 
-const VerifierRowSchema = z.strictObject({
-  profileId: ProfileIdSchema,
-  emailKey: z.string().regex(/^[0-9a-f]{64}$/u),
-  salt: z.string().regex(/^[0-9a-f]{32}$/u),
-  passwordVerifier: z.string().regex(/^[0-9a-f]{64}$/u),
-  consecutiveFailures: z.number().int().nonnegative(),
-  lockedUntilMs: z.number().int().nonnegative().optional(),
-});
 
-const VerifierDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  profiles: z.array(VerifierRowSchema),
-});
-
-type VerifierDocument = z.infer<typeof VerifierDocumentSchema>;
+type VerifierDocument = z.infer<typeof ProfileVerifierDocumentSchema>;
 
 export function createProfileVerifiers(machineRoot: string) {
   const directory = join(machineRoot, "machine");
@@ -67,14 +54,14 @@ export function createProfileVerifiers(machineRoot: string) {
   function read(): VerifierDocument {
     ensureMachine();
     if (!existsSync(documentPath)) return { schemaVersion: 1, profiles: [] };
-    return VerifierDocumentSchema.parse(JSON.parse(readFileSync(documentPath, "utf8")));
+    return ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(documentPath, "utf8")));
   }
 
   function write(document: VerifierDocument): void {
-    writeBytes(documentPath, encodePrivate(VerifierDocumentSchema.parse(document)));
+    writeBytes(documentPath, encodePrivate(ProfileVerifierDocumentSchema.parse(document)));
   }
 
-  function row(profileId: string): z.infer<typeof VerifierRowSchema> {
+  function row(profileId: string): z.infer<typeof ProfileVerifierDocumentSchema>["profiles"][number] {
     const found = read().profiles.find((entry) => entry.profileId === profileId);
     if (found === undefined) throw new Error("profile verifier is missing");
     return found;

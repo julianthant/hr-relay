@@ -15,7 +15,8 @@ import { selectRunRuntime } from "../../runs/settings/run-settings.js";
 import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 
 import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, sweepWorkerClaims, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";

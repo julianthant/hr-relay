@@ -1,6 +1,6 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { randomUUID } from "node:crypto";
-import { copyFileSync,existsSync,mkdirSync,mkdtempSync,readdirSync,readFileSync,realpathSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync,existsSync,mkdirSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it } from "vitest";
@@ -26,10 +26,10 @@ import { CONFIG_SNAPSHOT,NOW } from "../../../support/fixtures/phase1c-contract-
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
 function fixture() {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-native-backup-")));
-  const admission = acquireEntrypointAdmission(workspace, "exclusive"), root = admission.stateRoot, path = join(root, "state.db");
+  const bound = createBoundProfileFixture();
+  const { workspace, admission, path } = bound, root = bound.stateRoot;
   const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-backup" });
-  cleanups.push(() => { database.close(); admission.release(); rmSync(workspace, { recursive: true, force: true }); });
+  cleanups.push(() => { database.close(); bound.close(); });
   const directory = join(root, "backups"), clock = capturedInstantClock(NOW);
   const service = new AuthorityBackupService(admission, database, { directory }, clock);
   return { workspace, root, path, admission, database, directory, clock, service };

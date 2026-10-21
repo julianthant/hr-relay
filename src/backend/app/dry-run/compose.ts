@@ -29,7 +29,8 @@ import {
   type DryRunScenarioManifest,
 } from "../../../models/trust/dry-run-scenario.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 
 
 export function resolveDryRunScenarioTarget(

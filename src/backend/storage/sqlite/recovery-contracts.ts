@@ -22,7 +22,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
+const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
 
 export const AuthorityPendingCountsSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
@@ -40,6 +40,8 @@ export const AuthorityInvariantResultSchema = z.strictObject({
 export const AuthorityCopyInspectionSchema = z.strictObject({
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
   schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  installationId: z.uuid(),
+  profileId: z.uuid(),
   pageCount: PositiveIntSchema,
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
@@ -59,6 +61,8 @@ export const BackupVerificationSchema = z.strictObject({
   observedAt: IsoInstantSchema,
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
   schemaVersion: BackupSchemaVersionSchema,
+  installationId: z.uuid().optional(),
+  profileId: z.uuid().optional(),
   pageCount: PositiveIntSchema,
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
@@ -74,6 +78,8 @@ const AuthorityBackupManifestBaseSchema = z.strictObject({
   sourceDatabaseIdentity: FingerprintSchema,
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
   schemaVersion: BackupSchemaVersionSchema,
+  installationId: z.uuid().optional(),
+  profileId: z.uuid().optional(),
   pageCount: PositiveIntSchema,
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
@@ -87,7 +93,10 @@ function requireObservedBackupIdentity(
   manifest: z.infer<typeof AuthorityBackupManifestBaseSchema>,
   context: z.RefinementCtx,
 ): void {
-  for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
+  if (manifest.schemaVersion === 7 && (manifest.installationId === undefined || manifest.profileId === undefined)) {
+    context.addIssue({ code: "custom", message: "profile backup binding is required" });
+  }
+  for (const field of ["applicationId", "schemaVersion", "installationId", "profileId", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (manifest[field] !== manifest.verification[field]) {
       context.addIssue({ code: "custom", path: ["verification", field], message: `${field} must equal the value observed from the backup copy` });
     }

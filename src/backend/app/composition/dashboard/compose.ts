@@ -67,7 +67,8 @@ import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../..
 import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../../storage/sqlite/runtime-process-locks.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../../../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
 import { createNoteTimelineWriter, type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { createRunLogStreamStore } from "../../../logs/run-log-stream.js";

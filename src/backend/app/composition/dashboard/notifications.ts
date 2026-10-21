@@ -20,7 +20,8 @@ import {
 } from "../../../runs/notifications/gate-park.js";
 
 import { createTrustRunReader } from "../../../runs/trust/canonical-reader.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../../../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { listLiveTrustRuns, type TrustRunReader } from "../../../runs/trust/run-reader.js";
 
 /** Retained gate-watch adapter; production observation also includes canonical occurrence identity. */

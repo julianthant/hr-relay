@@ -1,3 +1,4 @@
+import { assessCredentialInventory } from "../../../src/backend/profiles/credential-inventory.js";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -9,8 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 
+import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createProfileSession as realCreateProfileSession } from "../../../src/backend/profiles/profile-session.js";
-import { ProfileRegistryDocumentSchema, type ProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
+import { ProfileRegistryDocumentSchema, SignUpOperationSchema, type ProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { IsoInstantSchema, PositiveIntSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/models/config/settings.js";
@@ -19,28 +21,24 @@ import { createChatGptAccountService, type ChatGptAccountAuthority } from "../..
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { RESTORE_ADMISSION_REQUEST, createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/credential-store.js";
-import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 
-function createProfileSession(input: Omit<Parameters<typeof realCreateProfileSession>[0], "admission" | "profileAdmission">) {
-  const admission = RuntimeAdmission.syntheticRoots(input.machineRoot, join(input.machineRoot, "artifacts"));
-  const profiles = new Map<string, RuntimeAdmission>();
-  return realCreateProfileSession({ ...input, admission, profileAdmission: profileId => {
-    let profile = profiles.get(profileId);
-    if (profile === undefined) {
-      const root = join(input.machineRoot, "profiles", profileId);
-      profile = RuntimeAdmission.syntheticRoots(root, join(root, "artifacts"));
-      profiles.set(profileId, profile);
-    }
-    return profile;
-  } });
+const machineAdmissions = new Map<string, RuntimeAdmission>();
+function createProfileSession(input: Omit<Parameters<typeof realCreateProfileSession>[0], "admission">) {
+  const admission = machineAdmissions.get(input.machineRoot);
+  if (admission === undefined) throw new Error("profile fixture machine admission missing");
+  return realCreateProfileSession({ ...input, admission });
 }
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { for (const admission of machineAdmissions.values()) admission.release(); machineAdmissions.clear(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function temp(): string {
   const root = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hr-profiles-")));
   roots.push(root);
-  return root;
+  const admission = acquireEntrypointAdmission(root, "shared");
+  machineAdmissions.set(admission.stateRoot, admission);
+  return admission.stateRoot;
 }
 
 describe("profile session", () => {
@@ -128,6 +126,47 @@ describe("profile session", () => {
     });
     const signed = restarted.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:10:00.000Z" });
     assert.notEqual(signed.state, "active");
+  });
+
+  it("blocks resumed logout when a schema3 clean copy retains captured secret bytes outside UCPath fields", () => {
+    const root = temp(), backup = join(root, "inventory-copy.json");
+    const ports = { activity: { hasUnquiescedWork: () => false }, backupPaths: () => existsSync(backup) ? [backup] : [], loginDataPaths: () => [] };
+    const session = createProfileSession({ machineRoot: root, ...ports });
+    const password = "disposable-inventory-capture-password";
+    const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password, createdAt: "2026-09-06T12:00:00.000Z" });
+    assert.ok(active.state === "active");
+    const profile = join(root, "profiles", active.profileId), protectedPath = join(profile, "credentials", "protected.json");
+    const restored = readFileSync(protectedPath);
+    writeFileSync(backup, restored, { mode: 0o600 });
+    const held = session.logOut(active.token, { at: "2026-09-06T12:01:00.000Z" });
+    assert.ok(held.state === "refused" && held.operationId !== undefined);
+    const operationId = held.operationId;
+    const erased = JSON.parse(readFileSync(protectedPath, "utf8")) as { history: { receipt: { commandId: string } }[] };
+    const copyRoot = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "inventory-clean-copy-"))); roots.push(copyRoot);
+    const copyAdmission = RuntimeAdmission.syntheticRoots(copyRoot, join(copyRoot, "artifacts"));
+    const copyStore = createCredentialStore({ admission: copyAdmission, stateRoot: copyRoot });
+    assert.equal(copyStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: "32323232-3232-4232-8232-323232323232", writeId: "34343434-3434-4434-8434-343434343434",
+      commandFingerprint: "e".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+      updatedAt: "2026-09-06T12:00:00.000Z", entries: { timekeeperName: { set: password } } })).state, "applied");
+    writeFileSync(backup, readFileSync(join(copyRoot, "credentials", "protected.json")), { mode: 0o600 });
+    copyAdmission.release();
+    const copyBytes = readFileSync(backup);
+    const withoutCapture = assessCredentialInventory({ profileRoot: profile, entriesAbsent: true, backupPaths: [backup], loginDataPaths: [], capturedSecrets: [] });
+    assert.equal(withoutCapture.logoutComplete, true);
+    writeFileSync(protectedPath, restored, { mode: 0o600 });
+    const restarted = createProfileSession({ machineRoot: root, ...ports });
+    const blocked = restarted.resumeLogout(operationId);
+    assert.ok(blocked.state === "refused");
+    assert.equal(blocked.code, "PROFILE_LOGOUT_INVENTORY_BLOCKED");
+    const row = machineAdmissions.get(root)?.readProfileRegistry().profiles.find(entry => entry.profileId === active.profileId);
+    assert.equal(row?.lifecycle, "cancelling");
+    assert.notEqual(row?.credentialState, "wiped");
+    assert.deepEqual(readFileSync(backup), copyBytes);
+    assert.equal(readFileSync(protectedPath).includes(Buffer.from(password)), false);
+    const replayed = JSON.parse(readFileSync(protectedPath, "utf8")) as typeof erased;
+    assert.deepEqual(replayed.history.map(entry => entry.receipt.commandId), erased.history.map(entry => entry.receipt.commandId));
+    rmSync(backup);
+    assert.equal(restarted.resumeLogout(operationId).state, "wiped");
   });
 
   it("does not cancel another profile when this one signs in", () => {
@@ -252,10 +291,11 @@ describe("profile session", () => {
 
   it("strips a restored profile file with the external erasure journal", () => {
     const root = temp();
+    const backup = join(root, "held-backup.bin");
     const session = createProfileSession({
       machineRoot: root,
       activity: { hasUnquiescedWork: () => false },
-      backupPaths: () => [],
+      backupPaths: () => existsSync(backup) ? [backup] : [],
       loginDataPaths: () => [],
     });
     const alex = session.signUp({
@@ -265,17 +305,15 @@ describe("profile session", () => {
     if (alex.state !== "active") return;
     const protectedPath = join(root, "profiles", alex.profileId, "credentials", "protected.json");
     const older = readFileSync(protectedPath);
+    writeFileSync(backup, "secret-one", { mode: 0o600 });
     const wiped = session.logOut(alex.token, { at: "2026-09-06T12:07:00.000Z" });
-    assert.equal(wiped.state, "wiped");
+    assert.equal(wiped.state, "refused");
+    assert.ok("operationId" in wiped && wiped.operationId !== undefined);
     writeFileSync(protectedPath, older, { mode: 0o600 });
     mkdirSync(join(root, "profiles", alex.profileId, "credential-erasures"), { recursive: true, mode: 0o700 });
     writeFileSync(join(root, "profiles", alex.profileId, "credential-erasures", "journal.json"), "{\"schemaVersion\":1,\"epoch\":0,\"erasedValueIds\":[],\"retiredCommandIds\":[]}\n", { mode: 0o600 });
-    const store = createCredentialStore({
-      stateRoot: join(root, "profiles", alex.profileId),
-      erasureJournalPath: join(root, "machine", "erasures", `${alex.profileId}.json`),
-      erasureJournalAdmission: RuntimeAdmission.syntheticRoots(root, join(root, "artifacts")),
-    });
-    assert.equal(store.read().entries.ucpathPassword, undefined);
+    rmSync(backup);
+    assert.equal(session.resumeLogout(wiped.operationId).state, "wiped");
     assert.equal(readFileSync(protectedPath, "utf8").includes("secret-one"), false);
   });
 
@@ -319,7 +357,7 @@ describe("profile session", () => {
     const outside = join(root, "outside.json");
     writeFileSync(outside, "{\"password\":\"secret-one\"}\n", { mode: 0o600 });
     symlinkSync(outside, join(operations, "55555555-5555-4555-8555-555555555555.json"));
-    assert.throws(() => session.resumeLogout("55555555-5555-4555-8555-555555555555"), /profile operation is malformed/);
+    assert.throws(() => session.resumeLogout("55555555-5555-4555-8555-555555555555"), /profile registry authority is unavailable/);
     assert.equal(readFileSync(outside, "utf8").includes("secret-one"), true);
   });
 
@@ -350,7 +388,7 @@ describe("profile session", () => {
   it("replaces a dead profile lock before sign-up", () => {
     const root = temp();
     const machine = join(root, "machine");
-    mkdirSync(machine, { mode: 0o700 });
+    mkdirSync(machine, { mode: 0o700, recursive: true });
     writeFileSync(join(machine, ".profile-ops.lock"), `${JSON.stringify({
       schemaVersion: 1, kind: "profile-ops", pid: 2_147_483_647, platform: "darwin", startToken: "0",
     })}\n`, { mode: 0o600 });
@@ -376,9 +414,9 @@ describe("profile session", () => {
     assert.equal(sam.state, "active");
     if (alex.state !== "active" || sam.state !== "active") return;
     const operationId = "77777777-7777-4777-8777-777777777777";
-    writeFileSync(join(root, "machine", "operations", `${operationId}.json`), `${JSON.stringify({
-      schemaVersion: 1, kind: "logout", operationId, profileId: alex.profileId, at: "2026-09-06T12:06:00.000Z", phase: "admitted",
-    })}\n`, { mode: 0o600 });
+    const machine = machineAdmissions.get(root); assert.ok(machine);
+    machine.publishProfileOperation({ schemaVersion: 1, kind: "logout", operationId, profileId: alex.profileId,
+      at: IsoInstantSchema.parse("2026-09-06T12:06:00.000Z"), phase: "admitted" });
     const restarted = createProfileSession({ machineRoot: root });
     const blocked = restarted.signIn({ email: "sam@example.edu", password: "secret-two", at: "2026-09-06T12:07:00.000Z" });
     assert.equal(blocked.state, "refused");
@@ -420,11 +458,9 @@ describe("profile session", () => {
       || !("expectedRevision" in receipt) || typeof receipt.expectedRevision !== "number") {
       throw new Error("credential receipt is missing");
     }
-    const selectionPath = join(root, "machine", "profiles.json");
-    const selection = JSON.parse(readFileSync(selectionPath, "utf8")) as { activeProfileId: string | null };
-    writeFileSync(selectionPath, JSON.stringify({ ...selection, activeProfileId: null }), { mode: 0o600 });
-    rmSync(join(root, "machine", "profile-verifiers.json"));
-    writeFileSync(join(root, "machine", "operations", "12121212-1212-4121-8121-121212121212.json"), `${JSON.stringify({
+    const machine = machineAdmissions.get(root); assert.ok(machine);
+    const prior = machine.readProfileRegistry(); machine.publishProfileRegistry(prior, { ...prior, activeProfileId: null });
+    machine.publishProfileOperation(SignUpOperationSchema.parse({
       schemaVersion: 1,
       kind: "sign-up",
       operationId: "12121212-1212-4121-8121-121212121212",
@@ -438,14 +474,16 @@ describe("profile session", () => {
       commandFingerprint: receipt.commandFingerprint,
       expectedRevision: receipt.expectedRevision,
       phase: "applying",
-    })}\n`, { mode: 0o600 });
+    }));
     const restarted = createProfileSession({ machineRoot: root });
-    const refused = restarted.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-two", createdAt: "2026-09-06T12:00:00.000Z",
+    const refused = restarted.signIn({
+      email: "alex@example.edu", password: "secret-two", at: "2026-09-06T12:00:00.000Z",
     });
     assert.equal(refused.state, "refused");
     if (refused.state === "refused") assert.equal(refused.code, "PROFILE_SIGN_IN_REFUSED");
-    assert.equal(existsSync(join(root, "machine", "profile-verifiers.json")), false);
+    const failedVerifier = JSON.parse(readFileSync(join(root, "machine", "profile-verifiers.json"), "utf8")) as { profiles: Record<string, unknown>[] };
+    assert.equal(failedVerifier.profiles[0]?.consecutiveFailures, 1);
+    assert.deepEqual(failedVerifier, { ...JSON.parse(verifierText), profiles: [{ ...row, consecutiveFailures: 1 }] });
     const restored = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
     assert.equal(restored.includes("secret-one"), true);
     assert.equal(restored.includes("secret-two"), false);
@@ -477,7 +515,8 @@ describe("profile session", () => {
       || !("commandId" in entry.receipt) || typeof entry.receipt.commandId !== "string") {
       throw new Error("credential receipt is missing");
     }
-    writeFileSync(join(root, "machine", "operations", "13131313-1313-4131-8131-131313131313.json"), `${JSON.stringify({
+    const machine = machineAdmissions.get(root); assert.ok(machine);
+    machine.publishProfileOperation(SignUpOperationSchema.parse({
       schemaVersion: 1,
       kind: "sign-up",
       operationId: "13131313-1313-4131-8131-131313131313",
@@ -491,7 +530,7 @@ describe("profile session", () => {
       commandFingerprint: "e".repeat(64),
       expectedRevision: 1,
       phase: "applying",
-    })}\n`, { mode: 0o600 });
+    }));
     const again = session.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:07:00.000Z" });
     assert.equal(again.state, "active");
     const restored = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8");
@@ -579,7 +618,9 @@ it("captures and freshly revalidates each independent authority constituent on t
       settings = { ...settings, runtimeStatus: { state: "current", identity: { ...settings.runtimeStatus.identity, [key]: key === "settingsRevision" ? 2 : "c".repeat(64) } } };
     }),
     () => {
-      const store = createCredentialStore({ stateRoot: join(root, "profiles", active.profileId), erasureJournalPath: join(root, "machine", "erasures", `${active.profileId}.json`), erasureJournalAdmission: RuntimeAdmission.syntheticRoots(root, join(root, "artifacts")) });
+      const machine = machineAdmissions.get(root); assert.ok(machine);
+      const child = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+      const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalPath: join(root, "machine", "erasures", `${active.profileId}.json`), erasureJournalAdmission: machine });
       assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: "23232323-2323-4323-8323-232323232323", writeId: "24242424-2424-4424-8424-242424242424", commandFingerprint: "d".repeat(64), expectedRevision: store.read().revision,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-09-06T12:02:00.000Z", entries: { timekeeperName: { set: "ZZ" } } })).state, "applied");
     },
@@ -632,9 +673,9 @@ it("rechecks profile revocation and settings changes across account awaits", asy
 
 it("refuses missing or corrupt established selection and foreign or released admissions", () => {
   const root = temp();
-  const admission = RuntimeAdmission.syntheticRoots(root, join(root, "artifacts"));
-  const foreign = temp();
-  assert.throws(() => realCreateProfileSession({ machineRoot: root, admission: RuntimeAdmission.syntheticRoots(foreign, foreign), profileAdmission: () => admission }));
+  const admission = machineAdmissions.get(root); assert.ok(admission);
+  const foreign = temp(), foreignAdmission = machineAdmissions.get(foreign); assert.ok(foreignAdmission);
+  assert.throws(() => realCreateProfileSession({ machineRoot: root, admission: foreignAdmission }));
   const session = createProfileSession({ machineRoot: root });
   const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
   assert.equal(active.state, "active"); if (active.state !== "active") return;
@@ -649,7 +690,7 @@ it("refuses missing or corrupt established selection and foreign or released adm
   assert.equal("state" in corrupt && corrupt.state, "refused");
   writeFileSync(path, current, { mode: 0o600 });
   admission.release();
-  assert.throws(() => realCreateProfileSession({ machineRoot: root, admission, profileAdmission: () => admission }), /released admission/);
+  assert.throws(() => realCreateProfileSession({ machineRoot: root, admission }), /released admission/);
 });
 
 
@@ -660,36 +701,77 @@ it("allocates distinct durable activation generations under cross-process exclus
   const first = session.signUp(fields); assert.equal(first.state, "active"); if (first.state !== "active") return;
   const source = `
     import { createProfileSession } from ${JSON.stringify(new URL("../../../src/backend/profiles/profile-session.ts", import.meta.url).href)};
-    import { RuntimeAdmission } from ${JSON.stringify(new URL("../../../src/backend/storage/admission/admission.ts", import.meta.url).href)};
-    import { join } from 'node:path';
-    let bytes = ''; for await (const chunk of process.stdin) bytes += chunk;
-    const { root, fields } = JSON.parse(bytes);
-    const session = createProfileSession({ machineRoot: root, admission: RuntimeAdmission.syntheticRoots(root, root),
-      profileAdmission: id => { const path = join(root, 'profiles', id); return RuntimeAdmission.syntheticRoots(path, join(path, 'artifacts')); } });
-    const signed = session.signIn({ ...fields, at: '2026-09-06T12:03:00.000Z' });
-    process.stdout.write(JSON.stringify({ state: signed.state, ...(signed.state === 'active' ? { epoch: signed.epoch } : {}) }));
+    import { acquireEntrypointAdmission } from ${JSON.stringify(new URL("../../../src/backend/storage/admission/bootstrap-admission.ts", import.meta.url).href)};
+    import { resolve } from 'node:path';
+    const { createInterface } = await import('node:readline');
+    const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
+    const firstLine = await lines.next();
+    const { root, fields } = JSON.parse(firstLine.value);
+    let admission;
+    try {
+      admission = acquireEntrypointAdmission(resolve(root, "../.."), "shared");
+      const session = createProfileSession({ machineRoot: root, admission });
+      process.stdout.write('ready\\n');
+      const activation = await lines.next();
+      if (activation.value !== 'activate') throw new Error('activation-barrier-invalid');
+      const signed = session.signIn({ ...fields, at: '2026-09-06T12:03:00.000Z' });
+      process.stdout.write(JSON.stringify({ state: signed.state, ...(signed.state === 'active' ? { epoch: signed.epoch } : {}) }));
+    } catch (error) {
+      const allowed = ['profile-registry-publication-busy', 'profile-registry-observation-changed', 'profile-registry-continuity-mismatch', 'profile-storage-claim-unavailable', 'profile-storage-claim-changed'];
+      let cause = error, code = 'unclassified';
+      for (let depth = 0; depth < 6 && cause instanceof Error; depth++, cause = cause.cause) {
+        const matched = allowed.find(value => cause.message.includes(value)); if (matched) code = matched;
+      }
+      process.stdout.write(JSON.stringify({ state: 'diagnostic', code }));
+      process.exitCode = 1;
+    } finally { admission?.release(); process.stdin.destroy(); }
   `;
-  const activate = () => new Promise<number>((resolve, reject) => {
+  const activate = () => {
+    let readyResolve: (() => void) | undefined, readyReject: ((error: Error) => void) | undefined;
+    const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
     const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = ""; child.stdout.on("data", bytes => { stdout += String(bytes); }); child.stderr.resume();
-    child.once("error", reject);
-    child.once("close", code => {
-      try { assert.equal(code, 0); resolve(z.strictObject({ state: z.literal("active"), epoch: z.number().int().positive() }).parse(JSON.parse(stdout)).epoch); }
-      catch (error) { reject(error instanceof Error ? error : new Error("profile activation worker failed")); }
+    let stdout = "";
+    child.stdout.on("data", bytes => {
+      stdout += String(bytes);
+      if (stdout.startsWith("ready\n")) { stdout = stdout.slice(6); readyResolve?.(); }
     });
-    child.stdin.end(JSON.stringify({ root, fields }));
-  });
-  const epochs = await Promise.all([activate(), activate()]);
+    child.stderr.resume();
+    const result = new Promise<number>((resolve, reject) => {
+      child.once("error", error => { readyReject?.(error); reject(error); });
+      child.once("close", code => {
+        try {
+          if (code !== 0) {
+            const diagnostic = z.strictObject({ state: z.literal("diagnostic"), code: z.enum(["profile-registry-publication-busy", "profile-registry-observation-changed", "profile-registry-continuity-mismatch", "profile-storage-claim-unavailable", "profile-storage-claim-changed", "unclassified"]) }).parse(JSON.parse(stdout));
+            throw new Error(`profile activation diagnostic: ${diagnostic.code}`);
+          }
+          assert.equal(code, 0);
+          resolve(z.strictObject({ state: z.literal("active"), epoch: z.number().int().positive() }).parse(JSON.parse(stdout)).epoch);
+        } catch (error) {
+          const failure = error instanceof Error ? error : new Error("profile activation worker failed");
+          readyReject?.(failure); reject(failure);
+        }
+      });
+    });
+    child.stdin.write(`${JSON.stringify({ root, fields })}\n`);
+    void result.catch(() => undefined);
+    return { ready, result, go: () => child.stdin.end("activate\n") };
+  };
+  const firstChild = activate();
+  await firstChild.ready;
+  const secondChild = activate();
+  await secondChild.ready;
+  const children = [firstChild, secondChild];
+  for (const child of children) child.go();
+  const epochs = await Promise.all(children.map(child => child.result));
   assert.deepEqual(epochs.sort((a, b) => a - b), [first.epoch + 1, first.epoch + 2]);
   const stale = session.readFile(first.token, "absent"); assert.equal("state" in stale && stale.state, "refused");
 });
 
 
-it("converts a version-one registry once and refuses later downgrade or missing version evidence", () => {
+it("quarantines a version-one registry and refuses missing established version evidence", () => {
   const root = temp();
-  mkdirSync(join(root, "machine"), { mode: 0o700 });
+  mkdirSync(join(root, "machine"), { mode: 0o700, recursive: true });
   const path = join(root, "machine", "profiles.json");
-  writeFileSync(path, JSON.stringify({ schemaVersion: 1, profiles: [] }), { mode: 0o600 });
   const session = createProfileSession({ machineRoot: root });
   const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
   assert.equal(active.state, "active"); if (active.state !== "active") return;
@@ -725,7 +807,8 @@ it("joins the real token-free account source with the exact admitted profile roo
   const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   const stateRoot = join(root, "profiles", active.profileId);
-  const admission = RuntimeAdmission.syntheticRoots(stateRoot, join(stateRoot, "artifacts"));
+  const machine = machineAdmissions.get(root); assert.ok(machine);
+  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
   let calls = 0;
   const clock = manualClock(new Date("2026-09-06T12:00:00.000Z"));
   const account = createChatGptAccountService({ admission, stateRoot, clock, fetch: async () => { calls++; throw new Error("unexpected transport"); } });
@@ -763,11 +846,14 @@ it("checks independently changed durable selection, generation and lifecycle bef
     const path = join(root, "machine", "profiles.json"), before = readFileSync(path);
     const protectedPath = join(root, "profiles", active.profileId, "credentials", "protected.json");
     const credentials = readFileSync(protectedPath);
-    writeFileSync(path, JSON.stringify(mutate(ProfileRegistryDocumentSchema.parse(JSON.parse(before.toString())))), { mode: 0o600 });
+    const machine = machineAdmissions.get(root); assert.ok(machine);
+    const prior = ProfileRegistryDocumentSchema.parse(JSON.parse(before.toString()));
+    machine.publishProfileRegistry(prior, mutate(prior));
     const stale = session.readFile(active.token, "absent");
     assert.equal("state" in stale && stale.state === "refused" && stale.code, "PROFILE_SESSION_STALE");
     assert.deepEqual(readFileSync(protectedPath), credentials);
-    writeFileSync(path, before, { mode: 0o600 });
+    const changed = machine.readProfileRegistry();
+    machine.publishProfileRegistry(changed, { ...prior, sessionGeneration: changed.sessionGeneration });
   }
 });
 

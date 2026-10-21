@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
 
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 
@@ -14,29 +11,31 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 
 import { COMMAND_FIXTURES, NOW, UUID_1 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-const roots: string[] = [];
+const fixtures = new Map<string, ReturnType<typeof createBoundProfileFixture>>();
 const openDatabases: AuthorityDatabase[] = [];
-const databasePaths = new WeakMap<AuthorityDatabase, string>();
 const CLOCK = manualClock(new Date(NOW));
 
-function databasePath(name = "authority.sqlite"): string {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-sqlite-"));
-  roots.push(root);
-  return join(root, name);
+function databasePath(): string {
+  const fixture = createBoundProfileFixture();
+  fixtures.set(fixture.path, fixture);
+  return fixture.path;
 }
 
 function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
-  const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
+  const fixture = fixtures.get(path);
+  assert.ok(fixture);
+  const database = AuthorityDatabase.open(fixture.admission, { path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
   openDatabases.push(database);
-  databasePaths.set(database, path);
   return database;
 }
 
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const fixture of fixtures.values()) fixture.close();
+  fixtures.clear();
 });
 
 describe("native SQLite authority schema", () => {

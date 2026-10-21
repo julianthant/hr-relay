@@ -1,4 +1,6 @@
+import { boundProfileAdmission, findProfileFixtureAdmission } from "./admission-fixture.js";
 import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { dirname } from "node:path";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 
 export type AuthorityDatabase = RealAuthorityDatabase;
@@ -25,20 +27,20 @@ export const AuthorityDatabase = new Proxy(RealAuthorityDatabase, {
     if (property === "open") {
       return (input: unknown, ...rest: OpenOptions) => {
         const path = AuthorityDatabaseOptionsSchema.parse(input).path;
-        const database = target.open(RuntimeAdmission.syntheticFixture(path), input, ...rest);
+        const database = target.open(boundProfileAdmission(path), input, ...rest);
         fixturePaths.set(database, path);
         return database;
       };
     }
     if (property === "inspectExistingReadOnly") return (path: string, timeout?: number) =>
-      target.inspectExistingReadOnly(RuntimeAdmission.syntheticFixture(path), path, timeout);
+      target.inspectExistingReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, timeout);
     if (property === "inspectAuthorityReadIdentityReadOnly") return (path: string, timeout?: number) =>
-      target.inspectAuthorityReadIdentityReadOnly(RuntimeAdmission.syntheticFixture(path), path, timeout);
+      target.inspectAuthorityReadIdentityReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, timeout);
     if (property === "inspectSpanRunAuthorityReadOnly") return (path: string,
       roots: Parameters<typeof RealAuthorityDatabase.inspectSpanRunAuthorityReadOnly>[2], timeout?: number) =>
-      target.inspectSpanRunAuthorityReadOnly(RuntimeAdmission.syntheticFixture(path), path, roots, timeout);
+      target.inspectSpanRunAuthorityReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, roots, timeout);
     if (property === "inspectTimelineReadOnly") return (path: string, timeout?: number, recovery?: boolean) =>
-      target.inspectTimelineReadOnly(RuntimeAdmission.syntheticFixture(path), path, timeout, recovery);
+      target.inspectTimelineReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, timeout, recovery);
     return Reflect.get(target, property, receiver) as unknown;
   },
 }) as unknown as SyntheticAuthorityStatic;

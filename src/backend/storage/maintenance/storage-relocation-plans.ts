@@ -6,7 +6,8 @@ import {
 } from "../../../rules/commands/commands.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import type { AuthorityRepositories } from "../sqlite/authority-database.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RelocationCompletionReceipt, RuntimeLocator } from "../admission/installation.js";
 
 type Pair = Readonly<{ stateRoot: string; artifactRoot: string }>;

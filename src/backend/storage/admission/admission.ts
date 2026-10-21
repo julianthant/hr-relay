@@ -1,4 +1,7 @@
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
+import type { CommittedCredentialWitness } from "../configuration/credential-store.js";
+import { registerRuntimeAdmission } from "./admission-identity.js";
+import { z } from "zod";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
@@ -11,7 +14,24 @@ import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 
-const issued = new WeakSet<RuntimeAdmission>();
+import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type ProfileOperation } from "../../../models/profiles/profile.js";
+import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { assertCanonicalProfileBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
+import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+
+export interface RegisteredProfileStorageClaim {
+  readonly profileId: string;
+  readonly phase: "setup" | "runtime" | "settlement";
+}
+const storageClaims = new WeakMap<RegisteredProfileStorageClaim, { readonly admission: RuntimeAdmission; readonly operationId?: string; readonly verify: (purpose: "issue" | "custody") => void }>();
+
+function requireRegisteredProfileStorageClaim(claim: RegisteredProfileStorageClaim, admission: RuntimeAdmission, purpose: "issue" | "custody"): void {
+  const issued = storageClaims.get(claim);
+  if (issued === undefined || issued.admission !== admission) throw new Error("profile-storage-claim-unissued");
+  issued.verify(purpose);
+}
+
+
 const issuanceToken = Symbol("runtime-admission-issuance");
 
 function within(parent: string, child: string): boolean {
@@ -55,6 +75,9 @@ function assertActiveRootSafe(path: string): void {
 
 type AdmissionAuthority = Readonly<{
   assertHeld(): void;
+  assertProfileRuntime?(): void;
+  assertCredentialErasureObservation?(operationId: string): void;
+  assertCredentialErasure?(request: Readonly<{ commandId: string; writeId: string; expectedRevision: number; updatedAt: string; commandFingerprint: string }>): void;
   readRelocationReceipts?(): readonly RelocationCompletionReceipt[];
   readInstallationContext?(): Readonly<{ workspace: string; locator: RuntimeLocator; receipts: readonly RelocationCompletionReceipt[] }> | undefined;
   release(): void;
@@ -79,7 +102,7 @@ export type RuntimeRelocationOperation = Readonly<{
 
 type AdmissionScope = "installation" | "adoption-inspection" | "stopped-staged" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
-  | "adoption-initialization";
+  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile" | "profile-settlement";
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
 export class RuntimeAdmission {
@@ -91,11 +114,12 @@ export class RuntimeAdmission {
   readonly #scope: AdmissionScope;
   readonly #mode: "shared" | "exclusive" | "synthetic";
   #released = false;
+  readonly #profileBinding: ProfileDatabaseBinding | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[],
     scope: AdmissionScope,
-    mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator) {
+    mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
@@ -103,8 +127,9 @@ export class RuntimeAdmission {
     this.#authorityDatabasePaths = new Set(authorityDatabasePaths);
     this.#scope = scope;
     this.#mode = mode;
+    this.#profileBinding = binding === undefined ? undefined : Object.freeze({ ...binding });
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
-    issued.add(this);
+    registerRuntimeAdmission(this);
     Object.freeze(this);
   }
 
@@ -112,6 +137,197 @@ export class RuntimeAdmission {
     this.assertLive();
     if (this.#locator === undefined) throw new Error("runtime-admission: synthetic fixture has no installation locator");
     return this.#locator;
+  }
+  isProfileInitialization(): boolean {
+    this.assertLive();
+    return this.#scope === "profile-initialization" || this.#scope === "profile-upgrade";
+  }
+  assertProfileInitialization(): void {
+    this.assertLive();
+    if (this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") throw new Error("profile-initialization-authority-required");
+  }
+  forStoppedProfileUpgrade(): RuntimeAdmission {
+    this.assertExclusive();
+    this.assertProfileInitialization();
+    const database = join(this.#stateRoot, "state.db");
+    if (readProfileDatabaseBinding(database).state !== "unbound") throw new Error("profile-stopped-conversion-not-required");
+    return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), release() {} }, this.#stateRoot, this.#artifactRoot,
+      [database], "profile-upgrade", this.#mode, this.#locator, this.profileBinding);
+  }
+  assertProfileRuntime(): void {
+    this.assertLive();
+    if (this.#scope !== "profile") throw new Error("profile-bound-authority-required");
+    if (this.#authority.assertProfileRuntime === undefined) throw new Error("profile-runtime-authority-unavailable");
+    this.#authority.assertProfileRuntime();
+  }
+  get profileBinding(): ProfileDatabaseBinding {
+    this.assertLive();
+    if (this.#profileBinding === undefined) throw new Error("profile-bound-authority-required");
+    return this.#profileBinding;
+  }
+  readProfileRegistry(): ProfileRegistryDocument {
+    this.assertLive();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    return (this.#authority as InstallationLease).readProfileRegistry();
+  }
+  publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    (this.#authority as InstallationLease).publishProfileRegistry(expected, document);
+  }
+  publishProfileRegistration(operation: SignUpOperation, witness: CommittedCredentialWitness): void {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    (this.#authority as InstallationLease).publishProfileRegistration(operation, witness);
+  }
+  beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase">): SignUpOperation {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    return (this.#authority as InstallationLease).beginProfileSignUp(fields);
+  }
+  publishProfileOperation(operation: ProfileOperation | string): void {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    (this.#authority as InstallationLease).publishProfileOperation(operation);
+  }
+  issueRegisteredProfileClaim(profileId: string): RegisteredProfileStorageClaim {
+      this.assertWritable();
+      if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+      const root = this.stateRoot;
+      const read = () => this.readProfileRegistry();
+      const id = z.uuid().parse(profileId);
+      const document = read();
+      const row = document.profiles.find(entry => entry.profileId === id);
+      const path = join(root, "machine", "operations");
+      const operations = existsSync(path) ? readdirSync(path).filter(name => name.endsWith(".json")).flatMap(name => {
+        const file = readPrivateFile(join(path, name), { label: "lock", maxBytes: 1_048_576 });
+        if (file === undefined) throw new Error("profile-operation-authority-unavailable");
+        const parsed = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+        return [parsed];
+      }) : [];
+      const pending = operations.filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === id);
+      if (row === undefined && pending.length !== 1) throw new Error("profile-storage-claim-unregistered");
+      if (row !== undefined && row.lifecycle !== "ready") throw new Error("profile-storage-claim-unavailable");
+      const phase = pending.length === 1 ? "setup" : "runtime";
+      const pendingOperation = pending[0];
+      const operationIdentity = (operation: SignUpOperation) => ({ operationId: operation.operationId, profileId: operation.profileId,
+        commandId: operation.commandId, writeId: operation.writeId, emailKey: operation.emailKey, firstName: operation.firstName,
+        lastName: operation.lastName, createdAt: operation.createdAt, commandFingerprint: operation.commandFingerprint });
+      if (row === undefined && pendingOperation === undefined) throw new Error("profile-storage-claim-unregistered");
+      const fingerprint = createHash("sha256").update(canonicalJsonStringify(phase === "setup" && pendingOperation !== undefined ? operationIdentity(pendingOperation) : {
+        profileId: row?.profileId, createdAt: row?.createdAt, firstName: row?.firstName, lastName: row?.lastName, registration: row?.registration,
+      })).digest("hex");
+      const claim = Object.freeze({ profileId: id, phase });
+      storageClaims.set(claim, { admission: this, verify: purpose => {
+        const current = read();
+        const registered = current.profiles.find(entry => entry.profileId === id);
+        let authority: unknown;
+        if (phase === "setup") {
+          if (pendingOperation === undefined || (row === undefined && registered !== undefined)) throw new Error("profile-storage-claim-changed");
+          const file = readPrivateFile(join(path, `${pendingOperation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+          if (file === undefined) throw new Error("profile-storage-claim-changed");
+          authority = operationIdentity(SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes))));
+        } else {
+          if (registered === undefined) throw new Error("profile-storage-claim-changed");
+          authority = { profileId: registered.profileId, createdAt: registered.createdAt, firstName: registered.firstName, lastName: registered.lastName, registration: registered.registration };
+        }
+        if (purpose === "issue") {
+          const currentOperations = existsSync(path) ? readdirSync(path).filter(name => name.endsWith(".json")).map(name => {
+            const file = readPrivateFile(join(path, name), { label: "lock", maxBytes: 1_048_576 });
+            if (file === undefined) throw new Error("profile-storage-claim-changed");
+            return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+          }) : [];
+          if (currentOperations.some(operation => operation.kind === "logout" && operation.phase !== "complete")
+            || (phase === "setup" ? current.activeProfileId !== null && current.activeProfileId !== id : registered?.lifecycle !== "ready" || registered.credentialState !== "saved")) {
+            throw new Error("profile-storage-claim-unavailable");
+          }
+        }
+        if (createHash("sha256").update(canonicalJsonStringify(authority)).digest("hex") !== fingerprint) throw new Error("profile-storage-claim-changed");
+      } });
+      return claim;
+    }
+  issueProfileSettlementClaim(operationId: string): RegisteredProfileStorageClaim {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    const id = z.uuid().parse(operationId);
+    const read = () => {
+      const document = this.readProfileRegistry();
+      const file = readPrivateFile(join(this.#stateRoot, "machine", "operations", `${id}.json`), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("profile-settlement-operation-unavailable");
+      const operation = LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+      const row = document.profiles.find(entry => entry.profileId === operation.profileId);
+      if (operation.operationId !== id || operation.phase === "complete" || row?.lifecycle !== "cancelling"
+        || document.activeProfileId !== null) throw new Error("profile-settlement-operation-unavailable");
+      return operation;
+    };
+    const original = read();
+    const claim: RegisteredProfileStorageClaim = Object.freeze({ profileId: original.profileId, phase: "settlement" });
+    storageClaims.set(claim, { admission: this, operationId: id, verify: () => {
+      const current = read();
+      if (current.profileId !== original.profileId || current.at !== original.at) throw new Error("profile-settlement-operation-changed");
+    } });
+    return claim;
+  }
+  assertCredentialRead(): void {
+    this.assertLive();
+    if (this.#scope === "profile-settlement") throw new Error("profile-settlement-credential-read-refused");
+    if (this.#scope === "profile") this.assertProfileRuntime();
+  }
+  assertCredentialErasureObservation(operationId: string): void {
+    this.assertLive();
+    if (this.#scope !== "profile-settlement" || this.#authority.assertCredentialErasureObservation === undefined) throw new Error("profile-settlement-operation-unavailable");
+    this.#authority.assertCredentialErasureObservation(operationId);
+  }
+  assertCredentialErasure(request: Readonly<{ commandId: string; writeId: string; expectedRevision: number; updatedAt: string; commandFingerprint: string }>): void {
+    if (this.#scope !== "profile-settlement" && this.#scope !== "profile") { this.assertWritable(); return; }
+    this.assertLive();
+    if (this.#authority.assertCredentialErasure === undefined) throw new Error("profile-settlement-operation-unavailable");
+    this.#authority.assertCredentialErasure(request);
+  }
+  admitProfile(claim: RegisteredProfileStorageClaim): RuntimeAdmission {
+    this.assertWritable();
+    if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
+    requireRegisteredProfileStorageClaim(claim, this, "issue");
+    const root = join(this.#stateRoot, "profiles", claim.profileId);
+    this.assertStateRoot(root);
+    if (claim.phase === "setup") {
+      ensureChildDirectory(this.#stateRoot, join(this.#stateRoot, "profiles"), "profiles", 0o700, 0o700);
+      ensureChildDirectory(join(this.#stateRoot, "profiles"), root, "profile", 0o700, 0o700);
+      ensureChildDirectory(root, join(root, "artifacts"), "profile artifacts", 0o700, 0o700);
+      if (existsSync(join(root, "state.db"))) {
+        const observed = readProfileDatabaseBinding(join(root, "state.db"));
+        if (observed.state === "bound") assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
+      }
+    } else assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
+    const ancestry = new Map<string, DirectoryIdentity>();
+    noSymlinkAncestry(root, ancestry);
+    const assertHeld = () => {
+      this.assertLive();
+      if (!noSymlinkAncestry(root, ancestry)) throw new Error("profile-storage-root-disappeared");
+      requireRegisteredProfileStorageClaim(claim, this, "custody");
+    };
+    return new RuntimeAdmission(issuanceToken, { assertHeld, assertProfileRuntime: () => requireRegisteredProfileStorageClaim(claim, this, "issue"),
+      assertCredentialErasureObservation: operationId => {
+        if (claim.phase !== "settlement" || storageClaims.get(claim)?.operationId !== operationId) throw new Error("profile-settlement-operation-unavailable");
+        requireRegisteredProfileStorageClaim(claim, this, "custody");
+      },
+      assertCredentialErasure: request => {
+        this.readProfileRegistry();
+        const directory = join(this.#stateRoot, "machine", "operations");
+        const matches = readdirSync(directory).filter(name => name.endsWith(".json")).flatMap(name => {
+          const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
+          if (file === undefined) throw new Error("profile-settlement-operation-unavailable");
+          const result = LogoutOperationSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+          return result.success && result.data.profileId === claim.profileId && result.data.phase === "erasing" ? [result.data] : [];
+        });
+        const operation = matches[0];
+        if (matches.length !== 1 || operation?.commandId !== request.commandId || operation.writeId !== request.writeId
+          || operation.expectedRevision !== request.expectedRevision || operation.at !== request.updatedAt || request.commandFingerprint !== "b".repeat(64)) {
+          throw new Error("profile-settlement-erase-refused");
+        }
+      }, readInstallationContext: () => this.readInstallationContext(), release() {} }, root, join(root, "artifacts"),
+      [join(root, "state.db")], claim.phase === "setup" ? "profile-initialization" : claim.phase === "settlement" ? "profile-settlement" : "profile", this.#mode, this.#locator,
+      { installationId: this.locator.installationId, profileId: claim.profileId });
   }
   get stateRoot(): string { this.assertLive(); return this.#stateRoot; }
   get artifactRoot(): string { this.assertLive(); return this.#artifactRoot; }
@@ -121,6 +337,10 @@ export class RuntimeAdmission {
     if (this.#scope === "synthetic") return undefined;
     if (this.#scope === "stopped-staged" || this.#scope === "synthetic-stopped-staged") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("runtime-admission: staged installation context unavailable");
+      return this.#authority.readInstallationContext();
+    }
+    if (this.#scope === "profile" || this.#scope === "profile-initialization") {
+      if (this.#authority.readInstallationContext === undefined) throw new Error("profile-parent-context-unavailable");
       return this.#authority.readInstallationContext();
     }
     if (this.#scope !== "installation") throw new Error("runtime-admission: installation context authority required");
@@ -143,7 +363,7 @@ export class RuntimeAdmission {
     return this.#authority.readRelocationReceipts();
   }
   assertLive(): void {
-    if (!issued.has(this) || this.#released) throw new Error("runtime-admission: missing or released admission");
+    if (!(#released in this) || this.#released) throw new Error("runtime-admission: missing or released admission");
     this.#authority.assertHeld();
   }
   assertStorageRootsSafe(): void {
@@ -162,16 +382,21 @@ export class RuntimeAdmission {
   }
   assertWritable(): void {
     this.assertLive();
+    if (this.#scope === "profile-settlement") throw new Error("profile-settlement-runtime-refused");
+    if (this.#scope === "profile") this.assertProfileRuntime();
+    if (this.#scope === "profile-initialization") assertCanonicalProfileBinding(join(this.#stateRoot, "state.db"), this.profileBinding);
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization has database-only write authority");
     if (this.#scope === "verified-copy" || this.#scope === "synthetic-verified-copy"
       || this.#scope === "relocation-source-verification") throw new Error("runtime-admission: verification is read-only");
   }
   assertAuthorityDatabase(path: string): void {
-    if (this.#scope === "adoption-initialization") this.assertLive();
+    if (this.#scope === "installation") throw new Error("profile-bound-authority-required");
+    if (this.#scope === "adoption-initialization" || this.#scope === "profile-initialization" || this.#scope === "profile-upgrade") this.assertLive();
     else this.assertWritable();
     this.assertStorageRootsSafe();
-    if (path === ":memory:" && this.#scope !== "relocation-destination" && this.#scope !== "adoption-initialization") return;
+    if (path === ":memory:" && this.#scope !== "relocation-destination" && this.#scope !== "adoption-initialization"
+      && this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade" && this.#scope !== "profile") return;
     if (!this.#authorityDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: authority database path is outside admission");
   }
   assertReadOnlyAuthorityDatabase(path: string): void {
@@ -180,7 +405,8 @@ export class RuntimeAdmission {
       throw new Error("runtime-admission: inspection database authority unavailable");
     }
     this.assertStorageRootsSafe();
-    if (path === ":memory:" && this.#scope !== "relocation-destination") return;
+    if (path === ":memory:" && this.#scope !== "relocation-destination"
+      && this.#scope !== "profile" && this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") return;
     const checked = resolve(path);
     if (this.#authorityDatabasePaths.has(checked)) return;
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection path is outside known default authority");
@@ -195,6 +421,9 @@ export class RuntimeAdmission {
   }
   assertStateRoot(path: string): void {
     this.assertLive();
+    if (this.#scope === "profile-settlement" && resolve(path) !== this.#stateRoot && !within(join(this.#stateRoot, "credentials"), resolve(path))) throw new Error("profile-settlement-path-refused");
+    if (this.#scope === "profile-upgrade" && resolve(path) !== this.#stateRoot && resolve(path) !== join(this.#stateRoot, "state.db")
+      && !within(join(this.#stateRoot, "backups", "authority"), resolve(path))) throw new Error("profile-stopped-upgrade-path-refused");
     this.assertStorageRootsSafe();
     if (this.#scope === "adoption-initialization" && ![this.#stateRoot, join(this.#stateRoot, "state.db")].includes(resolve(path))) {
       throw new Error("runtime-admission: fresh initialization path is outside database authority");
@@ -383,6 +612,21 @@ export class RuntimeAdmission {
       [join(stateRoot, "state.db")], "installation", lease.mode, lease.locator);
   }
 
+  static acquireMachine(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
+    const canonical = realpathSync(workspace);
+    const control = join(canonical, ".tracker/control/installation.json");
+    if (lstatSync(control, { throwIfNoEntry: false }) === undefined) {
+      const lease = acquireInstallation(canonical, "exclusive", { machine: true, defaultPair: {
+        stateRoot: resolve(canonical, rebuildRuntimeIsolation.stateRoot), artifactRoot: resolve(canonical, rebuildRuntimeIsolation.artifactRoot),
+      } });
+      if (mode === "exclusive") return RuntimeAdmission.fromInstallationLease(lease);
+      lease.release();
+    }
+    const admission = mode === "exclusive" ? acquireExclusiveRuntimeAdmission(canonical) : acquireSharedRuntimeAdmission(canonical);
+    try { admission.readProfileRegistry(); return admission; }
+    catch (error) { admission.release(); throw error; }
+  }
+
   static acquireInitial(workspace: string,
     verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence,
     initializeFresh: (pair: RuntimePair, initialization: RuntimeAdmission) => void): RuntimeAdmission {
@@ -447,12 +691,6 @@ export class RuntimeAdmission {
   }
 }
 Object.freeze(RuntimeAdmission.prototype);
-
-export function requireRuntimeAdmission(value: RuntimeAdmission | undefined): RuntimeAdmission {
-  if (value === undefined || !issued.has(value)) throw new Error("runtime-admission: required");
-  value.assertLive();
-  return value;
-}
 
 export function acquireSharedRuntimeAdmission(workspace: string): RuntimeAdmission {
   return RuntimeAdmission.fromInstallationLease(acquireInstallation(workspace, "shared"));

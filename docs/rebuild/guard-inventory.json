@@ -637,6 +637,14 @@
       "owner": "docs/rebuild/reference/stores.md",
       "invariant": "Authority inspection and backup readers include committed WAL through a private verified copy in a separate process, without source writes or releasing live SQLite process locks; unsafe companions and changed source identities or held copy descriptors refuse.",
       "replacementRequired": true
+    },
+    {
+      "name": "admission-identity",
+      "file": "tests/architecture/storage/admission-identity.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/clock-config-secrets.md",
+      "invariant": "Reason: opaque profile registration exposed a dependency cycle and an unchecked issuer escape. Only the existing token-protected RuntimeAdmission constructor registers issued identities; consumers use the single identity owner, whose RuntimeAdmission dependency stays type-only. Negative mutations reject foreign, aliased, escaped, dynamic and nonconstructor registration.",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {

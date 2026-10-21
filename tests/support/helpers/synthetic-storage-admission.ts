@@ -1,3 +1,4 @@
+import { findProfileFixtureAdmission } from "./admission-fixture.js";
 import { withAuthorityDatabaseReadOnly as realWithAuthorityDatabaseReadOnly } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { inspectAuthorityBackupReadOnly as realInspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly as realOpenAuthorityBackupSourceReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -26,18 +27,24 @@ export * from "../../../src/backend/storage/sqlite/authority-boot.js";
 export * from "../../../src/backend/storage/sqlite/authority-health-runner.js";
 export { AuthorityDatabase } from "./synthetic-database-admission.js";
 export function inspectAuthorityBackupReadOnly(path: string, expectedSchemaVersion?: number, busyTimeoutMs?: number) {
-  return realInspectAuthorityBackupReadOnly(RuntimeAdmission.syntheticFixture(path), path, expectedSchemaVersion, busyTimeoutMs);
+  return realInspectAuthorityBackupReadOnly(readAdmission(path), path, expectedSchemaVersion, busyTimeoutMs);
 }
 export function openAuthorityBackupSourceReadOnly(path: string, busyTimeoutMs?: number) {
-  return realOpenAuthorityBackupSourceReadOnly(RuntimeAdmission.syntheticFixture(path), path, busyTimeoutMs);
+  return realOpenAuthorityBackupSourceReadOnly(readAdmission(path), path, busyTimeoutMs);
 }
 export function withAuthorityDatabaseReadOnly<Result>(path: string, read: Parameters<typeof realWithAuthorityDatabaseReadOnly<Result>>[2],
   busyTimeoutMs?:number): Result {
-  return realWithAuthorityDatabaseReadOnly(RuntimeAdmission.syntheticFixture(path), path, read,busyTimeoutMs);
+  return realWithAuthorityDatabaseReadOnly(readAdmission(path), path, read,busyTimeoutMs);
 }
 export function syntheticStateRoot(root: string): RuntimeAdmission {
   const stateRoot = resolve(root);
+  const profile = findProfileFixtureAdmission(stateRoot);
+  if (profile !== undefined) return profile;
   return RuntimeAdmission.syntheticRoots(stateRoot, join(stateRoot, "artifacts"));
+}
+
+function readAdmission(path: string): RuntimeAdmission {
+  return findProfileFixtureAdmission(backupRoot(path)) ?? RuntimeAdmission.syntheticFixture(path);
 }
 
 function backupRoot(path: string): string {

@@ -15,6 +15,7 @@ export const ProfileIdSchema = z.uuid();
 
 export const ProfileRegistryRowSchema = z.strictObject({
   profileId: ProfileIdSchema,
+  registration: z.strictObject({ operationId: z.uuid(), commandId: z.uuid(), writeId: z.uuid(), credentialRevision: z.number().int().positive() }),
   firstName: NameSchema,
   lastName: NameSchema,
   initials: z.string().regex(/^[A-Z]{2}$/u),
@@ -104,3 +105,54 @@ export function nextDuoSignCount(stored: number, nowSec: number): number {
   }
   return Math.max(stored + 1, nowSec);
 }
+
+
+export const ProfileDatabaseBindingSchema = z.strictObject({ installationId: z.uuid(), profileId: ProfileIdSchema });
+export type ProfileDatabaseBinding = z.infer<typeof ProfileDatabaseBindingSchema>;
+
+
+export const SignUpOperationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  kind: z.literal("sign-up"),
+  operationId: z.uuid(),
+  profileId: z.uuid(),
+  commandId: z.uuid(),
+  writeId: z.uuid(),
+  emailKey: z.string().regex(/^[0-9a-f]{64}$/u),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  createdAt: IsoInstantSchema,
+  commandFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+  expectedRevision: z.number().int().positive().optional(),
+  phase: z.enum(["applying", "publishing"]),
+});
+
+export const LogoutOperationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  kind: z.literal("logout"),
+  operationId: z.uuid(),
+  profileId: z.uuid(),
+  at: IsoInstantSchema,
+  phase: z.enum(["admitted", "cancelling", "erasing", "incomplete", "complete"]),
+  commandId: z.uuid().optional(),
+  writeId: z.uuid().optional(),
+  expectedRevision: z.number().int().positive().optional(),
+});
+
+export type SignUpOperation = z.infer<typeof SignUpOperationSchema>;
+export type LogoutOperation = z.infer<typeof LogoutOperationSchema>;
+export type ProfileOperation = SignUpOperation | LogoutOperation;
+
+const ProfileVerifierRowSchema = z.strictObject({
+  profileId: ProfileIdSchema,
+  emailKey: z.string().regex(/^[0-9a-f]{64}$/u),
+  salt: z.string().regex(/^[0-9a-f]{32}$/u),
+  passwordVerifier: z.string().regex(/^[0-9a-f]{64}$/u),
+  consecutiveFailures: z.number().int().nonnegative(),
+  lockedUntilMs: z.number().int().nonnegative().optional(),
+});
+
+export const ProfileVerifierDocumentSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  profiles: z.array(ProfileVerifierRowSchema),
+});

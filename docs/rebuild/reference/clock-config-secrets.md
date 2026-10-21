@@ -403,12 +403,12 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 6` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 7` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
 ordinary startup; only an absent database receives the current baseline in an exclusive transaction.
-Schemas 1–5 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
+Schemas 1–6 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
 
 `AuthorityBootStore` reports `healthy` with mutations `available`, or `degraded-read-only` with
 mutations `blocked`. Empty, corrupt, unavailable, or incompatible existing authority does not become a
@@ -420,11 +420,11 @@ Storage causes use the closed codes in `recovery-contracts.ts`, including `autho
 `authority-invariant`, `authority-locked`, `authority-corrupt`, and `authority-unavailable`.
 
 `storage upgrade --plan` requires exclusive installation admission and stopped runtime locks. For an
-existing schema 1, 2, 3, 4 or 5 database, the plan validates its native form without changing the
+existing schema 1, 2, 3, 4, 5 or 6 database, the plan validates its native form without changing the
 source or creating a backup.
 `upgradeStorage` reports `planned`, `initialized`, `upgraded`, or `already-upgraded`, with
 `credentials: "unchanged"`. It initializes absent current authority, verifies existing current authority,
-or upgrades schema 1, 2, 3, 4 or 5 under stopped exclusive custody. The schema 1 path first adds the
+or upgrades schema 1, 2, 3, 4, 5 or 6 under stopped exclusive custody. The schema 1 path first adds the
 stream-head index. Schemas 1 and 2 then rebuild `worker_pools` with `desired_workers >= 0`.
 Migration 4 adds the workbook library and immutable version history, and protects imported artifacts’ workbook provenance.
 Migration 6 removes `workers` from retained start plans. Current readers reject that field; stopped
@@ -523,3 +523,11 @@ instead of reading the map directly.
 - The Settings dashboard connection to these saved settings, credentials, relocation, and readiness authorities is pending in the wiring base.
 - ChatGPT OAuth, account, and Responses OCR services exist; their runtime and dashboard wiring is pending. Provider keys and an executable OCR connection are not current support.
 - The packaged desktop application's OS credential backend is pending; the current credential backend is the independent private local file.
+
+### Profile storage admission
+
+Fresh machine bootstrap owns the registry, verifier and installation-control evidence without a root database or selected profile. Established version-one or unbound flat state is quarantined for explicit stopped conversion; normal boot never assigns a default profile. Canonical schema7 database metadata binds immutable installation and profile UUIDs before writable configuration or repository construction. A control-authenticated pending sign-up issues exact database-only setup; ready storage claims require canonical binding. Normal registry publication cannot add profiles: the credential owner captures exact canonical committed replay in an opaque value-free witness, and installation control revalidates its bounded document/journal/anchor evidence when publishing the ready row.
+
+Admission identity has one owner in `storage/admission/admission-identity.ts`; only the token-protected `RuntimeAdmission` constructor registers identities. Profile children remain dependent on the current installation lease and authenticated durable intent or membership. New runtime opens and writes recheck readiness. Cancelling profiles retain only settlement custody; restart can reissue it from the exact pending logout and cancelling row. The settlement entry accepts the original authenticated erase command and cannot open ordinary databases or apply credentials. Generic credential reads refuse; the actual credential owner exposes an exact pending-operation observation for erasure revision and inventory without tombstone repair or writes. Replayed erasure strips restored plaintext before a repaired read. This package leaves ordinary flat runtime callers held with `profile-bound-authority-required`; production profile mounting and real closure scheduling remain separate integration work.
+
+An already-open authority database retains storage custody for accepted drain and UNKNOWN settlement. Its physical binding and parent liveness still revalidate. Current runtime issue authority gates fresh opens; selected-session producers must separately reject new ordinary work after revocation through retained handles. Production composition must bind that distinction before profiles are mounted; a global readiness check on all database reads and transactions would also prevent accepted terminal observations.
