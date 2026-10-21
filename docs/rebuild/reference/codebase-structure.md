@@ -60,12 +60,12 @@ Paths in this table are relative to `src/backend/`.
 | `logs/` | Spans, observed data, artifacts, confirmed actions, declared step results, and diagnostics. `run-log-stream.ts` reads confirmed events through native timeline cursors. `emergency-faults.ts` owns the capped database-unavailable spool and its import. |
 | `logs/diagnostics/` | Diagnostic capture and retention. |
 | `processing/` | Extraction, normalization, OCR, provider calls, roster processing, and spreadsheets. Task families register beside their implementations. |
-| `profiles/` | Isolated profile registry, synthetic verifier, credential inventory, and session authority. The profile session validates durable selection and generation around account reads and file preparation; production composition does not mount it. Browser-safe profile schemas live in `models/profiles/`. |
+| `profiles/` | Control-authenticated profile registry, synthetic verifier, credential inventory, and session authority. The profile session validates durable selection and generation around account reads and file preparation; production composition does not mount it. Browser-safe profile schemas live in `models/profiles/`. |
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
 | `runs/trust/` | Canonical run readers and receipt services. |
 | `runtime/` | Browser sessions, checkpoints, execution, gates, policies, preflight, scheduling, settings, workers, and writes. |
 | `storage/` | Admission, artifacts, configuration, events, maintenance, and SQLite persistence. |
-| `storage/configuration/` | Settings and private credential persistence. `credential-store.ts` exposes the protected-settings and ChatGPT account records under `<stateRoot>/credentials/`, which also holds the Duo key; both use `credential-safe-file.ts` for file safety. |
+| `storage/configuration/` | Settings and private credential persistence, including opaque committed-replay witnesses. `credential-store.ts` exposes the protected-settings and ChatGPT account records under `<stateRoot>/credentials/`, which also holds the Duo key; both use `credential-safe-file.ts` for file safety. |
 | `storage/events/` | Native timeline writers, readers, and emitters. |
 | `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `timeline-repository.ts` owns ordered event persistence. |
 | `systems/` | Browser-system sessions, drivers, semantic UI registries, and tasks. CRM, Kuali, New Kronos, and UCPath have driver implementations. I-9, Old Kronos, OnBase, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. |
@@ -167,3 +167,5 @@ in `config/runtime-isolation.json`; test fixtures are separate from that operato
 Person Lookup folds UCPath/CRM identity and employment facts in `rules/matching/person-lookup.ts`.
 `rules/matching/ucpath-person.ts` owns shared appointment preference. CRM discovery and exact
 selected-record verification live in the CRM driver and their corresponding system tasks.
+
+`storage/admission/admission-identity.ts` owns issued identity membership and validation; constructor-only registration is enforced by the admission identity guard. `admission.ts` owns registered profile setup, runtime and logout settlement children; `installation.ts` publishes registry and pending-operation continuity under installation control.

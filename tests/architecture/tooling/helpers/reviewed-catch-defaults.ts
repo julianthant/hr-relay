@@ -3,17 +3,17 @@
 export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
-    "sha256": "5d4145d993f5e9c5e830f1009adfe7fe1eea83f9facef68bd324f7975f6a8748",
+    "sha256": "ccdf0e6037f44786d46e26c8f2b4231e3b7aa45b7e88fa0fa6e927ba157d0fe8",
     "reason": "Rejected authority activation clears only the same failed promise and rethrows its error; no account authority or availability is substituted. Other catches publish explicit errors or unconfirmed revocation."
   },
   {
       "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
-      "sha256": "f29f3b2441fd4ba24295b36ee5f02072bbcf0347897f30f2b23b6a0e483fafa4",
+      "sha256": "728dcd1bfec5b26ec04f3ff6b8dc65efa32e85cab5ace3719aef8ef54aa4ef7a",
       "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes) or an already absent captured file; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate."
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "c0b7b9c5d59f24df4611e94823fe16cb8a2e35719e74873e21a9b79f5b612e40",
+    "sha256": "4d1be86799544ffdbe29e7e7fafa12468bf1d7e8806da415c9ff1503ef102c05",
     "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
   },
   {
@@ -48,7 +48,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "24a9a05814b884552d00853e072db45d6f15360c70aa220488a70ca36d8a1771",
+      "sha256": "5f29c1503f9442e0a6b81892647ab06b4e0151d9dde31be5b653bc33113924aa",
     "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
   },
   {
@@ -93,12 +93,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "42a837c91577f4044a1d62ef55c06c804e3cd80ce8996f62116f52f1f017e024",
+    "sha256": "e13f1f2e2f34e259c497ffde1deb64d8a284e63bbfa697b8d3513fd114cca13c",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "94d4a879d2ff657978eb68e5034feb8244d621fcf5f4f65e0312c3c8d4135749",
+    "sha256": "d2fb51b22201f11449691691237e0c1090e1700464e74a4fca5ae65085bd1f90",
     "reason": "Only ENOENT denotes an absent optional sidecar; a missing main database throws, unsafe or changed inputs throw, and failed construction disposes only its private snapshot before rethrowing."
   },
   {

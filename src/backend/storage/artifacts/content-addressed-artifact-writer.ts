@@ -14,7 +14,8 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { z } from "zod";
 import type { DiagnosticArtifactWriter, StagedDiagnosticArtifact } from "../../../workflow-kit/artifacts.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import {
   ArtifactPutMetadataSchema,
   ArtifactRefSchema,

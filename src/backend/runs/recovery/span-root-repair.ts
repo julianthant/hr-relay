@@ -10,7 +10,8 @@ import { SpanEventWireSchema } from "../../../models/events/types.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { RecoveryStopProofStore } from "../../storage/sqlite/recovery-stop-proof.js";
 import { StoppedSystemProofSchema } from "../../storage/sqlite/recovery-contracts.js";
 import {

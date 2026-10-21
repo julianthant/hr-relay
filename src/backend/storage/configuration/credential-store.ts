@@ -1,3 +1,5 @@
+import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
+import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { createHash, randomUUID } from "node:crypto";
 import { linkSync, lstatSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -39,7 +41,8 @@ import {
   observeProcessIdentity,
   type ProcessIdentityObserver,
 } from "../sqlite/runtime-process-locks.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
 const MAX_CREDENTIAL_DOCUMENT_BYTES = 16 * 1024 * 1024;
@@ -485,6 +488,79 @@ function removeTemporary(path: string): void {
       throw new Error("credential store temporary cleanup failed", { cause: error });
     }
   }
+}
+
+export interface CommittedCredentialWitness { readonly revision: number; }
+const committedStores = new WeakMap<CredentialStore, { readonly admission: RuntimeAdmission; readonly stateRoot: string;
+  readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly readForErasure: (operationId: string) => ProtectedStoreRecord }>();
+type CommitFiles = readonly ({ readonly path: string; readonly device: number; readonly inode: number; readonly digest: string } | { readonly path: string; readonly absent: true })[];
+const committedWitnesses = new WeakMap<CommittedCredentialWitness, { readonly stateRoot: string; readonly journalPath: string;
+  readonly request: Readonly<{ commandId: string; writeId: string; commandFingerprint: string; expectedRevision: number; updatedAt: string }>;
+  readonly files: CommitFiles; readonly binding: ProfileDatabaseBinding; readonly database: DirectoryIdentity }>();
+
+function captureCommitFiles(stateRoot: string, journalPath: string): CommitFiles {
+  const directory = join(stateRoot, "credentials");
+  noSymlinkAncestry(directory, new Map());
+  noSymlinkAncestry(dirname(journalPath), new Map());
+  for (const name of [CREDENTIAL_LOCK_NAME, CREDENTIAL_REAPER_NAME, CREDENTIAL_REAPER_CLAIM_NAME]) {
+    if (lstatSync(join(directory, name), { throwIfNoEntry: false }) !== undefined) throw new Error("profile-signup-credential-busy");
+  }
+  const paths = [join(directory, CREDENTIAL_FILE_NAME), journalPath, `${journalPath}.authority`];
+  const files = paths.map((path, index) => {
+    const file = readPrivateFile(path, { label: index === 0 ? "protected.json" : "erasure journal", maxBytes: MAX_CREDENTIAL_DOCUMENT_BYTES });
+    if (file === undefined) {
+      if (index === 0) throw new Error("profile-signup-credential-missing");
+      return { path, absent: true as const };
+    }
+    return { path, device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
+  });
+  if (("absent" in (files[1] ?? {})) !== ("absent" in (files[2] ?? {}))) throw new Error("profile-signup-journal-missing");
+  return files;
+}
+
+export function readForErasure(store: CredentialStore, operationId: string): ProtectedStoreRecord {
+  const owner = committedStores.get(store);
+  if (owner === undefined) throw new Error("profile-erasure-credential-store-unissued");
+  return owner.readForErasure(operationId);
+}
+
+export function captureCommittedCredentialReplay(store: CredentialStore, input: ProtectedSettingsApplyInput): CommittedCredentialWitness {
+  const owner = committedStores.get(store);
+  if (owner === undefined) throw new Error("profile-signup-credential-store-unissued");
+  owner.admission.assertProfileInitialization();
+  owner.admission.assertWritable();
+  owner.journalAdmission.assertProfileErasureJournal(owner.admission, owner.journalPath);
+  const request = ProtectedSettingsApplyInputSchema.parse(input);
+  const binding = owner.admission.profileBinding;
+  assertCanonicalProfileBinding(join(owner.stateRoot, "state.db"), binding);
+  const database = lstatSync(join(owner.stateRoot, "state.db"));
+  const before = captureCommitFiles(owner.stateRoot, owner.journalPath);
+  const verified = store.verifyReplay(request);
+  if (verified.state !== "applied") throw new Error("profile-signup-receipt-uncommitted");
+  const after = captureCommitFiles(owner.stateRoot, owner.journalPath);
+  assertCanonicalProfileBinding(join(owner.stateRoot, "state.db"), binding);
+  const afterDatabase = lstatSync(join(owner.stateRoot, "state.db"));
+  if (database.dev !== afterDatabase.dev || database.ino !== afterDatabase.ino) throw new Error("profile-signup-database-changed");
+  if (canonicalJsonStringify(before) !== canonicalJsonStringify(after)) throw new Error("profile-signup-credential-changed");
+  const witness = Object.freeze({ revision: verified.record.revision });
+  committedWitnesses.set(witness, { stateRoot: owner.stateRoot, journalPath: owner.journalPath,
+    request: Object.freeze({ commandId: request.commandId, writeId: request.writeId, commandFingerprint: request.commandFingerprint,
+      expectedRevision: request.expectedRevision, updatedAt: request.updatedAt }), files: after, binding, database: { device: database.dev, inode: database.ino } });
+  return witness;
+}
+
+export function verifyCommittedCredentialWitness(witness: CommittedCredentialWitness, stateRoot: string, journalPath: string,
+  request: Readonly<{ commandId: string; writeId: string; commandFingerprint: string; expectedRevision?: number; createdAt: string }>): number {
+  const captured = committedWitnesses.get(witness);
+  if (captured === undefined || captured.stateRoot !== stateRoot || captured.journalPath !== journalPath
+    || captured.request.commandId !== request.commandId || captured.request.writeId !== request.writeId
+    || captured.request.commandFingerprint !== request.commandFingerprint || captured.request.expectedRevision !== request.expectedRevision
+    || captured.request.updatedAt !== request.createdAt) throw new Error("profile-signup-receipt-mismatch");
+  assertCanonicalProfileBinding(join(stateRoot, "state.db"), captured.binding);
+  const database = lstatSync(join(stateRoot, "state.db"));
+  if (database.dev !== captured.database.device || database.ino !== captured.database.inode) throw new Error("profile-signup-database-changed");
+  if (canonicalJsonStringify(captureCommitFiles(stateRoot, journalPath)) !== canonicalJsonStringify(captured.files)) throw new Error("profile-signup-credential-changed");
+  return witness.revision;
 }
 
 export function createCredentialStore(options: CredentialStoreOptions): CredentialStore {
@@ -1151,9 +1227,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     }
   }
 
-  return Object.freeze({
+  const store: CredentialStore = Object.freeze({
     read(): ProtectedStoreRecord {
-      admission.assertLive();
+      admission.assertCredentialRead();
       const observed = observeCurrent();
       const journal = loadJournal(observed.document);
       if (!needsTombstoneRepair(observed.document, journal)) return observed.document.record;
@@ -1187,13 +1263,15 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       return applyAdmitted(request);
     },
     erase(input: CredentialEraseInput): CredentialStoreApplyOutcome {
-      assertWritableStateRoot();
       const parsed = CredentialEraseInputSchema.safeParse(input);
       if (!parsed.success) return frozenRefusal("invalid-value", "credential request is invalid");
       if (parsed.data.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH) {
         return frozenRefusal("schema-mismatch", "credential schema does not match the current catalog");
       }
       const request = parsed.data;
+      admission.assertCredentialErasure(request);
+      noSymlinkAncestry(stateRoot, ancestorIdentities);
+      admission.assertStateRoot(stateRoot);
       try {
         return withLock((writer) => {
           let current = readCurrentUnderLock();
@@ -1287,6 +1365,13 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       return replay ?? divergent();
     },
   });
+  committedStores.set(store, { admission, stateRoot, journalAdmission, journalPath, readForErasure: operationId => {
+    admission.assertCredentialErasureObservation(operationId);
+    const current = observeCurrent();
+    loadJournal(current.document);
+    return current.document.record;
+  } });
+  return store;
 }
 
 export { createChatGptCredentialRepository, verifyChatGptCredentialBytes, verifyChatGptCredentialStore, ChatGptCredentialError, ChatGptCredentialRecordSchema, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions, type ChatGptCredentialTransaction } from "./chatgpt-credential-repository.js";

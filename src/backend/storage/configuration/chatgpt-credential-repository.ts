@@ -4,7 +4,8 @@ import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { privateEqual } from "../../../rules/validation/private-equal.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { observeProcessIdentity } from "../sqlite/runtime-process-locks.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 

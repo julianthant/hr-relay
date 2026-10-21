@@ -7,13 +7,15 @@ import { AuthorityBackupService, verifyBackupManifestAtPath } from "../sqlite/ba
 import { openAuthorityBackupSourceReadOnly, inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { pendingDiagnosticArtifacts } from "../artifacts/content-addressed-artifact-writer.js";
+import { readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot, observeProcessIdentity, RestoreAdmissionFileSchema, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
-  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
@@ -51,10 +53,13 @@ export async function backupStoppedAuthority(admission:RuntimeAdmission,stateRoo
 }
 export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpgradeInput,clock:Clock,
   acquireAdmission=acquireRuntimeRestoreAdmission):Promise<StorageUpgradeReport> {
+  const sourceAdmission = admission;
   requireRuntimeAdmission(admission).assertStateRoot(input.stateRoot);
   const path=join(input.stateRoot,"state.db");admission.assertAuthorityDatabase(path);requireDatabaseSourcePath(path);
   requireStopped(admission,input,clock);
   const inspection=existsSync(path)?AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock):undefined;
+  if (inspection !== undefined && admission.isProfileInitialization() && readProfileDatabaseBinding(path).state === "unbound") admission = sourceAdmission.forStoppedProfileUpgrade();
+  try {
   const report=(state:StorageUpgradeReport["state"])=>StorageUpgradeReportSchema.parse({state,
     fromSchemaVersion:inspection?.schemaVersion??0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   if(input.plan)return report("planned");
@@ -86,8 +91,8 @@ export async function upgradeStorage(admission:RuntimeAdmission,input:StorageUpg
         reclaimedStages, retainedStages, capacityWarning: retainedStages > 0,
       } });}
     if(existsSync(path))throw new Error("source-changed: re-plan upgrade");
-    const database=AuthorityDatabase.open(admission,{path,busyTimeoutMs:250,migrationOwner:"storage-upgrade"},clock);
-    try{database.inspectSchema();}finally{database.close();}
+    AuthorityDatabase.initializeProfile(admission, clock);
     return report("initialized");
   }finally{restore.release();}
+  } finally { if (admission !== sourceAdmission) admission.release(); }
 }

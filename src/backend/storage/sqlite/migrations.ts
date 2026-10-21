@@ -3,7 +3,12 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 6;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 7;
+
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
+export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
+  return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
+}
 
 export function isCurrentAuthoritySchemaVersion(version: number): boolean {
   return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
@@ -686,6 +691,15 @@ WHEN OLD.kind='imported' AND json_type(OLD.payload_json,'$.preparationJson')='te
 BEGIN SELECT RAISE(ABORT,'imported-artifact-workbook-source-immutable'); END;`] },
   { version: 5, statements: ["UPDATE run_requests SET payload_json=json_set(payload_json, '$.workers', 'auto')"] },
   { version: 6, statements: ["UPDATE run_requests SET payload_json=json_remove(payload_json, '$.workers')"] },
+  { version: 7, statements: [`CREATE TABLE database_states_bound (
+ id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL CHECK(schema_version>0),
+ authority_generation INTEGER NOT NULL CHECK(authority_generation>=0), updated_at TEXT NOT NULL,
+ search_generation INTEGER, search_state TEXT NOT NULL CHECK(search_state IN ('unbuilt','ready','invalid')),
+ installation_id TEXT NOT NULL CHECK(length(installation_id)=36), profile_id TEXT NOT NULL CHECK(length(profile_id)=36),
+ CHECK(search_state<>'ready' OR search_generation=authority_generation)
+) STRICT;`, "DROP TABLE database_states", "ALTER TABLE database_states_bound RENAME TO database_states",
+    `CREATE TRIGGER database_states_binding_immutable BEFORE UPDATE OF installation_id,profile_id ON database_states
+BEGIN SELECT RAISE(ABORT,'profile-database-binding-immutable'); END;`] },
 ]);
 
 export function migrationTableNames(version: number): readonly AuthorityTableName[] {

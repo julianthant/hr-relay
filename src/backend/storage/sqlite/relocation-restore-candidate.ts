@@ -11,7 +11,8 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import type { StorageRelocationPlanView } from "../../../rules/commands/commands.js";
 import { withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import type { VerifiedBackup } from "./backup-service.js";
 

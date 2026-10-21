@@ -30,7 +30,8 @@ import { createNotificationMetadataRepositories, validateNotificationMetadata } 
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
 import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
@@ -105,7 +106,8 @@ import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-sce
 
 
 import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames, tableClassification } from "./migrations.js";
+import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, isSupportedStoppedAuthoritySchemaVersion, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames, tableClassification } from "./migrations.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -135,6 +137,8 @@ export const AuthorityDatabaseOptionsSchema = z.strictObject({
 
 export const AuthorityMetaSchema = z.strictObject({
   schemaVersion: z.number().int().positive(),
+  installationId: z.uuid(),
+  profileId: z.uuid(),
   authorityGeneration: z.number().int().nonnegative(),
   updatedAt: z.iso.datetime({ offset: true }),
 });
@@ -561,6 +565,8 @@ const MetaRowSchema = z.strictObject({
   schema_version: z.number().int().positive(),
   authority_generation: z.number().int().nonnegative(),
   updated_at: z.string(),
+  installation_id: z.uuid().optional(),
+  profile_id: z.uuid().optional(),
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
@@ -610,7 +616,9 @@ function tableNames(database: DatabaseSync): TableName[] {
 }
 
 function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
-  return MetaRowSchema.parse(database.prepare("SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());
+  return MetaRowSchema.parse(database.prepare(readIntPragma(database, "user_version") >= 7
+    ? "SELECT schema_version,authority_generation,updated_at,installation_id,profile_id FROM database_states WHERE id=1"
+    : "SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());
 }
 
 const INVARIANT_QUERIES = Object.freeze([
@@ -1015,7 +1023,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
       try {
         if (table === "database_states") {
           const row = z.strictObject({id:z.literal(1),schema_version:z.literal(expectedSchemaVersion),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
-            search_generation:z.number().int().nonnegative().nullable(),search_state:z.enum(["unbuilt","ready","invalid"])}).parse(raw);
+            search_generation:z.number().int().nonnegative().nullable(),search_state:z.enum(["unbuilt","ready","invalid"]),
+            ...(expectedSchemaVersion >= 7 ? { installation_id: z.uuid(), profile_id: z.uuid() } : {}) }).parse(raw);
           if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
         } else if (table === "runs") runRecordFromRow(raw);
         else if (table === "commands") commandFromRow(raw);
@@ -1111,7 +1120,8 @@ function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseS
 function assertRelocationPublications(before: DatabaseSync, after: DatabaseSync, sourceGeneration: number, activatedAt: string): void {
   const schema = z.strictObject({ id: z.literal(1), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
     authority_generation: z.number().int().nonnegative(), updated_at: z.string(),
-    search_generation: z.number().int().nonnegative().nullable(), search_state: z.enum(["unbuilt", "ready", "invalid"]) });
+    search_generation: z.number().int().nonnegative().nullable(), search_state: z.enum(["unbuilt", "ready", "invalid"]),
+    installation_id: z.uuid(), profile_id: z.uuid() });
   const prior = schema.parse(before.prepare("SELECT * FROM database_states WHERE id=1").get());
   const current = schema.parse(after.prepare("SELECT * FROM database_states WHERE id=1").get());
   const ready = prior.search_state === "ready" && prior.search_generation === sourceGeneration;
@@ -1217,7 +1227,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
-  if ((expectedSchemaVersion !== 1 && expectedSchemaVersion !== 2 && expectedSchemaVersion !== 3 && expectedSchemaVersion !== 4 && expectedSchemaVersion !== 5 && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
+  if ((!isSupportedStoppedAuthoritySchemaVersion(expectedSchemaVersion) && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
   assertNativeSchema(database, schemaVersion);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
@@ -1243,9 +1253,11 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
     if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
   }
-  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]) }).parse({
+  return AuthorityCopyInspectionSchema.extend({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
+    installationId: meta.installation_id,
+    profileId: meta.profile_id,
     pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
     authorityGeneration: meta.authority_generation,
     authorityContentFingerprint: authorityContentFingerprint(database),
@@ -1271,7 +1283,9 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   requireRuntimeAdmission(admission).assertExclusive();
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
-  if (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5) throw new AuthoritySchemaVersionError(version);
+  admission.assertProfileInitialization();
+  const binding = admission.profileBinding;
+  if (!isSupportedStoppedAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
   database.exec("BEGIN EXCLUSIVE");
   try {
     if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority-application-mismatch");
@@ -1286,7 +1300,15 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > version).flatMap(migration => migration.statements);
     const planDigest = createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: version,
       toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, sourceContentFingerprint: fingerprint, statements })).digest("hex");
-    for (const statement of statements) database.exec(statement);
+    for (const migration of SQLITE_MIGRATIONS.filter(item => item.version > version)) {
+      for (const [index, statement] of migration.statements.entries()) {
+        if (migration.version === 7 && index === 1) {
+          database.prepare("INSERT INTO database_states_bound SELECT id,schema_version,authority_generation,updated_at,search_generation,search_state,?,? FROM database_states")
+            .run(binding.installationId, binding.profileId);
+        }
+        database.exec(statement);
+      }
+    }
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
     database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
     const record = AuthorityUpgradeRecordSchema.parse({ recordKey: randomUUID(), upgradeId: fingerprint,
@@ -1585,10 +1607,16 @@ export class AuthorityDatabase implements Disposable {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
     this.#admission.assertAuthorityDatabase(options.path);
+    const binding = this.#admission.profileBinding;
     const existed = options.path !== ":memory:" && existsSync(options.path);
     const readOnlyNoMigrate = options.openMode !== "read-write";
     if (readOnlyNoMigrate && !existed) {
       throw new Error(`${options.openMode} requires an existing authority database`);
+    }
+    if (existed) {
+      requireDatabaseSourcePath(options.path);
+      const identity = lstatSync(options.path);
+      if (!identity.isFile() || identity.nlink !== 1 || (process.getuid !== undefined && identity.uid !== process.getuid())) throw new Error("profile-database-identity-invalid");
     }
     if (existed && statSync(options.path).size === 0) {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);
@@ -1615,12 +1643,17 @@ export class AuthorityDatabase implements Disposable {
     const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
       const existingVersion = existed ? this.#admitExistingSchema() : undefined;
+      if (existed) {
+        const actual = ProfileDatabaseBindingSchema.parse(this.#database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
+        if (canonicalJsonStringify(actual) !== canonicalJsonStringify(binding)) throw new Error("profile-database-binding-mismatch");
+      }
       if (readOnlyNoMigrate) {
         this.#configureReadOnlyConnection();
         this.#validateReadOnlyNoMigrateDatabase(existingVersion);
       } else {
+        if (!existed) this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
-        this.#initializeSchema(existingVersion, options.migrationOwner);
+        if (existed) this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#validateDatabase();
       }
       readAppSettings(this.#database);
@@ -1648,7 +1681,16 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
   ): AuthorityDatabase {
+    admission.assertProfileRuntime();
     return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks);
+  }
+
+  static initializeProfile(admission: RuntimeAdmission, clock: Clock = systemClock): void {
+    admission.assertProfileInitialization();
+    const path = join(admission.stateRoot, "state.db");
+    if (existsSync(path)) throw new Error("profile-database-initialization-already-exists");
+    const database = new AuthorityDatabase(admission, { path, busyTimeoutMs: 250, migrationOwner: "profile-initialization" }, clock);
+    database.close();
   }
 
   static sourceDatabaseIdentity(path: string): string {
@@ -1821,6 +1863,8 @@ export class AuthorityDatabase implements Disposable {
     const row = this.#readMetaRow();
     return AuthorityMetaSchema.parse({
       schemaVersion: row.schema_version,
+      installationId: row.installation_id,
+      profileId: row.profile_id,
       authorityGeneration: row.authority_generation,
       updatedAt: row.updated_at,
     });
@@ -2732,6 +2776,9 @@ export class AuthorityDatabase implements Disposable {
 
   #assertOpen(): void {
     if (this.#closed || !this.#database.isOpen) throw new Error("authority database is closed");
+    const expected = this.#admission.profileBinding;
+    const actual = ProfileDatabaseBindingSchema.parse(this.#database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
+    if (actual.installationId !== expected.installationId || actual.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");
   }
 
   #configureConnection(): void {
@@ -2766,8 +2813,8 @@ export class AuthorityDatabase implements Disposable {
     try {
       for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) this.#database.exec(statement);
       const now = this.#now();
-      this.#database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,?,0,?,0,'ready')")
-        .run(CURRENT_AUTHORITY_SCHEMA_VERSION, now);
+      this.#database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,?,0,?,0,'ready',?,?)")
+        .run(CURRENT_AUTHORITY_SCHEMA_VERSION, now, this.#admission.profileBinding.installationId, this.#admission.profileBinding.profileId);
       const baseline = AuthorityUpgradeRecordSchema.parse({ recordKey: randomUUID(), upgradeId: "fresh", phase: "baseline",
         fromSchemaVersion: 0, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now });
       this.#database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,NULL,?,?)")

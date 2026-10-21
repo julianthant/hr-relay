@@ -21,7 +21,8 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { isCurrentAuthoritySchemaVersion } from "./migrations.js";
 import {
   verifyBackupBytesAtPath,

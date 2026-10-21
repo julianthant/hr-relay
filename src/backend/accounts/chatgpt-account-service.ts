@@ -6,7 +6,8 @@ import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { privateEqual } from "../../rules/validation/private-equal.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions } from "../storage/configuration/credential-store.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 

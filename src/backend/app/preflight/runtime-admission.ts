@@ -13,7 +13,8 @@ import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmission
 import { protectedSecretRevision, type ProtectedSecretSource } from "../../../models/config/secrets.js";
 import type { InstanceSelection, RunEnvelope } from "../../../models/run/envelope.js";
 import { AuthorityHealthPreflightRunner, type AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { workflowPreflightScope } from "../../runs/start/preflight-scope.js";
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerFactory } from "./runtime-runners.js";

@@ -37,7 +37,8 @@ import { NoteWireSchema, SpanEventWireSchema } from "../../../models/events/type
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import type { ProcessIdentityObserver } from "../../storage/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../../runs/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";

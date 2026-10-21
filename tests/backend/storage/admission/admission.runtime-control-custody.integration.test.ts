@@ -2,7 +2,8 @@ import { existsSync,linkSync,mkdirSync,mkdtempSync,realpathSync,rmSync,symlinkSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach,expect,it } from "vitest";
-import { RuntimeAdmission,acquireInitialRuntimeAdmission,requireRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { RuntimeAdmission, acquireInitialRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../../../src/backend/storage/admission/admission-identity.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 const roots: string[] = [];

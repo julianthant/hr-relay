@@ -9,7 +9,7 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 
 export type BackupCopyInspection = ReturnType<typeof inspectOpenDatabase>;
 export type AuthorityBackupSourceReadOnly = Readonly<{
- getMeta(): Readonly<{schemaVersion:number;authorityGeneration:number;updatedAt:string}>;
+ getMeta(): Readonly<{schemaVersion:number;authorityGeneration:number;updatedAt:string;installationId?:string;profileId?:string}>;
  getSourceDatabaseIdentity(): string;
  onlineBackupTo(destinationPath:string):Promise<number>;
  close():void;
@@ -40,7 +40,7 @@ export function openAuthorityBackupSourceReadOnly(admission:RuntimeAdmission,pat
  let closed=false;
  const assertOpen=()=>{admission.assertLive();if(closed)throw new Error("authority-backup-source-closed");snapshot.assertUnchanged();};
  return Object.freeze({
- getMeta(){assertOpen();const row=z.strictObject({schema_version:z.number().int().positive(),authority_generation:z.number().int().nonnegative(),updated_at:z.string().datetime()}).parse(database.prepare("SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());if(row.schema_version!==expectedSchemaVersion)throw new Error("authority-backup-source-schema-mismatch");return Object.freeze({schemaVersion:row.schema_version,authorityGeneration:row.authority_generation,updatedAt:row.updated_at});},
+ getMeta(){assertOpen();const row=z.strictObject({schema_version:z.number().int().positive(),authority_generation:z.number().int().nonnegative(),updated_at:z.string().datetime(),installation_id:z.uuid().optional(),profile_id:z.uuid().optional()}).parse(database.prepare(expectedSchemaVersion >= 7 ? "SELECT schema_version,authority_generation,updated_at,installation_id,profile_id FROM database_states WHERE id=1" : "SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());if(row.schema_version!==expectedSchemaVersion)throw new Error("authority-backup-source-schema-mismatch");return Object.freeze({schemaVersion:row.schema_version,authorityGeneration:row.authority_generation,updatedAt:row.updated_at,installationId:row.installation_id,profileId:row.profile_id});},
  getSourceDatabaseIdentity(){assertOpen();return authorityBackupSourceDatabaseIdentity(path);},
  async onlineBackupTo(destinationPath:string){assertOpen();admission.assertWritable();admission.assertStateRoot(destinationPath);const pages=await sqliteBackup(database,resolve(destinationPath),{rate:100});snapshot.assertUnchanged();return pages;},
  close(){if(closed)return;closed=true;try{database.close();}finally{try{snapshot.assertUnchanged();}finally{snapshot.dispose();}}},

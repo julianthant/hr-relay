@@ -25,7 +25,8 @@ import {
 } from "../../../models/events/types.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile } from "./backup-service.js";
 import {
