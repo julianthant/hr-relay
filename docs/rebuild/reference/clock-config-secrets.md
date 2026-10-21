@@ -274,6 +274,11 @@ owns counter custody.
 
 ### Independent private credential authority
 
+Credential-store construction admits the exact erasure journal and anchor paths. Local journal reads
+retain issued-admission liveness and pinned credential ancestry, including trusted sticky ancestors;
+external machine/profile journals and credential writes retain strict storage admission. Missing
+established erasure authority refuses rather than becoming an empty journal.
+
 `<stateRoot>/credentials/` is the one home for credentials: protected settings, the ChatGPT account
 and the Duo key (`duo-webauthn.json`, read through `paths.duoCredential`).
 `src/backend/storage/configuration/` owns the two private records there.
@@ -283,9 +288,11 @@ Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 
 Each record retains its own transaction and recovery contract.
 
 `createCredentialStore({ admission, stateRoot })` stores `<stateRoot>/credentials/protected.json`.
-The schema-2 document contains the schema-1 current record and private replay history.
-Each current entry holds `{ valueId, value, updatedAt }`; history retains exact private requests
-and allocated value IDs. A missing store represents the empty revision-one baseline.
+The schema-3 document contains the schema-1 current record and marked replay receipts.
+Each current entry holds `{ valueId, value, updatedAt }`; history retains request digests, marked
+operations and allocated value IDs without replaced plaintext. A missing store represents the empty
+revision-one baseline. Schema-2 input is authenticated and converted in memory; `migrateHistory()`
+or a subsequent write publishes schema 3.
 The store requires a live, path-bound `RuntimeAdmission`.
 
 The protected-settings reader verifies link count, size, descriptor identity, path identity,
@@ -304,6 +311,11 @@ or uncertain lock release raise `CredentialStoreCommitUncertainError` rather tha
 the credential revision. Latest exact request replay returns the current applied record; a divergent
 latest replay or reused command/write identity refuses `command-divergent`. A stale revision reports
 conflict; unavailable exclusion reports `lock-unavailable`.
+
+`erase()` durably records erased value identities and retired commands before rewriting protected
+entries. The local journal is `<stateRoot>/credential-erasures/journal.json` with its identity anchor;
+profile sessions use the separately admitted machine journal outside the profile root. Readback
+repairs restored erased values under strict writable admission and refuses missing established authority.
 
 `settings-service.ts` commits this private operation independently before the command kernel's
 value-free audit transaction. `markProtectedSettingsPatch` replaces every set value with `"<set>"`;

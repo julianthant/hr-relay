@@ -2,6 +2,11 @@
  * New code and direct negative controls remain unexcepted. */
 export const REVIEWED_CATCH_DEFAULTS = [
   {
+    "path": "src/backend/accounts/chatgpt-account-service.ts",
+    "sha256": "5d4145d993f5e9c5e830f1009adfe7fe1eea83f9facef68bd324f7975f6a8748",
+    "reason": "Rejected authority activation clears only the same failed promise and rethrows its error; no account authority or availability is substituted. Other catches publish explicit errors or unconfirmed revocation."
+  },
+  {
       "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
       "sha256": "f29f3b2441fd4ba24295b36ee5f02072bbcf0347897f30f2b23b6a0e483fafa4",
       "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes) or an already absent captured file; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate."
@@ -88,7 +93,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "6d169dc8fcc22f2ae5629dcb03fcb422860c0ff8a510d97acb9704aab9bdba1e",
+    "sha256": "42a837c91577f4044a1d62ef55c06c804e3cd80ce8996f62116f52f1f017e024",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
   },
   {

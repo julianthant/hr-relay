@@ -242,7 +242,15 @@ it("binds the first real saved plan at applied revision one and expected revisio
   }, (candidate, initialization) => {
     const database = AuthorityDatabase.open(initialization, { path: join(candidate.stateRoot, "state.db"),
       busyTimeoutMs: 250, migrationOwner: "unit-test" });
-    database.close();
+    try {
+      expect(() => database.withAuthorityTransaction(() => database.authority.commands.assertIdentity({
+        family: "worker-browser", type: "plan-worker-count", commandId: randomUUID(),
+        requestedAt: "2026-09-26T12:00:00.000Z", requestedBy: "local-operator", source: "dashboard",
+        target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 1 },
+      }))).toThrow(/fresh initialization path is outside database authority/u);
+      expect(existsSync(join(candidate.stateRoot, "credentials"))).toBe(false);
+      expect(existsSync(join(candidate.stateRoot, "credential-erasures"))).toBe(false);
+    } finally { database.close(); }
   });
   adopted.release();
   const planning = acquireInstallation(workspace, "shared");

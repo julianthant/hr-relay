@@ -35,10 +35,10 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 ```text
 src/
-├── backend/{accounts,app,logs,processing,runs,runtime,storage,systems,transports}/
+├── backend/{accounts,app,logs,processing,profiles,runs,runtime,storage,systems,transports}/
 ├── dashboard/{app,assets,client,ds,kit,lib,public,state,surfaces}/
 ├── models/{artifacts,config,dashboard,events,failures,fields,intake,notifications,ocr,
-│           preflight,processing,providers,run,runtime,sessions,systems,task,trust,
+│           preflight,processing,profiles,providers,run,runtime,sessions,systems,task,trust,
 │           ui,validation,workflow,workflows,write-safety}/
 ├── rules/{commands,identity,intake,kronos,matching,normalization,notifications,
 │          preflight,redaction,runs,separations,sessions,time,validation,workflow,write-safety}/
@@ -60,6 +60,7 @@ Paths in this table are relative to `src/backend/`.
 | `logs/` | Spans, observed data, artifacts, confirmed actions, declared step results, and diagnostics. `run-log-stream.ts` reads confirmed events through native timeline cursors. `emergency-faults.ts` owns the capped database-unavailable spool and its import. |
 | `logs/diagnostics/` | Diagnostic capture and retention. |
 | `processing/` | Extraction, normalization, OCR, provider calls, roster processing, and spreadsheets. Task families register beside their implementations. |
+| `profiles/` | Isolated profile registry, synthetic verifier, credential inventory, and session authority. The profile session validates durable selection and generation around account reads and file preparation; production composition does not mount it. Browser-safe profile schemas live in `models/profiles/`. |
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
 | `runs/trust/` | Canonical run readers and receipt services. |
 | `runtime/` | Browser sessions, checkpoints, execution, gates, policies, preflight, scheduling, settings, workers, and writes. |

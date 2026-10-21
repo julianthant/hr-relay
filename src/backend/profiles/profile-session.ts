@@ -1,0 +1,699 @@
+import { randomUUID } from "node:crypto";
+import { closeSync, constants, fstatSync, openSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { z } from "zod";
+import {
+  createCredentialStore,
+  CredentialErasureAuthorityError,
+  CredentialStoreCommitUncertainError,
+  RESTORE_ADMISSION_REQUEST,
+  type CredentialStoreHooks,
+} from "../storage/configuration/credential-store.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../storage/admission/admission.js";
+import {
+  PROTECTED_SETTINGS_SCHEMA_HASH,
+  ProtectedSettingsApplyInputSchema,
+} from "../../models/config/protected-settings.js";
+import { CredentialEraseInputSchema } from "../../models/config/credential-store.js";
+import { operatorFailureSentence, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import { deriveProfileNames, ProfileNameValidationError, ProfileAuthoritySnapshotSchema, type ProfileAuthoritySnapshot } from "../../models/profiles/profile.js";
+import { IsoInstantSchema } from "../../rules/identity/ids.js";
+import { encodePrivate } from "../../rules/validation/private-equal.js";
+import {
+  CREDENTIAL_DIRECTORY_MODE,
+  ensureChildDirectory,
+  fsyncPath,
+  noSymlinkAncestry,
+  type DirectoryIdentity,
+  replacePrivateFile,
+  writePrivateStage,
+} from "../storage/configuration/credential-safe-file.js";
+import { assessCredentialInventory, type CredentialInventory } from "./credential-inventory.js";
+import { createProfileRegistry, withProfileLock, ProfileRegistryAuthorityError } from "./registry.js";
+import { createProfileVerifiers } from "./verifier-store.js";
+
+import type { ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
+import type { SettingsRuntimeSnapshot } from "../runtime/settings/settings-runtime.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+
+export interface ProfileActivity {
+  hasUnquiescedWork(profileId: string): boolean;
+  requestCancellation?(profileId: string): void;
+}
+
+export interface ActiveProfileSession {
+  readonly state: "active";
+  readonly token: string;
+  readonly epoch: number;
+  readonly profileId: string;
+}
+
+export interface ProfileRefusal {
+  readonly state: "refused";
+  readonly code: ErrorCatalogCode;
+  readonly message: string;
+  readonly operationId?: string;
+  readonly request?: string;
+}
+
+export interface ProfileLogoutResult extends ProfileRefusal {
+  readonly inventory?: CredentialInventory;
+}
+
+export interface ProfileCancelling {
+  readonly state: "cancelling";
+  readonly code: ErrorCatalogCode;
+  readonly message: string;
+  readonly operationId?: string;
+}
+
+const SignUpOperationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  kind: z.literal("sign-up"),
+  operationId: z.uuid(),
+  profileId: z.uuid(),
+  commandId: z.uuid(),
+  writeId: z.uuid(),
+  emailKey: z.string().regex(/^[0-9a-f]{64}$/u),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  createdAt: IsoInstantSchema,
+  commandFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+  expectedRevision: z.number().int().positive().optional(),
+  phase: z.enum(["applying", "publishing"]),
+});
+
+const LogoutOperationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  kind: z.literal("logout"),
+  operationId: z.uuid(),
+  profileId: z.uuid(),
+  at: IsoInstantSchema,
+  phase: z.enum(["admitted", "cancelling", "erasing", "incomplete", "complete"]),
+  commandId: z.uuid().optional(),
+  writeId: z.uuid().optional(),
+  expectedRevision: z.number().int().positive().optional(),
+});
+
+type SignUpOperation = z.infer<typeof SignUpOperationSchema>;
+type LogoutOperation = z.infer<typeof LogoutOperationSchema>;
+type ProfileOperation = SignUpOperation | LogoutOperation;
+
+function refusal(code: ErrorCatalogCode, operationId?: string): ProfileRefusal {
+  return { state: "refused", code, message: operatorFailureSentence(code), ...(operationId === undefined ? {} : { operationId }) };
+}
+
+function cancelling(operationId?: string): ProfileCancelling {
+  return {
+    state: "cancelling",
+    code: "PROFILE_LOGOUT_BLOCKED",
+    message: operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"),
+    ...(operationId === undefined ? {} : { operationId }),
+  };
+}
+
+function restoreAdmission(operationId: string): ProfileLogoutResult {
+  return { ...refusal("PROFILE_RESTORE_ADMISSION_REQUIRED", operationId), request: RESTORE_ADMISSION_REQUEST };
+}
+
+function contained(profileRoot: string, candidate: string): string {
+  const root = realpathSync(profileRoot);
+  const path = resolve(root, candidate);
+  const remainder = relative(root, path);
+  if (remainder.startsWith("..") || remainder === "") throw new Error("profile path escapes its root");
+  return path;
+}
+
+function journalOutsideProfile(profileRoot: string, journalPath: string): boolean {
+  const root = realpathSync(profileRoot);
+  const parent = dirname(journalPath);
+  if (!existsSync(parent)) {
+    const remainder = relative(root, resolve(journalPath));
+    return remainder.startsWith("..") || isAbsolute(remainder);
+  }
+  const info = lstatSync(parent);
+  if (info.isSymbolicLink()) return false;
+  const resolved = join(realpathSync(parent), journalPath.slice(parent.length + 1));
+  const remainder = relative(root, resolved);
+  return remainder.startsWith("..") || isAbsolute(remainder);
+}
+
+export function createProfileSession(input: {
+  readonly machineRoot: string;
+  readonly admission: RuntimeAdmission;
+  readonly profileAdmission: (profileId: string) => RuntimeAdmission;
+  readonly account?: Pick<ChatGptAccountService, "readAuthority" | "revalidateAuthority">;
+  readonly settings?: { read(): SettingsRuntimeSnapshot };
+  readonly activity?: ProfileActivity;
+  readonly backupPaths?: (profileId: string) => readonly string[];
+  readonly loginDataPaths?: (profileId: string) => readonly string[];
+  readonly credentialHooks?: CredentialStoreHooks;
+}) {
+  const admission = requireRuntimeAdmission(input.admission);
+  admission.assertWritable();
+  admission.assertStateRoot(input.machineRoot);
+  if (admission.stateRoot !== resolve(input.machineRoot)) throw new Error("profile machine root differs from admission");
+  mkdirSync(input.machineRoot, { recursive: true, mode: 0o700 });
+  const machineRoot = realpathSync(input.machineRoot);
+  const registry = createProfileRegistry(machineRoot);
+  const verifiers = createProfileVerifiers(machineRoot);
+  const sessions = new Map<string, { readonly profileId: string; readonly epoch: number; readonly admission: RuntimeAdmission }>();
+  const authoritySnapshots = new WeakSet<ProfileAuthoritySnapshot>();
+
+  function operationsDirectory(): string {
+    const directory = join(machineRoot, "machine", "operations");
+    ensureChildDirectory(join(machineRoot, "machine"), directory, "profile operations", CREDENTIAL_DIRECTORY_MODE, CREDENTIAL_DIRECTORY_MODE);
+    return directory;
+  }
+
+  function writeOperation(operation: ProfileOperation): void {
+    const directory = operationsDirectory();
+    const path = join(directory, `${operation.operationId}.json`);
+    const stage = join(directory, `.op.${randomUUID()}.tmp`);
+    try {
+      writePrivateStage(stage, encodePrivate(operation));
+      replacePrivateFile(stage, path);
+      fsyncPath(directory);
+    } finally {
+      if (existsSync(stage)) rmSync(stage);
+    }
+  }
+
+  function readOperations(): ProfileOperation[] {
+    const directory = join(machineRoot, "machine", "operations");
+    if (!existsSync(directory)) return [];
+    const operations: ProfileOperation[] = [];
+    for (const name of readdirSync(directory)) {
+      if (!name.endsWith(".json")) continue;
+      const path = join(directory, name);
+      const info = lstatSync(path);
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error("profile operation is malformed");
+      const parsed = z.union([SignUpOperationSchema, LogoutOperationSchema]).safeParse(JSON.parse(readFileSync(path, "utf8")));
+      if (!parsed.success) throw new Error("profile operation is malformed");
+      operations.push(parsed.data);
+    }
+    return operations;
+  }
+
+  function deleteOperation(operationId: string): void {
+    const directory = operationsDirectory();
+    const path = join(directory, `${operationId}.json`);
+    const info = lstatSync(path, { throwIfNoEntry: false });
+    if (info === undefined) return;
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error("profile operation is malformed");
+    rmSync(path);
+    fsyncPath(directory);
+  }
+
+  function journalPath(profileId: string): string {
+    return join(machineRoot, "machine", "erasures", `${profileId}.json`);
+  }
+
+  function storeFor(profileId: string) {
+    const profileRoot = registry.profileRoot(profileId);
+    return createCredentialStore({
+      admission: admittedProfile(profileId),
+      erasureJournalAdmission: admission,
+      stateRoot: profileRoot,
+      erasureJournalPath: journalPath(profileId),
+      hooks: input.credentialHooks,
+    });
+  }
+
+  function admittedProfile(profileId: string): RuntimeAdmission {
+    admission.assertLive();
+    admission.assertStateRoot(machineRoot);
+    const capability = requireRuntimeAdmission(input.profileAdmission(profileId));
+    if (capability.stateRoot !== registry.profileRoot(profileId)) throw new Error("profile root differs from admission");
+    capability.assertStateRoot(capability.stateRoot);
+    return capability;
+  }
+
+  function requireSession(token: string): { profileId: string; epoch: number; admission: RuntimeAdmission } | ProfileRefusal {
+    admission.assertLive();
+    const session = sessions.get(token);
+    if (session === undefined) return refusal("PROFILE_SESSION_STALE");
+    let current;
+    try { current = registry.read(); }
+    catch (error) {
+      if (error instanceof ProfileRegistryAuthorityError) return refusal(error.code);
+      throw error;
+    }
+    const row = current.profiles.find(entry => entry.profileId === session.profileId);
+    if (current.activeProfileId !== session.profileId || current.sessionGeneration !== session.epoch
+      || row?.lifecycle !== "ready" || row.credentialState !== "saved"
+      || readOperations().some(operation => operation.kind === "logout" && operation.phase !== "complete")) {
+      sessions.delete(token);
+      return refusal("PROFILE_SESSION_STALE");
+    }
+    session.admission.assertLive();
+    admittedProfile(session.profileId);
+    return session;
+  }
+
+  function activate(profileId: string): ActiveProfileSession {
+    admission.assertWritable();
+    const profileAdmission = admittedProfile(profileId);
+    profileAdmission.assertWritable();
+    const epoch = registry.advanceSession(profileId);
+    sessions.clear();
+    const token = randomUUID();
+    sessions.set(token, { profileId, epoch, admission: profileAdmission });
+    return { state: "active", token, epoch, profileId };
+  }
+
+  function settingsAuthority(snapshot: SettingsRuntimeSnapshot) {
+    const active = snapshot.runtimeStatus.state === "current" ? snapshot.runtimeStatus.identity : snapshot.runtimeStatus.active;
+    return {
+      savedSettingsRevision: snapshot.record.revision, savedSettingsFingerprint: snapshot.record.settingsFingerprint,
+      activeSettingsRevision: active.settingsRevision, activeSettingsFingerprint: active.settingsFingerprint, activeConfigFingerprint: active.configFingerprint,
+    };
+  }
+
+  async function readCurrentAuthority(token: string): Promise<{ readonly state: "available"; readonly snapshot: ProfileAuthoritySnapshot } | ProfileRefusal> {
+    const session = requireSession(token);
+    if ("state" in session) return session;
+    if (input.account === undefined || input.settings === undefined) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+    const settings = settingsAuthority(input.settings.read());
+    const protectedRevision = storeFor(session.profileId).read().revision;
+    const account = await input.account.readAuthority(admittedProfile(session.profileId));
+    if (account.availability !== "available" || account.revision === null) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+    const current = requireSession(token);
+    if ("state" in current) return current;
+    if (canonicalJsonStringify(settings) !== canonicalJsonStringify(settingsAuthority(input.settings.read()))
+      || protectedRevision !== storeFor(session.profileId).read().revision
+      || !input.account.revalidateAuthority(account, admittedProfile(session.profileId))) return refusal("PROFILE_AUTHORITY_CHANGED");
+    const final = requireSession(token);
+    if ("state" in final) return final;
+    if (canonicalJsonStringify(settings) !== canonicalJsonStringify(settingsAuthority(input.settings.read()))
+      || protectedRevision !== storeFor(session.profileId).read().revision) return refusal("PROFILE_AUTHORITY_CHANGED");
+    const snapshot = ProfileAuthoritySnapshotSchema.parse({
+      profileId: session.profileId, profileSessionEpoch: session.epoch,
+      accountRevision: account.revision, accountAttemptGeneration: account.attemptGeneration, accountAvailability: account.availability,
+      ...settings,
+      protectedSettingsRevision: protectedRevision,
+    });
+    authoritySnapshots.add(snapshot);
+    return { state: "available", snapshot: Object.freeze(snapshot) };
+  }
+
+  function openLogout(profileId: string): LogoutOperation | undefined {
+    return readOperations().find((operation): operation is LogoutOperation => operation.kind === "logout" && operation.profileId === profileId && operation.phase !== "complete");
+  }
+
+  function quiescence(profileId: string): "idle" | "busy" | "uncertain" {
+    if (input.activity === undefined) return "uncertain";
+    try {
+      const result = input.activity.hasUnquiescedWork(profileId);
+      if (result === true) return "busy";
+      if (result === false) return "idle";
+      return "uncertain";
+    } catch {
+      // A failed activity answer is incomplete closure.
+      return "uncertain";
+    }
+  }
+
+  function discardUnpublished(profileId: string): void {
+    const root = registry.profileRoot(profileId);
+    if (!existsSync(join(root, "credentials", "protected.json"))) rmSync(root, { recursive: true, force: true });
+  }
+
+  function publishSignUp(operation: SignUpOperation, fields: { readonly email: string; readonly password: string }): ActiveProfileSession {
+    admission.assertWritable();
+    admittedProfile(operation.profileId).assertWritable();
+    if (verifiers.identify(fields.email) === "unknown") verifiers.save(operation.profileId, fields.email, fields.password);
+    if (!registry.read().profiles.some((row) => row.profileId === operation.profileId)) {
+      registry.create({
+        firstName: operation.firstName,
+        lastName: operation.lastName,
+        createdAt: operation.createdAt,
+        profileId: operation.profileId,
+      });
+    }
+    deleteOperation(operation.operationId);
+    return activate(operation.profileId);
+  }
+
+  function signUpLocked(fields: {
+    readonly firstName: string;
+    readonly lastName: string;
+    readonly email: string;
+    readonly password: string;
+    readonly createdAt: string;
+  }, names: ReturnType<typeof deriveProfileNames>): ActiveProfileSession | ProfileRefusal {
+    admission.assertWritable();
+    const selection = registry.read();
+    if (selection.activeProfileId !== null || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_TRANSITION_BLOCKED");
+    const emailKey = verifiers.emailKeyFor(fields.email);
+    const identified = verifiers.identify(fields.email);
+    if (identified !== "unknown" && registry.read().profiles.some((row) => row.profileId === identified.profileId)) {
+      return refusal("PROFILE_OTHER_EMAIL");
+    }
+    let operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.emailKey === emailKey);
+    if (operation === undefined) {
+      operation = SignUpOperationSchema.parse({
+        schemaVersion: 1,
+        kind: "sign-up",
+        operationId: randomUUID(),
+        profileId: randomUUID(),
+        commandId: randomUUID(),
+        writeId: randomUUID(),
+        emailKey,
+        firstName: names.firstName,
+        lastName: names.lastName,
+        createdAt: fields.createdAt,
+        commandFingerprint: "a".repeat(64),
+        phase: "applying",
+      });
+      writeOperation(operation);
+    }
+    if (operation.firstName !== names.firstName || operation.lastName !== names.lastName) return refusal("PROFILE_SIGN_IN_REFUSED");
+    registry.ensureRoot(operation.profileId);
+    const store = storeFor(operation.profileId);
+    let revision = operation.expectedRevision;
+    if (revision === undefined) {
+      revision = store.read().revision;
+      operation = { ...operation, expectedRevision: revision };
+      writeOperation(operation);
+    }
+    if (!store.ownsCommandId(operation.commandId)) {
+      try {
+        const applied = store.apply(ProtectedSettingsApplyInputSchema.parse({
+          commandId: operation.commandId,
+          commandFingerprint: operation.commandFingerprint,
+          expectedRevision: revision,
+          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+          writeId: operation.writeId,
+          updatedAt: operation.createdAt,
+          entries: {
+            ucpathUserId: { set: fields.email },
+            ucpathPassword: { set: fields.password },
+            timekeeperName: { set: names.timekeeperName },
+          },
+        }));
+        if (applied.state !== "applied" && !store.ownsCommandId(operation.commandId)) {
+          deleteOperation(operation.operationId);
+          discardUnpublished(operation.profileId);
+          return refusal("PROFILE_SIGN_IN_REFUSED");
+        }
+      } catch (error) {
+        if (!(error instanceof CredentialStoreCommitUncertainError)) throw error;
+        if (!store.ownsCommandId(operation.commandId)) return refusal("PROFILE_SIGN_IN_REFUSED");
+      }
+    }
+    if (store.ownsCommandId(operation.commandId)) {
+      const current = store.read().entries;
+      const same = current.ucpathUserId?.value === fields.email
+        && current.ucpathPassword?.value === fields.password
+        && current.timekeeperName?.value === names.timekeeperName;
+      if (!same) return refusal("PROFILE_SIGN_IN_REFUSED");
+    }
+    return publishSignUp(operation, fields);
+  }
+
+  function continueLogout(operation: LogoutOperation): { readonly state: "wiped"; readonly inventory: CredentialInventory } | ProfileLogoutResult | ProfileCancelling {
+    admission.assertWritable();
+    const profileId = operation.profileId;
+    const selection = registry.read();
+    if (selection.activeProfileId !== null && selection.activeProfileId !== profileId) return refusal("PROFILE_TRANSITION_BLOCKED", operation.operationId);
+    if (selection.activeProfileId === profileId) registry.advanceSession(null);
+    registry.update(profileId, { lifecycle: "cancelling" });
+    const closure = quiescence(profileId);
+    if (closure === "busy") {
+      input.activity?.requestCancellation?.(profileId);
+      const next = { ...operation, phase: "cancelling" as const };
+      writeOperation(next);
+      return cancelling(operation.operationId);
+    }
+    if (closure !== "idle") {
+      writeOperation({ ...operation, phase: "incomplete" });
+      return cancelling(operation.operationId);
+    }
+    const profileRoot = registry.profileRoot(profileId);
+    if (!journalOutsideProfile(profileRoot, journalPath(profileId))) {
+      writeOperation({ ...operation, phase: "incomplete" });
+      return restoreAdmission(operation.operationId);
+    }
+    const store = storeFor(profileId);
+    const before = store.read();
+    const capturedSecrets = [before.entries.ucpathUserId?.value, before.entries.ucpathPassword?.value]
+      .filter((value): value is string => value !== undefined);
+    let command = operation;
+    if (command.commandId === undefined || command.writeId === undefined || command.expectedRevision === undefined) {
+      command = {
+        ...command,
+        phase: "erasing",
+        commandId: command.commandId ?? randomUUID(),
+        writeId: command.writeId ?? randomUUID(),
+        expectedRevision: command.expectedRevision ?? before.revision,
+      };
+      writeOperation(command);
+    } else {
+      writeOperation({ ...command, phase: "erasing" });
+    }
+    const commandId = command.commandId;
+    const writeId = command.writeId;
+    const expectedRevision = command.expectedRevision;
+    if (commandId === undefined || writeId === undefined || expectedRevision === undefined) return cancelling(command.operationId);
+    if (!store.ownsCommandId(commandId)) {
+      try {
+        const erased = store.erase(CredentialEraseInputSchema.parse({
+          commandId,
+          commandFingerprint: "b".repeat(64),
+          expectedRevision,
+          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+          writeId,
+          updatedAt: command.at,
+        }));
+        if (erased.state !== "applied" && !store.ownsCommandId(commandId)) {
+          writeOperation({ ...command, phase: "incomplete" });
+          return refusal("PROFILE_LOGOUT_BLOCKED", command.operationId);
+        }
+      } catch (error) {
+        if (error instanceof CredentialErasureAuthorityError) {
+          writeOperation({ ...command, phase: "incomplete" });
+          return restoreAdmission(command.operationId);
+        }
+        if (error instanceof CredentialStoreCommitUncertainError) {
+          if (!store.ownsCommandId(commandId)) {
+            writeOperation({ ...command, phase: "incomplete" });
+            return cancelling(command.operationId);
+          }
+        } else {
+          throw error;
+        }
+      }
+    }
+    const record = store.read();
+    const inventory = assessCredentialInventory({
+      profileRoot,
+      entriesAbsent: record.entries.ucpathUserId === undefined && record.entries.ucpathPassword === undefined,
+      backupPaths: input.backupPaths?.(profileId),
+      loginDataPaths: input.loginDataPaths?.(profileId),
+      capturedSecrets,
+    });
+    if (!inventory.logoutComplete) {
+      writeOperation({ ...command, phase: "incomplete" });
+      return { ...refusal("PROFILE_LOGOUT_INVENTORY_BLOCKED", command.operationId), inventory };
+    }
+    registry.update(profileId, { credentialState: "wiped", lifecycle: "ready" });
+    deleteOperation(command.operationId);
+    return { state: "wiped", inventory };
+  }
+
+  return Object.freeze({
+    signUp(fields: {
+      readonly firstName: string;
+      readonly lastName: string;
+      readonly email: string;
+      readonly password: string;
+      readonly createdAt: string;
+    }): ActiveProfileSession | ProfileRefusal {
+      let names: ReturnType<typeof deriveProfileNames>;
+      try {
+        names = deriveProfileNames(fields.firstName, fields.lastName);
+      } catch (error) {
+        if (error instanceof ProfileNameValidationError) return refusal("PROFILE_NAME_REFUSED");
+        throw error;
+      }
+      if (fields.password.length === 0) return refusal("PROFILE_SIGN_IN_REFUSED");
+      admission.assertWritable();
+      return withProfileLock(machineRoot, () => signUpLocked(fields, names));
+    },
+    signIn(fields: { readonly email: string; readonly password: string; readonly at: string }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+      const at = IsoInstantSchema.parse(fields.at);
+      admission.assertWritable();
+      return withProfileLock(machineRoot, () => {
+        const identified = verifiers.identify(fields.email);
+        if (identified === "unknown") return refusal("PROFILE_SIGN_IN_REFUSED");
+        const row = registry.read().profiles.find((entry) => entry.profileId === identified.profileId);
+        if (row === undefined) return refusal("PROFILE_SIGN_IN_REFUSED");
+        const pending = openLogout(row.profileId);
+        if (row.lifecycle === "cancelling" || pending !== undefined) return cancelling(pending?.operationId);
+        const nowMs = Date.parse(at);
+        if (verifiers.locked(row.profileId, nowMs)) return refusal("PROFILE_SIGN_IN_REFUSED");
+        if (!verifiers.passwordMatches(row.profileId, fields.password)) {
+          verifiers.recordFailure(row.profileId, nowMs);
+          return refusal("PROFILE_SIGN_IN_REFUSED");
+        }
+        const selection = registry.read();
+        if (selection.activeProfileId !== null && selection.activeProfileId !== row.profileId) return refusal("PROFILE_TRANSITION_BLOCKED");
+        admission.assertWritable();
+        if (registry.read().profiles.some((entry) => entry.profileId !== row.profileId && entry.lifecycle === "cancelling")) {
+          return refusal("PROFILE_TRANSITION_BLOCKED");
+        }
+        if (readOperations().some((entry) => entry.kind === "logout" && entry.profileId !== row.profileId && entry.phase !== "complete")) {
+          return refusal("PROFILE_TRANSITION_BLOCKED");
+        }
+        const names = deriveProfileNames(row.firstName, row.lastName);
+        const store = storeFor(row.profileId);
+        const holdsSupplied = (): boolean => {
+          const current = store.read().entries;
+          return current.ucpathUserId?.value === fields.email
+            && current.ucpathPassword?.value === fields.password
+            && current.timekeeperName?.value === names.timekeeperName;
+        };
+        let operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.phase === "applying");
+        if (operation !== undefined && store.ownsCommandId(operation.commandId) && !holdsSupplied()) {
+          deleteOperation(operation.operationId);
+          operation = undefined;
+        }
+        if (operation === undefined) {
+          operation = SignUpOperationSchema.parse({
+            schemaVersion: 1,
+            kind: "sign-up",
+            operationId: randomUUID(),
+            profileId: row.profileId,
+            commandId: randomUUID(),
+            writeId: randomUUID(),
+            emailKey: verifiers.emailKeyFor(fields.email),
+            firstName: names.firstName,
+            lastName: names.lastName,
+            createdAt: at,
+            commandFingerprint: "c".repeat(64),
+            expectedRevision: store.read().revision,
+            phase: "applying",
+          });
+          writeOperation(operation);
+        }
+        const commandId = operation.commandId;
+        const expectedRevision = operation.expectedRevision;
+        if (expectedRevision === undefined) return refusal("PROFILE_SIGN_IN_REFUSED");
+        if (!store.ownsCommandId(commandId)) {
+          try {
+            const applied = store.apply(ProtectedSettingsApplyInputSchema.parse({
+              commandId,
+              commandFingerprint: operation.commandFingerprint,
+              expectedRevision,
+              protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+              writeId: operation.writeId,
+              updatedAt: operation.createdAt,
+              entries: {
+                ucpathUserId: { set: fields.email },
+                ucpathPassword: { set: fields.password },
+                timekeeperName: { set: names.timekeeperName },
+              },
+            }));
+            if (applied.state !== "applied" && !store.ownsCommandId(commandId)) {
+              deleteOperation(operation.operationId);
+              return refusal("PROFILE_SIGN_IN_REFUSED");
+            }
+          } catch (error) {
+            if (!(error instanceof CredentialStoreCommitUncertainError)) throw error;
+            if (!store.ownsCommandId(commandId)) return refusal("PROFILE_SIGN_IN_REFUSED");
+          }
+        }
+        if (!holdsSupplied()) return refusal("PROFILE_SIGN_IN_REFUSED");
+        verifiers.clearFailures(row.profileId);
+        registry.update(row.profileId, { lastSignedInAt: at, credentialState: "saved", lifecycle: "ready" });
+        deleteOperation(operation.operationId);
+        return activate(row.profileId);
+      });
+    },
+    changePassword(): ProfileRefusal {
+      return refusal("PROFILE_VERIFIER_UNAVAILABLE");
+    },
+    logOut(token: string, inputFields: { readonly at: string }): { readonly state: "wiped"; readonly inventory: CredentialInventory } | ProfileLogoutResult | ProfileCancelling {
+      const at = IsoInstantSchema.parse(inputFields.at);
+      const session = requireSession(token);
+      if ("state" in session) return session;
+      return withProfileLock(machineRoot, () => {
+        const current = requireSession(token);
+        if ("state" in current) return current;
+        const existing = openLogout(session.profileId);
+        const operation = existing ?? LogoutOperationSchema.parse({
+          schemaVersion: 1,
+          kind: "logout",
+          operationId: randomUUID(),
+          profileId: session.profileId,
+          at,
+          phase: "admitted",
+        });
+        if (existing === undefined) writeOperation(operation);
+        registry.advanceSession(null);
+        for (const [held, value] of sessions) {
+          if (value.profileId === session.profileId) sessions.delete(held);
+        }
+        registry.update(session.profileId, { lifecycle: "cancelling" });
+        return continueLogout(operation);
+      });
+    },
+    resumeLogout(operationId: string): { readonly state: "wiped"; readonly inventory: CredentialInventory } | ProfileLogoutResult | ProfileCancelling {
+      admission.assertWritable();
+      return withProfileLock(machineRoot, () => {
+        const operation = readOperations().find((entry): entry is LogoutOperation => entry.kind === "logout" && entry.operationId === operationId);
+        if (operation === undefined) return refusal("PROFILE_SESSION_STALE");
+        if (operation.phase === "complete") return refusal("PROFILE_SESSION_STALE");
+        return continueLogout(operation);
+      });
+    },
+    logoutOperations(): readonly { readonly operationId: string; readonly profileId: string; readonly phase: string }[] {
+      return readOperations().filter((operation): operation is LogoutOperation => operation.kind === "logout").map((operation) => ({
+        operationId: operation.operationId,
+        profileId: operation.profileId,
+        phase: operation.phase,
+      }));
+    },
+    readCurrentAuthority,
+    async revalidateAuthority(token: string, captured: ProfileAuthoritySnapshot): Promise<{ readonly state: "available"; readonly snapshot: ProfileAuthoritySnapshot } | ProfileRefusal> {
+      if (!authoritySnapshots.has(captured)) return refusal("PROFILE_AUTHORITY_CHANGED");
+      const current = await readCurrentAuthority(token);
+      if (current.state !== "available") return current;
+      if (canonicalJsonStringify(current.snapshot) !== canonicalJsonStringify(captured)) return refusal("PROFILE_AUTHORITY_CHANGED");
+      return current;
+    },
+    readFile(token: string, relativePath: string): Uint8Array | ProfileRefusal {
+      const initial = requireSession(token);
+      if ("state" in initial) return initial;
+      return withProfileLock(machineRoot, () => {
+        const session = requireSession(token);
+        if ("state" in session) return session;
+        try {
+          const path = contained(session.admission.stateRoot, relativePath);
+          session.admission.assertStateRoot(path);
+          const ancestry = new Map<string, DirectoryIdentity>();
+          if (!noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile file read refused");
+          const expected = lstatSync(path);
+          if (!expected.isFile() || expected.isSymbolicLink() || expected.nlink !== 1
+            || (process.getuid !== undefined && expected.uid !== process.getuid())) throw new Error("profile file read refused");
+          const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+          try {
+            const matches = (observed: typeof expected) => observed.isFile() && !observed.isSymbolicLink()
+              && observed.dev === expected.dev && observed.ino === expected.ino && observed.size === expected.size
+              && observed.mode === expected.mode && observed.uid === expected.uid && observed.nlink === expected.nlink
+              && observed.mtimeMs === expected.mtimeMs && observed.ctimeMs === expected.ctimeMs;
+            if (!noSymlinkAncestry(dirname(path), ancestry) || !matches(fstatSync(descriptor))) throw new Error("profile file read refused");
+            const bytes = readFileSync(descriptor);
+            if (!matches(fstatSync(descriptor)) || !matches(lstatSync(path)) || bytes.byteLength !== expected.size
+              || !noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile file read refused");
+            session.admission.assertStateRoot(path);
+            const current = requireSession(token);
+            if ("state" in current) return current;
+            return bytes;
+          } finally { closeSync(descriptor); }
+        } catch { throw new Error("profile file read refused"); }
+      });
+    },
+  });
+}

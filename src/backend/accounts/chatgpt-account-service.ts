@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { privateEqual } from "../../rules/validation/private-equal.js";
-import type { RuntimeAdmission } from "../storage/admission/admission.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../storage/admission/admission.js";
 import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions } from "../storage/configuration/credential-store.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 
@@ -31,6 +31,11 @@ export const ChatGptOcrRequestSchema = z.strictObject({
   ]),
 });
 export type ChatGptOcrRequest = z.infer<typeof ChatGptOcrRequestSchema>;
+export interface ChatGptAccountAuthority {
+  readonly revision: number | null;
+  readonly attemptGeneration: number;
+  readonly availability: "available" | "signed-out" | "expired" | "pending" | "closed" | "unavailable" | "disabled" | "limit-reached";
+}
 export interface ChatGptAccountServiceOptions {
   readonly admission: RuntimeAdmission;
   readonly stateRoot: string;
@@ -101,6 +106,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   let rejectedSessionToken: string | undefined;
   let planFailureToken: string | undefined;
   let pending: { cancel(): Promise<void> } | undefined;
+  let signingOut = false;
   function active(): void { if (closed) throw fault("CHATGPT_SERVICE_CLOSED"); options.admission.assertLive(); }
   async function request(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     active();
@@ -165,6 +171,50 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       scopes: parsed.data.scope.split(/\s+/u).filter(Boolean), usePlan, usage: "available" as const,
     } };
   }
+  let authorityActivation: Promise<void> | undefined;
+  const authorityViews = new WeakSet<ChatGptAccountAuthority>();
+  function assertAuthorityAdmission(expectedAdmission: RuntimeAdmission): void {
+    requireRuntimeAdmission(expectedAdmission).assertLive();
+    expectedAdmission.assertStateRoot(options.stateRoot);
+    if (expectedAdmission.stateRoot !== options.stateRoot || options.admission.stateRoot !== options.stateRoot) throw fault("CHATGPT_AUTH_INVALID");
+  }
+  function currentAuthority(expectedAdmission: RuntimeAdmission): ChatGptAccountAuthority {
+    assertAuthorityAdmission(expectedAdmission);
+    const current = repository.read();
+    const state = current?.session != null && rejectedSessionToken !== undefined && privateEqual(current.session.accessToken, rejectedSessionToken)
+      ? { state: "expired" as const }
+      : current?.session != null && planFailureToken !== undefined && privateEqual(current.session.accessToken, planFailureToken)
+        ? { state: "unavailable" as const } : publicState(current, clock.nowMs());
+    const availability = closed ? "closed" : pending !== undefined || signingOut ? "pending"
+      : state.state === "connected" ? state.planUsage === "enabled" ? "available" : state.planUsage === "disabled" ? "disabled" : "limit-reached"
+        : state.state;
+    return Object.freeze({ revision: current === undefined ? null : current.revision, attemptGeneration: generation, availability });
+  }
+  async function readAuthority(expectedAdmission: RuntimeAdmission = options.admission): Promise<ChatGptAccountAuthority> {
+    assertAuthorityAdmission(expectedAdmission);
+    if (!closed && authorityActivation === undefined) {
+      authorityActivation = repository.withLock(async transaction => {
+        active();
+        const current = transaction.read();
+        if (current !== undefined) transaction.replace({ ...current, revision: current.revision + 1 }, current.revision);
+      });
+    }
+    const activation = authorityActivation;
+    try { await activation; }
+    catch (error) {
+      if (authorityActivation === activation) authorityActivation = undefined;
+      throw error;
+    }
+    const view = currentAuthority(expectedAdmission);
+    authorityViews.add(view);
+    return view;
+  }
+  function revalidateAuthority(captured: ChatGptAccountAuthority, expectedAdmission: RuntimeAdmission = options.admission): boolean {
+    if (!authorityViews.has(captured)) return false;
+    const current = currentAuthority(expectedAdmission);
+    return current.availability === "available" && captured.availability === "available"
+      && current.revision === captured.revision && current.attemptGeneration === captured.attemptGeneration;
+  }
   function readAccount(): ChatGptAccountState {
     active();
     try {
@@ -180,14 +230,16 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }
   }
   async function signIn(input: ChatGptSignInRequest): Promise<ChatGptAuthorization> {
-    active(); if (pending !== undefined) throw fault("CHATGPT_AUTH_BUSY");
+    active(); if (pending !== undefined || signingOut) throw fault("CHATGPT_AUTH_BUSY");
     if (typeof input.usePlan !== "boolean") throw fault("CHATGPT_AUTH_INVALID");
     const attemptGeneration = ++generation;
     let startupComplete = false, finishStartup!: () => void;
     let cancelAttempt: (() => Promise<void>) | undefined;
     const startup = new Promise<void>(resolve => { finishStartup = resolve; });
     const reservation = { cancel: async () => {
+      if (attemptGeneration === generation) ++generation;
       await startup; await cancelAttempt?.();
+      if (pending === reservation) pending = undefined;
     } };
     pending = reservation;
     try {
@@ -280,23 +332,27 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }
   }
   async function signOut(): Promise<ChatGptSignedOut> {
-    active(); const attempt = pending; ++generation; rejectedSessionToken = undefined; planFailureToken = undefined; await attempt?.cancel(); if (pending === attempt) pending = undefined;
-    for (const controller of requests) controller.abort();
-    await Promise.allSettled([...accesses]);
-    return repository.withLock(async transaction => {
-      const current = transaction.read(); if (current === undefined || current.session === null || current.registration === null || current.clientId === null) return { state: "signed-out", remoteRevocation: "not-needed" };
-      let remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" = current.session.refreshToken === null ? "not-needed" : "unconfirmed";
-      try { if (current.session.refreshToken !== null) {
-        const discovered = await discovery();
-        const response = await request(discovered.revocation, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ token: current.session.refreshToken, token_type_hint: "refresh_token", client_id: current.clientId }) });
-        if (response.status === 200 && await boundedEmptyResponse(response)) remoteRevocation = "confirmed";
-        else await response.body?.cancel();
-      }
-      } catch { remoteRevocation = "unconfirmed"; }
-      transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
-      return { state: "signed-out", remoteRevocation };
-    });
+    active(); if (signingOut) throw fault("CHATGPT_AUTH_BUSY");
+    signingOut = true;
+    try {
+      const attempt = pending; ++generation; rejectedSessionToken = undefined; planFailureToken = undefined; await attempt?.cancel(); if (pending === attempt) pending = undefined;
+      for (const controller of requests) controller.abort();
+      await Promise.allSettled([...accesses]);
+      return await repository.withLock(async transaction => {
+        const current = transaction.read(); if (current === undefined || current.session === null || current.registration === null || current.clientId === null) return { state: "signed-out", remoteRevocation: "not-needed" };
+        let remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" = current.session.refreshToken === null ? "not-needed" : "unconfirmed";
+        try { if (current.session.refreshToken !== null) {
+          const discovered = await discovery();
+          const response = await request(discovered.revocation, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token: current.session.refreshToken, token_type_hint: "refresh_token", client_id: current.clientId }) });
+          if (response.status === 200 && await boundedEmptyResponse(response)) remoteRevocation = "confirmed";
+          else await response.body?.cancel();
+        }
+        } catch { remoteRevocation = "unconfirmed"; }
+        transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
+        return { state: "signed-out", remoteRevocation };
+      });
+    } finally { signingOut = false; }
   }
   async function access(signal?: AbortSignal): Promise<ChatGptCredentialRecord> {
     const epoch = generation;
@@ -452,6 +508,6 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     const attempt = pending; closed = true; ++generation; rejectedSessionToken = undefined; planFailureToken = undefined; await attempt?.cancel(); if (pending === attempt) pending = undefined;
     for (const controller of requests) controller.abort(); await Promise.allSettled([...accesses]);
   }
-  return Object.freeze({ readAccount, signIn, signOut, extractText, inferAssistant, close });
+  return Object.freeze({ readAccount, readAuthority, revalidateAuthority, signIn, signOut, extractText, inferAssistant, close });
 }
 export type ChatGptAccountService = ReturnType<typeof createChatGptAccountService>;

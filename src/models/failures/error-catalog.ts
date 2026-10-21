@@ -408,7 +408,44 @@ export const ERROR_CATALOG = Object.freeze({
     "The command could not be dispatched. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
-  CHATGPT_REVOCATION_UNCONFIRMED: catalogEntry(
+  PROFILE_NAME_REFUSED: catalogEntry(
+    "That name cannot be used as the timekeeper name.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_SIGN_IN_REFUSED: catalogEntry(
+    "That email and password did not match a profile on this computer.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_OTHER_EMAIL: catalogEntry(
+    "That email belongs to a different profile.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGOUT_BLOCKED: catalogEntry(
+    "Log out waits until this profile's active work can stop.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_AUTHORITY_UNAVAILABLE: catalogEntry("Current profile authority is unavailable.", EmptyParametersSchema),
+  PROFILE_AUTHORITY_CHANGED: catalogEntry("Profile authority changed. Capture it again before continuing.", EmptyParametersSchema),
+  PROFILE_SESSION_STALE: catalogEntry(
+    "This sign-in is no longer active. Sign in again.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_LOGOUT_INVENTORY_BLOCKED: catalogEntry(
+    "Saved work email and password were removed, but a backup still has a copy.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_VERIFIER_UNAVAILABLE: catalogEntry(
+    "A password change waits for a live sign-in that proves the new password.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_TRANSITION_BLOCKED: catalogEntry(
+    "Sign in waits until the other profile is logged out.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
+    "Log out cannot finish until restore admission accepts the machine erasure journal.",
+    EmptyParametersSchema,
+  ),  CHATGPT_REVOCATION_UNCONFIRMED: catalogEntry(
     "Your ChatGPT account is signed out locally. Remote revocation could not be confirmed.",
     EmptyParametersSchema,
   ),

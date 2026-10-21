@@ -4,6 +4,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
+import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
+import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/credential-store.js";
 import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
 
 const image = { model: "gpt-6.1-sol", instruction: "Read this synthetic form", input: { kind: "image" as const, mediaType: "image/png" as const, base64: "YQ==" } };
@@ -350,4 +352,122 @@ for (const status of [401, 403] as const) it(`keeps HTTP ${status} refusal bound
     const recovered = f.service.readAccount(); assert.equal(recovered.state, "connected");
     if (recovered.state === "connected") assert.equal(recovered.planUsage, "enabled");
   } finally { release(); await f.cleanup(); }
+});
+
+it("revalidates token-free account authority against durable revision, expiry and service restart without OAuth", async () => {
+  const f = chatGptFixture();
+  const repository = createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.root });
+  try {
+    await repository.withLock(async transaction => transaction.replace({
+      schemaVersion: 1, revision: 1, hostId: "urn:uuid:11111111-1111-4111-8111-111111111111", clientId: "oaiapp_fixture",
+      registration: { subject: "fixture", name: "Fixture", email: "fixture@example.com" },
+      session: { accessToken: "fixture-access", refreshToken: null, idToken: "fixture-id", expiresAt: IsoInstantSchema.parse("2026-10-12T13:00:00.000Z"),
+        earliestRefreshAt: null, scopes: ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"], usePlan: true, usage: "available" },
+    }, null));
+    const first = await f.service.readAuthority();
+    assert.deepEqual(Object.keys(first).sort(), ["attemptGeneration", "availability", "revision"]);
+    assert.equal(first.availability, "available");
+    assert.equal(f.service.revalidateAuthority(first), true);
+    assert.equal(f.service.revalidateAuthority({ ...first }), false);
+    await repository.withLock(async transaction => { const current = transaction.read(); assert.ok(current); transaction.replace({ ...current, revision: current.revision + 1 }, current.revision); });
+    assert.equal(f.service.revalidateAuthority(first), false);
+    const fresh = await f.service.readAuthority(); assert.equal(f.service.revalidateAuthority(fresh), true);
+    const restarted = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport });
+    try {
+      const afterRestart = await restarted.readAuthority(); assert.equal(afterRestart.availability, "available");
+      assert.ok(afterRestart.revision !== null && fresh.revision !== null && afterRestart.revision > fresh.revision);
+      assert.equal(f.service.revalidateAuthority(fresh), false);
+      assert.equal(restarted.revalidateAuthority(afterRestart), true);
+      f.clock.advanceWall(3_600_001);
+      assert.equal(restarted.revalidateAuthority(afterRestart), false);
+      assert.equal((await restarted.readAuthority()).availability, "expired");
+      await restarted.close(); assert.equal((await restarted.readAuthority()).availability, "closed");
+    } finally { await restarted.close(); }
+    assert.equal(f.calls.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+it("invalidates source captures while an attempt is cancelled before any OAuth listener or transport", async () => {
+  const f = chatGptFixture();
+  try {
+    const absent = await f.service.readAuthority(); assert.equal(absent.availability, "signed-out");
+    const attempt = f.service.signIn({ usePlan: true });
+    const rejected = assert.rejects(attempt, { code: "CHATGPT_AUTH_CANCELLED" });
+    const closing = f.service.close();
+    await rejected; await closing;
+    const closed = await f.service.readAuthority(); assert.equal(closed.availability, "closed");
+    assert.ok(closed.attemptGeneration > absent.attemptGeneration);
+    assert.equal(f.service.revalidateAuthority(absent), false);
+    assert.equal(f.calls.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+async function seedAuthorityAccount(f: ReturnType<typeof chatGptFixture>) {
+  const repository = createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.root });
+  await repository.withLock(async transaction => transaction.replace({
+    schemaVersion: 1, revision: 1, hostId: "urn:uuid:11111111-1111-4111-8111-111111111111", clientId: "oaiapp_fixture",
+    registration: { subject: "fixture", name: "Fixture", email: "fixture@example.com" },
+    session: { accessToken: "fixture-access", refreshToken: null, idToken: "fixture-id", expiresAt: IsoInstantSchema.parse("2026-10-12T13:00:00.000Z"),
+      earliestRefreshAt: null, scopes: ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"], usePlan: true, usage: "available" },
+  }, null));
+  assert.equal(f.service.readAccount().state, "connected"); assert.equal(f.calls.length, 0);
+  return repository;
+}
+
+it("R3 account authority retries repeated real busy locks on the same service and shares one successful activation", async () => {
+  const f = chatGptFixture();
+  try {
+    const repository = await seedAuthorityAccount(f);
+    for (let index = 0; index < 2; index++) {
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const lock = repository.withLock(async () => held);
+      try {
+        for (const result of await Promise.allSettled([f.service.readAuthority(), f.service.readAuthority()])) {
+          assert.equal(result.status, "rejected");
+          if (result.status === "rejected") assert.equal(result.reason instanceof Error && "code" in result.reason && result.reason.code === "CHATGPT_CREDENTIAL_BUSY", true);
+        }
+        assert.equal(repository.read()?.revision === 1, true);
+      } finally { release(); await lock; }
+    }
+    const captures = await Promise.all([f.service.readAuthority(), f.service.readAuthority(), f.service.readAuthority()]);
+    assert.equal(repository.read()?.revision === 2, true);
+    for (const capture of captures) {
+      assert.equal(capture.availability, "available"); assert.equal(capture.revision === 2, true);
+      assert.equal(f.service.revalidateAuthority(capture), true); assert.equal(f.service.revalidateAuthority({ ...capture }), false);
+    }
+    const cached = await f.service.readAuthority();
+    assert.equal(cached.revision === 2 && f.service.revalidateAuthority(cached), true);
+    assert.equal(f.calls.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+it("R3 account authority keeps permanent corrupt and uncertain activation refusals without publishing a capture", async () => {
+  const f = chatGptFixture();
+  let attempts = 0;
+  const uncertain = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: f.transport,
+    credentialHooks: { afterRename() { attempts++; throw new Error("synthetic failure"); } } });
+  try {
+    const repository = await seedAuthorityAccount(f);
+    for (let index = 0; index < 2; index++) await assert.rejects(uncertain.readAuthority(), { code: "CHATGPT_CREDENTIAL_UNCERTAIN" });
+    assert.equal(attempts === 2 && repository.read()?.revision === 3, true);
+    writeFileSync(join(f.root, "credentials/chatgpt-account.json"), "{", { mode: 0o600 });
+    for (let index = 0; index < 2; index++) await assert.rejects(f.service.readAuthority(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
+    assert.equal(f.calls.length, 0);
+  } finally { await uncertain.close(); await f.cleanup(); }
+});
+
+for (const status of [401, 403] as const) it(`refuses issued authority after C1 HTTP ${status} rejection`, async () => {
+  const f = chatGptFixture();
+  try {
+    await f.connected();
+    const capture = await f.service.readAuthority();
+    assert.equal(capture.availability, "available");
+    assert.equal(f.service.revalidateAuthority(capture), true);
+    f.setResponse(() => Response.json({ detail: "synthetic refusal" }, { status }));
+    await assert.rejects(f.service.extractText(image), { code: status === 401 ? "CHATGPT_ACCOUNT_EXPIRED" : "CHATGPT_PLAN_DISABLED" });
+    assert.equal(f.service.revalidateAuthority(capture), false);
+    assert.equal((await f.service.readAuthority()).availability, status === 401 ? "expired" : "unavailable");
+    assert.ok(readFileSync(join(f.root, "credentials/chatgpt-account.json"), "utf8").includes("synthetic-access-1"));
+  } finally { await f.cleanup(); }
 });

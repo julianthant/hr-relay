@@ -370,7 +370,7 @@ function layer(path: string): number | undefined {
   if (first === "backend") {
     if (parts[1] === "app") return parts[2] === "config" || parts[2] === "host" ? 1 : 3;
     if (parts[1] === "transports") return 3;
-    if (["assistant", "runs", "runtime", "logs"].includes(parts[1] ?? "")) return 2;
+    if (["assistant", "profiles", "runs", "runtime", "logs"].includes(parts[1] ?? "")) return 2;
     if (["accounts", "systems", "processing", "workflow-tasks", "storage", "workbooks"].includes(parts[1] ?? "")) return 1;
     return undefined;
   }

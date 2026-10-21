@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { linkSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { linkSync, lstatSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, fsyncPath, noSymlinkAncestry, statDirectory,
@@ -19,10 +19,16 @@ import {
   ProtectedSettingsLastAppliedSchema,
   ProtectedSettingsNameSchema,
   ProtectedStoreRecordSchema,
+  PROTECTED_SETTINGS_SET_MARKER,
   initialProtectedStoreRecord,
+  markProtectedSettingsPatch,
   type ProtectedSettingsApplyInput,
   type ProtectedStoreRecord,
 } from "../../../models/config/protected-settings.js";
+import {
+  CredentialEraseInputSchema,
+  type CredentialEraseInput,
+} from "../../../models/config/credential-store.js";
 import {
   SettingsApplyRefusalSchema,
   type SettingsApplyRejectionCode,
@@ -54,19 +60,86 @@ const SetValueIdsSchema = z.strictObject({
   activityPersonPseudonym: z.uuid().optional(),
 });
 
+const CredentialMarkedOperationSchema = z.union([
+  z.strictObject({ set: z.literal(PROTECTED_SETTINGS_SET_MARKER) }),
+  z.strictObject({ clear: z.literal(true) }),
+  z.strictObject({ erase: z.literal(true) }),
+]);
+
+const CredentialMarkedPatchSchema = z.strictObject({
+  ucpathUserId: CredentialMarkedOperationSchema.optional(),
+  ucpathPassword: CredentialMarkedOperationSchema.optional(),
+  timekeeperName: CredentialMarkedOperationSchema.optional(),
+  sharepointOnboardingRosterUrl: CredentialMarkedOperationSchema.optional(),
+  activityPersonPseudonym: CredentialMarkedOperationSchema.optional(),
+});
+
+const CredentialReplayReceiptSchema = ProtectedSettingsLastAppliedSchema.extend({
+  updatedAt: z.string().datetime({ offset: true }),
+  requestReceipt: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
 const CredentialHistoryEntrySchema = z.strictObject({
-  request: ProtectedSettingsApplyInputSchema,
+  receipt: CredentialReplayReceiptSchema,
+  marked: CredentialMarkedPatchSchema,
   setValueIds: SetValueIdsSchema,
 });
 
 const CredentialDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
   record: ProtectedStoreRecordSchema,
   history: z.array(CredentialHistoryEntrySchema),
 });
 
+const CredentialHistoryEntryV2Schema = z.strictObject({
+  request: ProtectedSettingsApplyInputSchema,
+  setValueIds: SetValueIdsSchema,
+});
+
+const CredentialDocumentV2Schema = z.strictObject({
+  schemaVersion: z.literal(2),
+  record: ProtectedStoreRecordSchema,
+  history: z.array(CredentialHistoryEntryV2Schema),
+});
+
+const ErasureJournalSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  epoch: z.number().int().nonnegative(),
+  erasedValueIds: z.array(z.uuid()),
+  retiredCommandIds: z.array(z.uuid()),
+  pending: CredentialHistoryEntrySchema.optional(),
+});
+
+const ErasureAuthoritySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  epoch: z.number().int().nonnegative(),
+  device: z.number().int().nonnegative(),
+  inode: z.number().int().nonnegative(),
+});
+
 type CredentialHistoryEntry = z.infer<typeof CredentialHistoryEntrySchema>;
 type CredentialDocument = z.infer<typeof CredentialDocumentSchema>;
+type ErasureJournal = z.infer<typeof ErasureJournalSchema>;
+const EMPTY_JOURNAL: ErasureJournal = { schemaVersion: 1, epoch: 0, erasedValueIds: [], retiredCommandIds: [] };
+const SECRET_NAMES = ["ucpathUserId", "ucpathPassword"] as const;
+
+export const RESTORE_ADMISSION_REQUEST = "restore-admission owner must admit the machine erasure journal outside every profile root before logout completion";
+
+export class CredentialErasureAuthorityError extends Error {
+  readonly request = RESTORE_ADMISSION_REQUEST;
+  constructor(message: string) {
+    super(message);
+    this.name = "CredentialErasureAuthorityError";
+  }
+}
+
+function documentHasErasure(document: CredentialDocument | undefined): boolean {
+  if (document === undefined) return false;
+  return document.history.some((entry) => SECRET_NAMES.some((name) => {
+    const operation = entry.marked[name];
+    return operation !== undefined && "erase" in operation;
+  }));
+}
 type CredentialLockRecord = z.infer<typeof CredentialLockRecordSchema>;
 
 export interface CredentialStoreIds {
@@ -78,6 +151,8 @@ export interface CredentialStoreHooks {
   readonly beforeRename?: () => void;
   /** Test seam at the uncertain boundary after authority rename and before directory fsync. */
   readonly afterRename?: () => void;
+  /** Test seam after the erasure journal is durable and before the protected document rewrite. */
+  readonly afterErasureJournal?: () => void;
 
   readonly observeProcessIdentity?: ProcessIdentityObserver;
 }
@@ -85,6 +160,9 @@ export interface CredentialStoreHooks {
 export interface CredentialStoreOptions {
   readonly admission: RuntimeAdmission;
   readonly stateRoot: string;
+  /** Durable tombstones. Outside the profile root so a profile backup cannot roll them back. */
+  readonly erasureJournalPath?: string;
+  readonly erasureJournalAdmission?: RuntimeAdmission;
   readonly ids?: CredentialStoreIds;
   readonly hooks?: CredentialStoreHooks;
 }
@@ -108,11 +186,13 @@ interface ReadDocument {
   readonly bytes: Uint8Array;
   readonly document: CredentialDocument;
   readonly identity: DirectoryIdentity;
+  readonly sourceVersion: 2 | 3;
 }
 
 interface CurrentDocument {
   readonly bytes: Uint8Array | undefined;
   readonly document: CredentialDocument;
+  readonly sourceVersion: 2 | 3;
 }
 
 interface ReadLock {
@@ -173,7 +253,13 @@ function privateEqual(left: unknown, right: unknown): boolean {
   }
 }
 
-function lastApplied(request: ProtectedSettingsApplyInput) {
+function lastApplied(request: {
+  readonly commandId: string;
+  readonly commandFingerprint: string;
+  readonly expectedRevision: number;
+  readonly protectedSchemaHash: string;
+  readonly writeId: string;
+}) {
   return ProtectedSettingsLastAppliedSchema.parse({
     commandId: request.commandId,
     commandFingerprint: request.commandFingerprint,
@@ -183,60 +269,97 @@ function lastApplied(request: ProtectedSettingsApplyInput) {
   });
 }
 
-function replayHistory(
-  history: readonly CredentialHistoryEntry[],
-): ProtectedStoreRecord {
-  let current: ProtectedStoreRecord = initialProtectedStoreRecord();
+function requestReceipt(value: unknown): string {
+  return createHash("sha256").update(canonicalJsonStringify(value)).digest("hex");
+}
+
+function replayValueIds(history: readonly CredentialHistoryEntry[]): Map<string, string> {
+  let revision = 1;
   const commandIds = new Set<string>();
   const writeIds = new Set<string>();
   const valueIds = new Set<string>();
-
+  const entries = new Map<string, string>();
   for (const entry of history) {
-    const { request, setValueIds } = entry;
-    if (request.expectedRevision !== current.revision
-      || commandIds.has(request.commandId)
-      || writeIds.has(request.writeId)) {
+    const { receipt, marked, setValueIds } = entry;
+    if (receipt.expectedRevision !== revision || commandIds.has(receipt.commandId) || writeIds.has(receipt.writeId)) {
       throw new Error("credential history has a divergent command identity");
     }
-    commandIds.add(request.commandId);
-    writeIds.add(request.writeId);
-
-    const entries = new Map<string, unknown>(Object.entries(current.entries));
+    commandIds.add(receipt.commandId);
+    writeIds.add(receipt.writeId);
     for (const name of ProtectedSettingsNameSchema.options) {
-      const operation = request.entries[name];
+      const operation = marked[name];
       const valueId = setValueIds[name];
-      if (operation === undefined || "clear" in operation) {
+      if (operation === undefined || "clear" in operation || "erase" in operation) {
         if (valueId !== undefined) throw new Error("credential history has an unexpected value identity");
         if (operation !== undefined) entries.delete(name);
         continue;
       }
-      if (valueId === undefined || valueIds.has(valueId)) {
-        throw new Error("credential history has an invalid value identity");
-      }
+      if (valueId === undefined || valueIds.has(valueId)) throw new Error("credential history has an invalid value identity");
       valueIds.add(valueId);
-      entries.set(name, { valueId, value: operation.set, updatedAt: request.updatedAt });
+      entries.set(name, valueId);
     }
-    current = ProtectedStoreRecordSchema.parse({
-      schemaVersion: 1,
-      revision: current.revision + 1,
-      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      entries: Object.fromEntries(entries),
-      lastApplied: lastApplied(request),
-    });
+    revision += 1;
   }
-  return current;
+  return entries;
 }
 
-function authenticateDocument(input: unknown): CredentialDocument {
-  const parsed = CredentialDocumentSchema.safeParse(input);
+function recordValueIds(record: ProtectedStoreRecord): Map<string, string> {
+  return new Map(ProtectedSettingsNameSchema.options.flatMap((name) => {
+    const entry = record.entries[name];
+    return entry === undefined ? [] : [[name, entry.valueId] as const];
+  }));
+}
+
+function sameValueIds(left: Map<string, string>, right: Map<string, string>): boolean {
+  return left.size === right.size && [...left].every(([name, valueId]) => right.get(name) === valueId);
+}
+
+function withoutTombstones(ids: Map<string, string>, journal: ErasureJournal): Map<string, string> {
+  const erased = new Set(journal.erasedValueIds);
+  return new Map([...ids].filter(([, valueId]) => !erased.has(valueId)));
+}
+
+function v2Document(input: unknown): unknown {
+  const parsed = CredentialDocumentV2Schema.safeParse(input);
+  if (!parsed.success) return input;
+  return {
+    schemaVersion: 3,
+    record: parsed.data.record,
+    history: parsed.data.history.map((entry) => ({
+      receipt: {
+        commandId: entry.request.commandId,
+        commandFingerprint: entry.request.commandFingerprint,
+        expectedRevision: entry.request.expectedRevision,
+        protectedSchemaHash: entry.request.protectedSchemaHash,
+        writeId: entry.request.writeId,
+        updatedAt: entry.request.updatedAt,
+        requestReceipt: requestReceipt(entry.request),
+      },
+      marked: markProtectedSettingsPatch(entry.request.entries),
+      setValueIds: entry.setValueIds,
+    })),
+  };
+}
+
+function authenticateDocument(input: unknown, journal: ErasureJournal = EMPTY_JOURNAL): CredentialDocument {
+  const parsed = CredentialDocumentSchema.safeParse(v2Document(input));
   if (!parsed.success) throw new Error("credential store protected.json is malformed");
-  let replayed: ProtectedStoreRecord;
+  const erased = new Set(journal.erasedValueIds);
+  let replayed: Map<string, string>;
   try {
-    replayed = replayHistory(parsed.data.history);
+    replayed = withoutTombstones(replayValueIds(parsed.data.history), journal);
   } catch {
     throw new Error("credential store protected.json has malformed identity history");
   }
-  if (!privateEqual(replayed, parsed.data.record)) {
+  const actual = recordValueIds(parsed.data.record);
+  if ([...actual.values()].some((valueId) => erased.has(valueId))
+    || !sameValueIds(replayed, actual)
+    || parsed.data.record.revision !== parsed.data.history.length + 1) {
+    throw new Error("credential store protected.json disagrees with its identity history");
+  }
+  const latest = parsed.data.history.at(-1);
+  if (latest !== undefined && (parsed.data.record.lastApplied?.commandId !== latest.receipt.commandId
+    || parsed.data.record.lastApplied.writeId !== latest.receipt.writeId)) {
     throw new Error("credential store protected.json disagrees with its identity history");
   }
   return deepFreeze(parsed.data);
@@ -244,10 +367,15 @@ function authenticateDocument(input: unknown): CredentialDocument {
 
 function initialDocument(): CredentialDocument {
   return deepFreeze(CredentialDocumentSchema.parse({
-    schemaVersion: 2,
+    schemaVersion: 3,
     record: initialProtectedStoreRecord(),
     history: [],
   }));
+}
+
+function sourceVersion(input: unknown): 2 | 3 {
+  if (typeof input === "object" && input !== null && "schemaVersion" in input && input.schemaVersion === 2) return 2;
+  return 3;
 }
 
 function readPrivateDocument(path: string): ReadDocument | undefined {
@@ -256,7 +384,12 @@ function readPrivateDocument(path: string): ReadDocument | undefined {
   let decoded: unknown;
   try { decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)); }
   catch { throw new Error("credential store protected.json is malformed"); }
-  return { bytes: file.bytes, document: authenticateDocument(decoded), identity: file.identity };
+  return {
+    bytes: file.bytes,
+    document: authenticateDocument(decoded),
+    identity: file.identity,
+    sourceVersion: sourceVersion(decoded),
+  };
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
@@ -318,12 +451,34 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   const lockPath = join(credentialDirectory, CREDENTIAL_LOCK_NAME);
   const reaperPath = join(credentialDirectory, CREDENTIAL_REAPER_NAME);
   const reaperClaimPath = join(credentialDirectory, CREDENTIAL_REAPER_CLAIM_NAME);
+  const journalPath = resolve(options.erasureJournalPath ?? join(stateRoot, "credential-erasures", "journal.json"));
+  if (journalPath.split(/[/\\]+/u).includes("..")) throw new Error("directory-integrity: raw credential path contains a '..' component");
+  const journalAdmission = requireRuntimeAdmission(options.erasureJournalAdmission ?? admission);
+  journalAdmission.assertStateRoot(journalPath);
+  journalAdmission.assertStateRoot(`${journalPath}.authority`);
+  function assertJournalAuthority(writable = false): void {
+    if (!writable && journalAdmission === admission) {
+      admission.assertLive();
+      noSymlinkAncestry(dirname(journalPath), ancestorIdentities);
+      return;
+    }
+    if (writable) journalAdmission.assertWritable();
+    if (journalAdmission !== admission) journalAdmission.assertProfileErasureJournal(admission, journalPath);
+    journalAdmission.assertStateRoot(journalPath);
+    journalAdmission.assertStateRoot(`${journalPath}.authority`);
+  }
   const ids = options.ids ?? { randomUUID };
   const hooks = options.hooks ?? {};
   const observer = hooks.observeProcessIdentity ?? observeProcessIdentity;
   let directoryIdentity: DirectoryIdentity | undefined;
   const ancestorIdentities = new Map<string, DirectoryIdentity>();
   const ownTemporaryPaths = new Set<string>();
+
+  function assertWritableStateRoot(): void {
+    admission.assertWritable();
+    noSymlinkAncestry(stateRoot, ancestorIdentities);
+    admission.assertStateRoot(stateRoot);
+  }
 
   function ensureDirectory(): void {
     noSymlinkAncestry(dirname(stateRoot), ancestorIdentities);
@@ -510,7 +665,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     const current = readPrivateDocument(protectedPath);
     const prior = current?.document ?? initialDocument();
     const stagedPrefix = staged.document.history.slice(0, -1);
-    const stagedRequest = staged.document.history.at(-1)?.request;
+    const stagedRequest = staged.document.history.at(-1)?.receipt;
     const sameHistory = (left: readonly CredentialHistoryEntry[], right: readonly CredentialHistoryEntry[]) =>
       left.length === right.length && left.every((entry, index) => privateEqual(entry, right[index]));
     const application = staged.document.history.length === prior.history.length + 1
@@ -688,15 +843,113 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     }
   }
 
+  function loadJournal(document?: CredentialDocument): ErasureJournal {
+    assertJournalAuthority();
+    const file = readPrivateFile(journalPath, { label: "erasure journal", maxBytes: 64_000 });
+    const anchorFile = readPrivateFile(`${journalPath}.authority`, { label: "erasure journal", maxBytes: 64_000 });
+    if (file === undefined && anchorFile === undefined) {
+      if (documentHasErasure(document)) throw new CredentialErasureAuthorityError("credential erasure journal is missing");
+      return EMPTY_JOURNAL;
+    }
+    if (file === undefined) throw new CredentialErasureAuthorityError("credential erasure journal is missing");
+    let decoded: unknown;
+    try { decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)); }
+    catch { throw new Error("credential erasure journal is malformed"); }
+    const parsed = ErasureJournalSchema.safeParse(decoded);
+    if (!parsed.success) throw new Error("credential erasure journal is malformed");
+    if (anchorFile === undefined) throw new CredentialErasureAuthorityError("credential erasure journal authority is missing");
+    let anchorDecoded: unknown;
+    try { anchorDecoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(anchorFile.bytes)); }
+    catch { throw new CredentialErasureAuthorityError("credential erasure journal authority is malformed"); }
+    const anchor = ErasureAuthoritySchema.safeParse(anchorDecoded);
+    if (!anchor.success) throw new CredentialErasureAuthorityError("credential erasure journal authority is malformed");
+    if (anchor.data.epoch > parsed.data.epoch) {
+      throw new CredentialErasureAuthorityError("credential erasure journal generation rolled back");
+    }
+    if (anchor.data.epoch === parsed.data.epoch
+      && (anchor.data.device !== file.identity.device || anchor.data.inode !== file.identity.inode)) {
+      throw new CredentialErasureAuthorityError("credential erasure journal identity changed");
+    }
+    return parsed.data;
+  }
+
+  function writeJournal(journal: ErasureJournal, writer: CredentialLockRecord): void {
+    assertJournalAuthority(true);
+    const directory = dirname(journalPath);
+    ensureChildDirectory(dirname(directory), directory, "credential erasure journal", CREDENTIAL_DIRECTORY_MODE, CREDENTIAL_DIRECTORY_MODE);
+    if (!noSymlinkAncestry(directory, ancestorIdentities)) {
+      throw new CredentialErasureAuthorityError("credential erasure journal ancestry is incomplete");
+    }
+    const temporaryPath = join(directory, `.journal.${writer.acquisitionId}.${z.uuid().parse(ids.randomUUID())}.tmp`);
+    try {
+      writePrivateStage(temporaryPath, encodePrivate(journal));
+      replacePrivateFile(temporaryPath, journalPath);
+      fsyncPath(directory);
+    } finally {
+      removeTemporary(temporaryPath);
+    }
+    const status = lstatSync(journalPath);
+    if (!status.isFile() || status.isSymbolicLink()) {
+      throw new CredentialErasureAuthorityError("credential erasure journal is not a regular file");
+    }
+    const anchorPath = `${journalPath}.authority`;
+    const anchorTemporary = join(directory, `.authority.${writer.acquisitionId}.${z.uuid().parse(ids.randomUUID())}.tmp`);
+    try {
+      writePrivateStage(anchorTemporary, encodePrivate(ErasureAuthoritySchema.parse({
+        schemaVersion: 1, epoch: journal.epoch, device: status.dev, inode: status.ino,
+      })));
+      replacePrivateFile(anchorTemporary, anchorPath);
+      fsyncPath(directory);
+    } finally {
+      removeTemporary(anchorTemporary);
+    }
+  }
+
+  function needsTombstoneRepair(document: CredentialDocument, journal: ErasureJournal): boolean {
+    const erased = new Set(journal.erasedValueIds);
+    return [...recordValueIds(document.record).values()].some((valueId) => erased.has(valueId));
+  }
+
+  function repairTombstones(document: CredentialDocument, journal: ErasureJournal): CredentialDocument | undefined {
+    if (!needsTombstoneRepair(document, journal)) return undefined;
+    const pending = journal.pending;
+    if (pending === undefined) throw new Error("credential erasure journal is missing its pending removal");
+    const already = document.history.some((entry) => entry.receipt.commandId === pending.receipt.commandId);
+    const erased = new Set(journal.erasedValueIds);
+    const marked = { ...pending.marked };
+    for (const name of SECRET_NAMES) {
+      const entry = document.record.entries[name];
+      if (entry !== undefined && erased.has(entry.valueId)) marked[name] = { erase: true };
+    }
+    const history = already ? document.history : [...document.history, {
+      ...pending,
+      receipt: { ...pending.receipt, expectedRevision: document.record.revision },
+      marked,
+    }];
+    const latest = history.at(-1);
+    if (latest === undefined) throw new Error("credential erasure journal is missing its pending removal");
+    const entries = Object.fromEntries(Object.entries(document.record.entries).filter(([, entry]) => !erased.has(entry.valueId)));
+    return authenticateDocument({
+      schemaVersion: 3,
+      record: {
+        ...document.record,
+        entries,
+        revision: history.length + 1,
+        lastApplied: lastApplied(latest.receipt),
+      },
+      history,
+    });
+  }
+
   function readCurrentUnderLock(): CurrentDocument {
     assertDirectory();
     const current = readPrivateDocument(protectedPath);
     if (current !== undefined) return current;
-    return { bytes: undefined, document: initialDocument() };
+    return { bytes: undefined, document: initialDocument(), sourceVersion: 3 };
   }
 
   function observeCurrent(): CurrentDocument {
-    const missing = (): CurrentDocument => ({ bytes: undefined, document: initialDocument() });
+    const missing = (): CurrentDocument => ({ bytes: undefined, document: initialDocument(), sourceVersion: 3 });
     if (!noSymlinkAncestry(stateRoot, ancestorIdentities)) return missing();
     statDirectory(stateRoot, "state root");
     if (!noSymlinkAncestry(credentialDirectory, ancestorIdentities)) return missing();
@@ -747,16 +1000,16 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   ): "exact" | "divergent" | "none" {
     const latest = document.history.at(-1);
     if (latest === undefined) return "none";
-    if (latest.request.commandId !== request.commandId) return "none";
-    return privateEqual(latest.request, request) ? "exact" : "divergent";
+    if (latest.receipt.commandId !== request.commandId) return "none";
+    return latest.receipt.requestReceipt === requestReceipt(request) ? "exact" : "divergent";
   }
 
   function historyReusesIdentity(
     document: CredentialDocument,
-    request: ProtectedSettingsApplyInput,
+    request: ProtectedSettingsApplyInput | CredentialEraseInput,
   ): boolean {
-    return document.history.some(({ request: historical }) => (
-      historical.commandId === request.commandId || historical.writeId === request.writeId
+    return document.history.some(({ receipt }) => (
+      receipt.commandId === request.commandId || receipt.writeId === request.writeId
     ));
   }
 
@@ -784,7 +1037,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       entries.set(name, { valueId, value: operation.set, updatedAt: request.updatedAt });
     }
     return authenticateDocument({
-      schemaVersion: 2,
+      schemaVersion: 3,
       record: {
         schemaVersion: 1,
         revision: document.record.revision + 1,
@@ -792,7 +1045,19 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         entries: Object.fromEntries(entries),
         lastApplied: lastApplied(request),
       },
-      history: [...document.history, { request, setValueIds }],
+      history: [...document.history, {
+        receipt: {
+          commandId: request.commandId,
+          commandFingerprint: request.commandFingerprint,
+          expectedRevision: request.expectedRevision,
+          protectedSchemaHash: request.protectedSchemaHash,
+          writeId: request.writeId,
+          updatedAt: request.updatedAt,
+          requestReceipt: requestReceipt(request),
+        },
+        marked: markProtectedSettingsPatch(request.entries),
+        setValueIds,
+      }],
     });
   }
 
@@ -800,6 +1065,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     current: CurrentDocument,
     request: ProtectedSettingsApplyInput,
   ): CredentialStoreApplyOutcome | undefined {
+    if (loadJournal(current.document).retiredCommandIds.includes(request.commandId)) return divergent();
     const directReplay = exactLastReplay(current.document, request);
     if (directReplay === "exact") {
       return deepFreeze({ state: "applied" as const, record: current.document.record });
@@ -815,7 +1081,12 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   function applyAdmitted(request: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome {
     try {
       return withLock((writer) => {
-        const current = readCurrentUnderLock();
+        let current = readCurrentUnderLock();
+        const repaired = repairTombstones(current.document, loadJournal(current.document));
+        if (repaired !== undefined) {
+          writeDocument(repaired, current.bytes, false, writer);
+          current = readCurrentUnderLock();
+        }
         const replay = evaluateReplay(current, request);
         if (replay !== undefined) return { committed: false, result: replay };
         const next = buildNext(current.document, request);
@@ -836,27 +1107,130 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   return Object.freeze({
     read(): ProtectedStoreRecord {
       admission.assertLive();
-      return observeCurrent().document.record;
+      const observed = observeCurrent();
+      const journal = loadJournal(observed.document);
+      if (!needsTombstoneRepair(observed.document, journal)) return observed.document.record;
+      assertWritableStateRoot();
+      return withLock((writer) => {
+        const current = readCurrentUnderLock();
+        const repaired = repairTombstones(current.document, loadJournal(current.document));
+        if (repaired === undefined) return { committed: false, result: current.document.record };
+        writeDocument(repaired, current.bytes, false, writer);
+        return { committed: true, result: repaired.record };
+      });
     },
     ownsCommandId(commandId: string): boolean {
       admission.assertLive();
       const id = z.uuid().parse(commandId);
       const document = observeCurrent().document;
-      return document.history.some(({ request }) => request.commandId === id);
+      return document.history.some(({ receipt }) => receipt.commandId === id);
     },
     acceptedAt(commandId: string): string | undefined {
       admission.assertLive();
       const id = z.uuid().parse(commandId);
       return withLock(() => {
-        const latest = readCurrentUnderLock().document.history.at(-1)?.request;
+        const latest = readCurrentUnderLock().document.history.at(-1)?.receipt;
         return { committed: false, result: latest?.commandId === id ? latest.updatedAt : undefined };
       });
     },
     apply(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome {
-      admission.assertWritable();
+      assertWritableStateRoot();
       const request = admit(input);
       if (!("commandId" in request)) return request;
       return applyAdmitted(request);
+    },
+    erase(input: CredentialEraseInput): CredentialStoreApplyOutcome {
+      assertWritableStateRoot();
+      const parsed = CredentialEraseInputSchema.safeParse(input);
+      if (!parsed.success) return frozenRefusal("invalid-value", "credential request is invalid");
+      if (parsed.data.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH) {
+        return frozenRefusal("schema-mismatch", "credential schema does not match the current catalog");
+      }
+      const request = parsed.data;
+      try {
+        return withLock((writer) => {
+          let current = readCurrentUnderLock();
+          const journal = loadJournal(current.document);
+          if (journal.retiredCommandIds.includes(request.commandId)) return { committed: false, result: divergent() };
+          const repaired = repairTombstones(current.document, journal);
+          if (repaired !== undefined) {
+            writeDocument(repaired, current.bytes, false, writer);
+            current = readCurrentUnderLock();
+          }
+          const receipt = requestReceipt(request);
+          const latest = current.document.history.at(-1);
+          if (latest?.receipt.commandId === request.commandId) {
+            return {
+              committed: false,
+              result: latest.receipt.requestReceipt === receipt
+                ? deepFreeze({ state: "applied" as const, record: current.document.record })
+                : divergent(),
+            };
+          }
+          if (request.expectedRevision !== current.document.record.revision) {
+            return { committed: false, result: conflict(current.document.record.revision, request.expectedRevision) };
+          }
+          if (historyReusesIdentity(current.document, request)) return { committed: false, result: divergent() };
+          const entries = { ...current.document.record.entries };
+          const erasedValueIds = [...journal.erasedValueIds];
+          const retiredCommandIds = [...journal.retiredCommandIds];
+          const marked: Record<string, { erase: true }> = {};
+          for (const historical of current.document.history) {
+            for (const name of SECRET_NAMES) {
+              const valueId = historical.setValueIds[name];
+              if (valueId !== undefined && !erasedValueIds.includes(valueId)) erasedValueIds.push(valueId);
+              if ((valueId !== undefined || historical.marked[name] !== undefined)
+                && !retiredCommandIds.includes(historical.receipt.commandId)) {
+                retiredCommandIds.push(historical.receipt.commandId);
+              }
+            }
+          }
+          for (const name of SECRET_NAMES) {
+            const entry = entries[name];
+            if (entry === undefined) continue;
+            if (!erasedValueIds.includes(entry.valueId)) erasedValueIds.push(entry.valueId);
+            delete entries[name];
+            marked[name] = { erase: true };
+          }
+          const pending = CredentialHistoryEntrySchema.parse({
+            receipt: { ...lastApplied(request), updatedAt: request.updatedAt, requestReceipt: receipt },
+            marked,
+            setValueIds: {},
+          });
+          const nextJournal = ErasureJournalSchema.parse({
+            schemaVersion: 1, epoch: journal.epoch + 1, erasedValueIds, retiredCommandIds, pending,
+          });
+          const next = authenticateDocument({
+            schemaVersion: 3,
+            record: {
+              schemaVersion: 1,
+              revision: current.document.record.revision + 1,
+              protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+              entries,
+              lastApplied: lastApplied(request),
+            },
+            history: [...current.document.history, pending],
+          });
+          writeJournal(nextJournal, writer);
+          hooks.afterErasureJournal?.();
+          writeDocument(next, current.bytes, true, writer);
+          return { committed: true, result: deepFreeze({ state: "applied" as const, record: next.record }) };
+        });
+      } catch (error) {
+        if (error instanceof CredentialStoreLockUnavailableError) {
+          return frozenRefusal("lock-unavailable", "credential store lock is unavailable");
+        }
+        throw error;
+      }
+    },
+    migrateHistory(): void {
+      assertWritableStateRoot();
+      withLock((writer) => {
+        const current = readCurrentUnderLock();
+        if (current.bytes === undefined || current.sourceVersion !== 2) return { committed: false, result: undefined };
+        writeDocument(current.document, current.bytes, false, writer);
+        return { committed: true, result: undefined };
+      });
     },
     verifyReplay(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome {
       admission.assertLive();

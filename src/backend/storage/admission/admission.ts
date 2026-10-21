@@ -201,6 +201,24 @@ export class RuntimeAdmission {
     }
     if (!within(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
   }
+  assertProfileErasureJournal(profile: RuntimeAdmission, journalPath: string): void {
+    this.assertLive();
+    profile.assertLive();
+    if (!isAbsolute(journalPath) || resolve(journalPath) !== journalPath) throw new Error("runtime-admission: noncanonical profile erasure path");
+    const profileId = relative(join(this.#stateRoot, "profiles"), profile.stateRoot);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(profileId)
+      || resolve(journalPath) !== join(this.#stateRoot, "machine", "erasures", `${profileId}.json`)) {
+      throw new Error("runtime-admission: profile erasure paths differ from admission");
+    }
+    for (let path = dirname(journalPath); path !== this.#stateRoot; path = dirname(path)) {
+      const info = lstatSync(path, { throwIfNoEntry: false });
+      if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink()
+        || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0)) throw new Error("runtime-admission: unsafe profile erasure path");
+    }
+    profile.assertStateRoot(profile.stateRoot);
+    this.assertStateRoot(journalPath);
+    this.assertStateRoot(`${journalPath}.authority`);
+  }
   assertArtifactRoot(path: string): void {
     this.assertLive();
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot write artifacts");

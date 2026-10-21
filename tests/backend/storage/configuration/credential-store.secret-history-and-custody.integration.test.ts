@@ -264,6 +264,10 @@ describe("independent credential store", () => {
     chmodSync(f.stateRoot, 0o1777);
     assert.equal(f.store.read().revision, 1, "trusted sticky ancestors are admitted");
     assert.equal(existsSync(f.directory), false);
+    assert.throws(() => f.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
+      expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } })), /unsafe synthetic fixture ancestor/u);
+    assert.throws(() => f.store.migrateHistory(), /unsafe synthetic fixture ancestor/u);
+    assert.equal(existsSync(f.directory), false);
   });
 
   it("refuses foreign-owned ancestors and raw dot-dot aliases without changing files", () => {
@@ -400,7 +404,7 @@ describe("independent credential store", () => {
     assert.deepEqual(readdirSync(f.directory), ["protected.json"]);
   });
 
-  it("recovers a dead pre-rename writer after retained private history exceeds 64 KiB", () => {
+  it("recovers a dead pre-rename writer without retaining replaced secrets", () => {
     const f = fixture();
     const historyUuid = (prefix: "8" | "9", sequence: number): string => (
       `${prefix}0000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`
@@ -418,7 +422,9 @@ describe("independent credential store", () => {
       }));
     }
     const retainedBytes = readFileSync(f.path);
-    assert.ok(retainedBytes.byteLength > 64_000);
+    assert.equal(retainedBytes.includes(historyValue(1)), false);
+    assert.equal(retainedBytes.includes(historyValue(historyLength)), true);
+    assert.ok(retainedBytes.byteLength < 64_000);
     assert.ok(retainedBytes.byteLength < 16 * 1024 * 1024);
     assert.equal(f.store.read().revision, historyLength + 1);
 
@@ -443,7 +449,9 @@ describe("independent credential store", () => {
     assert.equal(lstatSync(f.path).mode & 0o777, 0o600);
     assert.deepEqual(readdirSync(f.directory), ["protected.json"]);
     const settledBytes = readFileSync(f.path);
-    assert.ok(settledBytes.byteLength > 64_000);
+    assert.equal(settledBytes.includes(historyValue(1)), false);
+    assert.equal(settledBytes.includes(historyValue(historyLength + 1)), true);
+    assert.ok(settledBytes.byteLength < 64_000);
 
     const divergent = f.store.apply(request({
       commandId: interrupted.commandId,

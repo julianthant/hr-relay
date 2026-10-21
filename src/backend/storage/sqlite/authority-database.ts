@@ -1626,7 +1626,7 @@ export class AuthorityDatabase implements Disposable {
       readAppSettings(this.#database);
       this.#credentialCommandIds = options.path === ":memory:"
         ? () => { throw new Error("command identity admission requires a durable authority root"); }
-        : createCredentialStore({ admission, stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
+        : commandId => createCredentialStore({ admission, stateRoot: dirname(resolve(options.path)) }).ownsCommandId(commandId);
     } catch (error) {
       this.#database.close();
       if (error instanceof AuthoritySchemaVersionError) throw error;
