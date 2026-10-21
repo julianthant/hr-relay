@@ -70,6 +70,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       try {
         await prepare(page, theme, width);
         await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${outcome === "normal" ? "" : `&workerCommandPreview=${outcome}`}`);
+        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
         await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
         await page.getByRole("button", { name: "Sessions", exact: true }).click();
         const worker = page.getByRole("article", { name: "Worker 1 · Separations", exact: true });

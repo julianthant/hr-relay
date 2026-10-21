@@ -62,53 +62,53 @@
 - main:
   - heading "Person Lookup queue" [level=1]
   - region "Queue":
-    - text: "Finished 8 08/03/2026: 8 verified"
+    - text: "Finished 8 08/03/2026: 8 completed"
     - button "10000001 — done" [pressed]:
-      - text: 10000001 Active 9:10 AM
+      - text: 10000001 Active 10:04 AM
       - button "Attempts for 10000001": "#1"
       - text: PL81893311 56s
       - button "Retry"
       - button "Delete"
-    - button "Sample lookup 2 — done":
-      - text: Sample lookup 2 Inactive 9:10 AM
-      - button "Attempts for Sample lookup 2": "#1"
-      - text: PL66900946 1m 16s
-      - button "Retry"
-      - button "Delete"
-    - button "Sample lookup 3 — done":
-      - text: Sample lookup 3 CRM only 9:10 AM
-      - button "Attempts for Sample lookup 3": "#1"
-      - text: PL61774956 1m 16s
-      - button "Retry"
-      - button "Delete"
-    - button "Sample lookup 4 — done":
-      - text: Sample lookup 4 Multiple matches 9:10 AM
-      - button "Attempts for Sample lookup 4": "#1"
-      - text: PL53322711 1m 16s
-      - button "Retry"
-      - button "Delete"
-    - button "Sample lookup 5 — done":
-      - text: Sample lookup 5 Not found 9:10 AM
-      - button "Attempts for Sample lookup 5": "#1"
-      - text: PL61714569 1m 16s
-      - button "Retry"
-      - button "Delete"
-    - button "Sample lookup 6 — done":
-      - text: Sample lookup 6 Undetermined 9:10 AM
-      - button "Attempts for Sample lookup 6": "#1"
-      - text: PL86250969 1m 16s
-      - button "Retry"
-      - button "Delete"
     - button "Sample lookup 7 — done":
-      - text: Sample lookup 7 Found 9:10 AM
+      - text: Sample lookup 7 Found 10:04 AM
       - button "Attempts for Sample lookup 7": "#1"
       - text: PL70674455 56s
       - button "Retry"
       - button "Delete"
     - button "Sample lookup 8 — done":
-      - text: Sample lookup 8 Not found in UCPath 9:10 AM
+      - text: Sample lookup 8 Not found in UCPath 10:04 AM
       - button "Attempts for Sample lookup 8": "#1"
       - text: PL81279382 56s
+      - button "Retry"
+      - button "Delete"
+    - button "Sample lookup 2 — done":
+      - text: Sample lookup 2 Inactive 10:03 AM
+      - button "Attempts for Sample lookup 2": "#1"
+      - text: PL66900946 1m 16s
+      - button "Retry"
+      - button "Delete"
+    - button "Sample lookup 3 — done":
+      - text: Sample lookup 3 CRM only 10:03 AM
+      - button "Attempts for Sample lookup 3": "#1"
+      - text: PL61774956 1m 16s
+      - button "Retry"
+      - button "Delete"
+    - button "Sample lookup 4 — done":
+      - text: Sample lookup 4 Multiple matches 10:03 AM
+      - button "Attempts for Sample lookup 4": "#1"
+      - text: PL53322711 1m 16s
+      - button "Retry"
+      - button "Delete"
+    - button "Sample lookup 5 — done":
+      - text: Sample lookup 5 Not found 10:03 AM
+      - button "Attempts for Sample lookup 5": "#1"
+      - text: PL61714569 1m 16s
+      - button "Retry"
+      - button "Delete"
+    - button "Sample lookup 6 — done":
+      - text: Sample lookup 6 Undetermined 10:03 AM
+      - button "Attempts for Sample lookup 6": "#1"
+      - text: PL86250969 1m 16s
       - button "Retry"
       - button "Delete"
   - region "Action panel":
@@ -230,10 +230,13 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
+- button "Assistant"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

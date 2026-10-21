@@ -5,7 +5,7 @@ import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
- test(`Settings Data navigation and original spreadsheet sizing @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
+ test(`Settings Data navigation and approved HUB spreadsheet sizing @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
   const errors: string[] = [], writes: string[] = [];
@@ -31,7 +31,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
    await expect(page.locator('html')).not.toHaveAttribute('data-dashboard-density', 'compact');
    expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('1');
    await expect(page.getByRole('banner')).toHaveCount(0);
-   expect((await nav.boundingBox())!.width).toBe(264);
+   expect((await nav.boundingBox())!.width).toBe(width === 1024 ? 210 : 244);
    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
    expect(errors).toEqual([]); expect(writes).toEqual([]);

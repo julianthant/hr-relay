@@ -511,8 +511,8 @@
       "name": "dashboard-presentation-inventory",
       "file": "tests/architecture/tooling/dashboard-presentation-inventory.test.ts",
       "status": "active",
-      "owner": "task evidence",
-      "invariant": "The frozen set is every .tsx under src/dashboard/surfaces/** and src/dashboard/ds/**, all stylesheet files under src/dashboard/**, every supported token source in src/dashboard/ds/theme/** except its runtime theme.ts, and token-named design-token files in the supported source formats. The current exact set is stored in tests/architecture/tooling/fixtures/dashboard-presentation-file-set.json (96 components, 12 stylesheets, and src/dashboard/ds/theme/tokens.ts; 109 files total). Added or removed presentation paths fail with an actionable message requiring operator approval before adding or removing a component and citing the visual-baseline brief; content edits to frozen paths remain legal.",
+      "owner": "src/dashboard/PARITY.md",
+      "invariant": "The frozen set is every .tsx under src/dashboard/surfaces/** and src/dashboard/ds/**, all stylesheet files under src/dashboard/**, every supported token source in src/dashboard/ds/theme/** except its runtime theme.ts, and token-named design-token files in the supported source formats. The current exact set is stored in tests/architecture/tooling/fixtures/dashboard-presentation-file-set.json (107 components, 22 stylesheets, src/dashboard/ds/theme/tokens.ts and motion.ts; 131 files total). Added or removed presentation paths fail with an actionable message requiring operator approval before adding or removing a component and citing the operator-approved HUB-WIRE-1 brief; content edits to frozen paths remain legal.",
       "replacementRequired": true
     },
     {

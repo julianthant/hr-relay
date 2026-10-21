@@ -1,3 +1,4 @@
+import { HubPermissionSettings, HubBrowserWindowSettings } from "./hub-preferences.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
@@ -78,7 +79,8 @@ function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
   return <>
     <BodySection title="Employment"><FormGroup label="Employment"><ScalarRow editor={editor} leaf={date} /></FormGroup></BodySection>
     <BodySection title="Browser"><FormGroup label="Browser">
-      {(["browser.headless", "features.debugScreenshots", "features.duoWebAuthn"] as const).map(path => <ScalarRow key={path} editor={editor} leaf={servedLeaf(editor, path)} />)}
+      <ScalarRow editor={editor} leaf={servedLeaf(editor, "browser.headless")} />
+      <HubBrowserWindowSettings binding={{ width: rawValue(servedLeaf(editor, "display.screenWidth"), editor.draft["display.screenWidth"]), height: rawValue(servedLeaf(editor, "display.screenHeight"), editor.draft["display.screenHeight"]), disabled: editor.locked, error: [editor.errors["display.screenWidth"], editor.errors["display.screenHeight"]].filter(Boolean).join(" · ") || undefined, onChange: (path, value) => editor.update(path, value) }} />
     </FormGroup></BodySection>
 
   </>;
@@ -108,6 +110,7 @@ export function CompactSettingsSection({ editor, sectionId, appearance }: { edit
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and browser preferences." : "Workflow files and runtime locations."} />
     {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
+    {sectionId === "general" && <HubPermissionSettings />}
     {editor.editor.state === "failed" && <Banner tone="danger" title="Editable settings could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
       : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>

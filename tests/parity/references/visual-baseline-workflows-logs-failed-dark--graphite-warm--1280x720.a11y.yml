@@ -160,7 +160,7 @@
       - text: PL61636475
       - button "Run next"
       - button "Cancel run"
-    - text: "Finished today 6 Today: 2 verified 2 with warnings 1 failed 1 cancelled"
+    - text: "Finished today 6 Today: 2 completed 2 with warnings 1 failed 1 cancelled"
     - button "EID 10555001 — failed":
       - text: EID 10555001 Failed 9:33 AM
       - button "Attempts for EID 10555001": "#1"
@@ -725,10 +725,13 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
+- button "Assistant"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

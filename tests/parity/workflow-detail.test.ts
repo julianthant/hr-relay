@@ -1,4 +1,4 @@
-import { installFrozenMonotonic } from "./helpers/app-driver.js";
+import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
 
 import { expect, test } from "@playwright/test";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
@@ -16,6 +16,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     const height = width === 1024 ? 720 : 1000;
     try {
       await page.setViewportSize({ width, height }); await installFrozenMonotonic(page); await installTheme(page, theme); await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
+      await moveAssistantLauncherAboveFooter(page);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true }), logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       const counts = mockWorkflowCounts(seedMockRuns());
       for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations"].includes(flow.id))) {

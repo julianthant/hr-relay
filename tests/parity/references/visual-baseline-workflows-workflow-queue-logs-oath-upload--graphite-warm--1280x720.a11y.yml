@@ -64,9 +64,9 @@
   - region "Queue":
     - text: Active 1
     - button "multiple-oath.pdf — running" [pressed]:
-      - text: multiple-oath.pdf Running Read oath 0 / 6 steps 9:10 AM
+      - text: multiple-oath.pdf Running Read oath 0 / 6 steps 10:05 AM
       - button "Attempts for multiple-oath.pdf": "#1"
-      - text: OU95547578 55m 0s
+      - text: OU95547578 0s
       - button "Retry"
       - button "Delete"
   - region "Action panel":
@@ -144,10 +144,13 @@
     - status
     - button "Copy logs"
     - button "Go to latest action"
+- button "Assistant"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings"
+    - button "Log out"
 - region "Notifications"

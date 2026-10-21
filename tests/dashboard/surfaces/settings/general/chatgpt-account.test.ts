@@ -36,21 +36,21 @@ describe("General ChatGPT account", () => {
     const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port }));
     assert.match(html, /Held operator.*held@example\.com/u);
     assert.match(html, /ChatGPT account unavailable.*Account read failed/u);
-    assert.doesNotMatch(html, /disabled=""[^>]*>Sign out/u);
-    assert.doesNotMatch(html, /Continue with ChatGPT/u);
+    assert.doesNotMatch(html, /disabled=""[^>]*>Disconnect/u);
+    assert.doesNotMatch(html, /Connect ChatGPT/u);
   });
 
   it("renders loading, expired, unavailable and usage-limit states distinctly", () => {
     const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
     const loading = render({ state: "loading" });
     assert.doesNotMatch(loading, /aria-busy="true"/u);
-    assert.doesNotMatch(loading, /Continue with ChatGPT/u);
+    assert.doesNotMatch(loading, /Connect ChatGPT/u);
     assert.match(render({ state: "expired" }), /Your ChatGPT session expired/u);
     assert.match(render({ state: "unavailable", message: "Account read failed" }), /ChatGPT account unavailable.*Account read failed/u);
     const limited = render({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "limit-reached" });
     assert.match(limited, /Usage limit reached/u);
     assert.match(limited, /Manage usage/u);
-    assert.doesNotMatch(limited, /Using ChatGPT plan|Continue with ChatGPT/u);
+    assert.doesNotMatch(limited, /Using ChatGPT plan|Connect ChatGPT/u);
   });
 });
 
@@ -59,7 +59,7 @@ it("places a rejected account port action outside the field group with its origi
   const port = controlledPort({ state: "signed-out" }, { signIn: async () => { throw new Error("synthetic action failure"); } });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
-  const action = [...host.querySelectorAll("button")].find(button => button.textContent === "Continue with ChatGPT");
+  const action = [...host.querySelectorAll("button")].find(button => button.textContent === "Connect ChatGPT");
   assert.ok(action); await act(async () => action.click());
   const banner = [...host.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes("ChatGPT connection failed"));
   assert.ok(banner); assert.equal(banner.closest(".ds-form-group"), null);
@@ -86,13 +86,13 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
     if (scenario === "unconfirmed remote revocation") {
       assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
-      await act(async () => button("Sign out").click());
+      await act(async () => button("Disconnect").click());
       assert.deepEqual(port.getResource(), { state: "empty", account: { state: "signed-out" }, warning: "CHATGPT_REVOCATION_UNCONFIRMED" });
       assert.doesNotMatch(host.textContent ?? "", /Exact held operator|exact@example.com/u);
     } else assert.equal(port.getResource().state, "failed");
     const message = ERROR_CATALOG[scenario === "initial read failure" ? "CHATGPT_AUTH_UNAVAILABLE" : "CHATGPT_REVOCATION_UNCONFIRMED"].text;
     assert.ok(host.textContent?.includes(message));
-    const recovery = button("Continue with ChatGPT"); assert.equal(recovery.disabled, false);
+    const recovery = button("Connect ChatGPT"); assert.equal(recovery.disabled, false);
     await act(async () => { recovery.click(); recovery.click(); });
     assert.equal(starts, 1); assert.equal(button("Cancel").disabled, false);
     assert.match(host.textContent ?? "", /Waiting for you to finish signing in in your browser/u);

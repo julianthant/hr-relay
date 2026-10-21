@@ -9,7 +9,7 @@
 - main:
   - region "Queue":
     - heading "Person Lookup" [level=2]
-    - text: "Finished 8 08/03/2026: 8 verified"
+    - text: "Finished 8 08/03/2026: 8 completed"
     - button "10000001 — done":
       - text: 10000001 Person Lookup Active 9:10 AM
       - button "Attempts for 10000001": "#1"

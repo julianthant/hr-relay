@@ -1,0 +1,41 @@
+:root {
+  --hub-fast-duo-brand: #176851;
+  --hub-fast-duo-ink: #fff;
+  --hub-focus-fill: #949494;
+  --hub-focus-ink: #151515;
+  --hub-primary-border: #747474;
+  --hub-primary: #202020;
+  --hub-primary-ink: #fafafa;
+  --hub-primary-hover: #343434;
+  --hub-switch: #3b82f6;
+  --hub-shadow: 0 8px 32px #0002;
+  --hub-panel-shadow: 0 4px 16px #0002;
+  --hub-dialog-shadow: 0 20px 60px #0003;
+  --hub-launcher-shadow: 0 4px 12px #0002;
+  --hub-dur-hover: 120ms;
+  --hub-panel-layer: 50;
+  --hub-ease: cubic-bezier(0.23, 1, 0.32, 1);
+}
+html[data-hub] body:has([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]) { --hub-panel-layer:19; }
+[data-demo-theme="dark"] { --hub-focus-fill: #b0b0b0; --hub-shadow: 0 12px 40px #0006; }
+html[data-hub]:not([data-hub-input="pointer"]) :is(button, a, select, [tabindex]):not(input):not(textarea):not([tabindex="-1"]):focus-visible {
+  background: var(--hub-focus-fill) !important;
+  color: var(--hub-focus-ink) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+html[data-hub][data-hub-input="pointer"] :is(button, a, select, [tabindex]):focus-visible { outline:none!important;box-shadow:none!important; }
+html[data-hub] :is(input, textarea):focus,
+html[data-hub] :is(input, textarea):focus-visible,
+html[data-hub] :is(.ds-focus-within, .ds-secret-input, .ds-unit-field):focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+}
+html[data-hub] [tabindex="-1"]:not([role="menu"]):focus-visible { background: transparent !important; color: inherit !important; }
+html[data-hub] .ds-search-field [data-slot="search-field-group"]:focus-within { box-shadow: none; }
+html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="off"] *::after {
+  animation: none !important; transition: none !important; scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-hub] *, html[data-hub] *::before, html[data-hub] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

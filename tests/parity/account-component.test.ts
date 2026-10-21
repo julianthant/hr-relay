@@ -12,10 +12,10 @@ import { PARITY_THEMES } from "./helpers/capture.js";
 const cases = [
   { state: "loading" }, { state: "signed-out" }, { state: "expired" }, { state: "unavailable" },
   { state: "enabled" }, { state: "disabled" }, { state: "limit-reached" },
-  { state: "signed-out", action: "pending", control: "Continue with ChatGPT" },
-  { state: "enabled", action: "pending", control: "Sign out" },
-  { state: "signed-out", action: "failed", control: "Continue with ChatGPT" },
-  { state: "enabled", action: "failed", control: "Sign out" },
+  { state: "signed-out", action: "pending", control: "Connect ChatGPT" },
+  { state: "enabled", action: "pending", control: "Disconnect" },
+  { state: "signed-out", action: "failed", control: "Connect ChatGPT" },
+  { state: "enabled", action: "failed", control: "Disconnect" },
 ] as const;
 let server: PreviewServer;
 let output: string;
@@ -49,7 +49,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const account = page.getByRole("group", { name: "ChatGPT account", exact: true });
       await expect(account).toBeVisible();
       if (entry.state === "loading") await expect(page.getByRole("status", { name: "Loading ChatGPT account", exact: true })).toBeVisible();
-      else if (entry.state === "unavailable") { await expect(page.getByText("ChatGPT account unavailable", { exact: true })).toBeVisible(); await expect(account.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toBeEnabled(); }
+      else if (entry.state === "unavailable") { await expect(page.getByText("ChatGPT account unavailable", { exact: true })).toBeVisible(); await expect(account.getByRole("button", { name: "Connect ChatGPT", exact: true })).toBeEnabled(); }
       else if (entry.state === "expired") await expect(account).toContainText("Your ChatGPT session expired.");
       else if (entry.state === "disabled") await expect(account).toContainText("ChatGPT plan access not enabled");
       else if (entry.state === "limit-reached") await expect(account).toContainText("Usage limit reached");

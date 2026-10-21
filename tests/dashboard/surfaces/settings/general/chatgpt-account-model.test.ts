@@ -34,8 +34,8 @@ describe("General ChatGPT account", () => {
     const port = createPreviewChatGptAccountPort();
     const signIn = vi.spyOn(port, "signIn");
     await mount(port);
-    button("Continue with ChatGPT").focus();
-    await click("Continue with ChatGPT");
+    button("Connect ChatGPT").focus();
+    await click("Connect ChatGPT");
     assert.equal(signIn.mock.calls.length, 1);
     assert.deepEqual(signIn.mock.calls[0], [{ usePlan: true }]);
     assert.equal(document.querySelector('[role="dialog"]'), null);
@@ -56,7 +56,7 @@ describe("General ChatGPT account", () => {
     assert.equal(identity.planUsage, "disabled");
     assert.match(host?.textContent ?? "", /ChatGPT plan access not enabled/u);
     assert.equal(host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`), null);
-    await click("Continue with ChatGPT");
+    await click("Connect ChatGPT");
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
     assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
@@ -65,7 +65,7 @@ describe("General ChatGPT account", () => {
     assert.equal(usage.target, "_blank");
     assert.equal(usage.rel, "noopener noreferrer");
     assert.ok(!window.location.search.includes("jordan.lee"));
-    await click("Sign out");
+    await click("Disconnect");
     assert.equal(port.getSnapshot().state, "signed-out");
     assert.doesNotMatch(host?.textContent ?? "", /jordan\.lee@example\.com/u);
   });
@@ -88,15 +88,15 @@ describe("General ChatGPT account", () => {
       calls += 1; return new Promise<void>((_resolve, refuse) => { reject = refuse; });
     } });
     await mount(port);
-    await click("Continue with ChatGPT");
-    assert.equal(button("Continue with ChatGPT").disabled, true);
-    await click("Continue with ChatGPT");
+    await click("Connect ChatGPT");
+    assert.equal(button("Connect ChatGPT").disabled, true);
+    await click("Connect ChatGPT");
     assert.equal(calls, 1);
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.equal(port.getSnapshot().state, "signed-out");
     await act(async () => reject(new Error("synthetic-refusal")));
     assert.match(host?.textContent ?? "", /ChatGPT sign-in could not be completed/u);
-    assert.equal(button("Continue with ChatGPT").disabled, false);
+    assert.equal(button("Connect ChatGPT").disabled, false);
     assert.equal(port.getSnapshot().state, "signed-out");
   });
 
@@ -104,18 +104,18 @@ describe("General ChatGPT account", () => {
     const port = controlledPort({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "enabled" },
       { signOut: () => Promise.reject(new Error("synthetic-lost-response")) });
     await mount(port);
-    await click("Sign out");
+    await click("Disconnect");
     assert.match(host?.textContent ?? "", /Sign-out could not be confirmed/u);
     assert.match(host?.textContent ?? "", /operator@example\.com/u);
     assert.equal(port.getSnapshot().state, "connected");
-    assert.equal(button("Sign out").disabled, false);
+    assert.equal(button("Disconnect").disabled, false);
   });
 
   it("allows an in-flight adapter to settle after the card unmounts", async () => {
     let finish!: () => void;
     const port = controlledPort({ state: "signed-out" }, { signIn: () => new Promise<void>(resolve => { finish = resolve; }) });
     await mount(port);
-    await click("Continue with ChatGPT");
+    await click("Connect ChatGPT");
     act(() => root?.unmount()); root = undefined;
     await act(async () => finish());
     assert.equal(port.getSnapshot().state, "signed-out");

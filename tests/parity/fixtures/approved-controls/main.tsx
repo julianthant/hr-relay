@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { DsBodyScope, TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
+import { QueueSurfaceWireSchema } from '../../../../src/models/dashboard/projection.js';
 import { QueuePanel } from '../../../../src/dashboard/surfaces/queue/queue.js';
-import { seedMockRuns } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
+import { mockRunLog, seedMockRuns } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
 import { mockQueueOutcomes, mockQueueSurfaces } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js';
 import { ActivityView } from '../../../../src/dashboard/surfaces/activity/activity-view.js';
 import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
@@ -21,7 +22,13 @@ function Fixture() {
   if (surface === 'queue') {
     const runs = seedMockRuns().filter(run => run.workflowId === 'person-lookup');
     if (runs.length !== 8) throw new Error('lookup-fixture-missing');
-    const surfaces = mockQueueSurfaces(runs, '2026-08-03T16:10:00.000Z');
+    const surfaces = mockQueueSurfaces(runs, '2026-08-03T16:10:00.000Z').map((surface, index) => {
+      const { endTime } = mockRunLog(runs[index]);
+      const end = `2026-08-03T${String(Number(endTime.slice(0, 2)) + 7).padStart(2, '0')}${endTime.slice(2)}.000Z`;
+      return QueueSurfaceWireSchema.parse({ ...surface, startedAt: '2026-08-03T16:10:00.000Z', updatedAt: end,
+        endedAt: surface.endedAt.state === 'present' ? { ...surface.endedAt, value: end } : surface.endedAt,
+        gateOpenedAt: surface.gateOpenedAt.state === 'present' ? { ...surface.gateOpenedAt, value: end } : surface.gateOpenedAt });
+    });
     return <QueuePanel outcomes={mockQueueOutcomes(runs)} surfaces={surfaces} state={{ nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set() }} handlers={{ onSelect() {} }} workflowLabelOf={() => 'Person Lookup'} panelLabel="Person Lookup" day="2026-08-03" />;
   }
   if (surface === 'export') return <ActivityView data={activitySample(ACTIVITY_SAMPLE_RANGE, 'normal')} range={ACTIVITY_SAMPLE_RANGE} today={ACTIVITY_SAMPLE_TODAY} period="custom" onPreset={() => {}} onRange={() => {}} onExport={() => {

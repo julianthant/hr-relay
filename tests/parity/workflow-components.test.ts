@@ -1,4 +1,4 @@
-import { installFrozenMonotonic } from "./helpers/app-driver.js";
+import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
 
 import { expect, test } from "@playwright/test";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
@@ -49,6 +49,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
+      await moveAssistantLauncherAboveFooter(page);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
@@ -145,6 +147,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
   const writes: string[] = []; page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {
     await page.setViewportSize({ width: 1440, height: 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme); await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     for (const [label, field] of [["Oath Upload", "Officer signed"], ["Emergency Contact", "Contact name"], ["OnBase", "Contact name"], ["I-9 Check", "Section 2 page"]]) {
@@ -175,6 +178,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
+      await moveAssistantLauncherAboveFooter(page);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
@@ -241,6 +246,7 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
   try {
     await page.setViewportSize({ width: 1440, height: 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     for (const flow of MOCK_WORKFLOWS.filter(flow => !["person-lookup", "separations"].includes(flow.id))) {

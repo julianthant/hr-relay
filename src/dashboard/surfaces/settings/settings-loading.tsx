@@ -1,5 +1,5 @@
 import { useDelayedLoading } from "../shared/loading/loading-model.js";
-import { BodySection, FormGroup, PageHeading, Skeleton } from "../../ds/ui.js";
+import { BodySection, Field, FormGroup, PageHeading, Skeleton, Switch } from "../../ds/ui.js";
 import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "../shared/loading/loading.js";
 import { routeLoadingGroups } from "./routes/settings-routes-model.js";
 
@@ -15,7 +15,12 @@ export function SettingsSectionSkeleton({ section, contentOnly = false }: { sect
       <div className="ds-body-stack">
         {section === "general" ? <>
           <BodySection title="Employment"><FormGroup label="Employment loading"><SettingsRowsSkeleton rows={1} /></FormGroup></BodySection>
-          <BodySection title="Browser"><FormGroup label="Browser loading">{[0, 1, 2].map(index => <div key={index} className="ds-body-row" data-control-width="standard"><div><SkeletonText className="w-40 text-body" /><div><SkeletonText className="w-60 text-caption" /></div></div><Skeleton className="ml-auto h-[var(--ds-h-body-switch)] w-[var(--ds-w-body-switch)] rounded-full" /></div>)}</FormGroup></BodySection>
+          <BodySection title="Browser"><FormGroup label="Browser loading">
+            <div className="settings-compact-row"><Switch label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} checked={false} disabled onCheckedChange={() => {}} /></div>
+            <div className="settings-compact-row"><Field orientation="horizontal" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />}><div className="hub-window-size">
+              <Skeleton className="h-[var(--ds-h-body-control)] w-0 flex-1" /><span aria-hidden>×</span><Skeleton className="h-[var(--ds-h-body-control)] w-0 flex-1" />
+            </div></Field></div>
+          </FormGroup></BodySection>
         </> : section === "performance" ? <>
           {[{ title: "Navigation", rows: 3 }, { title: "Work", rows: 3 }, { title: "Sign-in & Duo", rows: 4 }, { title: "Additional limits", rows: 4 }].map(group => <BodySection key={group.title} title={group.title}><FormGroup label={`${group.title} loading`}><SettingsRowsSkeleton rows={group.rows} presentation={group.title === "Additional limits" ? "disclosure" : "field"} /></FormGroup></BodySection>)}
         </> : section === "routes" ? <>

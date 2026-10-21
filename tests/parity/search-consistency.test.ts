@@ -10,7 +10,7 @@ async function expectSearchCorners(page: Page) {
   expect(await groups.count()).toBeGreaterThan(0);
   for (const group of await groups.all()) {
     for (const corner of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
-      await expect(group).toHaveCSS(`border-${corner}-radius`, "12px");
+      await expect(group).toHaveCSS(`border-${corner}-radius`, await group.evaluate(node => node.closest(".settings-nav-search") ? "8px" : "12px"));
     }
   }
 }
@@ -28,7 +28,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       for (const section of ["keyboard", "routes", "spreadsheets"]) {
         await page.goto(`${server.baseUrl}/?settings=${section}&day=${FIXTURE_DAY}`);
         await expect(page.getByRole("searchbox", { name: "Search settings", exact: true })).toBeVisible();
-        await expect(page.locator('.ds-search-field [data-slot="search-field-group"]:visible')).toHaveCount(2);
+        await expect(page.locator('.ds-search-field [data-slot="search-field-group"]:visible')).toHaveCount(section === 'spreadsheets' ? 1 : 2);
+        if (section === 'spreadsheets') {
+          await expect(page.getByRole('searchbox', { name: 'Find a spreadsheet', exact: true })).toHaveCount(0);
+          await expect(page.getByRole('table', { name: 'Registered spreadsheets', exact: true })).toBeVisible();
+        }
         await expectSearchCorners(page);
         await assertThemeApplied(page, theme);
         if (section === "keyboard") {
@@ -42,6 +46,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
       }
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const searchButton = page.getByRole("button", { name: "Search runs", exact: true });
       await searchButton.click();
       await expectSearchCorners(page);

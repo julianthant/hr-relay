@@ -1,0 +1,43 @@
+# hub-assistant-approval-menu--graphite-warm--1280x720
+# adapter: component-fixture
+# fixture: hub-assistant-approval-menu
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Relay assistant":
+  - button "Update Alex Rivera work email"
+  - button "Chat files"
+  - button "Chats"
+  - button "New chat"
+  - button "Close assistant"
+  - log "Assistant conversation":
+    - text: Update Alex Rivera’s work email. I found the record. Review the change before I save it.
+    - article "Save to UCPath":
+      - heading "Save to UCPath" [level=3]
+      - term: Person
+      - definition: Alex Rivera
+      - term: Work email
+      - definition:
+        - strong: alex.rivera@example.edu
+      - text: Ready to save
+      - button "Not now"
+      - button "Approve"
+  - group "Message composer":
+    - text: Message Relay
+    - textbox "Message Relay":
+      - /placeholder: Ask Relay…
+    - group "Message controls":
+      - button "Add files"
+      - button "Ask only before submits" [expanded]
+      - menu "Ask only before submits":
+        - group "How should Relay actions be approved?":
+          - group:
+            - menuitemradio "Ask before every action Review every read and change."
+            - menuitemradio "Ask only before submits Review changes sent to other systems." [checked]
+            - menuitemradio "Act without asking Let Relay act within your permissions."
+      - 'button "Model: GPT-6.1 Sol"': GPT-6.1 Sol
+      - 'button "Thinking effort: Medium"': Medium
+      - button "Voice input"
+      - button "Send message" [disabled]

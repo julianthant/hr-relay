@@ -1,0 +1,36 @@
+# hub-sheets-versions--dark--1920x1000--webkit
+# adapter: fixture
+# fixture: hub-sheets-components
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1920x1000  theme: dark  variant: webkit
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Spreadsheet versions":
+  - banner:
+    - heading "Spreadsheet versions" [level=2]
+    - paragraph: Download an exact saved version. Your current draft stays open.
+    - button "Close"
+  - table "Saved spreadsheet versions":
+    - rowgroup:
+      - row "Version Saved File Actions":
+        - columnheader "Version"
+        - columnheader "Saved"
+        - columnheader "File"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "2 09/30/2026 Autumn onboarding.xlsx Download version 2":
+        - cell "2"
+        - cell "09/30/2026"
+        - cell "Autumn onboarding.xlsx"
+        - cell "Download version 2":
+          - button "Download version 2": Download
+      - row "1 09/30/2026 Autumn onboarding.xlsx Download version 1":
+        - cell "1"
+        - cell "09/30/2026"
+        - cell "Autumn onboarding.xlsx"
+        - cell "Download version 1":
+          - button "Download version 1": Download
+  - contentinfo:
+    - button "Close"

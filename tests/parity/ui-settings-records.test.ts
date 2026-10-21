@@ -22,7 +22,8 @@ for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on t
   await gotoSettingsDiscardingDraft(page, "general");
   await expect(page.getByRole("heading", { name: "General", level: 1 })).toBeVisible();
   const switches = page.locator(".settings-tab-body .ds-switch-row");
-  await expect(switches).toHaveCount(4);
+  await expect(switches).toHaveCount(3);
+  for (const name of ["Dark theme", "Animations", "Run without a browser window"]) await expect(switches.getByRole("switch", { name: new RegExp(`^${name} `, "u") })).toHaveCount(1);
   const positions = await switches.evaluateAll(rows => rows.map(row => {
     const track = row.querySelector(".ds-switch-control")?.getBoundingClientRect();
     const thumbElement = row.querySelector(".ds-switch-thumb");

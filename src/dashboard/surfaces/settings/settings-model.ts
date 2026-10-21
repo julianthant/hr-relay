@@ -21,6 +21,7 @@ export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
 export type SettingsNavIcon =
   | "general"
   | "display"
+  | "credentials"
   | "performance"
   | "paths"
   | "storage"
@@ -121,10 +122,9 @@ export function buildSettingsNav(
   const groups: SettingsNavGroup[] = [];
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
-    clientEntry("credentials", "Credentials", "general"),
+    clientEntry("credentials", "Credentials", "credentials"),
   ] });
   groups.push({ id: "advanced", heading: "Advanced", entries: [
-    clientEntry("performance", "Performance", "performance"),
     clientEntry("paths", "Paths", "paths"),
     clientEntry("routes", "Routes", "routes"),
     ...(editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
@@ -138,7 +138,7 @@ export function buildSettingsNav(
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {
     if (section.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID || section.id === "providers" || section.id === SETTINGS_UI_CATALOG_SECTION_ID) continue;
-    statusEntries.push(servedEntry(section.id, section.label));
+    statusEntries.push(servedEntry(section.id, section.id === "storage" ? "Storage" : section.label));
     if (section.id === "storage") statusEntries.push({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }
   if (!statusEntries.some(entry => entry.id === SETTINGS_PREFLIGHT_SECTION_ID)) {
@@ -169,6 +169,8 @@ export function resolveSettingsSection(
   requested: string,
 ): SettingsSectionResolution {
   const entries = groups.flatMap((group) => group.entries);
+  // Existing editor deep links remain available outside the approved HUB navigation.
+  if (requested === "performance") return { state: "open", entry: clientEntry("performance", "Performance", "performance") };
   if (requested === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID) requested = SETTINGS_PREFLIGHT_SECTION_ID;
   const first = entries[0];
   if (requested.length === 0) {

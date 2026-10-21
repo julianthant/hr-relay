@@ -48,17 +48,34 @@ describe("typed Settings catalog controls", () => {
     assert.ok(dateSegments.every(segment => segment.getAttribute("aria-required") === "true"));
     assert.doesNotMatch(mounted.host.textContent ?? "", /Kronos|Add fiscal year|New fiscal year|FY202[0-9]/u);
   });
-  it("shows current General browser controls and omits display dimensions and observed host", async () => {
+  it("shows the approved General browser controls without observed host details", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general"); cleanups.push(mounted.close);
     assert.ok(mounted.host.querySelector('[data-settings-path="browser.headless"] [role="switch"]'));
-    assert.equal(mounted.host.querySelector('[data-settings-path="display.screenWidth"]'), null);
-    assert.equal(mounted.host.querySelector('[data-settings-path="display.screenHeight"]'), null);
+    assert.equal(mounted.host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 2);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Observed host/u);
   });
-  it("toggles and autosaves each General browser switch", async () => {
+  it("saves Browser window dimensions through canonical Settings authority and matching readback", async () => {
     const h = await setup("general");
-    for (const path of ["browser.headless", "features.debugScreenshots", "features.duoWebAuthn"] as const) {
+    const width = h.host.querySelector<HTMLInputElement>('input[name="display.screenWidth"]');
+    const height = h.host.querySelector<HTMLInputElement>('input[name="display.screenHeight"]');
+    assert.ok(width); assert.ok(height); assert.equal(width.disabled, false);
+    assert.equal(width.value, "1920"); assert.equal(height.value, "1080");
+    await settingsAction(() => { width.focus(); width.stepDown(120); width.dispatchEvent(new Event("input", { bubbles: true })); });
+    await settingsAction(() => { height.focus(); height.stepDown(80); height.dispatchEvent(new Event("input", { bubbles: true })); });
+    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1800" });
+    assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "1000" });
+    assert.equal(h.commands.length, 0, "moving within the dimensions field must not flush a partial pair");
+    await settingsAction(() => height.blur());
+    assert.equal(h.controller().save.state, "applied"); assert.equal(h.commands.length, 1);
+    const leaves = h.authority.read().sections.flatMap(section => section.leaves);
+    assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1800);
+    assert.equal(leaves.find(leaf => leaf.path === "display.screenHeight")?.effectiveValue, 1000);
+    assert.equal(width.value, "1800"); assert.equal(height.value, "1000");
+  });
+  it("autosaves the approved General browser switch and omits retired controls", async () => {
+    const h = await setup("general");
+    for (const path of ["browser.headless"] as const) {
       const row = h.host.querySelector(`[data-settings-path="${path}"]`);
       assert.ok(row);
       const control = row.querySelector<HTMLInputElement>('[role="switch"]');
@@ -73,7 +90,9 @@ describe("typed Settings catalog controls", () => {
       await settingsAction(() => h.controller().submit());
       assert.equal(h.controller().save.state, "applied");
     }
-    assert.equal(h.commands.length, 3);
+    assert.equal(h.commands.length, 1);
+    assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]'), null);
+    assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]'), null);
   });
   it("shows deployment state locations and editable new-run browser locations", async () => {
     const { host } = await setup("paths");

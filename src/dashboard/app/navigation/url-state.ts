@@ -14,6 +14,8 @@ export interface AppRouteState {
   readonly run?: string;
   readonly section?: string;
   readonly start: boolean;
+  readonly onboardingSetup?: "fast" | "duo";
+  readonly onboarding?: "login" | "signup" | "duo" | "ready";
   /** The intake workspace — ALWAYS an intake session id, so a durable session an
  * operator half-mapped is a link they can come back to, which is the whole */
   readonly intake?: string;
@@ -48,6 +50,8 @@ export interface AppRouteState {
 /** Preserve the raw date identity so the date boundary can explain and recover invalid links. */
 export function parseRoute(search: string): AppRouteState {
   const params = new URLSearchParams(search);
+  const onboarding = params.get("onboarding");
+  const setup = params.get("onboardingSetup");
   const day = params.get("day");
   const run = params.get("run");
   const section = params.get("section");
@@ -62,6 +66,10 @@ export function parseRoute(search: string): AppRouteState {
   const activity = params.get("activity");
   const settings = params.get("settings");
   const route: { -readonly [Key in keyof AppRouteState]: AppRouteState[Key] } = { start: params.get("start") === "1" };
+  if (setup === "fast" || setup === "duo") route.onboardingSetup = setup;
+  else if (setup !== null) route.viewInvalid = true;
+  if (onboarding === "login" || onboarding === "signup" || onboarding === "duo" || onboarding === "ready") route.onboarding = onboarding;
+  else if (onboarding !== null) route.viewInvalid = true;
   const view = parseViewRoute(params.get("view"));
   if (view === null) route.viewInvalid = true;
   else if (Object.keys(view).length) route.view = view;
@@ -117,6 +125,8 @@ export function parseRoute(search: string): AppRouteState {
 
 export function routeToSearch(route: AppRouteState): string {
   const params = new URLSearchParams();
+  if (route.onboardingSetup !== undefined) params.set("onboardingSetup", route.onboardingSetup);
+  if (route.onboarding !== undefined) params.set("onboarding", route.onboarding);
   if (route.day !== undefined) params.set("day", route.day);
   if (route.run !== undefined) params.set("run", route.run);
   if (route.section !== undefined) params.set("section", route.section);

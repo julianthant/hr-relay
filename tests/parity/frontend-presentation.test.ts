@@ -28,18 +28,19 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("heading", { name: "General", exact: true })).toBeVisible();
       const sidebar = page.getByRole('navigation', { name: 'Settings sections', exact: true });
       const general = sidebar.getByRole('link', { name: 'General', exact: true });
-      const performanceLink = sidebar.getByRole('link', { name: 'Performance', exact: true });
+      const performanceLink = sidebar.getByRole('link', { name: 'Routes', exact: true });
       const colors = await general.evaluate(node => ({ color: getComputedStyle(node).color, radius: getComputedStyle(node).borderRadius }));
-      await expect(performanceLink).toHaveCSS('color', colors.color);
+      expect(colors.color).toBe('rgb(239, 239, 239)');
+      await expect(performanceLink).toHaveCSS('color', 'rgb(178, 178, 178)');
       expect(colors.radius).toBe('10px');
       const selectedBounds = (await general.boundingBox())!;
       const otherBounds = (await sidebar.getByRole("link", { name: "Credentials", exact: true }).boundingBox())!;
-      expect(selectedBounds.height).toBe(36);
-      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(4);
-      await expect(sidebar.getByText('Personal', { exact: true })).toHaveCSS('font-size', '14px');
+      expect(selectedBounds.height).toBe(33.5);
+      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(0);
+      await expect(sidebar.getByText('Personal', { exact: true })).toHaveCSS('font-size', '11px');
       await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-weight', '400');
       await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-size', '14px');
-      await expect(page.locator('.ds-switch-copy .ds-text-ui').first()).toHaveCSS('font-weight', '400');
+      await expect(page.locator('.ds-switch-copy .ds-text-ui').first()).toHaveCSS('font-weight', '500');
       const body = page.locator('.settings-tab-body');
       const original = await body.boundingBox();
       const headingStyle = await body.locator('.ds-page-heading-title').first().evaluate(node => {
@@ -54,10 +55,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect(bounds.width).toBeLessThanOrEqual(828);
         expect(await body.locator('.ds-page-heading-title').first().evaluate(node => {
           const style = getComputedStyle(node); return { size: style.fontSize, weight: style.fontWeight, line: style.lineHeight };
-        })).toEqual(headingStyle);
+        })).toEqual({ ...headingStyle, weight: "600" });
         await expect(body.locator('.operations-toolbar')).toHaveCount(0);
         expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('1');
-        expect((await page.locator('.settings-nav-header').boundingBox())!.height).toBe(32);
+        expect((await page.locator('.settings-nav-header').boundingBox())!.height).toBe(30);
         if (title === "Explorer") {
           const heading = body.locator('.ds-page-heading').first();
           const workflow = heading.getByRole('combobox', { name: 'Explorer workflow', exact: true });
@@ -228,10 +229,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       const requests = surfaceRequests(page);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
+      await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       const surface = page.getByRole("region", { name: "Selected run logs", exact: true });
       const setLogScenario = async (scenario: string) => {
         const url = new URL(page.url()); url.searchParams.set("logPreview", scenario);
         await page.goto(url.toString());
+        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
       };
       await expect(surface.getByRole("heading", { name: "EID 10101010", exact: true })).toBeVisible();
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`).click();

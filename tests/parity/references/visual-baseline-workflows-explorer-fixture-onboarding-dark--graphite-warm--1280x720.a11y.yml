@@ -21,8 +21,6 @@
       - link "Credentials":
         - /url: "?settings=credentials"
       - text: Advanced
-      - link "Performance":
-        - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
       - link "Routes":
@@ -35,7 +33,7 @@
       - link "Analytics":
         - /url: "?settings=activity"
       - text: Status
-      - link "Storage checks":
+      - link "Storage":
         - /url: "?settings=storage"
       - link "Preflight":
         - /url: "?settings=preflight"
@@ -137,12 +135,14 @@
             - text: Read only Transaction number Confirmation page Employee ID · name Post-submit person readback Effective date · job row Post-submit employment readback
           - text: Match the receipt to the CRM hire and employment details
       - paragraph: New-hire receipt readback illustrated
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings" [pressed]
+    - button "Log out"
 - region "Notifications"
 - listbox:
   - group:

@@ -71,7 +71,9 @@ for(const theme of PARITY_THEMES){
     await installTheme(page,theme);
     await gotoAppState(page,fixture.baseUrl,{day:FIXTURE_DAY});
     await page.getByRole("button",{name:"Settings",exact:true}).click();
-    await page.getByRole("link",{name:"Performance",exact:true}).click();
+    await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("backoff");
+    await page.getByRole("link", { name: "Backoff base Performance", exact: true }).click();
+      await page.getByRole("searchbox", { name: "Search settings", exact: true }).fill("");
     const width=page.getByRole("textbox",{name:"Task",exact:true});await width.fill("1777");
     await page.getByRole("link",{name:"Keyboard",exact:true}).click();
     await page.goBack();await expect(width).toHaveValue("1777");

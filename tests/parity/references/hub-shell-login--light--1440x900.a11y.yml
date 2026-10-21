@@ -1,0 +1,26 @@
+# hub-shell-login--light--1440x900
+# adapter: fixture
+# fixture: hub-mock-ports-served-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: light  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#onboarding-main"
+- text: Relay
+- main:
+  - heading "Log in to Relay" [level=1]
+  - paragraph: Open your workspace.
+  - text: Work email (required)
+  - textbox "Work email (required)"
+  - text: Password (required)
+  - textbox "Password (required)"
+  - button "Show password": Show
+  - button "Log in"
+  - text: New to Relay?
+  - link "Sign up":
+    - /url: "?onboarding=signup"
+  - paragraph: "Demo: alex.rivera@ucsd.edu / Relay-demo-42"
+- paragraph: UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.
+- region "Notifications"

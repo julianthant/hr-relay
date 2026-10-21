@@ -21,8 +21,6 @@
       - link "Credentials":
         - /url: "?settings=credentials"
       - text: Advanced
-      - link "Performance":
-        - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
       - link "Routes":
@@ -35,7 +33,7 @@
       - link "Analytics":
         - /url: "?settings=activity"
       - text: Status
-      - link "Storage checks":
+      - link "Storage":
         - /url: "?settings=storage"
       - link "Preflight":
         - /url: "?settings=preflight"
@@ -232,10 +230,12 @@
             - strong: Match the Kuali option · Step 10
             - paragraph: Resolve that department against options read from this document.
         - button "Back to field"
+- status
 - region "Session Panel":
   - group "Session actions":
     - button "Sessions"
     - text: 2 running 1 starting 1 idle
     - button "Add workers"
     - button "Settings" [pressed]
+    - button "Log out"
 - region "Notifications"

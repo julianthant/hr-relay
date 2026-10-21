@@ -26,7 +26,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const personal = page.locator('.settings-nav-group').filter({ has: page.getByText('Personal', { exact: true }) });
       const advanced = page.locator('.settings-nav-group').filter({ has: page.getByText('Advanced', { exact: true }) });
       await expect(personal.getByRole('link')).toHaveText(['General', 'Credentials']);
-      await expect(advanced.getByRole('link')).toHaveText(['Performance', 'Paths', 'Routes']);
+      await expect(advanced.getByRole('link')).toHaveText(['Paths', 'Routes']);
       await expect(page.getByRole('textbox', { name: 'Task', exact: true })).toBeVisible();
 
       await captureSemanticEvidence('advanced-settings');

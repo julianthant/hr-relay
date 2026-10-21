@@ -32,6 +32,7 @@ for (const theme of PARITY_THEMES) {
       await installFrozenMonotonic(page);
       for (const scenario of previewScenarios) {
         await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}&logPreview=${scenario.id}`);
+        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
         const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
         await expect(logs).toBeVisible();
         if (["empty", "waiting", "failed"].includes(scenario.id)) await attachPresentationReference(page, info, `logs-${scenario.id}-${theme.attribute}.png`);
@@ -43,6 +44,7 @@ for (const theme of PARITY_THEMES) {
           await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
           await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: flow.label, exact: true }).click();
         }
+        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
         await expect(page.getByRole("region", { name: "Queue", exact: true })).toBeVisible();
         const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
         await expect(logs).toBeVisible();

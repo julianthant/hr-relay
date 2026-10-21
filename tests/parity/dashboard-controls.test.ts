@@ -14,7 +14,7 @@ async function markerError(tabs: Locator): Promise<number> {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Tabs, spreadsheet controls and Activity dates remain uniform @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
+  test(`Shared tabs, spreadsheet controls and Activity dates remain uniform @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
@@ -25,36 +25,34 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.clock.setFixedTime(new Date("2026-09-26T12:00:00Z"));
       await installTheme(page, theme);
       await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.goto(`${server.baseUrl}/kit.html`);
+      const tabs = page.getByRole("tablist", { name: "Run detail", exact: true });
+      const first = tabs.getByRole("tab").first(), second = tabs.getByRole("tab").nth(1);
+      const marker = tabs.locator(".ds-tab-indicator");
+      await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
+      const listBounds = (await tabs.boundingBox())!, firstBounds = (await first.boundingBox())!;
+      expect(firstBounds.x).toBeCloseTo(listBounds.x, 0);
+      await second.click();
+      await expect(second).toHaveAttribute("aria-selected", "true");
+      await expect(marker).toHaveCSS("transition-property", "transform");
+      await expect(marker).toHaveCSS("transition-duration", "0.22s");
+      await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
+      await first.click(); await second.click(); await first.click();
+      await expect(first).toHaveAttribute("aria-selected", "true");
+      await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
+      await first.focus(); await page.keyboard.press("ArrowRight");
+      await expect(second).toBeFocused(); await expect(second).toHaveAttribute("aria-selected", "true");
+      await expect(marker).toHaveCSS("transition-duration", "0s");
+      await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await first.click();
+      await expect(marker).toHaveCSS("transition-duration", "0s");
+      await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
+
+      await page.emulateMedia({ reducedMotion: "no-preference" });
       await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
       const settings = page.getByRole("region", { name: "Settings", exact: true });
       const navigation = settings.getByRole("navigation", { name: "Settings sections" });
-      for (const [section, label] of [["Spreadsheets", "Spreadsheet settings"]]) {
-        await navigation.getByRole("link", { name: section, exact: true }).click();
-        const tabs = settings.getByRole("tablist", { name: label, exact: true });
-        const first = tabs.getByRole("tab").first(), second = tabs.getByRole("tab").nth(1);
-        const marker = tabs.locator(".ds-tab-indicator");
-        await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
-        const listBounds = (await tabs.boundingBox())!, firstBounds = (await first.boundingBox())!;
-        expect(firstBounds.x).toBeCloseTo(listBounds.x, 0);
-        await second.click();
-        await expect(second).toHaveAttribute("aria-selected", "true");
-        await expect(marker).toHaveCSS("transition-property", "transform");
-        await expect(marker).toHaveCSS("transition-duration", "0.22s");
-        await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
-        await first.click(); await second.click(); await first.click();
-        await expect(first).toHaveAttribute("aria-selected", "true");
-        await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
-        await first.focus(); await page.keyboard.press("ArrowRight");
-        await expect(second).toBeFocused(); await expect(second).toHaveAttribute("aria-selected", "true");
-        await expect(marker).toHaveCSS("transition-duration", "0s");
-        await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
-        await page.emulateMedia({ reducedMotion: "reduce" });
-        await first.click();
-        await expect(marker).toHaveCSS("transition-duration", "0s");
-        await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
-
-        await page.emulateMedia({ reducedMotion: "no-preference" });
-      }
       await navigation.getByRole("link", { name: "Spreadsheets", exact: true }).click();
       await settings.getByRole("button", { name: "26–27 Student applicants.xlsx", exact: true }).click();
       const editor = settings.getByRole("region", { name: "Spreadsheet editor", exact: true });

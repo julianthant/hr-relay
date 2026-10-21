@@ -85,7 +85,7 @@ current corpus.
 - Fixed and editable Run Options share a field grid; Dry run starts off, browser mode is Headed, and captures start on.
 - Reading steps allow typed manual values while form actions and required sign-in steps remain included.
 - Settings uses a stationary rail/Navbar and body-scoped content, search, guarded exit, and child breadcrumbs.
-- Settings places General/Credentials under Personal and Performance/Paths/Routes under Advanced.
+- Settings places General/Credentials under Personal and Paths/Routes under Advanced; Performance remains reachable through Settings search.
 - General shows the ChatGPT account port; provider budget/model, API-key, viewport, and version-bump controls are absent.
 - Save feedback requires matching acknowledgment/readback and uses a value-free toast with retained inline recovery state.
 - Sessions remains a strip with worker cards and controls behind its add-workers entry.
@@ -93,9 +93,20 @@ current corpus.
 - Notifications has interactive local destinations and separate read state.
 - Analytics uses duration coverage and exact-population drilldown rather than a labor-saving estimate.
 - Explorer renders complete local workflow timelines and source disclosures with stable IDs.
-- Spreadsheets uses typed fields, selected header/column import, real XLSX workers, and bounded editor history.
+- Spreadsheets uses the approved HUB library, inline spreadsheet types and Kronos report controls,
+  versioned files, typed fields, selected header/column import, real XLSX workers and bounded editor history.
+  The former Library/Types tabs, library search and Date added column are absent.
+- The HUB Assistant mounts in the shell with a retained composer in Chat files. Product conversations use the served assistant controller with per-chat cancellation and account authority.
+  Confirmation stays unavailable. Explicit parity composition retains the approved conversation and workflow
+  samples; workbook registration and exact-version reads use the served library.
 - Archive and UI catalog URLs show removal notices; their pages and Queue context menus are absent.
 - Loading skeletons preserve the geometry of the surface they replace.
+
+Julian approved the HUB-R4 composer over HUB-R3 on October 19, 2026 at 2:41 PM PT
+(`relay-plan/briefs/HUB-WIRE-1.md`). The approved combined presentation inventory is 107 TSX files,
+22 stylesheets and two theme modules (131 paths). The inventory test and exact path fixture own
+that freeze. Legacy parity drivers follow the current visible controls; removed presentation
+contracts are replaced with inclusion/exclusion, geometry, keyboard and interaction assertions.
 
 ## Verification rules
 

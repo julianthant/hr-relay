@@ -85,22 +85,22 @@ afterEach_m0(_afterEachFixture0);
   const document = fixtureSettingsDocument_m0();
   const groups = buildSettingsNav_m0(servedStatusSections, document);
 
-  it_m0("serves the approved 11 pages under the five shared groups", () => {
+  it_m0("serves the approved 10 pages under the five shared groups", () => {
     assert_m0.deepEqual(groups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
       ["Personal", ["general", "credentials"]],
-      ["Advanced", ["performance", "paths", "routes"]],
+      ["Advanced", ["paths", "routes"]],
       ["Data", ["spreadsheets", "explorer", "activity"]],
       ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard"]],
     ]);
-    assert_m0.equal(groups.flatMap(group => group.entries).length, 11);
+    assert_m0.equal(groups.flatMap(group => group.entries).length, 10);
   });
 
   it_m0("keeps the approved navigation while the editable settings projection is unavailable", () => {
     const unavailableGroups = buildSettingsNav_m0(servedStatusSections);
     assert_m0.deepEqual(unavailableGroups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
       ["Personal", ["general", "credentials"]],
-      ["Advanced", ["performance", "paths", "routes"]],
+      ["Advanced", ["paths", "routes"]],
       ["Data", ["spreadsheets", "explorer", "activity"]],
       ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard"]],
@@ -125,7 +125,7 @@ afterEach_m0(_afterEachFixture0);
 
   it_m0("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert_m0.equal(page.querySelectorAll('a[href^="?settings="]').length, 11);
+    assert_m0.equal(page.querySelectorAll('a[href^="?settings="]').length, 10);
     assert_m0.ok(page.textContent?.includes("Editable settings unavailable"), page.textContent ?? "");
     assert_m0.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
     assert_m0.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));

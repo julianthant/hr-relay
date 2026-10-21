@@ -23,6 +23,10 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
       context: context ?? entry.label, terms: `${label} ${entry.label} ${description} ${context ?? ""}`.toLocaleLowerCase() });
   };
   for (const group of groups) for (const entry of group.entries) add(entry.id, entry.label, undefined, group.heading, group.heading);
+  add("performance", "Performance", undefined, "Advanced");
+  add("general", "Animations", "appearance.animations", "Appearance subtle motion reduced motion");
+  add("general", "Assistant permission", "assistant.permission", "Ask before every action submits");
+  add("general", "Browser window", "browser.window", "Browser width height size");
   add("general", "Dark theme", "appearance.theme", "Appearance dashboard color light dark");
   add("general", "ChatGPT account", "chatgpt.account", "OpenAI sign in login subscription plan OCR manage usage");
   if (runtimePaths && document !== undefined) {
@@ -32,7 +36,7 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
   if (document === undefined) return results;
   for (const section of document.sections) for (const leaf of section.leaves) {
     // The folded General page renders these controls, not the retired operator-label field.
-    if (leaf.path === "actor.label" || leaf.path.startsWith("display.") || section.id === "providers") continue;
+    if (leaf.path === "features.debugScreenshots" || leaf.path === "features.duoWebAuthn" || leaf.path === "actor.label" || leaf.path.startsWith("display.") || section.id === "providers") continue;
     if (section.id === "routes") {
       const presentation = routePresentation(leaf);
       add("routes", presentation.name, leaf.path, presentation.description);
