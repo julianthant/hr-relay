@@ -713,9 +713,73 @@ export const BulkRunCommandResponseSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+export const CommandEffectClassSchema = z.enum([
+  "read",
+  "local-write",
+  "destructive",
+  "external-submit",
+]);
+export type CommandEffectClass = z.infer<typeof CommandEffectClassSchema>;
+
+// destructive and external-submit both ask before submits, so neither is a weaker label.
+const COMMAND_EFFECT_STRENGTH = {
+  read: 0,
+  "local-write": 1,
+  destructive: 2,
+  "external-submit": 2,
+} as const satisfies Record<CommandEffectClass, number>;
+
+export function commandEffectIsWeaker(stated: CommandEffectClass, actual: CommandEffectClass): boolean {
+  return COMMAND_EFFECT_STRENGTH[stated] < COMMAND_EFFECT_STRENGTH[actual];
+}
+
+export const COMMAND_EFFECT_BY_ACTION = {
+  "annotate-failure": "local-write",
+  "set-batch-grouping": "local-write",
+  "start-run": "external-submit",
+  "inspect-intake": "local-write",
+  "confirm-intake-mapping": "local-write",
+  "correct-intake-row": "local-write",
+  "exclude-intake-row": "local-write",
+  "validate-intake": "local-write",
+  "enqueue-intake-manifest": "external-submit",
+  "plan-worker-count": "destructive",
+  "spawn-worker": "external-submit",
+  "stop-worker": "destructive",
+  "remove-worker": "destructive",
+  "retry-worker": "external-submit",
+  "pause-worker": "local-write",
+  "resume-worker": "external-submit",
+  "refresh-browser": "local-write",
+  "reopen-browser": "local-write",
+  "apply-settings": "local-write",
+  "apply-protected-settings": "destructive",
+  "plan-storage-relocation": "local-write",
+  "cancel-storage-relocation": "local-write",
+  retry: "external-submit",
+  restart: "external-submit",
+  cancel: "destructive",
+  bump: "local-write",
+  rename: "local-write",
+  delete: "destructive",
+  "resolve-write-present": "external-submit",
+  "resolve-write-absent": "external-submit",
+  "resolve-gate": "external-submit",
+  "notification-read": "local-write",
+  "notification-unread": "local-write",
+  "notification-snooze": "local-write",
+  "notification-unsnooze": "local-write",
+  "apply-explorer-edit": "local-write",
+} as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
+
 export const CommandFamilySpecSchema = z.strictObject({
   family: CommandFamilySchema,
   actions: z.array(CommandActionSchema).min(1),
+  effects: z.array(CommandEffectClassSchema).min(1),
+}).superRefine((spec, context) => {
+  if (spec.effects.length !== spec.actions.length) {
+    context.addIssue({ code: "custom", message: "each command action needs one effect class" });
+  }
 });
 
 const COMMAND_ACTIONS_BY_FAMILY = {
@@ -747,6 +811,16 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
     if (entry.actions.length !== expected.length || expected.some((action) => !entry.actions.includes(action))) {
       context.addIssue({ code: "custom", path: [entries.indexOf(entry), "actions"], message: `${family} command actions do not match the registered family` });
     }
+    entry.actions.forEach((action, index) => {
+      if (entry.effects[index] !== COMMAND_EFFECT_BY_ACTION[action]) {
+        context.addIssue({ code: "custom", path: [entries.indexOf(entry), "effects", index], message: `${action} effect class does not match the canonical effect` });
+      }
+    });
+  }
+  const covered = entries.flatMap((entry) => entry.actions);
+  if (covered.length !== CommandActionSchema.options.length
+    || CommandActionSchema.options.some((action) => !covered.includes(action))) {
+    context.addIssue({ code: "custom", message: "command family registry must include every action" });
   }
 });
 
@@ -762,7 +836,10 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },
-]));
+].map((entry) => ({
+  ...entry,
+  effects: entry.actions.map((action) => COMMAND_EFFECT_BY_ACTION[CommandActionSchema.parse(action)]),
+}))));
 
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandRequest = z.infer<typeof CommandRequestSchema>;
@@ -773,3 +850,12 @@ export type BulkRunCommandRequest = z.infer<typeof BulkRunCommandRequestSchema>;
 export type BulkRunCommandAcceptanceRecord = z.infer<typeof BulkRunCommandAcceptanceRecordSchema>;
 export type BulkRunCommandOutcome = z.infer<typeof BulkRunCommandOutcomeSchema>;
 export type BulkRunCommandResponse = z.infer<typeof BulkRunCommandResponseSchema>;
+
+// A dry enqueue still journals local runs.
+export function commandEffectClass(command: CommandRequest): CommandEffectClass {
+  const declared = COMMAND_EFFECT_BY_ACTION[command.type];
+  if (command.type === "enqueue-intake-manifest" && command.payload.dryRun && commandEffectIsWeaker("local-write", declared)) {
+    return "local-write";
+  }
+  return declared;
+}
