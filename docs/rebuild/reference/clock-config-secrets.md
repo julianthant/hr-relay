@@ -291,7 +291,8 @@ Each record retains its own transaction and recovery contract.
 The schema-3 document contains the schema-1 current record and marked replay receipts.
 Each current entry holds `{ valueId, value, updatedAt }`; history retains request digests, marked
 operations and allocated value IDs without replaced plaintext. A missing store represents the empty
-revision-one baseline. Schema-2 input is authenticated and converted in memory; `migrateHistory()`
+revision-one baseline. Schema-2 input is fully replayed against its record before marked-history
+projection in memory; reconstructable last-applied metadata must also match. `migrateHistory()`
 or a subsequent write publishes schema 3.
 The store requires a live, path-bound `RuntimeAdmission`.
 

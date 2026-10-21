@@ -319,9 +319,56 @@ function withoutTombstones(ids: Map<string, string>, journal: ErasureJournal): M
   return new Map([...ids].filter(([, valueId]) => !erased.has(valueId)));
 }
 
+function replayVersionTwoHistory(
+  history: readonly z.infer<typeof CredentialHistoryEntryV2Schema>[],
+): ProtectedStoreRecord {
+  let current: ProtectedStoreRecord = initialProtectedStoreRecord();
+  const commandIds = new Set<string>();
+  const writeIds = new Set<string>();
+  const valueIds = new Set<string>();
+
+  for (const entry of history) {
+    const { request, setValueIds } = entry;
+    if (request.expectedRevision !== current.revision
+      || commandIds.has(request.commandId)
+      || writeIds.has(request.writeId)) {
+      throw new Error("credential history has a divergent command identity");
+    }
+    commandIds.add(request.commandId);
+    writeIds.add(request.writeId);
+
+    const entries = new Map<string, unknown>(Object.entries(current.entries));
+    for (const name of ProtectedSettingsNameSchema.options) {
+      const operation = request.entries[name];
+      const valueId = setValueIds[name];
+      if (operation === undefined || "clear" in operation) {
+        if (valueId !== undefined) throw new Error("credential history has an unexpected value identity");
+        if (operation !== undefined) entries.delete(name);
+        continue;
+      }
+      if (valueId === undefined || valueIds.has(valueId)) {
+        throw new Error("credential history has an invalid value identity");
+      }
+      valueIds.add(valueId);
+      entries.set(name, { valueId, value: operation.set, updatedAt: request.updatedAt });
+    }
+    current = ProtectedStoreRecordSchema.parse({
+      schemaVersion: 1,
+      revision: current.revision + 1,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+      entries: Object.fromEntries(entries),
+      lastApplied: lastApplied(request),
+    });
+  }
+  return current;
+}
+
 function v2Document(input: unknown): unknown {
   const parsed = CredentialDocumentV2Schema.safeParse(input);
   if (!parsed.success) return input;
+  if (!privateEqual(replayVersionTwoHistory(parsed.data.history), parsed.data.record)) {
+    throw new Error("credential store protected.json disagrees with its identity history");
+  }
   return {
     schemaVersion: 3,
     record: parsed.data.record,
@@ -358,8 +405,8 @@ function authenticateDocument(input: unknown, journal: ErasureJournal = EMPTY_JO
     throw new Error("credential store protected.json disagrees with its identity history");
   }
   const latest = parsed.data.history.at(-1);
-  if (latest !== undefined && (parsed.data.record.lastApplied?.commandId !== latest.receipt.commandId
-    || parsed.data.record.lastApplied.writeId !== latest.receipt.writeId)) {
+  if (latest === undefined ? parsed.data.record.lastApplied !== undefined
+    : !privateEqual(parsed.data.record.lastApplied, lastApplied(latest.receipt))) {
     throw new Error("credential store protected.json disagrees with its identity history");
   }
   return deepFreeze(parsed.data);
