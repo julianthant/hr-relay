@@ -87,6 +87,7 @@ export function assessCredentialInventory(input: {
   readonly backupPaths?: readonly string[];
   readonly loginDataPaths?: readonly string[];
   readonly capturedSecrets?: readonly string[];
+  readonly capturedSecretsComplete: boolean;
 }): CredentialInventory {
   const inventoryMissing = input.backupPaths === undefined || input.loginDataPaths === undefined;
   const captured = (input.capturedSecrets ?? []).map((secret) => Buffer.from(secret, "utf8"));
@@ -100,7 +101,7 @@ export function assessCredentialInventory(input: {
       if (!name.startsWith(".protected.") || !name.endsWith(".tmp")) continue;
       const path = join(input.profileRoot, "credentials", name);
       const stageClass = classifyPath(path);
-      if (stageClass !== "clean" && stageClass !== "absent") stagePlaintext = true;
+      if ((stageClass !== "clean" && stageClass !== "absent") || (stageClass === "clean" && !input.capturedSecretsComplete)) stagePlaintext = true;
       if (captured.length > 0 && stageClass !== "absent" && stageClass !== "unreadable" && containsCaptured(readFileSync(path), captured)) {
         byteHit = true;
       }
@@ -114,7 +115,7 @@ export function assessCredentialInventory(input: {
   for (const path of backupPaths) {
     const copy = classifyPath(path);
     if (copy === "holds" || copy === "plaintext") backupPlaintext.push(path);
-    if (copy === "unknown" || copy === "unreadable") unknownFormats.push(path);
+    if (copy === "unknown" || copy === "unreadable" || (copy === "clean" && !input.capturedSecretsComplete)) unknownFormats.push(path);
     if (captured.length > 0 && copy !== "absent" && copy !== "unreadable" && containsCaptured(readFileSync(path), captured)) {
       byteHit = true;
     }

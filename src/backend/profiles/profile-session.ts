@@ -440,6 +440,7 @@ export function createProfileSession(input: {
       backupPaths: input.backupPaths?.(profileId),
       loginDataPaths: input.loginDataPaths?.(profileId),
       capturedSecrets,
+      capturedSecretsComplete: before.entries.ucpathUserId !== undefined && before.entries.ucpathPassword !== undefined,
     });
     if (!inventory.logoutComplete) {
       writeOperation({ ...command, phase: "incomplete" });

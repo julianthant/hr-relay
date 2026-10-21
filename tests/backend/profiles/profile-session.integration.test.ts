@@ -151,8 +151,10 @@ describe("profile session", () => {
     writeFileSync(backup, readFileSync(join(copyRoot, "credentials", "protected.json")), { mode: 0o600 });
     copyAdmission.release();
     const copyBytes = readFileSync(backup);
-    const withoutCapture = assessCredentialInventory({ profileRoot: profile, entriesAbsent: true, backupPaths: [backup], loginDataPaths: [], capturedSecrets: [] });
-    assert.equal(withoutCapture.logoutComplete, true);
+    const withoutCapture = assessCredentialInventory({ profileRoot: profile, entriesAbsent: true, backupPaths: [backup], loginDataPaths: [], capturedSecrets: [], capturedSecretsComplete: false });
+    assert.equal(withoutCapture.logoutComplete, false);
+    assert.deepEqual(withoutCapture.backupPlaintext, []);
+    assert.deepEqual(withoutCapture.unknownFormats, [backup]);
     writeFileSync(protectedPath, restored, { mode: 0o600 });
     const restarted = createProfileSession({ machineRoot: root, ...ports });
     const blocked = restarted.resumeLogout(operationId);
@@ -165,8 +167,26 @@ describe("profile session", () => {
     assert.equal(readFileSync(protectedPath).includes(Buffer.from(password)), false);
     const replayed = JSON.parse(readFileSync(protectedPath, "utf8")) as typeof erased;
     assert.deepEqual(replayed.history.map(entry => entry.receipt.commandId), erased.history.map(entry => entry.receipt.commandId));
+    const assertStillBlocked = (result: ReturnType<typeof restarted.resumeLogout>) => {
+      assert.ok(result.state === "refused");
+      assert.equal(result.code, "PROFILE_LOGOUT_INVENTORY_BLOCKED");
+      const row = machineAdmissions.get(root)?.readProfileRegistry().profiles.find(entry => entry.profileId === active.profileId);
+      assert.equal(row?.lifecycle, "cancelling");
+      assert.notEqual(row?.credentialState, "wiped");
+      assert.deepEqual(readFileSync(backup), copyBytes);
+      const current = JSON.parse(readFileSync(protectedPath, "utf8")) as typeof erased;
+      assert.deepEqual(current.history.map(entry => entry.receipt.commandId), erased.history.map(entry => entry.receipt.commandId));
+      const pending = JSON.parse(readFileSync(join(root, "machine", "operations", `${operationId}.json`), "utf8")) as { commandId: string; writeId: string; expectedRevision: number };
+      assert.deepEqual({ commandId: pending.commandId, writeId: pending.writeId, expectedRevision: pending.expectedRevision }, eraseIdentity);
+    };
+    const pending = JSON.parse(readFileSync(join(root, "machine", "operations", `${operationId}.json`), "utf8")) as { commandId: string; writeId: string; expectedRevision: number };
+    const eraseIdentity = { commandId: pending.commandId, writeId: pending.writeId, expectedRevision: pending.expectedRevision };
+    assertStillBlocked(restarted.resumeLogout(operationId));
+    const again = createProfileSession({ machineRoot: root, ...ports });
+    assertStillBlocked(again.resumeLogout(operationId));
+    assertStillBlocked(again.resumeLogout(operationId));
     rmSync(backup);
-    assert.equal(restarted.resumeLogout(operationId).state, "wiped");
+    assert.equal(again.resumeLogout(operationId).state, "wiped");
   });
 
   it("does not cancel another profile when this one signs in", () => {
