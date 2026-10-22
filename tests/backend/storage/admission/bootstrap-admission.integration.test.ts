@@ -29,7 +29,7 @@ import * as processLocks_m4 from "../../../../src/backend/storage/sqlite/runtime
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
-import { doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 vi.mock("node:fs", async importOriginal => {
  const actual = await importOriginal<typeof import("node:fs")>();
  return { ...actual, readdirSync: vi.fn(actual.readdirSync), mkdirSync: vi.fn(actual.mkdirSync), lstatSync: vi.fn(actual.lstatSync) };
@@ -331,7 +331,7 @@ try {
     const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(${JSON.stringify(profileId)})), state = admission.stateRoot;
     const credentials = createCredentialStore({ admission, stateRoot: state, erasureJournalAdmission: machine,
       erasureJournalPath: join(machine.stateRoot, "machine", "erasures", admission.profileBinding.profileId + ".json") });
-    const path = join(state, "state.db"), directory = join(state, "backups"), processLockRoot = join(root, ${JSON.stringify(rebuildRuntimeIsolation.processLockRoot)});
+    const path = join(state, "state.db"), directory = join(state, "backups", "authority"), processLockRoot = join(root, ${JSON.stringify(rebuildRuntimeIsolation.processLockRoot)});
     const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-crash-test" }, undefined, undefined, undefined, undefined, credentials);
     const report = await new AuthorityBackupService(admission, db, { directory }).request({ trigger: "operator", requiredGeneration: db.getMeta().authorityGeneration });
     db.close();
@@ -384,7 +384,7 @@ await _afterEachFixture0();
 
 it("fresh private authority is healthy without creating a backup",async()=>{
   const f=runtimeFixture(["dashboard.serve"]);
-  try {const report=await doctorAuthorityStorage(f.doctorOptions,f.clock);assert.equal(report.authority.state,"healthy");assert.equal(report.backup.state,"missing");assert.equal((await f.report()).results.find(check=>check.check==="authority.health")?.status,"pass");}
+  try {const report=await doctorAuthorityStorage(f.admission,f.doctorOptions,f.clock);assert.equal(report.authority.state,"healthy");assert.equal(report.backup.state,"missing");assert.equal((await f.report()).results.find(check=>check.check==="authority.health")?.status,"pass");}
   finally {f.close();}
 });
 it.each(["wrong","newer","unsupported"] as const)("%s authority refuses read-only inspection without automatic migration",async kind=>{
@@ -393,7 +393,7 @@ it.each(["wrong","newer","unsupported"] as const)("%s authority refuses read-onl
     const database=new DatabaseSync(f.databasePath);
     try {if(kind==="wrong")database.exec("DROP TABLE runs");else {const version=kind==="newer"?999:1;database.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}}
     finally {database.close();}
-    const before=readFileSync(f.databasePath);const report=await doctorAuthorityStorage(f.doctorOptions,f.clock);
+    const before=readFileSync(f.databasePath);const report=await doctorAuthorityStorage(f.admission,f.doctorOptions,f.clock);
     assert.equal(report.authority.state,"degraded");if(report.authority.state!=="degraded")throw new Error("unhealthy authority passed");
     assert.equal(report.authority.cause.code,"authority-schema-mismatch");
     assert.equal((await f.report()).results.find(check=>check.check==="authority.health")?.status,"fail");assert.deepEqual(readFileSync(f.databasePath),before);
@@ -410,9 +410,11 @@ it("supported single-authority restore re-checks healthy without inventing repai
     const backup=await backupStoppedAuthority(admission,stateRoot,clock,join(workspace,rebuildRuntimeIsolation.processLockRoot));
     const manifest=backup.manifests.at(-1);assert.ok(manifest);
     const path=join(stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`);
-    const restored=await composeStorageCommand(rebuildRuntimeIsolation,["restore","--from",path,"--json"],clock,workspace,admission);
+    const restored=await composeStorageCommand(rebuildRuntimeIsolation,["restore","--from",path,"--json"],clock,workspace,admission,boundProfileCredentials(admission));
     assert.equal(restored.exitCode,0,restored.output);
-    const runner=new AuthorityHealthPreflightRunner(admission,{stateRootTrustAnchor:workspace,stateRoot,authorityPath,
+    const renewed = profile.renewAfterRestore();
+    assert.throws(() => admission.assertLive(), /profile-restore-context-expired|released admission/u);
+    const runner=new AuthorityHealthPreflightRunner(renewed.admission,{stateRootTrustAnchor:workspace,stateRoot,authorityPath,
       backupDirectory:join(stateRoot,"backups","authority"),busyTimeoutMs:100},clock);
     const observed=await runner.run({signal:new AbortController().signal,timeoutMs:1000,deadlineMonotonicMs:clock.monotonicMs()+1000,redaction:"safe-summary"});
     assert.equal(observed.state,"healthy",JSON.stringify(observed));
@@ -568,3 +570,20 @@ await _afterEachFixture0();
 }
 });
 }
+
+it.each(["malformed", "foreign"] as const)("refuses %s machine registry before publishing an installation lease", kind => {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "machine-registry-admission-")));
+  const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  const registryPath = join(machine.stateRoot, "machine", "profiles.json");
+  machine.release();
+  const control = join(workspace, ".tracker/control"), leases = join(control, "leases");
+  try {
+    const document = JSON.parse(readFileSync(registryPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(registryPath, kind === "malformed" ? "{" : JSON.stringify({ ...document, sessionGeneration: 7 }), { mode: 0o600 });
+    const before = readFileSync(registryPath), beforeLeases = readdirSync_m1(leases);
+    assert.throws(() => acquireEntrypointAdmission(workspace, "shared"));
+    assert.deepEqual(readdirSync_m1(leases), beforeLeases);
+    assert.equal(readFileSync(registryPath).equals(before), true);
+    assert.equal(existsSync(join(control, "admission-mutex")), false);
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});

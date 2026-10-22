@@ -1413,7 +1413,7 @@ export function inspectPendingRelocationRecovery(workspacePath: string, operatio
   readLocator(control, workspace, binding);
   return binding;
 }
-export function acquireInstallation(workspacePath: string, mode: "shared", options?: never): InstallationLease;
+export function acquireInstallation(workspacePath: string, mode: "shared", options?: { machine?: true }): InstallationLease;
 export function acquireInstallation(workspacePath: string, mode: "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): ExclusiveInstallationLease;
 export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; machine?: true; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): InstallationLease | ExclusiveInstallationLease {
   const workspace = realpathSync(workspacePath);
@@ -1440,6 +1440,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     if (options?.recoverRelocation) assertRestoreHeld(workspace, options.recoverRelocation.restoreAdmission);
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined, mode === "exclusive" ? options?.recoverAuthorityRestore : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh, options.machine) : fail("installation locator missing"));
+    if (options?.machine === true) readMachineRegistry(control, resolved);
     admissionId = randomUUID();
     leasePath = join(control, "leases", `${admissionId}.json`);
     atomicJson(leasePath, { schemaVersion: 1, admissionId, mode, pid: process.pid, processIdentity: identity() });

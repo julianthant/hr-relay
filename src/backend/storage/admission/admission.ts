@@ -758,9 +758,9 @@ export class RuntimeAdmission {
       if (mode === "exclusive") return RuntimeAdmission.fromInstallationLease(lease);
       lease.release();
     }
-    const admission = mode === "exclusive" ? acquireExclusiveRuntimeAdmission(canonical) : acquireSharedRuntimeAdmission(canonical);
-    try { admission.readProfileRegistry(); return admission; }
-    catch (error) { admission.release(); throw error; }
+    const lease = mode === "exclusive" ? acquireInstallation(canonical, "exclusive", { machine: true })
+      : acquireInstallation(canonical, "shared", { machine: true });
+    return RuntimeAdmission.fromInstallationLease(lease);
   }
 
   static acquireInitial(workspace: string,

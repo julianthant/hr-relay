@@ -144,7 +144,13 @@ export function createBoundProfileFixture(options: { pending?: true; sharedMachi
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
       registerBoundProfile(admission, machine);
     }
-    return { workspace, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish,
+    const renewAfterRestore = () => {
+      admission.release();
+      admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+      registerBoundProfile(admission, machine);
+      return { admission, credentials: boundProfileCredentials(admission) };
+    };
+    return { workspace, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore,
       close() { boundProfiles.delete(stateRoot); admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
   } catch (error) { machine.release(); rmSync(workspace, { recursive: true, force: true }); throw error; }
 }
