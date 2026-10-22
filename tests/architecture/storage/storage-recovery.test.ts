@@ -1874,7 +1874,6 @@ describe("offline exact-backup restore", () => {
       stagedAdmission.release();
     }, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
     const report = await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
-    renewAfterRestore(root);
     assert.equal(report.state, "restored");
     assert.equal(report.authorityGeneration, baselineGeneration(root) + 1);
     assert.equal(existsSync(join(suspects, report.suspectFileName)), true);
@@ -1882,6 +1881,7 @@ describe("offline exact-backup restore", () => {
     assert.equal(readFileSync(join(suspects, `${report.suspectFileName}-shm`), "utf8"), "suspect shm bytes");
     assert.equal(existsSync(`${authorityPath}-wal`), false);
     assert.equal(existsSync(`${authorityPath}-shm`), false);
+    renewAfterRestore(root);
     const restored = openDatabase(authorityPath);
     assert.deepEqual(restored.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
     assert.equal(restored.authority.notifications.get(UUID_3), undefined);

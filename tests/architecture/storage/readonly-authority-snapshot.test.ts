@@ -6,10 +6,10 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { spawnSync } from "node:child_process";
 import { it, vi } from "vitest";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../../../src/backend/storage/sqlite/backup-inspection.js";
 import { createReadonlyAuthoritySnapshot } from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
 
 vi.mock("node:child_process", { spy: true });
@@ -28,9 +28,11 @@ function inventory(directory: string) {
 }
 
 it.each([false, true])("inspects committed WAL: %s without creating or changing source companions", async liveWal => {
-  const workspace = mkdtempSync(join(realpathSync(tmpdir()), "readonly-authority-test-"));
-  const admission = acquireEntrypointAdmission(workspace, "exclusive");
-  const path = join(admission.stateRoot, "state.db");
+  const fixture = createBoundProfileFixture(), workspace = fixture.workspace, admission = fixture.admission, path = fixture.path;
+  const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "readonly-snapshot-test" },
+    undefined, undefined, undefined, undefined, boundProfileCredentials(admission));
+  database.close();
+  const baseline = AuthorityDatabase.inspectExistingReadOnly(admission, path).authorityGeneration;
   let writer: DatabaseSync | undefined;
   try {
     if (liveWal) {
@@ -42,7 +44,7 @@ it.each([false, true])("inspects committed WAL: %s without creating or changing 
       assert.equal(existsSync(`${path}-shm`), false);
     }
     const before = inventory(admission.stateRoot);
-    const expectedGeneration = liveWal ? 1 : 0;
+    const expectedGeneration = baseline + (liveWal ? 1 : 0);
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(admission, path).authorityGeneration, expectedGeneration);
     assert.equal(AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(admission, path).authorityGeneration, expectedGeneration);
     assert.equal(AuthorityDatabase.inspectTimelineReadOnly(admission, path).authorityGeneration, expectedGeneration);
@@ -57,7 +59,7 @@ it.each([false, true])("inspects committed WAL: %s without creating or changing 
       assert.ok(file.bytes.equals(original.bytes), `${file.name} changed`);
     }
   } finally {
-    writer?.close(); admission.release(); rmSync(workspace, { recursive: true, force: true });
+    writer?.close(); fixture.close();
   }
 });
 
