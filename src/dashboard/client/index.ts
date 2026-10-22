@@ -1,3 +1,4 @@
+import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 import { DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
@@ -24,6 +25,10 @@ export type {
 } from "../../models/dashboard/search.js";
 
 export interface DashboardClient extends DashboardQueries, DashboardCommands {
+  readProfileSession(): Promise<PublicProfileState>;
+  signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
+  signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
+  logOutProfile(): Promise<PublicProfileState>;
   reportError(report: DashboardErrorReport): Promise<void>;
   subscribeDay(
     input: Omit<DashboardDaySubscriptionDeps, "transport">,
@@ -38,6 +43,22 @@ export function createDashboardClient(input: Readonly<{
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
   const client: DashboardClient = Object.freeze({
+    async readProfileSession() {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/state")).body);
+    },
+    async signInProfile(request: ProfileLoginRequest) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/sign-in", {
+        method: "POST", body: JSON.stringify(ProfileLoginRequestSchema.parse(request)),
+      })).body);
+    },
+    async signUpProfile(request: ProfileSignUpRequest) {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/sign-up", {
+        method: "POST", body: JSON.stringify(ProfileSignUpRequestSchema.parse(request)),
+      })).body);
+    },
+    async logOutProfile() {
+      return PublicProfileStateSchema.parse((await transport.requestJsonResponse("/api/v1/profile/logout", { method: "POST", body: "{}" })).body);
+    },
     async reportError(report: DashboardErrorReport) {
       await transport.requestJson("/api/v1/debug/errors", { method: "POST", body: JSON.stringify(DashboardErrorReportSchema.parse(report)) });
     },

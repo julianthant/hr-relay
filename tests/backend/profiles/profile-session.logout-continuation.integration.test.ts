@@ -1,0 +1,137 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { it } from "vitest";
+import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
+import { LogoutOperationSchema } from "../../../src/models/profiles/profile.js";
+
+const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-22T12:01:00.000Z" };
+function fixture(withForeign = false) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "profile-logout-continuation-")));
+  const machine = acquireEntrypointAdmission(root, "shared");
+  let busy = true;
+  const owners: ReturnType<typeof createProfileSession>[] = [];
+  const open = (observe = true) => {
+    const session = createProfileSession({ machineRoot: machine.stateRoot, admission: machine,
+      ...(observe ? { activity: { hasUnquiescedWork: () => busy } } : {}), backupPaths: () => [], loginDataPaths: () => [] });
+    owners.push(session); return session;
+  };
+  const session = open();
+  if (withForeign) {
+    const foreign = session.signUp({ email: "foreign@ucsd.edu", password: "foreign-fixture-password", firstName: "Other", lastName: "Fixture", createdAt: "2026-10-22T11:59:00.000Z" });
+    assert.equal(foreign.state, "active");
+    if (foreign.state !== "active") throw new Error("actual foreign fixture signup required");
+    busy = false;
+    assert.equal(session.logOut(foreign.token, { at: fields.at }).state, "wiped");
+    busy = true;
+  }
+  const active = session.signUp({ ...fields, firstName: "Fixture", lastName: "Operator", createdAt: "2026-10-22T12:00:00.000Z" });
+  assert.equal(active.state, "active");
+  if (active.state !== "active") throw new Error("actual fixture signup required");
+  const pending = session.logOut(active.token, { at: fields.at });
+  assert.equal(pending.state, "cancelling");
+  if (pending.state !== "cancelling" || pending.operationId === undefined) throw new Error("actual pending logout required");
+  session.close();
+  const credentials = join(machine.stateRoot, "profiles", active.profileId, "credentials", "protected.json");
+  return { machine, active, pending, credentials, open, idle() { busy = false; },
+    cleanup() { for (const owner of owners.reverse()) owner.close(); machine.release(); rmSync(root, { recursive: true, force: true }); } };
+}
+
+it("requires a fresh password and normal lockout before issuing a server-only logout continuation", () => {
+  const f = fixture();
+  try {
+    const session = f.open(), before = readFileSync(f.credentials);
+    assert.equal(session.signIn({ ...fields, password: "wrong" }).state, "cancelling");
+    for (let attempt = 0; attempt < 5; attempt++) assert.equal(session.authorizeLogoutContinuation({ ...fields, password: "wrong" }).state, "refused");
+    assert.equal(session.authorizeLogoutContinuation(fields).state, "refused");
+    assert.equal(session.authorizeLogoutContinuation({ ...fields, email: "foreign@ucsd.edu" }).state, "refused");
+    assert.equal(readFileSync(f.credentials).equals(before), true);
+    assert.equal(session.logoutOperations().length, 1);
+    assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
+    const authorized = session.authorizeLogoutContinuation({ ...fields, at: "2026-10-22T12:03:00.000Z" });
+    assert.equal(authorized.state, "authorized");
+    assert.equal("token" in authorized, false);
+    assert.equal("profileId" in authorized, false);
+  } finally { f.cleanup(); }
+});
+
+it("consumes exact pending-operation authority once and never grants an ordinary session", () => {
+  const f = fixture();
+  try {
+    const session = f.open();
+    const authorized = session.authorizeLogoutContinuation(fields);
+    assert.equal(authorized.state, "authorized");
+    if (authorized.state !== "authorized") throw new Error("genuine continuation required");
+    f.idle();
+    assert.equal(authorized.resume().state, "wiped");
+    assert.equal(authorized.resume().state, "refused");
+    assert.equal(session.authorizeLogoutContinuation(fields).state, "refused");
+    assert.equal(session.logoutOperations().length, 0);
+    assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
+    const stale = session.readFile(f.active.token, "credentials/protected.json");
+    assert.ok(!(stale instanceof Uint8Array));
+    if (!(stale instanceof Uint8Array)) assert.equal(stale.state, "refused");
+  } finally { f.cleanup(); }
+});
+
+for (const mutation of ["operation", "epoch", "owner-close"] as const) it(`refuses a logout continuation after ${mutation} changes`, () => {
+  const f = fixture();
+  try {
+    const session = f.open(), before = readFileSync(f.credentials);
+    const authorized = session.authorizeLogoutContinuation(fields);
+    if (authorized.state !== "authorized") throw new Error("genuine continuation required");
+    if (mutation === "operation") {
+      const path = join(f.machine.stateRoot, "machine", "operations", `${f.pending.operationId}.json`);
+      const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+      f.machine.publishProfileOperation({ ...operation, phase: "incomplete" });
+    } else if (mutation === "epoch") createProfileRegistry(f.machine).advanceSession(null);
+    else session.close();
+    f.idle();
+    assert.equal(authorized.resume().state, "refused");
+    assert.equal(readFileSync(f.credentials).equals(before), true);
+    assert.equal(session.logoutOperations().length, 1);
+  } finally { f.cleanup(); }
+});
+
+it("does not invent cold process or inventory custody after fresh authentication", () => {
+  const f = fixture();
+  try {
+    const session = f.open(false), before = readFileSync(f.credentials);
+    const authorized = session.authorizeLogoutContinuation(fields);
+    if (authorized.state !== "authorized") throw new Error("genuine continuation required");
+    assert.equal(authorized.resume().state, "cancelling");
+    assert.equal(authorized.resume().state, "refused");
+    assert.equal(readFileSync(f.credentials).equals(before), true);
+    assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
+  } finally { f.cleanup(); }
+});
+
+it("supersedes an older issued continuation without accepting a client operation identity", () => {
+  const f = fixture();
+  try {
+    const session = f.open(), before = readFileSync(f.credentials);
+    const older = session.authorizeLogoutContinuation(fields), current = session.authorizeLogoutContinuation(fields);
+    if (older.state !== "authorized" || current.state !== "authorized") throw new Error("genuine continuations required");
+    assert.equal(older.resume().state, "refused");
+    assert.equal("operationId" in current, false);
+    assert.equal("token" in current, false);
+    assert.equal(readFileSync(f.credentials).equals(before), true);
+    f.idle();
+    assert.equal(current.resume().state, "wiped");
+    assert.equal(current.resume().state, "refused");
+  } finally { f.cleanup(); }
+});
+
+it("does not authorize a different genuine profile to continue the pending logout", () => {
+  const f = fixture(true);
+  try {
+    const session = f.open(), before = readFileSync(f.credentials);
+    assert.equal(session.authorizeLogoutContinuation({ email: "foreign@ucsd.edu", password: "foreign-fixture-password", at: fields.at }).state, "refused");
+    assert.equal(readFileSync(f.credentials).equals(before), true);
+    assert.equal(session.logoutOperations().length, 1);
+    assert.equal(session.logoutOperations()[0]?.profileId, f.active.profileId);
+  } finally { f.cleanup(); }
+});

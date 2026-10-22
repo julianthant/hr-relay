@@ -13,9 +13,17 @@ export interface DashboardHttpServerDeps {
   readonly onTransferError?: (error: Error) => void;
 }
 
+export interface DashboardHttpMount {
+  close(this: void): Promise<void>;
+}
+
 export interface DashboardHttpServer {
   readonly port: number;
   close(): Promise<void>;
+}
+
+export interface DashboardHttpListener extends DashboardHttpServer {
+  mount(app: DashboardApp, accepts: (request: Request) => boolean): DashboardHttpMount;
 }
 
 function toWebRequest(req: IncomingMessage, hostname: string, port: number, signal: AbortSignal): Request {
@@ -161,20 +169,20 @@ async function pipeResponse(
   res: ServerResponse,
   cancellation: RequestCancellation,
 ): Promise<void> {
-  if (response.body === null) {
-    if (res.destroyed) return;
-    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
-    await endResponse(res);
-    return;
-  }
-  const reader = response.body.getReader();
-  await cancellation.attachBody(reader);
-  if (res.destroyed) {
-    await cancellation.cancel(new Error("dashboard client disconnected before response handoff"));
-    return;
-  }
-  res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
   try {
+    if (response.body === null) {
+      if (res.destroyed) return;
+      res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+      await endResponse(res);
+      return;
+    }
+    const reader = response.body.getReader();
+    await cancellation.attachBody(reader);
+    if (res.destroyed) {
+      await cancellation.cancel(new Error("dashboard client disconnected before response handoff"));
+      return;
+    }
+    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
@@ -204,7 +212,7 @@ async function pipeResponse(
   }
 }
 
-export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): Promise<DashboardHttpServer> {
+export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): Promise<DashboardHttpListener> {
   const requestedPort = z.number().int().nonnegative().parse(deps.port);
   const hostname = deps.hostname ?? "127.0.0.1";
   if (hostname !== "127.0.0.1" && hostname !== "localhost") {
@@ -214,7 +222,12 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
   // Reassigned to the OS-assigned port after listen when requestedPort is 0;
   // requests only arrive after listen, so the handler always sees the bound port.
   let boundPort = requestedPort;
-  const active = new Map<Promise<void>, RequestCancellation>();
+  type Mount = { app: DashboardApp; accepts: (request: Request) => boolean; state: "open" | "closing" | "closed" | "failed";
+    failures: unknown[]; closing?: Promise<void> };
+  type Transfer = { cancellation: RequestCancellation; response: ServerResponse; mount?: Mount };
+  const active = new Map<Promise<void>, Transfer>();
+  let selected: Mount | undefined;
+  let closing = false;
   const retainedObserverFailures: AggregateError[] = [];
   const retainObserverFailure = (failure: AggregateError): void => {
     retainedObserverFailures.push(failure);
@@ -222,9 +235,11 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
   const server: Server = createServer((req, res) => {
     const requestAbort = new AbortController();
     const cancellation = createRequestCancellation(requestAbort);
+    const ownership: Transfer = { cancellation, response: res };
     const disconnect = (): void => {
       const phase = cancellation.hasBody ? "during response transfer" : "before response handoff";
       void cancellation.cancel(new Error(`dashboard client disconnected ${phase}`)).catch((error: unknown) => {
+        ownership.mount?.failures.push(error);
         if (!res.destroyed) res.destroy(asError(error));
       });
     };
@@ -232,10 +247,16 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     res.once("close", disconnect);
     res.once("error", disconnect);
     const transfer = (async (): Promise<void> => {
-      const response = await deps.app.fetch(toWebRequest(req, hostname, boundPort, requestAbort.signal));
+      const request = toWebRequest(req, hostname, boundPort, requestAbort.signal);
+      const mount = selected;
+      if (closing) throw new DashboardShutdownError();
+      if (mount?.state === "open" && mount.accepts(request)) ownership.mount = mount;
+      const response = await (ownership.mount?.app ?? deps.app).fetch(request);
       await pipeResponse(response, res, cancellation);
     })().catch((error: unknown) => {
+      if (error instanceof DashboardShutdownError && error === cancellation.reason) return;
       const normalized = asError(error);
+      ownership.mount?.failures.push(normalized);
       if (!res.destroyed) res.destroy(normalized);
       if (deps.onTransferError === undefined) {
         retainObserverFailure(new AggregateError(
@@ -264,7 +285,7 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       res.removeListener("error", disconnect);
       active.delete(task);
     });
-    active.set(task, cancellation);
+    active.set(task, ownership);
     void task.catch((error: unknown) => {
       if (!res.destroyed) res.destroy(asError(error));
     });
@@ -306,7 +327,37 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
 
   return Object.freeze({
     port: boundPort,
+    mount: (app: DashboardApp, accepts: (request: Request) => boolean): DashboardHttpMount => {
+      if (closing || selected !== undefined) throw new Error("dashboard HTTP mount unavailable");
+      const mount: Mount = { app, accepts, state: "open", failures: [] };
+      selected = mount;
+      return Object.freeze({ close(): Promise<void> {
+        if (mount.closing !== undefined) return mount.closing;
+        mount.state = "closing";
+        const captured = [...active.entries()].filter(([, transfer]) => transfer.mount === mount);
+        const shutdown = new DashboardShutdownError();
+        const cancellations = captured.map(([, transfer]) => {
+          const cancelled = transfer.cancellation.cancel(shutdown);
+          transfer.response.destroy();
+          return cancelled;
+        });
+        mount.closing = (async () => {
+          const settled = await Promise.allSettled([...captured.map(([task]) => task), ...cancellations]);
+          const failures = [...mount.failures];
+          for (const result of settled) if (result.status === "rejected" && !failures.includes(result.reason)) failures.push(result.reason);
+          if (failures.length > 0) {
+            mount.state = "failed";
+            throw new AggregateError(failures, "dashboard HTTP mount closure is unproved");
+          }
+          mount.state = "closed";
+          if (selected !== mount) throw new Error("dashboard HTTP mount ownership changed");
+          selected = undefined;
+        })();
+        return mount.closing;
+      } });
+    },
     close: async (): Promise<void> => {
+      closing = true;
       const closeServer = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error === undefined) resolve();
@@ -314,10 +365,10 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
         });
       });
       const shutdown = new DashboardShutdownError();
-      const cancellations = [...active.values()].map((cancellation) => cancellation.cancel(shutdown));
+      const cancellations = [...active.values()].map(({ cancellation }) => cancellation.cancel(shutdown));
       server.closeAllConnections();
       const settled = await Promise.allSettled([closeServer, ...active.keys(), ...cancellations]);
-      const failures: unknown[] = [];
+      const failures: unknown[] = [...(selected?.failures ?? [])];
       for (const result of settled) {
         if (result.status === "rejected") failures.push(result.reason);
       }

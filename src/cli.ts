@@ -14,7 +14,7 @@ import {
   registerWorkerComposer,
   startRebuildRuntime,
 } from "./backend/app/composition/runtime-composition.js";
-import { composeDashboardRuntime } from "./backend/app/composition/dashboard/compose.js";
+import { composeDashboardApplication } from "./backend/app/composition/dashboard/compose.js";
 import { composeDryRunScenarioCommand } from "./backend/app/dry-run/compose.js";
 import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./backend/app/dry-run/manifests.js";
 import { parseDryRunScenarioManifest } from "./models/trust/dry-run-scenario.js";
@@ -43,7 +43,7 @@ export async function runCli(admission: RuntimeAdmission, takeInitialCustody?: (
     return;
   }
   registerDashboardComposer((runtimeIsolation, options) =>
-    composeDashboardRuntime({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend }));
+    composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend }));
   registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
     admission,
     isolation: runtimeIsolation,
