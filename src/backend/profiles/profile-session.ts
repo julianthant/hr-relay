@@ -79,7 +79,7 @@ function cancelling(operationId?: string): ProfileCancelling {
   };
 }
 
-function restoreAdmission(operationId: string): ProfileLogoutResult {
+function restoreAdmission(operationId?: string): ProfileLogoutResult {
   return { ...refusal("PROFILE_RESTORE_ADMISSION_REQUIRED", operationId), request: RESTORE_ADMISSION_REQUEST };
 }
 
@@ -210,8 +210,12 @@ export function createProfileSession(input: {
     profileAdmission.assertWritable();
     const epoch = registry.advanceSession(profileId);
     sessions.clear();
+    profileAdmission.release();
+    storageAdmissions.delete(profileId);
+    const currentAdmission = admittedProfile(profileId);
+    currentAdmission.assertWritable();
     const token = randomUUID();
-    sessions.set(token, { profileId, epoch, admission: profileAdmission });
+    sessions.set(token, { profileId, epoch, admission: currentAdmission });
     return { state: "active", token, epoch, profileId };
   }
 
@@ -364,7 +368,7 @@ export function createProfileSession(input: {
     const selection = registry.read();
     if (selection.activeProfileId !== null && selection.activeProfileId !== profileId) return refusal("PROFILE_TRANSITION_BLOCKED", operation.operationId);
     if (selection.activeProfileId === profileId) registry.advanceSession(null);
-    registry.update(profileId, { lifecycle: "cancelling" });
+    if (selection.profiles.find(row => row.profileId === profileId)?.lifecycle !== "cancelling") registry.update(profileId, { lifecycle: "cancelling" });
     const closure = quiescence(profileId);
     if (closure === "busy") {
       input.activity?.requestCancellation?.(profileId);
@@ -587,6 +591,11 @@ export function createProfileSession(input: {
     },
     logOut(token: string, inputFields: { readonly at: string }): { readonly state: "wiped"; readonly inventory: CredentialInventory } | ProfileLogoutResult | ProfileCancelling {
       const at = IsoInstantSchema.parse(inputFields.at);
+      admission.assertLive();
+      const issued = sessions.get(token);
+      if (issued !== undefined && !journalOutsideProfile(join(machineRoot, "profiles", issued.profileId), journalPath(issued.profileId))) {
+        return restoreAdmission();
+      }
       const session = requireSession(token);
       if ("state" in session) return session;
       return withProfileLock(machineRoot, () => {

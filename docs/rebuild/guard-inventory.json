@@ -643,7 +643,7 @@
       "file": "tests/architecture/storage/admission-identity.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
-      "invariant": "Reason: opaque profile registration exposed a dependency cycle and an unchecked issuer escape. Only the existing token-protected RuntimeAdmission constructor registers issued identities; consumers use the single identity owner, whose RuntimeAdmission dependency stays type-only. Negative mutations reject foreign, aliased, escaped, dynamic and nonconstructor registration.",
+      "invariant": "Reason: opaque profile registration exposed a dependency cycle and an unchecked issuer escape. Only the existing token-protected RuntimeAdmission constructor registers issued identities; consumers use the single identity owner, whose RuntimeAdmission dependency stays type-only. Negative mutations reject foreign, aliased, escaped, dynamic and nonconstructor registration. Credential-store, ChatGPT credential repository and restore-snapshot imports must erase the RuntimeAdmission dependency at declaration level; verbatim emit and mixed-specifier mutations protect against the observed erasure-head initialization cycle.",
       "replacementRequired": true
     }
   ],

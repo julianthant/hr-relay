@@ -263,6 +263,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
     afterVerifiedStage?(): void; afterFence?(): void; afterRetention?(): void; afterSwitch?(): void }> }>): Promise<Readonly<{ operationId: string; generation: number }>> {
   const workspace = resolve(input.workspace);
   const clock = input.clock ?? systemClock;
+  input.admission?.assertStorageRelocationSupported();
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   let admission = input.admission;
   let ownedAdmission = false;

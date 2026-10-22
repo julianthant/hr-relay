@@ -153,6 +153,7 @@ export function createStorageRelocationPlanReader(input: Readonly<{
   const workspace = resolve(input.workspace);
   const context = () => {
     const admission = requireRuntimeAdmission(input.admission);
+    admission.assertStorageRelocationSupported();
     const locator = admission.locator;
     requirePair(locator, workspace);
     const receipts = admission.readRelocationReceipts();

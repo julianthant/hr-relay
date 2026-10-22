@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { DatabaseSync } from "node:sqlite";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
-import { type RuntimeAdmission } from "../admission/admission.js";
+import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { existsSync, statSync, lstatSync, mkdtempSync, rmSync, type BigIntStats } from "node:fs";
