@@ -37,17 +37,24 @@ export function createSettingsAuthorityTestWorld() {
     const clock = manualClock(new Date("2026-09-06T12:00:00Z"));
     const path = profile.path;
     const options = { path, busyTimeoutMs: 250, migrationOwner: "settings-test" };
-    const database = admission === undefined ? AuthorityDatabase.open(options, clock) : NativeAuthorityDatabase.open(admission, options, clock); databases.push(database);
-    seedSyntheticRuntimeConfig(database);
     const credentialOptions = { stateRoot: root, ...(hooks === undefined ? {} : { hooks }) };
-    const store = admission === undefined ? createCredentialStore(credentialOptions) : nativeCredentialStore({ ...credentialOptions, admission });
+    const store = admission === undefined ? createCredentialStore(credentialOptions) : nativeCredentialStore({ ...credentialOptions, admission,
+      erasureJournalAdmission: profile.machine, erasureJournalPath: join(profile.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+    const database = admission === undefined ? AuthorityDatabase.open(options, clock) : NativeAuthorityDatabase.open(admission, options, clock, undefined, undefined, undefined, store); databases.push(database);
+    seedSyntheticRuntimeConfig(database);
     const registered = profile.machine.readProfileRegistry().profiles.find(row => row.profileId === profile.admission.profileBinding.profileId);
     assert.ok(registered?.lifecycle === "ready" && registered.credentialState === "saved");
     assert.equal(store.ownsCommandId(registered.registration.commandId), true);
     assert.equal(store.read().revision, registered.registration.credentialRevision);
     const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
     const execute = (request: unknown, authority: CommandAuthority = database) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request);
-    return { repoRoot, root, path, database, store, execute, clock, admission };
+    const renewAfterRestore = () => {
+      const renewed = profile.renewAfterRestore();
+      const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), renewed.credentials);
+      return { admission: renewed.admission, store: renewed.credentials,
+        execute: (request: unknown, authority: CommandAuthority) => executeSettingsCommand({ authority, clock, ids: { uuid: randomUUID }, settings }, request) };
+    };
+    return { repoRoot, root, path, database, store, execute, clock, admission, renewAfterRestore };
   }
 
   function protectedCommand(expectedRevision: number) {

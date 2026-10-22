@@ -74,7 +74,7 @@ afterEach(_afterEachFixture0);
 
   it("after uncertain audit, real CLI restore preserves credentials and exact retry repairs the missing audit", async () => {
     const f = fixture(undefined, true); const revision = f.store.read().revision; const request = protectedCommand(revision); assert.ok(f.admission);
-    const backup = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission);
+    const backup = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission, f.store);
     assert.equal(backup.exitCode, 0, backup.output);
     const directory = join_m0(f.root, "backups", "authority");
     const name = readdirSync(directory).find((entry) => entry.endsWith(".manifest.json")); assert.ok(name);
@@ -84,26 +84,28 @@ afterEach(_afterEachFixture0);
     const credentialBytes = readFileSync(credentialPath);
     assert.equal(f.store.read().revision, revision + 1);
     f.database.close();
-    const restore = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["restore", "--from", join_m0(directory, name), "--json"], f.clock, f.repoRoot, f.admission);
+    const restore = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["restore", "--from", join_m0(directory, name), "--json"], f.clock, f.repoRoot, f.admission, f.store);
     assert.equal(restore.exitCode, 0, restore.output);
+    const renewed = f.renewAfterRestore();
+    assert.throws(() => f.admission!.assertLive(), /profile-restore-context-expired|released admission/u);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    const restored = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-restore-retry" }, f.clock, undefined, undefined, undefined, boundProfileCredentials(f.admission)); databases.push(restored);
+    const restored = AuthorityDatabase.open(renewed.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-restore-retry" }, f.clock, undefined, undefined, undefined, renewed.store); databases.push(restored);
     assert.equal(restored.authority.commands.get(request.commandId), undefined);
     const generation = restored.getMeta().authorityGeneration;
-    const foreign = f.execute({ ...ordinary(), commandId: request.commandId }, restored);
+    const foreign = renewed.execute({ ...ordinary(), commandId: request.commandId }, restored);
     assert.equal(foreign.state, "rejected");
     if (foreign.state === "rejected") assert.equal(foreign.code, "command-divergent");
     assert.equal(restored.authority.commands.get(request.commandId), undefined);
     assert.equal(restored.authority.commandAudits.findByCommand(request.commandId), undefined);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     const divergent = structuredClone(request); divergent.payload.entries.ucpathPassword.set = "divergent-after-restore";
-    assert.equal(f.execute(divergent, restored).state, "rejected");
+    assert.equal(renewed.execute(divergent, restored).state, "rejected");
     assert.equal(restored.getMeta().authorityGeneration, generation);
-    assert.equal(f.execute(request, restored).state, "applied");
-    assert.equal(f.execute(request, restored).state, "already-applied");
+    assert.equal(renewed.execute(request, restored).state, "applied");
+    assert.equal(renewed.execute(request, restored).state, "already-applied");
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(f.store)), "synthetic-private-value");
-    const doctor = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["doctor", "--json"], f.clock, f.repoRoot, f.admission);
+    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(renewed.store)), "synthetic-private-value");
+    const doctor = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["doctor", "--json"], f.clock, f.repoRoot, renewed.admission, renewed.store);
     assert.equal(doctor.exitCode, 0, doctor.output);
     for (const value of ["synthetic-private-value", "divergent-after-restore"]) {
       assert.equal(doctor.output.includes(value), false); assert.equal(restore.output.includes(value), false);
@@ -120,14 +122,13 @@ afterEach(_afterEachFixture0);
 const admissions = new Map<string, RuntimeAdmission>();
 const openedAuthorities: AuthorityDatabase[] = [];
 function openAuthority(input: z.input<typeof AuthorityDatabaseOptionsSchema>, clock = CLOCK) {
-  const admission = [...admissions.values()].find(owner => input.path.startsWith(owner.stateRoot + "/"));
-  const database = admission === undefined ? AuthorityDatabase_m0.open(input, clock) : AuthorityDatabase.open(admission, input, clock, undefined, undefined, undefined, boundProfileCredentials(admission));
+  const database = AuthorityDatabase_m0.open(input, clock);
   openedAuthorities.push(database);
   return database;
 }
 function composeStorageCommand(isolation: Parameters<typeof composeStorageCommand_m0>[0], args: readonly string[], clock = CLOCK, repoRoot: string) {
   const admission = admissions.get(repoRoot);
-  return admission === undefined ? syntheticComposeStorageCommand_m1(isolation, args, clock, repoRoot) : composeStorageCommand_m0(isolation, args, clock, repoRoot, admission);
+  return admission === undefined ? syntheticComposeStorageCommand_m1(isolation, args, clock, repoRoot) : composeStorageCommand_m0(isolation, args, clock, repoRoot, admission, boundProfileCredentials(admission));
 }
 
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
@@ -147,6 +148,7 @@ interface Paths {
   readonly stateRoot: string;
   readonly authorityPath: string;
   readonly backupDirectory: string;
+  readonly renewAfterRestore: () => void;
 }
 
 function paths(mode: "ready" | "pending" | "uninitialized" = "uninitialized"): Paths {
@@ -162,6 +164,13 @@ function paths(mode: "ready" | "pending" | "uninitialized" = "uninitialized"): P
     stateRoot,
     authorityPath: join_m0(stateRoot, "state.db"),
     backupDirectory: join_m0(stateRoot, "backups", "authority"),
+    renewAfterRestore() {
+      assert.ok(profile);
+      const old = profile.admission;
+      const renewed = profile.renewAfterRestore();
+      admissions.set(repoRoot, renewed.admission);
+      assert.throws(() => old.assertLive(), /profile-restore-context-expired|released admission/u);
+    },
   };
 }
 
@@ -201,6 +210,7 @@ afterEach(_afterEachFixture0);
     database.close();
     const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
     assert.equal(restore.exitCode, 0, restore.output);
+    p.renewAfterRestore();
     const restoreReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
     const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
     assert.equal(doctor.exitCode, 1, doctor.output);
@@ -242,6 +252,7 @@ afterEach(_afterEachFixture0);
     finally { newer.close(); }
     const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
     assert.equal(restore.exitCode, 0, restore.output);
+    p.renewAfterRestore();
     const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
     assert.equal(doctor.exitCode, 1, doctor.output);
     const report = z.object({ spanAuthority: z.object({ state: z.literal("degraded"), problems: z.array(z.object({
@@ -435,15 +446,32 @@ afterEach(_afterEachFixture0);
       mkdirSync(join_m0(p.stateRoot, "credentials"), { mode: 0o700 });
       writeFileSync(credentialPath, "synthetic-malformed-credential-canary", { mode: 0o600 });
     }
+    const admission = admissions.get(p.repoRoot); assert.ok(admission);
+    const fileBytes = (path: string) => existsSync(path) ? readFileSync(path) : undefined;
+    const before = [p.authorityPath, `${p.authorityPath}-wal`, `${p.authorityPath}-shm`,
+      join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes);
+    const entries = readdirSync(p.stateRoot).sort();
     const restored = await composeStorageCommand(rebuildRuntimeIsolation,
       ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
-    assert.equal(restored.exitCode, 0, restored.output);
-    const report = z.object({ state: z.literal("restored"), credentials: z.object({ state: z.enum(["available", "unavailable"]) }) }).parse(JSON.parse(restored.output));
-    assert.equal(report.credentials.state, credentialState === "missing" ? "available" : "unavailable");
     assert.equal(restored.output.includes("synthetic-malformed-credential-canary"), false);
-    if (credentialState === "malformed") assert.equal(readFileSync(credentialPath, "utf8"), "synthetic-malformed-credential-canary");
-    else assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissions.get(p.repoRoot)!, p.authorityPath).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    if (credentialState === "malformed") {
+      assert.equal(restored.exitCode, 1);
+      assert.match(restored.output, /authority restore REFUSED — credential store protected.json is malformed/u);
+      const after = [p.authorityPath, `${p.authorityPath}-wal`, `${p.authorityPath}-shm`,
+        join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes);
+      assert.equal(after.every((bytes, index) => bytes === undefined ? before[index] === undefined : before[index] !== undefined && bytes.equals(before[index])), true);
+      assert.deepEqual(readdirSync(p.stateRoot).sort(), entries);
+      assert.equal(existsSync(join_m0(p.repoRoot, ".tracker/control/journal.json")), false);
+      assert.equal(readFileSync(credentialPath, "utf8"), "synthetic-malformed-credential-canary");
+    } else {
+      assert.equal(restored.exitCode, 0, restored.output);
+      const report = z.object({ state: z.literal("restored"), credentials: z.object({ state: z.literal("unavailable") }) }).parse(JSON.parse(restored.output));
+      assert.equal(report.credentials.state, "unavailable");
+      assert.throws(() => admission.assertLive(), /profile-restore-context-expired/u);
+      assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), false);
+      const raw = new DatabaseSync(p.authorityPath, { readOnly: true });
+      try { assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { raw.close(); }
+    }
   });
 
 });
@@ -518,6 +546,7 @@ try {
   const restore = await composeStorageCommand(rebuildRuntimeIsolation,
     ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
   assert.equal(restore.exitCode, 0, restore.output);
+  p.renewAfterRestore();
   const restoredReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
   const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
   const current = inspect(p.authorityPath);

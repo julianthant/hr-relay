@@ -4,9 +4,8 @@ import { join } from "node:path";
 import { describe,it } from "vitest";
 import { createRunResourcesFactory } from "../../../../../src/backend/app/composition/worker/run-resources.js";
 import { assertProfileBrowserRoot } from "../../../../../src/backend/app/composition/storage-compose.js";
-import { findProfileFixtureAdmission } from "../../../../support/helpers/admission-fixture.js";
+import { boundProfileAdmission, findProfileFixtureAdmission } from "../../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { ConfigSchema } from "../../../../../src/models/config/schema.js";
 import { ConfigSnapshotIdSchema,FingerprintSchema,PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
@@ -17,7 +16,7 @@ import { foundationFixture,HASH,id } from "../../../../support/helpers/database-
 
 type Fixture=ReturnType<typeof foundationFixture>;
 const scheduler={schedule:()=>({cancel:()=>undefined})};
-const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/data/artifacts"))});
+const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: boundProfileAdmission(f.path)});
 describe("F actual four-way baseline independence",()=>{
  const _owners=["P","D","G","S"] as const;
  it("selects actual resources from each retained snapshot and preserves the first run after a newer selection",async()=>{

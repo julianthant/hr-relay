@@ -1,3 +1,4 @@
+import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { createBoundProfileFixture } from "../../helpers/admission-fixture.js";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedS
 import { PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
 import { createPreflightAuthority, type PreflightRunner } from "../../../../src/models/preflight/preflight.js";
 import { PROVIDER_ADAPTER_SPECS, SYSTEM_RUNTIME_SPECS, type RuntimeCapability } from "../../../../src/models/runtime/runtime-dependencies.js";
-import { AuthorityDatabase, AuthorityHealthPreflightRunner } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../../src/backend/app/preflight/runtime-runners.js";
 import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 
@@ -51,11 +52,11 @@ export function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
   const input: RuntimePreflightRunnerInput = { config, providerAvailability, protectedSecrets: { read: () => record }, browserExecutablePath: () => executable,
     scope: PreflightAdmissionScopeSchema.parse({configSnapshotId:"11111111-1111-4111-8111-111111111111", configFingerprint:"a".repeat(64), descriptorFingerprint:"b".repeat(64), requestedCapabilities:capabilities}),
     dashboard: {repoRoot:root, stateRoot, artifactRoot, processLockRoot:join(stateRoot,"locks"), backendPort:0, frontendPort:0, clock,
-      authorityHealth: new AuthorityHealthPreflightRunner(doctorOptions, clock), listLiveWorkerProcesses:()=>[]},
+      authorityHealth: new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock), listLiveWorkerProcesses:()=>[]},
   };
   const report = (transform?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) => {
     const runners = createRuntimePreflightRunners(input);
     return createPreflightAuthority({...input.scope, runners: transform === undefined ? runners : transform(runners), clock, scheduler:createTimeoutDeadlineScheduler(clock)}).refresh(new AbortController().signal);
   };
-  return {root, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, close() {profile.close();}};
+  return {root, admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, close() {profile.close();}};
 }

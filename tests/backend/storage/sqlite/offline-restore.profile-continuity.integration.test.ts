@@ -1,3 +1,4 @@
+import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { acquireRecoveryRuntimeRestore, ProfileStorageRelocationUnsupportedError, RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
@@ -16,7 +17,7 @@ import { spawn } from "node:child_process";
 import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync, readdirSync, lstatSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync, readdirSync, lstatSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, vi } from "vitest";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -114,7 +115,7 @@ describe("profile restore continuity", () => {
     const f = world();
     try {
       const options = { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-settings-unknown" };
-      let database = AuthorityDatabase.open(f.current(), options);
+      let database = FixtureAuthorityDatabase.open(options, undefined, undefined, undefined, undefined, f.store());
       let expected: unknown;
       const settingsCommandId = randomUUID();
       try {
@@ -140,7 +141,7 @@ describe("profile restore continuity", () => {
       } finally { database.close(); }
       const manifestPath = await f.backup();
       await f.restore().restore({ manifestPath, stoppedSystemProof: f.proof() });
-      database = AuthorityDatabase.open(f.renew(), options);
+      database = AuthorityDatabase.open(f.renew(), options, undefined, undefined, undefined, undefined, f.store());
       try {
         assert.deepEqual({ settings: database.authority.settingsCurrent.get(), command: database.authority.commands.get(settingsCommandId),
           audit: database.authority.commandAudits.findByCommand(settingsCommandId), intent: database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
@@ -436,18 +437,23 @@ describe("profile restore continuity", () => {
   it("reports replaced and retains real process admission when exclusive release is unproved", async () => {
     const f = world();
     let held: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
+    let archiveCollision: string | undefined;
     try {
       const manifestPath = await f.backup();
       const factory: OfflineRestoreAdmissionFactory = (input, clock) => {
         held = acquireRuntimeRestoreAdmission(input, clock);
-        return Object.freeze({ admissionId: held.admissionId, release() { throw new Error("synthetic-release-unproved"); } });
+        const history = join(f.processLockRoot, "restore-admission-history");
+        mkdirSync(history, { recursive: true, mode: 0o700 });
+        archiveCollision = join(history, `${held.admissionId}.lock.json`);
+        mkdirSync(archiveCollision, { mode: 0o700 });
+        return held;
       };
       await assert.rejects(f.restore(async () => {}, renameSync, factory).restore({ manifestPath, stoppedSystemProof: f.proof() }),
         error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced" && error.message.includes("release failed"));
       assert.ok(existsSync(join(f.processLockRoot, "restore-admission.lock.json")));
       assert.throws(() => acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "workers", workerId: "synthetic-after-restore", pid: process.pid }));
       assert.throws(() => f.current().assertProfileRuntime());
-    } finally { held?.release(); f.close(); }
+    } finally { if (archiveCollision !== undefined) rmSync(archiveCollision, { recursive: true }); held?.release(); f.close(); }
   });
 
   it.each(["erase", "restore"] as const)("excludes a real concurrent %s owner through the same installation lease", async held => {

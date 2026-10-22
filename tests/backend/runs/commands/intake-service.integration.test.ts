@@ -1,3 +1,4 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import Excel from "exceljs";
 import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
 import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
@@ -8,13 +9,11 @@ import { CommandResultSchema } from "../../../../src/rules/commands/commands.js"
 import JSZip from "jszip";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,readFileSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync,rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
@@ -52,11 +51,11 @@ const ROSTER_CSV = [
   "",
 ].join("\n");
 
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 
 let commandSequence = 0;
@@ -82,8 +81,8 @@ interface Surface {
 }
 
 function surface(): Surface {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-intake-surface-"));
-  roots.push(root);
+  const profile = createBoundProfileFixture(); profiles.push(profile);
+  const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "intake-surface-test" },
@@ -94,7 +93,7 @@ function surface(): Surface {
 
 
   const artifacts = createContentAddressedArtifactWriter({
-    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
+    admission: profile.admission,
   });
   const parser = createIntakeParser({ artifacts });
   const projections = {
@@ -153,7 +152,7 @@ function surface(): Surface {
   });
 
 
-  const stateRoot = join(root, ".tracker");
+  const stateRoot = root;
   const projection = createRunQueueProjection({
     timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
@@ -690,7 +689,7 @@ describe("2.6.1-2 retained intake evidence", () => {
   it("cold rereads preserve exact source bytes, manifest and database generation", async () => {
     const h = surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId);
-    const file = join(h.root, ".tracker/data/artifacts", `${before.artifact.sha256}.artifact`);
+    const file = join(h.root, "artifacts", `${before.artifact.sha256}.artifact`);
     const bytes = readFileSync(file); const generation = h.database.getMeta().authorityGeneration;
     const session = h.database.authority.intakeSessions.get(sessionId);
     const fresh = await h.freshIntake().read(sessionId);
@@ -710,7 +709,7 @@ describe("2.6.1-2 retained intake evidence", () => {
   it("a cold read refuses removed artifact bytes without an empty or cached replacement", async () => {
     const h = surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId); const generation = h.database.getMeta().authorityGeneration;
-    rmSync(join(h.root, ".tracker/data/artifacts", `${before.artifact.sha256}.artifact`));
+    rmSync(join(h.root, "artifacts", `${before.artifact.sha256}.artifact`));
     await assert.rejects(() => h.freshIntake().read(sessionId), /ENOENT/u);
     assert.equal(h.database.getMeta().authorityGeneration, generation);
     assert.equal(h.database.authority.intakeSessions.get(sessionId)?.artifact.sha256, before.artifact.sha256);

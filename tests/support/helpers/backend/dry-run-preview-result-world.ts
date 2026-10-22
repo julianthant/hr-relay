@@ -9,7 +9,7 @@ import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
-import { fixtureDuoCeremonyGates } from "../duo-ceremony-fixtures.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { type FinalizationHarness } from "../kuali-finalization-fixtures.js";
 import { ManualScheduler, recordingLogger, recordingTimelineEmitter } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
@@ -72,7 +72,7 @@ export function createDryRunPreviewResultTestWorld() {
         scheduler,
         taskDeadlineMs: 60_000,
         sessionAcquireMs: 20_000,
-        duoCeremony: fixtureDuoCeremonyGates(clock),
+        duoCeremony: duoCeremonyGatesOver(database, clock, scheduler),
         heartbeatIntervalMs: 600_000,
         idleRepollMs: 1_000,
         log,

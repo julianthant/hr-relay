@@ -91,7 +91,7 @@ describe("SQLite settings authority", () => {
       import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
       import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
       import { createProfileRegistry } from './src/backend/profiles/registry.ts';
-      import { basename, dirname } from 'node:path';
+      import { basename, dirname, join } from 'node:path';
       import { manualClock } from './src/rules/time/clock.ts';
       import { resolveConfigWithProvenance } from './src/backend/app/config/resolve.ts';
       import { executeSettingsCommand } from './src/backend/runs/commands/command-kernel.ts';
@@ -101,9 +101,11 @@ describe("SQLite settings authority", () => {
       const path = ${JSON.stringify(f.path)};
       const machine = acquireEntrypointAdmission(${JSON.stringify(f.repoRoot)}, 'shared');
       const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(path))));
-      const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);
+      const store = createCredentialStore({ admission, stateRoot: ${JSON.stringify(f.root)}, erasureJournalAdmission: machine,
+        erasureJournalPath: join(machine.stateRoot, 'machine', 'erasures', admission.profileBinding.profileId + '.json') });
+      const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock, undefined, undefined, undefined, store);
       try {
-        const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), createCredentialStore({ admission, stateRoot: ${JSON.stringify(f.root)} }));
+        const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
         const result = executeSettingsCommand({ authority: db, clock, ids: { uuid: randomUUID }, settings }, ${JSON.stringify(foreign)});
         assert.equal(result.state, 'rejected'); assert.equal(result.code, 'command-divergent');
       } finally { db.close(); admission.release(); machine.release(); }

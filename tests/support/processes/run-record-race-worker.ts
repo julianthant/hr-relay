@@ -1,3 +1,4 @@
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { CanonicalFailureTerminalizeRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 import { parentPort, workerData } from "node:worker_threads";
@@ -33,8 +34,10 @@ const pause = () => {
 const clock = manualClock(new Date(data.now));
 const machine = acquireEntrypointAdmission(resolve(dirname(data.path), "../../../.."), "shared");
 const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(data.path))));
+const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
+  erasureJournalPath: resolve(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
 const database = AuthorityDatabase.open(admission, { path: data.path, busyTimeoutMs: 250, migrationOwner: "race-proof" },
-  clock, undefined, { afterFailureStorageStep: (step) => { if (step === "failure") pause(); } }, { afterClaimSelection: pause });
+  clock, undefined, { afterFailureStorageStep: (step) => { if (step === "failure") pause(); } }, { afterClaimSelection: pause }, credentials);
 const service = new RunRecordService({ database, clock, ids: { uuid: () => data.runId }, publishQueued: () => undefined },
   { afterCreateReservation: pause });
 port.on("message", (input: unknown) => {

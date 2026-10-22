@@ -5,7 +5,7 @@ import { describe,it } from "vitest";
 import { composeFailureResolution } from "../../../../src/backend/app/composition/dashboard/failure-resolution.js";
 import { createRunResourcesFactory } from "../../../../src/backend/app/composition/worker/run-resources.js";
 import { assertProfileBrowserRoot } from "../../../../src/backend/app/composition/storage-compose.js";
-import { findProfileFixtureAdmission } from "../../../support/helpers/admission-fixture.js";
+import { boundProfileAdmission, findProfileFixtureAdmission } from "../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createRunDiagnosticCapture } from "../../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
@@ -15,7 +15,6 @@ import { createProviderClient } from "../../../../src/backend/processing/provide
 import { bindFailureCapture } from "../../../../src/backend/runs/lifecycle/failure-resolution.js";
 import { runRuntimeMatches } from "../../../../src/backend/runs/lifecycle/run-claim-admission.js";
 import { selectNewRunIdentity,selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createArtifactSinkProjector } from "../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createXlsxRetentionSink } from "../../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
@@ -26,7 +25,7 @@ import { resolutionCommand,resolutionKernel } from "../../../support/helpers/fai
 
 type Fixture=ReturnType<typeof foundationFixture>;
 const scheduler={schedule:()=>({cancel:()=>undefined})};
-const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/data/artifacts"))});
+const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: boundProfileAdmission(f.path)});
 const flows={
  async P(f:Fixture){
   const value={schemaHash:FingerprintSchema.parse(HASH),value:{synthetic:true}};
