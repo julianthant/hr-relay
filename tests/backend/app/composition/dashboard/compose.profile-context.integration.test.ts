@@ -1,0 +1,166 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { copyFileSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { it, vi } from "vitest";
+import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
+import { readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
+import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-session.js";
+import * as kernel from "../../../../../src/backend/runs/commands/command-kernel.js";
+import { ProfileStorageRelocationUnsupportedError } from "../../../../../src/backend/storage/admission/admission.js";
+import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
+import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest, storageRelocationRequestFingerprint } from "../../../../../src/rules/commands/commands.js";
+import { NonNegativeIntSchema } from "../../../../../src/rules/identity/ids.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
+import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
+
+function fixture() {
+  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
+  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null },
+    processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const signIn = () => runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  const active = signIn(); assert.equal(active.state, "active");
+  if (active.state !== "active") throw new Error("synthetic active profile required");
+  const input = { admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace, clock,
+    isolation: rebuildRuntimeIsolation, backendPortOverride: 0 as const, frontendPortOverride: 0 as const, env: {},
+    preflightRunnerFactory: healthyRuntimePreflightRunners };
+  return { ...f, clock, runtime, active, signIn, input };
+}
+
+it("starts the actual dashboard from the same token-owned context and proves resource/child/process/parent shutdown", async () => {
+  const f = fixture();
+  let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
+  const kernelFactory = vi.spyOn(kernel, "createCommandKernel");
+  try {
+    dashboard = await composeDashboardRuntime(f.input);
+    const context = f.runtime.selectedContext(f.active.token);
+    assert.equal(context.database.getMeta().profileId, f.active.profileId);
+    assert.equal(context.admission.stateRoot, f.stateRoot);
+    const plans = kernelFactory.mock.calls[0]?.[0].storageRelocationPlans; assert.ok(plans);
+    const target = { installationId: f.machine.locator.installationId, sourceGeneration: NonNegativeIntSchema.parse(f.machine.locator.generation),
+      sourcePair: { stateRoot: f.machine.locator.stateRoot, artifactRoot: f.machine.locator.artifactRoot }, expectedRevision: NonNegativeIntSchema.parse(0) };
+    const desiredPair = { stateRoot: join(f.workspace, "moved-state"), artifactRoot: join(f.workspace, "moved-artifacts") };
+    const draft = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation", type: "plan-storage-relocation",
+      commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target,
+      payload: { writeId: randomUUID(), desiredPair, desiredDigest: storageRelocationDesiredDigest(target, desiredPair), requestFingerprint: "0".repeat(64) } });
+    const request = StorageRelocationCommandRequestSchema.parse({ ...draft, payload: { ...draft.payload, requestFingerprint: storageRelocationRequestFingerprint(draft) } });
+    const before = context.database.getMeta().authorityGeneration;
+    const transaction = vi.spyOn(context.database, "withAuthorityTransaction");
+    for (const operation of [() => plans.read(), () => plans.project(context.database.authority), () => plans.validate(request)]) {
+      assert.throws(operation, error => {
+        assert.ok(error instanceof ProfileStorageRelocationUnsupportedError);
+        assert.deepEqual(failureStatus(error), { status: 409, body: { state: "error", code: error.code,
+          message: ERROR_CATALOG[error.code].text, retryable: false } });
+        return true;
+      });
+    }
+    assert.equal(transaction.mock.calls.length, 0); transaction.mockRestore();
+    assert.equal(context.database.getMeta().authorityGeneration, before);
+    assert.equal(context.database.authority.commands.get(request.commandId), undefined);
+    assert.throws(() => f.runtime.bindSupervisor(f.active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined }), /owner-mismatch/u);
+    await dashboard.stop(); dashboard = undefined;
+    assert.throws(() => context.database.getMeta(), /closed/u);
+    assert.throws(() => context.admission.assertLive());
+    assert.throws(() => f.machine.assertLive());
+  } finally { kernelFactory.mockRestore(); if (dashboard !== undefined) await dashboard.stop(); f.close(); }
+});
+
+for (const problem of ["absent", "stale", "foreign", "logged-out"] as const) it(`refuses ${problem} dashboard context before ordinary database opening`, async () => {
+  const f = fixture();
+  const other = problem === "foreign" ? fixture() : undefined;
+  try {
+    if (problem === "stale") assert.equal(f.signIn().state, "active");
+    if (problem === "logged-out") {
+      const logout = f.runtime.session.logOut(f.active.token, { at: f.clock.now().toISOString() });
+      assert.equal(logout.state, "cancelling");
+      await f.runtime.awaitClosurePreparation(f.active.profileId);
+    }
+    const open = vi.spyOn(AuthorityDatabase, "open");
+    await assert.rejects(composeDashboardRuntime({ ...f.input,
+      ...(problem === "absent" ? { profile: undefined } : problem === "foreign" ? { profile: other!.input.profile } : {}) }));
+    assert.equal(open.mock.calls.length, 0);
+    open.mockRestore();
+  } finally {
+    vi.restoreAllMocks();
+    await f.runtime.close(); f.close();
+    if (other !== undefined) { await other.runtime.close(); other.close(); }
+  }
+});
+
+it("revokes runtime, command and retained producer authority before held actual account closure without changing the session epoch", async () => {
+  const f = fixture();
+  let release!: () => void, entered!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; }), closing = new Promise<void>(resolve => { entered = resolve; });
+  const createAccount = accounts.createChatGptAccountService;
+  const factory = vi.spyOn(accounts, "createChatGptAccountService").mockImplementation(options => {
+    const actual = createAccount(options);
+    return { ...actual, close: async () => { entered(); await barrier; await actual.close(); } };
+  });
+  const kernelFactory = vi.spyOn(kernel, "createCommandKernel");
+  let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined, stopping: Promise<void> | undefined;
+  try {
+    dashboard = await composeDashboardRuntime(f.input);
+    const context = f.runtime.selectedContext(f.active.token), epoch = f.machine.readProfileRegistry().sessionGeneration;
+    const protectedBefore = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
+    stopping = dashboard.stop();
+    await closing;
+    assert.equal(f.machine.readProfileRegistry().sessionGeneration, epoch);
+    assert.throws(() => f.runtime.selectedContext(f.active.token), ProfileSessionRefusedError);
+    assert.throws(() => context.protectedSecrets.read(), ProfileSessionRefusedError);
+    assert.throws(() => context.settings.read(), ProfileSessionRefusedError);
+    await assert.rejects(context.accountAuthority.readAuthority(), ProfileSessionRefusedError);
+    const authority = kernelFactory.mock.calls[0]?.[0].authority; assert.ok(authority);
+    let effects = 0;
+    assert.throws(() => authority.withAuthorityTransaction(() => { effects += 1; }), ProfileSessionRefusedError);
+    assert.equal(effects, 0);
+    assert.equal(context.database.getMeta().profileId, f.active.profileId);
+    context.admission.assertLive();
+    const origin = `http://127.0.0.1:${String(dashboard.port)}`;
+    const response = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: "{}" });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { state: "error", code: "PROFILE_SESSION_STALE", message: ERROR_CATALOG.PROFILE_SESSION_STALE.text, retryable: false });
+    release(); await stopping; dashboard = undefined;
+    assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).equals(protectedBefore), true);
+    assert.throws(() => context.database.getMeta(), /closed/u);
+    assert.throws(() => context.admission.assertLive());
+  } finally {
+    release(); if (stopping !== undefined) await stopping;
+    if (dashboard !== undefined && stopping === undefined) await dashboard.stop();
+    factory.mockRestore(); kernelFactory.mockRestore(); f.close();
+  }
+});
+
+for (const failure of ["account", "database"] as const) it(`retains exact dashboard custody after unproved ${failure} closure and refuses new ordinary work`, async () => {
+  const f = fixture(), primary = new Error(`synthetic ${failure} closure failure`);
+  const createAccount = accounts.createChatGptAccountService;
+  const factory = vi.spyOn(accounts, "createChatGptAccountService").mockImplementation(options => ({ ...createAccount(options) }));
+  let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
+  let context: ReturnType<typeof f.runtime.selectedContext> | undefined;
+  try {
+    dashboard = await composeDashboardRuntime(f.input);
+    context = f.runtime.selectedContext(f.active.token);
+    const before = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
+    const failing = failure === "account" ? vi.spyOn(context.account, "close").mockRejectedValue(primary)
+      : vi.spyOn(context.database, "close").mockImplementation(() => { throw primary; });
+    await assert.rejects(dashboard.stop(), error => error instanceof RuntimeCustodyUncertainError);
+    failing.mockRestore();
+    assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).equals(before), true);
+    f.machine.assertLive(); context.admission.assertLive();
+    assert.equal(context.database.getMeta().profileId, f.active.profileId);
+    assert.throws(() => f.runtime.selectedContext(f.active.token), ProfileSessionRefusedError);
+    assert.throws(() => context?.protectedSecrets.read(), ProfileSessionRefusedError);
+    assert.equal(f.signIn().state, "refused");
+    assert.ok(readRuntimeProcessLock(join(f.workspace, rebuildRuntimeIsolation.processLockRoot), "server"));
+  } finally {
+    vi.restoreAllMocks();
+    if (context !== undefined) { await context.account.close(); context.database.close(); context.admission.release(); }
+    factory.mockRestore(); f.close();
+  }
+});

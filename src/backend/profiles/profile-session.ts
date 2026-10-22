@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
   createCredentialStore,
+  assertCredentialStoreOwner,
   readForErasure,
   CredentialErasureAuthorityError,
   CredentialStoreCommitUncertainError,
@@ -31,6 +32,7 @@ import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, typ
 import { createProfileVerifiers } from "./verifier-store.js";
 
 import type { ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
+import type { CredentialStore } from "../../models/config/credential-store.js";
 import type { SettingsRuntimeSnapshot } from "../runtime/settings/settings-runtime.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 
@@ -52,6 +54,10 @@ export interface ProfileRefusal {
   readonly message: string;
   readonly operationId?: string;
   readonly request?: string;
+}
+
+export class ProfileSessionRefusedError extends Error {
+  constructor(readonly code: ErrorCatalogCode) { super(operatorFailureSentence(code)); this.name = "ProfileSessionRefusedError"; }
 }
 
 export interface ProfileLogoutResult extends ProfileRefusal {
@@ -114,6 +120,12 @@ export function createProfileSession(input: {
   readonly backupPaths?: (profileId: string) => readonly string[];
   readonly loginDataPaths?: (profileId: string) => readonly string[];
   readonly credentialHooks?: CredentialStoreHooks;
+  readonly credentialsFor?: (admission: RuntimeAdmission, purpose: "ordinary" | "settlement") => CredentialStore;
+  readonly prepareLogout?: (profileId: string, admission: RuntimeAdmission) => void;
+  readonly closeStorage?: (profileId: string, admission: RuntimeAdmission) => void;
+  readonly sessionChange?: (profileId: string) => { readonly state: "closed" } | ProfileRefusal | ProfileCancelling;
+  readonly credentialInventory?: (input: Readonly<{ profileId: string; admission: RuntimeAdmission; credentials: CredentialStore;
+    operationId: string; capturedSecrets: readonly string[]; capturedSecretsComplete: boolean }>) => CredentialInventory;
 }) {
   const admission = requireRuntimeAdmission(input.admission);
   admission.assertWritable();
@@ -124,7 +136,7 @@ export function createProfileSession(input: {
   const registry = createProfileRegistry(admission);
   const verifiers = createProfileVerifiers(machineRoot);
   const sessions = new Map<string, { readonly profileId: string; readonly epoch: number; readonly admission: RuntimeAdmission }>();
-  const storageAdmissions = new Map<string, RuntimeAdmission>();
+  const storageAdmissions = new Map<string, { ordinary?: RuntimeAdmission; settlement?: RuntimeAdmission }>();
   const authoritySnapshots = new WeakSet<ProfileAuthoritySnapshot>();
 
   function writeOperation(operation: ProfileOperation): void {
@@ -156,26 +168,37 @@ export function createProfileSession(input: {
     return join(machineRoot, "machine", "erasures", `${profileId}.json`);
   }
 
-  function storeFor(profileId: string) {
+  function storeFor(profileId: string, capability = admittedProfile(profileId), purpose: "ordinary" | "settlement" = "ordinary") {
     const profileRoot = registry.profileRoot(profileId);
-    return createCredentialStore({
-      admission: admittedProfile(profileId),
+    const store = input.credentialsFor?.(capability, purpose) ?? createCredentialStore({
+      admission: capability,
       erasureJournalAdmission: admission,
       stateRoot: profileRoot,
       erasureJournalPath: journalPath(profileId),
       hooks: input.credentialHooks,
     });
+    assertCredentialStoreOwner(store, capability);
+    return store;
+  }
+
+  function releaseOrdinary(profileId: string): void {
+    const entry = storageAdmissions.get(profileId), capability = entry?.ordinary;
+    if (entry === undefined || capability === undefined) return;
+    input.closeStorage?.(profileId, capability);
+    capability.release();
+    delete entry.ordinary;
+    if (entry.settlement === undefined) storageAdmissions.delete(profileId);
   }
 
   function admittedProfile(profileId: string): RuntimeAdmission {
     admission.assertLive();
     admission.assertStateRoot(machineRoot);
-    let capability = storageAdmissions.get(profileId);
+    let capability = storageAdmissions.get(profileId)?.ordinary;
     if (capability === undefined) {
       const claim = registry.storageClaim(profileId);
       capability = admission.admitProfile(claim);
       if (claim.phase === "setup" && !existsSync(join(capability.stateRoot, "state.db"))) AuthorityDatabase.initializeProfile(capability);
-      storageAdmissions.set(profileId, capability);
+      storageAdmissions.set(profileId, { ...storageAdmissions.get(profileId), ordinary: capability });
     }
     if (capability.stateRoot !== registry.profileRoot(profileId)) throw new Error("profile root differs from admission");
     capability.assertStateRoot(capability.stateRoot);
@@ -210,8 +233,7 @@ export function createProfileSession(input: {
     profileAdmission.assertWritable();
     const epoch = registry.advanceSession(profileId);
     sessions.clear();
-    profileAdmission.release();
-    storageAdmissions.delete(profileId);
+    releaseOrdinary(profileId);
     const currentAdmission = admittedProfile(profileId);
     currentAdmission.assertWritable();
     const token = randomUUID();
@@ -231,8 +253,9 @@ export function createProfileSession(input: {
     const session = requireSession(token);
     if ("state" in session) return session;
     if (input.account === undefined || input.settings === undefined) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+    const store = storeFor(session.profileId);
     const settings = settingsAuthority(input.settings.read());
-    const protectedRevision = storeFor(session.profileId).read().revision;
+    const protectedRevision = store.read().revision;
     const account = await input.account.readAuthority(admittedProfile(session.profileId));
     if (account.availability !== "available" || account.revision === null) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     const current = requireSession(token);
@@ -291,8 +314,7 @@ export function createProfileSession(input: {
         entries: { ucpathUserId: { set: fields.email }, ucpathPassword: { set: fields.password }, timekeeperName: { set: names.timekeeperName } },
       }));
     }
-    storageAdmissions.get(operation.profileId)?.release();
-    storageAdmissions.delete(operation.profileId);
+    releaseOrdinary(operation.profileId);
     deleteOperation(operation.operationId);
     return activate(operation.profileId);
   }
@@ -385,9 +407,12 @@ export function createProfileSession(input: {
       writeOperation({ ...operation, phase: "incomplete" });
       return restoreAdmission(operation.operationId);
     }
-    storageAdmissions.get(profileId)?.release();
-    storageAdmissions.set(profileId, admission.admitProfile(registry.settlementClaim(operation.operationId)));
-    const store = storeFor(profileId);
+    const entry = storageAdmissions.get(profileId) ?? {};
+    entry.settlement?.release();
+    const settlement = admission.admitProfile(registry.settlementClaim(operation.operationId));
+    entry.settlement = settlement;
+    storageAdmissions.set(profileId, entry);
+    const store = storeFor(profileId, settlement, "settlement");
     const before = readForErasure(store, operation.operationId);
     const capturedSecrets = [before.entries.ucpathUserId?.value, before.entries.ucpathPassword?.value]
       .filter((value): value is string => value !== undefined);
@@ -438,7 +463,8 @@ export function createProfileSession(input: {
       }
     }
     const record = readForErasure(store, operation.operationId);
-    const inventory = assessCredentialInventory({
+    const inventory = input.credentialInventory?.({ profileId, admission: settlement, credentials: store, operationId: operation.operationId,
+      capturedSecrets, capturedSecretsComplete: before.entries.ucpathUserId !== undefined && before.entries.ucpathPassword !== undefined }) ?? assessCredentialInventory({
       profileRoot,
       entriesAbsent: record.entries.ucpathUserId === undefined && record.entries.ucpathPassword === undefined,
       backupPaths: input.backupPaths?.(profileId),
@@ -450,14 +476,23 @@ export function createProfileSession(input: {
       writeOperation({ ...command, phase: "incomplete" });
       return { ...refusal("PROFILE_LOGOUT_INVENTORY_BLOCKED", command.operationId), inventory };
     }
-    registry.update(profileId, { credentialState: "wiped", lifecycle: "ready" });
-    storageAdmissions.get(profileId)?.release();
+    releaseOrdinary(profileId);
+    settlement.release();
     storageAdmissions.delete(profileId);
+    registry.update(profileId, { credentialState: "wiped", lifecycle: "ready" });
     deleteOperation(command.operationId);
     return { state: "wiped", inventory };
   }
 
   return Object.freeze({
+    close(): void {
+      sessions.clear();
+      for (const [profileId, entry] of storageAdmissions) {
+        releaseOrdinary(profileId);
+        entry.settlement?.release();
+        storageAdmissions.delete(profileId);
+      }
+    },
     signUp(fields: {
       readonly firstName: string;
       readonly lastName: string;
@@ -494,6 +529,8 @@ export function createProfileSession(input: {
         }
         const selection = registry.read();
         if (selection.activeProfileId !== null && selection.activeProfileId !== row.profileId) return refusal("PROFILE_TRANSITION_BLOCKED");
+        const closure = input.sessionChange?.(row.profileId);
+        if (closure !== undefined && closure.state !== "closed") return closure;
         admission.assertWritable();
         if (registry.read().profiles.some((entry) => entry.profileId !== row.profileId && entry.lifecycle === "cancelling")) {
           return refusal("PROFILE_TRANSITION_BLOCKED");
@@ -509,8 +546,7 @@ export function createProfileSession(input: {
             lastName: names.lastName, createdAt: at, commandFingerprint: "c".repeat(64), phase: "applying" });
           writeOperation(operation);
         }
-        storageAdmissions.get(row.profileId)?.release();
-        storageAdmissions.delete(row.profileId);
+        releaseOrdinary(row.profileId);
         let store = storeFor(row.profileId);
         let replacementRevision: number | undefined;
         const holdsSupplied = (): boolean => {
@@ -522,8 +558,7 @@ export function createProfileSession(input: {
 
         if (operation !== undefined && store.ownsCommandId(operation.commandId) && !holdsSupplied()) {
           replacementRevision = store.read().revision;
-          storageAdmissions.get(row.profileId)?.release();
-          storageAdmissions.delete(row.profileId);
+          releaseOrdinary(row.profileId);
           deleteOperation(operation.operationId);
           operation = undefined;
         }
@@ -580,8 +615,7 @@ export function createProfileSession(input: {
         if (!holdsSupplied()) return refusal("PROFILE_SIGN_IN_REFUSED");
         verifiers.clearFailures(row.profileId);
         registry.update(row.profileId, { lastSignedInAt: at, credentialState: "saved", lifecycle: "ready" });
-        storageAdmissions.get(row.profileId)?.release();
-        storageAdmissions.delete(row.profileId);
+        releaseOrdinary(row.profileId);
         deleteOperation(operation.operationId);
         return activate(row.profileId);
       });
@@ -601,6 +635,8 @@ export function createProfileSession(input: {
       return withProfileLock(machineRoot, () => {
         const current = requireSession(token);
         if ("state" in current) return current;
+        storeFor(session.profileId, current.admission);
+        input.prepareLogout?.(session.profileId, current.admission);
         const existing = openLogout(session.profileId);
         const operation = existing ?? LogoutOperationSchema.parse({
           schemaVersion: 1,
@@ -634,6 +670,12 @@ export function createProfileSession(input: {
         profileId: operation.profileId,
         phase: operation.phase,
       }));
+    },
+    prepareCurrentStorage(token: string): { readonly state: "available" } | ProfileRefusal {
+      const current = requireSession(token);
+      if ("state" in current) return current;
+      storeFor(current.profileId, current.admission);
+      return { state: "available" };
     },
     readCurrentAuthority,
     async revalidateAuthority(token: string, captured: ProfileAuthoritySnapshot): Promise<{ readonly state: "available"; readonly snapshot: ProfileAuthoritySnapshot } | ProfileRefusal> {

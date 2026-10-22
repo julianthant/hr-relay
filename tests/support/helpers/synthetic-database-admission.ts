@@ -1,4 +1,4 @@
-import { boundProfileAdmission, findProfileFixtureAdmission } from "./admission-fixture.js";
+import { boundProfileAdmission, boundProfileCredentials, findProfileFixtureAdmission } from "./admission-fixture.js";
 import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { dirname } from "node:path";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -27,7 +27,10 @@ export const AuthorityDatabase = new Proxy(RealAuthorityDatabase, {
     if (property === "open") {
       return (input: unknown, ...rest: OpenOptions) => {
         const path = AuthorityDatabaseOptionsSchema.parse(input).path;
-        const database = target.open(boundProfileAdmission(path), input, ...rest);
+        const admission = boundProfileAdmission(path);
+        const [clock, writeHooks, terminalHooks, lifecycleHooks, credentials] = rest;
+        const database = target.open(admission, input, clock, writeHooks, terminalHooks, lifecycleHooks,
+          credentials ?? boundProfileCredentials(admission));
         fixturePaths.set(database, path);
         return database;
       };

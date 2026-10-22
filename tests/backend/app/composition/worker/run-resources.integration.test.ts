@@ -3,6 +3,8 @@ import { existsSync,readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe,it } from "vitest";
 import { createRunResourcesFactory } from "../../../../../src/backend/app/composition/worker/run-resources.js";
+import { assertProfileBrowserRoot } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { findProfileFixtureAdmission } from "../../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -20,8 +22,9 @@ describe("F actual four-way baseline independence",()=>{
  const _owners=["P","D","G","S"] as const;
  it("selects actual resources from each retained snapshot and preserves the first run after a newer selection",async()=>{
   const f=foundationFixture();try{
+   const admission=findProfileFixtureAdmission(f.root);assert.ok(admission);
    const writer=artifacts(f);await writer.ready;
-   const factory=createRunResourcesFactory({assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
+   const factory=createRunResourcesFactory({assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
    const first=factory.forRun(f.run);
    const config=ConfigSchema.parse({...f.snapshot.config,timeouts:{...f.snapshot.config.timeouts,taskMs:f.snapshot.config.timeouts.taskMs+1000,sessionAcquireMs:1000+PositiveIntSchema.parse(f.snapshot.config.timeouts.sessionAcquireMs)},browser:{...f.snapshot.config.browser,headless:!f.snapshot.config.browser.headless}});
    const snapshot={...f.snapshot,configSnapshotId:ConfigSnapshotIdSchema.parse(id(91)),config,fingerprint:FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config)))};f.db.authority.configSnapshots.insert(snapshot);

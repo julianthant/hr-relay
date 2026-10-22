@@ -542,6 +542,17 @@ export function captureCredentialErasureHead(store: CredentialStore): VerifiedCr
 export interface CommittedCredentialWitness { readonly revision: number; }
 const committedStores = new WeakMap<CredentialStore, { readonly admission: RuntimeAdmission; readonly stateRoot: string;
   readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly captureErasureHead: () => VerifiedCredentialErasureHead }>();
+
+export function assertCredentialStoreOwner(store: CredentialStore, admissionInput: RuntimeAdmission): void {
+  const admission = requireRuntimeAdmission(admissionInput), owner = committedStores.get(store);
+  admission.assertLive();
+  if (owner === undefined || owner.admission !== admission || owner.stateRoot !== admission.stateRoot
+    || owner.journalAdmission === admission
+    || owner.journalPath !== join(owner.journalAdmission.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`)) {
+    throw new Error("credential-store-owner-mismatch");
+  }
+  owner.journalAdmission.assertProfileErasureJournal(admission, owner.journalPath);
+}
 type CommitFiles = readonly ({ readonly path: string; readonly device: number; readonly inode: number; readonly digest: string } | { readonly path: string; readonly absent: true })[];
 const committedWitnesses = new WeakMap<CommittedCredentialWitness, { readonly stateRoot: string; readonly journalPath: string;
   readonly request: Readonly<{ commandId: string; writeId: string; commandFingerprint: string; expectedRevision: number; updatedAt: string }>;

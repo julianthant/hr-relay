@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe,it } from "vitest";
 import { composeFailureResolution } from "../../../../src/backend/app/composition/dashboard/failure-resolution.js";
 import { createRunResourcesFactory } from "../../../../src/backend/app/composition/worker/run-resources.js";
+import { assertProfileBrowserRoot } from "../../../../src/backend/app/composition/storage-compose.js";
+import { findProfileFixtureAdmission } from "../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createRunDiagnosticCapture } from "../../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
@@ -53,11 +55,12 @@ const flows={
   await projectGeneratedUpdates(projector,[id(1)]);assert.equal(f.db.authority.artifactOutbox.get(id(1))?.state,"projected");assert.ok(readFileSync(workbookPath).length>0);assert.equal(f.db.authority.generatedArtifacts.get("sink:xlsx-retention")?.state,"ready");
  },
  async S(f:Fixture){
+  const admission=findProfileFixtureAdmission(f.root);assert.ok(admission);
   f.db.authority.runtimeConfig.requireSettingsCurrent();
   const token=selectRunRuntime(f.db.authority);assert.ok(runRuntimeMatches(f.db.authority,token));assert.equal(runRuntimeMatches(f.db.authority,{...token,generation:PositiveIntSchema.parse(token.generation+1)}),false);
   assert.deepEqual(selectNewRunIdentity(f.db.authority,f.run.envelope),f.run.envelope);
   const writer=artifacts(f);await writer.ready;
-  const factory=createRunResourcesFactory({assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
+  const factory=createRunResourcesFactory({assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},processLockRoot:join(f.root,"locks"),authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
   const resources=factory.forRun(f.run);assert.equal(resources.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);assert.equal(resources.sessionAcquireMs,f.snapshot.config.timeouts.sessionAcquireMs);assert.equal(resources.defaultBrowserMode,f.snapshot.config.browser.headless?"headless":"headed");assert.ok(resources.providers?.adapters["geocode.nominatim"]);
   assert.equal(factory.forRun(f.run),resources);
  },

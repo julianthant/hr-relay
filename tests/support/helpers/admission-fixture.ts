@@ -10,19 +10,33 @@ import { acquireEntrypointAdmission } from "../../../src/backend/storage/admissi
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase as ProductionAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
+import type { CredentialStore } from "../../../src/models/config/credential-store.js";
 
 const admissions = new Map<string, RuntimeAdmission>();
-const boundProfiles = new Map<string, RuntimeAdmission>();
+const boundProfiles = new Map<string, { admission: RuntimeAdmission; machine: RuntimeAdmission; credentials: CredentialStore }>();
+
+function registerBoundProfile(admission: RuntimeAdmission, machine: RuntimeAdmission): void {
+  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
+    erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+  boundProfiles.set(admission.stateRoot, { admission, machine, credentials });
+}
+
+export function boundProfileCredentials(admission: RuntimeAdmission): CredentialStore {
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry?.admission !== admission) throw new Error("fixture-bound-profile-credential-owner-required");
+  admission.assertLive();
+  return entry.credentials;
+}
 
 export function findProfileFixtureAdmission(stateRoot: string): RuntimeAdmission | undefined {
-  const admission = boundProfiles.get(resolve(stateRoot));
+  const admission = boundProfiles.get(resolve(stateRoot))?.admission;
   admission?.assertLive();
   return admission;
 }
 
 export function profileFixtureStorageAdmission(path: string): RuntimeAdmission {
   const canonical = resolve(path);
-  const admission = boundProfiles.get(dirname(canonical));
+  const admission = boundProfiles.get(dirname(canonical))?.admission;
   if (admission === undefined || canonical !== join(admission.stateRoot, "state.db")) throw new Error("fixture-bound-profile-path-required");
   admission.assertLive();
   return admission;
@@ -69,7 +83,7 @@ export function releaseAdmissionFixtures(): void {
   for (const root of [...admissions.keys()]) releaseAdmissionFixture(root);
 }
 function admissionForStateRoot(root: string): RuntimeAdmission {
-  const bound = boundProfiles.get(resolve(root));
+  const bound = boundProfiles.get(resolve(root))?.admission;
   if (bound !== undefined) { bound.assertLive(); return bound; }
   for (const workspace of admissions.keys()) if (join(workspace, rebuildRuntimeIsolation.stateRoot) === resolve(root)) return fixtureAdmission(workspace);
   return RuntimeAdmission.syntheticRoots(resolve(root), join(resolve(root), "artifacts"));
@@ -79,7 +93,10 @@ export const AuthorityDatabase = new Proxy(ProductionAuthorityDatabase, {
   get(target, property, receiver) {
     if (property === "open") return (input: unknown, ...rest: Parameters<typeof ProductionAuthorityDatabase.open> extends [unknown, unknown, ...infer R] ? R : never) => {
       const root = dirname(AuthorityDatabaseOptionsSchema.parse(input).path);
-      return target.open(admissionForStateRoot(root), input, ...rest);
+      const admission = admissionForStateRoot(root);
+      const [clock, writeHooks, terminalHooks, lifecycleHooks, credentials] = rest;
+      return target.open(admission, input, clock, writeHooks, terminalHooks, lifecycleHooks,
+        credentials ?? boundProfileCredentials(admission));
     };
     return Reflect.get(target, property, receiver) as unknown;
   },
@@ -87,6 +104,13 @@ export const AuthorityDatabase = new Proxy(ProductionAuthorityDatabase, {
   open(input: unknown, clock?: Parameters<typeof ProductionAuthorityDatabase.open>[2]): ProductionAuthorityDatabase;
 };
 export function createCredentialStore(input: Omit<Parameters<typeof productionCredentialStore>[0], "admission">) {
+  const entry = boundProfiles.get(resolve(input.stateRoot));
+  if (entry !== undefined) {
+    if (Object.keys(input).length === 1) return boundProfileCredentials(entry.admission);
+    return productionCredentialStore({ erasureJournalAdmission: entry.machine,
+      erasureJournalPath: join(entry.machine.stateRoot, "machine", "erasures", `${entry.admission.profileBinding.profileId}.json`),
+      ...input, admission: entry.admission });
+  }
   return productionCredentialStore({ ...input, admission: admissionForStateRoot(input.stateRoot) });
 }
 
@@ -103,13 +127,13 @@ export function createBoundProfileFixture(options: { pending?: true } = {}) {
       commandFingerprint: "a".repeat(64) });
     let admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
     const stateRoot = admission.stateRoot;
-    boundProfiles.set(stateRoot, admission);
+    registerBoundProfile(admission, machine);
     const finish = () => {
       const active = session.signUp(fields);
       if (active.state !== "active" || active.profileId !== operation.profileId) throw new Error("bound profile fixture signup refused");
       admission.release();
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
-      boundProfiles.set(stateRoot, admission);
+      registerBoundProfile(admission, machine);
     };
     if (options.pending !== true) finish();
     return { workspace, machine, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish,

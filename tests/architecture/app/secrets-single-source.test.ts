@@ -111,7 +111,7 @@ describe("secrets single source", () => {
     for (const candidate of [
       content.replace("assertNoMigratedEnvironmentKeys()))", "(() => undefined)()))"),
       content.replace('entrypointArgs[0] === "test-data"', 'entrypointArgs[0] === "dashboard"'),
-      content.replace("acquireEntrypointAdmission(workspace, requested, beforeInitialAuthorityOpen)", "undefined"),
+      content.replace("acquireEntrypointAdmission(workspace, requested)))(mode)", "undefined)))(mode)"),
       content.replace('if (selector === "cli" || selector === "test-target-document-number") return selector;', 'return "cli";'),
       content.replace('from "../../../models/config/secrets.js"', 'from "../../../models/config/forged-secrets.js"'),
       content.replace("const runCli =", "assertNoMigratedEnvironmentKeys = () => undefined; const runCli ="),
@@ -120,6 +120,8 @@ describe("secrets single source", () => {
       content.replace('bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)', 'bootDiagnostics ? acquireEntrypointAdmission(workspace, requested)'),
       content.replace('const custody = initialWorkerCustody;', 'const custody = undefined;'),
       content.replace('initialWorkerCustody = undefined;', 'initialWorkerCustody = custody;'),
+      content.replace('authorityPath: selected.authorityPath', 'authorityPath: join(admission.stateRoot, "state.db")'),
+      content.replace('initialWorkerCustody = acquireRuntimeProcessLock', 'AuthorityDatabase.open(admission, { path: selected.authorityPath }); initialWorkerCustody = acquireRuntimeProcessLock'),
       content.replace('!bootDiagnostics &&', ''),
       content.replace('acquireExclusiveRuntimeAdmission, type RuntimeAdmission', 'forgedAdmission, type RuntimeAdmission'),
     ]) assert.ok(audit(candidate).length > 0, candidate);

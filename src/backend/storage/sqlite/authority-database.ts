@@ -53,7 +53,9 @@ import { TimelinePageRequestSchema } from "../../../models/events/timeline.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
 import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
-import { createCredentialStore } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -1572,6 +1574,14 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
   }
 }
 
+export class CredentialContextRequiredError extends Error {
+  readonly code = "CREDENTIAL_CONTEXT_REQUIRED";
+  constructor() {
+    super(ERROR_CATALOG.CREDENTIAL_CONTEXT_REQUIRED.text);
+    this.name = "CredentialContextRequiredError";
+  }
+}
+
 export class AuthorityDatabase implements Disposable {
   readonly #admission: RuntimeAdmission;
   #database: DatabaseSync;
@@ -1603,10 +1613,12 @@ export class AuthorityDatabase implements Disposable {
     writeCommitHooks?: AuthorityWriteCommitHooks,
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
+    credentials?: CredentialStore,
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
     this.#admission.assertAuthorityDatabase(options.path);
+    if (credentials !== undefined) assertCredentialStoreOwner(credentials, this.#admission);
     const binding = this.#admission.profileBinding;
     const existed = options.path !== ":memory:" && existsSync(options.path);
     const readOnlyNoMigrate = options.openMode !== "read-write";
@@ -1657,9 +1669,11 @@ export class AuthorityDatabase implements Disposable {
         this.#validateDatabase();
       }
       readAppSettings(this.#database);
-      this.#credentialCommandIds = options.path === ":memory:"
-        ? () => { throw new Error("command identity admission requires a durable authority root"); }
-        : commandId => createCredentialStore({ admission, stateRoot: dirname(resolve(options.path)) }).ownsCommandId(commandId);
+      this.#credentialCommandIds = commandId => {
+        if (credentials === undefined) throw new CredentialContextRequiredError();
+        assertCredentialStoreOwner(credentials, this.#admission);
+        return credentials.ownsCommandId(commandId);
+      };
     } catch (error) {
       this.#database.close();
       if (error instanceof AuthoritySchemaVersionError) throw error;
@@ -1680,9 +1694,10 @@ export class AuthorityDatabase implements Disposable {
     writeCommitHooks?: AuthorityWriteCommitHooks,
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
+    credentials?: CredentialStore,
   ): AuthorityDatabase {
     admission.assertProfileRuntime();
-    return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks);
+    return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
   }
 
   static initializeProfile(admission: RuntimeAdmission, clock: Clock = systemClock): void {
@@ -1868,6 +1883,31 @@ export class AuthorityDatabase implements Disposable {
       authorityGeneration: row.authority_generation,
       updatedAt: row.updated_at,
     });
+  }
+
+  readProfileResourceCustody() {
+    this.#assertOpen();
+    return this.#withReadSnapshot(() => Object.freeze({
+      authorityGeneration: this.getMeta().authorityGeneration,
+      slots: this.authority.workerSlots.list(),
+      leases: this.#database.prepare("SELECT * FROM worker_leases ORDER BY id").all()
+        .map(row => this.#parseNativeRow("worker_leases", row, WorkerLeaseRecordSchema)),
+      controls: this.authority.workerControls.list().map(record => {
+        const authenticated = this.authority.workerControls.get(record.commandId);
+        if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
+        return authenticated;
+      }),
+      browsers: this.#database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow),
+      runs: this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow),
+      writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
+        .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
+      duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()
+        .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema)),
+      pendingArtifacts: this.authority.artifactOutbox.listPending(),
+      artifactReferences: this.readManagedArtifactReferences(),
+      configSnapshots: this.#database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+        .map(row => this.#parseNativeRow("settings_snapshots", row, ConfigSnapshotRecordSchema)),
+    }));
   }
 
   readManagedArtifactReferences(candidate?: ArtifactRef): readonly ArtifactRef[] {

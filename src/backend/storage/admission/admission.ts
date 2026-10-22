@@ -18,6 +18,17 @@ import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, typ
 import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { assertCanonicalProfileBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+
+export class ProfileStorageRelocationUnsupportedError extends Error {
+  readonly code = "PROFILE_STORAGE_RELOCATION_UNSUPPORTED";
+  constructor() { super(ERROR_CATALOG.PROFILE_STORAGE_RELOCATION_UNSUPPORTED.text); this.name = "ProfileStorageRelocationUnsupportedError"; }
+}
+
+export class ProfileBrowserRootRefusalError extends Error {
+  readonly code = "PROFILE_BROWSER_ROOT_REFUSED";
+  constructor() { super(ERROR_CATALOG.PROFILE_BROWSER_ROOT_REFUSED.text); this.name = "ProfileBrowserRootRefusalError"; }
+}
 
 export interface RegisteredProfileStorageClaim {
   readonly profileId: string;
@@ -561,7 +572,7 @@ export class RuntimeAdmission {
   }
   assertStorageRelocationSupported(): void {
     const context = this.readInstallationContext();
-    if (context === undefined || existsSync(join(context.locator.stateRoot, "machine")) || existsSync(join(context.locator.stateRoot, "profiles"))) throw new Error("profile-machine-relocation-unsupported");
+    if (context === undefined || existsSync(join(context.locator.stateRoot, "machine")) || existsSync(join(context.locator.stateRoot, "profiles"))) throw new ProfileStorageRelocationUnsupportedError();
   }
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding,
     restore: RestoreAdmissionHandle): RuntimeRelocationOperation {

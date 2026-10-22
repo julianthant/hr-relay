@@ -9,6 +9,7 @@ import { acquireExclusiveRuntimeAdmission, type RuntimeAdmission } from "../../s
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
 import { parseDryRunScenarioArguments } from "../../runs/start/dry-run-scenario-runner.js";
 import { loadDryRunScenarioManifest } from "../dry-run/manifests.js";
+import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -31,6 +32,11 @@ export function secureEnvironmentEntrypoint(
   throw new Error(
     "secure environment entrypoint must be cli or test-target-document-number",
   );
+}
+
+function releaseUnboundWorkerCustody(custody: RuntimeProcessLockHandle | undefined, failure: unknown): void {
+  try { custody?.release(); }
+  catch (error) { throw new RuntimeCustodyUncertainError(failure === undefined ? [error] : [failure, error]); }
 }
 
 export async function runSecureEnvironmentBootstrap(
@@ -114,22 +120,18 @@ export async function runSecureEnvironmentBootstrap(
     && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
   let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
-  let initialWorkerAuthorityPath: string | undefined;
-  const beforeInitialAuthorityOpen = entrypoint === "cli" && entrypointArgs[0] === "worker"
-    ? (pair: Readonly<{ stateRoot: string }>) => {
-      const authorityPath = join(pair.stateRoot, "state.db");
-      if (initialWorkerCustody !== undefined) {
-        if (initialWorkerAuthorityPath !== authorityPath) throw new Error("worker-process-admission-authority-mismatch");
-        return;
-      }
-      initialWorkerCustody = acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot),
-        name: "workers", pid: process.pid, admission: { kind: "unbound-worker", authorityPath } });
-      initialWorkerAuthorityPath = authorityPath;
-    } : undefined;
-  // Failed initialization retains custody because authority closure is unproved.
   const admission = (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
-    : acquireEntrypointAdmission(workspace, requested, beforeInitialAuthorityOpen)))(mode);
+    : acquireEntrypointAdmission(workspace, requested)))(mode);
+  let shutdown: "release" | "retain" = "release";
+  let runtimeFailure: unknown;
   try {
+  if (entrypoint === "cli" && entrypointArgs[0] === "worker") {
+    const { captureSelectedProfileStorage } = await import("../composition/storage-compose.js");
+    const selected = captureSelectedProfileStorage(admission);
+    initialWorkerCustody = acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot),
+      name: "workers", pid: process.pid, admission: { kind: "unbound-worker", authorityPath: selected.authorityPath } });
+    selected.assertCurrent();
+  }
   if (!bootDiagnostics && !(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
 
@@ -161,7 +163,13 @@ export async function runSecureEnvironmentBootstrap(
   const runTestTargetDocumentNumberSmoke = dependencies.runTestTargetDocumentNumberSmoke
     ?? (await import("../../../../scripts/verify/test-target-document-number.js")).runTestTargetDocumentNumberSmoke;
   process.exitCode = await runTestTargetDocumentNumberSmoke();
+  } catch (error) {
+    runtimeFailure = error;
+    if (error instanceof RuntimeCustodyUncertainError) shutdown = "retain";
+    throw error;
   } finally {
+    if (shutdown === "release") {
+    releaseUnboundWorkerCustody(initialWorkerCustody, runtimeFailure);
     if (entrypoint === "cli" && entrypointArgs[0] === "dashboard") {
       // Retain signal ownership through the next turn; a queued Ctrl+C must not interrupt admission release.
       const absorb = (): void => undefined;
@@ -175,6 +183,6 @@ export async function runSecureEnvironmentBootstrap(
         process.removeListener("SIGTERM", absorb);
       }
     } else admission.release();
-    initialWorkerCustody?.release();
+    }
   }
 }

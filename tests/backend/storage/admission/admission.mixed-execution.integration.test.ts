@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 import { afterEach,it,vi } from "vitest";
 import { createRunResourcesFactory } from "../../../../src/backend/app/composition/worker/run-resources.js";
+import { assertProfileBrowserRoot } from "../../../../src/backend/app/composition/storage-compose.js";
+import { findProfileFixtureAdmission } from "../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { assertWorkerProcessCustody,bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
@@ -20,12 +21,13 @@ afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.
 
 it("browser launch forwards retained display and mode through a headless custody fixture", async () => {
   const f = settingsFixture(true); cleanups.push(f.close);
+  const admission=findProfileFixtureAdmission(f.root);assert.ok(admission);
   assert.equal(f.save({ "timeouts.taskMs": { set: 60_000 }, "timeouts.sessionAcquireMs": { set: 120_000 } }).state, "applied");
   const old = f.create();
   assert.equal(f.save({ "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 },
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 } }).state, "applied");
   const next = f.create();
-  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/data/artifacts")) }); await artifacts.ready;
+  const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
   const held = bindWorkerProcessAdmission({ processLockRoot: join(f.root, "locks"), authorityPath: f.path, pid: process.pid, clock: f.clock,
     open: () => f.database, close: () => {}, admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories =>
       admitDirectWorker(repositories, { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
@@ -34,7 +36,7 @@ it("browser launch forwards retained display and mode through a headless custody
   cleanups.push(() => held.processLock.release());
   assert.ok(held.processLock.acquisitionId);
   const acquisitionId = held.processLock.acquisitionId;
-  const factory = createRunResourcesFactory({ assertProfileOwner: workerId => {
+  const factory = createRunResourcesFactory({ assertBrowserRoot: root=>assertProfileBrowserRoot(admission,root), assertProfileOwner: workerId => {
     assert.equal(workerId, held.workerId);
     assertWorkerProcessCustody({ processLockRoot: join(f.root, "locks"), acquisitionId, pid: process.pid, workerId, authorityPath: f.path });
   }, processLockRoot: join(f.root, "locks"), authority: f.database.authority, artifacts, clock: systemClock,

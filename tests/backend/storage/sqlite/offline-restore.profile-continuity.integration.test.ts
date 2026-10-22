@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { acquireRecoveryRuntimeRestore, RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { acquireRecoveryRuntimeRestore, ProfileStorageRelocationUnsupportedError, RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -260,7 +260,7 @@ describe("profile restore continuity", () => {
       const manifestPath = await f.backup(), before = readFileSync(f.path);
       assert.throws(() => new OfflineAuthorityRestoreService(f.machine,
         { authorityPath: f.path, suspectDirectory: join(f.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => {}), /profile-bound-authority-required/);
-      assert.throws(() => f.machine.assertStorageRelocationSupported(), /profile-machine-relocation-unsupported/);
+      assert.throws(() => f.machine.assertStorageRelocationSupported(), ProfileStorageRelocationUnsupportedError);
       assert.deepEqual(readFileSync(f.path), before);
       assert.ok(existsSync(manifestPath));
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);

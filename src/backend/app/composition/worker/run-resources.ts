@@ -30,6 +30,7 @@ export function createRunResourcesFactory(input:Readonly<{
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
  assertProfileOwner:(workerId:WorkerId)=>void;
+ assertBrowserRoot:(root:string)=>void;
  createSessionFactory?:(profileAuthority:BrowserProfileAuthority)=>WorkerBrowserSessionFactory;
  onDebug?:(category:"session"|"duo",workerId:WorkerId,event:Pick<DebugEvent,"phase"|"correlationId">&Partial<Pick<DebugEvent,"code"|"durationMs"|"pinned">>)=>void;
 }>) {
@@ -37,6 +38,7 @@ export function createRunResourcesFactory(input:Readonly<{
  const profiles=createBrowserProfileAuthority(input);
  const nominatim=createNominatimGeocodeAdapter({clock:input.clock,processLockRoot:input.processLockRoot});
  const compose=(config:Config):WorkerRunResources=>{
+  input.assertBrowserRoot(config.paths.browserProfileRoot);
   return Object.freeze({
    sessionFactory:input.sessionFactory??input.createSessionFactory?.(profiles)??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid(),
     ...profiles,...(input.onDebug===undefined?{}:{onDebug:(workerId,event)=>input.onDebug?.("session",workerId,event)})}),
@@ -55,6 +57,7 @@ export function createRunResourcesFactory(input:Readonly<{
   forRun(run:RunRecord):WorkerRunResources {
    if (Object.values(run.envelope.resolvedInstance ?? {}).some(instance => instance === "test")) throw new Error("run-resources-retired-test-instance");
    const snapshot=ConfigSnapshotRecordSchema.parse(selectRunSettings(input.authority,run.envelope));
+   input.assertBrowserRoot(snapshot.config.paths.browserProfileRoot);
    if(sha256Hex(canonicalJsonStringify(snapshot.config))!==snapshot.fingerprint)throw new Error("run-resources-retained-snapshot-unavailable");
    const previous=cache.get(snapshot.fingerprint);
    const resources=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,resources);

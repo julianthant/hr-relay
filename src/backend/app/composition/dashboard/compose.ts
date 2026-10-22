@@ -1,8 +1,7 @@
-import { createChatGptAccountService } from "../../../accounts/chatgpt-account-service.js";
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
-import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
+import { withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
 import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
 import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
@@ -34,12 +33,11 @@ import { createTrustNotifications } from "./notifications.js";
 import { createTrustReadDependencies } from "./trust.js";
 import { composeDataQueries } from "./data.js";
 export { dataOriginViewsOf } from "./run-detail-descriptors.js";
-import { createCredentialStore } from "../../../storage/configuration/credential-store.js";
 import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 
 import { spawn as spawnChildProcess } from "node:child_process";
-import { closeSync, constants, existsSync, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { z } from "zod";
@@ -56,9 +54,9 @@ import { createStorageRelocationPlanReader } from "../../../storage/maintenance/
 import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { systemClock } from "../../../../rules/time/clock.js";
-import { resolveConfigWithProvenance } from "../../config/resolve.js";
+import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../storage-compose.js";
 import { systemIdFactory, type IdFactory } from "../../../../rules/identity/identifiers.js";
-import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../../rules/identity/ids.js";
+import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../../rules/identity/ids.js";
 import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
@@ -77,7 +75,7 @@ import { createContentAddressedArtifactWriter } from "../../../storage/artifacts
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 
 import { createIntakeParser } from "../../../processing/spreadsheet/intake-parser.js";
-import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readBootSettings } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsRuntimeIdentity, readBootSettings } from "../../../runtime/settings/settings-runtime.js";
 import { createDashboardCommandService } from "../../../runs/commands/command-service.js";
 import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
@@ -102,6 +100,7 @@ export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
   readonly admission?: RuntimeAdmission;
+  readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
   readonly isolation: RuntimeIsolation;
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
@@ -364,22 +363,6 @@ function realWorkerProcessSpawner(): WorkerProcessSpawner {
   };
 }
 
-function ensureOwnerOnlyDirectory(path: string, label: string): void {
-  mkdirSync(path, { recursive: true, mode: 0o700 });
-  const handle = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  try {
-    const directory = fstatSync(handle);
-    if (!directory.isDirectory()) throw new Error(`${label} is not a directory`);
-    if ((directory.mode & 0o7777) !== 0o700) fchmodSync(handle, 0o700);
-    const permissions = fstatSync(handle).mode & 0o7777;
-    if (permissions !== 0o700) {
-      throw new Error(`${label} permissions are ${permissions.toString(8)}, expected 700`);
-    }
-  } finally {
-    closeSync(handle);
-  }
-}
-
 type StartupCleanup = () => void | Promise<void>;
 
 async function unwindDashboardStartup(
@@ -395,6 +378,7 @@ async function unwindDashboardStartup(
     }
   }
   if (failures.length === 0) throw primary;
+  if (primary instanceof RuntimeCustodyUncertainError || failures.some(error => error instanceof RuntimeCustodyUncertainError)) throw new RuntimeCustodyUncertainError([primary, ...failures]);
   throw new AggregateError(
     [primary, ...failures],
     "dashboard startup failed and cleanup observed additional failures",
@@ -421,9 +405,16 @@ async function composeDashboardRuntimeStartup(
   const timeZone = runtimeTimeZone();
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
-  const admission = requireRuntimeAdmission(input.admission);
-  const stateRoot = admission.stateRoot;
-  const artifactRoot = admission.artifactRoot;
+  const machineAdmission = requireRuntimeAdmission(input.admission);
+  const profile = input.profile;
+  if (profile === undefined) throw new Error("PROFILE_AUTHORITY_UNAVAILABLE");
+  profile.runtime.assertMachineOwner(machineAdmission);
+  profile.runtime.assertCurrent(profile.token);
+  const assertCurrent = () => profile.runtime.assertCurrent(profile.token);
+  const selected = machineAdmission.readProfileRegistry().activeProfileId;
+  if (selected === null) throw new Error("PROFILE_AUTHORITY_UNAVAILABLE");
+  const stateRoot = join(machineAdmission.stateRoot, "profiles", selected);
+  const artifactRoot = join(stateRoot, "artifacts");
   const runtimeStoragePair = Object.freeze({ stateRoot, artifactRoot });
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
@@ -438,40 +429,32 @@ async function composeDashboardRuntimeStartup(
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
-  if (existsSync(stateRoot)) {
-    const rootInfo = lstatSync(stateRoot);
-    if (!rootInfo.isDirectory()) throw new Error("dashboard state root is not a real directory");
-    const authorityPath = join(stateRoot, "state.db");
-    const priorStateEntries = readdirSync(stateRoot);
-    if (!existsSync(authorityPath) && priorStateEntries.length > 0) {
-      throw new Error("dashboard state root is established but its authority database is missing");
-    }
-  }
-  mkdirSync(stateRoot, { recursive: true });
-  ensureOwnerOnlyDirectory(artifactRoot, "dashboard artifact root");
   // Take the server role lock before opening authority; it fences competing dashboard handles.
   const processLock = acquireRuntimeProcessLock(
     { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid },
     clock,
   );
-  let databaseClosed = true;
+  let databaseClosed = true, transportClosed = true;
   startupCleanups.push(() => {
-    if (!databaseClosed) {
-      throw new Error("dashboard server process record retained because its authority database did not close");
+    if (!databaseClosed || !transportClosed) {
+      throw new RuntimeCustodyUncertainError([new Error("dashboard authority closure is unproved")]);
     }
-    processLock.release();
+    try { processLock.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
   });
-  const database = (() => {
-    try { return AuthorityDatabase.open(admission,
-      { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" }, clock); }
-    catch (error) {
-      appendEmergencyFault({ stateRoot, build: appVersion, code: "DATABASE_ADMISSION_FAILED", error: error instanceof Error ? error : new Error("Database admission failed"), now: clock.now() });
-      throw error;
-    }
+  const context = (() => {
+    try { return profile.runtime.selectedContext(profile.token); }
+    catch (error) { if (error instanceof RuntimeCustodyUncertainError) databaseClosed = false; throw error; }
   })();
+  const { database, admission, account: chatGptAccount } = context;
   databaseClosed = false;
-  startupCleanups.push(() => {
-    database.close();
+  const prepareRuntimeClosure = (): Promise<void> => {
+    profile.runtime.beginClose();
+    return profile.runtime.awaitClosurePreparation(admission.profileBinding.profileId);
+  };
+  startupCleanups.push(async () => {
+    if (!transportClosed) throw new RuntimeCustodyUncertainError([new Error("dashboard HTTP closure is unproved")]);
+    await prepareRuntimeClosure();
+    await profile.runtime.close();
     databaseClosed = true;
   });
   importEmergencyFaults(stateRoot, database.authority.timelineEvents);
@@ -480,16 +463,21 @@ async function composeDashboardRuntimeStartup(
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
     return Object.freeze({
       persistedSettings,
-      resolved: resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock, runtimeStoragePair),
+      resolved: context.resolveSettings(persistedSettings.settings),
     });
   })();
   const { persistedSettings, resolved } = bootConfig;
-  const protectedSettingsAuthority = createCredentialStore({ admission, stateRoot });
-  const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
-  const storageRelocationPlans = createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot });
+  const protectedSettingsAuthority = context.credentials;
+  const protectedSecrets = { read: () => { assertCurrent(); const result = context.protectedSecrets.read(); assertCurrent(); return result; } };
+  const storageRelocationPlans: ReturnType<typeof createStorageRelocationPlanReader> = {
+    read: () => { assertCurrent(); return createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).read(); },
+    project: repositories => { assertCurrent(); return createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).project(repositories); },
+    validate: request => { assertCurrent(); createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).validate(request); },
+  };
   const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
-    runtimeStoragePair, storageRelocationPlans });
+    runtimeStoragePair, storageRelocationPlans,
+    resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent });
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
@@ -659,6 +647,7 @@ async function composeDashboardRuntimeStartup(
       message: error.message,
     }));
   };
+  profile.runtime.beginSupervisorConstruction(profile.token);
   const workerControl = composeWorkerProcessControl({
     profileRoot: resolved.config.paths.browserProfileRoot,
     processLockRoot: join(repoRoot, input.isolation.processLockRoot),
@@ -671,12 +660,15 @@ async function composeDashboardRuntimeStartup(
     onFault: reportSupervisorFault,
     preflight: runtimePreflight,
   });
-  startupCleanups.push(() => {
+  profile.runtime.bindSupervisor(profile.token, workerControl.supervisor);
+  startupCleanups.push(async () => {
+    if (!transportClosed) throw new RuntimeCustodyUncertainError([new Error("dashboard HTTP closure is unproved")]);
+    await prepareRuntimeClosure();
+    await profile.runtime.close();
+    databaseClosed = true;
     const evidence = workerControl.supervisor.close();
     if (evidence.length > 0) {
-      throw new Error(
-        `dashboard startup cleanup leaves owned worker children: ${JSON.stringify(evidence)}`,
-      );
+      throw new RuntimeCustodyUncertainError([new Error("dashboard worker closure is unproved")]);
     }
   });
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
@@ -712,7 +704,7 @@ async function composeDashboardRuntimeStartup(
     preflight: runtimePreflight.admission,
     failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
     clock,
     ids,
 
@@ -742,7 +734,7 @@ async function composeDashboardRuntimeStartup(
   const startPlans = createStartPlanService({
     preflight: runtimePreflight.admission,
     protectedSecrets,
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
     authorityRead: database,
     descriptors,
     clock,
@@ -785,18 +777,21 @@ async function composeDashboardRuntimeStartup(
     );
   }
 
-  const chatGptAccount = createChatGptAccountService({ admission, stateRoot, clock });
-  startupCleanups.push(() => chatGptAccount.close());
+  startupCleanups.push(prepareRuntimeClosure);
   const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
   const app = createDashboardApp({
-    chatGptAccount,
+    chatGptAccount: {
+      readAccount: () => { assertCurrent(); const result = chatGptAccount.readAccount(); assertCurrent(); return result; },
+      signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
+      signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
+    },
     notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
       presentation: runDetailDeps,
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
     }), notificationSourceEventOf(record, database.authority.notificationPublications.latest(record.notificationId))))), target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)), status: notificationObserver.status },
     ...(staticBundle === undefined ? {} : { staticBundle }),
-    requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
+    requestIdentity: { identify: request => { assertCurrent(); return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request); } },
     preflight: createPreflightReportService({ dashboard: preflightAuthority, runtime: runtimePreflight, clock }),
     ...shell,
     projection,
@@ -807,8 +802,8 @@ async function composeDashboardRuntimeStartup(
     commandJournal: database.authority.commands,
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
     bulkCommandAcceptances: {
-      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
-        work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) => {
+        assertCurrent(); const result = work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk }); assertCurrent(); return result; }),
     },
     startPlans,
     intake,
@@ -827,7 +822,13 @@ async function composeDashboardRuntimeStartup(
     port: input.backendPortOverride ?? input.isolation.backendPort,
     onTransferError: reportDashboardTransferFault,
   });
-  startupCleanups.push(async () => { try { await chatGptAccount.close(); } finally { await server.close(); } });
+  transportClosed = false;
+  startupCleanups.push(async () => {
+    const failures: unknown[] = [];
+    try { await prepareRuntimeClosure(); } catch (error) { failures.push(error); }
+    try { await server.close(); transportClosed = true; } catch (error) { failures.push(error); }
+    if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
+  });
   dashboardPreflightRunners.markBackendOwned(server.port);
   void notificationObserver.observe();
   const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
@@ -840,9 +841,9 @@ async function composeDashboardRuntimeStartup(
     noteWriter,
     stop: async (): Promise<void> => {
       const failures: unknown[] = [];
-      try { await chatGptAccount.close(); } catch (error: unknown) { failures.push(error); }
+      try { await prepareRuntimeClosure(); } catch (error: unknown) { failures.push(error); }
       try {
-        await server.close();
+        await server.close(); transportClosed = true;
       } catch (error: unknown) {
         failures.push(error);
       }
@@ -860,55 +861,17 @@ async function composeDashboardRuntimeStartup(
         failures.push(error);
       }
 
+      if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
+      try { await profile.runtime.close(); }
+      catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
       try {
-        await workerControl.supervisor.drainOwnedChildren({
-          requestedAt: IsoInstantSchema.parse(clock.now().toISOString()),
-          requestedBy: LOCAL_OPERATOR_ACTOR_ID,
-          reason: "dashboard-shutdown",
-        });
-      } catch (error: unknown) {
-        failures.push(error);
-      }
-      try {
-        for (const evidence of workerControl.supervisor.close()) {
-          try {
-            reportSupervisorFault(new Error(
-              `dashboard shutdown leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
-            ));
-          } catch (error: unknown) {
-            failures.push(error);
-          }
-        }
-      } catch (error: unknown) {
-        failures.push(error);
-      }
-
-      let databaseClosed = false;
-      try {
-        database.close();
-        databaseClosed = true;
-      } catch (error: unknown) {
-        failures.push(error);
-      }
-      // Release the process lock only after the database closes, so restore cannot race an open handle.
-      if (databaseClosed) {
-        try {
-          processLock.release();
-        } catch (error: unknown) {
-          failures.push(error);
-        }
-      }
-      // Release admission after database and lock cleanup while signal handlers still own shutdown.
-      try {
-        admission.release();
-      } catch (error: unknown) {
-        failures.push(error);
-      }
-      const primary = failures[0];
-      if (failures.length === 1) throw primary;
-      if (failures.length > 1) {
-        throw new AggregateError(failures, "dashboard shutdown observed multiple failures", { cause: primary });
-      }
+        const evidence = workerControl.supervisor.close();
+        if (evidence.length > 0) throw new Error("dashboard worker closure is unproved");
+      } catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
+      try { processLock.release(); }
+      catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
+      try { machineAdmission.release(); }
+      catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
     },
   });
 }

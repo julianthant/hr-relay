@@ -15,13 +15,13 @@ import { selectRunRuntime } from "../../runs/settings/run-settings.js";
 import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
+import { assertProfileBrowserRoot, captureSelectedProfileStorage, RuntimeCustodyUncertainError } from "./storage-compose.js";
 import { type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 
 import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, sweepWorkerClaims, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
@@ -54,7 +54,7 @@ import { createNoteTimelineWriter } from "../../storage/events/note-timeline-wri
 
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { retireWorkerStartupCustody, assertWorkerProcessCustody, bindWorkerProcessAdmission, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
+import { WorkerProcessCustodyUncertainError, retireWorkerStartupCustody, assertWorkerProcessCustody, acquireRuntimeProcessLock, bindWorkerProcessAdmission, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
 // Cadences are composition choices; the contracts constrain renewal and recovery ordering, not numeric defaults.
@@ -386,7 +386,22 @@ function startWorkerMaintenance(input: Readonly<{
 }
 
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
-  const admission = requireRuntimeAdmission(input.admission);
+  let failedClosure: unknown;
+  let closureFailed = false;
+  try {
+    return await composeOwnedWorkerRuntime({ ...input, closeDatabase: database => {
+      try { (input.closeDatabase ?? (opened => opened.close()))(database); }
+      catch (error) { closureFailed = true; failedClosure = error; throw error; }
+    } });
+  } catch (error) {
+    if (closureFailed) throw new RuntimeCustodyUncertainError([error, failedClosure]);
+    throw error;
+  }
+}
+
+async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
+  const machine = requireRuntimeAdmission(input.admission);
+  const selected = captureSelectedProfileStorage(machine);
   const { workflowId, poolIndex, drain, launch } = parseWorkerArguments(
     input.args, input.scenarioStepProofModule?.descriptor.id,
   );
@@ -417,27 +432,48 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
-  const stateRoot = admission.stateRoot;
-  mkdirSync(stateRoot, { recursive: true });
+  const stateRoot = dirname(selected.authorityPath);
   const processLockRoot = join(repoRoot, input.isolation.processLockRoot);
-  const authorityPath = join(stateRoot, "state.db");
-  const initialCustody = input.takeInitialCustody?.();
-  const bound = bindWorkerProcessAdmission({ processLockRoot, authorityPath, pid: input.processId ?? process.pid,
-    ...(initialCustody === undefined ? {} : { initialCustody }),
+  const authorityPath = selected.authorityPath;
+  const initialCustody = input.takeInitialCustody?.() ?? acquireRuntimeProcessLock({ processLockRoot, name: "workers",
+    pid: input.processId ?? process.pid, admission: { kind: "unbound-worker", authorityPath } }, clock,
+  { observeProcessIdentity: input.processIdentityObserver });
+  let issued: RuntimeAdmission | undefined;
+  let protectedAuthority: ReturnType<typeof createCredentialStore>;
+  try {
+    selected.assertCurrent();
+    issued = machine.admitProfile(machine.issueRegisteredProfileClaim(selected.profileId));
+    protectedAuthority = createCredentialStore({ admission: issued, stateRoot, erasureJournalAdmission: machine,
+      erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
+  } catch (error) {
+    try { issued?.release(); initialCustody.release(); }
+    catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
+    throw error;
+  }
+  const admission = issued;
+  const assertCurrent = (): void => { selected.assertCurrent(); admission.assertProfileRuntime(); };
+  const assertBrowserRoot = (root: string): void => { assertCurrent(); assertProfileBrowserRoot(admission, root); };
+  const bound = (() => {
+    try { return bindWorkerProcessAdmission({ processLockRoot, authorityPath, pid: input.processId ?? process.pid,
+    initialCustody,
     ...(launch === undefined ? {} : { workerId: launch.workerId }), clock,
     hooks: { observeProcessIdentity: input.processIdentityObserver },
     open: () => {
+      assertCurrent();
       admission.assertAuthorityDatabase(authorityPath);
       try {
-        return (input.openDatabase ?? ((options, openClock) => AuthorityDatabase.open(admission, options, openClock)))(
+        return (input.openDatabase ?? ((options, openClock) => AuthorityDatabase.open(admission, options, openClock,
+          undefined, undefined, undefined, protectedAuthority)))(
         { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" }, clock);
       } catch (error) {
         appendEmergencyFault({ stateRoot, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version, code: "DATABASE_WRITER_UNAVAILABLE", error: error instanceof Error ? error : new Error("Database writer unavailable"), now: clock.now() });
         throw error;
       }
     },
-    close: input.closeDatabase ?? (value => value.close()),
+    close: input.closeDatabase ?? (opened => opened.close()),
+    releaseStorageCustody: () => admission.release(),
     admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
+      assertCurrent();
       readSettings(repositories);
       if (launch === undefined) {
         const before = repositories.workerPools.get(workflowId);
@@ -448,7 +484,11 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       return admitSupervisedWorker(repositories, { member: { workflowId, poolIndex, workerId: launch.workerId,
         ordinal: launch.ordinal, membershipRevision: launch.membershipRevision }, commandId: launch.commandId, now: clock.now().toISOString() });
     }),
-  });
+  }); } catch (error) {
+      if (error instanceof WorkerProcessCustodyUncertainError) throw new RuntimeCustodyUncertainError([error]);
+      throw error;
+    }
+  })();
   const { value: database, workerId, processLock } = bound;
   let runtimeError: unknown;
   const cleanupErrors: unknown[] = [];
@@ -458,8 +498,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
   const taskNotes = createNoteTimelineWriter({ repository: loggingRepository, clock });
-  const protectedAuthority = createCredentialStore({ admission, stateRoot });
-  const protectedSecrets = createCredentialSecretSource(protectedAuthority);
+  const protectedSecrets = createCredentialSecretSource({ read: () => { assertCurrent(); return protectedAuthority.read(); } });
   const runRecordService = new RunRecordService({ database, clock, ids,
     publishQueued: () => { throw new Error("worker port cannot create runs"); },
   });
@@ -481,6 +520,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       readSettings(repositories));
     resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock,
       { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot });
+    assertBrowserRoot(resolved.config.paths.browserProfileRoot);
 
     const settingsExpectation = Object.freeze({
       revision: persistedSettings.revision,
@@ -509,18 +549,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     }
     if (databaseClosure === "proven") {
       try {
+        admission.release();
         processLock.release();
       } catch (error) {
         bootAndCleanupErrors.push(error);
       }
     }
-    if (bootAndCleanupErrors.length > 1) {
-      throw new AggregateError(
-        bootAndCleanupErrors,
-        `worker ${workerId} settings generation refusal could not release composed resources`,
-        { cause: bootError },
-      );
-    }
+    if (bootAndCleanupErrors.length > 1) throw new RuntimeCustodyUncertainError(bootAndCleanupErrors);
     throw bootError;
   }
 
@@ -542,10 +577,12 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
   const resources = createRunResourcesFactory({processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+    assertBrowserRoot,
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
     },
     assertProfileOwner: requestedWorkerId => {
+      assertCurrent();
       if (requestedWorkerId !== workerId) throw new Error("browser-profile-worker-owner-mismatch");
       assertWorkerProcessCustody({ processLockRoot, acquisitionId: z.uuid().parse(processLock.acquisitionId),
         pid: input.processId ?? process.pid, workerId, authorityPath }, { observeProcessIdentity: input.processIdentityObserver });
@@ -772,9 +809,11 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         configFingerprint: resolved.fingerprint,
         // The SQLite claim transaction fences settings and runtime tokens; the filesystem check fences its inode.
         claimNext: (request) => {
+          assertCurrent();
           retireWorkerStartupCustody(processLock);
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
           claim: admit => database.withAuthorityTransaction((repositories) => {
+          assertCurrent();
           const directive = controlPoll();
           // A directive can arrive from another process after the loop's poll.
           // Refuse this claim and let the next loop turn observe pause/stop.
@@ -791,7 +830,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         }) });
         },
         providers: baselineResources.providers,
-        resourcesForRun: resources.forRun,
+        resourcesForRun: run => { assertCurrent(); return resources.forRun(run); },
         idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,
           { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs,
         artifacts,
@@ -856,12 +895,17 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     cleanupErrors.push(error);
   }
   // Release the process record only after proven database closure; a throwing close is no stop proof.
-  if (databaseClosureProven) {
+  const browserClosureUnproved = runtimeReport?.closure === "unproved" || runtimeError instanceof WorkerSessionClosureUnprovedError;
+  if (databaseClosureProven && !browserClosureUnproved && cleanupErrors.length === 0) {
     try {
+      admission.release();
       processLock.release();
     } catch (error) {
       cleanupErrors.push(error);
     }
+  }
+  if (!databaseClosureProven || browserClosureUnproved || cleanupErrors.length > 0) {
+    throw new RuntimeCustodyUncertainError(runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors]);
   }
   if (cleanupErrors.length === 1 && runtimeError === undefined) throw cleanupErrors[0];
   if (cleanupErrors.length > 0) {

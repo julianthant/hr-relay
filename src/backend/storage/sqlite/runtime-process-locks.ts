@@ -837,11 +837,19 @@ export function assertWorkerProcessCustody(input: Readonly<{ processLockRoot: st
       : !("workerId" in record) || record.workerId !== input.workerId)) throw new Error("worker-process-custody-not-held");
 }
 
+export class WorkerProcessCustodyUncertainError extends AggregateError {
+  constructor(causes: readonly unknown[]) {
+    super(causes, "worker process admission custody is uncertain", { cause: causes[0] });
+    this.name = "WorkerProcessCustodyUncertainError";
+  }
+}
+
 export function bindWorkerProcessAdmission<T>(input: Readonly<{
   processLockRoot: string; authorityPath: string; pid: number; workerId?: string;
   clock: Clock; hooks?: RuntimeProcessLockAcquisitionHooks;
   initialCustody?: RuntimeProcessLockHandle;
   open(): T; admit(value: T, acquisitionId: string): WorkerId; close(value: T): void;
+  releaseStorageCustody?(): void;
 }>): Readonly<{ value: T; workerId: WorkerId; processLock: RuntimeProcessLockHandle }> {
   const initial = input.initialCustody ?? acquireRuntimeProcessLock({ processLockRoot: input.processLockRoot, name: "workers", pid: input.pid,
     ...(input.workerId === undefined ? { admission: { kind: "unbound-worker", authorityPath: input.authorityPath } }
@@ -849,6 +857,7 @@ export function bindWorkerProcessAdmission<T>(input: Readonly<{
   let opened: { value: T } | undefined;
   let stable: RuntimeProcessLockHandle | undefined;
   let initialReleased = false;
+  let handoffUncertain = false;
   try {
     const acquisitionId = z.uuid().parse(initial.acquisitionId);
     assertWorkerProcessCustody({ processLockRoot: input.processLockRoot, acquisitionId, pid: input.pid,
@@ -860,7 +869,10 @@ export function bindWorkerProcessAdmission<T>(input: Readonly<{
       name: "workers", pid: input.pid, workerId }, input.clock, input.hooks) : initial;
     assertWorkerProcessCustody({ processLockRoot: input.processLockRoot,
       acquisitionId: z.uuid().parse(stable.acquisitionId), pid: input.pid, workerId }, input.hooks);
-    if (stable !== initial) { initial.release(); initialReleased = true; }
+    if (stable !== initial) {
+      try { initial.release(); initialReleased = true; }
+      catch (error) { handoffUncertain = true; throw error; }
+    }
     const custody = workerCustodyHandles.get(stable);
     if (custody === undefined || custody.root !== resolve(input.processLockRoot)) throw new Error("worker-birth-custody-unavailable");
     workerCustodyHandles.set(stable, { ...custody, authorityPath: resolve(input.authorityPath), startupFresh: true });
@@ -872,12 +884,19 @@ export function bindWorkerProcessAdmission<T>(input: Readonly<{
       try { input.close(opened.value); closed = true; } catch (closeError) { failures.push(closeError); }
     }
     if (closed) {
+      try { input.releaseStorageCustody?.(); }
+      catch (releaseError) { throw new WorkerProcessCustodyUncertainError([...failures, releaseError]); }
+      if (handoffUncertain) throw new WorkerProcessCustodyUncertainError(failures);
       if (stable !== undefined && stable !== initial) {
-        try { stable.release(); } catch (releaseError) { failures.push(releaseError); }
+        try { stable.release(); }
+        catch (releaseError) { throw new WorkerProcessCustodyUncertainError([...failures, releaseError]); }
       }
-      if (!initialReleased) { try { initial.release(); } catch (releaseError) { failures.push(releaseError); } }
+      if (!initialReleased) {
+        try { initial.release(); }
+        catch (releaseError) { throw new WorkerProcessCustodyUncertainError([...failures, releaseError]); }
+      }
     }
-    if (failures.length > 1) throw new AggregateError(failures, "worker process admission custody is uncertain", { cause: error });
+    if (failures.length > 1) throw new WorkerProcessCustodyUncertainError(failures);
     throw error;
   }
 }
