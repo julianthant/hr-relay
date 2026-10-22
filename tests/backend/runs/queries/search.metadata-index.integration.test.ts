@@ -1,8 +1,8 @@
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it,vi } from "vitest";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
@@ -20,8 +20,8 @@ import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/su
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "search-index-"));
-  const path = join(root, "authority.db");
+  const profile = createBoundProfileFixture();
+  const root = profile.stateRoot, path = profile.path;
   const clock = manualClock(new Date("2026-09-21T12:00:00Z"));
   let db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "search-test" }, clock);
   db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -29,7 +29,7 @@ function fixture() {
     descriptors: { resolve: () => undefined }, authority: { readSnapshot: read => db.withAuthorityReadSnapshot(() => read({
       authorityGeneration: db.getMeta().authorityGeneration, searchRuns: input => db.authority.runs.search(input),
     })) } });
-  return { root, path, clock, get db(){return db;}, service, reopen(){db.close();db=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"search-reopen"},clock);}, dispose() { db.close(); rmSync(root, { recursive: true, force: true }); } };
+  return { root, path, clock, get db(){return db;}, service, reopen(){db.close();db=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"search-reopen"},clock);}, dispose() { db.close(); profile.close(); } };
 }
 
 it("searches registered and historical workflow metadata without exposing raw inputs or inventing actors", () => {
@@ -245,13 +245,21 @@ it("refuses a selection beyond the 10000 metadata bound before reading run JSON"
   const f=fixture();
   try {
     const prototype = runRecordOf({seed:1,workflow:"history"});
-    f.db.withAuthorityTransaction(() => {
+    const raw = new DatabaseSync(f.path);
+    try {
+      raw.exec("PRAGMA foreign_keys=ON; BEGIN IMMEDIATE");
+      const columns = Object.keys(runRecordColumns(prototype));
+      const insert = raw.prepare(`INSERT INTO runs(${columns.join(",")}) VALUES(${columns.map(() => "?").join(",")})`);
       for (let seed = 1; seed <= 10001; seed++) {
         const runId = `00000000-0000-4000-8000-${String(seed).padStart(12,"0")}`;
-        f.db.authority.runs.enqueue({...prototype,envelope:{...prototype.envelope,runId,itemId:runId,workflow:seed === 10001 ? "needle" : "history"}});
+        const record = RunRecordSchema.parse({...prototype,envelope:{...prototype.envelope,runId,itemId:runId,workflow:seed === 10001 ? "needle" : "history"}});
+        insert.run(...Object.values(runRecordColumns(record)));
       }
-    });
+      raw.exec("COMMIT");
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM runs").get()?.count, 10001);
+    } finally { raw.close(); }
     for(let publication=f.db.rebuildRunSearchIndex({restart:true,limit:500});publication.state!=="published";publication=f.db.rebuildRunSearchIndex({limit:500}))assert.equal(publication.state,"building");
+    f.reopen();
     // A too-broad selection must stop before any raw source JSON is materialized.
     // eslint-disable-next-line @typescript-eslint/unbound-method -- preserve the database receiver in this observer.
     const prepare=DatabaseSync.prototype.prepare;

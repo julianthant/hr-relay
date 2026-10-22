@@ -177,7 +177,7 @@ describe("deferred arms", () => {
 }
 
 {
-const { roots, databases, admissions, fixture, protectedCommand, failAudit } = createSettingsAuthorityTestWorld();
+const { fixture, protectedCommand, failAudit, cleanup } = createSettingsAuthorityTestWorld();
 
 
 
@@ -185,10 +185,10 @@ const { roots, databases, admissions, fixture, protectedCommand, failAudit } = c
 
 
 describe("SQLite settings authority", () => {
-afterEach(() => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(cleanup);
 
   it("protects a retained credential identity from internal lifecycle journal writers", () => {
-    const f = fixture(); const pending = protectedCommand();
+    const f = fixture(); const pending = protectedCommand(f.store.read().revision);
     assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
     const generation = f.database.getMeta().authorityGeneration;
     const path = join(f.root, "credentials", "protected.json");

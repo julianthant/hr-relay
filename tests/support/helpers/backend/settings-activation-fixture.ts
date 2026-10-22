@@ -3,9 +3,8 @@ import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -24,8 +23,9 @@ import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 
 export function settingsFixture(isolateBrowser = false) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-activation-"));
-  const path = join(root, "authority.sqlite");
+  const profile = createBoundProfileFixture();
+  const root = profile.stateRoot;
+  const path = profile.path;
   const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
   const host = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" });
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 10, migrationOwner: "settings-proof" }, clock);
@@ -73,6 +73,6 @@ export function settingsFixture(isolateBrowser = false) {
     resolutions: () => resolutions,
     save: (patch: SettingsPatch) => execute(command(patch)),
     create: (overrides: Partial<CreateRunRequest> = {}) => requireLifecycleApplied(service.create(request(overrides))),
-    close: () => { database.close(); rmSync(root, { recursive: true, force: true }); },
+    close: () => { database.close(); profile.close(); },
   };
 }

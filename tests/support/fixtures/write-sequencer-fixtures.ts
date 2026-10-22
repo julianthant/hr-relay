@@ -1,6 +1,7 @@
 import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
+import type { DuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkerSessionProvider } from "../../../src/workflow-kit/session.js";
@@ -710,6 +711,7 @@ export function writeFixtureSessionManager(
   harness: SessionFactoryHarness,
   registry: TaskStoreRegistry,
   clock: TestClock,
+  duoCeremony: DuoCeremonyGateFactory = fixtureDuoCeremonyGates(clock),
 ): WorkerSessionManager {
   return new WorkerSessionManager({
     workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
@@ -719,7 +721,7 @@ export function writeFixtureSessionManager(
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony,
   });
 }
 

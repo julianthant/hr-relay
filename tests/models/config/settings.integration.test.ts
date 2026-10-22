@@ -45,10 +45,10 @@ import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 
 {
 
-const { roots, databases, admissions, fixture } = createSettingsAuthorityTestWorld();
+const { fixture, cleanup } = createSettingsAuthorityTestWorld();
 
 
-const _afterEachFixture0 = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
+const _afterEachFixture0 = cleanup;
 
 function ordinary(expectedRevision = 1) {
   const patch = { "concurrency.defaultWorkers": { set: 3 } };

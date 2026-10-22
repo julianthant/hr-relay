@@ -380,6 +380,10 @@ and the artifact root cannot contain the state root.
 malformed locator refuses. Source markers and retained data never select a fallback installation.
 `RuntimeAdmission` rechecks held custody and exact permitted storage paths throughout use.
 Shared admission supports runtime openers; exclusive admission excludes them for offline operations.
+The installation owner retains its executing process's immutable birth identity after one successful
+OS observation. Own-PID lease rows still compare their stored birth token against that witness on
+every use; peer process observations remain fresh. Unknown initial identity refuses. Lease files,
+control witnesses, profile claims and generations continue to be checked throughout use.
 
 `acquireEntrypointAdmission` adopts or initializes the genuinely empty default installation before
 serving it. It verifies an existing native database read-only; initial authority creation uses a

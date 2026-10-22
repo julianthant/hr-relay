@@ -1,9 +1,8 @@
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { protectedSubjectDisplay } from "../../../../src/backend/runs/start/protected-input.js";
@@ -19,7 +18,7 @@ import { QUEUED_RUN, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js"
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { AuthorityDatabase, type AuthorityLifecycleHooks, type AuthorityTerminalizationHooks } from "../synthetic-storage-admission.js";
-import { on } from "node:events";
+import { on, once } from "node:events";
 import { Worker } from "node:worker_threads";
 import { z } from "zod";
 
@@ -35,8 +34,9 @@ export function createRunRecordServiceTestWorld() {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
   ) {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "run-record-service-"));
-    cleanups.push(() => rmSync(root, { recursive: true }));
+    const profile = createBoundProfileFixture({ sharedMachine: true });
+    const root = profile.stateRoot;
+    cleanups.push(() => profile.close());
     const clock = manualClock(new Date(NOW));
     const database = AuthorityDatabase.open(
       { path: join(root, "state.db"), migrationOwner: "unit-test", busyTimeoutMs: 250 },
@@ -150,17 +150,48 @@ export function createRunRecordServiceTestWorld() {
     ]) }),
   ]);
 
-  function raceConnection(data: unknown) {
+  async function raceConnection(data: unknown) {
     const worker = new Worker(new URL("../../../support/processes/run-record-race-worker.ts", import.meta.url), { workerData: data, execArgv: ["--import", "tsx"] });
     const events = on(worker, "message");
-    return {
+    const connection = {
       worker,
+      close: async () => {
+        try {
+          if (worker.threadId === -1) throw new Error("race worker exited before close");
+          const exited = once(worker, "exit");
+          worker.postMessage("close");
+          const [code] = z.tuple([z.number().int()]).parse(await exited);
+          assert.equal(code, 0, "race worker close failed");
+        } catch (error) {
+          await worker.terminate();
+          throw error;
+        } finally {
+          const closeEvents = events.return?.bind(events);
+          assert.ok(closeEvents, "race worker message iterator must support close");
+          await closeEvents();
+        }
+      },
       next: async () => {
         const event = await events.next();
         if (event.done) throw new Error("race worker ended before its expected event");
         return RaceEventSchema.parse(event.value[0]);
       },
     };
+    try {
+      return { ...connection, ready: await connection.next() };
+    } catch (error) {
+      await worker.terminate();
+      throw error;
+    }
+  }
+
+  async function closeRaceConnections(connections: Awaited<ReturnType<typeof raceConnection>>[], releases: SharedArrayBuffer[]) {
+    for (const release of releases) {
+      Atomics.store(new Int32Array(release), 0, 1);
+      Atomics.notify(new Int32Array(release), 0);
+    }
+    const closed = await Promise.allSettled(connections.map(connection => connection.close()));
+    for (const result of closed) if (result.status === "rejected") throw result.reason;
   }
 
   function failureTerminalRequest(run: RunRecord, commandId: string) {
@@ -206,5 +237,5 @@ export function createRunRecordServiceTestWorld() {
     };
   }
   const cleanup = () => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); };
-  return { cleanups, fixture, created, runningRun, parkedWriteIntent, raceConnection, failureTerminalRequest, cleanup };
+  return { cleanups, fixture, created, runningRun, parkedWriteIntent, raceConnection, closeRaceConnections, failureTerminalRequest, cleanup };
 }

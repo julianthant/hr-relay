@@ -1,9 +1,8 @@
 import { CONFIG_SNAPSHOT, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "../admission-fixture.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { type WriteSequencerContext } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { withBoundRunConfigFingerprint, type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWriteSequencer, type ProductionWriteSequencer, type TransactionDryRunPreview, type WriteSequencerHooks } from "../../../../src/backend/runtime/writes/write-sequencer.js";
@@ -40,25 +39,25 @@ export function createWriteSequencerTestWorld() {
     emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
   }> = {}): Harness {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-write-sequencer-"));
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "write-sequencer-test" },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "write-sequencer-test" },
       clock,
       options.commitHooks,
     );
     disposers.push(() => {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const admitWorker = (poolIndex: number): void => {
-      testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: writeFixtureDescriptor, poolIndex });
+      testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex });
     };
     admitWorker(1);
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
     const sessions = writeFixtureSessions(world);
-    const manager = writeFixtureSessionManager(sessions, registry, clock);
+    const manager = writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)));
     const emitter = recordingEmitter();
     const spanSink = {
       emit(event: Parameters<typeof emitter.emitter.emit>[0]): void {

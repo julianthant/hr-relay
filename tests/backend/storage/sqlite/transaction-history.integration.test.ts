@@ -1,3 +1,4 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -70,9 +71,6 @@ import { historyWorld } from "../../../support/helpers/storage/transaction-histo
 /** Activity shape stays stable; confirmed database history replaces file folding. */
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -236,12 +234,12 @@ it("bounds cold range/run selected evidence independently of unrelated current a
 
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT_m4);
 
-const roots: string[] = [];
-const _afterEachFixture0 = () => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
-function root(): string {
-  const path = mkdtempSync(join(realpathSync(tmpdir()), "timeline-"));
-  roots.push(path);
-  return path;
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
+const _afterEachFixture0 = () => { for (const profile of profiles.splice(0)) profile.close(); };
+function profileFixture() {
+  const profile = createBoundProfileFixture({ sharedMachine: true });
+  profiles.push(profile);
+  return profile;
 }
 const ts = "2026-09-08T12:00:00.000Z";
 function span() {
@@ -272,21 +270,27 @@ describe("SQLite timeline delivery", () => {
 afterEach(_afterEachFixture0);
 
   it("reads durable events from a separate producer process after lost notification and restart", () => {
-    const path = join(root(), "cross-process.db");
+    const path = profileFixture().path;
     const first = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "timeline-process-test" }, manualClock(new Date(ts)));
     const script = `
-      import { AuthorityDatabase } from './tests/support/helpers/synthetic-database-admission.ts';
+      import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
+      import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
+      import { createProfileRegistry } from './src/backend/profiles/registry.ts';
+      import { basename, dirname, resolve } from 'node:path';
       import { createTimelineEmitter } from './src/backend/storage/events/timeline-emitter.ts';
       import { manualClock } from './src/rules/time/clock.ts';
       const clock = manualClock(new Date(process.argv[2]));
-      const db = AuthorityDatabase.open({ path: process.argv[1], busyTimeoutMs: 500, migrationOwner: 'timeline-child' }, clock);
+      const path = process.argv[1];
+      const machine = acquireEntrypointAdmission(resolve(dirname(path), '../../../..'), 'shared');
+      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(path))));
+      const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 500, migrationOwner: 'timeline-child' }, clock);
       try {
         const writer = createTimelineEmitter({ repository: db.authority.timelineEvents, clock });
         writer.emit({ t: 'span.started', kind: 'worker', workflow: 'person-lookup', ts: process.argv[2],
           workerId: 'child-worker', spanPath: 'worker/child-worker', name: 'Child worker' });
         writer.emit({ t: 'span.ended', kind: 'worker', workflow: 'person-lookup', ts: process.argv[2],
           workerId: 'child-worker', spanPath: 'worker/child-worker', outcome: 'done' });
-      } finally { db.close(); }
+      } finally { db.close(); admission.release(); machine.release(); }
     `;
     try {
       const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, path, "2026-09-08T00:30:00.000Z"],
@@ -308,7 +312,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("pages across real connections and restart without collapsing equal timestamps or text", () => {
-    const path = join(root(), "state.db");
+    const path = profileFixture().path;
     using first = initialize(path);
     using second = new DatabaseSync(path);
     const writer = repository(first);
@@ -324,7 +328,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("replays exact event identity and rejects divergent content without consuming a cursor", () => {
-    using database = initialize(join(root(), "state.db"));
+    using database = initialize(profileFixture().path);
     const history = repository(database);
     const input = event();
     const first = history.append(input);
@@ -335,7 +339,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("replays retained checkpoint and confirmation identities after the owner advances attempts", () => {
-    const path = join(root(), "replay.db");
+    const path = profileFixture().path;
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500,
       migrationOwner: "timeline-replay-test" }, manualClock(new Date(ts)));
     try {
@@ -364,7 +368,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("never reuses a cursor after every ordinary event was pruned", () => {
-    using database = initialize(join(root(), "state.db"));
+    using database = initialize(profileFixture().path);
     const history = repository(database);
     const first = history.append({ ...event(), payload: { kind: "span", event: { t: "span.ended", kind: "worker", ts, workflow: "person-lookup", pid: 123, workerId: "test-worker", spanPath: "worker/person-lookup/test-worker", outcome: "done" } } }).record;
     expect(history.pruneBefore("2026-09-09")).toBe(1);
@@ -373,7 +377,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("pins a page horizon while a second connection appends", () => {
-    const path = join(root(), "state.db");
+    const path = profileFixture().path;
     using database = initialize(path);
     using other = new DatabaseSync(path);
     const history = repository(database);
@@ -385,7 +389,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("rejects scope drift and mutation of immutable stored events", () => {
-    using database = initialize(join(root(), "state.db"));
+    using database = initialize(profileFixture().path);
     const history = repository(database);
     expect(() => history.append({ ...event(), scope: { kind: "worker", workerId: "different-worker" } })).toThrow();
     history.append(event());
@@ -393,7 +397,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("enforces retained run ownership in SQLite", () => {
-    using database = initialize(join(root(), "state.db"));
+    using database = initialize(profileFixture().path);
     const input = event();
     const runId = randomUUID();
     const runEvent = { ...input, scope: { kind: "run", runId }, payload: { kind: "span", event: {
@@ -416,7 +420,7 @@ describe("retained confirmed history and shared retry deletion", () => {
 afterEach(_afterEachFixture0);
 
   function committed() {
-    return openConfirmedRetentionDatabase(root, ts, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
+    return openConfirmedRetentionDatabase(profileFixture().path, ts, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
   }
   it("reconstructs every current confirmation field and retains authenticated proof beyond pruning and deletion", () => {
     const { database, run } = committed();

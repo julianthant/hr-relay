@@ -1,11 +1,11 @@
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join as join_m0 } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
 import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../../src/backend/app/config/resolve.js";
 
 import { executeSettingsCommand, type CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -30,8 +30,9 @@ import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "../../../../src/models/confi
 
 
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
-import { credentialTrap, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { upgradeStorage } from "../../../support/helpers/synthetic-storage-admission.js";
+import { credentialTrap, storageTree, storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 {
 
@@ -58,9 +59,10 @@ function activate(database: AuthorityDatabase_m0, record: SettingsFileRecord, cl
   return settingsRuntimeIdentity(record, resolved.fingerprint);
 }
 function fixture(probe: () => void = () => {}) {
-  const root = mkdtempSync(join_m0(realpathSync(tmpdir()), "hrauto-settings-reader-")); cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+  const profile = createBoundProfileFixture(); cleanups.push(() => profile.close());
+  const root = profile.stateRoot;
   const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-  const databasePath = join_m0(root, "state.db");
+  const databasePath = profile.path;
   const database = AuthorityDatabase_m0.open({ path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock); cleanups.push(() => database.close());
   const store = createCredentialStore_m0({ stateRoot: root });
   const initial = readSettings(database.authority); const active = activate(database, initial, clock);
@@ -77,8 +79,8 @@ function fixture(probe: () => void = () => {}) {
       target: { expectedRevision: readSettings(database.authority).revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
     assert.equal(result.state, "applied"); return readSettings(database.authority);
   };
-  const protectedCommand = (value: string) => ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-    target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: value } } } });
+  const protectedCommand = (value: string | null) => ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+    target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: value === null ? { clear: true } : { set: value } } } });
   return { root, database, databasePath, clock, store, initial, active, reader, execute, apply, protectedCommand, reads: () => reads,
     protectedReader: createProtectedSettingsRuntimeReader(store) };
 }
@@ -151,9 +153,9 @@ describe("independent protected Settings reader", () => {
 afterEach(_afterEachFixture0);
 
   it("serves the stored credential value with the authenticated readback", () => {
-    const f = fixture(); f.execute(f.protectedCommand("synthetic-protected-readback"));
+    const f = fixture(); const revision = f.store.read().revision; f.execute(f.protectedCommand("synthetic-protected-readback"));
     const snapshot = f.protectedReader.read(); assert.equal(snapshot.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
-    ProtectedSettingsReadbackSchema.parse(snapshot.readback); assert.equal(snapshot.readback.revision, 2);
+    ProtectedSettingsReadbackSchema.parse(snapshot.readback); assert.equal(snapshot.readback.revision, revision + 1);
     assert.equal(snapshot.record.entries.ucpathPassword?.value, "synthetic-protected-readback");
     assert.equal(JSON.stringify(snapshot).includes("synthetic-protected-readback"), true);
   });
@@ -165,24 +167,32 @@ afterEach(_afterEachFixture0);
     assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(f.store)), "synthetic-first-value");
   });
   it("independent committed credentials remain available without a SQLite audit", () => {
-    const f = fixture(); const command = f.protectedCommand("synthetic-before-audit");
+    const f = fixture(); const revision = f.store.read().revision; const command = f.protectedCommand("synthetic-before-audit");
     const result = f.store.apply(ProtectedSettingsApplyInputSchema.parse({ ...command.payload, commandId: command.commandId,
       commandFingerprint: deriveSettingsCommandFingerprint(command), expectedRevision: command.target.expectedRevision, updatedAt: command.requestedAt }));
     assert.equal(result.state, "applied"); assert.equal(f.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(f.protectedReader.read().readback.revision, 2);
+    assert.equal(f.protectedReader.read().readback.revision, revision + 1);
   });
   it("observes each credential at next use without changing ordinary runtime identity", () => {
     const f = fixture(); const before = f.reader.read(); const source = createCredentialSecretSource(f.store);
+    assert.equal(f.execute(f.protectedCommand(null)).state, "applied");
     assert.throws(() => requireSecret("ucpathPassword", source), /ucpathPassword is missing/u);
     f.execute(f.protectedCommand("synthetic-next-use-one")); assert.equal(requireSecret("ucpathPassword", source), "synthetic-next-use-one");
     f.execute(f.protectedCommand("synthetic-next-use-two")); assert.equal(requireSecret("ucpathPassword", source), "synthetic-next-use-two");
     assert.deepEqual(f.reader.read(), before);
   });
   it("authenticates its own history even when SQLite is unavailable", () => {
-    const f = fixture(); f.execute(f.protectedCommand("synthetic-owned-value")); f.database.close();
-    assert.equal(f.protectedReader.read().readback.revision, 2);
+    const f = fixture(); const revision = f.store.read().revision; f.execute(f.protectedCommand("synthetic-owned-value")); f.database.close();
+    assert.equal(f.protectedReader.read().readback.revision, revision + 1);
     const path = join_m0(f.root, "credentials", "protected.json");
-    writeFileSync(path, readFileSync(path, "utf8").replace("synthetic-owned-value", "synthetic-altered-value"));
+    const document = z.looseObject({ record: z.looseObject({ entries: z.looseObject({
+      ucpathPassword: z.looseObject({ value: z.string() }),
+    }) }) }).parse(JSON.parse(readFileSync(path, "utf8")));
+    const originalValue = document.record.entries.ucpathPassword.value;
+    assert.equal(originalValue === "synthetic-owned-value", true);
+    document.record.entries.ucpathPassword.value = "synthetic-altered-value";
+    assert.equal(document.record.entries.ucpathPassword.value === originalValue, false);
+    writeFileSync(path, JSON.stringify(document));
     assert.throws(() => f.protectedReader.read(), /disagrees with its identity history/u);
   });
 });
@@ -282,10 +292,10 @@ afterEach(_afterEachFixture0);
 
 {
 
-const { roots, databases, admissions, fixture } = createSettingsAuthorityTestWorld();
+const { fixture, cleanup } = createSettingsAuthorityTestWorld();
 
 
-const _afterEachFixture0 = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
+const _afterEachFixture0 = cleanup;
 
 function ordinary(expectedRevision = 1) {
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
@@ -298,11 +308,13 @@ afterEach(_afterEachFixture0);
 
   it("represents empty revision one without a file or current row", () => {
     const f = fixture();
+    const credentialBaseline = storageTree(join_m0(f.root, "credentials"));
+    assert.ok(Object.hasOwn(credentialBaseline, "protected.json"));
     assert.equal(f.database.authority.settingsCurrent.get(), undefined);
     assert.deepEqual(readSettings(f.database.authority).settings, {});
     assert.equal(readSettings(f.database.authority).revision, 1);
     assert.equal(existsSync(join_m0(f.root, "settings")), false);
-    assert.equal(existsSync(join_m0(f.root, "credentials")), false);
+    assert.deepEqual(storageTree(join_m0(f.root, "credentials")), credentialBaseline);
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try { assert.equal(raw.prepare("SELECT name FROM sqlite_master WHERE name='protected_settings_current'").get(), undefined); }
     finally { raw.close(); }
@@ -384,8 +396,8 @@ _afterEachFixture0();
 {
 
 const clock = manualClock(new Date("2026-09-06T12:00:00.000Z"));
-const roots: string[] = [];
-const _afterEachFixture0 = () => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
+const profiles: ReturnType<typeof storageRecoveryFixture>[] = [];
+const _afterEachFixture0 = () => { for (const profile of profiles.splice(0)) profile.dispose(); };
 const HISTORICAL_PROVIDER_MODEL_ENVIRONMENT_KEYS = ["OCR_GEMINI_MODEL", "OCR_GEMINI_MODELS", "OCR_GROQ_MODEL", "OCR_GROQ_MODELS", "OCR_MISTRAL_MODEL", "OCR_MISTRAL_MODELS", "OCR_OPENROUTER_MODEL", "OCR_OPENROUTER_MODELS", "OCR_SAMBANOVA_MODEL", "OCR_SAMBANOVA_MODELS"];
 const bindings = {
   HRAUTO_KUALI_TEST_URL: "https://fixture.invalid/kuali", HRAUTO_NEW_KRONOS_TEST_URL: "https://fixture.invalid/new-kronos",
@@ -411,9 +423,10 @@ const RETIRED_TEST_TARGET_ENV = {
   HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "12345678", HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID: "10123456",
 };
 function fixture(body: string) {
-  const root = mkdtempSync(join_m0(realpathSync(tmpdir()), "upgrade-env-")); roots.push(root);
+  const profile = storageRecoveryFixture(0); profiles.push(profile);
+  const root = profile.root;
   const environmentFile = join_m0(root, ".env"); writeFileSync(environmentFile, body, { mode: 0o600 });
-  return { root, environmentFile, input: { stateRoot: root, processLockRoot: join_m0(root, "locks"), environmentFile, plan: false } };
+  return { root, environmentFile, profile, input: { stateRoot: root, processLockRoot: join_m0(root, "locks"), environmentFile, plan: false } };
 }
 describe("expired environment import refuses before access", () => {
 afterEach(_afterEachFixture0);
@@ -423,32 +436,33 @@ afterEach(_afterEachFixture0);
     const retired = { I9_USER_ID: "synthetic-retired-id", I9_PASSWORD: "synthetic-retired-password", TELEGRAM_BOT_TOKEN: "synthetic-retired-token", TELEGRAM_CHAT_ID: "synthetic-retired-chat" };
     const body = Object.entries({ ...bindings, ...retired, GEMINI_API_KEY: "synthetic-provider-never-imported" }).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
     const f = fixture(body); credentialTrap(f.root); const before = storageTree(f.root);
-    const plan = await upgradeStorage({ ...f.input, plan: true }, clock);
+    const plan = await f.profile.run(true);
     assert.equal(plan.credentials, "unchanged");
     assert.deepEqual(storageTree(f.root), before);
-    const applied = await upgradeStorage(f.input, clock);
+    const applied = await f.profile.run();
     assert.equal(applied.credentials, "unchanged");
-    const database = AuthorityDatabase_m0.open({ path: join_m0(f.root, "state.db"), busyTimeoutMs: 500, migrationOwner: "expired-env-proof" }, clock);
-    try { assert.deepEqual(readSettings(database.authority).settings, {}); } finally { database.close(); }
+    NativeAuthorityDatabase.inspectStoppedUpgrade(f.profile.admission, f.profile.path, f.input.processLockRoot, clock);
+    const database = new DatabaseSync(f.profile.path, { readOnly: true });
+    try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); } finally { database.close(); }
     assert.equal(readFileSync(f.environmentFile, "utf8"), body);
     for (const value of [...Object.values(retired), bindings.UCPATH_PASSWORD, bindings.UCPATH_USER_ID, "synthetic-provider-never-imported"])
       assert.equal(readFileSync(join_m0(f.root, "state.db")).includes(Buffer.from(value)), false);
-    const settled = storageTree(f.root); assert.equal((await upgradeStorage(f.input, clock)).state, "already-upgraded");
+    const settled = storageTree(f.root); assert.equal((await f.profile.run()).state, "already-upgraded");
     const after = storageTree(f.root);
     for (const [path, bytes] of Object.entries(settled)) assert.equal(after[path], bytes);
     assert.equal(Object.keys(after).filter(path => !(path in settled)).every(path => path.startsWith("locks/restore-admission-history/")), true);
   });
   it.each(Object.entries(RETIRED_TEST_TARGET_ENV))("does not read or adopt expired test-target key %s", async (key, value) => {
     const body = `${key}=${value}\n`; const f = fixture(body); credentialTrap(f.root);
-    const report = await upgradeStorage(f.input, clock);
+    const report = await f.profile.run();
     assert.equal(report.credentials, "unchanged"); assert.equal(JSON.stringify(report).includes(value), false);
     assert.equal(readFileSync(f.environmentFile, "utf8"), body);
     assert.equal(readFileSync(join_m0(f.root,"state.db")).includes(Buffer.from(value)), false);
   });
   it.each(["UNREGISTERED_SETTING=1", "I9_USER_ID_EXTRA=synthetic-private", "TELEGRAM_TOKEN=synthetic-private", "I9_USER_ID=one\nI9_USER_ID=two", "TELEGRAM_BOT_TOKEN=\"unterminated", "HRAUTO_DEFAULT_WORKERS=abc", "HRAUTO_KUALI_TEST_URL=not-a-url"])("does not parse expired environment bytes: %s", async body => {
     const f=fixture(body);credentialTrap(f.root);const before=storageTree(f.root);
-    assert.equal((await upgradeStorage({...f.input,plan:true},clock)).state,"planned");assert.deepEqual(storageTree(f.root),before);
-    const result=await upgradeStorage(f.input,clock);assert.equal(result.credentials,"unchanged");assert.equal(readFileSync(f.environmentFile,"utf8"),body);
+    assert.equal((await f.profile.run(true)).state,"planned");assert.deepEqual(storageTree(f.root),before);
+    const result=await f.profile.run();assert.equal(result.credentials,"unchanged");assert.equal(readFileSync(f.environmentFile,"utf8"),body);
   });
 });
 }

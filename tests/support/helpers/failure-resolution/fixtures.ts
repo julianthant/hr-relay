@@ -25,8 +25,9 @@ export function resolutionKernel(db: AuthorityDatabase, clock: ReturnType<typeof
     writeResolution: { resolvePresent: unused, resolveAbsent: unused }, ...overrides,
   });
 }
-export function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId) {
-  const f = diagnosticFoundation();
+export function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId,
+  options: { sharedMachine?: true } = {}) {
+  const f = diagnosticFoundation(options);
   const run = runId === f.run.envelope.runId ? f.run : f.createRun(runId);
   const record = { ...failure(), runId: RunIdSchema.parse(runId), failureId: FailureIdSchema.parse(failureId), traceId: run.envelope.traceId };
   terminalizeFixtureFailure(f, run, record);
@@ -69,9 +70,8 @@ import { createReceiptService } from "../../../../src/backend/runs/trust/receipt
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ConfigSchema } from "../../../../src/models/config/schema.js";
 import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-paths.js";
@@ -82,8 +82,8 @@ import { QUEUED_RUN, RUN_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { id } from "../database-foundation/fixtures.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
-function diagnosticFoundation(){
- const root=mkdtempSync(join(realpathSync(tmpdir()),"foundation-baseline-"));const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
+function diagnosticFoundation(options: { sharedMachine?: true }){
+ const profile=createBoundProfileFixture(options);const root=profile.stateRoot;const path=profile.path;const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
  const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
@@ -112,7 +112,7 @@ function diagnosticFoundation(){
  return running.run;
  };
  const run=createRun(RUN_ID);
- return {root,path,clock,db,snapshot,run,createRun,dispose:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
+ return {root,path,clock,db,snapshot,run,createRun,dispose:()=>{db.close();profile.close();}};
 }
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";

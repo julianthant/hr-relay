@@ -48,7 +48,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "5f29c1503f9442e0a6b81892647ab06b4e0151d9dde31be5b653bc33113924aa",
+      "sha256": "dc9f0de7b98778291dfc861497e66f1337ace4f6931305b22e138f1ce7d00fd4",
     "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
   },
   {

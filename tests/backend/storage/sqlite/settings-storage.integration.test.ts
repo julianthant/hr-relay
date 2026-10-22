@@ -1,8 +1,9 @@
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -34,17 +35,19 @@ describe("SQLite settings authority", () => {
     const generation = f.database.getMeta().authorityGeneration;
     const audit = f.database.authority.commandAudits.findByCommand(existing.commandId);
     const before = f.store.read();
-    const result = f.execute({ ...protectedCommand(), commandId: existing.commandId });
+    const credentialBaseline = storageTree(join(f.root, "credentials"));
+    assert.ok(Object.hasOwn(credentialBaseline, "protected.json"));
+    const result = f.execute({ ...protectedCommand(f.store.read().revision), commandId: existing.commandId });
     assert.equal(result.state, "rejected");
     if (result.state === "rejected") assert.equal(result.code, "command-divergent");
     assert.deepEqual(f.store.read(), before);
-    assert.equal(existsSync(join(f.root, "credentials", "protected.json")), false);
+    assert.deepEqual(storageTree(join(f.root, "credentials")), credentialBaseline);
     assert.equal(f.database.getMeta().authorityGeneration, generation);
     assert.deepEqual(f.database.authority.commandAudits.findByCommand(existing.commandId), audit);
     assert.deepEqual(f.database.authority.commands.get(existing.commandId), existing);
   });
   it("retains global ownership after credential commit and failed audit", () => {
-    const f = fixture(); const pending = protectedCommand();
+    const f = fixture(); const pending = protectedCommand(f.store.read().revision);
     assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
     const path = join(f.root, "credentials", "protected.json"); const bytes = readFileSync(path);
     const before = f.store.read(); const generation = f.database.getMeta().authorityGeneration;
@@ -62,7 +65,6 @@ describe("SQLite settings authority", () => {
     assert.deepEqual(readFileSync(path), bytes);
   });
   it("fences a competing process during private commit and refuses its reuse after SQL rollback", () => {
-    const pending = protectedCommand();
     let contenderRan = false;
     const f = fixture({ afterRename: () => {
       const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
@@ -75,7 +77,8 @@ describe("SQLite settings authority", () => {
       `], { encoding: "utf8" });
       assert.equal(child.status, 0, child.stderr);
       contenderRan = true;
-    } });
+    } }, false, true);
+    const pending = protectedCommand(f.store.read().revision);
     const generation = f.database.getMeta().authorityGeneration;
     assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
     assert.equal(contenderRan, true);
@@ -85,19 +88,25 @@ describe("SQLite settings authority", () => {
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
       import assert from 'node:assert/strict';
       import { randomUUID } from 'node:crypto';
-      import { AuthorityDatabase } from './tests/support/helpers/synthetic-database-admission.ts';
+      import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
+      import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
+      import { createProfileRegistry } from './src/backend/profiles/registry.ts';
+      import { basename, dirname } from 'node:path';
       import { manualClock } from './src/rules/time/clock.ts';
       import { resolveConfigWithProvenance } from './src/backend/app/config/resolve.ts';
       import { executeSettingsCommand } from './src/backend/runs/commands/command-kernel.ts';
-      import { createCredentialStore } from './tests/support/helpers/synthetic-storage-admission.ts';
+      import { createCredentialStore } from './src/backend/storage/configuration/credential-store.ts';
       import { createSettingsApplicationExecutor } from './src/backend/runs/commands/settings-service.ts';
       const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
-      const db = AuthorityDatabase.open({ path: ${JSON.stringify(f.path)}, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);
+      const path = ${JSON.stringify(f.path)};
+      const machine = acquireEntrypointAdmission(${JSON.stringify(f.repoRoot)}, 'shared');
+      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(path))));
+      const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);
       try {
-        const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), createCredentialStore({ stateRoot: ${JSON.stringify(f.root)} }));
+        const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), createCredentialStore({ admission, stateRoot: ${JSON.stringify(f.root)} }));
         const result = executeSettingsCommand({ authority: db, clock, ids: { uuid: randomUUID }, settings }, ${JSON.stringify(foreign)});
         assert.equal(result.state, 'rejected'); assert.equal(result.code, 'command-divergent');
-      } finally { db.close(); }
+      } finally { db.close(); admission.release(); machine.release(); }
     `], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), encoding: "utf8" });
     assert.equal(child.status, 0, child.stderr);
     assert.deepEqual(readFileSync(path), bytes);
@@ -123,9 +132,9 @@ describe("SQLite settings authority", () => {
     if (refused.state === "rejected") assert.equal(refused.code, field === "schema" ? "schema-mismatch" : "patch-fingerprint-mismatch");
   });
   it("retains credential commit after audit failure, verifies exact retry and rejects divergent values", () => {
-    const f = fixture(); const request = protectedCommand();
+    const f = fixture(); const revision = f.store.read().revision; const request = protectedCommand(revision);
     assert.throws(() => f.execute(request, failAudit(f.database)), /credential-audit-uncertain/u);
-    assert.equal(f.store.read().revision, 2);
+    assert.equal(f.store.read().revision, revision + 1);
     assert.equal(f.database.authority.commands.get(request.commandId), undefined);
     const divergent = structuredClone(request); divergent.payload.entries.ucpathPassword.set = "different-private-value";
     assert.equal(f.execute(divergent).state, "rejected");

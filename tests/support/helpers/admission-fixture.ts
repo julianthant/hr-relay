@@ -90,9 +90,10 @@ export function createCredentialStore(input: Omit<Parameters<typeof productionCr
   return productionCredentialStore({ ...input, admission: admissionForStateRoot(input.stateRoot) });
 }
 
-export function createBoundProfileFixture(options: { pending?: true } = {}) {
+export function createBoundProfileFixture(options: { pending?: true; sharedMachine?: true } = {}) {
+  if (options.pending === true && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")));
-  const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  let machine = acquireEntrypointAdmission(workspace, "exclusive");
   try {
     const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@example.edu",
       password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
@@ -112,7 +113,14 @@ export function createBoundProfileFixture(options: { pending?: true } = {}) {
       boundProfiles.set(stateRoot, admission);
     };
     if (options.pending !== true) finish();
-    return { workspace, machine, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish,
+    if (options.sharedMachine === true) {
+      admission.release();
+      machine.release();
+      machine = acquireEntrypointAdmission(workspace, "shared");
+      admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+      boundProfiles.set(stateRoot, admission);
+    }
+    return { workspace, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish,
       close() { boundProfiles.delete(stateRoot); admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
   } catch (error) { machine.release(); rmSync(workspace, { recursive: true, force: true }); throw error; }
 }

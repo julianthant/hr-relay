@@ -55,10 +55,10 @@ import { AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/
 
 {
 
-const { roots, databases, admissions, fixture, protectedCommand, failAudit } = createSettingsAuthorityTestWorld();
+const { databases, fixture, protectedCommand, failAudit, cleanup } = createSettingsAuthorityTestWorld();
 
 
-const _afterEachFixture0 = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
+const _afterEachFixture0 = cleanup;
 
 function ordinary(expectedRevision = 1) {
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
@@ -72,7 +72,7 @@ describe("SQLite settings authority", () => {
 afterEach(_afterEachFixture0);
 
   it("after uncertain audit, real CLI restore preserves credentials and exact retry repairs the missing audit", async () => {
-    const f = fixture(undefined, true); const request = protectedCommand(); assert.ok(f.admission);
+    const f = fixture(undefined, true); const revision = f.store.read().revision; const request = protectedCommand(revision); assert.ok(f.admission);
     const backup = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission);
     assert.equal(backup.exitCode, 0, backup.output);
     const directory = join_m0(f.root, "backups", "authority");
@@ -81,7 +81,7 @@ afterEach(_afterEachFixture0);
     assert.throws(() => f.execute(request, failAudit(f.database)), /credential-audit-uncertain/u);
     const credentialPath = join_m0(f.root, "credentials", "protected.json");
     const credentialBytes = readFileSync(credentialPath);
-    assert.equal(f.store.read().revision, 2);
+    assert.equal(f.store.read().revision, revision + 1);
     f.database.close();
     const restore = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["restore", "--from", join_m0(directory, name), "--json"], f.clock, f.repoRoot, f.admission);
     assert.equal(restore.exitCode, 0, restore.output);

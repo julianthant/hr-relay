@@ -1,7 +1,5 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parse } from "csv-parse/sync";
 import { createActivityPopulationService, ActivityPopulationError } from "../../../../src/backend/runs/queries/activity-population.js";
@@ -25,8 +23,8 @@ const at = "2026-10-01T12:00:00.000Z";
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "activity-population-"));
-  const path = join(root, "authority.db");
+  const profile = createBoundProfileFixture();
+  const { path } = profile;
   const clock = manualClock(new Date(at));
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "activity-population-test" }, clock);
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -81,7 +79,7 @@ function fixture() {
   };
   const input = { database, clock, descriptors: { resolve: () => undefined }, ledger: createTransactionHistory(database.authority), timeZone: "UTC" };
   const service = createActivityPopulationService(input);
-  cleanup.push(() => { raw.close(); database.close(); rmSync(root, { recursive: true, force: true }); });
+  cleanup.push(() => { raw.close(); database.close(); profile.close(); });
   return { database, clock, raw, add, publish, service, input };
 }
 const done = (ms: number) => ({ state: "terminal" as const, outcome: "done" as const, endedAt: new Date(Date.parse(at) + ms).toISOString() });

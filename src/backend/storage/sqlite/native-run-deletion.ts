@@ -32,8 +32,7 @@ function containsReference(value: unknown, checkpoint: z.infer<typeof RunCheckpo
   return Object.values(record).some(item => containsReference(item,checkpoint,record.nodeId ?? inheritedNodeId));
 }
 
-function isSettledCascadeTerminalization(database:DatabaseSync,commandRow:unknown,cascade:Set<string>):boolean {
-  const command=commandFromRow(commandRow);
+function isSettledCascadeTerminalization(database:DatabaseSync,command:ReturnType<typeof commandFromRow>,commandRow:unknown,cascade:Set<string>):boolean {
   const {target_id,state}=z.object({target_id:z.string().nullable(),state:z.string()}).parse(commandRow);
   if(!("kind" in command) || command.kind!=="run-lifecycle" || command.operation!=="terminalize"
     || target_id===null || !cascade.has(target_id) || state!=="succeeded")return false;
@@ -96,7 +95,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
     for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {
       if (table === "commands") {
         const command=commandFromRow(raw);
-        if(!isSettledCascadeTerminalization(database,raw,cascade))retained.push(command);
+        if(!isSettledCascadeTerminalization(database,command,raw,cascade))retained.push(command);
         continue;
       }
       if(table === "command_audits") {
@@ -106,7 +105,8 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
         const command=commandFromRow(owner);
         const audit=nativeOrdinaryRecordFromRow(table,raw);
         if(canonicalJsonStringify(z.object({request:z.unknown()}).parse(audit).request)!==canonicalJsonStringify(command))throw new Error("run-deletion-audit-command-mismatch");
-        if(isSettledCascadeTerminalization(database,owner,cascade))continue;
+        if(!isSettledCascadeTerminalization(database,command,owner,cascade))retained.push(audit);
+        continue;
       }
       if (table === "artifacts") {
         const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
@@ -115,7 +115,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
       }
       const record = nativeOrdinaryRecordFromRow(table,raw);
       const identity = z.object({runId:z.string().optional()}).parse(record);
-      if (table === "write_intents" || table === "write_attempts" || table === "command_audits" || identity.runId === undefined || !cascade.has(identity.runId)) retained.push(record);
+      if (table === "write_intents" || table === "write_attempts" || identity.runId === undefined || !cascade.has(identity.runId)) retained.push(record);
       if (table === "write_intents" && identity.runId === runId) {
         const {status} = z.object({status:z.string()}).parse(record);
         if (status === "attempting" || status === "parked") throw new RunDeletionRefusedError("unresolved-write");

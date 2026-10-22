@@ -1,8 +1,6 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, it } from "vitest";
 import { type CrossDateSearchQueryService } from "../../../../src/backend/runs/queries/search.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -30,14 +28,14 @@ function searchService(
 
 describe("cross-date search snapshot token", () => {
   it("binds export selection to the exact process signer, authority source, query, and generation", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-search-selection-token-"));
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open({
-      path: join(root, "authority.db"),
+      path: profile.path,
       busyTimeoutMs: 1_000,
       migrationOwner: "search-selection-token-test",
     }, CLOCK);
     try {
-      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 81, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 81, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const service = searchService(database, 0x41);
       const query = { q: "separations", scope: "workflow" as const, facets: {}, limit: 20 };
       const page = service.search(query);
@@ -60,14 +58,14 @@ describe("cross-date search snapshot token", () => {
         /snapshot token belongs to a different query/,
       );
 
-      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 82, enqueuedAt: "2026-08-27T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 82, enqueuedAt: "2026-08-27T15:00:00.000Z" });
       assert.throws(
         () => service.searchSelected(query, page.snapshot.token),
         /snapshot token names authority generation .*current snapshot is generation/,
       );
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 });

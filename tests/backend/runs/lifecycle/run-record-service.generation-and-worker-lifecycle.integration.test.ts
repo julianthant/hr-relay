@@ -17,7 +17,7 @@ import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const {fixture, created, runningRun, raceConnection, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
+const {fixture, created, runningRun, raceConnection, closeRaceConnections, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
 afterEach(cleanup);
 
@@ -288,13 +288,16 @@ it("competing connections cannot accept conflicting failure settlements", async 
   secondRequest.terminal.failure.failureId = UUID_5;
   secondRequest.terminal.authorization.failureId = UUID_5;
   const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
-  const connections = [firstRequest, secondRequest].map((request, index) => raceConnection({
-    path: join(f.root, "state.db"), now: NOW, release: releases[index], runId: running.envelope.runId,
-    operation: { kind: "terminal-failure", request: { commandId: request.commandId, terminal: request.terminal } },
-  }));
-  const [first, second] = connections; assert.ok(first && second && releases[0] && releases[1]);
+  const connections: Awaited<ReturnType<typeof raceConnection>>[] = [];
   try {
-    assert.deepEqual(await first.next(), { type: "ready" }); assert.deepEqual(await second.next(), { type: "ready" });
+    for (const [index, request] of [firstRequest, secondRequest].entries()) {
+      connections.push(await raceConnection({
+        path: join(f.root, "state.db"), now: NOW, release: releases[index], runId: running.envelope.runId,
+        operation: { kind: "terminal-failure", request: { commandId: request.commandId, terminal: request.terminal } },
+      }));
+    }
+    const [first, second] = connections; assert.ok(first && second && releases[0] && releases[1]);
+    assert.deepEqual(first.ready, { type: "ready" }); assert.deepEqual(second.ready, { type: "ready" });
     first.worker.postMessage("run"); assert.deepEqual(await first.next(), { type: "reserved" });
     second.worker.postMessage("run"); const busy = await second.next(); assert.equal(busy.type, "error");
     if (busy.type !== "error") throw new Error("competing settlement did not encounter held transaction");
@@ -309,7 +312,9 @@ it("competing connections cannot accept conflicting failure settlements", async 
     assert.equal(f.database.authority.failures.listByRun(running.envelope.runId).length, 1);
     assert.equal(f.database.authority.failures.get(UUID_5), undefined);
     assert.equal(f.database.authority.lifecycleJournal.getCommand(secondRequest.commandId), undefined);
-  } finally { await Promise.all(connections.map(({ worker }) => worker.terminate())); }
+  } finally {
+    await closeRaceConnections(connections, releases);
+  }
 });
 
 

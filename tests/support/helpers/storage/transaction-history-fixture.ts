@@ -1,6 +1,5 @@
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { foundationFixture } from "../database-foundation/fixtures.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
@@ -54,7 +53,7 @@ export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) 
       return fixture;
     },
     reopen() { database.close(); database = open(); },
-    dispose() { database.close(); rmSync(root, { recursive: true, force: true }); },
+    dispose() { database.close(); admitted.dispose(); },
   };
 }
 
