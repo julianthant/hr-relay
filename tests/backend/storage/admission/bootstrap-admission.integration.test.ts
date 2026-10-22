@@ -1,3 +1,7 @@
+import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { withSynchronousMutexDeadline } from "../../../support/helpers/storage/synchronous-mutex-deadline.js";
 import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
 import { default as assert } from "node:assert/strict";
@@ -12,7 +16,7 @@ import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { expect, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { composeStorageCommand, runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeStorageCommand, composeProfileRuntime, runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AdmissionMutexBusyError, recoverAbandonedAdmissionMutex } from "../../../../src/backend/storage/admission/installation.js";
@@ -22,7 +26,6 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storag
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import * as locks_m1 from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import * as processLocks_m4 from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
@@ -34,33 +37,46 @@ vi.mock("node:fs", async importOriginal => {
 
 {
 
-it("initializes fresh authority before admission and refuses a later missing database", async () => {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-fresh-bff-")));
-  const authorityPath = join(workspace, rebuildRuntimeIsolation.stateRoot, "state.db");
-  const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
+it("serves only the genuine token-owned profile and refuses its later missing canonical database", async () => {
+  const profile = createBoundProfileFixture();
+  const workspace = profile.workspace, authorityPath = profile.path;
+  const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(workspace, name));
+  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null },
+    processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot) });
+  let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
+  let restarted: ReturnType<typeof acquireEntrypointAdmission> | undefined;
+  let dashboardStopped = false;
   try {
-    copyFileSync(join(process.cwd(), "package.json"), join(workspace, "package.json"));
-    copyFileSync(join(process.cwd(), "package-lock.json"), join(workspace, "package-lock.json"));
-    const first = acquireEntrypointAdmission(workspace, "shared");
-    try {
-      assert.equal(existsSync(authorityPath), true);
-      const runtime = await composeDashboardRuntime({ admission: first, isolation: rebuildRuntimeIsolation, repoRoot: workspace,
-        env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
-      try {
-        const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-        assert.equal((await client.storageRelocationPlans()).revision, 0);
-      } finally { await runtime.stop(); }
-    } finally { first.release(); }
-
+    const active = runtime.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+    assert.equal(active.state, "active");
+    if (active.state !== "active") throw new Error("actual profile sign-in required");
+    assert.equal(existsSync(join(profile.machine.stateRoot, "state.db")), false);
+    assert.equal(existsSync(authorityPath), true);
+    dashboard = await composeDashboardRuntime({ admission: profile.machine, profile: { runtime, token: active.token },
+      isolation: rebuildRuntimeIsolation, repoRoot: workspace, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0,
+      preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const response = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/storage-relocation`);
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { state: "error", code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED",
+      message: ERROR_CATALOG.PROFILE_STORAGE_RELOCATION_UNSUPPORTED.text, retryable: false });
+    await dashboard.stop(); dashboard = undefined; dashboardStopped = true;
+    const credentialPath = join(profile.stateRoot, "credentials", "protected.json"), credentialBytes = readFileSync(credentialPath);
     rmSync(authorityPath);
-    const later = acquireEntrypointAdmission(workspace, "shared");
-    try {
-      await assert.rejects(composeDashboardRuntime({ admission: later, isolation: rebuildRuntimeIsolation,
-        repoRoot: workspace, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 }),
-      /dashboard state root is established but its authority database is missing/u);
-      assert.equal(existsSync(authorityPath), false);
-    } finally { later.release(); }
-  } finally { rmSync(workspace, { recursive: true, force: true }); }
+    const fresh = acquireEntrypointAdmission(workspace, "exclusive"); restarted = fresh;
+    assert.throws(() => {
+      const claim = createProfileRegistry(fresh).storageClaim(active.profileId);
+      fresh.admitProfile(claim);
+    }, /profile-database-binding-required/u);
+    assert.equal(existsSync(authorityPath), false);
+    assert.equal(existsSync(`${authorityPath}-wal`), false);
+    assert.equal(existsSync(`${authorityPath}-shm`), false);
+    assert.equal(readFileSync(credentialPath).equals(credentialBytes), true);
+  } finally {
+    if (dashboard !== undefined) await dashboard.stop();
+    if (!dashboardStopped) await runtime.close();
+    restarted?.release(); profile.close();
+  }
 }, 20_000);
 }
 
@@ -296,7 +312,9 @@ const _afterEachFixture0 = async () => {
 it("keeps the owned restoring journal after process death and absent staging until explicit exact stopped settlement", async () => {
 try {
 
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "native-restore-crash-"))); roots.push(root);
+  const profile = createBoundProfileFixture();
+  const root = profile.workspace, profileId = profile.admission.profileBinding.profileId; roots.push(root);
+  profile.admission.release(); profile.machine.release();
   const url = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
   const code = `
     import { readFileSync, renameSync, copyFileSync } from "node:fs";
@@ -307,9 +325,14 @@ try {
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(url("src/backend/storage/sqlite/offline-restore.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(url("src/backend/storage/sqlite/runtime-process-locks.ts"))});
     const { RecoveryStopProofStore } = await import(${JSON.stringify(url("src/backend/storage/sqlite/recovery-stop-proof.ts"))});
-    const root = process.argv[1], admission = acquireEntrypointAdmission(root, "exclusive"), state = admission.stateRoot;
-    const path = join(state, "state.db"), directory = join(state, "backups"), processLockRoot = join(state, "locks");
-    const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-crash-test" });
+    const { createProfileRegistry } = await import(${JSON.stringify(url("src/backend/profiles/registry.ts"))});
+    const { createCredentialStore } = await import(${JSON.stringify(url("src/backend/storage/configuration/credential-store.ts"))});
+    const root = process.argv[1], machine = acquireEntrypointAdmission(root, "exclusive");
+    const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(${JSON.stringify(profileId)})), state = admission.stateRoot;
+    const credentials = createCredentialStore({ admission, stateRoot: state, erasureJournalAdmission: machine,
+      erasureJournalPath: join(machine.stateRoot, "machine", "erasures", admission.profileBinding.profileId + ".json") });
+    const path = join(state, "state.db"), directory = join(state, "backups"), processLockRoot = join(root, ${JSON.stringify(rebuildRuntimeIsolation.processLockRoot)});
+    const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-crash-test" }, undefined, undefined, undefined, undefined, credentials);
     const report = await new AuthorityBackupService(admission, db, { directory }).request({ trigger: "operator", requiredGeneration: db.getMeta().authorityGeneration });
     db.close();
     const manifestPath = join(directory, report.manifests[0].backupFileName + ".manifest.json");
@@ -321,33 +344,35 @@ try {
       { copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source);
         const journal = JSON.parse(readFileSync(join(root, ".tracker", "control", "journal.json"), "utf8"));
-        process.send({ state: "barrier-held", operationId: journal.restore.operationId, stagedPath: source, manifestPath });
+        process.send({ state: "barrier-held", workspace: root, profileId: admission.profileBinding.profileId, operationId: journal.restore.operationId, stagedPath: source, manifestPath });
         const wait = new Int32Array(new SharedArrayBuffer(4)); for (;;) Atomics.wait(wait, 0, 0, 1000);
-      } });
+      } }, undefined, credentials);
     await service.restore({ manifestPath, stoppedSystemProof });
   `;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, root],
     { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"] }); children.push(child);
-  const message = await new Promise<{ state: string; operationId: string; stagedPath: string; manifestPath: string }>((resolve, reject) => {
+  const message = await new Promise<{ state: string; workspace: string; profileId: string; operationId: string; stagedPath: string; manifestPath: string }>((resolve, reject) => {
     let output = ""; child.stderr?.on("data", value => { output += String(value); });
-    child.once("message", value => resolve(value as { state: string; operationId: string; stagedPath: string; manifestPath: string }));
+    child.once("message", value => resolve(value as { state: string; workspace: string; profileId: string; operationId: string; stagedPath: string; manifestPath: string }));
     child.once("exit", code => reject(new Error(`restore child exited ${String(code)}: ${output}`)));
   });
   assert.equal(message.state, "barrier-held");
-  const journalPath = join(root, ".tracker", "control", "journal.json"), before = readFileSync(journalPath);
+  const workspace = message.workspace; roots.push(workspace);
+  const journalPath = join(workspace, ".tracker", "control", "journal.json"), before = readFileSync(journalPath);
   const exited = new Promise<void>(resolve => child.once("exit", () => resolve())); child.kill("SIGKILL"); await exited;
-  assert.throws(() => acquireEntrypointAdmission(root, "shared"), /unfinished restoring/u);
+  assert.throws(() => acquireEntrypointAdmission(workspace, "shared"), /unfinished restoring/u);
   assert.deepEqual(readFileSync(journalPath), before);
   rmSync(message.stagedPath);
-  assert.throws(() => acquireEntrypointAdmission(root, "shared"), /unfinished restoring/u);
-  const settled = await runOfflineAuthorityRestoreRecovery(root, ["--operation", message.operationId,
+  assert.throws(() => acquireEntrypointAdmission(workspace, "shared"), /unfinished restoring/u);
+  const settled = await runOfflineAuthorityRestoreRecovery(workspace, ["--operation", message.operationId,
     "--from", message.manifestPath, "--outcome", "replaced", "--json"]);
   assert.deepEqual(settled.report, { state: "settled", operationId: message.operationId, outcome: "replaced" });
   assert.equal(existsSync(journalPath), false);
-  const admission = acquireEntrypointAdmission(root, "shared");
-  try { const db = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "native-crash-reopen" });
+  const admission = acquireEntrypointAdmission(workspace, "shared");
+  const childAdmission = admission.admitProfile(createProfileRegistry(admission).storageClaim(message.profileId));
+  try { const db = AuthorityDatabase.open(childAdmission, { path: join(childAdmission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "native-crash-reopen" });
     try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
-  } finally { admission.release(); }
+  } finally { childAdmission.release(); admission.release(); }
 
 } finally {
 await _afterEachFixture0();
@@ -376,12 +401,12 @@ it.each(["wrong","newer","unsupported"] as const)("%s authority refuses read-onl
 });
 
 it("supported single-authority restore re-checks healthy without inventing repair or substitute authority",async()=>{
-  const workspace=mkdtempSync(join(realpathSync(tmpdir()),"native-preflight-restore-"));
-  const admission=acquireEntrypointAdmission(workspace,"exclusive"), stateRoot=admission.stateRoot;
+  const profile=createBoundProfileFixture(), workspace=profile.workspace;
+  const admission=profile.admission, stateRoot=profile.stateRoot;
   const clock=manualClock(new Date("2026-09-19T12:00:00.000Z")), authorityPath=join(stateRoot,"state.db");
   try {
     copyFileSync(join(process.cwd(),"package.json"),join(workspace,"package.json"));
-    AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"preflight-restore"},clock).close();
+    AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"preflight-restore"},clock,undefined,undefined,undefined,boundProfileCredentials(admission)).close();
     const backup=await backupStoppedAuthority(admission,stateRoot,clock,join(workspace,rebuildRuntimeIsolation.processLockRoot));
     const manifest=backup.manifests.at(-1);assert.ok(manifest);
     const path=join(stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`);
@@ -391,7 +416,7 @@ it("supported single-authority restore re-checks healthy without inventing repai
       backupDirectory:join(stateRoot,"backups","authority"),busyTimeoutMs:100},clock);
     const observed=await runner.run({signal:new AbortController().signal,timeoutMs:1000,deadlineMonotonicMs:clock.monotonicMs()+1000,redaction:"safe-summary"});
     assert.equal(observed.state,"healthy",JSON.stringify(observed));
-  }finally{admission.release();rmSync(workspace,{recursive:true,force:true});}
+  }finally{profile.close();}
 });
 }
 
@@ -445,8 +470,8 @@ try {
     process.disconnect();
   `;
   const first = launch(code, root);
-  const second = launch(code, root);
   assert.equal((await first.next()).state, "attempting");
+  const second = launch(code, root);
   assert.equal((await second.next()).state, "attempting");
   holder.child.send("release");
   assert.equal((await holder.next()).state, "released");

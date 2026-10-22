@@ -1,5 +1,5 @@
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { createBoundProfileFixture } from "../../helpers/admission-fixture.js";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
@@ -25,9 +25,8 @@ export function populatedProtectedRecord(omitted?: string) {
 
 /** Fresh private inputs; the executable factory, strict authority and SQLite doctor are production code. */
 export function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "setup-corpus-"));
-  const stateRoot = join(root, ".tracker"); const artifactRoot = join(stateRoot, "artifacts");
-  mkdirSync(stateRoot,{mode:0o700}); mkdirSync(artifactRoot,{mode:0o700});
+  const profile = createBoundProfileFixture();
+  const root = profile.workspace, stateRoot = profile.stateRoot, artifactRoot = profile.admission.artifactRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00.000Z"));
   const databasePath = join(stateRoot, "state.db");
   const database = AuthorityDatabase.open({ path: databasePath, busyTimeoutMs: 100, migrationOwner: "setup-corpus" }, clock);
@@ -58,5 +57,5 @@ export function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
     const runners = createRuntimePreflightRunners(input);
     return createPreflightAuthority({...input.scope, runners: transform === undefined ? runners : transform(runners), clock, scheduler:createTimeoutDeadlineScheduler(clock)}).refresh(new AbortController().signal);
   };
-  return {root, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, close() {rmSync(root,{recursive:true,force:true});}};
+  return {root, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, close() {profile.close();}};
 }

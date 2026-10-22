@@ -1,5 +1,8 @@
+import assert from "node:assert/strict";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, statSync, writeFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, statSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -33,14 +36,11 @@ export function createInstallationControlTestWorld() {
   }
 
   function adoptSynthetic(workspace: string, pair: RuntimePair): ExclusiveInstallationLease {
-    return acquireInstallation(workspace, "exclusive", { defaultPair: pair,
-      initializeFresh: (witness) => {
-        witness.assertHeld();
-        writeFileSync(join(witness.pair.stateRoot, "state.db"), "synthetic initial authority");
-      },
-      verifyExisting: (candidate) => ({ kind: "verified-existing", pair: candidate,
-        authorityGeneration: 0, databaseIdentity: "synthetic-initial-authority" }),
-    });
+    const machine = acquireEntrypointAdmission(workspace, "exclusive");
+    assert.equal(machine.stateRoot, pair.stateRoot);
+    assert.equal(machine.artifactRoot, pair.artifactRoot);
+    machine.release();
+    return acquireInstallation(workspace, "exclusive");
   }
 
   function relocationPlan(lease: ExclusiveInstallationLease, destination: RuntimePair): RelocationPlanBinding {
@@ -67,7 +67,7 @@ export function createInstallationControlTestWorld() {
       const preparation: VerifiedRelocationPreparation = { operationId, installationId: lease.locator.installationId,
         sourceGeneration: lease.locator.generation, source: { stateRoot: lease.locator.stateRoot,
           artifactRoot: lease.locator.artifactRoot }, destination, plan,
-        sourceDatabaseIdentity: "e".repeat(64), sourceSchemaVersion: 6, sourceAuthorityGeneration: 0,
+        sourceDatabaseIdentity: "e".repeat(64), sourceSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, sourceAuthorityGeneration: 0,
         sourceAuthorityContentFingerprint: "f".repeat(64), backupReceiptId: "synthetic-preupgrade-backup",
         backupManifestPath: join(lease.locator.stateRoot, "backups", "authority", "preupgrade.manifest.json"),
         backupManifestSha256: "1".repeat(64),
@@ -92,7 +92,7 @@ export function createInstallationControlTestWorld() {
       destination, plan, stagingReceiptId: "synthetic-stage", stagingDigest: "b".repeat(64),
       backupReceiptId: "synthetic-backup", backupDigest: "c".repeat(64), finalDatabasePath: join(destination.stateRoot, "state.db"),
       configSnapshotId: "22222222-2222-4222-8222-222222222222", configFingerprint: fingerprint,
-      authorityVersion: 6, databaseIdentity: "synthetic-db", managedStateEntries };
+      authorityVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, databaseIdentity: "synthetic-db", managedStateEntries };
     lease.recordActivationIntent(() => ({ operationId, installationId: lease.locator.installationId,
       sourceGeneration: lease.locator.generation, source: { stateRoot: lease.locator.stateRoot,
         artifactRoot: lease.locator.artifactRoot }, destination, plan,
