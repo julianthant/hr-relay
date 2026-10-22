@@ -1,4 +1,4 @@
-import type { CommittedCredentialWitness } from "../configuration/credential-store.js";
+import type { CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness } from "../configuration/credential-store.js";
 import { registerRuntimeAdmission } from "./admission-identity.js";
 import { z } from "zod";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync } from "node:fs";
@@ -9,7 +9,7 @@ import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvi
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
   type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
-import type { VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier } from "./installation.js";
+import type { ProfileRestoreContext, ErasureRequestIdentity, VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
@@ -75,6 +75,15 @@ function assertActiveRootSafe(path: string): void {
 
 type AdmissionAuthority = Readonly<{
   assertHeld(): void;
+  captureRestoreContext?(witness: VerifiedCredentialErasureHead): ProfileRestoreContext;
+  beginAuthorityRestore?(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void;
+  settleAuthorityRestore?(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier, restore: RestoreAdmissionHandle): void;
+  readAuthorityRestore?(operationId: string): AuthorityRestoreInput;
+  assertAuthorityRestoreCurrent?(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void;
+  assertCredentialErasureHead?(head: CredentialErasureHead): void;
+  resumeCredentialErasure?(request: ErasureRequestIdentity, head: CredentialErasureHead): void;
+  beginCredentialErasure?(witness: VerifiedCredentialErasureIntent): void;
+  settleCredentialErasure?(request: ErasureRequestIdentity, witness: VerifiedCredentialErasureHead): void;
   assertProfileRuntime?(): void;
   assertCredentialErasureObservation?(operationId: string): void;
   assertCredentialErasure?(request: Readonly<{ commandId: string; writeId: string; expectedRevision: number; updatedAt: string; commandFingerprint: string }>): void;
@@ -100,7 +109,7 @@ export type RuntimeRelocationOperation = Readonly<{
   settleRelocation(verify: RelocationVerifier): void;
 }>;
 
-type AdmissionScope = "installation" | "adoption-inspection" | "stopped-staged" | "synthetic-stopped-staged"
+type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile" | "profile-settlement";
 
@@ -232,6 +241,7 @@ export class RuntimeAdmission {
           authority = { profileId: registered.profileId, createdAt: registered.createdAt, firstName: registered.firstName, lastName: registered.lastName, registration: registered.registration };
         }
         if (purpose === "issue") {
+          if (phase === "runtime" && current.sessionGeneration !== document.sessionGeneration) throw new Error("profile-storage-claim-generation-changed");
           const currentOperations = existsSync(path) ? readdirSync(path).filter(name => name.endsWith(".json")).map(name => {
             const file = readPrivateFile(join(path, name), { label: "lock", maxBytes: 1_048_576 });
             if (file === undefined) throw new Error("profile-storage-claim-changed");
@@ -268,9 +278,25 @@ export class RuntimeAdmission {
     } });
     return claim;
   }
+  assertCredentialErasureHead(head: CredentialErasureHead): void {
+    this.assertLive();
+    this.#authority.assertCredentialErasureHead?.(head);
+  }
+  resumeCredentialErasure(request: ErasureRequestIdentity, head: CredentialErasureHead): void {
+    this.assertCredentialErasure(request);
+    this.#authority.resumeCredentialErasure?.(request, head);
+  }
+  beginCredentialErasure(witness: VerifiedCredentialErasureIntent): void {
+    this.assertLive();
+    this.#authority.beginCredentialErasure?.(witness);
+  }
+  settleCredentialErasure(request: ErasureRequestIdentity, witness: VerifiedCredentialErasureHead): void {
+    this.assertCredentialErasure(request);
+    this.#authority.settleCredentialErasure?.(request, witness);
+  }
   assertCredentialRead(): void {
     this.assertLive();
-    if (this.#scope === "profile-settlement") throw new Error("profile-settlement-credential-read-refused");
+    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore") throw new Error("profile-settlement-credential-read-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
   }
   assertCredentialErasureObservation(operationId: string): void {
@@ -301,12 +327,48 @@ export class RuntimeAdmission {
     } else assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry);
+    let restoreCustody: { input: AuthorityRestoreInput; restore: RestoreAdmissionHandle } | undefined;
+    let restoreSettled = false;
     const assertHeld = () => {
       this.assertLive();
+      if (restoreSettled) throw new Error("profile-restore-context-expired");
+      if (restoreCustody !== undefined) {
+        this.#exclusiveInstallationLease().assertProfileRestoreHeld(restoreCustody.input, restoreCustody.restore);
+        return;
+      }
       if (!noSymlinkAncestry(root, ancestry)) throw new Error("profile-storage-root-disappeared");
       requireRegisteredProfileStorageClaim(claim, this, "custody");
     };
-    return new RuntimeAdmission(issuanceToken, { assertHeld, assertProfileRuntime: () => requireRegisteredProfileStorageClaim(claim, this, "issue"),
+    const lease = this.#authority as InstallationLease;
+    assertInstallationLease(lease);
+    return new RuntimeAdmission(issuanceToken, { assertHeld,
+      captureRestoreContext: witness => this.#exclusiveInstallationLease().captureProfileRestore(claim.profileId, witness),
+      beginAuthorityRestore: (input, restore) => {
+        if (input.profile.binding.profileId !== claim.profileId || input.profile.binding.installationId !== this.locator.installationId) throw new Error("profile-restore-binding-mismatch");
+        this.#exclusiveInstallationLease().beginAuthorityRestore(input, restore);
+        restoreCustody = { input, restore };
+      },
+      settleAuthorityRestore: (input, outcome, verify, restore) => {
+        if (restoreCustody === undefined || restoreCustody.restore !== restore || canonicalJsonStringify(restoreCustody.input) !== canonicalJsonStringify(input)) throw new Error("profile-restore-custody-mismatch");
+        this.#exclusiveInstallationLease().settleAuthorityRestore(input, outcome, verify, restore);
+        restoreSettled = true;
+      },
+      assertAuthorityRestoreCurrent: (input, restore) => {
+        if (restoreCustody === undefined || restoreCustody.restore !== restore || canonicalJsonStringify(restoreCustody.input) !== canonicalJsonStringify(input)) throw new Error("profile-restore-custody-mismatch");
+        this.#exclusiveInstallationLease().assertProfileRestoreHeld(input, restore);
+      },
+      readAuthorityRestore: operationId => {
+        if (restoreCustody?.input.operationId !== operationId) throw new Error("profile-restore-custody-mismatch");
+        return this.#exclusiveInstallationLease().readAuthorityRestore(operationId);
+      },
+      assertCredentialErasureHead: head => lease.assertProfileErasureHead(claim.profileId, head),
+      resumeCredentialErasure: (request, head) => lease.resumeProfileErasure(claim.profileId, request, head),
+      beginCredentialErasure: witness => lease.beginProfileErasure(claim.profileId, witness),
+      settleCredentialErasure: (request, witness) => lease.settleProfileErasure(claim.profileId, request, witness),
+      assertProfileRuntime: () => {
+        if (restoreCustody !== undefined || restoreSettled) throw new Error("profile-restore-runtime-refused");
+        requireRegisteredProfileStorageClaim(claim, this, "issue");
+      },
       assertCredentialErasureObservation: operationId => {
         if (claim.phase !== "settlement" || storageClaims.get(claim)?.operationId !== operationId) throw new Error("profile-settlement-operation-unavailable");
         requireRegisteredProfileStorageClaim(claim, this, "custody");
@@ -335,7 +397,7 @@ export class RuntimeAdmission {
     receipts: readonly RelocationCompletionReceipt[] }> | undefined {
     this.assertLive();
     if (this.#scope === "synthetic") return undefined;
-    if (this.#scope === "stopped-staged" || this.#scope === "synthetic-stopped-staged") {
+    if (this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "synthetic-stopped-staged") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("runtime-admission: staged installation context unavailable");
       return this.#authority.readInstallationContext();
     }
@@ -382,7 +444,7 @@ export class RuntimeAdmission {
   }
   assertWritable(): void {
     this.assertLive();
-    if (this.#scope === "profile-settlement") throw new Error("profile-settlement-runtime-refused");
+    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore") throw new Error("profile-settlement-runtime-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
     if (this.#scope === "profile-initialization") assertCanonicalProfileBinding(join(this.#stateRoot, "state.db"), this.profileBinding);
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
@@ -406,7 +468,7 @@ export class RuntimeAdmission {
     }
     this.assertStorageRootsSafe();
     if (path === ":memory:" && this.#scope !== "relocation-destination"
-      && this.#scope !== "profile" && this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") return;
+      && this.#scope !== "profile" && this.#scope !== "profile-restore" && this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") return;
     const checked = resolve(path);
     if (this.#authorityDatabasePaths.has(checked)) return;
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection path is outside known default authority");
@@ -471,18 +533,39 @@ export class RuntimeAdmission {
     return lease;
   }
 
+  captureProfileRestore(witness: VerifiedCredentialErasureHead): ProfileRestoreContext {
+    this.assertExclusive(); this.assertProfileRuntime();
+    if (this.#authority.captureRestoreContext === undefined) throw new Error("profile-restore-authority-required");
+    return this.#authority.captureRestoreContext(witness);
+  }
   beginAuthorityRestore(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void {
-    this.#exclusiveInstallationLease().beginAuthorityRestore(input, restore);
+    this.assertExclusive();
+    if (this.#authority.beginAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
+    this.#authority.beginAuthorityRestore(input, restore);
   }
   settleAuthorityRestore(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier,
     restore: RestoreAdmissionHandle): void {
-    this.#exclusiveInstallationLease().settleAuthorityRestore(input, outcome, verify, restore);
+    this.assertExclusive();
+    if (this.#authority.settleAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
+    this.#authority.settleAuthorityRestore(input, outcome, verify, restore);
+  }
+  assertAuthorityRestoreCurrent(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void {
+    this.assertExclusive();
+    if (this.#authority.assertAuthorityRestoreCurrent === undefined) throw new Error("profile-restore-authority-required");
+    this.#authority.assertAuthorityRestoreCurrent(input, restore);
   }
   readAuthorityRestore(operationId: string): AuthorityRestoreInput {
-    return this.#exclusiveInstallationLease().readAuthorityRestore(operationId);
+    this.assertExclusive();
+    if (this.#authority.readAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
+    return this.#authority.readAuthorityRestore(operationId);
+  }
+  assertStorageRelocationSupported(): void {
+    const context = this.readInstallationContext();
+    if (context === undefined || existsSync(join(context.locator.stateRoot, "machine")) || existsSync(join(context.locator.stateRoot, "profiles"))) throw new Error("profile-machine-relocation-unsupported");
   }
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding,
     restore: RestoreAdmissionHandle): RuntimeRelocationOperation {
+    this.assertStorageRelocationSupported();
     const lease = this.#exclusiveInstallationLease();
     const operationId = lease.beginRelocation(destination, plan, restore);
     return this.#relocationOperation(lease, operationId);
@@ -546,12 +629,12 @@ export class RuntimeAdmission {
 
   stoppedStagedAuthority(path: string): RuntimeAdmission {
     this.assertExclusive();
-    if ((this.#scope !== "installation" && this.#scope !== "synthetic") || dirname(resolve(path)) !== this.#stateRoot
+    if ((this.#scope !== "profile" && this.#scope !== "synthetic") || dirname(resolve(path)) !== this.#stateRoot
       || !/^\.restore-[0-9a-f-]{36}\.sqlite\.tmp$/u.test(resolve(path).slice(this.#stateRoot.length + 1))) {
       throw new Error("runtime-admission: staged authority path is not an owned restore copy");
     }
     return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), readInstallationContext: () => this.readInstallationContext(), release() {} },
-      this.#stateRoot, this.#artifactRoot, [resolve(path)], this.#scope === "synthetic" ? "synthetic-stopped-staged" : "stopped-staged", "exclusive");
+      this.#stateRoot, this.#artifactRoot, [resolve(path)], this.#scope === "synthetic" ? "synthetic-stopped-staged" : "stopped-staged", "exclusive", this.#locator, this.#profileBinding);
   }
 
   verifiedReadOnlyCopy(path: string, expectedSha256: string): RuntimeAdmission {
@@ -603,6 +686,25 @@ export class RuntimeAdmission {
     return new RuntimeAdmission(issuanceToken, { assertHeld: verifyBytes, release() {} },
       this.#stateRoot, this.#artifactRoot, [checked],
       this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" ? "synthetic-verified-copy" : "verified-copy", this.#mode);
+  }
+
+  resumeProfileAuthorityRestore(operationId: string, restore: RestoreAdmissionHandle): RuntimeAdmission {
+    const lease = this.#exclusiveInstallationLease();
+    const input = lease.readAuthorityRestore(operationId);
+    let settled = false;
+    const held = () => {
+      if (settled) throw new Error("profile-restore-context-expired");
+      this.assertLive(); lease.assertProfileRestoreHeld(input, restore);
+    };
+    const root = join(this.#stateRoot, "profiles", input.profile.binding.profileId);
+    return new RuntimeAdmission(issuanceToken, { assertHeld: held,
+      readInstallationContext: () => this.readInstallationContext(),
+      readAuthorityRestore: id => { held(); if (id !== operationId) throw new Error("profile-restore-custody-mismatch"); return input; },
+      settleAuthorityRestore: (binding, outcome, verify, handle) => {
+        held();
+        if (handle !== restore || canonicalJsonStringify(binding) !== canonicalJsonStringify(input)) throw new Error("profile-restore-custody-mismatch");
+        lease.settleAuthorityRestore(binding, outcome, verify, handle); settled = true;
+      }, release: () => this.release() }, root, join(root, "artifacts"), [join(root, "state.db")], "profile-restore", "exclusive", this.#locator, input.profile.binding);
   }
 
   static fromInstallationLease(lease: InstallationLease): RuntimeAdmission {
@@ -724,6 +826,6 @@ export function acquireRecoveryRuntimeRestore(workspace: string, operationId: st
   const lease = acquireInstallation(workspace, "exclusive", { recoverAuthorityRestore: { operationId, restoreAdmission: restore } });
   try {
     const admission = RuntimeAdmission.fromInstallationLease(lease);
-    return Object.freeze({ admission, input: admission.readAuthorityRestore(operationId) });
+    return Object.freeze({ admission: admission.resumeProfileAuthorityRestore(operationId, restore), input: lease.readAuthorityRestore(operationId) });
   } catch (error) { lease.release(); throw error; }
 }

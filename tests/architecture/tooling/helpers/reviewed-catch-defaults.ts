@@ -48,7 +48,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "5f29c1503f9442e0a6b81892647ab06b4e0151d9dde31be5b653bc33113924aa",
+      "sha256": "91d7f2ecfa6abb80ff4cef4106ffba0b7c20b7f369f6c644cb5d9dad38efd416",
     "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
   },
   {
@@ -98,7 +98,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "d2fb51b22201f11449691691237e0c1090e1700464e74a4fca5ae65085bd1f90",
+    "sha256": "3061b3d83440dd591023f42f6e9c42c760dad47fcb85c8ea353e1f1aceb3fad1",
     "reason": "Only ENOENT denotes an absent optional sidecar; a missing main database throws, unsafe or changed inputs throw, and failed construction disposes only its private snapshot before rethrowing."
   },
   {

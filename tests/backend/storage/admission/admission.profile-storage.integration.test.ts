@@ -60,9 +60,9 @@ it("does not mint a new child from a ready claim after logout starts while retai
     const claim = f.registry.storageClaim(active.profileId), child = f.machine.admitProfile(claim);
     f.busy();
     assert.equal(f.session.logOut(active.token, { at: "2026-09-06T12:01:00.000Z" }).state, "cancelling");
-    assert.throws(() => f.machine.admitProfile(claim), /profile-storage-claim-unavailable/u);
+    assert.throws(() => f.machine.admitProfile(claim), /profile-storage-claim-generation-changed/u);
     child.assertLive();
-    assert.throws(() => AuthorityDatabase.open(child, { path: join(child.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-storage-claim-unavailable/u);
+    assert.throws(() => AuthorityDatabase.open(child, { path: join(child.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-storage-claim-generation-changed/u);
     const refused = f.session.readFile(active.token, "absent");
     assert.ok("state" in refused && refused.state === "refused");
     assert.equal(f.session.signUp({ ...f.fields, email: "sam@example.edu" }).state, "refused");

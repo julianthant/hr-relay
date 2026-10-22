@@ -41,7 +41,7 @@ import {
   observeProcessIdentity,
   type ProcessIdentityObserver,
 } from "../sqlite/runtime-process-locks.js";
-import { type RuntimeAdmission } from "../admission/admission.js";
+import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
@@ -490,9 +490,58 @@ function removeTemporary(path: string): void {
   }
 }
 
+const ErasureFileEvidenceSchema = z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: z.string().regex(/^[0-9a-f]{64}$/u) });
+export const CredentialErasureHeadSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("never-erased"), epoch: z.literal(0) }),
+  z.strictObject({ state: z.literal("established"), epoch: z.number().int().positive(), journal: ErasureFileEvidenceSchema, anchor: ErasureFileEvidenceSchema }),
+]);
+export type CredentialErasureHead = z.infer<typeof CredentialErasureHeadSchema>;
+export interface VerifiedCredentialErasureHead { readonly epoch: number; }
+export interface VerifiedCredentialErasureIntent { readonly epoch: number; }
+type ErasureRequestIdentity = Readonly<{ commandId: string; writeId: string; commandFingerprint: string; expectedRevision: number; updatedAt: string; requestReceipt: string }>;
+function erasureRequestIdentity(request: CredentialEraseInput): ErasureRequestIdentity {
+  return Object.freeze({ commandId: request.commandId, writeId: request.writeId, commandFingerprint: request.commandFingerprint,
+    expectedRevision: request.expectedRevision, updatedAt: request.updatedAt, requestReceipt: requestReceipt(request) });
+}
+const erasureHeads = new WeakMap<VerifiedCredentialErasureHead, { stateRoot: string; journalPath: string; binding: ProfileDatabaseBinding; head: CredentialErasureHead }>();
+const erasureIntents = new WeakMap<VerifiedCredentialErasureIntent, { stateRoot: string; journalPath: string; binding: ProfileDatabaseBinding; prior: CredentialErasureHead; request: ErasureRequestIdentity; nextEpoch: number; nextDigest: string }>();
+function erasureFileEvidence(path: string) {
+  const file = readPrivateFile(path, { label: "erasure journal", maxBytes: 64_000 });
+  return file === undefined ? undefined : { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
+}
+function observeErasureHead(journalPath: string, epoch: number): CredentialErasureHead {
+  noSymlinkAncestry(dirname(journalPath), new Map());
+  const journal = erasureFileEvidence(journalPath), anchor = erasureFileEvidence(`${journalPath}.authority`);
+  if (journal === undefined && anchor === undefined && epoch === 0) return { state: "never-erased", epoch: 0 };
+  if (journal === undefined || anchor === undefined) throw new Error("credential-erasure-head-missing");
+  return CredentialErasureHeadSchema.parse({ state: "established", epoch, journal, anchor });
+}
+export function assertCredentialErasureHeadFiles(journalPath: string, head: CredentialErasureHead): void {
+  if (canonicalJsonStringify(observeErasureHead(journalPath, head.epoch)) !== canonicalJsonStringify(head)) throw new Error("credential-erasure-head-changed");
+}
+export function verifyCredentialErasureHead(witness: VerifiedCredentialErasureHead, stateRoot: string, journalPath: string, binding: ProfileDatabaseBinding): CredentialErasureHead {
+  const capture = erasureHeads.get(witness);
+  if (capture === undefined || capture.stateRoot !== stateRoot || capture.journalPath !== journalPath
+    || canonicalJsonStringify(capture.binding) !== canonicalJsonStringify(binding)) throw new Error("credential-erasure-head-unissued");
+  assertCredentialErasureHeadFiles(journalPath, capture.head);
+  return capture.head;
+}
+export function verifyCredentialErasureIntent(witness: VerifiedCredentialErasureIntent, stateRoot: string, journalPath: string, binding: ProfileDatabaseBinding) {
+  const capture = erasureIntents.get(witness);
+  if (capture === undefined || capture.stateRoot !== stateRoot || capture.journalPath !== journalPath
+    || canonicalJsonStringify(capture.binding) !== canonicalJsonStringify(binding)) throw new Error("credential-erasure-intent-unissued");
+  assertCredentialErasureHeadFiles(journalPath, capture.prior);
+  return capture;
+}
+export function captureCredentialErasureHead(store: CredentialStore): VerifiedCredentialErasureHead {
+  const owner = committedStores.get(store);
+  if (owner === undefined) throw new Error("credential-erasure-store-unissued");
+  return owner.captureErasureHead();
+}
+
 export interface CommittedCredentialWitness { readonly revision: number; }
 const committedStores = new WeakMap<CredentialStore, { readonly admission: RuntimeAdmission; readonly stateRoot: string;
-  readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly readForErasure: (operationId: string) => ProtectedStoreRecord }>();
+  readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly captureErasureHead: () => VerifiedCredentialErasureHead }>();
 type CommitFiles = readonly ({ readonly path: string; readonly device: number; readonly inode: number; readonly digest: string } | { readonly path: string; readonly absent: true })[];
 const committedWitnesses = new WeakMap<CommittedCredentialWitness, { readonly stateRoot: string; readonly journalPath: string;
   readonly request: Readonly<{ commandId: string; writeId: string; commandFingerprint: string; expectedRevision: number; updatedAt: string }>;
@@ -547,6 +596,13 @@ export function captureCommittedCredentialReplay(store: CredentialStore, input: 
     request: Object.freeze({ commandId: request.commandId, writeId: request.writeId, commandFingerprint: request.commandFingerprint,
       expectedRevision: request.expectedRevision, updatedAt: request.updatedAt }), files: after, binding, database: { device: database.dev, inode: database.ino } });
   return witness;
+}
+
+export function verifyCommittedCredentialErasureOrigin(witness: CommittedCredentialWitness): CredentialErasureHead {
+  const capture = committedWitnesses.get(witness);
+  if (capture === undefined || capture.files.slice(1).some(file => !("absent" in file))) throw new Error("profile-signup-erasure-origin-invalid");
+  assertCredentialErasureHeadFiles(capture.journalPath, { state: "never-erased", epoch: 0 });
+  return { state: "never-erased", epoch: 0 };
 }
 
 export function verifyCommittedCredentialWitness(witness: CommittedCredentialWitness, stateRoot: string, journalPath: string,
@@ -966,12 +1022,13 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     }
   }
 
-  function loadJournal(document?: CredentialDocument): ErasureJournal {
+  function loadJournal(document?: CredentialDocument, purpose: "available" | "settlement" = "available"): ErasureJournal {
     assertJournalAuthority();
     const file = readPrivateFile(journalPath, { label: "erasure journal", maxBytes: 64_000 });
     const anchorFile = readPrivateFile(`${journalPath}.authority`, { label: "erasure journal", maxBytes: 64_000 });
     if (file === undefined && anchorFile === undefined) {
       if (documentHasErasure(document)) throw new CredentialErasureAuthorityError("credential erasure journal is missing");
+      if (purpose === "available") admission.assertCredentialErasureHead(observeErasureHead(journalPath, 0));
       return EMPTY_JOURNAL;
     }
     if (file === undefined) throw new CredentialErasureAuthorityError("credential erasure journal is missing");
@@ -993,6 +1050,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       && (anchor.data.device !== file.identity.device || anchor.data.inode !== file.identity.inode)) {
       throw new CredentialErasureAuthorityError("credential erasure journal identity changed");
     }
+    if (purpose === "available") admission.assertCredentialErasureHead(observeErasureHead(journalPath, parsed.data.epoch));
     return parsed.data;
   }
 
@@ -1275,7 +1333,15 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       try {
         return withLock((writer) => {
           let current = readCurrentUnderLock();
-          const journal = loadJournal(current.document);
+          const journal = loadJournal(current.document, "settlement");
+          admission.resumeCredentialErasure(erasureRequestIdentity(request), observeErasureHead(journalPath, journal.epoch));
+          if (journalAdmission !== admission && journal.epoch > 0) {
+            const anchor = readPrivateFile(`${journalPath}.authority`, { label: "erasure journal", maxBytes: 64_000 });
+            if (anchor === undefined) throw new CredentialErasureAuthorityError("credential erasure journal authority is missing");
+            const authority = ErasureAuthoritySchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(anchor.bytes)));
+            const info = lstatSync(journalPath);
+            if (authority.epoch !== journal.epoch || authority.device !== info.dev || authority.inode !== info.ino) writeJournal(journal, writer);
+          }
           if (journal.retiredCommandIds.includes(request.commandId)) return { committed: false, result: divergent() };
           const repaired = repairTombstones(current.document, journal);
           if (repaired !== undefined) {
@@ -1285,6 +1351,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
           const receipt = requestReceipt(request);
           const latest = current.document.history.at(-1);
           if (latest?.receipt.commandId === request.commandId) {
+            if (latest.receipt.requestReceipt === receipt) admission.settleCredentialErasure(erasureRequestIdentity(request), issueErasureHead(journal.epoch));
             return {
               committed: false,
               result: latest.receipt.requestReceipt === receipt
@@ -1336,9 +1403,17 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
             },
             history: [...current.document.history, pending],
           });
+          if (journalAdmission !== admission) {
+            const intent = Object.freeze({ epoch: nextJournal.epoch });
+            erasureIntents.set(intent, deepFreeze({ stateRoot, journalPath, binding: admission.profileBinding, prior: observeErasureHead(journalPath, journal.epoch),
+              request: erasureRequestIdentity(request),
+              nextEpoch: nextJournal.epoch, nextDigest: createHash("sha256").update(encodePrivate(nextJournal)).digest("hex") }));
+            admission.beginCredentialErasure(intent);
+          }
           writeJournal(nextJournal, writer);
           hooks.afterErasureJournal?.();
           writeDocument(next, current.bytes, true, writer);
+          admission.settleCredentialErasure(erasureRequestIdentity(request), issueErasureHead(nextJournal.epoch));
           return { committed: true, result: deepFreeze({ state: "applied" as const, record: next.record }) };
         });
       } catch (error) {
@@ -1365,10 +1440,26 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       return replay ?? divergent();
     },
   });
-  committedStores.set(store, { admission, stateRoot, journalAdmission, journalPath, readForErasure: operationId => {
+  function issueErasureHead(epoch: number): VerifiedCredentialErasureHead {
+    const witness = Object.freeze({ epoch });
+    if (journalAdmission !== admission) erasureHeads.set(witness, { stateRoot, journalPath, binding: admission.profileBinding, head: deepFreeze(observeErasureHead(journalPath, epoch)) });
+    return witness;
+  }
+  committedStores.set(store, { admission, stateRoot, journalAdmission, journalPath, captureErasureHead: () => {
+    admission.assertCredentialRead();
+    const before = observeCurrent();
+    const journal = loadJournal(before.document);
+    const head = issueErasureHead(journal.epoch);
+    const after = observeCurrent();
+    if (!privateEqualBounded(before.document, after.document, MAX_CREDENTIAL_DOCUMENT_BYTES)) throw new Error("credential-erasure-capture-changed");
+    const captured = erasureHeads.get(head);
+    if (captured === undefined) throw new Error("credential-erasure-head-unissued");
+    assertCredentialErasureHeadFiles(journalPath, captured.head);
+    return head;
+  }, readForErasure: operationId => {
     admission.assertCredentialErasureObservation(operationId);
     const current = observeCurrent();
-    loadJournal(current.document);
+    loadJournal(current.document, "settlement");
     return current.document.record;
   } });
   return store;

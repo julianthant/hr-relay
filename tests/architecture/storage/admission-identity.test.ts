@@ -7,6 +7,11 @@ import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const owner = "src/backend/storage/admission/admission.ts";
 const identity = "src/backend/storage/admission/admission-identity.ts";
+const credentialCycleEdges = new Set([
+  "src/backend/storage/configuration/credential-store.ts",
+  "src/backend/storage/configuration/chatgpt-credential-repository.ts",
+  "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
+]);
 
 function audit(file: string, text: string): string[] {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
@@ -14,6 +19,9 @@ function audit(file: string, text: string): string[] {
   const registrations = new Set<string>();
   let calls = 0;
   const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && credentialCycleEdges.has(file)
+      && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text.endsWith("admission/admission.js")
+      && node.importClause?.isTypeOnly !== true) findings.push(`${file}: runtime credential admission cycle`);
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier !== undefined
       && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text.endsWith("admission-identity.js")) {
       if (ts.isExportDeclaration(node)) findings.push(`${file}: admission identity re-export`);
@@ -73,4 +81,18 @@ it("rejects foreign, escaped, aliased, dynamic and nonconstructor registration m
     ["src/forged.ts", 'import("./admission-identity.js");'],
     [identity, 'import { RuntimeAdmission } from "./admission.js";'],
   ]) assert.ok(audit(file, text).length > 0, file);
+});
+
+it("removes credential admission edges at the declaration under verbatim module emit", () => {
+  const mixed = 'import { type RuntimeAdmission } from "../admission/admission.js";';
+  const erased = 'import type { RuntimeAdmission } from "../admission/admission.js";';
+  const emit = (text: string) => ts.transpileModule(text, { compilerOptions: {
+    module: ts.ModuleKind.ESNext, verbatimModuleSyntax: true,
+  } }).outputText;
+  assert.match(emit(mixed), /import \{\s*\} from/u);
+  assert.doesNotMatch(emit(erased), /from/u);
+  for (const file of credentialCycleEdges) {
+    assert.deepEqual(audit(file, erased), []);
+    assert.match(audit(file, mixed).join("\n"), /runtime credential admission cycle/u);
+  }
 });

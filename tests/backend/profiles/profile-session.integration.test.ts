@@ -297,16 +297,24 @@ describe("profile session", () => {
     });
     assert.equal(alex.state, "active");
     if (alex.state !== "active") return;
+    const foreign = createProfileSession({ machineRoot: root, backupPaths: () => [], loginDataPaths: () => [] });
+    const before = readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"));
     const inside = join(root, "profiles", alex.profileId, "journal-link");
     mkdirSync(inside, { mode: 0o700 });
     symlinkSync(inside, join(root, "machine", "erasures"));
+    const unknown = session.logOut("unissued-token", { at: "2026-09-06T12:07:00.000Z" });
+    assert.equal(unknown.state === "refused" && unknown.code, "PROFILE_SESSION_STALE");
+    const foreignResult = foreign.logOut(alex.token, { at: "2026-09-06T12:07:00.000Z" });
+    assert.equal(foreignResult.state === "refused" && foreignResult.code, "PROFILE_SESSION_STALE");
     const result = session.logOut(alex.token, { at: "2026-09-06T12:07:00.000Z" });
     assert.equal(result.state, "refused");
     if (result.state === "refused") {
       assert.equal(result.code, "PROFILE_RESTORE_ADMISSION_REQUIRED");
       assert.equal(result.request, RESTORE_ADMISSION_REQUEST);
     }
-    assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), true);
+    assert.deepEqual(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json")), before);
+    machineAdmissions.get(root)?.release();
+    assert.throws(() => session.logOut(alex.token, { at: "2026-09-06T12:07:00.000Z" }));
   });
 
   it("strips a restored profile file with the external erasure journal", () => {
@@ -615,11 +623,12 @@ describe("durable profile authority regressions", () => {
 
 it("captures and freshly revalidates each independent authority constituent on the same admitted setup", async () => {
   const root = temp();
+  const issuedChildren: RuntimeAdmission[] = [];
   let account: ChatGptAccountAuthority = { revision: 1, attemptGeneration: 0, availability: "available" };
   const record = initialSettingsFileRecord();
   let settings: SettingsRuntimeSnapshot = { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, "a".repeat(64)) } };
   const session = createProfileSession({ machineRoot: root, activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [],
-    account: { readAuthority: async () => ({ ...account }), revalidateAuthority: captured => JSON.stringify(captured) === JSON.stringify(account) },
+    account: { readAuthority: async child => { assert.ok(child); issuedChildren.push(child); return { ...account }; }, revalidateAuthority: captured => JSON.stringify(captured) === JSON.stringify(account) },
     settings: { read: () => structuredClone(settings) },
   });
   const active = session.signUp({ firstName: "Alex", lastName: "Rivera", email: "alex@example.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z" });
@@ -659,11 +668,19 @@ it("captures and freshly revalidates each independent authority constituent on t
   assert.equal((await session.readCurrentAuthority(active.token)).state, "refused");
   account = { ...account, availability: "available" };
   const fresh = await session.readCurrentAuthority(active.token); assert.equal(fresh.state, "available");
+  const priorChild = issuedChildren.at(-1); assert.ok(priorChild);
+  priorChild.assertProfileRuntime();
   const next = session.signIn({ email: "alex@example.edu", password: "secret-one", at: "2026-09-06T12:04:00.000Z" });
   assert.equal(next.state, "active"); if (next.state !== "active") return;
   assert.ok(next.epoch > active.epoch);
+  assert.throws(() => priorChild.assertProfileRuntime(), /released admission/);
+  assert.equal(machineAdmissions.get(root)?.readProfileRegistry().sessionGeneration, next.epoch);
   assert.equal((await session.readCurrentAuthority(active.token)).state, "refused");
   assert.equal((await session.readCurrentAuthority(next.token)).state, "available");
+  const currentChild = issuedChildren.at(-1); assert.ok(currentChild);
+  assert.notEqual(currentChild, priorChild);
+  currentChild.assertProfileRuntime();
+  assert.equal(currentChild.profileBinding.profileId, next.profileId);
 });
 
 it("rechecks profile revocation and settings changes across account awaits", async () => {

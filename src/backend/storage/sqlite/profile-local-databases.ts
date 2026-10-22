@@ -1,3 +1,4 @@
+import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { lstatSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -64,4 +65,13 @@ export function assertCanonicalProfileBinding(path: string, expected: ProfileDat
   const actual = readProfileDatabaseBinding(path);
   if (actual.state !== "bound") throw new Error("profile-database-binding-required");
   if (actual.binding.installationId !== expected.installationId || actual.binding.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");
+}
+
+export function assertProfileRestoreDatabaseBinding(path: string, expected: ProfileDatabaseBinding): void {
+  const snapshot = createReadonlyAuthoritySnapshot(path);
+  try {
+    snapshot.assertUnchanged();
+    assertCanonicalProfileBinding(snapshot.path, expected);
+    snapshot.assertUnchanged();
+  } finally { snapshot.dispose(); }
 }

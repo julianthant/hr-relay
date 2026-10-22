@@ -1,3 +1,6 @@
+import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
+import { captureCredentialErasureHead } from "../configuration/credential-store.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { AuthorityRestoreInput } from "../admission/installation.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
 import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
@@ -221,6 +224,7 @@ export class OfflineAuthorityRestoreService {
   #stopProofStore: RecoveryStopProofStore;
   #processLockRoot: string;
   #admissionFactory: OfflineRestoreAdmissionFactory;
+  readonly #credentialStore: CredentialStore;
 
   constructor(
     runtimeAdmissionInput: RuntimeAdmission,
@@ -229,10 +233,14 @@ export class OfflineAuthorityRestoreService {
     clock: Clock = systemClock,
     fileOperations: OfflineRestoreFileOperations = DEFAULT_FILE_OPERATIONS,
     admissionFactory: OfflineRestoreAdmissionFactory = acquireRuntimeRestoreAdmission,
+    credentialStore?: CredentialStore,
   ) {
     const options = OfflineRestoreOptionsSchema.parse(input);
     this.#runtimeAdmission = requireRuntimeAdmission(runtimeAdmissionInput);
     this.#runtimeAdmission.assertExclusive();
+    this.#runtimeAdmission.assertProfileRuntime();
+    if (credentialStore === undefined) throw new Error("profile-restore-credential-owner-required");
+    this.#credentialStore = credentialStore;
     this.#runtimeAdmission.assertAuthorityDatabase(resolve(options.authorityPath));
     this.#runtimeAdmission.assertStateRoot(resolve(options.suspectDirectory));
     this.#authorityPath = resolve(options.authorityPath);
@@ -252,6 +260,8 @@ export class OfflineAuthorityRestoreService {
   async restore(input: unknown): Promise<OfflineRestoreReport> {
     this.#runtimeAdmission.assertExclusive();
     const request = OfflineRestoreRequestSchema.parse(input);
+    const profile = this.#runtimeAdmission.captureProfileRestore(captureCredentialErasureHead(this.#credentialStore));
+    assertProfileRestoreDatabaseBinding(this.#authorityPath, profile.binding);
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(this.#authorityPath);
     if (!existsSync(this.#authorityPath) || statSync(this.#authorityPath).size === 0) {
       throw new Error(`suspect authority database ${this.#authorityPath} is missing or empty`);
@@ -259,6 +269,7 @@ export class OfflineAuthorityRestoreService {
 
     const verified = await verifyBackupManifestAtPath(this.#runtimeAdmission,request.manifestPath, sourceDatabaseIdentity);
     requireSupportedRecoverySchema(verified.manifest.schemaVersion);
+    if (verified.manifest.installationId !== profile.binding.installationId || verified.manifest.profileId !== profile.binding.profileId) throw new Error("profile-restore-backup-binding-mismatch");
     validateStorageRelocationRestoreCandidate({ admission: this.#runtimeAdmission,
       activeAuthorityPath: this.#authorityPath, verifiedBackup: verified });
     const restoreAdmission = this.#admissionFactory({
@@ -343,7 +354,7 @@ export class OfflineAuthorityRestoreService {
           const liveIdentityBeforeReplace = fileIdentity(this.#authorityPath);
           const stagedIdentityBeforeReplace = fileIdentity(stagedPath);
           restoreBinding = {
-            operationId: token, authorityPath: this.#authorityPath, stagedPath, suspectPath,
+            operationId: token, profile, authorityPath: this.#authorityPath, stagedPath, suspectPath,
             manifestPath: verified.manifestPath, manifestSha256: fileIdentity(verified.manifestPath).sha256,
             backupPath: verified.backupPath, backupSha256: verified.manifest.sha256,
             sourceDatabaseIdentity, authorityGeneration: afterProjection.authorityGeneration,
@@ -385,6 +396,7 @@ export class OfflineAuthorityRestoreService {
               displacedCompanions.push({ livePath: companion, displacedPath });
             }
             (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
+            this.#runtimeAdmission.assertAuthorityRestoreCurrent(restoreBinding, restoreAdmission);
             replacementAttempted = true;
             this.#fileOperations.atomicReplace(stagedPath, this.#authorityPath);
             authorityReplaced = true;
