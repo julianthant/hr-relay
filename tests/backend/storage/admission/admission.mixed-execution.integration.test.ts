@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 import { afterEach,it,vi } from "vitest";
 import { createRunResourcesFactory } from "../../../../src/backend/app/composition/worker/run-resources.js";
-import { assertProfileBrowserRoot } from "../../../../src/backend/app/composition/storage-compose.js";
+import { assertProfileBrowserRoot } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { findProfileFixtureAdmission } from "../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";

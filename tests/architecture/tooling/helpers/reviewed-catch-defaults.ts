@@ -3,12 +3,12 @@
 export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "f228dbf949fd9d8bc4583b6b126330b9219c70503838a54d1d712daeef7a7fc0",
+    "sha256": "3c41948e014c1314c2eb3c0328d65208ef664094c1ca7d37efbb856b79767614",
     "reason": "A failed selected-context open marks database closure unproved only for typed custody uncertainty and immediately rethrows; process release remains fenced. Startup and stop cleanup retain every failed required producer closure and original cause before dependent storage release."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "45824c6251bddf1844f786a4fe24f17e9b30e40188e47fb3b616998d82b36b53",
+    "sha256": "ff84d40d36416bd1c3ae052c05031b283b73f989183a5550aa80bf755039362f",
     "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure."
   },
   {
@@ -23,7 +23,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "4d1be86799544ffdbe29e7e7fafa12468bf1d7e8806da415c9ff1503ef102c05",
+    "sha256": "383186ffd3199ca35d6d9a1422cccdc084f1d2530b2ec2d96a4d8d397de4adc6",
     "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
   },
   {
@@ -58,7 +58,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "c039438da3fbfc60233caea75d746174e521fb917b422cddce65d5342bcc3344",
+      "sha256": "0d47b99b64ad2ce24d9e9f1bf3230c534ce7f42da6e82bf0f11d1740f168355a",
     "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
   },
   {
@@ -103,7 +103,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "c11beacb3bf27dfad736c51e01efa3937b91118d3c13ab0483e47f8665171585",
+    "sha256": "0a0faf0b8846f8df490a26a9119afd33edfe7d7ad58c7112bd5363c1beb0f5a7",
     "reason": "Failed external source validation clears only its admission cache and then throws the original mutation error or run-search-index-rebuild-required; malformed diagnostic reads remain explicit malformed states. Named missing-proof recovery retains the original uncertain operation and barrier without success."
   },
   {

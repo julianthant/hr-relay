@@ -1,3 +1,5 @@
+import { rewriteAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
+import { z } from "zod";
 import { createCredentialPersistenceFixtures } from "../../../support/helpers/credential-persistence-fixtures.js";
 import assert from "node:assert/strict";
 import { chmodSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
@@ -18,12 +20,13 @@ const NOW_1 = "2026-09-06T12:00:00.000Z";
 const roots: string[] = [];
 
 afterEach(() => {
+  releaseFixtures();
   vi.restoreAllMocks();
   syncBuiltinESMExports();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-const { fixture, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
+const { fixture, releaseFixtures, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
 
 
@@ -56,18 +59,20 @@ describe("independent credential store", () => {
 
     const originalValueId = record.entries.ucpathPassword?.valueId;
     assert.ok(originalValueId);
-    const divergentValueId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
-    const firstOccurrence = settled.indexOf(originalValueId);
-    assert.notEqual(firstOccurrence, -1);
-    writeFileSync(
-      f.path,
-      `${settled.slice(0, firstOccurrence)}${divergentValueId}${settled.slice(firstOccurrence + originalValueId.length)}`,
-      { mode: 0o600 },
-    );
-    assert.throws(
-      () => f.store.read(),
-      /credential store protected\.json disagrees with its identity history/u,
-    );
+    assert.equal(settled.includes(originalValueId), false);
+    const envelope: unknown = JSON.parse(settled);
+    assert.ok(typeof envelope === "object" && envelope !== null && "ciphertext" in envelope && typeof envelope.ciphertext === "string");
+    const ciphertext = envelope.ciphertext;
+    writeFileSync(f.path, JSON.stringify({ ...envelope, ciphertext: `${ciphertext.startsWith("A") ? "B" : "A"}${ciphertext.slice(1)}` }), { mode: 0o600 });
+    assert.throws(() => f.store.read(), /credential-document-authentication-failed/u);
+    writeFileSync(f.path, settled, { mode: 0o600 });
+    rewriteAuthenticatedCredentialFixture(f.machine.stateRoot, f.admission.profileBinding.profileId, input => {
+      const payload = z.object({ record: z.object({ entries: z.record(z.string(), z.unknown()) }).passthrough() }).passthrough().parse(input);
+      const entry = z.object({ valueId: z.string() }).passthrough().parse(payload.record.entries.ucpathPassword);
+      return { ...payload, record: { ...payload.record, entries: { ...payload.record.entries,
+        ucpathPassword: { ...entry, valueId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" } } } };
+    });
+    assert.throws(() => f.store.read(), /credential store protected\.json disagrees with its identity history/u);
     writeFileSync(f.path, settled, { mode: 0o600 });
 
     writeFileSync(join(f.directory, "foreign.json"), "{}", { mode: 0o600, flag: "wx" });

@@ -1,4 +1,4 @@
-import type { CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness } from "../configuration/credential-store.js";
+import type { CredentialErasureHead, VerifiedCredentialErasureHead, VerifiedCredentialErasureIntent, CommittedCredentialWitness, CommittedCredentialInitialization, CommittedCredentialKeyStage, CredentialKeyStagePublication } from "../configuration/credential-store.js";
 import { registerRuntimeAdmission } from "./admission-identity.js";
 import { z } from "zod";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync } from "node:fs";
@@ -122,7 +122,7 @@ export type RuntimeRelocationOperation = Readonly<{
 
 type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
-  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile" | "profile-settlement";
+  | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory";
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
 export class RuntimeAdmission {
@@ -135,11 +135,12 @@ export class RuntimeAdmission {
   readonly #mode: "shared" | "exclusive" | "synthetic";
   #released = false;
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
+  readonly #profileParent: RuntimeAdmission | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[],
     scope: AdmissionScope,
-    mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding) {
+    mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding, profileParent?: RuntimeAdmission) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
@@ -147,6 +148,7 @@ export class RuntimeAdmission {
     this.#authorityDatabasePaths = new Set(authorityDatabasePaths);
     this.#scope = scope;
     this.#mode = mode;
+    this.#profileParent = profileParent;
     this.#profileBinding = binding === undefined ? undefined : Object.freeze({ ...binding });
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
     registerRuntimeAdmission(this);
@@ -200,15 +202,49 @@ export class RuntimeAdmission {
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     (this.#authority as InstallationLease).publishProfileRegistration(operation, witness);
   }
+  assertProfileCredentialKeyAnchor(profile: RuntimeAdmission, keyId: string): void {
+    this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${profile.profileBinding.profileId}.json`));
+    if ((this.#authority as InstallationLease).assertProfileCredentialKeyAnchor(profile.profileBinding.profileId)) return;
+    if (profile.#scope !== "profile-initialization") throw new Error("credential-key-anchor-required");
+    const directory = join(this.#stateRoot, "machine", "operations");
+    const matching = readdirSync(directory).filter(name => name.endsWith(".json")).flatMap(name => {
+      const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("profile-credential-initialization-changed");
+      const parsed = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+      return parsed.kind === "sign-up" && parsed.profileId === profile.profileBinding.profileId
+        && parsed.credentialInitialization?.keyId === keyId ? [parsed] : [];
+    });
+    if (matching.length !== 1) throw new Error("credential-key-anchor-required");
+    profile.assertProfileInitialization();
+  }
+  publishProfileCredentialInitialization(profile: RuntimeAdmission, witness: CommittedCredentialInitialization): void {
+    this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${profile.profileBinding.profileId}.json`));
+    (this.#authority as InstallationLease).publishProfileCredentialInitialization(profile.profileBinding.profileId, witness);
+  }
   beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase">): SignUpOperation {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     return (this.#authority as InstallationLease).beginProfileSignUp(fields);
   }
-  publishProfileOperation(operation: ProfileOperation | string): void {
+  assertProfileCredentialKeyStageOwner(profile: RuntimeAdmission, operation: SignUpOperation): void {
+    this.assertWritable();
+    if (this.#scope !== "installation" || profile.#released || profile.#profileParent !== this || profile.#scope !== "profile-initialization"
+      || profile.#profileBinding?.profileId !== operation.profileId || profile.#profileBinding.installationId !== this.locator.installationId
+      || profile.#stateRoot !== join(this.#stateRoot, "profiles", operation.profileId)) throw new Error("profile-credential-key-stage-owner-mismatch");
+    noSymlinkAncestry(profile.#stateRoot, new Map());
+  }
+  publishProfileCredentialKeyStage(profile: RuntimeAdmission, operation: SignUpOperation, witness: CommittedCredentialKeyStage): void {
+    this.assertProfileCredentialKeyStageOwner(profile, operation);
+    (this.#authority as InstallationLease).publishProfileOperation(operation, witness);
+  }
+  readProfileCredentialKeyStage(profile: RuntimeAdmission, operation: SignUpOperation): CredentialKeyStagePublication | undefined {
+    this.assertProfileCredentialInitialization(profile, operation);
+    return (this.#authority as InstallationLease).readProfileCredentialKeyStage(operation);
+  }
+  publishProfileOperation(operation: ProfileOperation | string, keyStage?: CommittedCredentialKeyStage): void {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
-    (this.#authority as InstallationLease).publishProfileOperation(operation);
+    (this.#authority as InstallationLease).publishProfileOperation(operation, keyStage);
   }
   issueRegisteredProfileClaim(profileId: string): RegisteredProfileStorageClaim {
       this.assertWritable();
@@ -258,7 +294,7 @@ export class RuntimeAdmission {
             if (file === undefined) throw new Error("profile-storage-claim-changed");
             return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
           }) : [];
-          if (currentOperations.some(operation => operation.kind === "logout" && operation.phase !== "complete")
+          if (currentOperations.some(operation => operation.kind === "logout" ? operation.phase !== "complete" : phase === "runtime" && operation.credentialInitialization !== undefined)
             || (phase === "setup" ? current.activeProfileId !== null && current.activeProfileId !== id : registered?.lifecycle !== "ready" || registered.credentialState !== "saved")) {
             throw new Error("profile-storage-claim-unavailable");
           }
@@ -305,9 +341,22 @@ export class RuntimeAdmission {
     this.assertCredentialErasure(request);
     this.#authority.settleCredentialErasure?.(request, witness);
   }
+  forCredentialRepairInventory(request: Readonly<{ commandId: string; writeId: string; expectedRevision: number; updatedAt: string; commandFingerprint: string }>): RuntimeAdmission {
+    this.assertLive();
+    if (this.#scope !== "profile" && this.#scope !== "profile-settlement") throw new Error("profile-repair-inventory-purpose-refused");
+    const binding = this.profileBinding;
+    const assertHeld = () => {
+      this.assertLive();
+      if (this.#scope === "profile") this.assertProfileRuntime();
+      else this.assertCredentialErasure(request);
+    };
+    assertHeld();
+    return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.#profileParent?.readInstallationContext() },
+      this.#stateRoot, this.#artifactRoot, [join(this.#stateRoot, "state.db")], "profile-repair-inventory", this.#mode, this.#locator, binding, this.#profileParent);
+  }
   assertCredentialRead(): void {
     this.assertLive();
-    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore") throw new Error("profile-settlement-credential-read-refused");
+    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory") throw new Error("profile-settlement-credential-read-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
   }
   assertCredentialErasureObservation(operationId: string): void {
@@ -400,7 +449,7 @@ export class RuntimeAdmission {
         }
       }, readInstallationContext: () => this.readInstallationContext(), release() {} }, root, join(root, "artifacts"),
       [join(root, "state.db")], claim.phase === "setup" ? "profile-initialization" : claim.phase === "settlement" ? "profile-settlement" : "profile", this.#mode, this.#locator,
-      { installationId: this.locator.installationId, profileId: claim.profileId });
+      { installationId: this.locator.installationId, profileId: claim.profileId }, this);
   }
   get stateRoot(): string { this.assertLive(); return this.#stateRoot; }
   get artifactRoot(): string { this.assertLive(); return this.#artifactRoot; }
@@ -455,7 +504,7 @@ export class RuntimeAdmission {
   }
   assertWritable(): void {
     this.assertLive();
-    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore") throw new Error("profile-settlement-runtime-refused");
+    if (this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-repair-inventory") throw new Error("profile-settlement-runtime-refused");
     if (this.#scope === "profile") this.assertProfileRuntime();
     if (this.#scope === "profile-initialization") assertCanonicalProfileBinding(join(this.#stateRoot, "state.db"), this.profileBinding);
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
@@ -503,6 +552,32 @@ export class RuntimeAdmission {
     }
     if (!within(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
   }
+  assertProfileCredentialInitialization(profile: RuntimeAdmission, input: SignUpOperation): SignUpOperation {
+    this.assertWritable();
+    this.assertProfileCredentialKey(profile, join(this.#stateRoot, "machine", "credential-keys", `${profile.profileBinding.profileId}.json`));
+    const operation = SignUpOperationSchema.parse(input);
+    if (operation.profileId !== profile.profileBinding.profileId || operation.phase !== "applying" || operation.credentialInitialization === undefined) throw new Error("profile-credential-initialization-required");
+    const file = readPrivateFile(join(this.#stateRoot, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+    if (file === undefined || canonicalJsonStringify(SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)))) !== canonicalJsonStringify(operation)) throw new Error("profile-credential-initialization-changed");
+    return operation;
+  }
+
+  assertProfileCredentialKey(profile: RuntimeAdmission, keyPath: string): void {
+    this.assertLive();
+    profile.assertLive();
+    if (this.#scope !== "installation" || profile.#profileParent !== this
+      || !["profile", "profile-initialization", "profile-settlement"].includes(profile.#scope)
+      || profile.profileBinding.installationId !== this.locator.installationId
+      || profile.stateRoot !== join(this.#stateRoot, "profiles", profile.profileBinding.profileId)
+      || !isAbsolute(keyPath) || resolve(keyPath) !== keyPath
+      || keyPath !== join(this.#stateRoot, "machine", "credential-keys", `${profile.profileBinding.profileId}.json`)) {
+      throw new Error("profile-credential-key-owner-mismatch");
+    }
+    this.assertStorageRootsSafe();
+    noSymlinkAncestry(dirname(keyPath), new Map());
+    this.assertStateRoot(keyPath);
+  }
+
   assertProfileErasureJournal(profile: RuntimeAdmission, journalPath: string): void {
     this.assertLive();
     profile.assertLive();

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { createCredentialDoctorWriter } from "../../../support/helpers/credential-doctor-fixtures.js";
 import { createCredentialDoctorFixtures } from "../../../support/helpers/credential-doctor-fixtures.js";
 import assert from "node:assert/strict";
@@ -33,16 +34,17 @@ describe("credential presence doctor", () => {
   it("reports the same presence facts through authority.health and fails unreadable closed", async () => {
     const f = fixture();
     writeCredentials(f, { timekeeperName: { set: "Protected Doctor Canary" } });
-    const runner = new AuthorityHealthPreflightRunner(f.admission,f.options);
+    const runner = new AuthorityHealthPreflightRunner(f.admission,f.options, undefined, f.credentialStore);
     const context = {
       signal: new AbortController().signal,
       timeoutMs: 10_000,
       deadlineMonotonicMs: 10_000,
       redaction: "presence-only" as const,
     };
-    const before = snapshot(f.root);
+    const before = snapshot(f.machineRoot), controlBefore = snapshot(join(f.workspace, ".tracker", "control"));
     const observation = await runner.run(context);
-    assert.ok(isDeepStrictEqual(snapshot(f.root), before), "preflight changed source inventory or bytes");
+    assert.ok(isDeepStrictEqual(snapshot(f.machineRoot), before), "preflight changed source inventory or bytes");
+    assert.ok(isDeepStrictEqual(snapshot(join(f.workspace, ".tracker", "control")), controlBefore), "preflight changed control bytes");
     for (const name of ProtectedSettingsNameSchema.options) {
       assert.ok(observation.summary.includes(
         `${name}=${name === "timekeeperName" ? "present" : "absent"}`,

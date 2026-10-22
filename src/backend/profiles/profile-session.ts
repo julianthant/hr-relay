@@ -5,18 +5,22 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
   createCredentialStore,
+  credentialMigrationSource,
+  inspectCredentialCopy,
   assertCredentialStoreOwner,
   readForErasure,
   CredentialErasureAuthorityError,
   CredentialStoreCommitUncertainError,
   RESTORE_ADMISSION_REQUEST,
-  type CredentialStoreHooks,
+  type CredentialInitializationCopyInspection, type CredentialStoreOptions, type CredentialStoreHooks,
 } from "../storage/configuration/credential-store.js";
 import { type RuntimeAdmission } from "../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedSettingsApplyInputSchema,
+  CompleteProtectedSettingsPatchSchema,
+  type CompleteProtectedSettingsPatch,
 } from "../../models/config/protected-settings.js";
 import { CredentialEraseInputSchema } from "../../models/config/credential-store.js";
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
@@ -120,6 +124,8 @@ export function createProfileSession(input: {
   readonly backupPaths?: (profileId: string) => readonly string[];
   readonly loginDataPaths?: (profileId: string) => readonly string[];
   readonly credentialHooks?: CredentialStoreHooks;
+  readonly repairInventory?: (admission: RuntimeAdmission, ...args: Parameters<NonNullable<CredentialStoreOptions["repairInventory"]>>) => ReturnType<NonNullable<CredentialStoreOptions["repairInventory"]>>;
+  readonly initializationInventory?: (admission: RuntimeAdmission, operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): () => void; revalidateBeforeKeyIntent(): void }>;
   readonly credentialsFor?: (admission: RuntimeAdmission, purpose: "ordinary" | "settlement") => CredentialStore;
   readonly prepareLogout?: (profileId: string, admission: RuntimeAdmission) => void;
   readonly closeStorage?: (profileId: string, admission: RuntimeAdmission) => void;
@@ -176,6 +182,16 @@ export function createProfileSession(input: {
       stateRoot: profileRoot,
       erasureJournalPath: journalPath(profileId),
       hooks: input.credentialHooks,
+      repairInventory: (request, writer, copies) => {
+        const inventory = input.repairInventory?.(capability, request, writer, copies);
+        if (inventory === undefined) throw new Error("credential-repair-inventory-required");
+        return inventory;
+      },
+      initializationInventory: (operation, writer, copies) => {
+        const inventory = input.initializationInventory?.(capability, operation, writer, copies);
+        if (inventory === undefined) throw new Error("credential-initialization-inventory-required");
+        return inventory;
+      },
     });
     assertCredentialStoreOwner(store, capability);
     return store;
@@ -218,7 +234,7 @@ export function createProfileSession(input: {
     const row = current.profiles.find(entry => entry.profileId === session.profileId);
     if (current.activeProfileId !== session.profileId || current.sessionGeneration !== session.epoch
       || row?.lifecycle !== "ready" || row.credentialState !== "saved"
-      || readOperations().some(operation => operation.kind === "logout" && operation.phase !== "complete")) {
+      || readOperations().some(operation => operation.kind === "logout" ? operation.phase !== "complete" : operation.credentialInitialization !== undefined)) {
       sessions.delete(token);
       return refusal("PROFILE_SESSION_STALE");
     }
@@ -343,6 +359,8 @@ export function createProfileSession(input: {
     if (operation.firstName !== names.firstName || operation.lastName !== names.lastName) return refusal("PROFILE_SIGN_IN_REFUSED");
     registry.ensureRoot(operation.profileId);
     const store = storeFor(operation.profileId);
+    if (operation.phase === "applying") store.migrateHistory({ operation });
+    operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation?.operationId) ?? operation;
     let revision = operation.expectedRevision;
     if (revision === undefined) {
       revision = store.read().revision;
@@ -466,6 +484,7 @@ export function createProfileSession(input: {
     const inventory = input.credentialInventory?.({ profileId, admission: settlement, credentials: store, operationId: operation.operationId,
       capturedSecrets, capturedSecretsComplete: before.entries.ucpathUserId !== undefined && before.entries.ucpathPassword !== undefined }) ?? assessCredentialInventory({
       profileRoot,
+      inspectEncrypted: path => inspectCredentialCopy(store, path, capturedSecrets),
       entriesAbsent: record.entries.ucpathUserId === undefined && record.entries.ucpathPassword === undefined,
       backupPaths: input.backupPaths?.(profileId),
       loginDataPaths: input.loginDataPaths?.(profileId),
@@ -511,7 +530,8 @@ export function createProfileSession(input: {
       admission.assertWritable();
       return withProfileLock(machineRoot, () => signUpLocked(fields, names));
     },
-    signIn(fields: { readonly email: string; readonly password: string; readonly at: string }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+    signIn(fields: { readonly email: string; readonly password: string; readonly at: string;
+      readonly credentialMigration?: { readonly kind: "prove-v2" } | { readonly kind: "replace-v3"; readonly entries: CompleteProtectedSettingsPatch } }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
       const at = IsoInstantSchema.parse(fields.at);
       admission.assertWritable();
       return withProfileLock(machineRoot, () => {
@@ -548,6 +568,35 @@ export function createProfileSession(input: {
         }
         releaseOrdinary(row.profileId);
         let store = storeFor(row.profileId);
+        const source = credentialMigrationSource(store);
+        const migration = fields.credentialMigration;
+        if (source.state === "legacy" || operation.credentialInitialization?.mode === "replace-v3" || operation.credentialInitialization?.mode === "proven-v2") {
+          const mode = source.state === "legacy" ? source.schemaVersion === 2 ? "proven-v2" : "replace-v3" : operation.credentialInitialization?.mode;
+          if (mode === "replace-v3") {
+            if (migration?.kind !== "replace-v3") return refusal("PROFILE_CREDENTIAL_CONVERSION_REQUIRED", operation.operationId);
+            const parsed = CompleteProtectedSettingsPatchSchema.safeParse(migration.entries);
+            if (!parsed.success || !("set" in parsed.data.ucpathUserId) || parsed.data.ucpathUserId.set !== fields.email
+              || !("set" in parsed.data.ucpathPassword) || parsed.data.ucpathPassword.set !== fields.password) return refusal("PROFILE_CREDENTIAL_CONVERSION_REQUIRED", operation.operationId);
+          } else if (migration?.kind !== "prove-v2") return refusal("PROFILE_CREDENTIAL_CONVERSION_REQUIRED", operation.operationId);
+          if (operation.credentialInitialization === undefined) {
+            if (source.state !== "legacy") return refusal("PROFILE_CREDENTIAL_CONVERSION_REQUIRED", operation.operationId);
+            const binding = { schemaVersion: source.schemaVersion, revision: source.revision, device: source.device, inode: source.inode, digest: source.digest };
+            operation = SignUpOperationSchema.parse({ ...operation, expectedRevision: source.revision,
+              credentialInitialization: { mode, keyId: randomUUID(), phase: "admitted", source: binding } });
+            writeOperation(operation);
+          }
+          sessions.clear();
+          store.migrateHistory({ operation, ...(migration?.kind === "replace-v3" ? { replacement: migration.entries } : {}) });
+          operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation?.operationId) ?? operation;
+          if (mode === "replace-v3") {
+            const entries = store.read().entries;
+            if (entries.ucpathUserId?.value !== fields.email || entries.ucpathPassword?.value !== fields.password) return refusal("PROFILE_SIGN_IN_REFUSED");
+            verifiers.clearFailures(row.profileId);
+            registry.update(row.profileId, { lastSignedInAt: at, credentialState: "saved", lifecycle: "ready" });
+            releaseOrdinary(row.profileId); deleteOperation(operation.operationId);
+            return activate(row.profileId);
+          }
+        } else if (source.state === "absent") return refusal("PROFILE_CREDENTIAL_CONVERSION_REQUIRED", operation.operationId);
         let replacementRevision: number | undefined;
         const holdsSupplied = (): boolean => {
           const current = store.read().entries;

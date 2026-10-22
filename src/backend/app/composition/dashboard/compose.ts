@@ -577,7 +577,7 @@ async function composeDashboardRuntimeStartup(
       authorityPath: join(stateRoot, "state.db"),
       backupDirectory,
       busyTimeoutMs: 5000,
-    }, clock),
+    }, clock, context.credentials),
     listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map((lease) => ({
       workerId: lease.workerId,
       processId: lease.processId,
@@ -816,7 +816,7 @@ async function composeDashboardRuntimeStartup(
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
-    ...composeStorage({ admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
+    ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
     ...explorerBoundary.routes,
     activity,
     activityPopulation,

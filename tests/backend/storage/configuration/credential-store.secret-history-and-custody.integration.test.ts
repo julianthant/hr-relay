@@ -1,3 +1,4 @@
+import { createCredentialStore as createOwnedCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createCredentialPersistenceFixtures } from "../../../support/helpers/credential-persistence-fixtures.js";
 import assert from "node:assert/strict";
 
@@ -26,12 +27,13 @@ const NOW_2 = "2026-09-06T12:01:00.000Z";
 const roots: string[] = [];
 
 afterEach(() => {
+  releaseFixtures();
   vi.restoreAllMocks();
   syncBuiltinESMExports();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-const { fixture, crashAfterCredentialRename, crashBeforeCredentialRename, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
+const { fixture, releaseFixtures, crashAfterCredentialRename, crashBeforeCredentialRename, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
 
 
@@ -63,15 +65,16 @@ function applied(
 }
 
 describe("independent credential store", () => {
-  it("keeps absent read/replay read-only, then creates one 0700/0600 authority on first apply", () => {
+  it("keeps admitted initialized read/replay read-only, then atomically advances one 0700/0600 authority", () => {
     const f = fixture();
+    const initialBytes = readFileSync(f.path);
     const baseline = f.store.read();
 
     assert.equal(baseline.revision, 1);
     assert.equal(f.store.ownsCommandId(COMMAND_1), false);
     assert.deepEqual(baseline.entries, {});
-    assert.equal(lstatSync(f.tracker).mode & 0o777, 0o755);
-    assert.equal(existsSync(f.directory), false);
+    assert.equal(lstatSync(f.tracker).mode & 0o777, 0o700);
+    assert.equal(existsSync(f.directory), true);
     const absentReplay = f.store.verifyReplay(request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -79,7 +82,8 @@ describe("independent credential store", () => {
       entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } },
     }));
     assert.equal(absentReplay.state, "rejected");
-    assert.equal(existsSync(f.directory), false);
+    assert.deepEqual(readFileSync(f.path), initialBytes);
+    assert.equal(existsSync(f.directory), true);
 
     applied(f.store, request({
       commandId: COMMAND_1,
@@ -215,15 +219,15 @@ describe("independent credential store", () => {
 
     const root = mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-symlink-"));
     roots.push(root);
-    const physicalTracker = join(root, "physical-tracker");
-    const linkedTracker = join(root, "linked-tracker");
-    mkdirSync(physicalTracker, { mode: 0o700 });
+    const beforeSymlink = readFileSync(f.path);
+    const linkedTracker = f.tracker, physicalTracker = join(root, "physical-tracker");
+    renameSync(linkedTracker, physicalTracker);
     symlinkSync(physicalTracker, linkedTracker);
     assert.throws(
-      () => createCredentialStore({ stateRoot: linkedTracker }),
-      /unsafe synthetic fixture ancestor/u,
+      () => createOwnedCredentialStore({ admission: f.admission, stateRoot: linkedTracker, erasureJournalAdmission: f.machine, erasureJournalPath: f.journalPath }),
+      /symbolic link/u,
     );
-    assert.equal(existsSync(join(physicalTracker, "credentials")), false);
+    assert.equal(readFileSync(join(physicalTracker, "credentials", "protected.json")).equals(beforeSymlink), true);
   });
 
   it.each((["mode", "uid", "nlink"] as const).flatMap((field) => [{ field, lock: false }, { field, lock: true }]))("refuses changed post-read $field metadata (lock=$lock)", ({ field, lock }) => {
@@ -252,22 +256,22 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(path), before);
   });
 
-  it("refuses writable non-sticky ancestors before creating credential authority", () => {
+  it("refuses unsafe ancestor mutations without rewriting established credential authority", () => {
     const f = fixture();
     chmodSync(f.stateRoot, 0o777);
     try {
       assert.throws(() => f.store.read(), /group\/world-writable/u);
       assert.throws(() => f.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
         expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } })), /group\/world-writable/u);
-      assert.equal(existsSync(f.directory), false);
+      assert.equal(existsSync(f.directory), true);
     } finally { chmodSync(f.stateRoot, 0o700); }
     chmodSync(f.stateRoot, 0o1777);
     assert.equal(f.store.read().revision, 1, "trusted sticky ancestors are admitted");
-    assert.equal(existsSync(f.directory), false);
-    assert.throws(() => f.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
-      expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } })), /unsafe synthetic fixture ancestor/u);
-    assert.throws(() => f.store.migrateHistory(), /unsafe synthetic fixture ancestor/u);
-    assert.equal(existsSync(f.directory), false);
+    assert.equal(existsSync(f.directory), true);
+    assert.equal(f.store.apply(request({ commandId: COMMAND_1, writeId: WRITE_1,
+      expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } })).state, "applied");
+    assert.throws(() => f.store.migrateHistory({ operation: f.operation }), /profile-credential-initialization-changed/u);
+    assert.equal(existsSync(f.directory), true);
   });
 
   it("refuses foreign-owned ancestors and raw dot-dot aliases without changing files", () => {
@@ -281,8 +285,8 @@ describe("independent credential store", () => {
     syncBuiltinESMExports();
     try { assert.throws(() => f.store.read(), /untrusted owner/u); }
     finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
-    assert.throws(() => createCredentialStore({ stateRoot: `${f.stateRoot}/pivot/../.tracker` }), /raw credential path/u);
-    assert.equal(existsSync(f.directory), false);
+    assert.throws(() => createOwnedCredentialStore({ admission: f.admission, stateRoot: `${f.stateRoot}/pivot/../.tracker`, erasureJournalAdmission: f.machine, erasureJournalPath: f.journalPath }), /raw credential path/u);
+    assert.equal(existsSync(f.directory), true);
   });
 
   it("pins ancestor identity across reads even when the credential directory itself is unchanged", () => {
@@ -290,9 +294,9 @@ describe("independent credential store", () => {
     applied(f.store, request({ commandId: COMMAND_1, writeId: WRITE_1,
       expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
     const bytes = readFileSync(f.path);
-    const moved = `${f.stateRoot}-moved`; roots.push(moved);
-    renameSync(f.stateRoot, moved); mkdirSync(f.stateRoot, { mode: 0o700 });
-    renameSync(join(moved, ".tracker"), f.tracker);
+    const moved = `${f.tracker}-moved`; roots.push(moved);
+    renameSync(f.tracker, moved); mkdirSync(f.tracker, { mode: 0o700 });
+    renameSync(join(moved, "credentials"), f.directory);
     assert.throws(() => f.store.read(), /ancestor identity changed/u);
     assert.deepEqual(readFileSync(f.path), bytes);
   });
@@ -301,9 +305,9 @@ describe("independent credential store", () => {
     let replace = false;
     const f = fixture({ beforeRename() {
       if (!replace) return;
-      const moved = `${f.stateRoot}-moved`; roots.push(moved);
-      renameSync(f.stateRoot, moved); mkdirSync(f.stateRoot, { mode: 0o700 });
-      renameSync(join(moved, ".tracker"), f.tracker);
+      const moved = `${f.tracker}-moved`; roots.push(moved);
+      renameSync(f.tracker, moved); mkdirSync(f.tracker, { mode: 0o700 });
+      renameSync(join(moved, "credentials"), f.directory);
     } });
     applied(f.store, request({ commandId: COMMAND_1, writeId: WRITE_1,
       expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
@@ -423,7 +427,7 @@ describe("independent credential store", () => {
     }
     const retainedBytes = readFileSync(f.path);
     assert.equal(retainedBytes.includes(historyValue(1)), false);
-    assert.equal(retainedBytes.includes(historyValue(historyLength)), true);
+    assert.equal(retainedBytes.includes(historyValue(historyLength)), false);
     assert.ok(retainedBytes.byteLength < 64_000);
     assert.ok(retainedBytes.byteLength < 16 * 1024 * 1024);
     assert.equal(f.store.read().revision, historyLength + 1);
@@ -450,7 +454,7 @@ describe("independent credential store", () => {
     assert.deepEqual(readdirSync(f.directory), ["protected.json"]);
     const settledBytes = readFileSync(f.path);
     assert.equal(settledBytes.includes(historyValue(1)), false);
-    assert.equal(settledBytes.includes(historyValue(historyLength + 1)), true);
+    assert.equal(settledBytes.includes(historyValue(historyLength + 1)), false);
     assert.ok(settledBytes.byteLength < 64_000);
 
     const divergent = f.store.apply(request({

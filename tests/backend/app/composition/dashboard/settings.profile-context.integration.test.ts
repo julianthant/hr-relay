@@ -13,7 +13,8 @@ import { CommandAuditRecordSchema, SettingsCommandRequestSchema, deriveSettingsC
 import { SettingsCurrentRecordSchema } from "../../../../../src/models/config/settings-current.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
-import { assertProfileBrowserRoot, composeSelectedProfileStorage } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { composeSelectedProfileStorage } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { assertProfileBrowserRoot } from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { ProfileBrowserRootRefusalError } from "../../../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
 

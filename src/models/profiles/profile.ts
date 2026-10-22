@@ -111,6 +111,19 @@ export const ProfileDatabaseBindingSchema = z.strictObject({ installationId: z.u
 export type ProfileDatabaseBinding = z.infer<typeof ProfileDatabaseBindingSchema>;
 
 
+const CredentialInitializationSourceSchema = z.strictObject({ schemaVersion: z.union([z.literal(2), z.literal(3)]),
+  revision: z.number().int().safe().positive().max(Number.MAX_SAFE_INTEGER - 1),
+  device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: z.string().regex(/^[0-9a-f]{64}$/u) });
+const CredentialKeyPublicationFields = {
+  keyDocumentDigest: z.string().regex(/^[0-9a-f]{64}$/u).optional(),
+  keyFile: z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: z.string().regex(/^[0-9a-f]{64}$/u) }).optional(),
+};
+export const CredentialInitializationSchema = z.discriminatedUnion("mode", [
+  z.strictObject({ mode: z.literal("initial"), keyId: z.uuid(), ...CredentialKeyPublicationFields, phase: z.enum(["admitted", "key-published", "document-published"]) }),
+  z.strictObject({ mode: z.literal("proven-v2"), keyId: z.uuid(), ...CredentialKeyPublicationFields, phase: z.enum(["admitted", "key-published", "document-published"]), source: CredentialInitializationSourceSchema.extend({ schemaVersion: z.literal(2) }) }),
+  z.strictObject({ mode: z.literal("replace-v3"), keyId: z.uuid(), ...CredentialKeyPublicationFields, phase: z.enum(["admitted", "key-published", "document-published"]), source: CredentialInitializationSourceSchema.extend({ schemaVersion: z.literal(3) }) }),
+]);
+
 export const SignUpOperationSchema = z.strictObject({
   schemaVersion: z.literal(1),
   kind: z.literal("sign-up"),
@@ -123,7 +136,8 @@ export const SignUpOperationSchema = z.strictObject({
   lastName: z.string().min(1),
   createdAt: IsoInstantSchema,
   commandFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-  expectedRevision: z.number().int().positive().optional(),
+  expectedRevision: z.number().int().safe().positive().optional(),
+  credentialInitialization: CredentialInitializationSchema.optional(),
   phase: z.enum(["applying", "publishing"]),
 });
 

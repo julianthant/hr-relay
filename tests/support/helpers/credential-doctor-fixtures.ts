@@ -1,14 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { default as assert } from "node:assert/strict";
 
-import { lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 
 
 
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "./admission-fixture.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 
 
@@ -20,19 +19,23 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, type
 
 export function createCredentialDoctorFixtures(cleanups: (() => void)[]) {
 function fixture() {
-  const workspace = mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-doctor-"));
-  cleanups.push(() => rmSync(workspace, { recursive: true, force: true }));
-  const admission = acquireEntrypointAdmission(workspace,"exclusive");
-  cleanups.push(() => admission.release());
-  const root = admission.stateRoot;
+  const profile = createBoundProfileFixture();
+  cleanups.push(() => profile.close());
+  const { workspace, admission } = profile;
+  const root = profile.stateRoot;
+  const credentialStore = boundProfileCredentials(admission);
+  const cleared = credentialStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(),
+    commandFingerprint: "d".repeat(64), expectedRevision: credentialStore.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+    updatedAt: "2026-10-22T12:00:00.000Z", entries: { ucpathUserId: { clear: true }, ucpathPassword: { clear: true }, timekeeperName: { clear: true },
+      sharepointOnboardingRosterUrl: { clear: true }, activityPersonPseudonym: { clear: true } } }));
+  assert.equal(cleared.state, "applied");
   const authorityPath = join(root,"state.db");
-  const database = AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"credential-doctor-fixture"});
+  const database = AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"credential-doctor-fixture"}, undefined, undefined, undefined, undefined, credentialStore);
   cleanups.push(() => database.close());
   const credentialDirectory = join(root,"credentials");
   const credentialPath = join(credentialDirectory,"protected.json");
-  const credentialStore = createCredentialStore({admission,stateRoot:root});
   const options = {authorityPath,stateRoot:root,stateRootTrustAnchor:workspace,backupDirectory:join(root,"backups","authority"),busyTimeoutMs:100};
-  return {root,workspace,admission,database,credentialDirectory,credentialPath,credentialStore,options};
+  return {root,workspace,machineRoot: profile.machine.stateRoot,admission,database,credentialDirectory,credentialPath,credentialStore,options};
 }
 
 function snapshot(root: string): unknown {
@@ -60,7 +63,7 @@ function writeCredentials(f: ReturnType<ReturnType<typeof createCredentialDoctor
   const outcome = f.credentialStore.apply(ProtectedSettingsApplyInputSchema.parse({
     commandId: COMMAND_ID,
     commandFingerprint: "1".repeat(64),
-    expectedRevision: 1,
+    expectedRevision: f.credentialStore.read().revision,
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
     writeId: WRITE_ID,
     entries,
