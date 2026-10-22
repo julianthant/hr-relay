@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { it, vi } from "vitest";
+import * as streams from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
@@ -162,5 +163,47 @@ for (const failure of ["account", "database"] as const) it(`retains exact dashbo
     vi.restoreAllMocks();
     if (context !== undefined) { await context.account.close(); context.database.close(); context.admission.release(); }
     factory.mockRestore(); f.close();
+  }
+});
+
+for (const failure of ["http", "http-and-feed"] as const) it(`unwinds actual startup with ${failure} failure without releasing unproved producer custody`, async () => {
+  const f = fixture(), context = f.runtime.selectedContext(f.active.token);
+  const primary = new Error("synthetic actual HTTP starter rejection"), feedFailure = new Error("synthetic actual feed closure failure");
+  const createHub = streams.createDashboardStreamHub;
+  let closeFeed: (() => void) | undefined;
+  const hubFactory = vi.spyOn(streams, "createDashboardStreamHub").mockImplementation(input => {
+    const actual = createHub(input), close = actual.close.bind(actual);
+    closeFeed = close;
+    vi.spyOn(actual, "close").mockImplementation(() => {
+      if (failure === "http-and-feed") throw feedFailure;
+      close();
+    });
+    return actual;
+  });
+  try {
+    await assert.rejects(composeDashboardRuntime({ ...f.input, httpServerStarter: async () => { throw primary; } }), error => {
+      if (failure === "http") return error === primary;
+      assert.ok(error instanceof RuntimeCustodyUncertainError);
+      const contains = (value: unknown, target: unknown): boolean => value === target
+        || value instanceof AggregateError && value.errors.some(member => contains(member, target));
+      assert.equal(contains(error, primary), true);
+      assert.equal(contains(error, feedFailure), true);
+      return true;
+    });
+    assert.ok(closeFeed);
+    assert.throws(() => f.runtime.selectedContext(f.active.token), ProfileSessionRefusedError);
+    const process = readRuntimeProcessLock(join(f.workspace, rebuildRuntimeIsolation.processLockRoot), "server"); assert.ok(process);
+    if (failure === "http-and-feed") {
+      assert.equal(process.releasedAt, null);
+      context.admission.assertLive(); f.machine.assertLive();
+      assert.equal(context.database.getMeta().profileId, f.active.profileId);
+    } else {
+      assert.equal(typeof process.releasedAt, "string");
+      assert.throws(() => context.admission.assertLive());
+      assert.throws(() => context.database.getMeta(), /closed/u);
+    }
+  } finally {
+    hubFactory.mockRestore(); closeFeed?.();
+    await f.runtime.close(); f.close();
   }
 });

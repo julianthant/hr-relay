@@ -1,4 +1,4 @@
-import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/registries/workflow-registry.js";
 import { at,CONTRACT_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_NOW,WORKFLOW_ID } from "./fixture-identity.js";
 import { createFixtureBootstrapSetup } from "../../support/helpers/dashboard/profiles/fixture-bootstrap-setup.js";
 

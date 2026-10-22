@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";

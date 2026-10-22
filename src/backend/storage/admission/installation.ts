@@ -12,7 +12,7 @@ import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "n
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
-  type ProcessStartIdentity, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
+  assertRuntimeRestoreAdmission, type ProcessStartIdentity, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";
@@ -339,6 +339,7 @@ function fixedLockRoot(workspace: string): string { return resolve(workspace, re
 function assertRestoreHeld(workspace: string, restore: RestoreAdmissionHandle | undefined): void {
   if (restore === undefined) fail("fixed restore admission required");
   const root = fixedLockRoot(workspace);
+  assertRuntimeRestoreAdmission(restore, root);
   assertNoSymlinkComponents(root);
   privateDirectory(root);
   const lock = readStrict(join(root, "restore-admission.lock.json"), RestoreAdmissionFileSchema);
@@ -633,7 +634,7 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   privateDirectory(mutexPath);
   const mutexBefore = lstatSync(mutexPath);
   const allowedControl = new Set(["installation.json", "locator.json", "leases", "admission-mutex",
-    "admission-mutex-recovery", RECEIPTS]);
+    "admission-mutex-recovery", "profile-registry.json", RECEIPTS]);
   if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
   const entries = readdirSync(mutexPath);
   const empty = expectedPid === "empty";
@@ -666,6 +667,8 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   }
   if (lstatMaybe(join(control, "journal.json"))) fail("pending installation journal blocks mutex recovery");
   const locator = readLocator(control, workspace);
+  readMachineRegistry(control, locator, false);
+  const machineWitness = profileObservation(control, locator);
   const processLockRoot = fixedLockRoot(workspace);
   const lockSnapshot = observeRuntimeLockSnapshot({ processLockRoot,
     sourceDatabaseIdentity: "0".repeat(64) });
@@ -676,6 +679,10 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   assertRestoreHeld(workspace, restore);
   privateDirectory(mutexPath);
   function assertCustody(): void {
+    const currentLocator = readLocator(control, workspace);
+    if (canonicalJsonStringify(currentLocator) !== canonicalJsonStringify(locator)) fail("installation locator changed during recovery");
+    readMachineRegistry(control, currentLocator, false);
+    if (profileObservation(control, currentLocator) !== machineWitness) fail("profile registry changed during mutex recovery");
     privateDirectory(mutexPath);
     const directory = lstatSync(mutexPath);
     const currentEntries = readdirSync(mutexPath);

@@ -5,13 +5,17 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, readFileSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { composeProfileRuntime, composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { acquireRuntimeRestoreAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository, createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -197,4 +201,62 @@ it("refuses old tokens and issued captures after a real composition restart befo
     assert.notEqual(restarted.selectedContext(next.token).admission, retained.admission);
     assert.throws(() => retained.database.getMeta(), /closed/u);
   } finally { await first.close(); await restarted?.close(); f.close(); }
+});
+
+it("requires the same actual profile credential owner for canonical offline restore and its observation", async () => {
+  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  copyFileSync("package.json", join(f.workspace, "package.json"));
+  const profileId = f.admission.profileBinding.profileId;
+  const credentials = boundProfileCredentials(f.admission);
+  const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials, clock, hostFacts: { primaryDisplay: null } });
+  try {
+    const report = await new AuthorityBackupService(f.admission, context.database, { directory: join(f.stateRoot, "backups", "authority") }, clock)
+      .request({ trigger: "operator", requiredGeneration: context.database.getMeta().authorityGeneration });
+    const manifest = report.manifests.at(-1); assert.ok(manifest);
+    await context.account.close(); context.database.close();
+    const args = ["restore", "--from", join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), "--json"];
+    await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission), /profile-restore-credential-owner-required/u);
+    const foreign = createBoundProfileFixture();
+    try { await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission, boundProfileCredentials(foreign.admission))); }
+    finally { foreign.close(); }
+    const restored = await composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission, credentials);
+    assert.equal(restored.exitCode, 0, restored.output);
+    const outcome = JSON.parse(restored.output) as { credentials: { state: string } };
+    assert.equal(outcome.credentials.state, "unavailable");
+    assert.throws(() => credentials.read());
+    const fresh = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(profileId));
+    try {
+      const store = createCredentialStore({ admission: fresh, stateRoot: fresh.stateRoot, erasureJournalAdmission: f.machine,
+        erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${fresh.profileBinding.profileId}.json`) });
+      assert.equal(store.read().entries.ucpathPassword?.value, "disposable-fixture-password");
+    } finally { fresh.release(); }
+  } finally { await context.account.close(); context.database.close(); f.close(); }
+});
+
+it("admits only the exact held stopped projection capability before opening staged authority", async () => {
+  const f = createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+  const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
+    credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
+  await context.account.close(); context.database.close();
+  const stagedPath = join(f.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`);
+  copyFileSync(f.path, stagedPath);
+  const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot), pid: process.pid }, clock);
+  let capability: ReturnType<typeof f.admission.stoppedRestoreProjection> | undefined;
+  try {
+    const before = readFileSync(stagedPath);
+    const options = { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "projection-capability-test" };
+    assert.throws(() => AuthorityDatabase.openStoppedRestoreProjection(f.admission, options, clock));
+    const inspection = f.admission.stoppedStagedAuthority(stagedPath);
+    try { assert.throws(() => AuthorityDatabase.openStoppedRestoreProjection(inspection, options, clock)); }
+    finally { inspection.release(); }
+    assert.throws(() => f.admission.stoppedRestoreProjection(stagedPath, { ...restore }));
+    assert.throws(() => f.admission.stoppedRestoreProjection(join(f.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`), restore));
+    capability = f.admission.stoppedRestoreProjection(stagedPath, restore);
+    assert.throws(() => AuthorityDatabase.openStoppedRestoreProjection(capability!, { ...options, path: f.path }, clock));
+    assert.equal(readFileSync(stagedPath).equals(before), true);
+    const database = AuthorityDatabase.openStoppedRestoreProjection(capability, options, clock);
+    assert.equal(database.getMeta().profileId, f.admission.profileBinding.profileId); database.close();
+    restore.release();
+    assert.throws(() => AuthorityDatabase.openStoppedRestoreProjection(capability!, options, clock));
+  } finally { capability?.release(); restore.release(); f.close(); }
 });

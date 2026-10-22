@@ -2,7 +2,7 @@ import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/que
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createRunQueueProjection } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { registerQueueRoutes } from "../../../../src/backend/transports/http/routes/queue.js";

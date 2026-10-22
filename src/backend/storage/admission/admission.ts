@@ -12,11 +12,11 @@ import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvi
 import type { ProfileRestoreContext, ErasureRequestIdentity, VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
+import { assertRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 
 import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type ProfileOperation } from "../../../models/profiles/profile.js";
 import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
-import { assertCanonicalProfileBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
+import { assertCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import type { ProfileRegistryDocument, ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
@@ -120,7 +120,7 @@ export type RuntimeRelocationOperation = Readonly<{
   settleRelocation(verify: RelocationVerifier): void;
 }>;
 
-type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "synthetic-stopped-staged"
+type AdmissionScope = "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile" | "profile-settlement";
 
@@ -408,7 +408,7 @@ export class RuntimeAdmission {
     receipts: readonly RelocationCompletionReceipt[] }> | undefined {
     this.assertLive();
     if (this.#scope === "synthetic") return undefined;
-    if (this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "synthetic-stopped-staged") {
+    if (this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "stopped-projection" || this.#scope === "synthetic-stopped-staged") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("runtime-admission: staged installation context unavailable");
       return this.#authority.readInstallationContext();
     }
@@ -636,6 +636,29 @@ export class RuntimeAdmission {
       switchRelocationLocator: (verify: RelocationVerifier) => { inventory(); return lease.switchRelocationLocator(verify); },
       settleRelocation: (verify: RelocationVerifier) => { inventory(); lease.settleRelocation(verify); },
     });
+  }
+
+  stoppedRestoreProjection(path: string, restore: RestoreAdmissionHandle): RuntimeAdmission {
+    this.assertExclusive();
+    this.assertProfileRuntime();
+    if (!isAbsolute(path) || resolve(path) !== path || dirname(path) !== this.#stateRoot
+      || !/^\.restore-[0-9a-f-]{36}\.sqlite\.tmp$/u.test(path.slice(this.#stateRoot.length + 1))) throw new Error("profile-restore-projection-path-refused");
+    const context = this.readInstallationContext();
+    if (context === undefined) throw new Error("profile-restore-projection-parent-required");
+    const assertHeld = () => {
+      this.assertLive();
+      assertRuntimeRestoreAdmission(restore, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
+      assertProfileRestoreDatabaseBinding(path, this.profileBinding);
+    };
+    assertHeld();
+    return new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
+      this.#stateRoot, this.#artifactRoot, [path], "stopped-projection", "exclusive", this.#locator, this.profileBinding);
+  }
+  assertStoppedRestoreProjection(path: string): void {
+    this.assertLive();
+    if (this.#scope !== "stopped-projection" || resolve(path) !== path || this.#authorityDatabasePaths.size !== 1 || !this.#authorityDatabasePaths.has(path)) throw new Error("profile-restore-projection-capability-required");
+    this.assertAuthorityDatabase(path);
+    assertProfileRestoreDatabaseBinding(path, this.profileBinding);
   }
 
   stoppedStagedAuthority(path: string): RuntimeAdmission {

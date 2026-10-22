@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";
 import { it } from "vitest";
 import { composeProfileCredentialInventory, composeSelectedProfileStorage, scanProfileCredentialCopy } from "../../../../src/backend/app/composition/storage-compose.js";
+import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
@@ -90,4 +95,67 @@ for (const encoding of ["utf8", "utf16le", "utf16be"] as const) it(`detects ${en
     assert.equal(scanProfileCredentialCopy(path, [captured]).containsSecret, true);
     assert.equal(scanProfileCredentialCopy(path, ["different-synthetic-capture"]).containsSecret, false);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const content of ["clean", "escaped-value", "malformed"] as const) it(`inspects decoded canonical boot JSONL with ${content} content`, async () => {
+  const f = fixture();
+  let settlement: ReturnType<typeof f.erase> | undefined;
+  try {
+    const error = new Error("synthetic boot failure"); error.stack = undefined;
+    appendEmergencyFault({ stateRoot: f.stateRoot, build: "synthetic", code: "DATABASE_WRITER_UNAVAILABLE", error, now: f.clock.now() });
+    const path = join(f.stateRoot, "logs", "boot.jsonl");
+    const record = JSON.parse(readFileSync(path, "utf8")) as { payload: { event: { message: string } } };
+    const secret = f.capturedSecrets[1]; assert.ok(secret);
+    if (content === "escaped-value") {
+      record.payload.event.message = secret;
+      const encoded = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+      const text = JSON.stringify(record).replace(JSON.stringify(secret), `"${encoded}"`);
+      assert.equal(text.includes(secret), false);
+      writeFileSync(path, `${text}\n`, { mode: 0o600 });
+    }
+    if (content === "malformed") writeFileSync(path, "{invalid}\n", { mode: 0o600 });
+    await f.inventory.prepare();
+    settlement = f.erase();
+    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
+    assert.equal(observed.logoutComplete, content === "clean");
+    assert.equal(observed.backupPlaintext.includes(path), content === "escaped-value");
+    assert.equal(observed.unknownFormats.includes(path), content === "malformed");
+  } finally { settlement?.admission.release(); await f.cleanup(); }
+});
+
+for (const content of ["clean", "escaped-key", "escaped-shadowed", "malformed"] as const) it(`inspects canonical retained browser JSON with ${content} content`, async () => {
+  const f = fixture();
+  let settlement: ReturnType<typeof f.erase> | undefined;
+  let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
+  try {
+    const processLockRoot = join(f.workspace, "inventory-process-locks");
+    worker = bindWorkerProcessAdmission({ processLockRoot, authorityPath: f.path, pid: process.pid, clock: f.clock,
+      open: () => f.context.database, close: () => undefined,
+      admit: (_database, acquisitionId) => f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+        commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
+        processAcquisitionId: acquisitionId, authorityPath: f.path, processLockRoot, now: f.clock.now().toISOString(),
+      }, randomUUID()).workerId),
+    });
+    const started = f.context.database.startOwnedWorker({ workerId: worker.workerId, workflow: "person-lookup", browserSystems: ["crm"],
+      processId: process.pid, requestedBy: "local-operator", now: f.clock.now().toISOString() }, worker.processLock);
+    assert.equal(started.state, "started");
+    const custody = f.context.database.readProfileResourceCustody(), slot = custody.slots[0], config = custody.configSnapshots[0], lease = custody.leases[0];
+    assert.ok(slot); assert.ok(config); assert.ok(lease);
+    const directory = workerProfileDirectory({ profileRoot: config.config.paths.browserProfileRoot, slotOrdinal: slot.ordinal, system: "crm" });
+    f.context.database.authority.workerControls.observe({ workerId: worker.workerId, leaseGeneration: lease.leaseGeneration,
+      sessionId: randomUUID(), system: "crm", configFingerprint: config.fingerprint, signInFingerprint: config.fingerprint,
+      browserMode: "headless", profileDirectory: directory, acceptDownloads: false, exclusive: false, health: "closed",
+      observedAt: f.clock.now().toISOString(), openedAt: f.clock.now().toISOString(), profileRevision: 1 });
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const path = join(directory, "Preferences"), secret = f.capturedSecrets[1]; assert.ok(secret);
+    const escaped = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+    const text = content === "clean" ? '{"profile":{"name":"Synthetic"}}' : content === "malformed" ? "{invalid}" : content === "escaped-shadowed" ? `{"synthetic":"${escaped}","synthetic":"clean"}` : `{"${escaped}":"synthetic"}`;
+    assert.equal(text.includes(secret), false);
+    writeFileSync(path, text, { mode: 0o600 });
+    await f.inventory.prepare(); settlement = f.erase();
+    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
+    assert.equal(observed.logoutComplete, content === "clean");
+    assert.equal(observed.backupPlaintext.includes(path), content === "escaped-key" || content === "escaped-shadowed");
+    assert.equal(observed.unknownFormats.includes(path), content === "malformed");
+  } finally { worker?.processLock.release(); settlement?.admission.release(); await f.cleanup(); }
 });

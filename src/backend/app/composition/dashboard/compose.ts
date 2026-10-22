@@ -42,7 +42,7 @@ import { join, resolve } from "node:path";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
-import { DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../registries/workflow-registry.js";
+import { descriptorSetHash, DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../registries/workflow-registry.js";
 import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
 import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../runs/commands/command-kernel.js";
 import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
@@ -56,10 +56,9 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../storage-compose.js";
 import { systemIdFactory, type IdFactory } from "../../../../rules/identity/identifiers.js";
-import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../../rules/identity/ids.js";
+import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
-import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
 import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
 import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
@@ -138,11 +137,7 @@ const TIMELINE_POLL_MS = 250;
 // Notification polling has its own cadence; leases can change without spans.
 export const GATE_PARK_WATCH_MS = 5_000;
 
-export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
-  return FingerprintSchema.parse(
-    sha256Hex(`hrauto:descriptor-set:v1\0${[...fingerprints].sort().join("\n")}`),
-  );
-}
+
 
 // Allow the CLI cold start to publish its lease before declaring a failed birth.
 const WORKER_BIRTH_POLL_MS = 250;
@@ -364,6 +359,7 @@ function realWorkerProcessSpawner(): WorkerProcessSpawner {
 }
 
 type StartupCleanup = () => void | Promise<void>;
+interface StartupCustody { revoke?: () => void; readonly failedClosures: unknown[] }
 
 async function unwindDashboardStartup(
   cleanups: readonly StartupCleanup[],
@@ -388,19 +384,29 @@ async function unwindDashboardStartup(
 
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
   const startupCleanups: StartupCleanup[] = [];
+  const custody: StartupCustody = { failedClosures: [] };
   try {
-    const runtime = await composeDashboardRuntimeStartup(input, startupCleanups);
+    const runtime = await composeDashboardRuntimeStartup(input, startupCleanups, custody);
     startupCleanups.length = 0;
     return runtime;
   } catch (primary: unknown) {
-    return unwindDashboardStartup(startupCleanups, primary);
+    try { custody.revoke?.(); } catch (error) { custody.failedClosures.push(error); }
+    return unwindDashboardStartup(startupCleanups, custody.failedClosures.length === 0 ? primary : new RuntimeCustodyUncertainError([primary, ...custody.failedClosures]));
   }
 }
 
 async function composeDashboardRuntimeStartup(
   input: DashboardComposeInput,
   startupCleanups: StartupCleanup[],
+  custody: StartupCustody,
 ): Promise<DashboardRuntime> {
+  const requireProducerClosure = (): void => {
+    if (custody.failedClosures.length > 0) throw new RuntimeCustodyUncertainError(custody.failedClosures);
+  };
+  const requiredClosure = (close: StartupCleanup): StartupCleanup => async () => {
+    try { await close(); }
+    catch (error) { custody.failedClosures.push(error); throw new RuntimeCustodyUncertainError([error]); }
+  };
   const clock = input.clock ?? systemClock;
   const timeZone = runtimeTimeZone();
   const ids = input.ids ?? systemIdFactory;
@@ -436,6 +442,7 @@ async function composeDashboardRuntimeStartup(
   );
   let databaseClosed = true, transportClosed = true;
   startupCleanups.push(() => {
+    requireProducerClosure();
     if (!databaseClosed || !transportClosed) {
       throw new RuntimeCustodyUncertainError([new Error("dashboard authority closure is unproved")]);
     }
@@ -446,12 +453,14 @@ async function composeDashboardRuntimeStartup(
     catch (error) { if (error instanceof RuntimeCustodyUncertainError) databaseClosed = false; throw error; }
   })();
   const { database, admission, account: chatGptAccount } = context;
+  custody.revoke = profile.runtime.beginClose;
   databaseClosed = false;
   const prepareRuntimeClosure = (): Promise<void> => {
     profile.runtime.beginClose();
     return profile.runtime.awaitClosurePreparation(admission.profileBinding.profileId);
   };
   startupCleanups.push(async () => {
+    requireProducerClosure();
     if (!transportClosed) throw new RuntimeCustodyUncertainError([new Error("dashboard HTTP closure is unproved")]);
     await prepareRuntimeClosure();
     await profile.runtime.close();
@@ -546,7 +555,7 @@ async function composeDashboardRuntimeStartup(
   const { backfillGapNotifier, inbox: notificationInbox, observer: notificationObserver } = createTrustNotifications({
     admission, database, clock, ids, reader: lifecycle, stateRoot,
   });
-  startupCleanups.push(() => notificationObserver.stop());
+  startupCleanups.push(requiredClosure(() => notificationObserver.stop()));
 
   // Start only after startup acceptance; stop drains the exact owned observation.
 
@@ -613,7 +622,7 @@ async function composeDashboardRuntimeStartup(
     } });
   runLogsHub.poll();
   if (runLogsHub.stats().degraded) throw new Error("dashboard refused to start over unreadable confirmed log history");
-  startupCleanups.push(() => runLogsHub.close());
+  startupCleanups.push(requiredClosure(() => runLogsHub.close()));
 
   // Read the shared SQLite cursor; process-local notifications cannot guarantee event delivery.
   const timelineTimer = setInterval(() => {
@@ -661,16 +670,13 @@ async function composeDashboardRuntimeStartup(
     preflight: runtimePreflight,
   });
   profile.runtime.bindSupervisor(profile.token, workerControl.supervisor);
-  startupCleanups.push(async () => {
-    if (!transportClosed) throw new RuntimeCustodyUncertainError([new Error("dashboard HTTP closure is unproved")]);
+  startupCleanups.push(requiredClosure(async () => {
     await prepareRuntimeClosure();
-    await profile.runtime.close();
-    databaseClosed = true;
     const evidence = workerControl.supervisor.close();
     if (evidence.length > 0) {
       throw new RuntimeCustodyUncertainError([new Error("dashboard worker closure is unproved")]);
     }
-  });
+  }));
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   database.reconcileWorkerControlMilestones(clock.now().toISOString());
   reconcileDeadWorkerLifetimes(database, clock, reportSupervisorFault);
@@ -761,7 +767,7 @@ async function composeDashboardRuntimeStartup(
     preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
   });
   const { hub } = shell;
-  startupCleanups.push(() => hub.close());
+  startupCleanups.push(requiredClosure(() => hub.close()));
 
   // Await artifact-root initialization before serving; initialization failure refuses boot.
   try {
@@ -823,12 +829,12 @@ async function composeDashboardRuntimeStartup(
     onTransferError: reportDashboardTransferFault,
   });
   transportClosed = false;
-  startupCleanups.push(async () => {
+  startupCleanups.push(requiredClosure(async () => {
     const failures: unknown[] = [];
     try { await prepareRuntimeClosure(); } catch (error) { failures.push(error); }
     try { await server.close(); transportClosed = true; } catch (error) { failures.push(error); }
     if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
-  });
+  }));
   dashboardPreflightRunners.markBackendOwned(server.port);
   void notificationObserver.observe();
   const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe,expect,it } from "vitest";
-import { descriptorSetHash } from "../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 import { WORKFLOW_MODULES } from "../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap } from "../../src/backend/runs/queries/bootstrap.js";

@@ -534,6 +534,14 @@ function tryLink(source: string, destination: string): unknown {
   return undefined;
 }
 
+const restoreCustodyHandles = new WeakMap<RestoreAdmissionHandle, { root: string; assertHeld(): void }>();
+
+export function assertRuntimeRestoreAdmission(handle: RestoreAdmissionHandle, processLockRoot: string): void {
+  const custody = restoreCustodyHandles.get(handle);
+  if (custody === undefined || custody.root !== resolve(processLockRoot)) throw new Error("restore-admission-handle-mismatch");
+  custody.assertHeld();
+}
+
 /** Atomically exclude new runtime admission while offline restore owns the live authority path. */
 export function acquireRuntimeRestoreAdmission(
   input: Readonly<{ processLockRoot: string; pid: number }>,
@@ -555,7 +563,7 @@ export function acquireRuntimeRestoreAdmission(
     });
     if (!createRestoreAdmissionAtomically(root, record)) continue;
     let released = false;
-    return Object.freeze({
+    const handle: RestoreAdmissionHandle = Object.freeze({
       admissionId: record.admissionId,
       release: (): void => {
         if (released) return;
@@ -567,6 +575,21 @@ export function acquireRuntimeRestoreAdmission(
         released = true;
       },
     });
+    const lockPath = restoreAdmissionPath(root), before = lstatSync(lockPath);
+    restoreCustodyHandles.set(handle, { root, assertHeld: () => {
+      if (released) throw new Error("restore-admission-handle-released");
+      if (realpathSync(root) !== root) throw new Error("restore-admission-root-unsafe");
+      const directory = lstatSync(root), file = lstatSync(lockPath), current = readRestoreAdmission(root);
+      const observed = observeProcessIdentity(process.pid);
+      if (!directory.isDirectory() || directory.isSymbolicLink() || (directory.mode & 0o077) !== 0
+        || !file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || (file.mode & 0o777) !== 0o600
+        || process.getuid !== undefined && (file.uid !== process.getuid() || directory.uid !== process.getuid())
+        || file.dev !== before.dev || file.ino !== before.ino
+        || canonicalJsonStringify(current) !== canonicalJsonStringify(record)
+        || record.pid !== process.pid || observed.state !== "alive" || record.processIdentity.platform !== observed.identity.platform
+        || record.processIdentity.startToken !== observed.identity.startToken) throw new Error("restore-admission-custody-mismatch");
+    } });
+    return handle;
   }
 }
 

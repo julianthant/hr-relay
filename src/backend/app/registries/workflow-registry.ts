@@ -1,3 +1,5 @@
+import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 
 import { readFileSync } from "node:fs";
 import {
@@ -116,4 +118,10 @@ export function auditImplBindings(bindings: PendingImplBindings): readonly strin
     }
   }
   return violations;
+}
+
+export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
+  return FingerprintSchema.parse(
+    sha256Hex(`hrauto:descriptor-set:v1\0${[...fingerprints].sort().join("\n")}`),
+  );
 }

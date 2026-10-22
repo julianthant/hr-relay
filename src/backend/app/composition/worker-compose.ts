@@ -493,7 +493,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   let runtimeError: unknown;
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
+  let resources: ReturnType<typeof createRunResourcesFactory> | undefined;
+  let removeStopListeners: (() => void) | undefined;
 
+  try {
   importEmergencyFaults(stateRoot, database.authority.timelineEvents);
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
@@ -514,11 +517,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
     descriptors: { resolve: resolveDescriptor }, descriptorSetHash: descriptor.contractFingerprint,
     protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
-  let resolved: ReturnType<typeof resolveConfigWithProvenance>;
-  try {
-      const persistedSettings = database.withAuthorityTransaction((repositories) =>
+  const persistedSettings = database.withAuthorityTransaction((repositories) =>
       readSettings(repositories));
-    resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock,
+  const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock,
       { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot });
     assertBrowserRoot(resolved.config.paths.browserProfileRoot);
 
@@ -538,26 +539,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
     const scope = runtimePreflight.currentScope();
     await runtimePreflight.admission.prepare(scope, input.stopSignal ?? new AbortController().signal);
     runtimePreflight.admission.assertReady(runtimePreflight.currentScope());
-  } catch (bootError) {
-    const bootAndCleanupErrors: unknown[] = [bootError];
-    let databaseClosure: "unproven" | "proven" = "unproven";
-    try {
-      (input.closeDatabase ?? ((opened) => opened.close()))(database);
-      databaseClosure = "proven";
-    } catch (error) {
-      bootAndCleanupErrors.push(error);
-    }
-    if (databaseClosure === "proven") {
-      try {
-        admission.release();
-        processLock.release();
-      } catch (error) {
-        bootAndCleanupErrors.push(error);
-      }
-    }
-    if (bootAndCleanupErrors.length > 1) throw new RuntimeCustodyUncertainError(bootAndCleanupErrors);
-    throw bootError;
-  }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const emitter = createTimelineEmitter({ repository: loggingRepository, clock });
@@ -576,7 +557,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   const diagnostics = bindFailureCapture(createRunDiagnosticCapture({ service: diagnosticService }));
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
-  const resources = createRunResourcesFactory({processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  resources = createRunResourcesFactory({processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     assertBrowserRoot,
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
@@ -590,7 +571,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
     ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
     ...(input.createSessionFactory === undefined ? {} : {createSessionFactory:input.createSessionFactory}),
     ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
-  const baselineResources = resources.baseline(resolved.config);
+  const ownedResources = resources;
+  const baselineResources = ownedResources.baseline(resolved.config);
 
   const stopController = new AbortController();
   const forwardStop = (reason: string) => (): void => {
@@ -612,7 +594,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
     process.once("SIGTERM", onSigterm);
   }
 
-  try {
+  removeStopListeners = () => {
+    if (externalStop !== undefined) externalStop.removeEventListener("abort", onExternalStop);
+    process.removeListener("SIGINT", onSigint);
+    process.removeListener("SIGTERM", onSigterm);
+  };
     const now = clock.now().toISOString();
     // Sweep expired leases before acquiring; a dead worker cannot run its maintenance ticker.
     for (const expired of database.authority.workerLeases.sweepExpired({
@@ -830,7 +816,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
         }) });
         },
         providers: baselineResources.providers,
-        resourcesForRun: run => { assertCurrent(); return resources.forRun(run); },
+        resourcesForRun: run => { assertCurrent(); return ownedResources.forRun(run); },
         idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,
           { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs,
         artifacts,
@@ -882,10 +868,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput): Promise<Wor
   } catch (error) {
     runtimeError = error;
   } finally {
-    try { await resources.stop(); } catch (error) { cleanupErrors.push(error); }
-    if (externalStop !== undefined) externalStop.removeEventListener("abort", onExternalStop);
-    process.removeListener("SIGINT", onSigint);
-    process.removeListener("SIGTERM", onSigterm);
+    try { await resources?.stop(); } catch (error) { cleanupErrors.push(error); }
+    removeStopListeners?.();
   }
   let databaseClosureProven = false;
   try {

@@ -3,7 +3,7 @@ import { default as assert } from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
-import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { DESCRIPTORS, WORKFLOW_DEFINITIONS, WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap } from "../../../../src/backend/runs/queries/bootstrap.js";

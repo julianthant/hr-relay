@@ -218,7 +218,7 @@ export class OfflineAuthorityRestoreService {
   #authorityPath: string;
   #suspectDirectory: string;
   #busyTimeoutMs: number;
-  #projectionRebuild: (stagedAuthorityPath: string) => Promise<void>;
+  #projectionRebuild: (stagedAuthorityPath: string, restoreAdmission: RestoreAdmissionHandle) => Promise<void>;
   #clock: Clock;
   #fileOperations: OfflineRestoreFileOperations;
   #stopProofStore: RecoveryStopProofStore;
@@ -229,7 +229,7 @@ export class OfflineAuthorityRestoreService {
   constructor(
     runtimeAdmissionInput: RuntimeAdmission,
     input: unknown,
-    projectionRebuild: (stagedAuthorityPath: string) => Promise<void>,
+    projectionRebuild: (stagedAuthorityPath: string, restoreAdmission: RestoreAdmissionHandle) => Promise<void>,
     clock: Clock = systemClock,
     fileOperations: OfflineRestoreFileOperations = DEFAULT_FILE_OPERATIONS,
     admissionFactory: OfflineRestoreAdmissionFactory = acquireRuntimeRestoreAdmission,
@@ -335,7 +335,7 @@ export class OfflineAuthorityRestoreService {
           let projectionRebuilt = false;
           let afterProjection = beforeProjection;
           if (isCurrentAuthoritySchemaVersion(verified.manifest.schemaVersion)) {
-            await this.#projectionRebuild(stagedPath);
+            await this.#projectionRebuild(stagedPath, restoreAdmission);
             afterProjection = inspectAuthorityBackupReadOnly(
               stagedAdmission,
               stagedPath,
