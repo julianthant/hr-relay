@@ -1,3 +1,4 @@
+import { boundProfileAdmission } from "./admission-fixture.js";
 import assert from "node:assert/strict";
 import type { DatabaseSync as DatabaseSyncInstance } from "node:sqlite";
 import { WriteFenceRecordsSchema } from "../../../src/backend/storage/sqlite/write-commit-contracts.js";
@@ -9,6 +10,9 @@ import { syntheticDatabasePath, type AuthorityDatabase } from "./synthetic-datab
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 
 export function writeFenceFixtureInput(database: AuthorityDatabase, input: unknown, path?: string) {
+  const databasePath = syntheticDatabasePath(database);
+  if (path !== undefined) assert.equal(path, databasePath);
+  boundProfileAdmission(databasePath);
   const fence = WriteFenceRecordsSchema.parse(input);
   const { intent } = fence;
   if (intent.status !== "attempting") throw new Error("fixture intent is not attempting");
@@ -19,7 +23,7 @@ export function writeFenceFixtureInput(database: AuthorityDatabase, input: unkno
   if (database.authority.runs.get(intent.runId) === undefined) seedAtomicWriteOwner(database, { ...ATOMIC_WRITE_COMMIT, confirmedAt: intent.fencedAt, outcome,
     transaction: { ...ATOMIC_WRITE_COMMIT.transaction, ...identity, fencedAt: intent.fencedAt, confirmedAt: intent.fencedAt },
     committedSpan: { ...ATOMIC_WRITE_COMMIT.committedSpan, ...identity, occurredAt: intent.fencedAt, outcome },
-  }, path ?? syntheticDatabasePath(database), 3);
+  }, databasePath, 3);
   let run = database.authority.runs.get(intent.runId);
   assert.ok(run);
   if (run.lifecycle.state === "queued") {
@@ -61,7 +65,9 @@ export function seedCorruptWriteFenceFixture(database: AuthorityDatabase, input:
   DatabaseSync: new (location: string) => DatabaseSyncInstance): void {
   const { intent, attempt } = WriteFenceRecordsSchema.parse(input);
   if (intent.status !== "attempting") throw new Error("corruption fixture intent is not attempting");
-  const raw = new DatabaseSync(syntheticDatabasePath(database));
+  const databasePath = syntheticDatabasePath(database);
+  boundProfileAdmission(databasePath);
+  const raw = new DatabaseSync(databasePath);
   try {
     raw.prepare(`INSERT INTO write_intents (id, system, idempotency_key, idempotency_key_digest, status,
       generation, run_id, payload_json, publication_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`)

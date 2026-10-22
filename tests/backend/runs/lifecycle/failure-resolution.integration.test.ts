@@ -125,9 +125,13 @@ describe("D resolution command authority", () => {
 
 import { resolutionPeer } from "../../../support/helpers/failure-resolution/fixtures.js";
 it("two independent OS processes compete for one annotation version and exactly one commits", async () => {
-  const f = resolutionFixture(); const peers = [resolutionPeer(f.path), resolutionPeer(f.path)];
+  const f = resolutionFixture(undefined, undefined, { sharedMachine: true });
+  const peers: ReturnType<typeof resolutionPeer>[] = [];
   try {
-    await Promise.all(peers.map(peer => peer.ready));
+    for (let index = 0; index < 2; index++) {
+      const peer = resolutionPeer(f.path); peers.push(peer);
+      await peer.ready;
+    }
     const outcomes = await Promise.all(peers.map(peer => peer.send(resolutionCommand())));
     assert.deepEqual(outcomes.map(result => result.state).sort(), ["applied", "rejected"]);
     assert.equal(f.db.authority.failureResolution.read(f.record.runId, f.record.failureId)?.resolution.version, 2);

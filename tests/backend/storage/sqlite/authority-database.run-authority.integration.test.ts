@@ -5,7 +5,6 @@ import { createRunClaimFixtures } from "../../../support/helpers/backend/run-cla
 
 
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 
@@ -38,7 +37,7 @@ const databases: AuthorityDatabase[] = [];
 const LATER = "2026-07-31T17:05:00.000Z";
 const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
-const { openDatabase, claimOne } =
+const { openDatabase, claimOne, cleanup: cleanupClaims } =
   createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
 
 /** A second queued run for the same workflow, distinguishable by id and priority. */
@@ -52,13 +51,7 @@ function siblingRun(overrides: Readonly<Record<string, unknown>>, envelope: Read
 
 
 
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
 describe("run claim store", () => {
 
@@ -202,7 +195,7 @@ describe("run claim store", () => {
     database.authority.runs.enqueue(QUEUED_RUN);
     const root = roots[databases.indexOf(database)];
     assert.ok(root);
-    const { workerId, workerLifetime } = testAdmittedWorker(database, CLOCK, { path: join(root, "state.sqlite"),
+    const { workerId, workerLifetime } = testAdmittedWorker(database, CLOCK, { path: join(root, "state.db"),
       workflow: "separation", poolIndex: 1, browserSystems: ["ucpath"],
     });
     assert.deepEqual(

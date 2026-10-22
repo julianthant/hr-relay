@@ -17,9 +17,10 @@ import { COMMAND_FIXTURES, GATE_RESULT, HASH_A, NOW, UUID_5, UUID_6 } from "../.
 import { RUN_SESSION, RUN_SESSION_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { boundProfileAdmission } from "../../../support/helpers/admission-fixture.js";
 
-const {fixture, created, runningRun, parkedWriteIntent, raceConnection, cleanup } = createRunRecordServiceTestWorld();
+const {fixture, created, runningRun, parkedWriteIntent, raceConnection, closeRaceConnections, cleanup } = createRunRecordServiceTestWorld();
 
 afterEach(cleanup);
 
@@ -510,20 +511,23 @@ describe("canonical run-record service", () => {
         created(service, request);
       }
       const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
-      const connections = releases.map((release, index) => raceConnection({
-        path: join(root, "state.db"), now: NOW, release,
-        runId: `c0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-        operation: kind === "create" ? { kind, request: { ...request,
-          commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-        } } : { kind, request: { runtimeConfig, workflow: WORKFLOW_ID,
-          workerId: `person-lookup-worker-${String(index + 1)}`,
-          commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-        } },
-      }));
+      const connections: Awaited<ReturnType<typeof raceConnection>>[] = [];
       try {
+        for (const [index, release] of releases.entries()) {
+          connections.push(await raceConnection({
+            path: join(root, "state.db"), now: NOW, release,
+            runId: `c0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+            operation: kind === "create" ? { kind, request: { ...request,
+              commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+            } } : { kind, request: { runtimeConfig, workflow: WORKFLOW_ID,
+              workerId: `person-lookup-worker-${String(index + 1)}`,
+              commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+            } },
+          }));
+        }
         const [first, second] = connections;
-        assert.deepEqual(await first.next(), { type: "ready" });
-        assert.deepEqual(await second.next(), { type: "ready" });
+        assert.deepEqual(first.ready, { type: "ready" });
+        assert.deepEqual(second.ready, { type: "ready" });
         first.worker.postMessage("run");
         assert.deepEqual(await first.next(), { type: "reserved" });
         second.worker.postMessage("run");
@@ -551,7 +555,7 @@ describe("canonical run-record service", () => {
           assert.deepEqual([firstResult.outcome.run.runNumber, secondResult.outcome.run.runNumber], [1, 2]);
         }
       } finally {
-        await Promise.all(connections.map(({ worker }) => worker.terminate()));
+        await closeRaceConnections(connections, releases);
       }
     });
   }
@@ -639,7 +643,7 @@ describe("canonical run-record service", () => {
       configFingerprint: request.configFingerprint,
       configSnapshotId: request.configSnapshotId,
     })+"\n");
-    const doctor = await doctorAuthorityStorage({
+    const doctor = await doctorAuthorityStorage(boundProfileAdmission(authorityPath), {
       stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,

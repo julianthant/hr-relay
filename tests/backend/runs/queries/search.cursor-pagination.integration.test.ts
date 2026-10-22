@@ -1,8 +1,6 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { insertMeasuredSearchRun } from "../../../support/helpers/backend/cross-date-search-harness.js";
@@ -23,15 +21,15 @@ function resolveMeasuredSearchDescriptor(workflowId: string) {
 describe("cross-date search service", () => {
 
   it("continues the stable order with an opaque cursor", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-cursor-"));
+    const profile = createBoundProfileFixture();
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-cursor-test" },
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-cursor-test" },
       clock,
     );
     try {
-      const first = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      const second = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 12, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+      const first = insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const second = insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 12, enqueuedAt: "2026-08-28T14:00:00.000Z" });
       const search = measuredSearchService(database, {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
@@ -150,7 +148,7 @@ describe("cross-date search service", () => {
       assert.equal(secondPage.generatedAt, firstPage.generatedAt);
       assert.equal(secondPage.snapshot.token, firstPage.snapshot.token);
 
-      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"),
+      insertMeasuredSearchRun(database, { authorityPath: profile.path,
         seed: 13,
         enqueuedAt: "2026-08-26T15:00:00.000Z",
       });
@@ -160,7 +158,7 @@ describe("cross-date search service", () => {
       );
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 });

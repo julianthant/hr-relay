@@ -16,10 +16,9 @@ import { EditableSettingsWireSchema } from "../../../../src/models/dashboard/set
 import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures, AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -199,26 +198,22 @@ describe("instance and fiscal safety", () => {
 }
 
 {
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 
 const cleanupOriginalFixture = () => {
   for (const database of openDatabases.splice(0)) database.close();
-  releaseAdmissionFixtures();
-  for (const root of roots.splice(0)) {
-    releaseAdmissionFixture(root);
-    rmSync(root, { recursive: true, force: true });
-  }
+  for (const profile of profiles.splice(0)) profile.close();
 };
 
 const NOW = "2026-08-03T09:00:00.000Z";
 
-function repoRootWithState(): { repoRoot: string; stateRoot: string } {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-worker-compose-"));
-  roots.push(repoRoot);
-  const stateRoot = installationAdmission(repoRoot).stateRoot;
+function repoRootWithState() {
+  const profile = createBoundProfileFixture(); profiles.push(profile);
+  const repoRoot = profile.workspace;
+  const stateRoot = profile.stateRoot;
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
-  return { repoRoot, stateRoot };
+  return { repoRoot, stateRoot, admission: profile.admission };
 }
 
 function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
@@ -269,11 +264,11 @@ function journalWorkerSettings(
 it("F composed dashboard reads active settings after boot through real HTTP", async () => {
 onTestFinished(cleanupOriginalFixture);
 
- const { repoRoot, stateRoot } = repoRootWithState();
+ const { repoRoot, stateRoot, admission } = repoRootWithState();
  const clock = manualClock(new Date(NOW));
  for (const name of ["package.json", "package-lock.json"])
   writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
- const dashboard = await composeDashboardRuntime({ admission: installationAdmission(repoRoot), isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
+ const dashboard = await composeDashboardRuntime({ admission, isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
   backendPortOverride: 0, frontendPortOverride: 0 });
  try {
   const database = reopen(stateRoot, clock);

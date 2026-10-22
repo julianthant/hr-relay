@@ -6,7 +6,10 @@ import { RunRecordService, CreateRunRequestSchema } from "../../../src/backend/r
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../src/models/config/runtime-generation.js";
 import { CommandIdSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
-import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
+import { basename, dirname, resolve } from "node:path";
 
 const data = z.strictObject({
   path: z.string(), now: z.iso.datetime(), runId: RunIdSchema,
@@ -28,7 +31,9 @@ const pause = () => {
   Atomics.wait(gate, 0, 0);
 };
 const clock = manualClock(new Date(data.now));
-const database = AuthorityDatabase.open({ path: data.path, busyTimeoutMs: 250, migrationOwner: "race-proof" },
+const machine = acquireEntrypointAdmission(resolve(dirname(data.path), "../../../.."), "shared");
+const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(data.path))));
+const database = AuthorityDatabase.open(admission, { path: data.path, busyTimeoutMs: 250, migrationOwner: "race-proof" },
   clock, undefined, { afterFailureStorageStep: (step) => { if (step === "failure") pause(); } }, { afterClaimSelection: pause });
 const service = new RunRecordService({ database, clock, ids: { uuid: () => data.runId }, publishQueued: () => undefined },
   { afterCreateReservation: pause });
@@ -36,6 +41,8 @@ port.on("message", (input: unknown) => {
   const message = z.enum(["run", "close"]).parse(input);
   if (message === "close") {
     database.close();
+    admission.release();
+    machine.release();
     port.close();
     return;
   }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createBoundProfileFixture } from "../admission-fixture.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService,runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -42,18 +42,19 @@ export function createWriteRecoveryTestWorld() {
 
   function harness(refuseContinuation = false): Harness {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-write-recovery-"));
-    const open=()=>AuthorityDatabase.open({path:join(root,"authority.sqlite"),busyTimeoutMs:250,migrationOwner:"write-recovery-test"},clock);
+    const profile = createBoundProfileFixture();
+    const root = profile.stateRoot;
+    const open=()=>AuthorityDatabase.open({path:profile.path,busyTimeoutMs:250,migrationOwner:"write-recovery-test"},clock);
     let database=open();
     disposers.push(() => {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     database.withAuthorityTransaction(repositories => {
       const slot = admitDirectWorker(repositories, {commandId: "10000000-0000-4000-8000-000000000001",
         workflow: WRITE_FIXTURE_WORKFLOW_ID, poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
-        processAcquisitionId: "10000000-0000-4000-8000-000000000002", authorityPath: join(root,"authority.sqlite"),
+        processAcquisitionId: "10000000-0000-4000-8000-000000000002", authorityPath: profile.path,
         processLockRoot: join(root,"locks"), now: WRITE_FIXTURE_NOW}, "10000000-0000-4000-8000-000000000003");
       assert.equal(slot.workerId, WRITE_FIXTURE_WORKER_ID);
       assert.equal(repositories.workerLeases.start({workerId: slot.workerId,workflow: WRITE_FIXTURE_WORKFLOW_ID,
@@ -73,7 +74,10 @@ export function createWriteRecoveryTestWorld() {
         },
       },
     };
-    const manager = writeFixtureSessionManager(spied, registry, clock);
+    const scheduler = new ManualScheduler(clock);
+    const manager = writeFixtureSessionManager(spied, registry, clock, {
+      openGate: input => duoCeremonyGatesOver(database, clock, scheduler).openGate(input),
+    });
     const ids = sequentialIdFactory("c");
     const recovery = createWriteRecoveryService({
       continuation: { transition: (input) => {

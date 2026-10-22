@@ -167,7 +167,7 @@ it("keeps JSON, CSV and XLSX write evidence through restart and terminal run del
     const run = f.run;
     const commit = ledgerCommitFixture(78, { runId: run.envelope.runId, workflowId: run.envelope.workflow,
       itemId: run.envelope.itemId, traceId: run.envelope.traceId, configFingerprint: run.envelope.configFingerprint, confirmedAt: NOW });
-    assert.equal(fenceWriteFixture(database, { intent: commit.intent, attempt: commit.attempt }).state, "fenced");
+    assert.equal(fenceWriteFixture(database, { intent: commit.intent, attempt: commit.attempt }, f.path).state, "fenced");
     database.commitWriteAttempt(commit.commit, { ...atomicWriteCheckpoint(commit.commit),
       descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint });
     const read = () => {

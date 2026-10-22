@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it } from "vitest";
-import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
+import { insertNativeCommand,settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { executeNativeRunDeletion,prepareNativeRunDeletion } from "../../../../src/backend/storage/sqlite/native-run-deletion.js";
@@ -13,6 +13,7 @@ import { deriveCheckpointOutputDigest } from "../../../../src/models/run/result.
 import { RunCheckpointRecordSchema,checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
 import type { RunId } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { CONFIG_SNAPSHOT,HASH_A,NOW,UUID_1,UUID_3,UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 const databases: DatabaseSync[] = [];
@@ -54,6 +55,30 @@ function fixture(withParent = false) {
   return {db,run,prepare,transaction,replay,input};
 }
 describe("native terminal run deletion", () => {
+  it.each(["valid","command-digest","audit-column"])("validates retained command and audit evidence before planning deletion: %s", fault => {
+    const f=fixture();
+    const request={commandId:UUID_3,runId:f.run.envelope.runId,expectedVersion:f.run.version};
+    const command={kind:"run-lifecycle",commandId:UUID_3,operation:"delete",request,
+      requestFingerprint:sha256Hex(`hrauto:run-lifecycle-command:v1\0delete\0${canonicalJsonStringify(request)}`),
+      fence:{kind:"version",expectedVersion:f.run.version},recordedAt:NOW};
+    insertNativeCommand(f.db,command);
+    const audit={kind:"run-lifecycle",auditId:UUID_5,request:command,
+      result:{kind:"deletion",runIds:[f.run.envelope.runId]},completedAt:NOW};
+    settleNativeCommand(f.db,audit);
+    f.db.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES(?,?,NULL,?,?)")
+      .run(UUID_5,UUID_3,canonicalJsonStringify(audit),NOW);
+    if(fault==="command-digest")f.db.prepare("UPDATE commands SET request_digest=? WHERE id=?").run(HASH_A,UUID_3);
+    if(fault==="audit-column") {
+      f.db.exec("DROP TRIGGER command_audits_immutable");
+      f.db.prepare("UPDATE command_audits SET created_at=? WHERE id=?").run("2026-09-10T12:00:00.000Z",UUID_5);
+    }
+    const before=f.db.prepare("SELECT * FROM runs").all();
+    if(fault==="valid")expect(()=>f.prepare()).not.toThrow();
+    else expect(()=>f.prepare()).toThrow(fault==="command-digest" ? /command-row-identity-mismatch/u : /command_audits-row-created_at-mismatch/u);
+    expect(f.db.prepare("SELECT * FROM runs").all()).toEqual(before);
+    expect(f.db.prepare("SELECT * FROM run_checkpoints").all()).toHaveLength(1);
+    expect(f.db.prepare("SELECT * FROM deleted_runs").all()).toEqual([]);
+  });
   it("persists the final tally first and deletes ordinary terminal authority in FK order", () => {
     const f = fixture(); const prepared = f.prepare();
     expect(prepared.receipt.removed).toEqual([{table:"run_checkpoints",rows:1},{table:"runs",rows:1}]);

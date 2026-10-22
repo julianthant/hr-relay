@@ -6,9 +6,9 @@ import type { WriteFixtureWorld } from "../write-sequencer-fixtures.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createBoundProfileFixture } from "../../helpers/admission-fixture.js";
+import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
@@ -31,9 +31,10 @@ import { writeFixtureDescriptor, createWriteFixtureWorld, buildWriteFixtureRegis
   writeFixtureSessionManager, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_EID } from "../write-sequencer-fixtures.js";
 
 export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-source-bound-")));
+  const profile = createBoundProfileFixture();
+  const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
-  const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "repeat-proof" }, clock);
+  const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "repeat-proof" }, clock);
   initializeRuntime(database, clock);
   const activeConfig = database.authority.runtimeConfig.get();
   assert.ok(activeConfig);
@@ -44,7 +45,7 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   const lifecycleIds = sequentialIdFactory("a");
   const slot=database.withAuthorityTransaction(repositories=>admitDirectWorker(repositories,{commandId:ids.uuid(),workflow:descriptor.id,
     poolIndex:1,expectedPoolVersion:0,processId:process.pid,processAcquisitionId:ids.uuid(),
-    authorityPath:join(root,"authority.sqlite"),processLockRoot:join(root,"locks"),now:clock.now().toISOString()},ids.uuid()));
+    authorityPath:profile.path,processLockRoot:join(root,"locks"),now:clock.now().toISOString()},ids.uuid()));
   const started=database.authority.workerLeases.start({workerId:slot.workerId,workflow:descriptor.id,
     browserSystems:workflowProjections(descriptor).systems,processId:process.pid,requestedBy:"local-operator",now:clock.now().toISOString()});
   assert.equal(started.state,"started");
@@ -69,7 +70,7 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
   const world = createWriteFixtureWorld();
   const stores = customStores === undefined ? buildWriteFixtureRegistry(world) : customStores(world);
   const sessions = writeFixtureSessions(world);
-  const manager = writeFixtureSessionManager(sessions, stores, clock);
+  const manager = writeFixtureSessionManager(sessions, stores, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)));
   const emitter = recordingEmitter();
   const worker = workerRunLifecyclePort(lifecycle);
   const common = { lifecycle: worker, stores, authority: database, sessions: manager, emitter: emitter.emitter,
@@ -105,11 +106,11 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
     }));
   }
   function fresh(run: RunRecord) { const value = database.authority.runs.get(run.envelope.runId); assert.ok(value); return value; }
-  return { authorityPath:join(root,"authority.sqlite"),database, get descriptor() { return registeredDescriptor; },
+  return { authorityPath:profile.path,database, get descriptor() { return registeredDescriptor; },
     registerDescriptor(next: AnyWorkflowDescriptor) { registeredDescriptor = next; }, clock, ids, lifecycleIds, planIds, get queueRoots() {
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
   }, lifecycle, kernel, planner, world, stores, manager,
     proposal, command, start, execute, fresh, resolution, recovery,
-    dispose: () => { database.close(); rmSync(root, { recursive: true, force: true }); } };
+    dispose: () => { database.close(); profile.close(); } };
 }

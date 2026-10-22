@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { repeatOccurrenceKey } from "../../../src/models/run/rerun.js";
@@ -136,15 +134,14 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
 {
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 const databasePaths = new WeakMap<AuthorityDatabase, string>();
 const CLOCK = manualClock(new Date(NOW));
 
-function databasePath(name = "authority.sqlite"): string {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-sqlite-"));
-  roots.push(root);
-  return join(root, name);
+function databasePath(): string {
+  const profile = createBoundProfileFixture(); profiles.push(profile);
+  return profile.path;
 }
 
 function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
@@ -157,7 +154,7 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
 describe("authority generation accounting", () => {
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 
 

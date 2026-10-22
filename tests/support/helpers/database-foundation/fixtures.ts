@@ -1,9 +1,8 @@
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
@@ -19,10 +18,9 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
-export function foundationFixture(options:{repositoryLayout?:boolean;input?:RunRecord["input"]}={}){
- const repoRoot=mkdtempSync(join(realpathSync(tmpdir()),"foundation-baseline-"));
- const root=options.repositoryLayout===true?join(repoRoot,".tracker"):repoRoot;mkdirSync(root,{recursive:true});
- const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
+export function foundationFixture(options:{input?:RunRecord["input"]}={}){
+ const profile=createBoundProfileFixture();
+ const root=profile.stateRoot,path=profile.path;const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
  const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,
   {stateRoot:root,artifactRoot:join(root,"artifacts")});
@@ -51,7 +49,7 @@ export function foundationFixture(options:{repositoryLayout?:boolean;input?:RunR
  return running.run;
  };
  const run=createRun(RUN_ID);
- return {root,path,clock,db,snapshot,run,createRun,dispose:()=>{db.close();rmSync(repoRoot,{recursive:true,force:true});}};
+ return {root,path,clock,db,snapshot,run,createRun,dispose:()=>{db.close();profile.close();}};
 }
 export function failure(){return FailureRecordSchema.parse({failureId:id(80),fingerprint:HASH,runId:RUN_ID,traceId:QUEUED_RUN.envelope.traceId,attempt:1,workflowId:"person-lookup",code:"FIXTURE_FAILURE",summary:"Synthetic failure",transient:false,writeState:"unknown",action:{operation:"commit"},causeChain:[{code:"FIXTURE_FAILURE",summary:"Synthetic failure",role:"primary",transient:false}],remediation:[{kind:"no-safe-action",message:"Do not retry an unknown submit"}],occurredAt:NOW});}
 export function update(n=1){return ArtifactOutboxStorageRecordSchema.parse({outboxId:id(n),artifactId:id(70),projectionId:"retention-row",stableKeyFingerprint:HASH,keyValues:[{field:"subject",value:"synthetic"}],sinkId:"xlsx-retention",sourceRunId:RUN_ID,sourceNodeId:"searching",state:"pending",payload:{schemaHash:HASH,value:`retained-${n}`},createdAt:NOW});}

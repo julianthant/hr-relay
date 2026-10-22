@@ -41,10 +41,10 @@ import { protectedSecretSource } from "../../support/helpers/protected-secret-so
 
 {
 
-const { roots, databases, admissions, fixture, protectedCommand } = createSettingsAuthorityTestWorld();
+const { databases, fixture, protectedCommand, cleanup } = createSettingsAuthorityTestWorld();
 
 
-const _afterEachFixture0 = () => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
+const _afterEachFixture0 = cleanup;
 
 
 
@@ -54,11 +54,11 @@ afterEach(_afterEachFixture0);
   it("database restore leaves credential revision, availability and next-use value intact", async () => {
     const f = fixture(); const snapshot = join(f.root, "prior.sqlite");
     await f.database.onlineBackupTo(snapshot);
-    const request = protectedCommand(); f.execute(request);
+    const revision = f.store.read().revision; const request = protectedCommand(revision); f.execute(request);
     f.database.close(); copyFileSync(snapshot, f.path);
     const restored = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-proof" }, f.clock); databases.push(restored);
     assert.equal(restored.authority.commands.get(request.commandId), undefined);
-    assert.equal(f.store.read().revision, 2);
+    assert.equal(f.store.read().revision, revision + 1);
     assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(f.store)), "synthetic-private-value");
     assert.equal(f.execute(request, restored).state, "applied");
   });

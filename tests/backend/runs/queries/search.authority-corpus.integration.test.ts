@@ -1,9 +1,7 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, vi } from "vitest";
 import { z } from "zod";
@@ -116,14 +114,14 @@ describe("cross-date search query", () => {
 
 describe("cross-date search authority read", () => {
   it("ranks the corpus once per authority search", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-ranked-pass-"));
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-ranked-pass-test" },
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-ranked-pass-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     try {
-      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 90, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 90, enqueuedAt: "2026-08-28T14:00:00.000Z" });
       const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
       try {
         database.authority.runs.search({
@@ -142,14 +140,14 @@ describe("cross-date search authority read", () => {
       }
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 
   it("admits current workflows beyond the measured corpus", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-outside-corpus-"));
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-outside-corpus-test" },
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-outside-corpus-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -162,7 +160,7 @@ describe("cross-date search authority read", () => {
       assert.equal(page.rows[0]?.record.envelope.workflow, "person-lookup");
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 
@@ -197,9 +195,9 @@ describe("cross-date search authority read", () => {
     ];
 
     for (const { label, run } of cases) {
-      const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-corpus-dimension-"));
+      const profile = createBoundProfileFixture();
       const database = AuthorityDatabase.open(
-        { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-corpus-dimension-test" },
+        { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-corpus-dimension-test" },
         manualClock(new Date("2026-08-28T16:00:00.000Z")),
       );
       database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -212,15 +210,15 @@ describe("cross-date search authority read", () => {
         assert.equal(page.rows[0]?.record.envelope.dryRun, run.envelope.dryRun);
       } finally {
         database.close();
-        rmSync(root, { recursive: true, force: true });
+        profile.close();
       }
     }
   });
 
   it("serves current queued lifecycle metadata", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-corpus-state-"));
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-corpus-state-test" },
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-corpus-state-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -234,13 +232,13 @@ describe("cross-date search authority read", () => {
       assert.equal(database.authority.runs.search({ q: run.envelope.runId, scope: "run", facets: { state: "running" }, limit: 1 }).totalMatches, 0);
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 
   it("admits genuine peer commits and refuses raw corruption masked by generation changes or another mutation", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-search-peer-"));
-    const path = join(root, "authority.db"), clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
+    const profile = createBoundProfileFixture();
+    const path = profile.path, clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-peer-test" }, clock);
     const raw = new DatabaseSync(path);
     let peer: AuthorityDatabase | undefined;
@@ -271,12 +269,12 @@ describe("cross-date search authority read", () => {
       raw.prepare("UPDATE database_states SET authority_generation=?,search_generation=?").run(ownBefore.authorityGeneration, ownBefore.authorityGeneration);
       assert.deepEqual(raw.prepare("SELECT * FROM runs ORDER BY id").all(), beforeRows);
       assert.equal(search().totalMatches, 2);
-    } finally { peer?.close(); raw.close(); database.close(); rmSync(root, { recursive: true, force: true }); }
+    } finally { peer?.close(); raw.close(); database.close(); profile.close(); }
   });
 
   it("keeps a pinned search snapshot coherent across peer commits and preserves rollback admission", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-search-pinned-"));
-    const path = join(root, "authority.db"), clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
+    const profile = createBoundProfileFixture();
+    const path = profile.path, clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-pinned-test" }, clock);
     let peer: AuthorityDatabase | undefined;
     try {
@@ -300,19 +298,19 @@ describe("cross-date search authority read", () => {
       }), error => error === fault);
       assert.deepEqual(search(), before);
       assert.equal(database.getMeta().authorityGeneration, generation);
-    } finally { peer?.close(); database.close(); rmSync(root, { recursive: true, force: true }); }
+    } finally { peer?.close(); database.close(); profile.close(); }
   });
 
   it("refuses invalidated publication before facets or matching", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-corpus-"));
-    const databasePath = join(root, "authority.db");
+    const profile = createBoundProfileFixture();
+    const databasePath = profile.path;
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-corpus-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 88, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const run = insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 88, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const search = (input: unknown): unknown => database.authority.runs.search(input);
       assert.equal(database.authority.runs.search({
         q: run.envelope.runId,
@@ -372,20 +370,20 @@ describe("cross-date search authority read", () => {
     } finally {
       raw.close();
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 
   it("refuses searchable columns that disagree with the strict run authority", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-columns-"));
-    const databasePath = join(root, "authority.db");
+    const profile = createBoundProfileFixture();
+    const databasePath = profile.path;
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-columns-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const run = insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const searchExactRun = (facets: unknown): unknown => database.authority.runs.search({
         q: run.envelope.runId,
         scope: "run",
@@ -419,28 +417,28 @@ describe("cross-date search authority read", () => {
     } finally {
       raw.close();
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 
   it("returns a bounded page in stable match, time, and run-id order", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-search-"));
+    const profile = createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-test" },
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     try {
       const oldestSecondById = insertMeasuredSearchRun(
         database,
-        { authorityPath: join(root, "authority.db"), seed: 2, enqueuedAt: "2026-08-27T12:00:00.000Z" },
+        { authorityPath: profile.path, seed: 2, enqueuedAt: "2026-08-27T12:00:00.000Z" },
       );
       const newest = insertMeasuredSearchRun(
         database,
-        { authorityPath: join(root, "authority.db"), seed: 3, enqueuedAt: "2026-08-28T12:00:00.000Z" },
+        { authorityPath: profile.path, seed: 3, enqueuedAt: "2026-08-28T12:00:00.000Z" },
       );
       const oldestFirstById = insertMeasuredSearchRun(
         database,
-        { authorityPath: join(root, "authority.db"), seed: 1, enqueuedAt: "2026-08-27T12:00:00.000Z" },
+        { authorityPath: profile.path, seed: 1, enqueuedAt: "2026-08-27T12:00:00.000Z" },
       );
 
       const page = database.authority.runs.search({
@@ -514,23 +512,23 @@ describe("cross-date search authority read", () => {
       assert.equal(measuredFacets.rows[0]?.record.envelope.runId, newest.envelope.runId);
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 });
 
 describe("cross-date search service", () => {
   it("accepts cursors only from the same BFF process signer", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-signer-"));
+    const profile = createBoundProfileFixture();
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-signer-test" },
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-signer-test" },
       clock,
     );
     try {
-      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 41, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      const second = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 42, enqueuedAt: "2026-08-27T15:00:00.000Z" });
-      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 43, enqueuedAt: "2026-08-26T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 41, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const second = insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 42, enqueuedAt: "2026-08-27T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: profile.path, seed: 43, enqueuedAt: "2026-08-26T15:00:00.000Z" });
       const signer = new Uint8Array(32).fill(0x41);
       const service = measuredSearchService(database, {
         clock,
@@ -576,33 +574,33 @@ describe("cross-date search service", () => {
       );
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 
   it("normalizes offset instants across a Pacific DST day and keyset pages", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-offsets-"));
+    const profile = createBoundProfileFixture();
     const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-offset-test" },
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-offset-test" },
       clock,
     );
     try {
       const middle = insertMeasuredSearchRun(
         database,
-        { authorityPath: join(root, "authority.db"), seed: 32, enqueuedAt: "2026-11-01T01:30:00.000-07:00" },
+        { authorityPath: profile.path, seed: 32, enqueuedAt: "2026-11-01T01:30:00.000-07:00" },
       );
       const outsideDay = insertMeasuredSearchRun(
         database,
-        { authorityPath: join(root, "authority.db"), seed: 34, enqueuedAt: "2026-11-02T07:30:00.000-02:00" },
+        { authorityPath: profile.path, seed: 34, enqueuedAt: "2026-11-02T07:30:00.000-02:00" },
       );
       const oldest = insertMeasuredSearchRun(
         database,
-        { authorityPath: join(root, "authority.db"), seed: 33, enqueuedAt: "2026-10-31T23:30:00.000-08:00" },
+        { authorityPath: profile.path, seed: 33, enqueuedAt: "2026-10-31T23:30:00.000-08:00" },
       );
       const newest = insertMeasuredSearchRun(
         database,
-        { authorityPath: join(root, "authority.db"), seed: 31, enqueuedAt: "2026-11-01T01:15:00.000-08:00" },
+        { authorityPath: profile.path, seed: 31, enqueuedAt: "2026-11-01T01:15:00.000-08:00" },
       );
       const search = measuredSearchService(database, {
         clock,
@@ -648,19 +646,19 @@ describe("cross-date search service", () => {
       assert.equal(third.results.some(({ runId }) => runId === outsideDay.envelope.runId), false);
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 
   it("projects authoritative descriptor registration from one exact authority snapshot", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-service-"));
+    const profile = createBoundProfileFixture();
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-service-test" },
+      { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-service-test" },
       clock,
     );
     try {
-      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"),
+      const run = insertMeasuredSearchRun(database, { authorityPath: profile.path,
         seed: 7,
         runNumber: 7,
         enqueuedAt: "2026-08-28T15:00:00.000Z",
@@ -687,7 +685,7 @@ describe("cross-date search service", () => {
       assert.equal("title" in (page.results[0] ?? {}), false);
     } finally {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 });

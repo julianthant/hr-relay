@@ -1,8 +1,8 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, onTestFinished } from "vitest";
@@ -31,14 +31,13 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 {
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const opened: AuthorityDatabase[] = [];
 const now = "2026-09-08T12:00:00.000Z";
 const clock = manualClock(new Date(now));
 function fixture() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "command-groups-")); roots.push(root);
-  const stateRoot = join(root, ".tracker", "data"); mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
-  const path = join(stateRoot, "state.db");
+  const profile = createBoundProfileFixture(); profiles.push(profile);
+  const { stateRoot, path } = profile;
   const open = () => { const db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "command-group-test" }, clock); opened.push(db); return db; };
   return { path, stateRoot, open };
 }
@@ -55,7 +54,7 @@ function lifecycleCommand(commandId: string) {
     fence: { kind: "none" }, recordedAt: now };
 }
 describe("command groups", () => {
-afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const profile of profiles.splice(0)) profile.close(); });
 
   it("keeps standalone, parent and child records distinct, fences membership and counts only executable commands", () => {
     const f = fixture(); const db = f.open(); const parent = acceptance();
@@ -112,7 +111,7 @@ afterEach(() => { for (const db of opened.splice(0)) db.close(); for (const root
   it("protects current credential command identities before acceptance", () => {
     const f = fixture(); const db = f.open(); const parent = acceptance();
     const store = createCredentialStore({ stateRoot: f.stateRoot });
-    assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: parent.bulkCommandId, commandFingerprint: "a".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-command-group-credential" } }, updatedAt: now })).state, "applied");
+    assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: parent.bulkCommandId, commandFingerprint: "a".repeat(64), expectedRevision: store.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-command-group-credential" } }, updatedAt: now })).state, "applied");
     assert.throws(() => db.authority.commands.acceptBulk(parent), /command-divergent/);
     assert.equal(db.authority.commands.getBulk(parent.bulkCommandId), undefined);
 
@@ -177,7 +176,7 @@ describe("deferred arms", () => {
 }
 
 {
-const { roots, databases, admissions, fixture, protectedCommand, failAudit } = createSettingsAuthorityTestWorld();
+const { fixture, protectedCommand, failAudit, cleanup } = createSettingsAuthorityTestWorld();
 
 
 
@@ -185,10 +184,10 @@ const { roots, databases, admissions, fixture, protectedCommand, failAudit } = c
 
 
 describe("SQLite settings authority", () => {
-afterEach(() => { for (const database of databases.splice(0)) database.close(); for (const admission of admissions.splice(0)) admission.release(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(cleanup);
 
   it("protects a retained credential identity from internal lifecycle journal writers", () => {
-    const f = fixture(); const pending = protectedCommand();
+    const f = fixture(); const pending = protectedCommand(f.store.read().revision);
     assert.throws(() => f.execute(pending, failAudit(f.database)), /credential-audit-uncertain/u);
     const generation = f.database.getMeta().authorityGeneration;
     const path = join(f.root, "credentials", "protected.json");
@@ -288,7 +287,7 @@ it("replays a genuinely completed current intake command after its source bytes 
   const generation = h.database.getMeta().authorityGeneration;
   const ids = h.mintedIds;
   const reads = h.artifactReads;
-  const artifactRoot = join(h.root, ".tracker", "artifacts");
+  const artifactRoot = h.artifactRoot;
   const source = join(artifactRoot, `${wire.artifact.sha256}.artifact`);
   assert.ok(readFileSync(source).length > 0);
   unlinkSync(source);
@@ -337,14 +336,14 @@ describe("F shared transactional storage contracts",()=>{
 }
 
 {
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 const CLOCK = manualClock(new Date(NOW));
 
-function databasePath(name = "authority.sqlite"): string {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-sqlite-"));
-  roots.push(root);
-  return join(root, name);
+function databasePath(): string {
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
+  return profile.path;
 }
 
 function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
@@ -357,11 +356,11 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
 describe("authority persistence invariants", () => {
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) profile.close();
 });
 
   it("finds a protected write-id owner after restart while excluding the replaying command", () => {
-    const path = databasePath("protected-write-id.sqlite");
+    const path = databasePath();
     const ownerCommandId = UUID_6;
     const writeId = UUID_7;
     const first = openDatabase(path);

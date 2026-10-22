@@ -1,17 +1,17 @@
+import { boundProfileAdmission } from "../admission-fixture.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
-import { join } from "node:path";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 
 export function openConfirmedRetentionDatabase(
-  root: () => string,
+  path: string,
   ts: string,
   commit: unknown,
   intent: { readonly runId: string },
   attempt: unknown,
 ) {
-  const path = join(root(), "confirmed.db");
+  boundProfileAdmission(path);
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500,
     migrationOwner: "confirmed-retention-test" }, manualClock(new Date(ts)));
   seedAtomicWriteOwner(database, commit, path);

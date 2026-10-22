@@ -1,3 +1,4 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createSeparationStartFixtures } from "../../../support/helpers/backend/separation-start-fixtures.js";
 import { createSeparationIdentityPacketFixture } from "../../../support/helpers/separation-identity-packet-fixture.js";
 import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
@@ -7,8 +8,6 @@ import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js"
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { buildRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -41,24 +40,21 @@ const SUBMISSION = Object.freeze({
   documentNumber: "4510",
 });
 
-const roots: string[] = [];
+const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 const databases: AuthorityDatabase[] = [];
 const worlds: DashboardWorld[] = [];
 
 afterEach(() => {
   while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
+  for (const profile of profiles.splice(0)) profile.close();
   for (const world of worlds.splice(0)) world.dispose();
 });
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-separations-wire-"));
-  roots.push(root);
+  const profile = createBoundProfileFixture();
+  profiles.push(profile);
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
   databases.push(database);
@@ -126,7 +122,7 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
   const seeded = RunRecordSchema.parse({ ...runRecordOf({ seed: 1, workflow: separationsDescriptor.id }),
     envelope: { ...runRecordOf({ seed: 1 }).envelope, workflow: separationsDescriptor.id,
       descriptorVersion: separationsDescriptor.version, contractFingerprint: separationsDescriptor.contractFingerprint } });
-  testWorkerPorts(world.database, manualClock(new Date(GATE_NOW)), { path: join(world.stateRoot, "authority.db"), descriptor: separationsDescriptor, poolIndex: 1 });
+  testWorkerPorts(world.database, manualClock(new Date(GATE_NOW)), { path: join(world.stateRoot, "state.db"), descriptor: separationsDescriptor, poolIndex: 1 });
   const slot = world.database.authority.workerSlots.list(separationsDescriptor.id).find(record => record.poolIndex === 1 && record.retiredAt === null);
   assert.ok(slot);
   const workerId = slot.workerId;

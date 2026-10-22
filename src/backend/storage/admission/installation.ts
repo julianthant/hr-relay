@@ -490,13 +490,17 @@ function prepareMovedDestinationRoot(workspace: string, pending: RelocationJourn
   ensureRoot(root);
   installMarker(root, pending.installationId, workspace, role, pending.sourceEpochs[role], pending.operationId);
 }
+let executingProcessIdentity: ProcessStartIdentity | undefined;
 function identity(): ProcessStartIdentity {
+  if (executingProcessIdentity !== undefined) return executingProcessIdentity;
   const observation = observeProcessIdentity(process.pid);
   if (observation.state !== "alive") fail("current process identity unavailable");
-  return observation.identity;
+  executingProcessIdentity = Object.freeze({ ...observation.identity });
+  return executingProcessIdentity;
 }
 function isLive(lease: z.infer<typeof LeaseSchema>): boolean {
-  const observed = observeProcessIdentity(lease.pid);
+  const observed = lease.pid === process.pid
+    ? { state: "alive" as const, identity: identity() } : observeProcessIdentity(lease.pid);
   return observed.state === "alive" && observed.identity.platform === lease.processIdentity.platform && observed.identity.startToken === lease.processIdentity.startToken;
 }
 export class AdmissionMutexBusyError extends Error {
