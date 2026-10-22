@@ -1,7 +1,5 @@
 import { jsonLeafPaths } from "../../../src/backend/runs/provenance/task-provenance.js";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "./admission-fixture.js";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
@@ -52,6 +50,7 @@ export function personLookupTerminalIdentityEvidence(run: import("../../../src/m
 export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER))) {
 
   const roots: string[] = [];
+  const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 
   const databases: AuthorityDatabase[] = [];
 
@@ -62,15 +61,15 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
   const ACTIVE = PERSON_LOOKUP_ACTIVE;
 
   function openDatabase(hooks?: AuthorityTerminalizationHooks): AuthorityDatabase {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-run-terminal-"));
-    roots.push(root);
+    const profile = createBoundProfileFixture(); profiles.push(profile);
+    roots.push(profile.stateRoot);
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       CLOCK,
       undefined,
       hooks,
     );
-    testWorkerPorts(database, CLOCK, { path: join(root, "authority.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+    testWorkerPorts(database, CLOCK, { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
     databases.push(database);
     return database;
   }
@@ -203,7 +202,8 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
   }
   const cleanup = () => {
     for (const database of databases.splice(0)) database.close();
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    for (const profile of profiles.splice(0)) profile.close();
+    roots.splice(0);
   };
   return { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest, WORKER_ID, failure, failureAuthorization, cleanup };
 }

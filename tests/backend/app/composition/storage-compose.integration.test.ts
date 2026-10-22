@@ -1,4 +1,4 @@
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
@@ -87,7 +87,7 @@ afterEach(_afterEachFixture0);
     const restore = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["restore", "--from", join_m0(directory, name), "--json"], f.clock, f.repoRoot, f.admission);
     assert.equal(restore.exitCode, 0, restore.output);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    const restored = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-restore-retry" }, f.clock); databases.push(restored);
+    const restored = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-restore-retry" }, f.clock, undefined, undefined, undefined, boundProfileCredentials(f.admission)); databases.push(restored);
     assert.equal(restored.authority.commands.get(request.commandId), undefined);
     const generation = restored.getMeta().authorityGeneration;
     const foreign = f.execute({ ...ordinary(), commandId: request.commandId }, restored);
@@ -121,7 +121,7 @@ const admissions = new Map<string, RuntimeAdmission>();
 const openedAuthorities: AuthorityDatabase[] = [];
 function openAuthority(input: z.input<typeof AuthorityDatabaseOptionsSchema>, clock = CLOCK) {
   const admission = [...admissions.values()].find(owner => input.path.startsWith(owner.stateRoot + "/"));
-  const database = admission === undefined ? AuthorityDatabase_m0.open(input, clock) : AuthorityDatabase.open(admission, input, clock);
+  const database = admission === undefined ? AuthorityDatabase_m0.open(input, clock) : AuthorityDatabase.open(admission, input, clock, undefined, undefined, undefined, boundProfileCredentials(admission));
   openedAuthorities.push(database);
   return database;
 }

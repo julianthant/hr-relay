@@ -2,7 +2,6 @@ import { createDryRunPreviewResultTestWorld } from "../../support/helpers/backen
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
 
-import { rmSync } from "node:fs";
 
 
 import { afterEach } from "vitest";
@@ -183,7 +182,7 @@ describe("separations — start planning through the existing service", () => {
 }
 
 {
-const { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness } = createDryRunPreviewResultTestWorld();
+const { cleanup, PREVIEW_RESULT_SCHEMA_HASH, harness } = createDryRunPreviewResultTestWorld();
 
 function terminalRun(database: AuthorityDatabase) {
   const record = database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -192,11 +191,7 @@ function terminalRun(database: AuthorityDatabase) {
 }
 
 describe("a dry run previews its transaction node and ends there", () => {
-afterEach(() => {
-  for (const open of kualiOpen.splice(0)) open.dispose();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
   it("settles a previewed run with a preview record and NOTHING durable from the write half", async () => {
     const h = harness();

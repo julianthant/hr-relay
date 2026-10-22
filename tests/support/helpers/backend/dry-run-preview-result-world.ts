@@ -1,8 +1,6 @@
 import { testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
@@ -28,6 +26,7 @@ interface Harness {
 
 export function createDryRunPreviewResultTestWorld() {
   const roots: string[] = [];
+  const profiles: ReturnType<typeof createBoundProfileFixture>[] = [];
 
   const openDatabases: AuthorityDatabase[] = [];
 
@@ -36,11 +35,11 @@ export function createDryRunPreviewResultTestWorld() {
   const PREVIEW_RESULT_SCHEMA_HASH = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
 
   function harness(): Harness {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-preview-"));
-    roots.push(root);
+    const profile = createBoundProfileFixture(); profiles.push(profile);
+    roots.push(profile.stateRoot);
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
     const database = AuthorityDatabase.open(
-      { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       clock,
     );
     openDatabases.push(database);
@@ -55,7 +54,7 @@ export function createDryRunPreviewResultTestWorld() {
 
     const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
       const dryRun = options.dryRun ?? true;
-      const workerPorts = testWorkerPorts(database, clock, { path: join(root, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
+      const workerPorts = testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex: 1 });
       assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
 
       world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -101,7 +100,8 @@ export function createDryRunPreviewResultTestWorld() {
   const cleanup = () => {
     for (const open of kualiOpen.splice(0)) open.dispose();
     for (const database of openDatabases.splice(0)) database.close();
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    for (const profile of profiles.splice(0)) profile.close();
+    roots.splice(0);
   };
   return { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup };
 }

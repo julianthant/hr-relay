@@ -1,10 +1,7 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { createRunClaimFixtures } from "../../support/helpers/backend/run-claim-fixtures.js";
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { realpathSync } from "node:fs";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe } from "vitest";
@@ -56,15 +53,15 @@ function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | n
 describe("cross-date search authority read", () => {
 
   it("refuses a strict run record whose authority order instant is foreign", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-malformed-"));
-    const databasePath = join(root, "authority.db");
+    const profile = createBoundProfileFixture();
+    const databasePath = profile.path;
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-malformed-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const run = insertMeasuredSearchRun(database, { authorityPath: databasePath, seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const malformed = RunRecordSchema.parse({
         ...run,
         createdAt: "2026-08-28T15:01:00.000Z",
@@ -86,7 +83,7 @@ describe("cross-date search authority read", () => {
     } finally {
       raw.close();
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      profile.close();
     }
   });
 });
@@ -102,7 +99,7 @@ const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 function corruptRunConsequence(
   mutate: (run: RunRecord) => unknown,
 ): void {
-  const path = join(roots.at(-1) ?? "", "authority.sqlite");
+  const path = join(roots.at(-1) ?? "", "state.db");
   const raw = new DatabaseSync(path);
   try {
     const guards = ["runs_completion_update", "runs_completion_immutable"].map(name => {
