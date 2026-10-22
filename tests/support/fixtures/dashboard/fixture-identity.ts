@@ -1,4 +1,4 @@
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createFixtureIdentitySetup } from "../../helpers/dashboard/profiles/fixture-identity-setup.js";
 
 export const {

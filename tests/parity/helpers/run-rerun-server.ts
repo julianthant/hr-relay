@@ -16,7 +16,7 @@ import { launchHarness } from "../../support/fixtures/run-launch-fixtures.js";
 import { createRunQueueProjection } from "../../../src/backend/runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
-import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/registries/workflow-registry.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";

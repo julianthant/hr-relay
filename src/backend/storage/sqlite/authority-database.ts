@@ -1614,6 +1614,7 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
+    purpose: "ordinary" | "stopped-restore-projection" = "ordinary",
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
@@ -1663,9 +1664,9 @@ export class AuthorityDatabase implements Disposable {
         this.#configureReadOnlyConnection();
         this.#validateReadOnlyNoMigrateDatabase(existingVersion);
       } else {
-        if (!existed) this.#initializeSchema(existingVersion, options.migrationOwner);
+        if (!existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
-        if (existed) this.#initializeSchema(existingVersion, options.migrationOwner);
+        if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#validateDatabase();
       }
       readAppSettings(this.#database);
@@ -1698,6 +1699,16 @@ export class AuthorityDatabase implements Disposable {
   ): AuthorityDatabase {
     admission.assertProfileRuntime();
     return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
+  }
+
+  static openStoppedRestoreProjection(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock): AuthorityDatabase {
+    const options = AuthorityDatabaseOptionsSchema.parse(input);
+    admission.assertStoppedRestoreProjection(options.path);
+    if (options.openMode !== "read-write") throw new Error("profile-restore-projection-mode-refused");
+    const inspection = inspectExistingDatabaseReadOnly(options.path, options.busyTimeoutMs);
+    if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-restore-projection-schema-refused");
+    admission.assertStoppedRestoreProjection(options.path);
+    return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection");
   }
 
   static initializeProfile(admission: RuntimeAdmission, clock: Clock = systemClock): void {

@@ -43,6 +43,24 @@ export function readProfileDatabaseBinding(path: string):
   if (before === undefined) throw new Error("profile-database-binding-required");
   if (!before.isFile() || before.nlink !== 1 || (process.getuid !== undefined && before.uid !== process.getuid())
     || (before.mode & 0o022) !== 0) throw new Error("profile-database-identity-invalid");
+  const snapshot = createReadonlyAuthoritySnapshot(path);
+  try {
+    const binding = readProfileDatabaseBindingCopy(snapshot.path);
+    snapshot.assertUnchanged();
+    const after = lstatSync(path);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
+      || before.ctimeMs !== after.ctimeMs || after.nlink !== 1) throw new Error("profile-database-identity-changed");
+    return binding;
+  } finally { try { snapshot.assertUnchanged(); } finally { snapshot.dispose(); } }
+}
+
+function readProfileDatabaseBindingCopy(path: string):
+  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
+  requireDatabaseSourcePath(path);
+  const before = lstatSync(path, { throwIfNoEntry: false });
+  if (before === undefined) throw new Error("profile-database-binding-required");
+  if (!before.isFile() || before.nlink !== 1 || (process.getuid !== undefined && before.uid !== process.getuid())
+    || (before.mode & 0o022) !== 0) throw new Error("profile-database-identity-invalid");
   const database = new DatabaseSync(path, { readOnly: true });
   try {
     const version = database.prepare("PRAGMA user_version").get();
@@ -68,10 +86,5 @@ export function assertCanonicalProfileBinding(path: string, expected: ProfileDat
 }
 
 export function assertProfileRestoreDatabaseBinding(path: string, expected: ProfileDatabaseBinding): void {
-  const snapshot = createReadonlyAuthoritySnapshot(path);
-  try {
-    snapshot.assertUnchanged();
-    assertCanonicalProfileBinding(snapshot.path, expected);
-    snapshot.assertUnchanged();
-  } finally { snapshot.dispose(); }
+  assertCanonicalProfileBinding(path, expected);
 }

@@ -17,7 +17,7 @@ import { mkdtempSync,readFileSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createIntakeParser } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";

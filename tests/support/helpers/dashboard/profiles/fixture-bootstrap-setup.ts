@@ -2,7 +2,7 @@ import { personLookupDescriptor } from "../../registered-workflows.js";
 import { personLookupModule } from "../../registered-workflows.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../../../src/models/dashboard/settings.js";
-import { descriptorSetHash } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 
 

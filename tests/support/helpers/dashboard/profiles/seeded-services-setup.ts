@@ -17,7 +17,7 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
 import { join } from "node:path";
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
-import { descriptorSetHash } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { createRunLogStreamStore } from "../../../../../src/backend/logs/run-log-stream.js";
 import { createCommandKernel } from "../../../../../src/backend/runs/commands/command-kernel.js";

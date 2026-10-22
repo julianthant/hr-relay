@@ -3,7 +3,7 @@ import { separationsDescriptor } from "../../registered-workflows.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../../src/models/dashboard/start-plan.js";
-import { descriptorSetHash } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import type * as BootstrapTypes from "../../../../../src/backend/runs/queries/bootstrap.js";
 import type * as FixtureBootstrapTypes from "../../../fixtures/dashboard/fixture-bootstrap.js";

@@ -1,4 +1,4 @@
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";

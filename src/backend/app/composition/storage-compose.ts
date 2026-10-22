@@ -8,6 +8,7 @@ import { composeProfileSettings } from "./dashboard/settings.js";
 import { activeSettingsConfig, activeSettingsRuntimeIdentity } from "../../runtime/settings/settings-runtime.js";
 import { workerProfileDirectory } from "../../runtime/browser/browser-session-factory.js";
 import { createProfileSession, ProfileSessionRefusedError } from "../../profiles/profile-session.js";
+import { readEmergencyFaults } from "../../logs/emergency-faults.js";
 import type { CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -32,7 +33,7 @@ import { z } from "zod";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { acquireRecoveryRuntimeRestore, ProfileBrowserRootRefusalError, type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
-import { DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
+import { descriptorSetHash, DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
@@ -45,15 +46,12 @@ import {
   summarizeSpanAuthorityReconciliation,
 } from "../../storage/sqlite/index.js";
 import { settleInterruptedAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
-import { acquireRuntimeRestoreAdmission } from "../../storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import type {
   OfflineRestoreReport,
   RecoveryRuntimeLockSnapshot,
   StorageDoctorReport,
 } from "../../storage/sqlite/recovery-contracts.js";
-import {
-  descriptorSetHash,
-} from "./dashboard/compose.js";
 import { createRunQueueProjection } from "../../runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
 import {
@@ -184,7 +182,7 @@ function containsCredentialValue(value: unknown, secrets: readonly string[]): bo
   if (typeof value === "string") return secrets.some(secret => secret.length > 0 && value.includes(secret));
   if (Array.isArray(value)) return value.some(member => containsCredentialValue(member, secrets));
   if (typeof value === "object" && value !== null) return Object.entries(value).some(([key, member]) =>
-    containsCredentialValue(typeof member === "string" && key.endsWith("Json") ? JSON.parse(member) : member, secrets));
+    containsCredentialValue(key, secrets) || containsCredentialValue(typeof member === "string" && key.endsWith("Json") ? JSON.parse(member) : member, secrets));
   return false;
 }
 
@@ -327,6 +325,35 @@ export function composeProfileCredentialInventory(input: Readonly<{ admission: R
         const scanned = scanProfileCredentialCopy(path, fields.capturedSecrets), backup = prepared.backups.find(value => value.backupPath === path);
         if (backup !== undefined && scanned.digest !== backup.manifest.sha256) throw new Error("profile-inventory-backup-changed");
         let containsSecret = scanned.containsSecret;
+        if (backup === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
+          try {
+            const bootLog = path === join(root, "logs", "boot.jsonl");
+            if (bootLog && readEmergencyFaults(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
+            const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+            let bytes: Buffer;
+            try {
+              const info = fstatSync(descriptor), limit = bootLog ? 5 * 1024 * 1024 : 16 * 1024 * 1024;
+              if (!info.isFile() || info.size > limit) throw new Error("profile-inventory-copy-size-invalid");
+              bytes = Buffer.alloc(info.size + 1);
+              let count = 0;
+              while (count < bytes.length) {
+                const size = readSync(descriptor, bytes, count, bytes.length - count, count);
+                if (size === 0) break;
+                count += size;
+              }
+              if (count !== info.size) throw new Error("profile-inventory-copy-changed");
+              bytes = bytes.subarray(0, count);
+            } finally { closeSync(descriptor); }
+            if (createHash("sha256").update(bytes).digest("hex") !== scanned.digest) throw new Error("profile-inventory-copy-changed");
+            const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+            const documents: unknown[] = bootLog ? text.trimEnd().split("\n").map(line => JSON.parse(line) as unknown) : [JSON.parse(text) as unknown];
+            if (documents.some(value => value === null || typeof value !== "object" || Array.isArray(value))) throw new Error("profile-inventory-json-unsupported");
+            containsSecret ||= documents.some(value => containsCredentialValue(value, fields.capturedSecrets));
+            for (const token of text.matchAll(/"(?:[^"\\]|\\.)*"/gu)) {
+              if (containsCredentialValue(JSON.parse(token[0]) as unknown, fields.capturedSecrets)) containsSecret = true;
+            }
+          } catch { unknownFormats.push(path); }
+        }
         if (backup !== undefined) {
           const copyAdmission = input.admission.verifiedReadOnlyCopy(path, backup.manifest.sha256);
           try {
@@ -821,13 +848,13 @@ function rebuildStagedProjections(
   appVersion: string,
   clock: Clock,
   admission: RuntimeAdmission,
-): (stagedPath: string) => Promise<void> {
+): (stagedPath: string, restoreAdmission: RestoreAdmissionHandle) => Promise<void> {
   const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
-  return async (stagedPath: string): Promise<void> => {
-    const stagedAdmission = admission.stoppedStagedAuthority(stagedPath);
+  return async (stagedPath: string, restoreAdmission: RestoreAdmissionHandle): Promise<void> => {
+    const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission);
     let staged: AuthorityDatabase;
     try {
-      staged = AuthorityDatabase.open(
+      staged = AuthorityDatabase.openStoppedRestoreProjection(
         stagedAdmission,
         { path: stagedPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-storage-restore" },
         clock,
@@ -919,6 +946,7 @@ async function restoreCommand(
   clock: Clock,
   repoRoot: string,
   admission: RuntimeAdmission,
+  credentials: CredentialStore | undefined,
 ): Promise<StorageCommandOutcome> {
   const fromIndex = rest.indexOf("--from");
   const manifestArgument = fromIndex === -1 ? undefined : rest[fromIndex + 1];
@@ -928,6 +956,8 @@ async function restoreCommand(
       exitCode: 2,
     };
   }
+  if (credentials === undefined) throw new Error("profile-restore-credential-owner-required");
+  assertCredentialStoreOwner(credentials, admission);
   const json = rest.includes("--json");
   const stateRoot = admission.stateRoot;
   const authorityPath = join(stateRoot, "state.db");
@@ -961,19 +991,22 @@ async function restoreCommand(
       },
       rebuildStagedProjections(stateRoot, appVersion, clock, admission),
       clock,
+      undefined,
+      undefined,
+      credentials,
     );
     const report = await service.restore({ manifestPath: resolve(manifestArgument), stoppedSystemProof });
     // Observe credentials only AFTER successful SQLite replacement. Their failure
     // neither authorizes a rollback nor changes the reported restore outcome.
-    const credentials = (() => {
-      try { return { state: "available" as const, ...protectedSettingsReadback(createCredentialStore({ admission, stateRoot }).read()) }; }
+    const observation = (() => {
+      try { return { state: "available" as const, ...protectedSettingsReadback(credentials.read()) }; }
       catch { return { state: "unavailable" as const, code: "credential-store-unavailable" as const }; }
     })();
-    const availability = credentials.state === "available"
-      ? `credentials: revision ${String(credentials.revision)}; ${Object.entries(credentials.entries).map(([name, entry]) => `${name}=${entry.present ? "present" : "absent"}`).join(" · ")}`
+    const availability = observation.state === "available"
+      ? `credentials: revision ${String(observation.revision)}; ${Object.entries(observation.entries).map(([name, entry]) => `${name}=${entry.present ? "present" : "absent"}`).join(" · ")}`
       : "credentials: unavailable — credential-store-unavailable";
     return {
-      output: json ? JSON.stringify({ ...report, credentials }, null, 2) : `${formatRestoreReport(report)}\n${availability}`,
+      output: json ? JSON.stringify({ ...report, credentials: observation }, null, 2) : `${formatRestoreReport(report)}\n${availability}`,
       exitCode: 0,
     };
   } catch (error) {
@@ -1119,6 +1152,7 @@ export async function composeStorageCommand(
   clock: Clock = systemClock,
   repoRoot: string = process.cwd(),
   admissionInput?: RuntimeAdmission,
+  credentials?: CredentialStore,
 ): Promise<StorageCommandOutcome> {
   const admission = requireRuntimeAdmission(admissionInput);
   const [subcommand, ...rest] = args;
@@ -1166,7 +1200,7 @@ export async function composeStorageCommand(
       return { output: rest.includes("--json") ? JSON.stringify({ state: "refused", code }) : `${code}: ${ERROR_CATALOG[code].text}`, exitCode: 1 };
     } finally { database?.close(); }
   }
-  if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot, admission);
+  if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot, admission, credentials);
   if (subcommand === "backup") return backupCommand(isolation, rest, clock, repoRoot, admission);
   if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot, admission);
   if (subcommand === "recover-chatgpt-lock") return recoverChatGptLockCommand(rest, admission);

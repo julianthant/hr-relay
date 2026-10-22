@@ -21,7 +21,7 @@ import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import type { RunParent } from "../../../../src/models/run/envelope.js";
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { composeExplorer } from "../../../../src/backend/app/composition/dashboard/explorer.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";

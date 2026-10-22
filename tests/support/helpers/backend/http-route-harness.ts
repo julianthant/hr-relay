@@ -21,7 +21,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname,join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";

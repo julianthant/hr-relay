@@ -1,5 +1,5 @@
 import { personLookupDescriptor } from "../../registered-workflows.js";
-import type * as ComposeTypes from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import type * as ComposeTypes from "../../../../../src/backend/app/registries/workflow-registry.js";
 
 
 export function createFixtureIdentitySetup({ descriptorHash }: {

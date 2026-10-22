@@ -16,7 +16,7 @@ import { createNoteTimelineWriter } from "../../src/backend/storage/events/note-
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
-import { descriptorSetHash } from "../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
 import {
   createRunQueueProjection,
   type RunQueueProjection,
