@@ -27,6 +27,8 @@ import { verifyBackupManifestAtPath } from "../../storage/sqlite/backup-service.
 import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../models/config/authority.js";
 import type { DashboardWorkerProcessSupervisor } from "../../runtime/workers/worker-supervisor.js";
+import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
+import type { WorkerControlRecord } from "../../../models/run/worker-control.js";
 import { workerPoolMember } from "../../../models/run/worker-slot.js";
 import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans, type ProcessIdentityObserver } from "../../storage/sqlite/runtime-process-locks.js";
 import { z } from "zod";
@@ -110,9 +112,67 @@ export function composeProfileActivity(input: Readonly<{
     for (const browser of before.browsers) {
       if (!before.slots.some(slot => slot.workerId === browser.workerId)) throw new Error("profile-browser-membership-unavailable");
     }
+    const sameOrigin = (slot: WorkerSlotRecord, origin: WorkerSlotRecord): boolean =>
+      slot.workerId === origin.workerId && slot.workflow === origin.workflow && slot.ordinal === origin.ordinal
+      && slot.poolIndex === origin.poolIndex && slot.createdAt === origin.createdAt && slot.reservationCommandId === origin.reservationCommandId;
+    const settled = (control: WorkerControlRecord): boolean => control.phase.state === "succeeded" && control.auditedAt !== undefined;
+    const requireLineage = (slot: WorkerSlotRecord, origin: WorkerSlotRecord): void => {
+      if (!sameOrigin(slot, origin) || origin.retiredAt !== null) throw new Error("profile-worker-reservation-lineage-unavailable");
+      if (slot.retiredAt === null) {
+        if (slot.membershipRevision !== origin.membershipRevision) throw new Error("profile-worker-reservation-lineage-unavailable");
+        return;
+      }
+      if (slot.membershipRevision !== origin.membershipRevision + 1) throw new Error("profile-worker-retirement-lineage-unavailable");
+      const retirement = before.controls.find(control => control.commandId === slot.retirementCommandId);
+      if (retirement === undefined || !settled(retirement) || retirement.phase.state !== "succeeded") throw new Error("profile-worker-retirement-authority-unavailable");
+      const acknowledgement = retirement.phase.acknowledgement;
+      const proof = acknowledgement.kind === "remove" && retirement.request.type === "remove-worker"
+        && retirement.lifecycle?.operation.kind === "remove"
+        && canonicalJsonStringify(retirement.lifecycle.member) === canonicalJsonStringify(workerPoolMember(origin))
+        ? acknowledgement.retirement
+        : acknowledgement.kind === "plan" && retirement.request.type === "plan-worker-count"
+          && retirement.request.target.workflowId === slot.workflow
+          && retirement.roster?.excess.some(excess => sameOrigin(excess, origin) && excess.membershipRevision === origin.membershipRevision)
+          ? acknowledgement.retirements.find(value => value.workerId === slot.workerId) : undefined;
+      if (proof === undefined || proof.workerId !== slot.workerId || proof.membershipRevision !== origin.membershipRevision) throw new Error("profile-worker-retirement-lineage-unavailable");
+      if (acknowledgement.kind === "remove") {
+        if (slot.retiredAt !== retirement.auditedAt || slot.retiredAt !== retirement.phase.completedAt
+          || Date.parse(proof.checkedAt) < Date.parse(retirement.admittedAt)
+          || Date.parse(proof.checkedAt) > Date.parse(retirement.phase.completedAt)) throw new Error("profile-worker-retirement-lineage-unavailable");
+      } else if (proof.checkedAt !== slot.retiredAt) throw new Error("profile-worker-retirement-lineage-unavailable");
+    };
+    const reservationBusy = (slot: WorkerSlotRecord): boolean => {
+      if (slot.reservationCommandId === null) return false;
+      const control = before.controls.find(record => record.commandId === slot.reservationCommandId);
+      if (control !== undefined) {
+        if (control.request.type !== "plan-worker-count" || control.request.target.workflowId !== slot.workflow) throw new Error("profile-worker-reservation-authority-unavailable");
+        const origin = control.roster?.selected.find(selected => selected.workerId === slot.workerId);
+        if (origin === undefined || !sameOrigin(slot, origin)) throw new Error("profile-worker-reservation-lineage-unavailable");
+        if (control.phase.state === "refused") throw new Error("profile-worker-reservation-refused");
+        if (!settled(control)) {
+          if (slot.retiredAt !== null || slot.membershipRevision !== origin.membershipRevision) throw new Error("profile-worker-reservation-lineage-unavailable");
+          return true;
+        }
+        requireLineage(slot, origin);
+        return false;
+      }
+      if (input.database.authority.workerSlots.verification(slot.workerId) !== undefined
+        || input.database.authority.workerSlots.recovery(slot.workerId) !== undefined) return true;
+      const command = input.database.authority.lifecycleJournal.getCommand(slot.reservationCommandId);
+      if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle") throw new Error("profile-worker-reservation-authority-unavailable");
+      if (command.operation === "worker-verification-admission" && slot.retiredAt !== null) {
+        input.database.authority.workerSlots.requireVerificationRetirements(slot.workflow);
+        return false;
+      }
+      const audit = input.database.authority.lifecycleJournal.findAuditByCommand(slot.reservationCommandId);
+      if (command.operation !== "worker-admission" || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+        || audit.result.kind !== "worker" || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("profile-worker-reservation-authority-unavailable");
+      requireLineage(slot, audit.result.slot);
+      return false;
+    };
     let busy = Object.entries(locks.processLocks).some(([name, state]) => name !== "server" && state.state === "active");
     for (const slot of before.slots) {
-      if (slot.reservationCommandId !== null) busy = true;
+      if (reservationBusy(slot)) busy = true;
       const lease = before.leases.find(value => value.workerId === slot.workerId);
       if (lease === undefined && slot.retiredAt === null) throw new Error("profile-worker-lifetime-unavailable");
       if (lease !== undefined && lease.lifecycle.state !== "stopped") busy = true;

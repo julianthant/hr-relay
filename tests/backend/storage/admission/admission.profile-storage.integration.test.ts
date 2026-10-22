@@ -1,4 +1,7 @@
 import fs from "node:fs";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { syncBuiltinESMExports } from "node:module";
 import { createCredentialStore, captureCommittedCredentialReplay, readForErasure } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
@@ -9,9 +12,12 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
+import { z } from "zod";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { createProfileVerifiers } from "../../../../src/backend/profiles/verifier-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
+import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
@@ -257,5 +263,166 @@ it("refuses a concurrent healthy observation change and performs healthy registr
     syncBuiltinESMExports();
     f.machine.publishProfileRegistry(before, { ...before, sessionGeneration: before.sessionGeneration + 1 });
     assert.ok(writes > priorWrites);
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); f.cleanup(); }
+});
+
+
+it.each(["acquire", "release"] as const)("observes healthy profile evidence across a real peer lease %s mutex without writing a mutex", async operation => {
+  const f = createBoundProfileFixture({ sharedMachine: true }), ready = join(f.workspace, "peer-ready"), finish = join(f.workspace, "peer-finish"), done = join(f.workspace, "peer-done");
+  const profilesPath = join(f.machine.stateRoot, "machine", "profiles.json");
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+    import fs from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    import { acquireEntrypointAdmission } from "./src/backend/storage/admission/bootstrap-admission.ts";
+    const [root, operation, ready, finish, done] = process.argv.slice(1);
+    const pause = () => {
+      fs.writeFileSync(ready, "ready");
+      const deadline = performance.now() + 10000;
+      while (!fs.existsSync(finish)) {
+        if (performance.now() > deadline) throw new Error("peer-lease-barrier-expired");
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+      }
+    };
+    if (operation === "acquire") {
+      const original = fs.readdirSync;
+      let paused = false;
+      fs.readdirSync = function(path, ...args) {
+        if (!paused && String(path).endsWith("/leases")) { paused = true; pause(); }
+        return original.call(this, path, ...args);
+      };
+      syncBuiltinESMExports();
+    }
+    const machine = acquireEntrypointAdmission(root, "shared");
+    if (operation === "release") {
+      const original = fs.unlinkSync;
+      fs.unlinkSync = function(path) { if (String(path).includes("/leases/")) pause(); return original.call(this, path); };
+      syncBuiltinESMExports();
+    }
+    machine.release();
+    fs.writeFileSync(done, "done");
+  `, f.workspace, operation, ready, finish, done], { stdio: ["ignore", "ignore", "pipe"] });
+  const exit = once(child, "exit"); let output = ""; child.stderr.on("data", value => { output += String(value); });
+  try {
+    const deadline = performance.now() + 10_000;
+    while (!existsSync(ready)) {
+      if (performance.now() > deadline) throw new Error("peer-lease-ready-unproved");
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    const registry = f.machine.readProfileRegistry();
+    const realOpen = fs.openSync, realWrite = fs.writeFileSync;
+    let crossed = false, mutexWrites = 0;
+    vi.spyOn(fs, "writeFileSync").mockImplementation((path, data, options) => {
+      if (String(path).includes("admission-mutex")) mutexWrites++;
+      return realWrite(path, data, options);
+    });
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      if (!crossed && path === profilesPath) {
+        crossed = true; realWrite(finish, "finish");
+        const bound = performance.now() + 10_000;
+        while (!existsSync(done)) {
+          if (performance.now() > bound) throw new Error("peer-lease-completion-unproved");
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+        }
+      }
+      return realOpen(path, flags, mode);
+    });
+    syncBuiltinESMExports();
+    assert.deepEqual(f.machine.readProfileRegistry(), registry);
+    assert.equal(crossed, true); assert.equal(mutexWrites, 0);
+    assert.deepEqual(await exit, [0, null], output);
+  } finally {
+    vi.restoreAllMocks(); syncBuiltinESMExports(); writeFileSync(finish, "finish");
+    try { assert.deepEqual(await exit, [0, null], output); } finally { f.close(); }
+  }
+});
+
+it.each(["empty", "malformed", "unknown", "dead", "unsafe"] as const)("refuses %s admission mutex custody during healthy profile observation", async kind => {
+  const f = createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
+  const sleeper = spawn(process.execPath, ["-e", "process.stdin.resume()"], { stdio: ["pipe", "ignore", "ignore"] });
+  const exit = once(sleeper, "exit");
+  try {
+    assert.ok(sleeper.pid);
+    const observation = observeProcessIdentity(sleeper.pid); assert.equal(observation.state, "alive");
+    if (observation.state !== "alive") throw new Error("fixture-process-identity-required");
+    sleeper.stdin.end(); assert.deepEqual(await exit, [0, null]);
+    assert.ok(f.machine.readProfileRegistry().activeProfileId);
+    fs.mkdirSync(mutex, { mode: 0o700 });
+    if (kind !== "empty") {
+      if (kind === "unsafe") symlinkSync(join(f.workspace, "package.json"), join(mutex, "owner.json"));
+      else writeFileSync(join(mutex, "owner.json"), JSON.stringify(kind === "malformed" ? {} : {
+        schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: kind === "dead" ? sleeper.pid : process.pid,
+        processIdentity: kind === "dead" ? observation.identity : { ...observation.identity, startToken: "foreign-start-token" },
+      }), { mode: 0o600 });
+    }
+    assert.throws(() => f.machine.readProfileRegistry(), (error: unknown) => kind === "malformed"
+      ? error instanceof z.ZodError
+      : error instanceof Error && error.message === (kind === "unsafe"
+        ? "directory-integrity: credential lock permissions or identity are invalid"
+        : "runtime-control: profile-registry-mutex-custody-unavailable"));
+  } finally {
+    if (sleeper.exitCode === null && sleeper.signalCode === null) { sleeper.kill("SIGKILL"); await exit; }
+    rmSync(mutex, { recursive: true, force: true }); f.close();
+  }
+});
+
+
+
+it.each(["owner-replacement", "extra-entry", "directory-mode"] as const)("refuses %s after a genuine mutex owner observation", kind => {
+  const f = createBoundProfileFixture(), mutex = join(f.workspace, ".tracker", "control", "admission-mutex");
+  const ownerPath = join(mutex, "owner.json");
+  try {
+    const registry = f.machine.readProfileRegistry();
+    const observed = observeProcessIdentity(process.pid);
+    assert.equal(observed.state, "alive");
+    if (observed.state !== "alive") throw new Error("fixture-process-identity-required");
+    fs.mkdirSync(mutex, { mode: 0o700 });
+    const bytes = JSON.stringify({ schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: process.pid,
+      processIdentity: observed.identity });
+    writeFileSync(ownerPath, bytes, { mode: 0o600 });
+    assert.deepEqual(f.machine.readProfileRegistry(), registry);
+    const originalOpen = fs.openSync;
+    let reads = 0, changed = false;
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      if (path === ownerPath && ++reads === 2) {
+        changed = true;
+        if (kind === "owner-replacement") {
+          const replacement = join(mutex, "replacement.json");
+          writeFileSync(replacement, bytes, { mode: 0o600 }); renameSync(replacement, ownerPath);
+        } else if (kind === "extra-entry") writeFileSync(join(mutex, "unexpected"), "fixture", { mode: 0o600 });
+        else fs.chmodSync(mutex, 0o755);
+      }
+      return originalOpen(path, flags, mode);
+    });
+    syncBuiltinESMExports();
+    assert.throws(() => f.machine.readProfileRegistry(), (error: unknown) => error instanceof Error && (kind === "directory-mode"
+      ? error.message === `runtime-control: unsafe directory ${mutex}`
+      : error.message === "runtime-control: profile-registry-observation-changed"));
+    assert.equal(changed, true);
+  } finally {
+    vi.restoreAllMocks(); syncBuiltinESMExports(); rmSync(mutex, { recursive: true, force: true }); f.close();
+  }
+});
+
+
+it("refuses actual pending profile operation publication crossing a healthy observation", () => {
+  const f = fixture();
+  try {
+    const active = f.session.signUp(f.fields); assert.equal(active.state, "active");
+    const profilesPath = join(f.machine.stateRoot, "machine", "profiles.json");
+    const verifiers = createProfileVerifiers(f.machine.stateRoot);
+    const emailKey = verifiers.emailKeyFor("second@example.edu");
+    const realOpen = fs.openSync;
+    let reads = 0, changed = false;
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      if (path === profilesPath && ++reads === 2) {
+        changed = true;
+        f.machine.beginProfileSignUp({ firstName: "Second", lastName: "Fixture", createdAt: IsoInstantSchema.parse(f.fields.createdAt),
+          emailKey, commandFingerprint: "b".repeat(64) });
+      }
+      return realOpen(path, flags, mode);
+    });
+    syncBuiltinESMExports();
+    assert.throws(() => f.machine.readProfileRegistry(), /profile-registry-observation-changed/u);
+    assert.equal(changed, true);
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); f.cleanup(); }
 });

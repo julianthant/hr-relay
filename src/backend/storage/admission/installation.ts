@@ -611,6 +611,43 @@ function mutex<T>(control: string, callback: () => T): T {
 }
 const MutexOwnerSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
   phase: z.literal("admitting"), pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema });
+function assertLiveObservationMutex(control: string): void {
+  const path = join(control, "admission-mutex"), before = lstatMaybe(path);
+  if (before === undefined) return;
+  try {
+    privateDirectory(path);
+    const entries = readdirSync(path);
+    if (entries.length !== 1 || entries[0] !== "owner.json") fail("profile-registry-mutex-custody-unavailable");
+    const ownerPath = join(path, "owner.json");
+    const file = readPrivateFile(ownerPath, { label: "lock", maxBytes: 1_048_576 });
+    if (file === undefined) {
+      if (lstatMaybe(path) === undefined) return;
+      fail("profile-registry-mutex-custody-unavailable");
+    }
+    const owner = MutexOwnerSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+    const observed = observeProcessIdentity(owner.pid);
+    if (observed.state !== "alive" || observed.identity.platform !== owner.processIdentity.platform
+      || observed.identity.startToken !== owner.processIdentity.startToken) fail("profile-registry-mutex-custody-unavailable");
+    const after = lstatMaybe(path);
+    if (after === undefined) return;
+    if (before.dev !== after.dev || before.ino !== after.ino) fail("profile-registry-observation-changed");
+    const current = readPrivateFile(ownerPath, { label: "lock", maxBytes: 1_048_576 });
+    if (current === undefined) {
+      if (lstatMaybe(path) === undefined) return;
+      fail("profile-registry-mutex-custody-unavailable");
+    }
+    privateDirectory(path);
+    const currentDirectory = lstatSync(path), currentEntries = readdirSync(path);
+    if (before.dev !== currentDirectory.dev || before.ino !== currentDirectory.ino
+      || currentEntries.length !== 1 || currentEntries[0] !== "owner.json"
+      || file.identity.device !== current.identity.device || file.identity.inode !== current.identity.inode
+      || !file.bytes.equals(current.bytes)) fail("profile-registry-observation-changed");
+  } catch (error) {
+    if ((filesystemCode(error) === "ENOENT" || (error instanceof Error && filesystemCode(error.cause) === "ENOENT"))
+      && lstatMaybe(path) === undefined) return;
+    throw error;
+  }
+}
 const OwnerMutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
   pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema,
   installationId: z.uuid(), generation: NonNegativeIntSchema, ownerFile: z.string().min(1),
@@ -1575,14 +1612,14 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           return readMachineRegistry(control, locator);
         });
       }
-      if (lstatMaybe(join(control, "admission-mutex"))) fail("profile-registry-publication-busy");
+      assertLiveObservationMutex(control);
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       const before = profileObservation(control, locator);
       const document = readMachineRegistry(control, locator, false);
       const after = profileObservation(control, locator);
       assertHeld();
-      if (before !== after || lstatMaybe(join(control, "profile-publication.json"))
-        || lstatMaybe(join(control, "admission-mutex"))) fail("profile-registry-observation-changed");
+      assertLiveObservationMutex(control);
+      if (before !== after || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       return document;
     },

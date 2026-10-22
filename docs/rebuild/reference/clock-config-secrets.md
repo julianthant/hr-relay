@@ -399,6 +399,12 @@ reused. Recovery rechecks a settled locator, ownership witnesses, leases, proces
 pending journal under fixed restore admission. Live, unknown, unsafe, or divergent custody refuses.
 Recovery writes a durable receipt under `.tracker/control/admission-mutex-recovery/`.
 
+Healthy profile reads create no mutex. An observed generic mutex may coexist with the read only
+when its private directory, sole canonical owner record and freshly observed OS birth identity prove
+a live holder. Unknown, dead, malformed or unsafe custody refuses. Registry publication intent retains
+its recovery path; locator, registry continuity, operations and erasure evidence must remain exact
+across the read. An unrelated lease mutex disappearing does not revoke an otherwise unchanged profile.
+
 `secure-env-bootstrap.ts` accepts only `cli` and `test-target-document-number` runners and awaits
 the selected runner. Production dashboard bundle validation precedes installation admission.
 Dry-run scenario manifest availability is checked before runtime admission. Normal runtime commands
@@ -541,6 +547,12 @@ The selected storage composition captures the authenticated profile and session 
 Worker bootstrap acquires machine admission, captures durable selection, and takes exact profile-database process custody before issuing a child or opening SQLite. Ordinary worker admission, claims, protected reads and browser acquisition revalidate that selection. Failed admission closes SQLite and releases child custody before its process record. Unproved closure propagates `RUNTIME_CUSTODY_UNCERTAIN`, retaining parent admission and remaining process custody. Profile runtime composition retains one ordinary/settlement resource entry, schedules actual account and canonical resource closure through session activity, and closes SQLite before child release after erasure inventory. Dashboard startup binds its actual supervisor once at the construction boundary. Public profile mounting, complete supported inventory coverage and actual process/browser closure acceptance remain required.
 
 Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted.
+
+Settled worker reservation IDs retain allocation provenance. Closure authenticates the exact origin,
+revision and canonical retirement command. Remove-worker retirement requires
+`retiredAt == auditedAt == completedAt` and `admittedAt <= proof.checkedAt <= completedAt`;
+plan-excess retirement requires `retiredAt == proof.checkedAt`. Pending or UNKNOWN commands and
+verification or recovery holds continue to block closure.
 
 Profile erasure publishes its canonical journal transition through the existing installation control publication intent. Control retains a typed head and verified registration origin for every registered profile; missing, substituted or rolled-back journal/anchor evidence blocks protected availability. Only the actual credential owner can issue the value-free capture and exact erase-intent witness. Interrupted erasure retains its original command/write/receipt and permits only authenticated settlement; ordinary reads and writes cannot treat the pending transition as available.
 

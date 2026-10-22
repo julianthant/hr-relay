@@ -58,8 +58,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "6587ff08a545b88840572280dd6731144d92ea9d028838c161f8e796dae7bd5d",
-    "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
+      "sha256": "88e06c3ab405023c7af5289bbeeb646d8668bd4be0159d17c8f95f76a0589f04",
+    "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate."
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",

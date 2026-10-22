@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync,spawn,type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { copyFileSync,existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync,existsSync,readFileSync,readdirSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
@@ -19,7 +18,12 @@ import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js"
 import { ActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
-import { AuthorityDatabase,installationAdmission,releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
+import type { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-session.js";
+import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
 const worker = (index: number) => `person-lookup-worker-${String(index)}`;
@@ -34,10 +38,15 @@ async function waitFor(test: () => boolean, message: string, output: () => strin
 }
 
 it("real ingress, two real workers and Chromium: dry-run claims, exact controls, replay, replacement and proven cleanup", async () => {
-  const root = mkdtempSync(join(tmpdir(),"hrauto-control-process-"));
+  const fixture = createBoundProfileFixture();
+  const root = fixture.workspace;
+  fixture.admission.release(); fixture.machine.release();
+  let machine: ReturnType<typeof acquireEntrypointAdmission> | undefined;
+  let profile: ReturnType<typeof composeProfileRuntime> | undefined;
+  let token: string | undefined;
   const children: ChildProcess[] = []; const output: string[] = []; const faults: string[] = [];
   let runtime: DashboardRuntime | undefined; let database: AuthorityDatabase | undefined;
-  const stateRoot = join(root,rebuildRuntimeIsolation.stateRoot); mkdirSync(stateRoot,{recursive:true});
+  const stateRoot = fixture.stateRoot;
   copyFileSync("package.json",join(root,"package.json")); copyFileSync("package-lock.json",join(root,"package-lock.json"));
   const spawnWorker: WorkerProcessSpawner = request => {
     const child = spawn(request.command,[...request.args],{cwd:request.cwd,stdio:["ignore","pipe","pipe"],detached:true});
@@ -45,18 +54,33 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     return { pid:child.pid, kill:signal => child.kill(signal), onExit:listener => {child.on("exit",listener);}, onError:listener => {child.on("error",listener);} };
   };
   const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: [1,2].flatMap(index => database?.authority.runs.listByWorker(worker(index)) ?? []) });
-  const boot = () => composeDashboardRuntime({ admission: installationAdmission(root), preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
+  const boot = async () => {
+    const bootMachine = acquireEntrypointAdmission(root, "shared");
+    machine = bootMachine;
+    profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock,
+      processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) });
+    const active = profile.session.signIn({ email: "fixture@example.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+    assert.equal(active.state, "active");
+    if (active.state !== "active") throw new Error("browser-control-profile-sign-in-refused");
+    token = active.token;
+    assert.equal(profile.selectedContext(token).admission.stateRoot, stateRoot);
+    assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
+    const dashboard = await composeDashboardRuntime({ admission: machine, profile: { runtime: profile, token }, preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
     workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/support/processes/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:20_000},faultSink:line=>faults.push(line)}});
+    return { dashboard, machine: bootMachine };
+  };
   const failures: unknown[]=[];
   try {
-    runtime = await boot();
+    const firstBoot = await boot(); runtime = firstBoot.dashboard; machine = firstBoot.machine;
     const origin = `http://127.0.0.1:${String(runtime.port)}`;
-    const patch = { "daemon.idleRepollMs": { set: 100 } };
+    assert.ok(profile); assert.ok(token);
+    let db = profile.selectedContext(token).database; database = db;
+    const baseline = readSettings(db.authority).revision;
+    const patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, "features.duoWebAuthn": { set: false } };
     const response = await fetch(`${origin}/api/v1/commands`, { method:"POST", headers:{"content-type":"application/json",origin},
-      body:JSON.stringify({commandId:randomUUID(),family:"settings",type:"apply-settings",target:{expectedRevision:1},source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString(),
+      body:JSON.stringify({commandId:randomUUID(),family:"settings",type:"apply-settings",target:{expectedRevision:baseline},source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString(),
         payload:{settingsSchemaHash:SETTINGS_SCHEMA_HASH,patchFingerprint:deriveSettingsPatchFingerprint(patch),patch}}) });
     const settingsResult: unknown = await response.json(); assert.equal(CommandResultSchema.parse(settingsResult).state,"applied",JSON.stringify(settingsResult));
-    let db = AuthorityDatabase.open({path:join(stateRoot,"state.db"),busyTimeoutMs:5000,migrationOwner:"control-process-proof"},systemClock); database=db;
     const post = async (type: string, target: unknown, payload?: unknown, commandId = randomUUID()) => {
       const request = {commandId,family:"worker-browser",type,target,...(payload===undefined?{}:{payload}),source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString()};
       const send = async (body = request) => {
@@ -129,8 +153,13 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     }finally{raw.close();}
     process.stdout.write(`[sessions-process-proof] ${JSON.stringify({ claims: claims.map(value => ({ runId:value?.envelope.runId, dryRun:value?.envelope.dryRun, lifecycle:value?.lifecycle })), controls:[refresh,reopen].map(value=>db.authority.workerControls.get(value.request.commandId)), original, replacement })}\n`);
     const oldGeneration = target(1);
-    db.close(); database=undefined;
-    await runtime.stop(); runtime=undefined;
+    assert.ok(machine);
+    const oldMachine = machine, oldProfile = profile, oldToken = token, oldContext = profile.selectedContext(token);
+    await runtime.stop(); runtime=undefined; database=undefined;
+    assert.throws(() => oldProfile.assertCurrent(oldToken), { message: "runtime-admission: missing or released admission" });
+    assert.throws(() => oldContext.settings.read(), (error: unknown) => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_SESSION_STALE");
+    oldMachine.release(); machine=undefined;
+    assert.throws(() => oldMachine.assertLive(), /runtime-admission: missing or released admission/u);
     await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
       "dashboard shutdown did not drain owned children", diagnostics);
     for (const child of children) {
@@ -140,9 +169,13 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
       assert.equal(groupPids(child.pid).length, 0);
     }
     const stoppedChildren = children.length;
-    runtime=await boot();
+    const secondBoot = await boot(); runtime=secondBoot.dashboard; machine=secondBoot.machine;
     assert.equal(children.length,stoppedChildren,"dashboard boot must not spawn standing workers");
-    db=AuthorityDatabase.open({path:join(stateRoot,"state.db"),busyTimeoutMs:5000,migrationOwner:"control-process-proof-restarted"},systemClock); database=db;
+    assert.ok(profile); assert.ok(token);
+    assert.notEqual(token, oldToken);
+    const freshProfile = profile;
+    assert.throws(() => freshProfile.assertCurrent(oldToken), (error: unknown) => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_SESSION_STALE");
+    db=profile.selectedContext(token).database; database=db;
     assert.equal((await reopen.send()).state,"already-applied");
     assert.equal(children.length,stoppedChildren,"replaying a settled browser control must not spawn workers");
     for (const index of [1,2]) {
@@ -187,8 +220,8 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     const resize = (await post("plan-worker-count",{workflowId:"person-lookup",expectedVersion:db.authority.workerPools.get("person-lookup")?.version},{desiredWorkers:1})).result;
     assert.equal(resize.state,"applied");
     assert.equal(db.authority.workerPools.get("person-lookup")?.desiredWorkers, 1);
-    db.close(); database=undefined;
-    await runtime.stop(); runtime=undefined;
+    await runtime.stop(); runtime=undefined; database=undefined;
+    assert.ok(machine); machine.release(); machine=undefined;
     await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
       "final dashboard drain did not finish every owned child", diagnostics);
     for (const child of children) {
@@ -209,11 +242,12 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
       }catch(error){failures.push(error);}
     }
     try {await runtime?.stop();}catch(error){failures.push(error);}
-    try {database?.close();}catch(error){failures.push(error);}
+    try {await profile?.close();}catch(error){failures.push(error);}
+    try {machine?.release();}catch(error){failures.push(error);}
     const lockDirectory=join(root,rebuildRuntimeIsolation.processLockRoot,"workers");
     try {if(existsSync(lockDirectory))for(const name of readdirSync(lockDirectory))if(name.endsWith(".lock.json"))assert.notEqual(WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(join(lockDirectory,name),"utf8"))).releasedAt,null);}catch(error){failures.push(error);}
-    releaseAdmissionFixtures();
-    if(failures.length===0) {process.stdout.write(`[sessions-process-cleanup] ${JSON.stringify({processGroups:children.map(child=>child.pid),survivors:0,openContexts:0,workerLocks:"released"})}\n`);rmSync(root,{recursive:true,force:true});}
+    try {fixture.admission.release(); fixture.machine.release();}catch(error){failures.push(error);}
+    if(failures.length===0) {process.stdout.write(`[sessions-process-cleanup] ${JSON.stringify({processGroups:children.map(child=>child.pid),survivors:0,openContexts:0,workerLocks:"released"})}\n`);fixture.close();}
   }
   if(failures.length>0)throw new AggregateError(failures,`process proof failed; retained ${root}\n${output.join("")}`);
 },90_000);
